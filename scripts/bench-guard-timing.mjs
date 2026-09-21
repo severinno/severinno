@@ -45,20 +45,30 @@
 //   node scripts/bench-guard-timing.mjs --only tests   # só a família da suíte (sem a bateria)
 //   node scripts/bench-guard-timing.mjs --only hook    # só o custo da oferta no commit
 //   node scripts/bench-guard-timing.mjs --only mutations # só o custo de CADA sub-test do master (~5min)
-//   node scripts/bench-guard-timing.mjs --json --merge # herda do arquivo o que não mediu
+//   node scripts/bench-guard-timing.mjs --json --merge # a gravação da RÉGUA absorve também o `latest`
 //
 // CUSTO: as duas famílias de régua medem COMANDOS INTEIROS (um typecheck frio e as
 // suítes), então uma rodada completa leva minutos; a família `hook` roda o hook de
 // verdade num repositório git temporário (seis formas, ~0,3s cada) e a detecção
 // contra a árvore real, então custa segundos. Elas medem UMA amostra por
 // forma, de propósito e declarado (`samplesPerForm: 1`): o `--samples` continua
-// sendo o controle da mediana das formas de lint, que rodam em segundos. O
-// `--merge` existe para medir em partes em máquina lenta (ou sob timeout de
-// runner), herdando do arquivo as famílias não medidas — marcadas e fora do
-// veredito. Fora do veredito nas DUAS pontas: a família herdada não julga o
-// TOTAL (que é a soma de guards+doctor) nem serve de prova para FECHAR a dívida
-// de tempo (`measured: false`); uma família que a baseline tem e a rodada não
-// mediu NEM herdou faz o mesmo (`--no-lint` no dispatch).
+// sendo o controle da mediana das formas de lint, que rodam em segundos.
+//
+// GRAVAR NUNCA PERDE (a cadeia de heranca, ver `inheritanceChain`): as familias
+// que esta rodada NAO mediu entram no arquivo gravado herdadas — com o arquivo de
+// ORIGEM nomeado em `meta.reused`/`meta.families` — na ordem `[baseline, latest]`.
+// A BASELINE e a primeira fonte (o PISO e a precedencia: o numero DELA vence
+// quando as duas o tem), entao uma familia que a regua versionada tem nunca chega
+// `null` ao arquivo; o `latest` entra como fonte em toda gravacao que nao seja SO
+// da regua. Medir em partes (maquina lenta, timeout de runner) e exatamente isso:
+// `--only FAMILIA --json` mede a parte de agora e grava o resto herdado; numa
+// gravacao SO da baseline, e o `--merge` que a faz absorver tambem o `latest` —
+// promover para a regua o que foi medido em scratch e ato DELIBERADO.
+//
+// Fora do veredito nas DUAS pontas: a familia herdada nao julga o TOTAL (que e a
+// soma de guards+doctor) nem serve de prova para FECHAR a divida de tempo
+// (`measured: false`); uma familia que a baseline tem e a rodada nao mediu NEM
+// herdou faz o mesmo.
 //
 // Exit codes:
 //   0 — benchmark completo
@@ -92,8 +102,8 @@ import { NO_PROMPT_ENV } from "./pre-commit-remedy.mjs"
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(SCRIPT_DIR, "..")
 const BENCH_DIR = join(REPO_ROOT, "docs", "benchmarks")
-const LATEST_FILE = "guard-timing-latest.json"
-const BASELINE_FILE = "guard-timing-baseline.json"
+export const LATEST_FILE = "guard-timing-latest.json"
+export const BASELINE_FILE = "guard-timing-baseline.json"
 
 // ── Guards individuais (comando → label) ──────────────────────────────────
 // Lista derivada de .gitea/workflows/ci.yml: cada `run:` do job `guards`
@@ -1891,73 +1901,134 @@ function printRulerReport(title, ruler, extra = []) {
 }
 
 /**
- * Herda as familias que ESTA rodada nao mediu do arquivo anterior (`--merge`).
+ * A CADEIA de fontes de uma gravacao — os NOMES dos arquivos, na ordem em que a
+ * heranca os consulta (ver `reuseFamilies`).
+ *
+ * POR QUE ISTO EXISTE (o defeito MEDIDO, 09/2026): gravar nao pode PERDER o que
+ * ja estava gravado. Uma rodada `--only hook --json` (ou o `--no-lint` do dispatch
+ * semanal) nao mede o lint nem as reguas, e o arquivo escrito ficava com essas
+ * secoes `null`: o `latest` perdia o numero que ele proprio tinha, e a rodada
+ * seguinte (`--only mutations --baseline --merge`) herdava o VAZIO — o `rulers` da
+ * BASELINE (a regua versionada) saia `{typecheck: null, tests: null}` e o
+ * consumidor quebrava (`merge-latency.mjs` itera `Object.values(bench.rulers)`: o
+ * `null` derrubava com "Cannot read properties of null"), deixando a suite
+ * vermelha por um arquivo e nao por uma medicao.
+ *
+ * A ordem das fontes, e por que ela e ESTA:
+ *
+ *   - a BASELINE vem PRIMEIRO — ela e o PISO e a precedencia: uma familia que a
+ *     regua versionada tem NUNCA chega `null` ao arquivo gravado, e quando as duas
+ *     fontes tem o numero, o que vence e o DELA (uma rodada de scratch nao
+ *     rebaixa a regua);
+ *   - o `latest` entra como segunda fonte em toda gravacao que nao seja SO da
+ *     regua: ele e o predecessor do proprio `latest` (o que aquele arquivo ja
+ *     tinha e o numero mais proximo da medicao de agora) e quem preenche o
+ *     arquivo com data;
+ *   - numa gravacao SO da baseline, e o `--merge` que traz o `latest` — promover
+ *     para a regua o que foi medido em scratch e ato DELIBERADO.
+ *
+ * Pura: nao le arquivo nenhum.
+ *
+ * @param {{targets?: string[], merge?: boolean}} [args]  `targets` sao os arquivos
+ *   que o ato vai gravar (vazio = nenhuma gravacao: a cadeia e a da leitura)
+ * @returns {string[]}
+ */
+export function inheritanceChain({ targets = [], merge = false } = {}) {
+  const chain = [BASELINE_FILE]
+  const soARegua = targets.length > 0 && targets.every((t) => t === BASELINE_FILE)
+  if (!soARegua || merge) chain.push(LATEST_FILE)
+  return chain
+}
+
+/**
+ * Herda as familias que ESTA rodada nao mediu da CADEIA de fontes.
  *
  * POR QUE ISTO EXISTE: uma rodada completa mede comandos inteiros — um typecheck
  * FRIO e tres suites — e em maquina lenta (ou sob um timeout de runner) isso nao
- * cabe num passo so. Sem o merge, medir em partes significaria APAGAR o que ja
- * estava medido; com ele, a parte de agora entra e o resto e herdado.
+ * cabe num passo so. Sem a heranca, medir em partes significaria APAGAR o que ja
+ * estava medido; com ela, a parte de agora entra e o resto e herdado — e, com o
+ * PISO da baseline na cadeia (ver `inheritanceChain`), nenhuma gravacao perde o
+ * numero que a regua versionada ja tinha.
  *
  * A HONESTIDADE ESTA NA PROCEDENCIA: cada familia herdada vai para
- * `meta.reused` com o commit e o timestamp de ORIGEM, o relatorio a NOMEIA, e a
- * comparacao a EXCLUI do veredito — um numero de outro momento nao pode passar
- * por "a medicao de agora".
+ * `meta.reused` com o ARQUIVO de origem, o commit e o timestamp de ORIGEM, o
+ * relatorio a NOMEIA, e a comparacao a EXCLUI do veredito — um numero de outro
+ * momento nao pode passar por "a medicao de agora".
  *
- * Pura em relacao ao relogio e ao disco: recebe os dois relatorios.
+ * Pura em relacao ao relogio e ao disco: recebe os relatorios.
  *
  * @param {object} result    o que esta rodada mediu (familias nao medidas = null)
- * @param {object|null} previous  o arquivo anterior
+ * @param {Array<{source: string, report: object|null}>} sources  a CADEIA, na
+ *   ordem (ver `inheritanceChain`)
  * @returns {object}
  */
-export function reuseFamilies(result, previous) {
-  if (!previous) return result
+export function reuseFamilies(result, sources = []) {
+  const cadeia = (sources ?? []).filter((s) => Boolean(s?.report))
+  if (cadeia.length === 0) return result
   const reused = {}
 
-  const pick = (family, current, old) => {
+  const pick = (family, current, read) => {
     if (current !== null && current !== undefined) return current
-    if (old === null || old === undefined) return current ?? null
-    reused[family] = {
-      commit: previous?.meta?.commit ?? null,
-      timestamp: previous?.meta?.timestamp ?? null,
+    for (const { source, report } of cadeia) {
+      // A regua de "esta familia foi medida?" e a MESMA da procedencia e da
+      // comparacao (`FAMILY_MEASURED`): uma secao presente com `measured: false`
+      // nao e fonte de nada.
+      if (!FAMILY_MEASURED[family](report)) continue
+      const valor = read(report)
+      if (valor === null || valor === undefined) continue
+      reused[family] = {
+        source,
+        commit: report?.meta?.commit ?? null,
+        commitDate: report?.meta?.commitDate ?? null,
+        timestamp: report?.meta?.timestamp ?? null,
+      }
+      return valor
     }
-    return old
+    // Sem fonte com o numero: continua `null` — herdar "nada" nao pode virar
+    // herdar um numero.
+    return current ?? null
   }
 
-  const lint = pick("lint", result.lint, previous.lint)
+  const lint = pick("lint", result.lint, (rep) => rep.lint)
   const typecheck = pick(
     "typecheck",
     result.rulers?.typecheck ?? null,
-    previous.rulers?.typecheck ?? null,
+    (rep) => rep.rulers?.typecheck ?? null,
   )
-  const tests = pick("tests", result.rulers?.tests ?? null, previous.rulers?.tests ?? null)
+  const tests = pick("tests", result.rulers?.tests ?? null, (rep) => rep.rulers?.tests ?? null)
   // O HOOK e a quarta familia de custo de rodada (barata, mas com o mesmo
   // contrato): numa rodada `--no-hook`/`--only` ela e herdada com procedencia,
   // nunca apagada — o numero de ontem junto do hoje e o que permite comparar.
-  const hook = pick("hook", result.hook ?? null, previous.hook ?? null)
+  const hook = pick("hook", result.hook ?? null, (rep) => rep.hook ?? null)
   // Os SUB-TESTS do master: a quinta familia de rodada, com a mesma regra — o
   // custo de cada sub-test so e comparavel com o de outra rodada se a
   // procedencia disser de qual rodada ele veio.
-  const mutations = pick("mutations", result.mutations ?? null, previous.mutations ?? null)
+  const mutations = pick("mutations", result.mutations ?? null, (rep) => rep.mutations ?? null)
 
-  // A BATERIA (guards + doctor): numa rodada de uma familia so (`--only`) ela
-  // nao e medida, e gravar vazio apagaria a leitura que ja existia. Herdada, ela
-  // vale a mesma regra das familias: marcada em `meta.reused` e fora do veredito.
+  // A BATERIA (guards + doctor): a MESMA cadeia e a MESMA regua de "foi medida?"
+  // — guards vazios com doctor nulo NAO sao medicao, e gravar vazio apagaria a
+  // leitura que ja existia.
   const bateriaVazia = (result.guards?.length ?? 0) === 0 && result.doctor === null
-  const guardasHerdadas = bateriaVazia && (previous.guards?.length ?? 0) > 0
-  const guards = guardasHerdadas ? previous.guards : result.guards
-  const doctor = bateriaVazia && previous.doctor ? previous.doctor : result.doctor
-  if (guardasHerdadas) {
+  const fonteDaBateria = bateriaVazia
+    ? cadeia.find(({ report }) => FAMILY_MEASURED.battery(report))
+    : null
+  const guards = fonteDaBateria ? (fonteDaBateria.report.guards ?? []) : result.guards
+  const doctor = fonteDaBateria ? (fonteDaBateria.report.doctor ?? null) : result.doctor
+  if (fonteDaBateria) {
     reused.battery = {
-      commit: previous?.meta?.commit ?? null,
-      timestamp: previous?.meta?.timestamp ?? null,
+      source: fonteDaBateria.source,
+      commit: fonteDaBateria.report?.meta?.commit ?? null,
+      commitDate: fonteDaBateria.report?.meta?.commitDate ?? null,
+      timestamp: fonteDaBateria.report?.meta?.timestamp ?? null,
     }
   }
   const guardsTotalMs = (guards ?? []).reduce((acc, g) => acc + (g.ms ?? 0), 0)
 
-  // A tabela de procedencia e reescrita com a rodada ANTES do merge: quem entrou
-  // herdado sai daqui como `reused` com o commit e o carimbo de ORIGEM, ao lado
-  // do `meta.reused` que a comparacao consome.
-  const families = familyProvenance({ result, previous, source: LATEST_FILE })
+  // A tabela de procedencia e DERIVADA do que a heranca acabou de decidir: ela
+  // olha a rodada ORIGINAL (o que ESTA rodada mediu) e o `reused` que a heranca
+  // montou — a heranca e a procedencia nao podem divergir sobre qual familia foi
+  // herdada, nem sobre DE ONDE ela veio.
+  const families = familyProvenance({ result, reused })
 
   return {
     ...result,
@@ -2163,12 +2234,16 @@ function printReport(result) {
   // Hook (a oferta de remendo no caminho do commit)
   if (result.hook) printHookReport(result.hook)
 
-  // Familias herdadas de uma rodada anterior (`--merge`)
+  // Familias herdadas de uma rodada anterior (a CADEIA de heranca da gravacao)
   const reusedFamilies = Object.entries(meta.reused ?? {})
   if (reusedFamilies.length > 0) {
     console.log("  Familias HERDADAS (nao medidas nesta rodada — fora do veredito):")
     for (const [family, from] of reusedFamilies) {
-      console.log(`    · ${family} — medida em ${from.commit} (${from.timestamp})`)
+      // O ARQUIVO de origem ao lado do commit: com o piso da baseline, a fonte
+      // pode ser ela — e quem le o relatorio precisa saber de onde veio o numero.
+      console.log(
+        `    · ${family} — medida em ${from.commit} (${from.timestamp}) · fonte: ${from.source}`,
+      )
     }
     console.log()
   }
@@ -2276,23 +2351,28 @@ export const FAMILY_MEASURED = {
  * seis commits atras, e "quanto custa" sozinho nao diz qual dos dois aconteceu.
  * O resumo diz o valor; esta tabela diz de quando e de quem ele e.
  *
- * Pura: recebe o relatorio desta rodada e (quando houver) o arquivo anterior.
+ * A FONTE VEM DA HERANCA, nao de uma segunda leitura do arquivo: `reused` e o
+ * mapa que `reuseFamilies` montou (com o arquivo de ORIGEM, o commit e o
+ * carimbo), e `result` e a rodada ORIGINAL — a que diz o que ESTA rodada mediu.
+ * Duas caminhadas da mesma pergunta (a heranca e a procedencia) divergiriam no
+ * dia em que uma delas fosse ajustada; aqui ha UMA.
  *
- * @param {{result: object, previous?: object|null, source?: string|null}} args
+ * Pura: recebe o relatorio desta rodada e o mapa da heranca.
+ *
+ * @param {{result?: object, reused?: Record<string, {source?: string|null, commit?: string|null, commitDate?: string|null, timestamp?: string|null}>}} args
  * @returns {Record<string, {act: "measured"|"reused"|"not-measured", commit: string|null, commitDate: string|null, timestamp: string|null, source: string|null}>}
  */
-export function familyProvenance({ result, previous = null, source = null } = {}) {
+export function familyProvenance({ result, reused = {} } = {}) {
   const out = {}
   for (const family of Object.keys(FAMILY_MEASURED)) {
-    const medido = FAMILY_MEASURED[family]
-    const daRodada = medido(result)
-    const deOnde = daRodada ? result : medido(previous) ? previous : null
+    const daRodada = FAMILY_MEASURED[family](result)
+    const fonte = daRodada ? null : (reused?.[family] ?? null)
     out[family] = {
-      act: daRodada ? "measured" : deOnde ? "reused" : "not-measured",
-      commit: deOnde?.meta?.commit ?? null,
-      commitDate: deOnde?.meta?.commitDate ?? null,
-      timestamp: deOnde?.meta?.timestamp ?? null,
-      source: daRodada || !deOnde ? null : source,
+      act: daRodada ? "measured" : fonte ? "reused" : "not-measured",
+      commit: daRodada ? (result?.meta?.commit ?? null) : (fonte?.commit ?? null),
+      commitDate: daRodada ? (result?.meta?.commitDate ?? null) : (fonte?.commitDate ?? null),
+      timestamp: daRodada ? (result?.meta?.timestamp ?? null) : (fonte?.timestamp ?? null),
+      source: fonte?.source ?? null,
     }
   }
   return out
@@ -2743,7 +2823,7 @@ Usage:
   node scripts/bench-guard-timing.mjs --only tests # só a família da suíte (sem a bateria)
   node scripts/bench-guard-timing.mjs --only hook  # só o custo da oferta de remendo no commit
   node scripts/bench-guard-timing.mjs --only mutations # só o custo de CADA sub-test do master (~5min)
-  node scripts/bench-guard-timing.mjs --json --merge # herda as famílias não medidas do arquivo
+  node scripts/bench-guard-timing.mjs --json --merge # a gravação SÓ da régua absorve também o \`latest\`
 
 As famílias typecheck e suíte medem COMANDOS INTEIROS (um typecheck FRIO e as
 suítes): uma amostra cada, de propósito. Sem as três, a rodada é a bateria de
@@ -2767,16 +2847,24 @@ O CONTRAFACTUAL da suíte (bun run test:unit, a régua que o check do GitHub
 rodava antes, com maxWorkers 1) leva ~7min sozinho e NÃO roda em pipeline
 nenhuma: ele é medido sob demanda (--counterfactual), e sem ele o delta sai null
 (INDETERMINADO) em vez de vir de outra rodada. Com --only FAMILIA a rodada mede
-só aquelas famílias e PULA a bateria; com --merge, o que esta rodada NÃO mediu é
-herdado do arquivo, marcado em meta.reused e deixado FORA do veredito — a família
-herdada (ou pulada) NÃO julga o TOTAL e torna a comparação measured: false, o que
-recusa o fechamento da issue de tempo (herdar não é medir agora).
+só aquelas famílias e PULA a bateria.
+
+GRAVAR NUNCA PERDE: as famílias que esta rodada NÃO mediu entram no arquivo
+gravado herdadas, na ordem \`[baseline, latest]\` — a BASELINE primeiro (é o PISO e
+a precedência: o número dela vence quando as duas fontes o têm), o \`latest\`
+como segunda fonte em toda gravação que não seja SÓ da régua. Numa gravação SÓ da
+baseline (\`--baseline\`), é o \`--merge\` que a faz absorver também o \`latest\`:
+promover para a régua o que foi medido em scratch é ato deliberado. A herança sai
+marcada em \`meta.reused\` (com o ARQUIVO de origem, o commit e o carimbo) e é
+deixada FORA do veredito — a família herdada (ou pulada) NÃO julga o TOTAL e torna
+a comparação measured: false, o que recusa o fechamento da issue de tempo (herdar
+não é medir agora).
 
 O arquivo GRAVADO diz de onde veio cada família: \`meta.act\` é o comando que o
 produziu e \`meta.families\` traz, por família, o ATO (medida nesta rodada, herdada
-de outra, não medida) e o COMMIT de origem do número. Mover a baseline é ato
-deliberado (\`--baseline\`, de preferência com \`--json\`): é ele que decide que os
-números de agora passam a ser a régua.
+de outra, não medida), a FONTE da herança e o COMMIT de origem do número. Mover a
+baseline é ato deliberado (\`--baseline\`, de preferência com \`--json\`): é ele que
+decide que os números de agora passam a ser a régua.
 
 Exit codes: 0 sucesso · 1 falha/regressão · 2 argumento inválido`)
     return 0
@@ -2800,16 +2888,27 @@ Exit codes: 0 sucesso · 1 falha/regressão · 2 argumento inválido`)
     // sem ele tem numeros de familias diferentes, e so o comando gravado diz qual.
     act: ["bench-guard-timing", ...process.argv.slice(2)].join(" ").trim(),
   })
-  if (opts.merge) {
-    const previous = existsSync(join(BENCH_DIR, LATEST_FILE))
-      ? JSON.parse(readFileSync(join(BENCH_DIR, LATEST_FILE), "utf8"))
-      : null
-    result = reuseFamilies(result, previous)
+  // ── A HERANCA da gravacao (ver `inheritanceChain`) ───────────────────────
+  // Gravar nunca PERDE: o que esta rodada nao mediu entra herdado da cadeia —
+  // com procedencia — para o arquivo escrito descrever o mesmo que o resumo. A
+  // cadeia se monta pelos DESTINOS do ato, e o `--merge` so muda alguma coisa
+  // numa gravacao SO da regua (e ele que a faz absorver o `latest`).
+  const destinos = []
+  if (opts.json) destinos.push(LATEST_FILE)
+  if (opts.baseline) destinos.push(BASELINE_FILE)
+  const escreve = Boolean(opts.json || opts.save || opts.baseline)
+  if (escreve || opts.merge) {
+    const chain = inheritanceChain({ targets: destinos, merge: opts.merge })
+    const sources = chain.map((source) => {
+      const p = join(BENCH_DIR, source)
+      return { source, report: existsSync(p) ? JSON.parse(readFileSync(p, "utf8")) : null }
+    })
+    result = reuseFamilies(result, sources)
   }
   printReport(result)
 
   // Salvar
-  if (opts.json || opts.save || opts.baseline) {
+  if (escreve) {
     mkdirSync(BENCH_DIR, { recursive: true })
   }
 

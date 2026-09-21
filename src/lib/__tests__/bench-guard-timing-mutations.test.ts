@@ -37,6 +37,7 @@ import { afterAll, describe, expect, it } from "vitest"
 
 import {
   FAMILY_MEASURED,
+  LATEST_FILE,
   MUTATION_CMD,
   MUTATION_MASTER_CMD,
   REUSED_FAMILY_LABELS,
@@ -507,7 +508,9 @@ describe("bench-guard-timing — o sub-test novo e a comparação", () => {
     expect(cmp.measured).toBe(false)
     expect(cmp.reason).toContain(REUSED_FAMILY_LABELS.mutations)
 
-    const herdada = reuseFamilies(relatorio(null) as never, baseline as never) as unknown as {
+    const herdada = reuseFamilies(relatorio(null) as never, [
+      { source: LATEST_FILE, report: baseline },
+    ]) as unknown as {
       meta: {
         reused: Record<string, unknown>
         families: Record<string, { act: string; commit: string | null }>
