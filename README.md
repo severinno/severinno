@@ -1208,6 +1208,24 @@ bateria, o lint, o typecheck, a suíte e o hook, e `--only mutations --baseline
 --merge` mede o master e MOVE a baseline herdando o resto, com o ato e o commit de
 origem de cada família gravados no arquivo (`meta.families`).
 
+**E a IDADE dessa régua deixou de ser invisível** (`scripts/bench-freshness.mjs`,
+seção **9/9** do doctor). O número da baseline é consumido **fora** do bench — o
+modelo de latência de merge e as tabelas acima declaram o custo dos jobs a partir
+dele —, e a comparação por percentual é **cega para QUANDO os dois números foram
+medidos**: foi por essa fenda que uma divergência de **28%** no `mutation-guards`
+(271.755ms declarados × 380.700ms medidos) viveu sem que nenhum guard a nomeasse.
+A régua mede, por família MEDIDA, quantos commits de `HEAD` separam o commit de
+origem gravado da árvore de agora, com o teto declarado de **150 commits** — dois
+ciclos do cron semanal ao ritmo medido do repositório (~10 commits/dia). O
+checkout daquele job é feito com a história inteira (`fetch-depth: 0`): a idade é
+contada em commits e um clone raso responderia "sem idade", nunca "fresca". **LIMITE DECLARADO:** a régua mede FRESCOR, não exatidão — um commit a
+mais pode não mudar nada do que a família mede; o que ela impede é o silêncio de
+um número que ninguém re-mediu enquanto a árvore andou. **Gravar nunca
+perde:** o que a rodada não mediu é herdado na ordem `[baseline, latest]` — a
+baseline é o **piso** (uma família que a régua tem não chega `null` ao arquivo, e o
+número dela vence quando as duas fontes o têm), e o arquivo diz de QUAL delas veio
+o número (`meta.reused[].source`), sempre fora do veredito.
+
 A OFERTA também é uma superfície MEDIDA, e não só o bloco que o operador lê:
 `node scripts/pre-commit-remedy.mjs --oferta` roda a MESMA detecção (com o guard
 dono de cada classe) e publica o payload em **JSON** no stdout, sem pergunta e

@@ -107,7 +107,15 @@ jobs:
     timeout-minutes: 45
 
     steps:
+      # fetch-depth: 0 é REQUISITO (de um fato do veredito, não preferência): a
+      # seção 9/9 conta a IDADE do commit de origem de cada família medida do bench
+      # em COMMITS até HEAD, e um clone raso responderia "o commit não está aqui" —
+      # que a régua lê como "sem idade", nunca como "fresca". O padrão do
+      # actions/checkout é depth 1; sem a história, o cron declara INDETERMINADA
+      # para sempre sobre a régua que o modelo de latência consome.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Mesmo contrato da ci.yml: script + cache, sem composite local.
       - name: Restore Bun cache
