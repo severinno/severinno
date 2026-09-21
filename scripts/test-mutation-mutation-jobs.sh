@@ -73,6 +73,17 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  '1|forward: script de mutation test órfão em scripts/'
+  '2|reverse: a matriz SUBTESTS referencia um script fantasma'
+  '3|reverse workflow: run: DIRETO referenciando script fantasma'
+  '4|reverse --staged: run: NOVO de workflow referenciando script que não existe'
+)
 GUARD="$SCRIPT_DIR/scripts/check-mutation-jobs.mjs"
 
 TMP_DIR="$(mktemp -d)"

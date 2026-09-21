@@ -78,6 +78,22 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'M1|A COMPARAÇÃO DE CONJUNTOS (o que é NOVO numa lista)'
+  'M2|A OUTRA METADE DO CONJUNTO (o que SUMIU da declaração)'
+  'M3|A COMPARAÇÃO DO CONTADOR (medido > declarado)'
+  'M4|A NOMEAÇÃO DA DEPENDÊNCIA NOVA'
+  'M5|A NOMEAÇÃO DO DELTA do contador ((N a mais))'
+  'M6|O FAIL-CLOSED DO DADO AUSENTE'
+  'M7|O FAIL-CLOSED DO DADO ILEGÍVEL (JSON inválido)'
+  'M8|o FAIL-CLOSED do contador INVÁLIDO'
+  'M9|O ESCOPO DA CONTAGEM (o auditor NÃO conta a si mesmo)'
+)
+
 GUARD="scripts/check-github-dependencies.mjs"
 DATA="ci/github-dependencies.json"
 SUITE_ARQUIVO="src/lib/__tests__/check-github-dependencies.test.ts"

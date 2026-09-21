@@ -60,6 +60,19 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'M1|a EXIGÊNCIA de declarar'
+  'M2|o ESTREITAMENTO do if: do job'
+  'M3|a contraparte por marcador: a EXISTÊNCIA do alvo'
+  'M4|o marcador contra o TRABALHO do alvo'
+  'M5|o FAIL-CLOSED da leitura'
+  'M6|o DESEMPATE do casamento ambíguo'
+)
 cd "$SCRIPT_DIR"
 
 GUARD="scripts/check-archived-pipeline.mjs"

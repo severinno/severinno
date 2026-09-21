@@ -89,6 +89,18 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'teto|payload de 300s acima do budget duro de 240s (exit 1)'
+  'faixas|as três faixas do budget (240/180/100s)'
+  'drift|step renomeado → exit 2 (drift de contrato)'
+  'mediana|a faixa soft derivada da mediana (--warn-median/--warn-margin)'
+  'drift-relativo|o gate de drift relativo (--fail-drift) antes do teto'
+)
 GUARD="$SCRIPT_DIR/scripts/measure-mutation-timing.mjs"
 
 # Guard do tier-1 (não usado aqui diretamente — só documenta a paridade da

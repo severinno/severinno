@@ -31,6 +31,7 @@ import { afterAll, describe, expect, it } from "vitest"
 import {
   ALLOWLIST,
   BIN_PACKAGES,
+  DOC_NUMEROS,
   EXIT,
   EXTERNAL_TOOLS,
   FIX_MAX_DISTANCE,
@@ -51,6 +52,7 @@ import {
   hookFiles,
   isCasePattern,
   localizaToken,
+  numerosDaProsa,
   planoDeRemendo,
   programOf,
   renderPlano,
@@ -614,6 +616,57 @@ describe("a leitura das atribuições (a régua da resolução, medida em separa
     expect(mapa.get("PY")?.valores).toEqual(['"python3"', '"node"'])
     expect(mapa.get("PY")?.linhas).toEqual([2, 4])
     expect(mapa.get("OUTRO")?.linhas).toEqual([5])
+  })
+
+  it("o idioma do PAI (`$(cd $(dirname $0)/.. && pwd)`) vale a RAIZ, não o diretório do arquivo", () => {
+    // O idioma que a casa usa para chegar na RAIZ do repositório. Sem ele o
+    // `node "$GUARD"` de dentro de um runner saía como substituição de comando
+    // (e o guard que ele executa ficava INVISÍVEL para a decisão local); com ele
+    // no lugar do diretório do arquivo (`@DIR@`), o valor provado seria
+    // `scripts/scripts/x.mjs` — outro caminho, e um caminho que existe por
+    // acaso daria um verde que não veio do disco.
+    const vars = variaveisDoArquivo(
+      [
+        'SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"',
+        'GUARD="$SCRIPT_DIR/scripts/x.mjs"',
+        "",
+      ].join("\n"),
+      "scripts/qualquer.sh",
+    )
+    const r = caminhosProvaveis("$GUARD", vars)
+    expect(r.ok && r.valores).toEqual(["scripts/x.mjs"])
+    // O OUTRO idioma continua valendo o diretório DESTE arquivo.
+    const comDir = variaveisDoArquivo(
+      [
+        'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+        'PY="$SCRIPT_DIR/check_utf8.py"',
+        "",
+      ].join("\n"),
+      "scripts/sub/x.sh",
+    )
+    const p = caminhosProvaveis("$PY", comDir)
+    expect(p.ok && p.valores).toEqual(["scripts/sub/check_utf8.py"])
+  })
+
+  it("o PREFIXO de ambiente atribui só o primeiro word — e a auto-referência não é ciclo", () => {
+    // `GUARD="$GUARD" ALVO="$1" python3 - <<PY` é a forma que a casa usa para
+    // passar o caminho ao script de mutação: o shell atribui `"$GUARD"` e o resto
+    // é o COMANDO. Lido por inteiro, o valor cita o próprio nome e a régua acusa
+    // CICLO num arquivo que só passa a variável adiante (o alvo ficava sem
+    // julgamento por um defeito de leitura, não do arquivo).
+    const mapa = atribuicoesDoTexto('GUARD="$GUARD" ALVO="$1" NOVO="$2" python3 - <<PY')
+    expect(mapa.get("GUARD")?.valores).toEqual(['"$GUARD"'])
+    const vars = variaveisDoArquivo(
+      [
+        'SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"',
+        'GUARD="$SCRIPT_DIR/scripts/x.mjs"',
+        'GUARD="$GUARD" ALVO="" python3 - <<PY',
+        "",
+      ].join("\n"),
+      "scripts/runner.sh",
+    )
+    const r = caminhosProvaveis("$GUARD", vars)
+    expect(r.ok && r.valores).toEqual(["scripts/x.mjs"])
   })
 
   it("as formas que viram motivo NOMEADO (nunca um valor adivinhado)", () => {
@@ -1736,5 +1789,166 @@ describe("a LOCALIZAÇÃO do token (o que faz a escrita ser cirúrgica)", () => 
         { arquivo: "b.sh", linha: 2, de: "x", para: "y", papel: "p", distancia: 1 },
       ]),
     ).toEqual(["a.sh", "b.sh"])
+  })
+})
+
+// ── os NÚMEROS DE PRODUÇÃO da prosa: derivados do medido, conferidos ───────
+
+describe("os números de produção da prosa são derivados do analyze()", () => {
+  const CORPO = "#!/usr/bin/env bash\nset -eu\nbash scripts/runner.sh\n"
+  const RUNNER = "#!/usr/bin/env bash\nset -eu\nnode scripts/guarda.mjs\necho ok\n"
+
+  /**
+   * Um fixture com um runner de shell chamado pelo hook (para haver as DUAS
+   * metades de comando: as do hook e as da descida) e o `analyze()` dele.
+   */
+  function fixtureBase(): { dir: string; report: RelatorioCompleto } {
+    const dir = fixture({
+      hooks: { "pre-commit": CORPO },
+      scripts: {},
+      arquivos: { "scripts/runner.sh": RUNNER, "scripts/guarda.mjs": "// guard\n" },
+    })
+    return { dir, report: relatorio(dir) }
+  }
+
+  /** A frase canônica: a MESMA forma que a régua lê da doc real. */
+  function docCanonica(n: Record<string, number[]>): string {
+    return (
+      `Em produção: **${n.comandos[0]} comandos** ` +
+      `(${n.dentroDosHooks[0]} nos ${n.dentroDosHooks[1]} hooks + ` +
+      `${n.dentroDosScripts[0]} dentro dos ${n.dentroDosScripts[1]} scripts chamados), ` +
+      `**${n.resolvidos[0]} resolvidos** e **${n.indeterminados[0]} indeterminados DECLARADOS**.\n`
+    )
+  }
+
+  function escreveDoc(dir: string, texto: string): void {
+    mkdirSync(join(dir, "docs"), { recursive: true })
+    writeFileSync(join(dir, DOC_NUMEROS), texto, "utf8")
+  }
+
+  it("a prosa com os números MEDIDOS passa — e o declarado é igual ao medido", () => {
+    const { dir, report } = fixtureBase()
+    const { medido } = numerosDaProsa(report)
+    // O medido deste fixture tem de exercitar as duas metades: sem a descida,
+    // `dentroDosScripts` seria 0 e o teste mediria um caso vazio.
+    expect(medido.comandos[0]).toBeGreaterThan(2)
+    expect(medido.dentroDosHooks[0]).toBeGreaterThan(0)
+    expect(medido.dentroDosScripts[0]).toBeGreaterThan(0)
+    escreveDoc(dir, docCanonica(medido))
+
+    const doc = numerosDaProsa(relatorio(dir))
+    expect(doc.ausente).toBe(false)
+    expect(doc.violacoes).toEqual([])
+    expect(doc.declarado).toEqual(doc.medido)
+  })
+
+  it.each([
+    {
+      campo: "comandos",
+      rotulo: "o total de comandos julgados",
+      troca: (doc: string, m: Record<string, number[]>) =>
+        doc.replace(`**${m.comandos[0]} comandos**`, `**${m.comandos[0] - 1} comandos**`),
+    },
+    {
+      campo: "dentroDosHooks",
+      rotulo: "os comandos dentro dos hooks e o nº de hooks",
+      troca: (doc: string, m: Record<string, number[]>) =>
+        doc.replace(
+          `${m.dentroDosHooks[0]} nos ${m.dentroDosHooks[1]} hooks`,
+          `${m.dentroDosHooks[0] + 1} nos ${m.dentroDosHooks[1]} hooks`,
+        ),
+    },
+    {
+      campo: "dentroDosScripts",
+      rotulo: "os comandos dentro dos scripts chamados e o nº deles",
+      troca: (doc: string, m: Record<string, number[]>) =>
+        doc.replace(
+          `${m.dentroDosScripts[0]} dentro dos ${m.dentroDosScripts[1]} scripts chamados`,
+          `${m.dentroDosScripts[0]} dentro dos ${m.dentroDosScripts[1] + 1} scripts chamados`,
+        ),
+    },
+    {
+      campo: "resolvidos",
+      rotulo: "os comandos resolvidos",
+      troca: (doc: string, m: Record<string, number[]>) =>
+        doc.replace(`**${m.resolvidos[0]} resolvidos**`, `**${m.resolvidos[0] - 1} resolvidos**`),
+    },
+    {
+      campo: "indeterminados",
+      rotulo: "os comandos indeterminados",
+      troca: (doc: string, m: Record<string, number[]>) =>
+        doc.replace(
+          `**${m.indeterminados[0]} indeterminados`,
+          `**${m.indeterminados[0] + 1} indeterminados`,
+        ),
+    },
+  ])("FALHA quando a prosa escreve à mão o número de $campo", ({ campo, rotulo, troca }) => {
+    const { dir, report } = fixtureBase()
+    const { medido } = numerosDaProsa(report)
+    const canônica = docCanonica(medido)
+    const mutada = troca(canônica, medido)
+    // A troca TEM de ter mudado o texto: uma mutação que não aplica mediria a
+    // frase original (e o teste passaria por não haver defeito nenhum).
+    expect(mutada).not.toBe(canônica)
+    escreveDoc(dir, mutada)
+
+    const doc = numerosDaProsa(relatorio(dir))
+    const minha = doc.violacoes.find((v) => v.programa === campo)
+    expect(minha).toBeDefined()
+    // O veredito NOMEIA o arquivo e a linha (o remédio é naquele parágrafo) e o
+    // DELTA (declarado x medido), que é o que diz o quanto a doc envelheceu.
+    expect(minha?.arquivo).toBe(DOC_NUMEROS)
+    expect(minha?.linha).toBeGreaterThan(0)
+    expect(minha?.motivo).toContain(rotulo)
+    expect(minha?.motivo).toContain(medido[campo].join(" / "))
+  })
+
+  it("FALHA quando uma das formas some da prosa (a doc parou de publicar)", () => {
+    const { dir, report } = fixtureBase()
+    const { medido } = numerosDaProsa(report)
+    // Só o total: as outras quatro formas sumiram — e "não li" não pode virar
+    // "não há o que conferir".
+    escreveDoc(dir, `Em produção: **${medido.comandos[0]} comandos**.\n`)
+
+    const doc = numerosDaProsa(relatorio(dir))
+    expect(doc.violacoes.some((v) => v.programa === "numerosDaProsa")).toBe(true)
+    expect(doc.violacoes.some((v) => v.motivo.includes("INCOMPLETOS"))).toBe(true)
+    // O que EXISTE continua sendo conferido: a forma presente e certa não vira
+    // violação junto com as que faltam.
+    expect(doc.violacoes.some((v) => v.programa === "comandos")).toBe(false)
+  })
+
+  it("FALHA quando a MESMA forma aparece duas vezes com valores diferentes", () => {
+    const { dir, report } = fixtureBase()
+    const { medido } = numerosDaProsa(report)
+    const dobrada =
+      docCanonica(medido) +
+      `\nO detalhe: **${medido.comandos[0] - 1} comandos** (a contagem antiga, esquecida aqui).\n`
+    escreveDoc(dir, dobrada)
+
+    const doc = numerosDaProsa(relatorio(dir))
+    const minha = doc.violacoes.find((v) => v.programa === "comandos")
+    expect(minha?.motivo).toContain("DUAS formas")
+    // A régua NÃO escolhe uma das duas: ela recusa e devolve as duas na mensagem.
+    expect(minha?.motivo).toContain(`${medido.comandos[0]}`)
+    expect(minha?.motivo).toContain(`${medido.comandos[0] - 1}`)
+  })
+
+  it("num fixture SEM a doc: a regra não mede nada — e isso é dito, não silencioso", () => {
+    const { report } = fixtureBase()
+    const doc = numerosDaProsa(report)
+    expect(doc.ausente).toBe(true)
+    expect(doc.violacoes).toEqual([])
+    expect(doc.medido.comandos[0]).toBeGreaterThan(0)
+  })
+
+  it("no repositório REAL: a prosa publica exatamente o que o analyze() mede", () => {
+    const report = relatorio(process.cwd())
+    const doc = numerosDaProsa(report)
+    expect(doc.ausente).toBe(false)
+    expect(doc.violacoes).toEqual([])
+    // O número é do repositório, não do teste: ele acompanha a árvore.
+    expect(doc.declarado).toEqual(doc.medido)
+    expect(doc.medido.comandos.length).toBe(1)
   })
 })

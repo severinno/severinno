@@ -13,6 +13,18 @@
 // a suíte de testes (`bun run test:run`, que INCLUI `src/components/**`) — e o
 // custo da OFERTA de remendo no pre-commit (a família `hook`), nos dois caminhos
 // do commit: o comum (nada reprova) e o de falha (defeito no índice).
+//
+// A família `mutations` mede o custo de CADA sub-test do master de mutação (o
+// item mais caro do job de ferramentas do PR): uma rodada do master em `--json`
+// devolve o wall time de cada um, o harness e o total, e o benchmark VERSIONA os
+// números por sub-test — na baseline, com a procedência da rodada. Antes disso o
+// custo do job era composto à mão — quem entrava com um sub-test novo adivinhava
+// quanto ele acrescenta, e ninguém sabia QUAL sub-test pagava a conta.
+//
+// O que o versionamento muda, no dia a dia: o sub-test NOVO não precisa de conta
+// nenhuma. Ele entra na rodada seguinte MEDIDO (e sai na comparação como forma
+// nova, ➕, com o ms dele) — o número do modelo de latência deixa de vir de uma
+// soma que alguém montou à mão e passa a vir da medição do próprio master.
 // Registra em JSON versionado (commit + timestamp + a máquina) e permite
 // comparação contra um baseline.
 //
@@ -28,9 +40,11 @@
 //   node scripts/bench-guard-timing.mjs --no-typecheck # pula a família do typecheck
 //   node scripts/bench-guard-timing.mjs --no-tests     # pula a família da suíte
 //   node scripts/bench-guard-timing.mjs --no-hook      # pula a família do hook
+//   node scripts/bench-guard-timing.mjs --no-mutations # pula a família dos sub-tests
 //   node scripts/bench-guard-timing.mjs --counterfactual  # mede a régua estreita da suíte (~7min)
 //   node scripts/bench-guard-timing.mjs --only tests   # só a família da suíte (sem a bateria)
 //   node scripts/bench-guard-timing.mjs --only hook    # só o custo da oferta no commit
+//   node scripts/bench-guard-timing.mjs --only mutations # só o custo de CADA sub-test do master (~5min)
 //   node scripts/bench-guard-timing.mjs --json --merge # herda do arquivo o que não mediu
 //
 // CUSTO: as duas famílias de régua medem COMANDOS INTEIROS (um typecheck frio e as
@@ -526,7 +540,7 @@ export function clearTscCache(root = REPO_ROOT) {
  * cada commit — mas e medido com a mesma disciplina (formas, deltas, contrato) e
  * pelo mesmo `--only`/`--merge`.
  */
-export const RULER_FAMILIES = ["lint", "typecheck", "tests", "hook"]
+export const RULER_FAMILIES = ["lint", "typecheck", "tests", "hook", "mutations"]
 
 /**
  * Le a lista de `--only`. Família desconhecida e ERRO (nao um silencio que mede
@@ -560,6 +574,7 @@ function familiesToRun({ only = null } = {}) {
     typecheck: only === null || only.includes("typecheck"),
     tests: only === null || only.includes("tests"),
     hook: only === null || only.includes("hook"),
+    mutations: only === null || only.includes("mutations"),
   }
 }
 
@@ -1415,6 +1430,183 @@ function signedSeconds(ms) {
   return `${value > 0 ? "+" : ""}${value.toFixed(1)}s`
 }
 
+// ── Os SUB-TESTS do master: o custo de CADA um ─────────────────────────────
+//
+// POR QUE EXISTE: o master de mutação é o item mais caro do job de ferramentas do
+// PR (32 sub-tests, um por guard node-puro), e o custo dele vivia COMPOSTO À MÃO
+// no modelo de latência — um número que ninguém media por sub-test. Quem entra
+// com um sub-test novo tinha de adivinhar quanto ele acrescenta; quem paga o job
+// não sabia QUAL sub-test paga a conta. Aqui o próprio master mede cada um
+// (`--json`) e o benchmark versiona os números: o próximo sub-test entra com o
+// custo MEDIDO dele (e o harness medido junto), não com uma conta à mão.
+//
+// UMA rodada do master dá TODOS os sub-tests (é assim que ele roda no CI): medir
+// um a um por `--scenario` custaria 32 subidas de harness, e o custo do harness é
+// justamente o que a conta à mão esquece.
+
+/** O comando do master (o mesmo que o job `mutation-guards` roda). */
+export const MUTATION_MASTER_CMD = "bash scripts/test-mutation-guards.sh"
+
+/** O mesmo comando no modo máquina: o stdout é SÓ o JSON do custo. */
+export const MUTATION_CMD = `${MUTATION_MASTER_CMD} --json`
+
+/**
+ * Mede o custo de CADA sub-test do master (uma rodada, todos os sub-tests).
+ *
+ * Fail-closed: sem o JSON (master que não terminou, saída ilegível, comando
+ * ausente) a família sai `measured: false` com o motivo — nunca uma lista vazia
+ * que passaria por "nenhum sub-test custa nada".
+ *
+ * O master VERMELHO não é não-medido: o `--json` sai ANTES do veredito, então um
+ * sub-test que falhou ainda traz o custo dele (a suíte é que fica vermelha, não a
+ * medição) — e o `exit` do master vai no resultado para o consumidor saber com o
+ * que ele está falando.
+ *
+ * @param {{cmd?: string, timeoutMs?: number}} [opts]
+ * @returns {object}
+ */
+export function measureMutationCost({ cmd = MUTATION_CMD, timeoutMs = 30 * 60_000 } = {}) {
+  const start = performance.now()
+  const res = spawnSync("bash", ["-c", cmd], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    timeout: timeoutMs,
+    maxBuffer: 64 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "pipe"],
+  })
+  const wallMs = Math.round(performance.now() - start)
+  const naoMedido = (reason) => ({
+    measured: false,
+    reason,
+    cmd,
+    exit: res.status ?? null,
+    wallMs,
+    subtests: 0,
+    metades: 0,
+    forms: [],
+    deltas: null,
+    violations: [],
+    whatItAdded: [`NÃO MEDIDO: ${reason}`],
+  })
+
+  if (res.error?.code === "ETIMEDOUT") return naoMedido(`o master não terminou em ${timeoutMs}ms`)
+  let parsed
+  try {
+    parsed = JSON.parse(res.stdout ?? "")
+  } catch {
+    const tail = (res.stderr ?? "").trim().split("\n").slice(-3).join(" / ") || "sem stderr"
+    return naoMedido(
+      `o stdio do master nao e o JSON do modo --json (exit ${res.status}): ${tail.slice(0, 200)}`,
+    )
+  }
+  const subtests = Array.isArray(parsed.subtests) ? parsed.subtests : []
+  if (subtests.length === 0)
+    return naoMedido("o master não reportou sub-test nenhum (matriz vazia)")
+
+  const forms = subtests.map((s) => ({
+    role: s.id,
+    label: s.id,
+    ms: s.ms,
+    exit: s.exit,
+    metades: s.metades,
+    ok: s.exit === 0,
+    runs: [{ ms: s.ms, ok: s.exit === 0 }],
+  }))
+  const subtestsMs = subtests.reduce((acc, s) => acc + s.ms, 0)
+  const summary = parsed.summary ?? {}
+  const totalMs = Number.isFinite(summary.totalMs) ? summary.totalMs : wallMs
+  const harnessMs = totalMs - subtestsMs
+  const porCusto = [...forms].sort((a, b) => b.ms - a.ms)
+  const deltas = {
+    subtestsMs,
+    harnessMs,
+    totalMs,
+    wallMs,
+    // O que o PRÓXIMO sub-test ACRESCENTA é PROJEÇÃO, não medição (o sub-test
+    // ainda não existe para ser medido): o custo médio de um script dos que
+    // existem MAIS o harness por sub-test, que já está pago nesta rodada — os
+    // dois lados saem de medição, e é por isso que a projeção é dado. O que entra
+    // MEDIDO é o sub-test novo, na primeira rodada que o tiver (a comparação o
+    // marca como forma nova, com o ms dele).
+    proximoSubtestProjetadoMs:
+      Math.round(subtestsMs / forms.length) + Math.round(harnessMs / forms.length),
+    maisCaro: porCusto[0]?.label ?? null,
+    maisCaroMs: porCusto[0]?.ms ?? null,
+    medianaMs: porCusto[Math.floor(forms.length / 2)]?.ms ?? null,
+  }
+
+  return {
+    measured: true,
+    cmd,
+    exit: res.status,
+    wallMs,
+    subtests: subtests.length,
+    metades: Number(summary.metades ?? 0),
+    forms,
+    deltas,
+    violations: mutationCostViolations({ forms, summary, harnessMs }),
+    whatItAdded: mutationWhatItAdded({
+      forms,
+      deltas,
+      subtests: subtests.length,
+      metades: Number(summary.metades ?? 0),
+    }),
+  }
+}
+
+/**
+ * As violações do CONTRATO da família: o que a torna incapaz de julgar custo.
+ *
+ * Uma suíte que não declara metades não é só um defeito do master: o custo dela
+ * entra no job sem que nada diga o que ela protege. E a soma dos sub-tests tem de
+ * FECHAR com o total do master — uma diferença inexplicada é justamente o harness
+ * que ninguém mediu.
+ *
+ * @param {{forms?: {label?: string, ms?: number, ok?: boolean, exit?: number, metades?: number}[], summary?: {totalMs?: number, subtestsMs?: number}, harnessMs?: number}} [opts]
+ * @returns {string[]}
+ */
+export function mutationCostViolations({ forms = [], summary = {}, harnessMs = 0 } = {}) {
+  const violations = []
+  const falhas = forms.filter((f) => f.ok === false)
+  if (falhas.length > 0)
+    violations.push(
+      `sub-test(s) que NÃO passaram no master: ${falhas.map((f) => `${f.label} (exit ${f.exit})`).join(", ")} — o custo deles não julga nada (um sub-test que morre no meio tem o tempo do pedaço que rodou)`,
+    )
+  const semMetades = forms.filter((f) => !((f.metades ?? 0) > 0))
+  if (semMetades.length > 0)
+    violations.push(
+      `sub-test(s) SEM metades declaradas: ${semMetades.map((f) => f.label).join(", ")} — o custo entra no job sem que nada diga o que ele protege`,
+    )
+  if (harnessMs < 0)
+    violations.push(
+      `o total do master (${summary.totalMs}ms) é MENOR que a soma dos sub-tests (${summary.subtestsMs}ms) — a conta não fecha e o harness sairia negativo`,
+    )
+  return violations
+}
+
+/**
+ * A frase da família: os extremos, a mediana e o que o PRÓXIMO sub-test
+ * acrescenta.
+ *
+ * A primeira linha é MEDIDA (cada sub-test, um a um); a última é PROJEÇÃO —
+ * derivada dos dois lados medidos (a média dos scripts que existem e o harness por
+ * sub-test), e dita como projeção. Chamar a projeção de medição seria a mesma
+ * classe de erro que o `measured: false` existe para evitar: um número que não foi
+ * medido passando por medido.
+ *
+ * @param {{forms?: object[], deltas?: {subtestsMs?: number, harnessMs?: number, totalMs?: number, proximoSubtestProjetadoMs?: number, maisCaro?: string|null, maisCaroMs?: number|null, medianaMs?: number|null}, subtests?: number, metades?: number}} [opts]
+ * @returns {string[]}
+ */
+export function mutationWhatItAdded({ forms = [], deltas = {}, subtests = 0, metades = 0 } = {}) {
+  if (forms.length === 0) return ["NÃO MEDIDO: nenhum sub-test"]
+  const seg = (ms) => `${((ms ?? 0) / 1000).toFixed(1)}s`
+  return [
+    `MEDIDO, sub-test a sub-test: ${subtests} sub-test(s) · ${metades} metade(s) · ${seg(deltas.subtestsMs)} de sub-tests + ${seg(deltas.harnessMs)} de harness = ${seg(deltas.totalMs)}`,
+    `o mais caro: ${deltas.maisCaro} (${seg(deltas.maisCaroMs)}) · a mediana: ${seg(deltas.medianaMs)}`,
+    `o PRÓXIMO sub-test acrescenta ~${seg(deltas.proximoSubtestProjetadoMs)} (PROJEÇÃO: a média dos scripts medidos + o harness por sub-test) — e entra MEDIDO na primeira rodada que o tiver, sem conta à mão`,
+  ]
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function getCommitHash() {
@@ -1465,11 +1657,12 @@ function measure(cmd, { timeoutMs = 120_000, env = process.env } = {}) {
 // ── Benchmark ─────────────────────────────────────────────────────────────
 
 /**
- * @param {{samples?: number, lint?: boolean, typecheck?: boolean, tests?: boolean, hook?: boolean, counterfactual?: boolean, battery?: boolean, act?: string|null}} [opts]
+ * @param {{samples?: number, lint?: boolean, typecheck?: boolean, tests?: boolean, hook?: boolean, mutations?: boolean, counterfactual?: boolean, battery?: boolean, act?: string|null}} [opts]
  */
 function runBenchmark({
   samples = 2,
   lint = true,
+  mutations = true,
   typecheck = true,
   tests = true,
   hook = true,
@@ -1552,6 +1745,11 @@ function runBenchmark({
   // "nao custou nada" de ruido.
   const hookCost = hook ? measureHookCost({ samples: HOOK_SAMPLES }) : null
 
+  // ── Os sub-tests do master: o custo de CADA um ───────────────────────────
+  // Uma rodada do master (minutos, como as outras famílias de régua): dela saem
+  // TODOS os sub-tests, com o id de quem paga cada milissegundo.
+  const mutationCost = mutations ? measureMutationCost() : null
+
   // ── Soma total ─────────────────────────────────────────────────────────
   // Guards + doctor: os gates que rodam em TODO PR. As familias de regua ficam
   // FORA do total de proposito — elas medem o custo de rodada (que a comparacao
@@ -1564,7 +1762,11 @@ function runBenchmark({
       // v5: `meta.act` (o comando que produziu o arquivo) e `meta.families`
       // (o ato e o commit de ORIGEM de cada familia) — sem eles, mover a baseline
       // gravaria numeros sem dizer de qual rodada nem de qual arvore eles sao.
-      version: 5,
+      // v6: a familia `mutations` (o custo de CADA sub-test do master, em
+      // `mutations.forms`, versionado sub-test a sub-test) — antes dela o custo do
+      // job mais caro do PR so existia como uma soma composta à mão, e um
+      // sub-test novo não tinha onde entrar MEDIDO.
+      version: 6,
       commit,
       commitDate,
       timestamp,
@@ -1604,6 +1806,10 @@ function runBenchmark({
       hookOfferFalhaMs: hookCost?.deltas?.ofertaFalhaMs ?? null,
       hookRevalidacaoMs: hookCost?.deltas?.revalidacaoMs ?? null,
       hookDetectionMs: hookCost?.detection?.ms ?? null,
+      mutationSubtests: mutationCost?.subtests ?? null,
+      mutationSubtestsMs: mutationCost?.deltas?.subtestsMs ?? null,
+      mutationHarnessMs: mutationCost?.deltas?.harnessMs ?? null,
+      mutationTotalMs: mutationCost?.deltas?.totalMs ?? null,
     },
     guards,
     doctor: doctorResult
@@ -1618,6 +1824,7 @@ function runBenchmark({
     lint: lintCost,
     rulers: { typecheck: typecheckCost, tests: testsCost },
     hook: hookCost,
+    mutations: mutationCost,
   }
 
   // O ATO e a ORIGEM de cada familia (ver `familyProvenance`): nesta rodada, a
@@ -1726,6 +1933,10 @@ export function reuseFamilies(result, previous) {
   // contrato): numa rodada `--no-hook`/`--only` ela e herdada com procedencia,
   // nunca apagada — o numero de ontem junto do hoje e o que permite comparar.
   const hook = pick("hook", result.hook ?? null, previous.hook ?? null)
+  // Os SUB-TESTS do master: a quinta familia de rodada, com a mesma regra — o
+  // custo de cada sub-test so e comparavel com o de outra rodada se a
+  // procedencia disser de qual rodada ele veio.
+  const mutations = pick("mutations", result.mutations ?? null, previous.mutations ?? null)
 
   // A BATERIA (guards + doctor): numa rodada de uma familia so (`--only`) ela
   // nao e medida, e gravar vazio apagaria a leitura que ja existia. Herdada, ela
@@ -1754,6 +1965,7 @@ export function reuseFamilies(result, previous) {
     lint,
     rulers: { typecheck, tests },
     hook,
+    mutations,
     meta: { ...result.meta, reused, families },
     // O resumo tem de descrever o arquivo que esta sendo gravado, nao metade
     // dele: um `summary.testsMs: null` ao lado de uma secao `tests` cheia seria
@@ -1776,6 +1988,10 @@ export function reuseFamilies(result, previous) {
       hookOfferFalhaMs: hook?.deltas?.ofertaFalhaMs ?? null,
       hookRevalidacaoMs: hook?.deltas?.revalidacaoMs ?? null,
       hookDetectionMs: hook?.detection?.ms ?? null,
+      mutationSubtests: mutations?.subtests ?? null,
+      mutationSubtestsMs: mutations?.deltas?.subtestsMs ?? null,
+      mutationHarnessMs: mutations?.deltas?.harnessMs ?? null,
+      mutationTotalMs: mutations?.deltas?.totalMs ?? null,
     },
   }
 }
@@ -1790,6 +2006,44 @@ function printLintReport(lint) {
   printRulerReport("Lint — o custo da unificacao (uma regua so nas duas forjas)", lint, [
     `a metade nova isolada (prettier): ${(lint.addedHalfMs / 1000).toFixed(1)}s — atribuicao ${lint.attributionMatches ? "confere" : "NAO confere"} (${(lint.attributionPct * 100).toFixed(0)}% de diferenca)`,
   ])
+}
+
+/**
+ * A secao dos SUB-TESTS do master: o custo de cada um, a fatia no total e o que o
+ * proximo sub-test acrescenta.
+ *
+ * Os sub-tests vao ordenados do mais CARO para o mais barato: a tabela responde
+ * "quem paga a conta do job", que e a pergunta que a soma unica nao respondia.
+ *
+ * @param {object} mutations  resultado de measureMutationCost
+ */
+function printMutationReport(mutations) {
+  console.log("  Sub-tests do master — o custo de CADA um (o job mais caro do PR):")
+  console.log("  ─────────────────────────────────────────────────────")
+  if (!mutations.measured) {
+    console.log(`    ⚠️  NÃO MEDIDO: ${mutations.reason}`)
+    console.log()
+    return
+  }
+  // O EXIT do master dito ao lado do custo: um sub-test vermelho ainda tem custo
+  // medido (o `--json` sai antes do veredito), e quem lê a tabela precisa saber
+  // que a tabela descreve um run vermelho.
+  if (mutations.exit !== 0)
+    console.log(
+      `    ⚠️  o master saiu com exit ${mutations.exit}: o custo segue medido, o VEREDITO da matriz não`,
+    )
+  const total = mutations.deltas.subtestsMs || 1
+  for (const form of [...mutations.forms].sort((a, b) => b.ms - a.ms)) {
+    const mark = form.ok ? "✅" : "❌"
+    const share = ((form.ms / total) * 100).toFixed(0).padStart(3)
+    console.log(
+      `    ${mark} ${String(form.label).padEnd(22)} ${(form.ms / 1000).toFixed(1).padStart(6)}s  ${share}%  (${form.metades} metade(s))`,
+    )
+  }
+  console.log("  ─────────────────────────────────────────────────────")
+  for (const line of mutations.whatItAdded) console.log(`    ${line}`)
+  for (const violation of mutations.violations) console.log(`    ❌ ${violation}`)
+  console.log()
 }
 
 /**
@@ -1823,7 +2077,7 @@ function printHookReport(hook) {
 }
 
 function printReport(result) {
-  const { meta, summary, guards, doctor, lint, rulers } = result
+  const { meta, summary, guards, doctor, lint, rulers, mutations } = result
   console.log()
   console.log("  ═══════════════════════════════════════════════════════════════")
   console.log("   ⏱  BENCH — wall time do doctor e guards")
@@ -1890,6 +2144,9 @@ function printReport(result) {
       ],
     )
   }
+
+  // Os sub-tests do master (o custo de CADA um)
+  if (mutations) printMutationReport(mutations)
 
   // Suite de testes (a regua mais AMPLA nas duas forjas)
   const ts = rulers?.tests
@@ -1969,6 +2226,7 @@ export const REUSED_FAMILY_LABELS = {
   typecheck: "typecheck",
   tests: "suíte",
   hook: "hook (oferta de remendo)",
+  mutations: "sub-tests do master (custo por sub-test)",
 }
 
 /** O nome HUMANO do ATO de cada familia (o `meta.families[].act` do JSON). */
@@ -2005,6 +2263,7 @@ export const FAMILY_MEASURED = {
   typecheck: (report) => report?.rulers?.typecheck != null,
   tests: (report) => report?.rulers?.tests != null,
   hook: (report) => report?.hook?.measured === true,
+  mutations: (report) => report?.mutations?.measured === true,
 }
 
 /**
@@ -2195,6 +2454,25 @@ export function compareTimings(
         currentMs: detection.ms,
         baselineMs: baseline?.hook?.detection?.ms,
         ok: detection.completou !== false,
+      })
+    }
+  }
+
+  // OS SUB-TESTS do master: cada um é comparado com o ELE da baseline (o `role`,
+  // não a posição na lista — a ordem da matriz muda quando um sub-test entra no
+  // meio). O sub-test NOVO sai como forma nova (➕): ele entra no job com o custo
+  // medido, e não com uma conta composta à mão. Um sub-test que NÃO passou sai
+  // como não julgável (`ok: false`), como um guard que morreu no meio.
+  const mutationBaseline = (role) =>
+    (baseline?.mutations?.forms ?? []).find((form) => form.role === role)?.ms
+  if (current?.mutations?.measured && !isReused("mutations")) {
+    for (const form of current.mutations.forms ?? []) {
+      comparar({
+        kind: "mutation",
+        label: `sub-test ${form.label}`,
+        currentMs: form.ms,
+        baselineMs: mutationBaseline(form.role),
+        ok: form.ok !== false,
       })
     }
   }
@@ -2391,6 +2669,7 @@ function parseArgs(argv) {
     typecheck: true,
     tests: true,
     hook: true,
+    mutations: true,
     counterfactual: false,
     merge: false,
     only: null,
@@ -2408,6 +2687,7 @@ function parseArgs(argv) {
     else if (arg === "--no-typecheck") opts.typecheck = false
     else if (arg === "--no-tests") opts.tests = false
     else if (arg === "--no-hook") opts.hook = false
+    else if (arg === "--no-mutations") opts.mutations = false
     else if (arg === "--counterfactual") opts.counterfactual = true
     else if (arg === "--only") {
       const parsed = parseOnly(argv[++i])
@@ -2457,9 +2737,11 @@ Usage:
   node scripts/bench-guard-timing.mjs --no-typecheck # sem a família do typecheck
   node scripts/bench-guard-timing.mjs --no-tests     # sem a família da suíte
   node scripts/bench-guard-timing.mjs --no-hook      # sem a família do hook
+  node scripts/bench-guard-timing.mjs --no-mutations # sem a família dos sub-tests
   node scripts/bench-guard-timing.mjs --counterfactual # mede também a régua ANTERIOR da suíte (~7min)
   node scripts/bench-guard-timing.mjs --only tests # só a família da suíte (sem a bateria)
   node scripts/bench-guard-timing.mjs --only hook  # só o custo da oferta de remendo no commit
+  node scripts/bench-guard-timing.mjs --only mutations # só o custo de CADA sub-test do master (~5min)
   node scripts/bench-guard-timing.mjs --json --merge # herda as famílias não medidas do arquivo
 
 As famílias typecheck e suíte medem COMANDOS INTEIROS (um typecheck FRIO e as
@@ -2473,6 +2755,12 @@ caminhos do commit: o comum (nada reprova) e o de falha (defeito mecânico no
 de sintaxe agregado ao \`wait_all\` — transformações ancoradas no texto do hook, e
 NÃO MEDIDO quando as âncoras somem. Ela mede também a detecção contra a árvore
 real, conferindo que a medição não escreveu nada.
+
+A família \`mutations\` roda o master UMA vez com \`--json\` e lê o custo de CADA
+sub-test (o mesmo run do CI, com o harness medido junto): o que se versiona é o
+wall time por sub-test, não a soma. O sub-test NOVO entra com o custo medido dele
+— e o relatório diz quanto o PRÓXIMO acrescenta (o script + o harness por
+sub-test), em vez de uma conta composta à mão.
 
 O CONTRAFACTUAL da suíte (bun run test:unit, a régua que o check do GitHub
 rodava antes, com maxWorkers 1) leva ~7min sozinho e NÃO roda em pipeline
@@ -2504,6 +2792,7 @@ Exit codes: 0 sucesso · 1 falha/regressão · 2 argumento inválido`)
     typecheck: opts.typecheck && familias.typecheck,
     tests: opts.tests && familias.tests,
     hook: opts.hook && familias.hook,
+    mutations: opts.mutations && familias.mutations,
     counterfactual: opts.counterfactual,
     battery: runsBattery({ only: opts.only }),
     // O ATO entra no arquivo: uma baseline medida com `--counterfactual` e outra

@@ -57,6 +57,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  '1|FECHAR: o close da issue removido do loop'
+  '2|ORDEM (prova→fechamento): o close antes do comentário'
+  '3|PROVA COMPARADA: a verificação pós-fechamento (stale-closure) removida'
+)
 REPO_ROOT="$SCRIPT_DIR"
 TARGET="$REPO_ROOT/scripts/issue-publish.mjs"
 TEST_FILE="$REPO_ROOT/src/lib/__tests__/forge-doctor-issue.test.ts"

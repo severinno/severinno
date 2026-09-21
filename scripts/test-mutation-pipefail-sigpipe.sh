@@ -82,11 +82,43 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'A|A: sh com pipefail e pipe para grep quieto DEVE FALHAR'
+  'B|B: workflow com shell bash e pipe para grep quieto'
+  'C|C: baseline — cota igual PASSA'
+  'D|D: o --fix reescreve o caso mecânico'
+  'E|E: a dívida não se RE-DECLARA em silêncio'
+  'E1|update SEM --reason RECUSA e não grava nada (fail-closed)'
+  'E2|update --reason declara, com a JANELA do módulo compartilhado'
+  'E3|decisão VENCIDA avisa no run normal e BLOQUEIA no --review'
+  'E4|dívida SEM razão escrita é violação nos DOIS modos (fail-closed)'
+  'E5|data civil impossível (2026-02-30) é violação'
+  'F|a premissa do shell default, com passos LIMPOS para o exit 1'
+  'F1|defaults: do ARQUIVO ligando o pipefail DEVE FALHAR (passos limpos)'
+  'F2|defaults: do JOB DEVE FALHAR (e só o job dele é reclassificado)'
+  'F3|defaults: INLINE é INDETERMINADO (não ler ≠ não haver)'
+  'F4|passo com a CHAVE na própria linha (- run:) é varrido'
+  'G|G: o --fix não corrompe a expressão do runner'
+  'H|o ESCOPO da varredura'
+  'H2|sem a conta do corpo vazio o passo SOME do relatório'
+  'H3|ler só a PRIMEIRA linha do run: inline torna o passo invisível'
+  'R1|R1: o patch APLICA byte a byte, com a cicatriz no MEIO do arquivo'
+  'R2|o preview NÃO grava: quem grava é o --fix'
+  'R3|os dois fixers têm marcadores PRÓPRIOS: a reconciliação de um não pode'
+)
 GUARD="$SCRIPT_DIR/scripts/check-pipefail-sigpipe.mjs"
-# As outras duas fontes do CANAL do remédio: a construção do diff (compartilhada
-# com o gate do `bash -n`) e o publicador que leva o patch ao PR.
+# As outras três fontes do CANAL do remédio: a construção do diff (compartilhada
+# com o gate do `bash -n`), o publicador que leva o patch ao PR e a DECLARAÇÃO do
+# canal deste fixer (o marcador mora nela: o registro é DESCOBERTO desde que a
+# lista à mão saiu do publicador, e é ele que a R3 muta).
 UNIFIED="$SCRIPT_DIR/scripts/unified-patch.mjs"
 PUBLISHER="$SCRIPT_DIR/scripts/pr-remedy-comment.mjs"
+CANAL="$SCRIPT_DIR/scripts/remedy-canal/pipefail-sigpipe.mjs"
 # A RÉGUA DOS PASSOS (o corpo do `run:`, bloco × escalar, a dobra da continuação)
 # vive na FONTE ÚNICA, e é ELA que o H3 muta: o guard importa `workflowRunBodies`
 # de lá, então mutar a leitura do passo só muda o veredito se o guard de fato a
@@ -1090,21 +1122,25 @@ guard_backup="$TMP_DIR/guard.original.mjs"
 ruler_backup="$TMP_DIR/ruler.original.mjs"
 unified_backup="$TMP_DIR/unified.original.mjs"
 publisher_backup="$TMP_DIR/publisher.original.mjs"
+canal_backup="$TMP_DIR/canal.original.mjs"
 cp "$GUARD" "$guard_backup"
 cp "$RULER" "$ruler_backup"
 cp "$UNIFIED" "$unified_backup"
 cp "$PUBLISHER" "$publisher_backup"
+cp "$CANAL" "$canal_backup"
 guard_sum="$(cksum "$GUARD" | cut -d' ' -f1)"
 ruler_sum="$(cksum "$RULER" | cut -d' ' -f1)"
 unified_sum="$(cksum "$UNIFIED" | cut -d' ' -f1)"
 publisher_sum="$(cksum "$PUBLISHER" | cut -d' ' -f1)"
-trap 'cp -f "$guard_backup" "$GUARD" 2>/dev/null || true; cp -f "$ruler_backup" "$RULER" 2>/dev/null || true; cp -f "$unified_backup" "$UNIFIED" 2>/dev/null || true; cp -f "$publisher_backup" "$PUBLISHER" 2>/dev/null || true; rm -rf "$TMP_DIR"' EXIT
+canal_sum="$(cksum "$CANAL" | cut -d' ' -f1)"
+trap 'cp -f "$guard_backup" "$GUARD" 2>/dev/null || true; cp -f "$ruler_backup" "$RULER" 2>/dev/null || true; cp -f "$unified_backup" "$UNIFIED" 2>/dev/null || true; cp -f "$publisher_backup" "$PUBLISHER" 2>/dev/null || true; cp -f "$canal_backup" "$CANAL" 2>/dev/null || true; rm -rf "$TMP_DIR"' EXIT
 restaurar_originais() {
   cp -f "$guard_backup" "$GUARD"
   cp -f "$ruler_backup" "$RULER"
   cp -f "$unified_backup" "$UNIFIED"
   cp -f "$publisher_backup" "$PUBLISHER"
-  if [ "$(cksum "$GUARD" | cut -d' ' -f1)" != "$guard_sum" ] || [ "$(cksum "$RULER" | cut -d' ' -f1)" != "$ruler_sum" ] || [ "$(cksum "$UNIFIED" | cut -d' ' -f1)" != "$unified_sum" ] || [ "$(cksum "$PUBLISHER" | cut -d' ' -f1)" != "$publisher_sum" ]; then
+  cp -f "$canal_backup" "$CANAL"
+  if [ "$(cksum "$GUARD" | cut -d' ' -f1)" != "$guard_sum" ] || [ "$(cksum "$RULER" | cut -d' ' -f1)" != "$ruler_sum" ] || [ "$(cksum "$UNIFIED" | cut -d' ' -f1)" != "$unified_sum" ] || [ "$(cksum "$PUBLISHER" | cut -d' ' -f1)" != "$publisher_sum" ] || [ "$(cksum "$CANAL" | cut -d' ' -f1)" != "$canal_sum" ]; then
     fail "RESTAURAÇÃO FALHOU (checksum diverge) — restaure a partir de $TMP_DIR"
     exit 1
   fi
@@ -1400,7 +1436,7 @@ fi
 pass 'controle R3: a cicatriz do SIGPIPE sumiu e SÓ o comentário do SIGPIPE foi retirado (id 22) — o do `bash -n` (id 11) fica'
 
 header 'MUTAÇÃO R3: um marcador COMUM faz a reconciliação retirar o comentário do OUTRO gate'
-mutar_arquivo "$PUBLISHER" 'marker: "<!-- pipefail-sigpipe-remedy -->",' 'marker: "<!-- run-syntax-remedy -->",' "$publisher_sum"
+mutar_arquivo "$CANAL" 'marker: "<!-- pipefail-sigpipe-remedy -->",' 'marker: "<!-- run-syntax-remedy -->",' "$canal_sum"
 reconcilia_pipefail > "$TMP_DIR/r3m.json"
 del_mutado="$(delecoes_de "$TMP_DIR/r3m.json")"
 case "$del_mutado" in

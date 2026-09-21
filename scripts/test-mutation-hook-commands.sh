@@ -7,7 +7,7 @@
 #   ./scripts/test-mutation-hook-commands.sh
 #
 # Exit codes:
-#   0 — as VINTE E UMA mutações foram DETECTADAS (pelo gate, pelo ARQUIVO e/ou pela
+#   0 — as VINTE E QUATRO mutações foram DETECTADAS (pelo gate, pelo ARQUIVO e/ou pela
 #       suíte) e os controles passaram ✅
 #   1 — guard INDIFERENTE a alguma mutação (não cegou / não acusou / não gravou)
 #       OU controle falso ❌
@@ -201,9 +201,23 @@
 #   6r. MUTAÇÃO M21 (a resolução do marcador na HERANÇA) — o outro elo da mesma
 #       corrente: sem congelar o `@DIR@` no valor que atravessa, o filho o resolve
 #       com o diretório dele e o mesmo verde falso aparece
-#   7. Restauração VERIFICADA (checksum) + CONTROLE FINAL: o guard volta a
-#      reprovar o caminho tipado, provando que a árvore ficou como estava
-#   8. Cleanup (trap EXIT — restaura o guard e remove o temp, mesmo com falha)
+#   6s. MUTAÇÃO M22 (o idioma do PAI) — `SCRIPT_DIR="$(cd "$(dirname "$0")/.."
+#       && pwd)"` mapeado para o diretório DO ARQUIVO: o guard prova o caminho
+#       errado, que existe, e o alvo que roda de verdade sai VERDE
+#   6t. MUTAÇÃO M23 (a leitura do PRIMEIRO WORD) — a atribuição lida por inteiro
+#       (`GUARD="$GUARD" ALVO="$1" python3 …`) cita o próprio nome e vira CICLO:
+#       o alvo fica sem julgamento e o guard ACUSA o são
+#   6u. MUTAÇÃO M24 (a AUTO-REFERÊNCIA não acrescenta valor) — `GUARD="$GUARD"`
+#       sozinho entrando no conjunto: o mesmo CICLO falso no arquivo que só passa
+#       a variável adiante (o ciclo de verdade `A="$B"`/`B="$A"` continua ciclo)
+#   7. MUTAÇÃO M25 (os NÚMEROS DE PRODUÇÃO da prosa) — a única mutação na DOC, e
+#      não no guard: o número de produção é do repositório REAL (não tem
+#      fixture), e a prosa que o publica tem de bater com o que o `analyze()`
+#      mediu. O defeito que ela reinstala está MEDIDO: a prosa dizia 250 comandos
+#      / 244 resolvidos / 105 nos hooks quando o medido era 251 / 245 / 106
+#   8. Restauração VERIFICADA (checksum, guard E doc) + CONTROLE FINAL: o guard
+#      volta a reprovar o caminho tipado, provando que a árvore ficou como estava
+#   9. Cleanup (trap EXIT — restaura o guard e a doc, e remove o temp)
 # =============================================================================
 
 set -euo pipefail
@@ -211,8 +225,43 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'M1|A EXISTÊNCIA DO CAMINHO (arquivoExiste)'
+  'M2|A ENTRADA DE scripts DO package.json'
+  'M3|A DECISÃO DECLARADA (INDETERMINATE)'
+  'M4|A FUNÇÃO DO PRÓPRIO HOOK'
+  'M5|A UNICIDADE do vizinho'
+  'M6|O TETO de distância. A mensagem do guard SUGERE um vizinho com teto 4'
+  'M7|a CONFIRMAÇÃO: sem --yes e sem terminal o remendo não pergunta nem grava'
+  'M8|o ESCOPO DO TOKEN: o comando interno (de uma entrada de bun run) não é alvo'
+  'M9|a DESCIDA: parar no alvo do bash deixa o interior do runner sem julgamento'
+  'M10|O ESCOPO DAS FUNÇÕES de um script EXECUTADO'
+  'M11|os PADRÕES de um case'
+  'M12|a RESOLUÇÃO: sem ela as variáveis de caminho dos scripts chamados ficam indeterminadas'
+  'M13|a EXISTÊNCIA dos valores prováveis'
+  'M14|o FAIL-CLOSED da resolução'
+  'M15|a EXISTÊNCIA da entrada provável'
+  'M16|a DESCIDA na entrada provável'
+  'M17|o alvo PROVADO por variável'
+  'M18|o valor VAZIO: a string vazia resolve por ACIDENTE para o diretório node_modules/.bin'
+  'M19|o TETO de combinações'
+  'M20|o CONGELAMENTO do diretório no parse'
+  'M21|a resolução do marcador na HERANÇA'
+  'M22|o idioma do PAI: o diretório por cd/dirname vale a RAIZ do repositório'
+  'M23|a leitura do PRIMEIRO WORD da atribuição'
+  'M24|a AUTO-REFERÊNCIA não acrescenta valor novo'
+  'M25|o total de comandos ESCRITO À MÃO na prosa da doc → o guard FALHA nomeando o delta'
+)
 GUARD="$SCRIPT_DIR/scripts/check-hook-commands.mjs"
 SUITE_ARQUIVO="src/lib/__tests__/check-hook-commands.test.ts"
+# A prosa que publica os números de produção deste guard (a M25 a muta; o backup
+# e a restauração entram no MESMO trap do guard).
+DOC="$SCRIPT_DIR/docs/GUARDS.md"
 
 TMP_DIR="$(mktemp -d)"
 FX_TYPO="$TMP_DIR/fx-typo"
@@ -244,16 +293,28 @@ guard_backup="$TMP_DIR/guard.original.mjs"
 cp "$GUARD" "$guard_backup"
 guard_sum="$(cksum "$GUARD" | cut -d' ' -f1)"
 
+# A M25 muta a DOC (o guard mede o repositório real) — logo ela também entra no
+# backup e no trap: um `exit` no meio do caminho não pode deixar a prosa mutada.
+doc_backup="$TMP_DIR/GUARDS.original.md"
+cp "$DOC" "$doc_backup"
+doc_sum="$(cksum "$DOC" | cut -d' ' -f1)"
+
 cleanup() {
   cp -f "$guard_backup" "$GUARD" 2>/dev/null || true
+  cp -f "$doc_backup" "$DOC" 2>/dev/null || true
   rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
 
 restaurar_original() {
   cp -f "$guard_backup" "$GUARD"
+  cp -f "$doc_backup" "$DOC"
   if [ "$(cksum "$GUARD" | cut -d' ' -f1)" != "$guard_sum" ]; then
-    fail "RESTAURAÇÃO FALHOU (checksum diverge) — restaure a partir de $guard_backup"
+    fail "RESTAURAÇÃO FALHOU (checksum do guard diverge) — restaure a partir de $guard_backup"
+    exit 1
+  fi
+  if [ "$(cksum "$DOC" | cut -d' ' -f1)" != "$doc_sum" ]; then
+    fail "RESTAURAÇÃO FALHOU (checksum da doc diverge) — restaure a partir de $doc_backup"
     exit 1
   fi
 }
@@ -909,7 +970,7 @@ mk_arquivo "$FX_IDIOMA" "scripts/sub/ok.mjs" '// o caminho que o filho RE-AVALIA
 exigir_reprovado "M20 (antes da mutação)" "$FX_IDIOMA"
 pass "CONTROLE: o alvo é o do EXPORTADOR (\`scripts/ok.mjs\`) e ele NÃO existe — VIOLAÇÃO"
 mutar_guard \
-  '  return eIdiomaDir(desembrulha(valor)) ? MARCA_DIR : valor' \
+  '  return marcaDoIdioma(valor) ?? valor' \
   '  return valor /* MUTACAO M20 */'
 exigir_cego "M20" "$FX_IDIOMA"
 pass "M20: sem o congelamento, o filho re-avalia a EXPRESSÃO no diretório dele e o comando sai VERDE apontando para um alvo impossível (CEGO) — o congelamento é load-bearing"
@@ -927,7 +988,7 @@ header "MUTAÇÃO M21: deixar o marcador \`@DIR@\` atravessar a herança"
 exigir_reprovado "M21 (antes da mutação)" "$FX_IDIOMA"
 pass "CONTROLE: com a herança resolvendo o marcador, o veredito é VIOLAÇÃO (o alvo do exportador)"
 mutar_guard \
-  '    const resolvidos = (lista) => lista.map((v) => v.split(MARCA_DIR).join(vars.dir))' \
+  '    const resolvidos = (lista) => aplicaMarcas(lista, vars)' \
   '    const resolvidos = (lista) => lista /* MUTACAO M21 */'
 exigir_cego "M21" "$FX_IDIOMA"
 pass "M21: sem a resolução na herança, o marcador atravessa e o filho o resolve no diretório dele — VERDE (CEGO) — a resolução na herança é load-bearing"
@@ -936,10 +997,126 @@ pass "M21 CIRÚRGICA: a entrada provável que NÃO existe segue reprovada — mo
 exigir_suite_vermelha "M21"
 restaurar_original
 
-# ── 7. CONTROLE FINAL: a árvore ficou como estava ─────────────────────────
+# ── 6s. MUTAÇÃO M22: o idioma do PAI (`SCRIPT_DIR` na RAIZ) ────────────────
+# O idioma com que os scripts da casa chegam na RAIZ do repositório
+# (`SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"`). O fixture tem o alvo
+# EXISTINDO só no caminho que o idioma ERRADO provaria (`scripts/scripts/…`, o
+# diretório do arquivo em vez do PAI): com o idioma certo o veredito é VIOLAÇÃO
+# (o runner executa um arquivo que não existe) e, mapeado para o diretório do
+# arquivo, o guard o resolve para um caminho que existe e sai VERDE.
+header "MUTAÇÃO M22: mapear o idioma do PAI para o diretório DO ARQUIVO"
+FX_DIRPAI="$TMP_DIR/fx-dirpai"
+mkfix "$FX_DIRPAI" $'set -eu\nbash scripts/runner.sh\n' "$PKG_SIMPLES"
+mk_arquivo "$FX_DIRPAI" "scripts/runner.sh" \
+  $'#!/usr/bin/env bash\nSCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"\nGUARD="$SCRIPT_DIR/scripts/guarda.mjs"\nnode "$GUARD"\n'
+mk_arquivo "$FX_DIRPAI" "scripts/scripts/guarda.mjs" \
+  '// o caminho que o idioma ERRADO provaria (o diretório do arquivo, não o PAI)\n'
+exigir_reprovado "M22 (antes da mutação)" "$FX_DIRPAI"
+pass "CONTROLE: o alvo do PAI (\`scripts/guarda.mjs\`) NÃO existe — VIOLAÇÃO (o idioma provou o caminho CERTO)"
+mutar_guard '    re: /^\$\(cd "\$\(dirname "\$0"\)\/\.\." && pwd\)$/,
+    nome: "`$(cd $(dirname $0)/.. && pwd)`",
+    marca: MARCA_DIR_PAI,' '    re: /^\$\(cd "\$\(dirname "\$0"\)\/\.\." && pwd\)$/,
+    nome: "`$(cd $(dirname $0)/.. && pwd)`",
+    marca: MARCA_DIR, /* MUTACAO M22 */'
+exigir_cego "M22" "$FX_DIRPAI"
+pass "M22: com o idioma do PAI mapeado para o diretório DO ARQUIVO, o guard prova \`scripts/scripts/guarda.mjs\` (que existe) e o alvo que NUNCA roda sai VERDE (CEGO) — o mapeamento do PAI é load-bearing"
+exigir_suite_vermelha "M22"
+restaurar_original
+
+# ── 6t. MUTAÇÃO M23: a leitura do PRIMEIRO WORD da atribuição ─────────────
+# `GUARD="$GUARD" ALVO="$1" python3 scripts/checa.py` é a forma que a casa usa
+# para passar o caminho ao script de mutação: o shell atribui `"$GUARD"` e o
+# resto é o COMANDO. Lida por inteiro, a atribuição cita o próprio nome e a régua
+# acusa CICLO — o alvo do `node "$GUARD"` fica sem julgamento por um defeito de
+# LEITURA, e o guard passa a ACUSAR o são (violação falsa num gate bloqueante).
+header "MUTAÇÃO M23: ler a atribuição por INTEIRO (o prefixo de ambiente vira ciclo)"
+FX_PREFIXO="$TMP_DIR/fx-prefixo"
+mkfix "$FX_PREFIXO" $'set -eu\nbash scripts/runner.sh\n' "$PKG_SIMPLES"
+mk_arquivo "$FX_PREFIXO" "scripts/runner.sh" \
+  $'#!/usr/bin/env bash\nSCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"\nGUARD="$SCRIPT_DIR/scripts/guarda.mjs"\nGUARD="$GUARD" ALVO="$1" python3 scripts/checa.py\nnode "$GUARD"\n'
+mk_arquivo "$FX_PREFIXO" "scripts/guarda.mjs" '// guard\n'
+mk_arquivo "$FX_PREFIXO" "scripts/checa.py" 'print(1)\n'
+exigir_aprovado "M23 (antes da mutação)" "$FX_PREFIXO"
+pass "CONTROLE: o alvo provado EXISTE e o prefixo de ambiente não atrapalha — VERDE"
+mutar_guard '    const valor = primeiroWord(m[2]).trim()' \
+  '    const valor = m[2].trim() /* MUTACAO M23 */'
+exigir_reprovado "M23" "$FX_PREFIXO"
+pass "M23: lida por inteiro, a atribuição cita o próprio nome e o guard ACUSA o são (ciclo) — a leitura do primeiro word é load-bearing"
+exigir_suite_vermelha "M23"
+restaurar_original
+
+# ── 6u. MUTAÇÃO M24: a AUTO-REFERÊNCIA não acrescenta valor ───────────────
+# `GUARD="$GUARD"` sozinho não muda o valor da variável: deixa-lo entrar no
+# conjunto faz a régua acusar CICLO num arquivo que só passa a variável adiante.
+# O ciclo de VERDADE (`A="$B"` / `B="$A"`) continua ciclo — ali o elo acrescenta
+# um NOME novo à resolução.
+header "MUTAÇÃO M24: deixar a auto-referência entrar no conjunto de valores"
+FX_AUTOREF="$TMP_DIR/fx-autoref"
+mkfix "$FX_AUTOREF" $'set -eu\nbash scripts/runner.sh\n' "$PKG_SIMPLES"
+mk_arquivo "$FX_AUTOREF" "scripts/runner.sh" \
+  $'#!/usr/bin/env bash\nSCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"\nGUARD="$SCRIPT_DIR/scripts/guarda.mjs"\nGUARD="$GUARD"\nnode "$GUARD"\n'
+mk_arquivo "$FX_AUTOREF" "scripts/guarda.mjs" '// guard\n'
+exigir_aprovado "M24 (antes da mutação)" "$FX_AUTOREF"
+pass "CONTROLE: a auto-referência não acrescenta valor e o alvo segue provado — VERDE"
+mutar_guard '    if (ehAutoReferencia(valor, nome)) continue' \
+  '    if (false) continue /* MUTACAO M24 */'
+exigir_reprovado "M24" "$FX_AUTOREF"
+pass "M24: com a auto-referência no conjunto o guard vê CICLO no arquivo que só passa adiante e ACUSA o são — a regra é load-bearing"
+exigir_suite_vermelha "M24"
+restaurar_original
+
+# ── 7. M25: os números de PRODUÇÃO da prosa são DERIVADOS do analyze() ────
+#
+# A mutação não é no guard: é na DOC. Diferente das M1–M24, ela não tem fixture
+# — o número de produção é do repositório REAL, e é ele que o guard mede quando
+# julga a árvore. O defeito que ela reinstala está MEDIDO: a prosa deste guard
+# dizia 250 comandos / 244 resolvidos / 105 nos hooks quando o medido era
+# 251 / 245 / 106, e ninguém tinha como ver (um número de doc que não é derivado
+# envelhece sozinho, e é por ele que o leitor confere a ESCALA do guard).
+header "MUTAÇÃO M25: o total de comandos da prosa volta a ser escrito à mão"
+exigir_aprovado "M25 (antes da mutação)" "$SCRIPT_DIR"
+pass "CONTROLE: com a prosa batendo com o medido o guard no repositório REAL sai VERDE"
+
+TOTAL_ATUAL="$(node "$GUARD" --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["numeros"]["comandos"][0])')"
+DOC="$DOC" TOTAL="$TOTAL_ATUAL" python3 - <<'PY'
+import os
+p = os.environ["DOC"]
+total = int(os.environ["TOTAL"])
+old = f"**{total} comandos**"
+new = f"**{total - 1} comandos**<!-- MUTACAO M25 -->"
+s = open(p).read()
+if s.count(old) != 1:
+    raise SystemExit(f"mutacao nao-cirurgica na doc: {s.count(old)} ocorrencia(s) de {old!r} (esperado 1)")
+open(p, "w").write(s.replace(old, new))
+PY
+if ! grep -qF 'MUTACAO M25' "$DOC"; then
+  fail "a mutação não aplicou na doc (nada a medir)"
+  exit 1
+fi
+
+rodar_guard "$SCRIPT_DIR"
+if [ "$GUARD_EXIT" -ne 1 ]; then
+  fail "M25: a prosa com o total ERRADO passou (exit $GUARD_EXIT, esperado 1) — o número da doc não é conferido"
+  mostrar
+  exit 1
+fi
+if ! grep -Fq "a prosa declara o total de comandos julgados como $((TOTAL_ATUAL - 1)) e o medido e ${TOTAL_ATUAL}" <<<"$GUARD_OUT"; then
+  fail "M25: o guard reprovou, mas NÃO nomeou o delta (declarado x medido) do total"
+  mostrar
+  exit 1
+fi
+if ! grep -Fq "docs/GUARDS.md:" <<<"$GUARD_OUT"; then
+  fail "M25: o guard reprovou, mas não apontou o arquivo e a linha da prosa"
+  mostrar
+  exit 1
+fi
+pass "M25: o número escrito à mão reprova nomeando a linha da prosa e o delta (${TOTAL_ATUAL} medido vs $((TOTAL_ATUAL - 1)) declarado)"
+restaurar_original
+
+# ── 8. CONTROLE FINAL: a árvore ficou como estava ─────────────────────────
 header "CONTROLE FINAL: restauração verificada por checksum"
 exigir_reprovado "CONTROLE FINAL (caminho tipado)" "$FX_TYPO"
 pass "CONTROLE FINAL: o guard restaurado volta a reprovar o caminho tipado"
 
 echo
-echo -e "${GREEN}═══ MUTATION TEST PASSED — as 21 mutações foram detectadas (gate, arquivo e/ou suíte) ═══${NC}"
+echo -e "${GREEN}═══ MUTATION TEST PASSED — as 25 mutações foram detectadas (gate, arquivo, suíte e/ou prosa) ═══${NC}"

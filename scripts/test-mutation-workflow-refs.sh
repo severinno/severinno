@@ -109,6 +109,17 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  '1|par TRANSITIVO: alvo de uma entry referenciada DELETADO'
+  '2|consistência INTERNA: entry órfã do modo --pkg-internal'
+  'M1|o stripping do comentário de fim de linha REMOVIDO (o guard acusa código morto)'
+  'M2|a régua perde a ÂNCORA de espaço (o guard fica CEGO na ref que EXECUTA)'
+)
 GUARD="$SCRIPT_DIR/scripts/check-workflow-refs.mjs"
 # A RÉGUA do que EXECUTA (comentário de linha/fim de linha, expressão do runner)
 # vive na FONTE ÚNICA, e é ELA que o Cenário 3 muta: o guard importa

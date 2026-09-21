@@ -767,6 +767,62 @@ perderam o número, e a `check-required-checks` recusa qualquer `name:` de
 required check que carregue uma contagem — `TypeCheck (tsc --noEmit)` continua
 passando, porque o parêntese não é uma contagem.
 
+#### A descrição das metades é DERIVADA do próprio script (e a doc é conferida contra ela)
+
+A prosa que descrevia cada sub-test vivia em TRÊS lugares à mão — o array
+`SUBTESTS` do master, o bloco de prosa do cabeçalho dele e esta doc — e
+acrescentar uma mutação deixava os três desatualizados **em silêncio** (a
+contagem por extenso, então, envelhecia sem ninguém ver: no dia em que esta
+regra passou a existir, a prosa dizia "DUAS metades" para uma suíte que já
+declarava quinze).
+
+Agora a fonte única é o **próprio script granular**: cada suíte declara
+
+```bash
+METADES=(
+  'M1|a regra que a metade tira do lugar'
+)
+```
+
+uma linha por metade, `'id|descrição'` — **em aspas simples**, e isso não é
+estilo: o bloco é um array de BASH num script com `set -euo pipefail`, e em
+aspas duplas o shell **expande** a descrição antes de guardá-la. Uma descrição
+que cita o código da mutação (`echo $OUT | grep -Fq`, `${{ ... }}`,
+`SCRIPT_DIR=$(dirname $0)`) faz a suíte estourar com `variável não associada` sob
+`set -u` — o defeito **medido** que quatro suítes do repositório carregavam, com
+a descrição virando o defeito e o gate verde sobre um script que não rodava. Em
+aspas simples nada é expandido, e a régua **recusa a forma** (nomeando a
+expansão e o remédio) em vez de aceitar uma declaração que mata a suíte. Dali
+saem, sem texto à mão:
+
+- a **descrição de cada sub-test** do master (a entrada do `SUBTESTS` voltou a
+  ser `id|script`, e uma entrada com descrição escrita é violação — a prosa não
+  pode renascer);
+- o **resumo final do master** (a tabela `METADES DECLARADAS`, com o total por
+  sub-test);
+- o que o **`check-mutation-count` confere na doc**: no parágrafo que cita a
+  suíte, a contagem declarada na forma canônica (`em <N> direções`, `declara <N>
+metades`) tem de bater com o bloco — os números por extenso ("VINTE E QUATRO")
+  estão no mapa da régua, e uma contagem que ela não sabe ler é violação, não
+  omissão — e um id citado da MESMA FAMÍLIA (`M25` num bloco que vai até `M24`)
+  tem de existir no bloco, nomeando o id e a lista declarada.
+
+A régua é uma só (`scripts/metades.mjs`), usada pelo master (para imprimir) e
+pelo guard (para conferir) — e a suíte que **não declara** o bloco falha nos dois
+(fail-closed: bloco ausente, vazio, com linha fora do formato, com id repetido ou
+com descrição curta demais é violação, nunca "nenhuma metade"). **Limite
+declarado:** a prosa fala de SUBCONJUNTOS e de CONTROLES com as mesmas palavras
+("as duas direções são exigidas em cada rodada", "o controle H1"); a régua
+confere a forma da DECLARAÇÃO do total e ignora o id de um controle, de
+propósito — cobrar toda ocorrência daria falso positivo em texto correto.
+
+**Como é provado:** `scripts/test-mutation-mutation-count.sh` (mutação G: a suíte
+sem o bloco falha nomeando a falta; H: bloco ilegível; I: a doc declarando um
+total que não bate, com o delta na mensagem; J: a entrada em **aspas duplas** — a
+forma que o shell expandiria e que mataria a suíte — é recusada nomeando a
+expansão e o remédio) e `check-mutation-count.test.ts` (25 testes, cada regra com
+o seu CONTROLE na direção oposta).
+
 #### O OUTRO LADO da mesma lei: a reaplicação da proteção é DECLARADA
 
 A regra acima protege o contexto contra a contagem — mas ela vale para o FUTURO
@@ -1556,7 +1612,7 @@ diz "alguma mutação falhou"; como job próprio ela diz **qual** regra de class
 quebrou, e vira check **com nome** no contrato de merge. Custo medido: ≈**0.33s**
 (node-puro, sem docker, sem `node_modules`).
 
-**NAS DUAS FORJAS (a isenção que caiu).** Ela — e a matriz de 32 sub-tests — eram
+**NAS DUAS FORJAS (a isenção que caiu).** Ela — e a matriz de 33 sub-tests — eram
 `GITHUB_ONLY` com a razão _"os jobs de mutation test existem apenas no pipeline do
 GitHub (custo/duração)"_, que é a razão de **conveniência** que a classe
 `GITHUB_ONLY` proíbe por escrito. O furo era concreto: quem mergeia na forja podia
@@ -1581,7 +1637,7 @@ não um ato de fé.
 não por serem específicos da plataforma): auditoria de dependências, baseline de
 segredos, hooks de seed, sentinel producer, fonte única do Bun, proibição do
 `oven-sh/setup-bun`, simetria de hooks e — a maior delas — a **prova por mutação**:
-a matriz de 32 sub-tests e a prova das três regras de classificação, que rodavam
+a matriz de 33 sub-tests e a prova das três regras de classificação, que rodavam
 só no espelho e deixavam o PR da forja mergear com um guard cego. O custo entrou
 no modelo (`ci/merge-latency.json`, job `guards`), e o **runtime** da imagem
 foi re-medido antes de a mudança valer: o MESMO comando dentro do container da
@@ -2260,10 +2316,44 @@ velho aberto no PR que já consertou o defeito).
 O canal é **UM módulo com um REGISTRO de fixers** (`FIXERS`, em
 `pr-remedy-comment.mjs`): cada gate mecânico entra com o seu marcador, o seu nome
 de job, o seu comando de `--fix` e a SUA medição (`--fixer <id>`, default
-`run-syntax`). Um script por remédio divergiria na primeira correção que um
+declarado). Um script por remédio divergiria na primeira correção que um
 recebesse — e a reconciliação, a decisão e o tratamento de canal são justamente
 onde isso dói. O segundo fixer é o **`pipefail-sigpipe`** (seção 20): o mesmo
 mecanismo, o mesmo `--dry-run`, o mesmo ciclo.
+
+**O REGISTRO É DESCOBERTO, não escrito à mão** (`scripts/pr-fixers.mjs`).
+Enquanto o `FIXERS` morava dentro do publicador, um gate que já sabia consertar
+(`--fix`) e produzir o PATCH (`remedyPatch`) ficava FORA do canal até alguém
+editar aquele arquivo — e nada acusa essa regressão, porque um remédio que não
+publica é indistinguível de um defeito sem remédio. Agora cada remendo é
+declarado em **`scripts/remedy-canal/<id>.mjs`** (a prosa do comentário:
+`marker`, `gateJob`, `titulo`, `achado`, `naoCobre`, `rodape`, e o `default`), e
+a descoberta a casa com a **CLASSE de mesmo id** (`scripts/remedy-classes/`, a
+mesma que o pre-commit oferece) — de onde saem o guard dono, o comando do `--fix`
+e a `ordem`. O `id` é o NOME do arquivo nas duas pontas: um fixer novo entra no
+commit em que as duas declarações existem, sem editar registro nenhum (é a
+metade que a lista à mão não conseguia cumprir).
+
+A régua morde nas DUAS direções, fail-closed: a declaração do canal sem a classe
+de mesmo id (ou com um dono que não exporta `remedyPatch`) **não entra** e sai
+nomeada em `CANAL_PROBLEMAS` — que o publicador transforma em **exit 2** (o PR
+nunca é julgado por um canal incompleto); e o dono que SABE produzir o patch e
+**não tem** declaração de canal também sai nomeado (senão ele ficaria fora do PR
+em silêncio). O `default` do `fixerOf()` sem argumento é **declarado**
+(`default: true` em exatamente UM fixer) — zero é "ninguém sabe qual é" e dois é a
+escolha feita por ordem de arquivo, que muda entre hosts.
+
+**Quem precisa só dos IDs não passa pela descoberta.** O `pr-fixers.mjs` é
+assíncrono por natureza (`import()` de caminhos descobertos em runtime) e usa
+top-level await; e um módulo com TLA que seja ALCANÇÁVEL a partir do grafo de uma
+classe (`remedy-classes/<id>.mjs` → guard dono → `check-hook-ci-parity` →
+`check-forge-parity`) fecha um ciclo com o `remedy-classes.mjs` (também TLA) e o
+node sai **13** sem imprimir nada — o `pre-commit-remedy.mjs` do hook morre junto
+(medido). Por isso o leitor dos IDs é uma FOLHA (`scripts/remedy-canal.mjs`), que
+varre o diretório sem importar declaração nenhuma, e é ela que o
+`check-forge-parity` consome na quinta regra (a cobertura do canal). Duas leituras
+do MESMO diretório — a folha, no guard, e a descoberta, no publicador — e o teste
+compara as duas.
 
 O comentário é **RECONCILIADO** pelo marcador `<!-- run-syntax-remedy -->`: cria na
 primeira vez, ATUALIZA quando o patch muda, não repete quando é idêntico (reescrever
@@ -2325,6 +2415,30 @@ medido no `pr-remedy-comment.test.ts`: marcadores PRÓPRIOS, `--fixer` escolhend
 defeito (com o default intacto), id desconhecido sendo erro de uso, os dois
 fixers no MESMO PR sem um tocar o comentário do outro, e cada um medindo pela SUA
 régua.
+
+**A DESCOBERTA do registro tem teste próprio**
+(`src/lib/__tests__/canal-fixers-discovery.test.ts`): no repositório real, o
+registro é o dos ARQUIVOS declarados e a leitura da folha (`remedyFixers()`)
+concorda com ele — duas leituras do MESMO diretório não podem divergir; num
+fixture, um fixer NOVO (declaração + classe + dono) entra com id, marcador,
+comando, ordem e medidor, e o próprio módulo do registro não cita o id novo (quem
+o faz entrar é o diretório); e cada campo tem o seu caso de recusa (marker que não
+é comentário HTML ou repetido, `gateJob` vazio, `achado` que não é função,
+`default` não-booleano, dois ou zero `default: true`, declaração sem classe, dono
+sem `remedyPatch`, diretório vazio e ilegível).
+
+**A prova de que ela MORDE** (`scripts/test-mutation-canal-fixers.sh`, matriz do
+master): as SEIS metades são load-bearing — a varredura do diretório trocada por
+ids literais (o fixer novo da bancada DESAPARECE: é o registro à mão de volta), a
+exigência da classe de mesmo id (sem ela a declaração órfã some em SILÊNCIO), a
+régua do dono (sem ela publica-se um fixer com o MEDIDOR indefinido), a direção
+OPOSTA (o dono que sabe produzir o patch e não tem declaração não some calado), o
+`default` único (sem ele o default vira ordem de arquivo) e o leitor folha (o
+diretório ilegível devolvendo `[]`, isto é, "não consegui ler" virando "nenhuma
+declaração"). O registro é medido POR EXECUÇÃO contra uma BANCADA (um repo
+temporário fora do projeto), e o checksum do registro, do publicador e do leitor é
+conferido no fim: o fixer novo entrou SEM EDIÇÃO — é isso que a suíte declara por
+medição, não por prosa.
 O **HOOK** tem prova por EXECUÇÃO, e não por leitura:
 `src/lib/__tests__/pre-commit-run-syntax-blocks.test.ts` soma o `.husky/pre-commit`
 REAL num repositório temporário com o defeito STAGED e exige o exit **VIOLATIONS**
@@ -2493,8 +2607,10 @@ classe, nomeada pelo veredito do próprio guard; uma classe
 executa — mediria OUTRA árvore; e SEM TERMINAL o caminho à mão sai com o `--fix`
 E o `git add` **de cada classe**.
 **Prova por mutação:** `scripts/test-mutation-workflow-run-syntax.sh` (roda NO
-JOB, depois do gate real, e também como sub-test da matriz do master) tem DUAS
-metades. (A) SENSIBILIDADE — o guard REAL reprova as fixtures de defeito e passa
+JOB, depois do gate real, e também como sub-test da matriz do master) **declara 15
+metades** no bloco `METADES` do próprio script — a descrição de cada uma sai de lá
+(é o master que a deriva, e o `check-mutation-count` confere a doc contra ela).
+(A) SENSIBILIDADE — o guard REAL reprova as fixtures de defeito e passa
 no corpo são: `if` sem `fi` (ERRO, citando arquivo e linha), heredoc sem terminador
 (AVISO: o script MEDE que o `bash -n` sai **0** e só avisa — um gate que olhasse
 só o exit code o aprovaria) e o defeito entre DUAS expressões do runner (prova
@@ -2630,14 +2746,31 @@ local**, e as três formas são medidas: (a) o **hook o executa** — inclusive
 `HOOK_NOT_RUN`; (c) a ausência está escrita em `RUNNER_SUBGUARD` com a razão (e a
 declaração **stale**, que não casa com sub-guard nenhum, é violação).
 
+**O idioma do `SCRIPT_DIR` deixou de ser um limite.** A régua de caminho
+(`check-hook-commands`, a mesma para toda descida) passou a ler o idioma com que
+os scripts da casa chegam na **raiz** — `SCRIPT_DIR="$(cd "$(dirname "$0")/.."
+&& pwd)"` — e o alvo `node "$GUARD"` que sai dele; e a leitura da atribuição
+passou a parar no **primeiro word** (o shell corta o valor no primeiro espaço não
+citado: `GUARD="$GUARD" ALVO="$1" python3 …` atribui `"$GUARD"`, não a linha
+inteira), com a **auto-referência** (`GUARD="$GUARD"`, o prefixo de ambiente de
+uma linha) não acrescentando valor nenhum. Medido no repositório: os limites
+da descida caíram de **18 para 2**, os arquivos alcançados subiram de **2 para
+9**, e os **dois** que sobraram são os bloqueios que não são idioma — a variável
+de laço do master (`${rest#*|}`, montada em runtime) e o `bash -n` sobre um
+arquivo **temporário**. Nenhum dos nove segue sem decisão: seis pelas regras (a)
+e (b) e **três pela tabela** (`RUNNER_SUBGUARD`: o `audit-blob-crlf-history.sh`,
+que varre o HISTÓRICO e não o commit, o `check-jsdom-baseline.mjs`, que mede a
+ÁRVORE inteira, e a **régua das metades** `metades.mjs`, que não é gate nenhum —
+é biblioteca pura, executada pelo master de mutação e pelo `check:mutation-count`,
+e nenhum dos dois roda no hook) — os dois primeiros eram **invisíveis** enquanto
+o idioma não era lido, e o terceiro **apareceu** quando a descida passou a
+alcançá-lo (o guard acusou o próprio repositório antes de a tabela existir).
+
 **O que a descida NÃO consegue provar sai nomeado** (`limitesDaDescida`, impresso
-no relatório e no `--json`): hoje são os runners que calculam o diretório por
-`$(cd "$(dirname "$0")/.." && pwd)` e chamam `node "$GUARD"` — o valor não é
-provável pelas atribuições, e um limite que ninguém lê não é limite declarado.
-Medido no repositório: **12 runners** nas duas pipelines, **2 sub-guards**
-alcançados (`check_utf8.py` e `check_utf8.mjs`) e os **dois decididos pela
-bateria local** — o dia em que um sub-guard não for alcançado localmente, ele
-acende nomeando o arquivo, o runner e o comando do CI que o executa.
+no relatório e no `--json`): os bloqueios que restam, cada um com o motivo. Um
+limite que ninguém lê não é limite declarado — e o dia em que um sub-guard não
+for alcançado localmente, ele acende nomeando o arquivo, o runner e o comando do
+CI que o executa.
 
 **Por que existe (o caso real):** `.husky/pre-push` rodava `bunx tsc --noEmit` —
 **sem** o heap de 4GB que o script `typecheck` carrega. Os dois lados citavam "o
@@ -2657,16 +2790,16 @@ exigindo a asserção da **própria regra** e medindo as irmãs (as linhas do
 relatório não podem encolher: um guard que aborta cedo também "falha", só que
 por não ter medido):
 
-| Mutação | O que volta                                                                | Detecção                                                                             |
-| ------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| A       | `bun run typecheck` → `bunx tsc --noEmit` nos dois hooks (a segunda régua) | **dupla**: o comando não é o do CI **E** o invariante `typecheck` fica sem cobertura |
-| B       | comando novo no hook sem entrada em `HOOK_DECLARED`                        | 1 violação, nomeando o comando                                                       |
-| C       | `why` de um recorte esvaziado                                              | 1 violação "SEM razão escrita"; o recorte segue reconhecido como o MESMO instrumento |
-| D       | `match` de uma entrada que não casa com comando nenhum                     | 2 violações: a declaração **stale** e o comando que perdeu a decisão                 |
-| E       | id removido de `HOOK_NOT_RUN`                                              | 1 violação: gate do CORE que não roda em lugar nenhum                                |
-| F       | `HOOKS` aponta para um hook inexistente                                    | 1 violação (fail-closed: não se varre o que não se leu)                              |
-| G       | um runner da pipeline passa a executar uma sonda que existe                | 1 violação nomeando o sub-guard, o runner e o comando do CI que o executa            |
-| H       | a descida do lado **local** deixa de acontecer (o hook "para" no runner)   | 2 violações: os dois sub-guards do `check-utf8.sh` perdem a decisão local            |
+| Mutação | O que volta                                                                | Detecção                                                                                                                                     |
+| ------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| A       | `bun run typecheck` → `bunx tsc --noEmit` nos dois hooks (a segunda régua) | **dupla**: o comando não é o do CI **E** o invariante `typecheck` fica sem cobertura                                                         |
+| B       | comando novo no hook sem entrada em `HOOK_DECLARED`                        | 1 violação, nomeando o comando                                                                                                               |
+| C       | `why` de um recorte esvaziado                                              | 1 violação "SEM razão escrita"; o recorte segue reconhecido como o MESMO instrumento                                                         |
+| D       | `match` de uma entrada que não casa com comando nenhum                     | 2 violações: a declaração **stale** e o comando que perdeu a decisão                                                                         |
+| E       | id removido de `HOOK_NOT_RUN`                                              | 1 violação: gate do CORE que não roda em lugar nenhum                                                                                        |
+| F       | `HOOKS` aponta para um hook inexistente                                    | 1 violação (fail-closed: não se varre o que não se leu)                                                                                      |
+| G       | um runner da pipeline passa a executar uma sonda que existe                | 1 violação nomeando o sub-guard, o runner e o comando do CI que o executa                                                                    |
+| H       | a descida do lado **local** deixa de acontecer (o hook "para" no runner)   | 2 violações: os dois sub-guards do `check-utf8.sh` perdem a decisão local (as "executado direto" seguem de pé: elas não passam pela descida) |
 
 A árvore é restaurada por backup + `trap` (nunca `git checkout`) e conferida por
 `cksum` contra o hash de origem — um mutation test que deixa o worktree sujo é
@@ -2874,6 +3007,50 @@ detecção contra a árvore real é read-only por construção, com o
 `git status --porcelain` conferido antes e depois — `escreveu: true` é VIOLAÇÃO da
 família, não um detalhe do log.
 
+**Custo de CADA sub-test do master de mutação — medido, e versionado por
+sub-test.** O job `mutation-guards` é o mais caro do PR, e era a única conta do
+repositório que ninguém media POR PASSO: o modelo de latência declarava um total
+e o que um sub-test novo tinha acrescentado vinha de medições avulsas (`--scenario`,
+uma a uma) **escritas à mão na prosa** do modelo. Agora o próprio master mede
+(`--json`) e o benchmark **versiona sub-test a sub-test** (família `mutations`,
+esquema v6, em `docs/benchmarks/guard-timing-baseline.json`). Uma rodada só, com
+TODOS os sub-tests — medir um a um custaria 33 subidas de harness, e o harness é
+exatamente o que a conta à mão esquece. Medido em 21/09/2026 nesta máquina
+(`--only mutations`, 33/33 verdes):
+
+| sub-test                                                              |  wall time | fatia | metades |
+| --------------------------------------------------------------------- | ---------: | ----: | ------: |
+| `workflow-run-syntax`                                                 |      67.6s |   25% |      15 |
+| `hook-commands`                                                       |      49.5s |   18% |      25 |
+| `remedy-tty`                                                          |      29.6s |   11% |       2 |
+| `job-deps`                                                            |      24.1s |    9% |       7 |
+| `registry-defaults`                                                   |      20.7s |    8% |       7 |
+| `required-applied`                                                    |      17.8s |    7% |      10 |
+| `canal-fixers` (a 33ª — a descoberta do registro do canal)            |       9.0s |    3% |       6 |
+| … (os 33, do mais caro ao mais barato, sempre na tabela do relatório) |            |       |         |
+| **soma dos 33 sub-tests**                                             | **268.1s** |  100% | **193** |
+| harness (parse das metades, tabelas, subida do master)                |       3.7s |       |         |
+| **total do master**                                                   | **271.8s** |       |         |
+
+**O que isso muda no veredito.** O sub-test NOVO não precisa de conta nenhuma:
+ele entra na rodada seguinte **MEDIDO**, e a comparação o publica como forma nova
+(`➕`) com o ms dele ao lado da baseline — o número do job deixa de vir de uma soma
+que alguém montou à mão. O modelo de latência passou a **DERIVAR** o passo do
+master desta medição (`benchIndex` lê o total da família), o que já confronta o
+declarado do espelho: **248.0s declarados × 271.8s medidos = 9.6%**, dentro da
+tolerância de 25% — sem divergência, e sem ninguém recontar a soma. A projeção do
+PRÓXIMO sub-test (~8.2s) é dita como **PROJEÇÃO**, não medição: ela é a média dos
+scripts já medidos mais o harness por sub-test, e os dois lados saem de medição.
+A família segue a **mesma régua de cobertura** das outras: sem ela nesta rodada (ou
+com o master sem produzir o JSON) a comparação fica `measured: false` e **nomeia**
+`sub-tests do master (custo por sub-test)` — não medido ≠ resolvido, e a issue de
+tempo não fecha. Um master VERMELHO continua medido (o `--json` sai antes do
+veredito, e o `exit` fica gravado no resultado), com a violação nomeando o sub-test
+que não passou: um sub-test que morre no meio fica RÁPIDO, e chamar isso de
+"melhorou" seria publicar como ganho um trabalho que não foi feito. O contrato
+ainda acusa o sub-test **sem metades declaradas** (custo sem o que ele protege) e a
+conta que não fecha (total menor que a soma dos sub-tests).
+
 **Medir em partes (máquina lenta / timeout de runner).** As famílias de régua
 medem comandos INTEIROS e uma rodada completa tem dezenas de minutos (a `hook` é
 a exceção: segundos). Três
@@ -2898,7 +3075,7 @@ que não terminou (`ok: false`) tem o ms do pedaço que rodou; se esse pedaço f
 maior que a baseline, o número passa do limiar e _não_ é medição. A régua marca a
 forma `unmeasured` E a exclui do julgamento, e o motivo da comparação **nomeia** a
 família que faltou (`bateria (guards+doctor)`, `lint`, `typecheck`, `suíte`,
-`hook (oferta de remendo)`) —
+`hook (oferta de remendo)`, `sub-tests do master (custo por sub-test)`) —
 "medição incompleta" sem o nome transfere a investigação para quem lê a issue.
 As famílias
 typecheck e suíte medem **uma amostra por forma** (`samplesPerForm: 1`),
@@ -2925,7 +3102,7 @@ medianas, e julgar regressão sobre ele multiplicaria o ruído — o que a compa
 julga é o custo ABSOLUTO de cada forma, e o delta diz de onde ele veio.
 
 **O ESTADO DA BASELINE É DADO, não impressão.** A baseline versionada está no
-**esquema v5**: ela carrega as cinco famílias e, por família, `meta.families` com
+**esquema v6**: ela carrega as seis famílias e, por família, `meta.families` com
 o **ATO** que mediu o número (`measured` nesta rodada · `reused` herdada de outra
 por `--merge` · `not-measured`) e o **COMMIT de origem**, ao lado de `meta.act`
 (o comando que produziu o arquivo) e do carimbo da máquina. A régua de "esta
@@ -2948,8 +3125,10 @@ gates (mediria esta máquina contra uma baseline de outra), então a issue de te
 aparece na prontidão sem cruzamento de caducidade, e isso está dito lá.
 
 **Usage:** `bun run bench:guard-timing` (mede) · `--no-lint` /
-`--no-typecheck` / `--no-tests` (pula famílias) · `--only FAMÍLIA` (mede só
-elas, sem a bateria) · `--counterfactual` (mede também a régua anterior da
+`--no-typecheck` / `--no-tests` / `--no-hook` / `--no-mutations` (pula famílias)
+· `--only FAMÍLIA` (mede só
+elas, sem a bateria; `--only mutations` mede a matriz de mutação inteira, ~4min) ·
+`--counterfactual` (mede também a régua anterior da
 suíte, ~7min) · `--merge` (herda do arquivo o que não foi medido, marcado e
 fora do veredito) · `--samples N` (amostras por forma de lint; padrão 2) ·
 `bun run bench:guard-timing:baseline` (salva a baseline **e**, com `--json`, o
@@ -4980,8 +5159,10 @@ comentado no espelho, com o token da outra) sem nenhum veredito, porque o canal
 não é um gate. Quem mede isso agora é a **quinta regra do `check-forge-parity`**
 (o canal não passa por `discoverGates`, então as quatro regras de classificação
 não o alcançavam): exatamente UM passo por pipeline, `--all`, a cobertura IGUAL à
-do registro (o fixer que ficar de fora sai NOMEADO, lido de `FIXERS` — nunca de
-uma lista do guard) e o `--backend` da própria forja; a régua do comando canônico
+do registro (o fixer que ficar de fora sai NOMEADO, lido do DIRETÓRIO das
+declarações — nunca de uma lista do guard; a leitura é a folha `remedy-canal.mjs`,
+e não o registro montado, pelo ciclo de import com TLA que o cabeçalho daquela
+seção descreve) e o `--backend` da própria forja; a régua do comando canônico
 (uma régua, e o backend é o único argumento que muda) fecha a paridade. As
 mutações **G1–G3** provam as três pontas: o passo removido da forja, a cobertura
 estreitada para `--fixer <um>` e o backend da outra forja.
@@ -5657,13 +5838,31 @@ UNIÃO com a atribuição do filho, o `source` sem `export` e o `export VAR` soz
 de linha, `$( )`, `case`, função, continuação). E o repositório REAL é julgado com
 um **PISO de cobertura** (`comandos >= 200`, os três hooks e os scripts descidos nomeados): se a extração
 ou a descida pararem de funcionar, a contagem cai e o guard "passa" — o piso é o
-que impede o verde por vazio. Em produção: **250 comandos** (105 nos 3 hooks +
-145 dentro dos 5 scripts chamados), **244 resolvidos** e **6 indeterminados
+que impede o verde por vazio. Em produção: **251 comandos** (106 nos 3 hooks +
+145 dentro dos 5 scripts chamados), **245 resolvidos** e **6 indeterminados
 DECLARADOS** (as quatro decisões de caminho viraram prova; sobraram os payloads de
 `-c`).
 
+**OS NÚMEROS DE PRODUÇÃO DESTA SEÇÃO SÃO DERIVADOS — e conferidos.** O total de
+comandos, os resolvidos, os indeterminados, os hooks e os scripts descidos saem do
+próprio `analyze()`: a frase acima é lida na FORMA CANÔNICA (`**<N> comandos**`,
+`<N> nos <N> hooks`, `<N> dentro dos <N> scripts chamados`, `**<N> resolvidos**`,
+`**<N> indeterminados`), cada número é comparado com o medido e o guard falha
+nomeando **o arquivo, a linha e o delta**. Um número escrito à mão aqui não é um
+detalhe de prosa: é por ele que o leitor confere a ESCALA deste guard, e um total
+que envelhece para BAIXO faz um guard cego parecer saudável — a mesma classe do
+piso de cobertura, um nível acima (no piso o guard mede o vazio; aqui ele mede
+cheio e a doc conta outra coisa). A regra nasceu de um caso **medido**: a prosa
+dizia 250 comandos / 244 resolvidos / 105 nos hooks quando o medido era
+251 / 245 / 106. É fail-closed nas três direções: número divergente é violação,
+forma que **sumiu** da prosa é violação (a doc parou de publicar), e duas
+declarações **diferentes** da mesma forma também são (a régua não escolhe uma).
+**Limite declarado:** num `--root` de fixture a doc não existe e a regra não
+mede nada (o relatório diz isso em voz alta); no repositório, doc ausente é
+violação.
+
 **Prova por mutação:** `scripts/test-mutation-hook-commands.sh` muta o próprio
-guard em VINTE E UMA direções, cada uma com as testemunhas do veredito do CLI
+guard em VINTE E CINCO direções, cada uma com as testemunhas do veredito do CLI
 sobre uma fixture e a suíte unitária, que tem de ficar VERMELHA.
 
 As QUATRO primeiras são do lado que DETECTA: três na direção de CEGAR —
@@ -5695,6 +5894,22 @@ AUSENTE e o caminho que o filho veria se re-avaliasse a expressão PRESENTE — 
 mutação, sozinha, faz o guard sair VERDE apontando para um alvo que o processo
 novo nunca pode ver.
 
+A **ÚLTIMA** (M25) é a única mutação **na doc** e não no guard: ela devolve o total
+de comandos ao valor escrito à mão (um a menos que o medido) e exige o vermelho
+nomeando a linha da prosa e o delta. Ela não tem fixture — o
+número de produção é do repositório REAL —, e é por isso que ela entra no MESMO
+backup por checksum do guard (a prosa é restaurada junto, mesmo se o script
+morrer no meio).
+
+As **TRÊS ÚLTIMAS DO GUARD** (M22–M24) são o idioma `SCRIPT_DIR` e a leitura da
+atribuição — a régua que fez os limites da descida caírem de 18 para 2: a M22
+mapeia o idioma do PAI (`$(cd "$(dirname "$0")/.." && pwd)`) para o diretório do
+ARQUIVO (a fixture tem o alvo existindo SÓ no caminho errado — e ele é provado), e
+as M23–M24 medem a leitura do valor: por INTEIRO, a atribuição do prefixo de
+ambiente (`GUARD="$GUARD" ALVO="$1" …`) cita o próprio nome e vira CICLO, e a
+auto-referência sozinha faz o guard ACUSAR o são. As duas últimas são na direção
+OPOSTA (como a M4 e a M11): sem elas o guard fica mais ESTRITO que a verdade.
+
 As do lado que **GRAVA** (`--fix` — M5 a M8) medem uma regra do remendo, o único
 lugar do repositório onde uma mutação pode fazer o repositório ESCREVER o que não
 deve; as demais medem o lado que JULGA. A tabela, na ordem do script:
@@ -5718,6 +5933,10 @@ deve; as demais medem o lado que JULGA. A tabela, na ordem do script:
 | M19     | o TETO de combinações (`MAX_VALORES`)                                  | o guard prova um conjunto que NÃO enumerou (o verde vem do tamanho)         |
 | M20     | o CONGELAMENTO do diretório no parse (`comDirCongelado`)               | o filho re-avalia a EXPRESSÃO no diretório dele: VERDE num alvo impossível  |
 | M21     | a RESOLUÇÃO do marcador na herança (`herancaPara.resolvidos`)          | o `@DIR@` atravessa cru e o filho o resolve no diretório dele: mesmo VERDE  |
+| M22     | o MAPEAMENTO do idioma do PAI (`marca: MARCA_DIR_PAI`)                 | o `$SCRIPT_DIR` vale o diretório do arquivo e um alvo que existe sai VERDE  |
+| M23     | a leitura do PRIMEIRO WORD da atribuição                               | o prefixo de ambiente vira CICLO e o guard ACUSA o são (violação falsa)     |
+| M24     | a AUTO-REFERÊNCIA não acrescenta valor                                 | o `GUARD="$GUARD"` de uma linha vira CICLO e o alvo fica sem julgamento     |
+| M25     | o total de comandos da prosa é DERIVADO do medido (não à mão)          | a doc publica 250 onde o guard mede 251: a ESCALA dele mente para quem lê   |
 
 A testemunha da M8 é o **CONTEÚDO do arquivo**, não o exit code — nos dois casos
 o veredito é 1 (a violação de verdade continua lá) e é o `cmp` contra os bytes
@@ -5726,7 +5945,7 @@ escondido). A M11 também é na direção OPOSTA (como a M4): sem a régua do `c
 guard fica mais ESTRITO do que a verdade e o repositório real vira vermelho. Cada
 mutação é cirúrgica (as outras metades seguem reprovando), o arquivo é restaurado
 por checksum e o total roda em ~30s. A regressão que reintroduzir qualquer uma
-dessas dezenove metades morre no job, não no hook de quem commita.
+dessas vinte e cinco metades morre no job, não no hook de quem commita.
 
 **E a PERGUNTA tem um dono só, fora do remédio.** `scripts/confirm-prompt.mjs` é
 onde vive a régua da confirmação — o terminal de CONTROLE, o default NÃO, o teto

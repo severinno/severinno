@@ -54,6 +54,16 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'A|import de dep que resolve SÓ no node_modules do PAI (worktree aninhado)'
+  'B|import de dep inexistente em lugar nenhum'
+  'C|dep DECLARADA com install pendente PASSA (o controle da classe)'
+)
 GUARD="$SCRIPT_DIR/scripts/check-no-leaked-imports.mjs"
 
 TMP_DIR="$(mktemp -d)"

@@ -233,16 +233,36 @@ export const HOOK_DECLARED = [
  * dele) e o guard confere as DUAS direcoes: sub-guard sem decisao E declaracao
  * que nao casa com sub-guard nenhum (stale).
  *
- * HOJE ESTA VAZIA, e isso e um FATO MEDIDO, nao um esquecimento: a descida das
- * pipelines alcanca `scripts/check_utf8.py` e `scripts/check_utf8.mjs` (dentro
- * do `check-utf8.sh`, que a pipeline chama direto) e a bateria local os executa
- * pelos dois runners do pre-commit (`run-encoding-guards.sh` → `check-utf8.sh`).
- * O primeiro sub-guard que NAO for alcancado localmente cai aqui (ou vira um
- * comando do hook) — a escolha passa a ser explicitamente escrita.
+ * A TABELA TEM DUAS ENTRADAS porque a regua de caminho passou a resolver o
+ * idioma `SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"` e o alvo
+ * `node "$GUARD"` que sai dele: a descida das pipelines foi de **18 limites
+ * declarados para 2**, de **2 para 8** arquivos alcancados — e os dois que
+ * sobraram sem decisao local estao aqui, um a um, com a razao escrita (antes
+ * deles o `bash "$AUDIT"` e o `node "$GUARD"` eram "nao desci": invisiveis).
+ *
+ * O fato medido e o que sustenta a tabela: nenhum dos dois roda no hook porque
+ * o veredito local e o RECORTE do commit e os dois medem o HISTORICO/ a ARVORE
+ * inteira; os outros seis alcancados sao decididos pelas regras (a) e (b) — tres
+ * pelo hook DIRETO, dois pela bateria local (a descida do hook) e um por
+ * HOOK_NOT_RUN. O proximo sub-guard que nao for alcancado
+ * localmente cai aqui (ou vira um comando do hook): a escolha e escrita.
  *
  * @type {{file: string, why: string}[]}
  */
-export const RUNNER_SUBGUARD = []
+export const RUNNER_SUBGUARD = [
+  {
+    file: "scripts/audit-blob-crlf-history.sh",
+    why: "o hook roda o RECORTE do indice (`check:blob-crlf --staged`, outro script); este varre TODOS os blobs de TODAS as revisoes do git, e o custo nao cabe num hook por commit — a varredura do HISTORICO e do job do CI (pr-check.yml, com o crime do commit ja reprovado localmente).",
+  },
+  {
+    file: "scripts/check-jsdom-baseline.mjs",
+    why: "o gate `check:jsdom-baseline` mede a ARVORE inteira (baseline de jsdom) e nao o recorte do commit: ele roda no job do CI (pr-check.yml), com a suite de mutacao dele ao lado — no hook o veredito local e o recorte, nunca o global.",
+  },
+  {
+    file: "scripts/metades.mjs",
+    why: "nao e um gate: e a REGUA das metades (biblioteca pura, sem veredito proprio). O CI a executa por dois caminhos — o master de mutacao (`bash scripts/test-mutation-guards.sh`, que imprime a descricao de cada sub-test) e o `check:mutation-count` —, e nenhum dos dois roda no hook (o master custa ~10 min). O que a regua decide e lido pelos consumidores; se ela estiver errada, quem fica vermelho e o master e o `check:mutation-count` no CI.",
+  },
+]
 
 /**
  * Invariantes do CORE que os HOOKS NAO rodam, cada grupo com a razao escrita.

@@ -17,11 +17,23 @@
 //       entrada do package.json, binario de dependencia declarada, funcao do
 //       proprio hook, builtin do shell ou ferramenta externa DECLARADA)
 //   1 — comando que NAO resolve (caminho/script que nao existe, binario sem
-//       fornecedor, funcao chamada e nao definida, `source` de arquivo ausente)
-//       ou entrada de ALLOWLIST/INDETERMINATE sem data / fora da janela
+//       fornecedor, funcao chamada e nao definida, `source` de arquivo ausente),
+//       entrada de ALLOWLIST/INDETERMINATE sem data / fora da janela, ou NUMERO
+//       DE PRODUCAO da prosa que nao bate com o medido (ver abaixo)
 //   2 — infra: `.husky/` ou `package.json` ausente/ilegivel (fail-closed)
 //   3 — uso invalido (`--fix` com `--json`/`--list`, `--yes` sem `--fix`,
 //       `--root` sem valor)
+//
+// OS NUMEROS DE PRODUCAO DA PROSA sao DERIVADOS e CONFERIDOS: a doc publica o
+// total de comandos, os resolvidos, os indeterminados, os hooks e os scripts
+// descidos — e cada um e comparado com o que o `analyze()` acabou de medir (a
+// forma canonica de cada um esta em `NUMEROS_DA_PROSA`, e a secao "OS NUMEROS DE
+// PRODUCAO NA PROSA" explica o desenho). Eles ja estavam MENTIROSOS quando a
+// regra nasceu (a prosa dizia 250 comandos / 244 resolvidos / 105 nos hooks; o
+// medido era 251 / 245 / 106): um numero de doc que ninguem deriva envelhece
+// sozinho, e e por ele que o leitor confere a ESCALA deste guard — um nivel
+// acima do piso de cobertura, que mede o VAZIO; aqui o guard mede cheio e a doc
+// pode contar outra coisa.
 //
 // O REMENDO (`--fix`): a mensagem já diz QUAL era o caminho esperado ("o mais
 // próximo é `X`"); o `--fix` fecha a distância entre a DIAGNOSE e o CONSERTO,
@@ -892,17 +904,45 @@ export function shellCommands(content, { startLine = 1, origem = "" } = {}) {
 export const MARCA_DIR = "@DIR@"
 
 /**
- * Os idiomas que DIZEM "o diretorio deste arquivo". Sao dois porque os scripts da
- * casa escrevem os dois; qualquer outro `$( )` numa atribuicao e irresolvivel.
+ * O marcador do "diretorio PAI deste arquivo" — o idioma com que os scripts da
+ * casa chegam na RAIZ do repositorio:
+ *
+ *   SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"   # scripts/x.sh → a raiz
+ *
+ * Ele NAO e o mesmo marcador que `@DIR@`: o valor e outro diretorio, e a
+ * diferenca e o que faz o alvo sair certo (`$SCRIPT_DIR/scripts/x.mjs` vale
+ * `scripts/x.mjs`, enquanto `@DIR@/x.mjs` num script vale `scripts/x.mjs`).
+ * Resolve-lo como `@DIR@` provaria outro caminho — e um caminho que existe por
+ * acaso daria um verde que nao veio do disco.
+ */
+export const MARCA_DIR_PAI = "@DIRPAI@"
+
+/**
+ * Os idiomas que DIZEM "o diretorio deste arquivo" (`marca: @DIR@`) ou "o PAI
+ * dele" (`marca: @DIRPAI@`). Sao QUATRO porque os scripts da casa escrevem as
+ * duas formas com os dois nomes (`$0` e `${BASH_SOURCE[0]}`); qualquer outro
+ * `$( )` numa atribuicao e irresolvivel.
  */
 export const IDIOMAS_DIR = [
   {
     re: /^\$\(cd "\$\(dirname "\$\{?BASH_SOURCE\[0\]\}?"\)" && pwd\)$/,
     nome: "`$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)`",
+    marca: MARCA_DIR,
   },
   {
     re: /^\$\(cd "\$\(dirname "\$0"\)" && pwd\)$/,
     nome: "`$(cd $(dirname $0) && pwd)`",
+    marca: MARCA_DIR,
+  },
+  {
+    re: /^\$\(cd "\$\(dirname "\$\{?BASH_SOURCE\[0\]\}?"\)\/\.\." && pwd\)$/,
+    nome: "`$(cd $(dirname ${BASH_SOURCE[0]})/.. && pwd)`",
+    marca: MARCA_DIR_PAI,
+  },
+  {
+    re: /^\$\(cd "\$\(dirname "\$0"\)\/\.\." && pwd\)$/,
+    nome: "`$(cd $(dirname $0)/.. && pwd)`",
+    marca: MARCA_DIR_PAI,
   },
 ]
 
@@ -922,6 +962,58 @@ export const MAX_PROFUNDIDADE = 4
  */
 const ATRIBUICAO =
   /^\s*(?:export\s+|local\s+|readonly\s+|declare\s+(?:-[A-Za-z]+\s+)?)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/
+
+/**
+ * O primeiro WORD do lado direito de uma atribuicao.
+ *
+ * O shell corta o valor no primeiro espaco NAO citado, e o que vem depois e o
+ * COMANDO da linha: `GUARD="$GUARD" ALVO="$1" python3 - <<PY` atribui `"$GUARD"`
+ * a GUARD — nao a linha inteira. Sem o corte, o valor virava um texto que cita o
+ * proprio nome e a regua o lia como CICLO, deixando `node "$GUARD"` sem
+ * julgamento por um defeito de LEITURA (nao do arquivo). O prefixo de ambiente e
+ * a forma que a casa usa para passar o caminho ao script de mutacao.
+ *
+ * O limite declarado: aspas ESCAPADAS (\`) nao alternam o estado — um valor
+ * assim (raro, e nunca num caminho) e lido por inteiro, e um valor lido por
+ * INTEIRO so pode deixar o veredito mais exigente, nunca provar um alvo que nao
+ * existe.
+ */
+function primeiroWord(texto) {
+  // A PORTAO LEXICO da casa: a substituicao de comando abre um nivel PROPRIO (o
+  // shell a parsa como um comando novo), e o espaco so corta o valor no nivel de
+  // FORA (`"$(cd "$(dirname "$0")/.." && pwd)"` e UM valor; `VAR="$VAR" cmd`
+  // atribui so `"$VAR"`). Um scanner de aspas sem os niveis cortaria o primeiro
+  // no meio — e o valor lido a menos era o proprio idioma do SCRIPT_DIR.
+  /** @type {(string|null)[]} */
+  const aspas = [null]
+  for (let i = 0; i < texto.length; i++) {
+    const c = texto[i]
+    const nivel = aspas.length - 1
+    if (c === "\\" && aspas[nivel] === '"') {
+      i++
+      continue
+    }
+    if (aspas[nivel] === null && (c === '"' || c === "'")) {
+      aspas[nivel] = c
+      continue
+    }
+    if (aspas[nivel] !== null && c === aspas[nivel]) {
+      aspas[nivel] = null
+      continue
+    }
+    if (aspas[nivel] === null && c === "$" && texto[i + 1] === "(") {
+      aspas.push(null)
+      i++
+      continue
+    }
+    if (aspas[nivel] === null && c === ")" && nivel > 0) {
+      aspas.pop()
+      continue
+    }
+    if (aspas[nivel] === null && nivel === 0 && /\s/.test(c)) return texto.slice(0, i)
+  }
+  return texto
+}
 
 /**
  * As ATRIBUICOES de texto de um arquivo: nome → valores, na ORDEM, com a linha
@@ -958,7 +1050,7 @@ export function atribuicoesDoTexto(content) {
     if (/^\s*#/.test(linha)) return
     const m = ATRIBUICAO.exec(linha)
     if (m === null) return
-    const valor = m[2].trim()
+    const valor = primeiroWord(m[2]).trim()
     const entrada = mapa.get(m[1]) ?? { valores: [], linhas: [], exportados: [] }
     entrada.valores.push(valor)
     entrada.linhas.push(i + 1)
@@ -969,9 +1061,22 @@ export function atribuicoesDoTexto(content) {
   return mapa
 }
 
+/**
+ * O MARCADOR do idioma que o texto (ja desembrulhado) escreve, ou null.
+ *
+ * O `@DIR@` distingue-se do `@DIRPAI@` AQUI, num lugar so: quem le o idioma
+ * (o congelamento do parse, a leitura do valor e a prova do caminho) pergunta a
+ * mesma funcao — uma segunda tabela de reconhecimento divergiria do `IDIOMAS_DIR`
+ * no primeiro idioma novo.
+ */
+export function marcaDoIdioma(texto) {
+  const idioma = IDIOMAS_DIR.find((i) => i.re.test(desembrulha(texto)))
+  return idioma === undefined ? null : idioma.marca
+}
+
 /** O TEXTO (ja desembrulhado) e um dos idiomas de "o diretorio deste arquivo"? */
 export function eIdiomaDir(texto) {
-  return IDIOMAS_DIR.some((idioma) => idioma.re.test(texto))
+  return marcaDoIdioma(texto) !== null
 }
 
 /** Tira as aspas EXTERNAS de um valor (e o que o shell faz antes de usa-lo). */
@@ -998,7 +1103,37 @@ export function desembrulha(valor) {
  * verde que a heranca existe para fechar. MEDIDO na M20 da bateria de mutacao.
  */
 export function comDirCongelado(valor) {
-  return eIdiomaDir(desembrulha(valor)) ? MARCA_DIR : valor
+  return marcaDoIdioma(valor) ?? valor
+}
+
+/**
+ * Os valores com os MARCADORES trocados pelos diretorios do arquivo julgado.
+ *
+ * E a ULTIMA ponta da mesma regua: o congelamento do parse troca o idioma pelo
+ * marcador (onde a expressao foi escrita) e a substituicao acontece com o arquivo
+ * na mao — no valor provavel e na HERANCA (o `SCRIPT_DIR` exportado vale o
+ * diretorio de quem o exportou).
+ *
+ * O `/` de cola de um diretorio VAZIO nao e caminho absoluto: `$SCRIPT_DIR/x`
+ * com o PAI na raiz vale `x`, e nao `/x` — sem a normalizacao o valor provaria
+ * outra coisa e o filtro de "caminho do repositorio" o recusaria, deixando o
+ * alvo sem julgamento (que e o que a descida existe para fechar).
+ *
+ * @param {string[]} valores
+ * @param {{dir: string, dirPai?: string}} vars
+ * @returns {string[]}
+ */
+export function aplicaMarcas(valores, vars) {
+  const dirPai = vars.dirPai ?? ""
+  return valores.map((v) => {
+    if (!v.includes(MARCA_DIR) && !v.includes(MARCA_DIR_PAI)) return v
+    let s = v
+    if (s.includes(MARCA_DIR_PAI)) {
+      s = s.split(MARCA_DIR_PAI).join(dirPai)
+      if (dirPai === "" && v.startsWith(MARCA_DIR_PAI) && s.startsWith("/")) s = s.slice(1)
+    }
+    return s.split(MARCA_DIR).join(vars.dir)
+  })
 }
 
 /** O `$VAR` / `${VAR}` / parametro do shell, para varrer um texto ou um token. */
@@ -1043,7 +1178,8 @@ function valoresDoTexto(bruto, atribuicoes, visitados, profundidade) {
   // O idioma tambem e reconhecido AQUI (e nao so no congelamento do parse) porque
   // um `vars` montado a mao pode trazer o texto cru — a regua de reconhecimento e
   // a mesma (`eIdiomaDir`), num lugar so.
-  if (eIdiomaDir(texto)) return { ok: true, valores: [MARCA_DIR] }
+  const marca = marcaDoIdioma(texto)
+  if (marca !== null) return { ok: true, valores: [marca] }
   if (texto.includes("$(") || texto.includes("`") || texto.includes("$["))
     return {
       ok: false,
@@ -1076,6 +1212,22 @@ function valoresDoTexto(bruto, atribuicoes, visitados, profundidade) {
 }
 
 /**
+ * O valor e a PROPRIA variavel (`GUARD="$GUARD" cmd` — o prefixo de ambiente de
+ * UMA linha)?
+ *
+ * Ele nao acrescenta valor nenhum ao conjunto: o processo novo recebe o mesmo
+ * valor que o pai ja tinha. Deixa-lo entrar fazia a regua acusar CICLO num
+ * arquivo que so passa a variavel adiante — e o alvo de `node "$GUARD"` ficava
+ * sem julgamento por isso. O ciclo de verdade (`A="$B"` / `B="$A"`) continua
+ * sendo ciclo: ali o elo acrescenta um NOME novo a resolucao, e e isso que a
+ * profundidade e o `visitados` guardam.
+ */
+function ehAutoReferencia(valor, nome) {
+  const t = desembrulha(valor).trim()
+  return t === `$${nome}` || t === `\${${nome}}`
+}
+
+/**
  * Os valores provaveis de UMA variavel: TODAS as atribuicoes dela no arquivo.
  *
  * @param {string} nome
@@ -1092,6 +1244,7 @@ function valoresDaVariavel(nome, atribuicoes, visitados, profundidade) {
     return { ok: false, motivo: `a variável \`${nome}\` depende dela mesma (ciclo)` }
   const valores = []
   for (const valor of entrada.valores) {
+    if (ehAutoReferencia(valor, nome)) continue
     const r = valoresDoTexto(valor, atribuicoes, new Set([...visitados, nome]), profundidade + 1)
     if (!r.ok) return { ok: false, motivo: `\`${nome}\` (${ondeAtribuida(entrada)}): ${r.motivo}` }
     valores.push(...r.valores)
@@ -1117,7 +1270,7 @@ function ondeAtribuida(entrada) {
  * `$SCRIPT_DIR/check_utf8.mjs`).
  *
  * @param {string} token
- * @param {{atribuicoes: Map<string, {valores: string[], linhas: number[], exportados?: string[], herdadaDe?: string}>, dir: string}} vars
+ * @param {{atribuicoes: Map<string, {valores: string[], linhas: number[], exportados?: string[], herdadaDe?: string}>, dir: string, dirPai?: string}} vars
  * @returns {{ok: true, valores: string[], motivo: string}|{ok: false, motivo: string}}
  */
 export function caminhosProvaveis(token, vars) {
@@ -1148,7 +1301,7 @@ export function caminhosProvaveis(token, vars) {
   const combinacoes = produto(partes, MAX_VALORES)
   if (combinacoes === null)
     return { ok: false, motivo: `as combinações possíveis do token passam de ${MAX_VALORES}` }
-  const valores = [...new Set(combinacoes.map((v) => v.split(MARCA_DIR).join(vars.dir)))]
+  const valores = [...new Set(aplicaMarcas(combinacoes, vars))]
   const restos = valores.filter((v) => v.includes("$"))
   if (restos.length > 0)
     return {
@@ -1233,7 +1386,13 @@ export function variaveisDoArquivo(content, arquivo, herdadas = new Map()) {
     if (base.herdadaDe !== undefined) juntas.herdadaDe = base.herdadaDe
     atribuicoes.set(nome, juntas)
   }
-  return { atribuicoes, dir: dir === "." ? "" : dir }
+  // O `dirPai` e o idioma da RAIZ (`SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"`):
+  // para os scripts da casa (`scripts/x.sh`) ele vale `""`, que e a raiz do
+  // repositorio — o unico diretorio de onde `$SCRIPT_DIR/scripts/y.mjs` sai como
+  // `scripts/y.mjs`.
+  const dirRel = dir === "." ? "" : dir
+  const pai = dirname(dirRel)
+  return { atribuicoes, dir: dirRel, dirPai: pai === "." ? "" : pai }
 }
 
 /** Os caminhos citados numa mensagem (`x`, `y`). */
@@ -1404,7 +1563,7 @@ export function scriptAlvo(comando) {
  * conjunto que vale para o alvo do interpretador), cada um julgado UMA vez.
  *
  * @param {{programa: string, tokens: string[]}} comando
- * @param {{atribuicoes: Map<string, {valores: string[], linhas: number[]}>, dir: string}|undefined} vars
+ * @param {{atribuicoes: Map<string, {valores: string[], linhas: number[]}>, dir: string, dirPai?: string}|undefined} vars
  * @returns {{ok: true, valores: string[]}|{ok: false, motivo: string}}
  */
 export function alvosProvaveis(comando, vars) {
@@ -1546,7 +1705,7 @@ function classificaBruto(comando, ctx) {
  * (nomeando qual), e um valor cujo ALVO nao resolve e a violacao dele.
  *
  * @param {{programa: string, tokens: string[], linha: number, origem: string}} comando
- * @param {{vars?: {atribuicoes: Map<string, {valores: string[], linhas: number[]}>, dir: string}}} ctx
+ * @param {{vars?: {atribuicoes: Map<string, {valores: string[], linhas: number[]}>, dir: string, dirPai?: string}}} ctx
  * @returns {Veredito}
  */
 function julgaProgramaVariavel(comando, ctx) {
@@ -1622,7 +1781,7 @@ function julgaProgramaVariavel(comando, ctx) {
  * cadeia longa, conjunto acima do teto) segue indeterminado — e ai a decisao
  * datada continua sendo exigida, como antes.
  *
- * @param {{root: string, scripts: Record<string, unknown>, vars?: {atribuicoes: Map<string, {valores: string[], linhas: number[]}>, dir: string}}} ctx
+ * @param {{root: string, scripts: Record<string, unknown>, vars?: {atribuicoes: Map<string, {valores: string[], linhas: number[]}>, dir: string, dirPai?: string}}} ctx
  * @param {{linha: number, origem: string}} comando
  * @param {string} possivelEntrada
  * @param {boolean} explicito a forma era `bun run <entrada>` (e nao `bun <entrada>`)?
@@ -1709,7 +1868,7 @@ function julgaEntradaVariavel(ctx, comando, possivelEntrada, explicito) {
  * token de caminho a trocar (a variavel pode ter varios valores, e quem escolhe a
  * atribuicao errada e o operador).
  *
- * @param {{root: string, vars?: {atribuicoes: Map<string, {valores: string[], linhas: number[]}>, dir: string}}} ctx
+ * @param {{root: string, vars?: {atribuicoes: Map<string, {valores: string[], linhas: number[]}>, dir: string, dirPai?: string}}} ctx
  * @param {string} alvo
  * @param {string} papel
  * @param {number} linha
@@ -1976,12 +2135,12 @@ export function analyze({
    * le — o marcador `@DIR@` e resolvido no momento da HERANCA, nao no da leitura
    * do filho (que tem outro diretorio).
    *
-   * @param {{atribuicoes: Map<string, {valores: string[], linhas: number[], exportados: string[]}>, dir: string}} vars
+   * @param {{atribuicoes: Map<string, {valores: string[], linhas: number[], exportados: string[]}>, dir: string, dirPai?: string}} vars
    * @param {string} de o arquivo que esta passando as variaveis
    * @param {boolean} tudo o chamador e `source`/`.` (mesmo shell)?
    */
   const herancaPara = (vars, de, tudo) => {
-    const resolvidos = (lista) => lista.map((v) => v.split(MARCA_DIR).join(vars.dir))
+    const resolvidos = (lista) => aplicaMarcas(lista, vars)
     const saida = new Map()
     for (const [nome, entrada] of vars.atribuicoes) {
       const paraOProcesso = tudo ? entrada.valores : entrada.exportados
@@ -2080,11 +2239,31 @@ export function analyze({
     reviewDays,
   })
 
+  const scriptsDescentidosOrdenados = scriptsDescentidos.sort()
+  // A PROSA nao carrega numero escrito a mao: os numeros que a doc publica
+  // sobre este guard sao CONFERIDOS contra o que ele acabou de medir (ver
+  // `numerosDaProsa`), e as violacoes vivem em `doc` — separadas de
+  // `violacoes` de proposito, porque a SOMA de desfechos dos comandos
+  // (`resolvidos + indeterminados + violacoes === comandos`) mede a extracao, e
+  // uma prosa desatualizada nao pode entrar nela.
+  //
+  // O retorno e UM literal (e nao um `report` montado antes): e essa forma que
+  // mantem a uniao com o caminho `infra` redutivel pelo `tsc` — o consumidor
+  // (o `forge-doctor`) le `.comandos` depois de conferir `.infra`, e um objeto
+  // inferido em duas etapas deixa de ser subtipo do caminho de falha.
+  const doc = numerosDaProsa({
+    root,
+    hooks,
+    scripts: scriptsDescentidosOrdenados,
+    comandos: relatorios,
+    resolvidos,
+    indeterminados,
+  })
   return {
     infra: false,
     root,
     hooks,
-    scripts: scriptsDescentidos.sort(),
+    scripts: scriptsDescentidosOrdenados,
     limites,
     comandos: relatorios,
     resolvidos,
@@ -2093,6 +2272,7 @@ export function analyze({
     allowlistReview,
     indeterminadosReview,
     reviewDays,
+    doc,
   }
 }
 
@@ -2731,8 +2911,10 @@ o comando indeterminado (o payload de \`-c\`, que não é caminho, segue exigind
 decisão datada em \`INDETERMINATE\`).
 
 Exit code:
-  0 — todo comando resolve (e as listas de decisão estão dentro da janela)
-  1 — comando que não resolve, ou decisão sem \`addedAt\` / fora da janela
+  0 — todo comando resolve (e as listas de decisão estão dentro da janela, e os
+      números de produção da prosa batem com o medido)
+  1 — comando que não resolve, decisão sem \`addedAt\` / fora da janela, ou número
+      de produção da prosa que não bate com o medido
   2 — infra: \`.husky/\` ou \`package.json\` ausente/ilegível (fail-closed)
   3 — uso inválido (\`--fix\` com \`--json\`/\`--list\`, \`--yes\` sem \`--fix\`,
       \`--root\` sem valor)
@@ -2749,13 +2931,184 @@ plano, com o motivo. E como
 leva o veredito de um \`git commit\` NOVO.
 `
 
+// ── OS NUMEROS DE PRODUCAO NA PROSA (derivados do medido, conferidos) ──────
+
+/**
+ * A doc que publica os numeros deste guard.
+ *
+ * POR QUE ESTA REGRA EXISTE: a prosa do `docs/GUARDS.md` citava os numeros de
+ * producao deste guard (total, resolvidos, hooks, scripts descidos) escritos A
+ * MAO — e eles JA estavam mentirosos quando a regra nasceu (a prosa dizia 250
+ * comandos / 244 resolvidos / 105 nos hooks; o medido era 251 / 245 / 106). Um
+ * numero de doc que ninguem deriva envelhece sozinho: o leitor confere a escala
+ * do guard por ele, e a escala errada faz um guard cego parecer saudavel (a
+ * mesma classe do piso de cobertura, um nivel acima: no piso o guard mede o
+ * VAZIO, aqui ele mede cheio e a doc conta outra coisa).
+ *
+ * Os numeros NAO sao recopiados para lugar nenhum: a regra le a prosa na FORMA
+ * CANONICA (abaixo), compara com o que o `analyze()` mediu e falha nomeando o
+ * delta. Uma forma que sumiu da prosa e violacao (a doc parou de publicar), e
+ * duas declaracoes DIFERENTES da mesma forma tambem (a regua nao escolhe uma).
+ */
+export const DOC_NUMEROS = "docs/GUARDS.md"
+
+/**
+ * A FORMA CANONICA de cada numero na prosa, com o que ele tem de bater.
+ *
+ * Cada entrada casa o texto da doc e devolve os numeros que ele DECLARA; o
+ * `medido` devolve os mesmos em ORDEM, para a comparacao ser posicional sem
+ * precisar de duas reguas de leitura.
+ */
+const NUMEROS_DA_PROSA = [
+  {
+    campo: "comandos",
+    forma: "**<N> comandos**",
+    re: /\*\*(\d+)\s+comandos\*\*/g,
+    medido: (r) => [r.comandos.length],
+    rotulo: "o total de comandos julgados",
+  },
+  {
+    campo: "dentroDosHooks",
+    forma: "<N> nos <N> hooks",
+    re: /(\d+)\s+nos\s+(\d+)\s+hooks?\b/g,
+    medido: (r) => [nosHooks(r).length, r.hooks.length],
+    rotulo: "os comandos dentro dos hooks e o nº de hooks",
+  },
+  {
+    campo: "dentroDosScripts",
+    forma: "<N> dentro dos <N> scripts chamados",
+    re: /(\d+)\s+dentro dos\s+(\d+)\s+scripts?\s+chamados?/g,
+    medido: (r) => [nosScripts(r).length, r.scripts.length],
+    rotulo: "os comandos dentro dos scripts chamados e o nº deles",
+  },
+  {
+    campo: "resolvidos",
+    forma: "**<N> resolvidos**",
+    re: /\*\*(\d+)\s+resolvidos?\*\*/g,
+    medido: (r) => [r.resolvidos.length],
+    rotulo: "os comandos resolvidos",
+  },
+  {
+    campo: "indeterminados",
+    forma: "**<N> indeterminados",
+    re: /\*\*(\d+)\s+indeterminados?\b/g,
+    medido: (r) => [r.indeterminados.length],
+    rotulo: "os comandos indeterminados",
+  },
+]
+
+/**
+ * Os comandos julgados NO PROPRIO hook (a outra metade e a descida).
+ *
+ * A fronteira e o ARQUIVO do comando, nao o campo `origem`: um comando que vive
+ * dentro de um `$( ... )` do hook carrega `origem: "substituicao"` e o arquivo
+ * continua sendo o hook — separar por `origem` moveria 27 comandos do hook para
+ * a descida, que e exatamente o numero que a prosa publica (106/145).
+ */
+function nosHooks(report) {
+  const hooks = new Set(report.hooks)
+  return report.comandos.filter((c) => hooks.has(c.arquivo))
+}
+
+/** Os comandos julgados no INTERIOR de um script chamado (a descida). */
+function nosScripts(report) {
+  const hooks = new Set(report.hooks)
+  return report.comandos.filter((c) => !hooks.has(c.arquivo))
+}
+
+/**
+ * Os numeros de producao da prosa contra o medido.
+ *
+ * Nunca lanca: devolve `{declarado, medido, violacoes}`. Um arquivo ausente e
+ * uma violacao QUANDO o root e o proprio repositorio (a doc e um arquivo deste
+ * contrato) e um LIMITE DECLARADO num fixture (a arvore de teste nao carrega a
+ * doc, e exigir uma doc com os numeros do fixture seria medir outra coisa).
+ *
+ * @param {{root?: string, hooks?: string[], scripts?: string[], comandos?: object[],
+ *   resolvidos?: object[], indeterminados?: object[]}} report
+ *   o que o `analyze()` mediu (o relatório inteiro, ou o mínimo que a régua lê)
+ * @returns {{arquivo: string, ausente: boolean, declarado: Record<string, number[]|null>,
+ *            medido: Record<string, number[]>,
+ *            violacoes: {arquivo: string, linha: number, programa: string, motivo: string}[]}}
+ */
+export function numerosDaProsa(report) {
+  const caminho = join(report.root, DOC_NUMEROS)
+  const medido = {}
+  for (const forma of NUMEROS_DA_PROSA) medido[forma.campo] = forma.medido(report)
+  const declarado = {}
+  for (const forma of NUMEROS_DA_PROSA) declarado[forma.campo] = null
+  const violacoes = []
+
+  if (!existsSync(caminho)) {
+    if (report.root === ROOT) {
+      violacoes.push({
+        arquivo: DOC_NUMEROS,
+        linha: 0,
+        programa: "numerosDaProsa",
+        motivo: `${DOC_NUMEROS} nao existe: a prosa dos numeros de producao deste guard nao tem onde ser publicada (e a regra que a confere fica cega).`,
+      })
+    }
+    return { arquivo: DOC_NUMEROS, ausente: true, declarado, medido, violacoes }
+  }
+
+  const texto = readFileSync(caminho, "utf8")
+  const faltando = []
+  for (const forma of NUMEROS_DA_PROSA) {
+    // O indice do casamento vem do `matchAll`: a LINHA da declaracao tem de
+    // sair da posicao do proprio casamento (um `indexOf` dos digitos acharia o
+    // primeiro "7" da doc, nao o "7 indeterminados" da linha publicada).
+    const achados = [...texto.matchAll(forma.re)].map((m) => ({
+      valores: m.slice(1).map(Number),
+      linha: texto.slice(0, m.index).split("\n").length,
+    }))
+    if (achados.length === 0) {
+      faltando.push(forma.forma)
+      continue
+    }
+    const distintas = [...new Set(achados.map((a) => a.valores.join(" / ")))]
+    if (distintas.length > 1) {
+      violacoes.push({
+        arquivo: DOC_NUMEROS,
+        linha: achados[0].linha,
+        programa: forma.campo,
+        motivo: `a prosa declara ${forma.rotulo} de DUAS formas diferentes (${distintas.join(" | ")}) — a regua nao escolhe uma: deixe UMA declaracao na forma \`${forma.forma}\`.`,
+      })
+      continue
+    }
+    declarado[forma.campo] = achados[0].valores
+    if (achados[0].valores.join(" / ") !== medido[forma.campo].join(" / ")) {
+      let i = 0
+      const comMedido = forma.forma.replace(/<N>/g, () => String(medido[forma.campo][i++]))
+      violacoes.push({
+        arquivo: DOC_NUMEROS,
+        linha: achados[0].linha,
+        programa: forma.campo,
+        motivo: `a prosa declara ${forma.rotulo} como ${achados[0].valores.join(" / ")} e o medido e ${medido[forma.campo].join(" / ")} — o numero da doc nao e derivado do \`analyze()\`: escreva \`${comMedido}\`.`,
+      })
+    }
+  }
+  if (faltando.length > 0) {
+    violacoes.push({
+      arquivo: DOC_NUMEROS,
+      linha: 0,
+      programa: "numerosDaProsa",
+      motivo: `os numeros de producao deste guard estao INCOMPLETOS na prosa: falta(m) ${faltando.map((f) => `\`${f}\``).join(", ")} (ou a forma saiu do formato canonico). A doc publica os numeros medidos do \`analyze()\` — um deles sumir nao pode virar "nao ha o que conferir".`,
+    })
+  }
+  return { arquivo: DOC_NUMEROS, ausente: false, declarado, medido, violacoes }
+}
+
 function printReport(report, { list = false } = {}) {
   if (report.infra) {
     if (report.hooks.length === 0) console.error("❌ .husky/ sem nenhum hook — nada a julgar")
     else console.error("❌ package.json ausente ou ilegível — scripts não julgáveis")
     return EXIT.UNJUDGEABLE
   }
-  const violacoes = [...report.violacoes, ...reviewViolations(report)]
+  const violacoes = [
+    ...report.violacoes,
+    ...reviewViolations(report),
+    ...(report.doc?.violacoes ?? []),
+  ]
 
   const descidos = report.scripts ?? []
   const limites = report.limites ?? []
@@ -2796,6 +3149,24 @@ function printReport(report, { list = false } = {}) {
   // faria "não fui olhar" passar por "não há o que julgar la dentro".
   for (const l of limites)
     console.log(`   ⚠️  ${l.arquivo}:${l.linha} \`${l.programa} ${l.alvo}\` — ${l.motivo}`)
+
+  // Os numeros de producao que a doc publica saem do proprio medido: a linha
+  // abaixo e a MESMA fonte que a regra confere, entao ler o relatorio e ler a
+  // doc nao podem contar coisas diferentes.
+  if (report.doc !== undefined) {
+    if (report.doc.ausente)
+      console.log(
+        `   ⚠️  ${DOC_NUMEROS} ausente neste root — os numeros de producao da prosa nao foram conferidos (limite declarado do fixture)`,
+      )
+    else
+      console.log(
+        `📄 Prosa (${DOC_NUMEROS}): ${report.doc.medido.comandos.join(" / ")} comando(s) ` +
+          `(${report.doc.medido.dentroDosHooks.join(" nos ")} hooks + ` +
+          `${report.doc.medido.dentroDosScripts.join(" dentro dos ")} scripts chamados), ` +
+          `${report.doc.medido.resolvidos.join(" / ")} resolvido(s), ` +
+          `${report.doc.medido.indeterminados.join(" / ")} indeterminado(s) — DERIVADOS do medido`,
+      )
+  }
 
   if (violacoes.length === 0) {
     console.log(
@@ -2885,7 +3256,9 @@ if (invokedDirectly) {
   } else {
     const report = analyze({ root: opts.root })
     if (opts.json) {
-      const violacoes = report.infra ? [] : [...report.violacoes, ...reviewViolations(report)]
+      const violacoes = report.infra
+        ? []
+        : [...report.violacoes, ...reviewViolations(report), ...(report.doc?.violacoes ?? [])]
       // O PLANO entra no JSON porque um consumidor (o remédio do pre-commit)
       // precisa dos MESMOS alvos que o `--fix` usaria sem re-derivá-los por
       // conta própria — duas derivações divergiriam no dia em que uma mudasse.
@@ -2903,6 +3276,17 @@ if (invokedDirectly) {
             total: report.comandos?.length ?? 0,
             resolvidos: report.resolvidos?.length ?? 0,
             indeterminados: report.indeterminados ?? [],
+            // O que a prosas publica sobre este guard, derivado do medido: o
+            // mesmo par (declarado, medido) que a regra confere.
+            numeros: report.doc?.medido ?? null,
+            doc:
+              report.doc === undefined
+                ? null
+                : {
+                    arquivo: report.doc.arquivo,
+                    ausente: report.doc.ausente,
+                    declarado: report.doc.declarado,
+                  },
             violacoes,
             remendos: remendo.plano ?? [],
             remendosRecusados: remendo.recusas ?? [],

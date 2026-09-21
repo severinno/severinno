@@ -362,6 +362,16 @@ export function benchIndex(bench) {
       if (form.role === "current") add(form.cmd, form.ms)
     }
   }
+  // O MASTER de mutação (o job mais caro do PR): o custo do passo vem da MEDIÇÃO
+  // por sub-test que o próprio master reporta em `--json` (a família `mutations`
+  // do benchmark, versionada na baseline sub-test a sub-test). O declarado
+  // continua mandando e o derivado o confronta — mas a partir daqui o confronto é
+  // uma MEDIÇÃO, e um sub-test novo move o derivado sem ninguém recontar a soma à
+  // mão. O `cmd` gravado é o comando MEDIDO (com `--json`, que é o modo que dá o
+  // dado); o `instrumentKey` casa com o passo do job, que roda o mesmo script.
+  if (bench.mutations?.measured && Number.isFinite(bench.mutations?.deltas?.totalMs)) {
+    add(bench.mutations.cmd, bench.mutations.deltas.totalMs)
+  }
   return { byCmd, byScript }
 }
 

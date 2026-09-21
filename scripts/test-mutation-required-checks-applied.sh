@@ -111,6 +111,23 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'M1|a régua do RENAME (derivado ⊄ aplicado): o contexto que passou a existir'
+  'M2|a régua do ÓRFÃO (aplicado ⊄ derivado): a declaração exige um check inexistente'
+  'M3|o FIO em main(): a metade aplicada deixa de ser julgada'
+  'M4|o FAIL-CLOSED do carregamento: loadApplied passa a devolver null em'
+  'M5|o applier RESPEITA o alvo (buildAppliedRecord)'
+  'M6|o applier não gera CHURN (buildAppliedRecord)'
+  'M7|a FONTE do veredito local é o ÍNDICE (indexIo ⇒ git show :path)'
+  'M8|o FAIL-CLOSED do índice: stagedPaths estoura quando o git não responde'
+  'M9|o applier DECLARA a forja que recusa a feature (buildAppliedRecord)'
+  'M10|o MOTIVO do marcador (validateApplied): mutação que aceita'
+)
 # O guard: julga as DUAS metades (M1..M4) E é a fonte única das funções que
 # ESCREVEM a declaração (M5/M6) — o applier só as importa e as chama.
 GUARD="$SCRIPT_DIR/scripts/check-required-checks.mjs"

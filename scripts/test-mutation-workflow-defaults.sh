@@ -74,6 +74,20 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'A|a leitura compartilhada para de ler'
+  'B|a leitura existe e o guard não a consulta'
+  'C|o doctor aceita a declaração como comando do job'
+  'D|os guards de REF voltam a contar a declaração como passo'
+  'D1|o check-workflow-refs tem um PULO PRÓPRIO (defaults.has(i + 1)) em'
+  'D2|a régua deixa de exigir ITEM DE LISTA e a declaração vira passo'
+  'E|a leitura cega para o escopo do JOB'
+)
 cd "$SCRIPT_DIR"
 
 PARITY="scripts/check-forge-parity.mjs"

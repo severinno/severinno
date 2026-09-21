@@ -77,6 +77,15 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'M1|A FONTE (openTerminal)'
+  'M2|O CALL SITE (const tty = … ? openTty() : null)'
+)
 # A FONTE da resposta: quem abre o terminal de controle.
 PROMPT="$SCRIPT_DIR/scripts/confirm-prompt.mjs"
 # Quem a CHAMA: o remédio do pre-commit.

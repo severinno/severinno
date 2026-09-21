@@ -69,6 +69,16 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'C1|link SEMANTICAMENTE errado → o guard FALHA com exit 1 exato'
+  'C2|o MESMO achado no issue dry-run (título e corpo corretos)'
+  'C3|link QUEBRADO (forward) → o guard FALHA com exit 2 de infra'
+)
 GUARD="$SCRIPT_DIR/scripts/check-readme-reverse-baseline.mjs"
 ISSUE_SCRIPT="$SCRIPT_DIR/scripts/readme-reverse-issue.mjs"
 

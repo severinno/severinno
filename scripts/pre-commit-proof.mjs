@@ -217,6 +217,17 @@ export const GUARD_CLOSURE = [
   "pr-remedy-comment.mjs",
   "pr-comment-channel.mjs",
   "issue-publish.mjs",
+  // O REGISTRO do canal virou DESCOBERTA (`pr-fixers.mjs` → as declarações de
+  // `remedy-canal/`), e o `pr-remedy-comment.mjs` o importa: sem estas linhas o
+  // fixture morre com "module not found". As declarações do canal são importadas
+  // por CAMINHO CALCULADO (a varredura de diretório não é estática), então o
+  // `closureProblems` não as vê — é por isso que elas entram aqui à mão, como as
+  // classes do pre-commit. O `remedy-canal.mjs` (o LEITOR folha do diretório) é
+  // estático nas DUAS pontas: o `pr-fixers.mjs` e o `check-forge-parity.mjs`.
+  "pr-fixers.mjs",
+  "remedy-canal.mjs",
+  "remedy-canal/run-syntax.mjs",
+  "remedy-canal/pipefail-sigpipe.mjs",
 ]
 
 export const WORKFLOW = `${GITHUB_WORKFLOW_DIR}/ci.yml`

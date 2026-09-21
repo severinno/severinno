@@ -49,6 +49,14 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'A|o sentinel com CRLF removido do audit all-text deve FALHAR o teste do alerta'
+)
 WRAPPER="$SCRIPT_DIR/scripts/audit-blob-crlf-history.sh"
 PY_REAL="$SCRIPT_DIR/scripts/audit_blob_crlf_history.py"
 

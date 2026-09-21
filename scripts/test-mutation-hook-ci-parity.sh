@@ -81,6 +81,21 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'A|a divergência REAL volta (segunda régua do typecheck)'
+  'B|comando novo no hook sem decisão'
+  'C|recorte sem razão escrita'
+  'D|declaração que envelheceu'
+  'E|gate do CORE fora do hook e fora de HOOK_NOT_RUN'
+  'F|hook declarado que não existe (fail-closed)'
+  'G|sub-guard de um runner sem decisão local'
+  'H|a descida do lado LOCAL cega'
+)
 cd "$SCRIPT_DIR"
 
 GUARD="scripts/check-hook-ci-parity.mjs"
@@ -447,13 +462,16 @@ if ! violated "scripts/check_utf8.py: SUB-GUARD do runner" || ! violated "script
   sed 's/^/      /' "$VIOLATIONS" | head -6
   exit 1
 fi
-# A prova da metade local, pelo DADO e não pela prosa: nenhum sub-guard segue
-# decidido e a bateria local deixou de listar os dois arquivos (a descida cegou).
+# A prova da metade local, pelo DADO e não pela prosa: nenhuma decisão que venha
+# da DESCIDA do hook sobrevive, e a bateria local deixou de listar os dois
+# arquivos. As decisões "executado direto por .husky/pre-commit" NÃO dependem da
+# descida (o hook executa aqueles três na linha) e por isso seguem de pé — é
+# exatamente essa a metade que a mutação tira.
 if [ "$(node -e '
   const j = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))
-  console.log(j.subguards.filter((s) => s.decision !== null).length)
+  console.log(j.subguards.filter((s) => (s.decision ?? "").startsWith("pelo runner")).length)
 ' "$JSON_OUT")" -ne "0" ]; then
-  fail "mutação H: ainda há sub-guard com decisão local — a mutação não cegou a descida"
+  fail "mutação H: ainda há sub-guard decidido PELA DESCIDA do hook — a mutação não cegou a descida"
   exit 1
 fi
 if [ "$(node -e '

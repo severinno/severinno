@@ -103,11 +103,25 @@ import {
   workflowYamlValidity,
 } from "./forge-workflows.mjs"
 
-// O REGISTRO de fixers do canal do remédio — a fonte única da COBERTURA. O
-// guard o importa de propósito: a régua da paridade não pode ser uma lista à mão
-// de fixers (ela envelheceria no primeiro fixer novo, que é exatamente o que
-// esta regra existe para impedir).
-import { FIXERS } from "./pr-remedy-comment.mjs"
+// As DECLARAÇÕES do canal do remédio — a fonte única da COBERTURA. O guard as lê
+// de propósito: a régua da paridade não pode ser uma lista à mão de fixers (ela
+// envelheceria no primeiro fixer novo, que é exatamente o que esta regra existe
+// para impedir).
+//
+// A LEITURA É DO DIRETÓRIO (`remedy-canal.mjs`, folha), e não do registro
+// montado (`pr-fixers.mjs`). Não é economia: o `pr-fixers.mjs` usa top-level
+// await (importa as declarações e os guards donos em runtime) e este guard É
+// ALCANÇÁVEL a partir de uma CLASSE (`remedy-classes/<id>.mjs` → guard dono →
+// `check-hook-ci-parity` → aqui). Importar o registro daqui fechava o ciclo com
+// o `remedy-classes.mjs` (também TLA) e o node saía **13** sem imprimir nada —
+// medido, com o `pre-commit-remedy.mjs` do hook morrendo junto. O que esta regra
+// precisa são os IDs, e os IDs são os NOMES dos arquivos do diretório.
+//
+// A cobertura é a das DECLARAÇÕES (o conjunto de arquivos), e não a do registro
+// VALIDADO: uma declaração que a descoberta recusou continua sendo um remendo que
+// o repositório publica — e a rodada em que ele é recusado já sai vermelha no
+// `pr-remedy-comment.mjs` (exit 2), não aqui.
+import { idsDoCanal } from "./remedy-canal.mjs"
 
 const ROOT = process.cwd()
 
@@ -944,9 +958,12 @@ export const REMEDY_CHANNEL = {
   backendFlag: "--backend",
 }
 
-/** Os fixers que o REGISTRO declara — a fonte única da cobertura esperada. */
+/**
+ * Os fixers que as DECLARAÇÕES do canal declaram — a fonte única da cobertura
+ * esperada (ver o cabeçalho do import: diretório, não registro montado).
+ */
 export function remedyFixers() {
-  return Object.keys(FIXERS)
+  return idsDoCanal()
 }
 
 /**

@@ -468,6 +468,7 @@ describe("bench-guard-timing — a procedência de cada família", () => {
       typecheck?: unknown
       tests?: unknown
       hook?: unknown
+      mutations?: unknown
       guards?: unknown
       doctor?: unknown
     } = {},
@@ -490,6 +491,7 @@ describe("bench-guard-timing — a procedência de cada família", () => {
     lint: familias.lint ?? null,
     rulers: { typecheck: familias.typecheck ?? null, tests: familias.tests ?? null },
     hook: familias.hook ?? null,
+    mutations: familias.mutations ?? null,
   })
   const completa = () =>
     rodada({
@@ -497,6 +499,10 @@ describe("bench-guard-timing — a procedência de cada família", () => {
       typecheck: { canonicalMs: 24_000 },
       tests: { canonicalMs: 131_000 },
       hook: hookMedido,
+      // A sexta família: uma rodada completa mede também o custo de CADA
+      // sub-test do master (a seção existe com `measured: true` — é a mesma
+      // régua de "foi medida?" que a procedência usa).
+      mutations: { measured: true, forms: [], deltas: {} },
     })
 
   it("toda família declarada tem procedência — nenhuma some da tabela", () => {
@@ -510,7 +516,7 @@ describe("bench-guard-timing — a procedência de cada família", () => {
     expect(Object.keys(ACT_LABELS).sort()).toEqual(["measured", "not-measured", "reused"])
   })
 
-  it("numa rodada completa, as cinco saem `measured` com o commit da rodada", () => {
+  it("numa rodada completa, as seis saem `measured` com o commit da rodada", () => {
     const p = familyProvenance({ result: completa() })
 
     for (const family of Object.keys(FAMILY_MEASURED)) {
@@ -536,6 +542,9 @@ describe("bench-guard-timing — a procedência de cada família", () => {
     }
 
     expect(merged.meta.families.lint.act).toBe("reused")
+    // A família nova segue a MESMA régua de herança das outras: sem ela nesta
+    // rodada (e sem nada a herdar no `anterior`), é não-medida — não um "0ms".
+    expect(merged.meta.families.mutations.act).toBe("not-measured")
     expect(merged.meta.families.lint.commit).toBe("bbbb2222")
     expect(merged.meta.families.lint.source).toBe("guard-timing-latest.json")
     // O que esta rodada MEDIU continua sendo de agora — a herança não contamina

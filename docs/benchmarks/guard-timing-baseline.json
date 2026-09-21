@@ -1,11 +1,11 @@
 {
   "meta": {
     "tool": "bench-guard-timing",
-    "version": 5,
-    "commit": "ede301c8",
-    "commitDate": "2026-09-18 11:46:00 -0300",
-    "timestamp": "2026-09-18T21:36:45.584Z",
-    "act": "bench-guard-timing --only hook --json --baseline --merge --samples 3",
+    "version": 6,
+    "commit": "d9356e8d",
+    "commitDate": "2026-09-20 21:27:27 -0300",
+    "timestamp": "2026-09-21T05:11:46.574Z",
+    "act": "bench-guard-timing --only mutations --json --baseline --merge",
     "nodeVersion": "v20.20.2",
     "platform": "linux",
     "arch": "x64",
@@ -13,56 +13,67 @@
     "totalMemMb": 32011,
     "reused": {
       "lint": {
-        "commit": "ede301c8",
-        "timestamp": "2026-09-18T14:50:59.962Z"
+        "commit": "d9356e8d",
+        "timestamp": "2026-09-21T03:35:27.640Z"
       },
       "typecheck": {
-        "commit": "ede301c8",
-        "timestamp": "2026-09-18T14:50:59.962Z"
+        "commit": "d9356e8d",
+        "timestamp": "2026-09-21T03:35:27.640Z"
       },
       "tests": {
-        "commit": "ede301c8",
-        "timestamp": "2026-09-18T14:50:59.962Z"
+        "commit": "d9356e8d",
+        "timestamp": "2026-09-21T03:35:27.640Z"
+      },
+      "hook": {
+        "commit": "d9356e8d",
+        "timestamp": "2026-09-21T03:35:27.640Z"
       },
       "battery": {
-        "commit": "ede301c8",
-        "timestamp": "2026-09-18T14:50:59.962Z"
+        "commit": "d9356e8d",
+        "timestamp": "2026-09-21T03:35:27.640Z"
       }
     },
     "families": {
       "battery": {
         "act": "reused",
-        "commit": "ede301c8",
-        "commitDate": "2026-09-18 11:46:00 -0300",
-        "timestamp": "2026-09-18T14:50:59.962Z",
+        "commit": "d9356e8d",
+        "commitDate": "2026-09-20 21:27:27 -0300",
+        "timestamp": "2026-09-21T03:35:27.640Z",
         "source": "guard-timing-latest.json"
       },
       "lint": {
         "act": "reused",
-        "commit": "ede301c8",
-        "commitDate": "2026-09-18 11:46:00 -0300",
-        "timestamp": "2026-09-18T14:50:59.962Z",
+        "commit": "d9356e8d",
+        "commitDate": "2026-09-20 21:27:27 -0300",
+        "timestamp": "2026-09-21T03:35:27.640Z",
         "source": "guard-timing-latest.json"
       },
       "typecheck": {
         "act": "reused",
-        "commit": "ede301c8",
-        "commitDate": "2026-09-18 11:46:00 -0300",
-        "timestamp": "2026-09-18T14:50:59.962Z",
+        "commit": "d9356e8d",
+        "commitDate": "2026-09-20 21:27:27 -0300",
+        "timestamp": "2026-09-21T03:35:27.640Z",
         "source": "guard-timing-latest.json"
       },
       "tests": {
         "act": "reused",
-        "commit": "ede301c8",
-        "commitDate": "2026-09-18 11:46:00 -0300",
-        "timestamp": "2026-09-18T14:50:59.962Z",
+        "commit": "d9356e8d",
+        "commitDate": "2026-09-20 21:27:27 -0300",
+        "timestamp": "2026-09-21T03:35:27.640Z",
         "source": "guard-timing-latest.json"
       },
       "hook": {
+        "act": "reused",
+        "commit": "d9356e8d",
+        "commitDate": "2026-09-20 21:27:27 -0300",
+        "timestamp": "2026-09-21T03:35:27.640Z",
+        "source": "guard-timing-latest.json"
+      },
+      "mutations": {
         "act": "measured",
-        "commit": "ede301c8",
-        "commitDate": "2026-09-18 11:46:00 -0300",
-        "timestamp": "2026-09-18T21:36:45.584Z",
+        "commit": "d9356e8d",
+        "commitDate": "2026-09-20 21:27:27 -0300",
+        "timestamp": "2026-09-21T05:11:46.574Z",
         "source": null
       }
     }
@@ -83,7 +94,11 @@
     "hookEsperaMs": 1,
     "hookOfferFalhaMs": 143,
     "hookRevalidacaoMs": 71,
-    "hookDetectionMs": 305
+    "hookDetectionMs": 305,
+    "mutationSubtests": 33,
+    "mutationSubtestsMs": 268397,
+    "mutationHarnessMs": 3669,
+    "mutationTotalMs": 272066
   },
   "guards": [
     {
@@ -750,6 +765,494 @@
       "caminho de FALHA (defeito no índice): a oferta custa +143ms — fail-closed, sem terminal ela não pergunta nem remenda",
       "depois de um remédio VERDE, a fase rodada de novo custa +71ms (aqui só o gate de sintaxe é re-executado: a fase B é dublada no fixture)",
       "detecção contra a ÁRVORE REAL: 305ms (\"nada a remendar neste commit\") — e não escreveu nada"
+    ]
+  },
+  "mutations": {
+    "measured": true,
+    "cmd": "bash scripts/test-mutation-guards.sh --json",
+    "exit": 0,
+    "wallMs": 272094,
+    "subtests": 33,
+    "metades": 193,
+    "forms": [
+      {
+        "role": "bun-literal",
+        "label": "bun-literal",
+        "ms": 1781,
+        "exit": 0,
+        "metades": 5,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 1781,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "bun-removal",
+        "label": "bun-removal",
+        "ms": 118,
+        "exit": 0,
+        "metades": 1,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 118,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "hooks-symmetry",
+        "label": "hooks-symmetry",
+        "ms": 103,
+        "exit": 0,
+        "metades": 2,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 103,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "readme",
+        "label": "readme",
+        "ms": 383,
+        "exit": 0,
+        "metades": 3,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 383,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "readme-reverse",
+        "label": "readme-reverse",
+        "ms": 574,
+        "exit": 0,
+        "metades": 3,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 574,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "docs-anchor",
+        "label": "docs-anchor",
+        "ms": 70,
+        "exit": 0,
+        "metades": 1,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 70,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "producer-sent",
+        "label": "producer-sent",
+        "ms": 108,
+        "exit": 0,
+        "metades": 1,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 108,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "mutation-jobs",
+        "label": "mutation-jobs",
+        "ms": 412,
+        "exit": 0,
+        "metades": 4,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 412,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "workflow-refs",
+        "label": "workflow-refs",
+        "ms": 485,
+        "exit": 0,
+        "metades": 4,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 485,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "utf8-scope",
+        "label": "utf8-scope",
+        "ms": 116,
+        "exit": 0,
+        "metades": 2,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 116,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "timing-budget",
+        "label": "timing-budget",
+        "ms": 638,
+        "exit": 0,
+        "metades": 5,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 638,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "e2e-cache-budget",
+        "label": "e2e-cache-budget",
+        "ms": 5,
+        "exit": 0,
+        "metades": 2,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 5,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "lint-guard",
+        "label": "lint-guard",
+        "ms": 870,
+        "exit": 0,
+        "metades": 3,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 870,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "mutation-count",
+        "label": "mutation-count",
+        "ms": 447,
+        "exit": 0,
+        "metades": 10,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 447,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "no-setup-bun",
+        "label": "no-setup-bun",
+        "ms": 225,
+        "exit": 0,
+        "metades": 2,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 225,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "runner-base",
+        "label": "runner-base",
+        "ms": 210,
+        "exit": 0,
+        "metades": 4,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 210,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "no-leaked-imports",
+        "label": "no-leaked-imports",
+        "ms": 126,
+        "exit": 0,
+        "metades": 3,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 126,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "reconciliation",
+        "label": "reconciliation",
+        "ms": 7980,
+        "exit": 0,
+        "metades": 3,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 7980,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "nested-guard",
+        "label": "nested-guard",
+        "ms": 4840,
+        "exit": 0,
+        "metades": 2,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 4840,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "pipefail-sigpipe",
+        "label": "pipefail-sigpipe",
+        "ms": 2053,
+        "exit": 0,
+        "metades": 22,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 2053,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "hook-ci-parity",
+        "label": "hook-ci-parity",
+        "ms": 2659,
+        "exit": 0,
+        "metades": 8,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 2659,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "hook-commands",
+        "label": "hook-commands",
+        "ms": 49619,
+        "exit": 0,
+        "metades": 25,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 49619,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "workflow-defaults",
+        "label": "workflow-defaults",
+        "ms": 900,
+        "exit": 0,
+        "metades": 7,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 900,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "workflow-run-syntax",
+        "label": "workflow-run-syntax",
+        "ms": 67627,
+        "exit": 0,
+        "metades": 15,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 67627,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "merge-latency",
+        "label": "merge-latency",
+        "ms": 3462,
+        "exit": 0,
+        "metades": 4,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 3462,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "registry-defaults",
+        "label": "registry-defaults",
+        "ms": 20765,
+        "exit": 0,
+        "metades": 7,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 20765,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "job-deps",
+        "label": "job-deps",
+        "ms": 24118,
+        "exit": 0,
+        "metades": 7,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 24118,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "remedy-tty",
+        "label": "remedy-tty",
+        "ms": 29562,
+        "exit": 0,
+        "metades": 2,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 29562,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "canal-fixers",
+        "label": "canal-fixers",
+        "ms": 9022,
+        "exit": 0,
+        "metades": 6,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 9022,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "required-applied",
+        "label": "required-applied",
+        "ms": 17766,
+        "exit": 0,
+        "metades": 10,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 17766,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "gate-registration",
+        "label": "gate-registration",
+        "ms": 7966,
+        "exit": 0,
+        "metades": 5,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 7966,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "archived-pipeline",
+        "label": "archived-pipeline",
+        "ms": 781,
+        "exit": 0,
+        "metades": 6,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 781,
+            "ok": true
+          }
+        ]
+      },
+      {
+        "role": "github-deps",
+        "label": "github-deps",
+        "ms": 12606,
+        "exit": 0,
+        "metades": 9,
+        "ok": true,
+        "runs": [
+          {
+            "ms": 12606,
+            "ok": true
+          }
+        ]
+      }
+    ],
+    "deltas": {
+      "subtestsMs": 268397,
+      "harnessMs": 3669,
+      "totalMs": 272066,
+      "wallMs": 272094,
+      "proximoSubtestProjetadoMs": 8244,
+      "maisCaro": "workflow-run-syntax",
+      "maisCaroMs": 67627,
+      "medianaMs": 870
+    },
+    "violations": [],
+    "whatItAdded": [
+      "MEDIDO, sub-test a sub-test: 33 sub-test(s) · 193 metade(s) · 268.4s de sub-tests + 3.7s de harness = 272.1s",
+      "o mais caro: workflow-run-syntax (67.6s) · a mediana: 0.9s",
+      "o PRÓXIMO sub-test acrescenta ~8.2s (PROJEÇÃO: a média dos scripts medidos + o harness por sub-test) — e entra MEDIDO na primeira rodada que o tiver, sem conta à mão"
     ]
   }
 }

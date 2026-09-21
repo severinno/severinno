@@ -59,6 +59,18 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'L|a versão LITERAL no argumento da chamada do setup deve FALHAR (o call site)'
+  'M3|a varredura dos SCRIPTS (invariante 15) — a CHAMADA na cópia do guard'
+  'M4|os EXEMPLOS DE VERSÃO na prosa (invariante 17) — o README desatualizado reprova'
+  'M5|a CADEIA DE BUILD (invariante 18): o arg e a declaração de toolchain que ele apaga'
+  'M6|os USOS da versão num pipeline de TERCEIRO (invariante 19), inclusive no --staged'
+)
 GUARD="$SCRIPT_DIR/scripts/check-bun-mirror.mjs"
 
 # A versão do FIXTURE vem do ESPELHO do repositório (.actrc), não de um literal:

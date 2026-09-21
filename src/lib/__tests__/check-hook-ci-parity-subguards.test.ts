@@ -9,10 +9,12 @@
  *
  *  1. POR MEDICAO NO REPO REAL — os runners derivados das DUAS pipelines (12
  *     hoje, incluindo o que so aparece depois de resolver a entrada do
- *     package.json), a descida neles (`check_utf8.py` e `check_utf8.mjs`, dentro
- *     do `check-utf8.sh`) e a prova de que a BATERIA LOCAL os executa pelos
- *     runners do hook. Sem esta metade, uma descida CEGA passaria verde: nao
- *     achar sub-guard nenhum tambem nao produz violacao nenhuma.
+ *     package.json), a descida neles (**oito** alcancados: os dois do
+ *     `check-utf8.sh` + os seis que so aparecem depois que a regua resolve o
+ *     idioma `SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"` e o alvo
+ *     `node "$GUARD"` que sai dele) e a prova de que a BATERIA LOCAL os executa
+ *     pelos runners do hook. Sem esta metade, uma descida CEGA passaria verde:
+ *     nao achar sub-guard nenhum tambem nao produz violacao nenhuma.
  *
  *  2. POR FIXTURE — repo git temporario com hooks e pipelines minimos: sub-guard
  *     sem decisao local, sub-guard coberto direto pelo hook, sub-guard coberto
@@ -87,8 +89,21 @@ function fixture({
 }
 
 /** As violacoes da REGRA 4 (as outras regras falam do fixture, nao do defeito). */
+/**
+ * As violacoes da REGRA 4 — sem as que a TABELA REAL produz NO FIXTURE.
+ *
+ * O fixture nao tem as pipelines reais, entao as entradas reais de
+ * `RUNNER_SUBGUARD` aparecem nele como **stale** — um fato do FIXTURE (nenhum
+ * runner dele executa aqueles arquivos), nao do repositorio, onde elas decidem
+ * dois sub-guards ALCANCADOS. Elas saem por CITACAO DO ARQUIVO, e so as do estado
+ * inicial: o teste da declaracao stale empurra a propria entrada e continua
+ * medindo a regra nas duas direcoes.
+ */
+const TABELA_REAL = new Set(RUNNER_SUBGUARD.map((e) => e.file))
 function daRegra4(violations: string[]): string[] {
-  return violations.filter((v) => v.includes("SUB-GUARD") || v.startsWith("RUNNER_SUBGUARD:"))
+  return violations
+    .filter((v) => v.includes("SUB-GUARD") || v.startsWith("RUNNER_SUBGUARD:"))
+    .filter((v) => ![...TABELA_REAL].some((f) => v.includes(`'${f}'`)))
 }
 
 const PIPELINE_COM_RUNNER = [
@@ -127,7 +142,7 @@ describe("no REPO REAL: a descida alcanca os sub-guards dos runners das pipeline
     for (const file of runners.keys()) expect(file.endsWith(".sh")).toBe(true)
   })
 
-  it("a descida encontra os DOIS sub-guards do check-utf8.sh (nao pode ficar cega)", () => {
+  it("a descida alcanca os NOVE sub-guards (inclusive os do idioma `SCRIPT_DIR`)", () => {
     const scripts = JSON.parse(
       execFileSync("node", ["-p", "JSON.stringify(require('./package.json').scripts)"], {
         cwd: RAIZ,
@@ -136,11 +151,21 @@ describe("no REPO REAL: a descida alcanca os sub-guards dos runners das pipeline
     )
     const descida = descendScripts(RAIZ, [...pipelineRunners(RAIZ, scripts).keys()])
     expect([...descida.alcancados.keys()].sort()).toEqual([
+      "scripts/audit-blob-crlf-history.sh",
+      "scripts/check-bun-audit-baseline.mjs",
+      "scripts/check-forge-parity.mjs",
+      "scripts/check-jsdom-baseline.mjs",
+      "scripts/check-unused-deps.mjs",
+      "scripts/check-workflow-run-syntax.mjs",
       "scripts/check_utf8.mjs",
       "scripts/check_utf8.py",
+      "scripts/metades.mjs",
     ])
     // A procedencia sai no relatorio: qual runner trouxe cada sub-guard.
     expect(descida.alcancados.get("scripts/check_utf8.py")).toBe("scripts/check-utf8.sh")
+    // A REGUA das metades entra pela descida do master (ela e executada por ele),
+    // e nao por ser um gate: e o que a tabela decide abaixo.
+    expect(descida.alcancados.get("scripts/metades.mjs")).toBe("scripts/test-mutation-guards.sh")
   })
 
   it("a BATERIA LOCAL desce tambem: o hook executa os dois pelos runners dele", () => {
@@ -159,19 +184,25 @@ describe("no REPO REAL: a descida alcanca os sub-guards dos runners das pipeline
     expect(local.arquivos.get("scripts/check_utf8.py")).toContain("pelo runner")
   })
 
-  it("o guard inteiro sai verde, com CADA sub-guard decidido e os limites nomeados", () => {
+  it("o guard inteiro sai verde, com CADA sub-guard decidido e os DOIS limites nomeados", () => {
     const report = analyze({ root: RAIZ })
     expect(report.violations).toEqual([])
-    expect(report.subguards.length).toBe(2)
+    expect(report.subguards.length).toBe(9)
     for (const s of report.subguards) expect(s.decision).not.toBeNull()
-    // Os limites da descida: o idioma de `SCRIPT_DIR` de alguns runners nao e
-    // provavel hoje — e isso NAO some do relatorio (o numero crescer sem
-    // ninguem revisar e o sinal de que a descida perdeu alcance).
-    expect(report.limitesDaDescida.length).toBeGreaterThan(0)
-    for (const l of report.limitesDaDescida) {
-      expect(typeof l.arquivo).toBe("string")
-      expect(l.motivo.length).toBeGreaterThan(20)
-    }
+    // Os DOIS limites que sobraram, nomeados um a um: os bloqueios que NAO sao o
+    // idioma do `SCRIPT_DIR` (esse deixou de ser limite quando a regua passou a
+    // resolve-lo — eram 18). Sao eles a variavel de laco do master
+    // (`${rest#*|}`, montada em runtime) e o `bash -n` sobre um arquivo
+    // TEMPORARIO, que nao e caminho do repositorio. Um TERCEIRO limite aqui e a
+    // descida perdendo alcance, e e isso que este teste pega.
+    // O ARQUIVO de cada limite e o que se cobra (a LINHA muda a cada edicao da
+    // suite e nao acrescenta defesa: o que protege o alcance e o numero e o dono).
+    expect(report.limitesDaDescida.map((l) => l.arquivo).sort()).toEqual([
+      "scripts/test-mutation-guards.sh",
+      "scripts/test-mutation-workflow-run-syntax.sh",
+    ])
+    for (const l of report.limitesDaDescida) expect(l.linha).toBeGreaterThan(0)
+    for (const l of report.limitesDaDescida) expect(l.motivo.length).toBeGreaterThan(20)
   })
 })
 
@@ -274,6 +305,40 @@ describe("o sub-guard de um runner exige decisao local", () => {
     } finally {
       RUNNER_SUBGUARD.pop()
     }
+  })
+
+  it('o idioma `SCRIPT_DIR=$(cd $(dirname $0)/..)` PROVA o alvo de `node "$GUARD"`', () => {
+    // O defeito de LEITURA que a regua fechou: enquanto o valor do idioma era
+    // uma substituicao de comando, o `node "$GUARD"` de dentro do runner saia
+    // como limite nomeado — o guard que ele executa ficava invisivel para a
+    // decisao local (e o `GUARD="$GUARD"` do PREFIXO DE AMBIENTE, que a casa usa
+    // para passar o caminho ao script de mutacao, era lido como CICLO).
+    const dir = fixture({
+      gitea: PIPELINE_COM_RUNNER,
+      github: PIPELINE_COM_RUNNER,
+      arquivos: {
+        "scripts/runner.sh": [
+          "#!/usr/bin/env bash",
+          "set -eu",
+          'SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"',
+          'GUARD="$SCRIPT_DIR/scripts/guard-novo.mjs"',
+          'GUARD="$GUARD" ALVO="" python3 - <<PY',
+          "print(1)",
+          "PY",
+          'node "$GUARD"',
+          "",
+        ].join("\n"),
+        "scripts/guard-novo.mjs": "// guard\n",
+      },
+    })
+    const report = analyze({ root: dir })
+    // PROVADO: o alvo entra na descida e exige decisao local (a violacao o
+    // NOMEIA), e nenhum limite sobra por causa do idioma ou do prefixo.
+    const v = daRegra4(report.violations)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("scripts/guard-novo.mjs")
+    expect(report.subguards.some((s) => s.file === "scripts/guard-novo.mjs")).toBe(true)
+    expect(report.limitesDaDescida).toEqual([])
   })
 
   it("o alvo que nao da para provar sai como LIMITE NOMEADO (nao como verde)", () => {

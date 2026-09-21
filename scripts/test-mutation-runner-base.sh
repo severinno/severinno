@@ -34,6 +34,17 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'sem-digest|FROM sem @sha256 (a tag volta flutuante)'
+  'digest-malformado|40 hex em vez de 64 (passa a olho, não é digest)'
+  'digest-trocado|o digest de OUTRO elenco (a troca crua)'
+  'contrato-afrouxado|asserção decorativa (exit 1 → true)'
+)
 GUARD="$SCRIPT_DIR/scripts/check-runner-base.mjs"
 REAL_DOCKERFILE="$SCRIPT_DIR/Dockerfile.ubuntu-bun"
 TMP_DIR="$(mktemp -d)"

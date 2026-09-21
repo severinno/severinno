@@ -84,6 +84,18 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'M1|o contexto a MENOS (missing)'
+  'M2|o contexto a MAIS (extra)'
+  'M3|a CONTAGEM no nome (withCount)'
+  'M4|o FIO em proveGiteaMergeGate (o if (!registration.ok))'
+  'M5|a DIREÇÃO OPOSTA: a régua da contagem fica GULOSA (countInContext)'
+)
 cd "$SCRIPT_DIR"
 
 GUARD="scripts/prove-gitea-merge-gate.mjs"

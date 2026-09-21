@@ -57,6 +57,15 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'teto|payload de 900s acima do budget de 600s (10 min) do job E2E Cache'
+  'drift|step renomeado → exit 2 (drift de contrato)'
+)
 GUARD="$SCRIPT_DIR/scripts/measure-e2e-cache.mjs"
 
 # Markers REAIS do e2e-cache.yml (fonte única: o nome do job e do step no

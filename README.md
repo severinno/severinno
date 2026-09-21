@@ -881,7 +881,7 @@ single-grep). Os testes entram apenas quando arquivos-fonte mudaram
 
 **Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
 rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
-**32 sub-tests node-puro** via `scripts/test-mutation-guards.sh` — e, desde que a
+**33 sub-tests node-puro** via `scripts/test-mutation-guards.sh` — e, desde que a
 isenção `GITHUB_ONLY` da classe caiu, o **mesmo comando** roda também no job
 `guards` da **forja dona do merge** (o `check-forge-parity` exige a matriz e a
 prova das três regras de classificação nas duas pipelines): quem mergeia na forja
@@ -889,29 +889,21 @@ não pode ficar verde com um guard **cego**, e o custo do passo entrou no modelo
 (`ci/merge-latency.json`) com a procedência declarada — incluindo o **runtime**:
 a suíte foi re-medida dentro do container da própria imagem do runner (32/32
 sub-tests, 238.7s, contra os 248s medidos nativos), porque _a forja sabe rodar
-isto?_ é a pergunta que autoriza a mudança. A lista é (bun literal,
-bun remoção, hooks simetria, readme anchors/toc/images, README reverse, docs
-anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo,
-timing-budget, e2e-cache-budget, lint-guard, mutation-count,
-no-setup-bun, runner-base, no-leaked-imports, reconciliation, nested-guard,
-paridade hook↔CI, comandos dos hooks, pipefail-sigpipe, defaults de shell,
-defaults do registry/namespace, dependências dos jobs,
-sintaxe dos corpos
-`run:` e a resposta do remédio no TTY). O 32º é a CATRACA do inventário do GitHub
-(a comparação de conjuntos do item novo e do sumido, a do contador, a nomeação do
-item e do delta, e os três fail-closed do dado — o ausente, o ilegível e o
-contador que não é número), medida por execução no CLI com o defeito injetado no
-dado versionado. O 29º mede o outro lado do mesmo
-contrato de merge: o `name:` de um required check renomeado sem a reaplicação
-DECLARADA deixa o PR vermelho (e mutar cada uma das seis metades que sustentam
-isso — as duas réguas da comparação, o fio em `main()`, o fail-closed da
-declaração ausente, o alvo do `--forge` e o carimbo sem churn — deixa a suíte
-vermelha no fato certo). O 30º mede o que a forja de fato EXIGE: o REGISTRO da
-proteção (`registrationDelta`) — o contexto a MENOS, o a MAIS e um nome com
-CONTAGEM — com o veredito medido por EXECUÇÃO (o motor da prova contra uma forja
-dublada, `scripts/merge-gate-fake-forge.mjs`, sem docker) e as âncoras da suíte
-unitária; a régua da contagem gulosa acusa o contexto editorial legítimo, a
-violação FALSA que o outro lado do teste fixa. A prova da
+isto?_ é a pergunta que autoriza a mudança.
+
+**A lista acima não é escrita à mão** — nem aqui, nem no master, nem na doc do
+guard: cada suíte declara as suas metades no bloco `METADES=(...)` do PRÓPRIO
+script (`'id|o que a metade tira do lugar'`, **em aspas simples** — em aspas
+duplas o shell expandiria a descrição antes de guardá-la e a suíte morreria com
+`variável não associada`, defeito medido em quatro suítes), e é dali que o master
+deriva a descrição de cada sub-test (`bash scripts/test-mutation-guards.sh
+--list`) e o `check:mutation-count` confere a prosa desta doc e do
+`docs/GUARDS.md`. Uma suíte que não declara o bloco FALHA (fail-closed), a
+entrada em aspas duplas é recusada nomeando a expansão, e a contagem escrita na
+doc que envelheceu contra o bloco acende com o delta — acrescentar uma mutação é
+acrescentar UMA linha no bloco, sem prosa para atualizar em lugar nenhum.
+
+A prova da
 CLASSIFICAÇÃO do `check-forge-parity` também é um job próprio
 (`forge-parity-mutation`): ela mede o contrato de merge em si — quais gates
 podem pular uma forja e com que forma de comando — e por isso diz QUAL regra
@@ -1152,6 +1144,22 @@ sai verde e **uma** no fail-closed), e a detecção da oferta contra a árvore r
 (**182ms**) é read-only por construção, com o `git status` conferido antes e
 depois: `escreveu: true` é violação da família, não um detalhe do log.
 
+**O custo do job mais caro do PR deixou de ser uma conta à mão** (família
+`mutations` do `bench-guard-timing`). O job `mutation-guards` roda 33 sub-tests, e
+agora o que CADA um custa é medido pelo próprio master (`--json`) e versionado
+sub-test a sub-test na baseline (esquema v6): **268.1s** de sub-tests + **3.7s**
+de harness = **271.8s**, com `workflow-run-syntax` (67.6s, 25%), `hook-commands`
+(49.5s, 18%) e `remedy-tty` (29.6s, 11%) no topo — antes disso ninguém sabia QUAL
+sub-test pagava a conta. A 33ª mediu **9.0s** no próprio ato que a estreou
+(`canal-fixers`, a descoberta do registro do canal): ela entrou sem ninguém
+recontar a soma. Quem entra com um sub-test novo não compõe nada: ele entra
+**MEDIDO** na rodada seguinte (forma nova, `➕`, com o ms dele no relatório), e o
+modelo de latência passou a **derivar** o passo do master dessa medição — o
+confronto com o declarado do espelho dá **9.6%** (248s × 271.8s), dentro da
+tolerância. A projeção de quanto o PRÓXIMO sub-test acrescenta (~8.2s) é dita como
+**projeção**, não como medição: é a média dos scripts já medidos mais o harness por
+sub-test.
+
 A OFERTA também é uma superfície MEDIDA, e não só o bloco que o operador lê:
 `node scripts/pre-commit-remedy.mjs --oferta` roda a MESMA detecção (com o guard
 dono de cada classe) e publica o payload em **JSON** no stdout, sem pergunta e
@@ -1356,7 +1364,7 @@ warm):
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (32 sub-tests)³  |     **248s** (1 run)³      |     **step ≈ 9.1s**²      |
+| master `mutation-guards` (33 sub-tests)³  |    **271.8s** (1 run)³     |     **step ≈ 9.1s**²      |
 | checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
 | Summary                                   |             —              |           0.34s           |
 
@@ -1380,9 +1388,13 @@ fixtures e roda o guard contra a mutação —, então o valor antigo (15.8s)
 era de 5 sub-tests e o timing-budget (~1s) foi adicionado após a medição de 10.
 ³Medição da MUDANÇA (host Linux 16 cpus / 31 GB, 09/2026). O ato de **31
 sub-tests** mediu ≈ **221s** com mediana de 3 runs warm, TODAS verdes
-(221 · 221 · 221); o ato de **32 sub-tests** — a CATRACA do inventário do GitHub
-entrou na matriz — mediu **248s** numa rodada WARM da matriz COMPLETA, 32/32
-verdes, e é o valor VIVO do job, o MESMO que `ci/merge-latency.json` declara. A
+(221 · 221 · 221); o ato SEGUINTE — a CATRACA do inventário do GitHub entrou na
+matriz — mediu **248s** numa rodada WARM da matriz COMPLETA, 32/32 verdes, e é o
+valor que `ci/merge-latency.json` ainda declara; e o ato de agora — a DESCOBERTA
+do registro do canal entrou na matriz — mediu
+**271.8s**, 33/33 verdes, com a 33ª custando **9.0s** sozinha (`canal-fixers`),
+versionado na família `mutations` do `bench-guard-timing` (a medição de 248s
+continua ao lado, como história do instrumento; o valor VIVO do job é o de 33). A
 32ª custa **11.0s** sozinha pelo caminho do master (`--scenario github-deps`:
 10.97 · 11.06 · 11.02); o resto do delta (≈221 + 11 = 232s esperados contra os
 248 medidos) é a deriva de host que as rodadas anteriores já registravam, somada
@@ -1579,7 +1591,7 @@ runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 | 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |                      — (n/a)                       |         <2s         |
 | `utf8-check` (837 arquivos, `--ci src/`)          |        ≈ **0.92s**         |                     **7.46s**                      |    ~2-5s (est.)     |
 | `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |                     **3.61s**                      |    ~1-2s (est.)     |
-| `mutation-guards` (32 sub-tests node-puro)³       |         **248s**³          |                     **9.1s**²                      |   ~15-25s (est.)    |
+| `mutation-guards` (33 sub-tests node-puro)³       |        **271.8s**³         |                     **9.1s**²                      |   ~15-25s (est.)    |
 | `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |                    **4m37.6s**                     |   ~35-45s (est.)³   |
 | `unused-deps-guard` (mutation test + guard real)  |        ≈ **0.5s**⁴         |          **26.8s** cold / **20.9s** warm⁴          |   ~10-15s (est.)    |
 | `lint-guard` (prettier --check + eslint zero)     |     ~**4min** (local)⁵     | **7m22s** 1ª run / **6m23s** 2ª run (lint total)⁴  |   ~4-7 min (est.)   |

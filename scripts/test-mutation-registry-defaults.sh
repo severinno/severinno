@@ -104,6 +104,20 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'M1|A COMPARAÇÃO DE VALOR (defaultValueVerdict): devolver proven sempre'
+  'M2|A REGRA DO SCRIPT JS (o resolvedor obrigatório) desligada'
+  'M3|A RÉGUA DO COMENTÁRIO (a sintaxe declarada por linguagem): varrer JS'
+  'M4|O VALOR VAZIO (o que NÃO é default): contar || como default'
+  'M5|O LITERAL DE RESERVA do RESOLVEDOR reintroduzido'
+  'M6|O FALLBACK LITERAL DO WORKFLOW: tratá-lo como dinâmico (não comparação)'
+  'M7|A GRAFIA DO FALLBACK: aceitar só as aspas SIMPLES'
+)
 GUARD="$SCRIPT_DIR/scripts/check-registry-source.mjs"
 RESOLVER="$SCRIPT_DIR/scripts/registry-source.mjs"
 SUITE_RESOLVER="src/lib/__tests__/registry-source.test.ts"

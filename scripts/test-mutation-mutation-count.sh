@@ -63,6 +63,23 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'A|o name do job volta a carregar o count → DEVE FALHAR'
+  'B|a matriz cresce e o summary fica para trás → DEVE FALHAR'
+  'C|a matriz cresce e o README fica para trás → DEVE FALHAR'
+  'D|a ref HISTÓRICA no README NÃO é falso positivo'
+  'E|o bump legítimo (name count-free + refs atualizadas) PASSA'
+  'F|o required check com CONTAGEM no name → DEVE FALHAR'
+  'G|a suíte que NÃO declara o bloco METADES → o guard FALHA (fail-closed)'
+  'H|o bloco com uma linha fora do formato: o guard FALHA e não lê nenhuma metade'
+  'I|a doc que declara um total que não bate com o bloco → o guard FALHA'
+  'J|a entrada do bloco em ASPAS DUPLAS (o shell expandiria) → o guard FALHA'
+)
 GUARD="node $SCRIPT_DIR/scripts/check-mutation-count.mjs --root"
 REQUIRED_GUARD="node $SCRIPT_DIR/scripts/check-required-checks.mjs --root"
 
@@ -83,27 +100,72 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ── make_fixture: cria os 3 arquivos que o guard lê ───────────────────────
+# ── make_fixture: cria os arquivos que o guard lê ─────────────────────────
 # $1 = count da matriz | $2 = SUFIXO do name do job (default: "" — count-free)
 # $3 = count do summary | $4 = count do README
 # $5 = (opcional) ref histórica extra no README
+# $6 = (opcional) MUTAÇÃO da fixture da DERIVAÇÃO: `sem_bloco` (a suíte 1 some
+#      com o bloco METADES), `ilegivel` (linha fora do formato) ou `doc_stale`
+#      (a doc declara um total que não bate com o bloco)
 make_fixture() {
   local matrix_count="$1" job_suffix="${2:-}" summary="$3" readme_count="$4"
   local historical="${5:-}"
 
-  rm -rf "$TMP_DIR/scripts" "$TMP_DIR/.github" "$TMP_DIR/README.md"
-  mkdir -p "$TMP_DIR/scripts" "$TMP_DIR/.github/workflows"
+  rm -rf "$TMP_DIR/scripts" "$TMP_DIR/.github" "$TMP_DIR/README.md" "$TMP_DIR/docs"
+  mkdir -p "$TMP_DIR/scripts" "$TMP_DIR/.github/workflows" "$TMP_DIR/docs"
 
-  # master com a matriz
+  # master com a matriz — `id|script`, SEM descrição: ela é derivada do bloco
+  # METADES de cada suíte (e a curadoria da suíte mutada é um índice à parte).
   {
     echo '#!/usr/bin/env bash'
     echo "# Roda os $matrix_count mutation tests node-puro dos guards de CI num ÚNICO script"
     echo 'SUBTESTS=('
     for i in $(seq 1 "$matrix_count"); do
-      echo "  \"sub-$i|Desc $i|scripts/test-mutation-sub-$i.sh\""
+      echo "  \"sub-$i|scripts/test-mutation-sub-$i.sh\""
     done
     echo ')'
   } > "$TMP_DIR/scripts/test-mutation-guards.sh"
+
+  # uma suíte por entrada, cada uma DECLARANDO as suas metades (o bloco é a
+  # fonte única da descrição do sub-test e da prosa da doc). A SUÍTE_* abaixo
+  # muta UMA delas: `sem_bloco` remove o bloco inteiro (fail-closed) e
+  # `ilegivel` deixa uma linha fora do formato.
+  for i in $(seq 1 "$matrix_count"); do
+    {
+      echo '#!/usr/bin/env bash'
+      echo 'set -euo pipefail'
+      if [ "${6:-}" = "sem_bloco" ] && [ "$i" = "1" ]; then
+        echo '# (a suíte mutada NÃO declara metades)'
+      else
+        echo 'METADES=('
+        # A declaração é em ASPAS SIMPLES: em aspas duplas o shell expandiria a
+        # descrição antes de guardá-la (a mutação J escreve essa forma).
+        if [ "${6:-}" = "aspas_duplas" ] && [ "$i" = "1" ]; then
+          echo '  "M1|o caso com echo $OUT | grep -Fq que o shell expandiria"'
+          echo "  'M2|a metade dois da suíte sub-$i'"
+        else
+          echo "  'M1|a metade um da suíte sub-$i'"
+          echo "  'M2|a metade dois da suíte sub-$i'"
+        fi
+        if [ "${6:-}" = "ilegivel" ] && [ "$i" = "1" ]; then
+          echo '  linha sem o formato do bloco'
+        fi
+        echo ')'
+      fi
+    } > "$TMP_DIR/scripts/test-mutation-sub-$i.sh"
+  done
+
+  # docs/GUARDS.md: a doc cita a suíte sub-1 e declara o total dela. A MUTAÇÃO
+  # `doc_stale` escreve um total que NÃO bate com o bloco (a contagem à mão).
+  {
+    echo '# Guards (fixture)'
+    echo ''
+    if [ "${6:-}" = "doc_stale" ]; then
+      echo 'A suíte `scripts/test-mutation-sub-1.sh` declara 5 metades no bloco.'
+    else
+      echo 'A suíte `scripts/test-mutation-sub-1.sh` declara 2 metades no bloco.'
+    fi
+  } > "$TMP_DIR/docs/GUARDS.md"
 
   # pr-check.yml com o job mutation-guards (name COUNT-FREE por default — é o
   # CONTEXTO do required check, e não pode carregar o tamanho da matriz)
@@ -391,9 +453,133 @@ if ! grep -Fq "CONTAGEM" <<<"$OUTPUT"; then
 fi
 pass "Mutação F DETECTADA: os DOIS contextos com contagem falham, nomeando CONTAGEM (exit $EXIT)"
 
+# ═════════════════════════════════════════════════════════════════════════
+# STEP 16+17 — MUTAÇÃO G: a suíte SEM o bloco METADES (a descrição derivada)
+# ═════════════════════════════════════════════════════════════════════════
+
+info "STEP 16: MUTAÇÃO G — a suíte sub-1 sem o bloco METADES..."
+make_fixture 13 "" 13 13 "" "sem_bloco"
+
+info "STEP 17: Rodando o guard contra a mutação G..."
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -eq 0 ]; then
+  fail "GUARD CEGO (metades): uma suíte SEM o bloco METADES passou (exit 0)."
+  fail "Sem o bloco, 'não li' viraria 'não há metade' e a descrição do sub-test"
+  fail "ficaria sem fonte (a prosa à mão é justamente o que veio abaixo)."
+  exit 1
+fi
+if ! grep -Fq "não DECLARA as metades" <<<"$OUTPUT"; then
+  fail "O guard falhou (exit $EXIT) mas NÃO nomeou a falta do bloco METADES."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+pass "Mutação G DETECTADA: a suíte sem bloco METADES falha nomeando a falta (exit $EXIT)"
+
+# ═════════════════════════════════════════════════════════════════════════
+# STEP 18+19 — MUTAÇÃO H: o bloco com uma linha fora do formato (fail-closed)
+# ═════════════════════════════════════════════════════════════════════════
+
+info "STEP 18: MUTAÇÃO H — o bloco METADES com uma linha fora do formato..."
+make_fixture 13 "" 13 13 "" "ilegivel"
+
+info "STEP 19: Rodando o guard contra a mutação H..."
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -eq 0 ]; then
+  fail "GUARD CEGO (bloco ilegível): uma linha fora do formato passou (exit 0)."
+  fail "Um bloco que o parser não entende NÃO pode virar 'nenhuma metade'."
+  exit 1
+fi
+if ! grep -Fq "fora do formato" <<<"$OUTPUT"; then
+  fail "O guard falhou (exit $EXIT) mas NÃO nomeou a linha fora do formato."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+pass "Mutação H DETECTADA: o bloco ilegível falha nomeando a linha (exit $EXIT)"
+
+# ═════════════════════════════════════════════════════════════════════════
+# STEP 20+21 — MUTAÇÃO I: a doc declara um total que não bate com o bloco
+# (é a classe que o guard veio fechar: a contagem à mão da doc envelhecendo)
+# ═════════════════════════════════════════════════════════════════════════
+
+info "STEP 20: MUTAÇÃO I — a doc declara 5 metades para uma suíte que declara 2..."
+make_fixture 13 "" 13 13 "" "doc_stale"
+
+info "STEP 21: Rodando o guard contra a mutação I..."
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -eq 0 ]; then
+  fail "GUARD CEGO (doc): a doc declarando 5 metades contra um bloco de 2 passou (exit 0)."
+  fail "É exatamente o silêncio que a derivação existe para fechar."
+  exit 1
+fi
+if ! grep -Fq "≠ 2" <<<"$OUTPUT" || ! grep -Fq "test-mutation-sub-1.sh" <<<"$OUTPUT"; then
+  fail "O guard falhou (exit $EXIT) mas NÃO acusou o delta nem nomeou a suíte."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+pass "Mutação I DETECTADA: a contagem da doc divergindo do bloco falha com o delta (exit $EXIT)"
+
+# ═════════════════════════════════════════════════════════════════════════
+# STEP 22+23 — MUTAÇÃO J: a entrada do bloco em ASPAS DUPLAS (a suíte MORRE)
+# ═════════════════════════════════════════════════════════════════════════
+# A classe é MEDIDA, não teórica: com o bloco em aspas duplas o shell EXPANDE a
+# descrição antes de guardá-la, e uma descrição que cita o código da mutação
+# (`echo $OUT | grep -Fq`) estoura a suíte com 'variável não associada' sob
+# `set -u` — quatro suítes do repositório morreram exatamente assim, com a
+# descrição virando o defeito. O guard tem de recusar a FORMA e dizer por quê,
+# para o defeito não voltar disfarçado de "formato errado" genérico.
+
+info "STEP 22: MUTAÇÃO J — o bloco com uma entrada em ASPAS DUPLAS..."
+make_fixture 13 "" 13 13 "" "aspas_duplas"
+
+info "STEP 23: Rodando o guard contra a mutação J..."
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -eq 0 ]; then
+  fail "GUARD CEGO (aspas duplas): o bloco que o shell expandiria passou (exit 0)."
+  fail "A declaração em aspas duplas mata a suíte em tempo de execução: aceitá-la"
+  fail "é deixar o gate verde sobre um script que não roda."
+  exit 1
+fi
+if ! grep -Fq "ASPAS DUPLAS" <<<"$OUTPUT" || ! grep -Fq "aspas SIMPLES" <<<"$OUTPUT"; then
+  fail "O guard falhou (exit $EXIT) mas NÃO nomeou a expansão nem o remédio."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+pass "Mutação J DETECTADA: a entrada em aspas duplas falha nomeando a expansão (exit $EXIT)"
+
+# CONTROLE da derivação: a MESMA fixture com a doc certa passa (a mutação I não
+# pode ser confundida com um guard que simplesmente reclama de qualquer doc).
+info "STEP 24: CONTROLE da derivação — a mesma fixture com a doc coerente..."
+make_fixture 13 "" 13 13
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -ne 0 ]; then
+  fail "CONTROLE FALHOU (exit $EXIT): a fixture com o bloco e a doc coerentes foi rejeitada."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+pass "Controle OK — bloco declarado + doc coerente passa (exit 0)"
+
 echo ""
 pass "MUTATION TEST PASSED — check-mutation-count pega o count de volta no NAME"
 pass "do job (o contexto do required check não pode depender da matriz), no"
 pass "summary e no README; check-required-checks recusa a CONTAGEM no name de"
-pass "um required check (job direto E reusable); e nenhum dos dois falso-positiva."
+pass "um required check (job direto E reusable); a suíte que não DECLARA as"
+pass "metades falha fail-closed, o bloco ilegível também, a entrada em ASPAS"
+pass "DUPLAS (que o shell expandiria, matando a suíte) é recusada com a razão, e a"
+pass "contagem da doc que envelheceu contra o bloco acende com o delta — sem"
+pass "falso-positivo numa fixture coerente."
 exit 0

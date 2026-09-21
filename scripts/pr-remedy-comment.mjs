@@ -62,6 +62,14 @@
 // do registro (o fixer que ficar de fora sai NOMEADO) e o `--backend` da
 // propria forja.
 //
+// E O REGISTRO TAMBÉM É DERIVADO (`pr-fixers.mjs`): a lista de fixers saiu daqui
+// (era um objeto escrito à mão, com a prosa do comentário de cada um) e passou a
+// sair das DECLARAÇÕES de `scripts/remedy-classes/<id>.mjs` — as MESMAS que o
+// pre-commit oferece. Um defeito mecânico novo entra nos DOIS canais no commit em
+// que é declarado; o que o canal exige a mais é o `remedyPatch` do guard dono (o
+// comentário publica o patch que o `--fix` gravaria), e uma declaração que
+// declare `canal` sem esse produtor RECUSA a rodada.
+//
 // Usage:
 //   node scripts/pr-remedy-comment.mjs --backend gitea               # na forja (merge)
 //   node scripts/pr-remedy-comment.mjs --backend github              # no espelho
@@ -92,8 +100,11 @@
 import process from "node:process"
 import { pathToFileURL } from "node:url"
 
-import { remedyPatch as runSyntaxPatch } from "./check-workflow-run-syntax.mjs"
-import { remedyPatch as sigpipePatch } from "./check-pipefail-sigpipe.mjs"
+// O REGISTRO de fixers vem DA DESCOBERTA (`pr-fixers.mjs`), que lê as MESMAS
+// declarações do remédio do pre-commit (`scripts/remedy-classes/<id>.mjs`) e
+// importa o produtor do patch (`remedyPatch`) do guard DONO de cada uma. Não há
+// lista de fixers neste arquivo — ver o cabeçalho de `pr-fixers.mjs`.
+import { CANAL_PROBLEMAS, DEFAULT_FIXER, FIXERS } from "./pr-fixers.mjs"
 // A MECÂNICA DO CANAL vem de um módulo sem gate nenhum (`pr-comment-channel.mjs`):
 // o ciclo do comentário no PR é o MESMO para o remendo e para o veredito do
 // merge gate, e deixá-lo aqui obrigaria quem só quer o canal a importar os
@@ -142,65 +153,36 @@ export const FORMA_DO_RESULTADO = [
 ]
 
 /**
- * OS FIXERS MECÂNICOS que têm este canal — cada um com o SEU marcador, o seu
- * nome de gate e a SUA medição.
+ * OS FIXERS MECÂNICOS que têm este canal — DERIVADOS das declarações
+ * (`scripts/remedy-classes/<id>.mjs`, via `pr-fixers.mjs`), cada um com o SEU
+ * marcador, o seu nome de gate e a SUA medição.
  *
- * Um fixer por entrada, e não um script por remédio: a mecânica é a mesma
- * (medir o que o `--fix` gravaria, publicar o patch como comentário, reconciliar
- * quando o defeito some) e o que muda é o DEFEITO e como descrevê-lo. Dois
- * scripts irmãos divergiriam na primeira correção que um recebesse — e a
- * reconciliação, a decisão e o tratamento de canal são justamente onde isso dói.
+ * Um fixer por DEFEITO, e não um script por remédio: a mecânica é a mesma (medir
+ * o que o `--fix` gravaria, publicar o patch como comentário, reconciliar quando
+ * o defeito some) e o que muda é o defeito e como descrevê-lo. Dois scripts
+ * irmãos divergiriam na primeira correção que um recebesse — e a reconciliação, a
+ * decisão e o tratamento de canal são justamente onde isso dói.
  *
- * O marcador é POR FIXER de propósito: os dois remédios podem estar no MESMO PR
- * (um passo com a cicatriz E um `| grep -q`), e um marcador comum faria a
+ * A FONTE é a declaração da classe (a mesma que o pre-commit oferece): o `canal`
+ * dela traz a prosa do comentário, o `fixer` dela é o `comandoFix` daqui, e o
+ * `medir` é o `remedyPatch` do guard DONO, importado pela descoberta — um preview
+ * com régua própria prometeria um remendo que a gravação recusaria. Um fixer novo
+ * entra por AQUI no commit em que a declaração dele é escrita.
+ *
+ * O marcador é POR FIXER de propósito: os remédios podem estar no MESMO PR (um
+ * passo com a cicatriz E um `| grep -q`), e um marcador comum faria a
  * reconciliação de um retirar o comentário do outro.
- *
- * `medir` sai do MESMO `remedyPatch` que o `--fix` do gate usa — um preview com
- * régua própria prometeria um remendo que a gravação recusaria. Os dois fixers
- * estão nomeados nos campos (e não por referência a um mapa externo) para o
- * registro ser lido de uma vez.
  */
-export const FIXERS = {
-  "run-syntax": {
-    marker: "<!-- run-syntax-remedy -->",
-    gateJob: "Workflow run syntax (bash -n)",
-    comandoFix: "node scripts/check-workflow-run-syntax.mjs --fix",
-    titulo: "🩹 Remendo mecânico — o gate `bash -n` dos corpos `run:`",
-    achado: (n) =>
-      `O check **Workflow run syntax (bash -n)** encontrou **${n}** corpo(s) de passo com a` +
-      "\n**cicatriz mecânica** que este repositório já sabe remendar: um **operador pendente**" +
-      "\nno fim do bloco `run: |` (a reescrita em massa deixou `&&`, `|`, `\\`, `<<<`…).",
-    naoCobre:
-      "O fixer remenda UMA linha ancorada no bloco `run: |`; estes casos têm motivo próprio e" +
-      "\n**precisam de mão**:",
-    rodape:
-      "> O remendo tira a **cicatriz** que impedia o parsing — ele **NÃO reconstrói a linha" +
-      "\n> engolida** pela reescrita: **o diff é o que se revisa**.",
-    medir: (root) => runSyntaxPatch(root),
-  },
-  "pipefail-sigpipe": {
-    marker: "<!-- pipefail-sigpipe-remedy -->",
-    gateJob: "Pipefail x grep quieto (SIGPIPE)",
-    comandoFix: "node scripts/check-pipefail-sigpipe.mjs --fix",
-    titulo: "🩹 Remendo mecânico — o gate SIGPIPE (`| grep -q` sob pipefail)",
-    achado: (n) =>
-      `O check **Pipefail x grep quieto (SIGPIPE)** encontrou **${n}** linha(s) com o pipeline` +
-      "\nque dá **SIGPIPE** ao produtor: sob `set -o pipefail`, `PRODUTOR | grep -q PADRAO` pode sair" +
-      "\n**141 MESMO com o padrão encontrado** (o `grep -q` fecha o stdin no primeiro casamento e quem" +
-      "\nainda tinha bytes para escrever leva o sinal). O remédio é o herestring — nenhum pipe, nenhum" +
-      "\nprodutor para levar o sinal.",
-    naoCobre:
-      "O fixer troca o pipeline por herestring SÓ quando o produtor é uma forma segura de capturar" +
-      '\n(`echo "$VAR"`, `printf …`); estes casos têm motivo próprio e **precisam de mão**:',
-    rodape:
-      "> O remendo troca o PIPELINE, não a asserção: o texto do produtor vira a entrada do `grep`." +
-      "\n> Ele **não inventa** intenção onde o produtor é um comando vivo — **o diff é o que se revisa**.",
-    medir: (root) => sigpipePatch(root),
-  },
-}
+export { FIXERS, DEFAULT_FIXER }
 
-/** O fixer default — o canal nasceu com o gate do `bash -n`. */
-export const DEFAULT_FIXER = "run-syntax"
+/**
+ * As declarações que NÃO entraram no canal (com o motivo): a rodada é RECUSADA.
+ *
+ * O canal não é um gate, mas o REGISTRO dele é a cobertura do remendo no PR: uma
+ * declaração quebrada não pode virar "aquele fixer não existe" — quem publica
+ * menos do que o repositório sabe remendar, em silêncio, é pior que não publicar.
+ */
+export { CANAL_PROBLEMAS }
 
 /**
  * O marcador do fixer DEFAULT.
@@ -656,6 +638,18 @@ async function main() {
   const root = valor("--root") ?? process.cwd()
   const dryRun = argv.includes("--dry-run")
   const json = argv.includes("--json")
+
+  // O REGISTRO INCOMPLETO RECUSA A RODADA. O canal não é o gate, mas publicar
+  // MENOS do que o repositório sabe remendar — com uma declaração quebrada
+  // virando "aquele fixer não existe" — é o modo de falha que o registro
+  // derivado existe para não ter. A mensagem nomeia o arquivo e o que falta.
+  if (CANAL_PROBLEMAS.length > 0) {
+    console.error(
+      `❌ pr-remedy-comment: o REGISTRO de fixers está INCOMPLETO — nada é publicado nesta rodada (uma declaração quebrada publicaria menos remendo do que o repositório sabe remendar, em silêncio):`,
+    )
+    for (const problema of CANAL_PROBLEMAS) console.error(`   - ${problema}`)
+    process.exit(EXIT.UNPUBLISHED)
+  }
 
   // O CONJUNTO de fixers vem do REGISTRO — nunca de uma lista escrita na linha
   // de comando: é este `--all` que faz um fixer NOVO herdar o passo do CI (e o

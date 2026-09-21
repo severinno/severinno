@@ -166,6 +166,28 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'M1|A METADE DO AVISO (ok exige exit 0 E stderr vazio)'
+  'M2|O STDIN DO BASH (o corpo vai como input do bash -n)'
+  'M3|A MÁSCARA DA EXPRESSÃO: as expressões do runner viram uma PALAVRA'
+  'M4|O ÍNDICE DO RECORTE --staged (o modo do pre-commit)'
+  'M5|O CONJUNTO DE SHELLS DA IMAGEM (RUNNER_SHELLS)'
+  'M6|A GUARDA DO CORPO VAZIO no --fix'
+  'M7|A SEGUNDA FONTE (os scripts de shell versionados)'
+  'M8|O PULO NOMEADO do passo NÃO-bash (isBashShell)'
+  'M9|A TERCEIRA FONTE, metade do BUILD (a instrução RUN de um Dockerfile)'
+  'M10|A TERCEIRA FONTE, metade do PAYLOAD (o sh -c embutido num script)'
+  'M11|A LEITURA DO YAML (o entrypoint: de um compose)'
+  'M12|O ESCAPE DO COMPOSE: o cifrão duplo do compose vira um cifrão só'
+  'M13|O PULO DO HEREDOC (o corpo é DADO, não código)'
+  'M14|O PULO NOMEADO do ARQUIVO de shebang NÃO-bash'
+  'M15|A GARANTIA DO PREVIEW (--fix --dry-run NÃO grava)'
+)
 GUARD="$SCRIPT_DIR/scripts/check-workflow-run-syntax.mjs"
 # A RÉGUA do que EXECUTA (comentário fora, expressão do runner) vive na FONTE
 # ÚNICA, e o M3 muta ELA, não o guard: o guard importa `DYNAMIC_EXPR_RE` de lá,

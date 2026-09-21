@@ -79,6 +79,20 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
+# Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
+# SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
+# master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
+METADES=(
+  'M1|O IMPORT DE TOPO (importsEstaticos)'
+  'M2|O GRAFO DO ALVO (o arquivo JS do comando)'
+  'M3|O INSTALL DO JOB (INSTALL_SUBCOMMANDS)'
+  'M4|O ESCOPO VARRIDO: a isenção de um workflow que o escopo NÃO leu não vale'
+  'M5|o SEM OBJETO: isenção que sobrou sobre um job que passou a instalar'
+  'M6|O REGISTRO DA DATA (fail-closed)'
+  'M7|A JANELA DE REVISÃO (--review)'
+)
 GUARD="$SCRIPT_DIR/scripts/check-job-deps.mjs"
 SUITE_ARQUIVO="src/lib/__tests__/check-job-deps.test.ts"
 
