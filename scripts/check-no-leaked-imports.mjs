@@ -192,33 +192,196 @@ export function collectCodeFiles(root) {
  * template literal) NÃO é import real; o import real tem o `import`/`require`
  * FORA da string.
  *
+ * Num template, os trechos LITERAIS é que são string: o miolo de `${...}` é
+ * código e fica FORA dos ranges (ver `consomeLiteral`). E os LITERAIS DE REGEX
+ * (`/…/`) também são literais: entram aqui, porque um backtick ou uma chave
+ * dentro deles não é código (ver `abreRegex`).
+ *
  * @param {string} content
  * @returns {Array<[number, number]>}
  */
 export function stringRanges(content) {
   const ranges = []
   let i = 0
-  const n = content.length
-  while (i < n) {
+  while (i < content.length) {
     const ch = content[i]
     if (ch === "'" || ch === '"' || ch === "`") {
-      const quote = ch
-      let j = i + 1
-      while (j < n) {
-        if (content[j] === "\\") {
-          j += 2
-          continue
-        }
-        if (content[j] === quote) break
-        j++
-      }
-      ranges.push([i, Math.min(j, n) + 1])
-      i = j >= n ? n : j + 1
-    } else {
-      i++
+      i = consomeLiteral(content, i, ranges)
+      continue
     }
+    if (ch === "/" && abreRegex(content, i)) {
+      const fim = fimDeRegex(content, i)
+      if (fim !== -1) {
+        ranges.push([i, fim])
+        i = fim
+        continue
+      }
+    }
+    i++
   }
   return ranges
+}
+
+/** O que pode estar antes de um `/` que ABRE regex (e não uma divisão). */
+const ANTES_DE_REGEX = new Set([
+  "return",
+  "typeof",
+  "instanceof",
+  "in",
+  "of",
+  "new",
+  "delete",
+  "void",
+  "case",
+  "do",
+  "else",
+  "yield",
+  "await",
+])
+
+/**
+ * O `/` em `i` abre um LITERAL DE REGEX (e não uma divisão)? A diferença não é
+ * léxica, é de contexto: depois de um VALOR (identificador, número, `)`, `]`) o
+ * `/` divide; depois de operador, `(`, `,`, `=`, `}` ou palavra-chave, abre regex.
+ *
+ * POR QUE ISTO FAZ PARTE DA RÉGUA DE STRINGS: o texto de um regex é LITERAL, não
+ * código — e a régua o lia como código. Medido (21/09/2026): o
+ * `scripts/forge-doctor.mjs` tem `if (/["'`$|&;<>()\\\\*?]/.test(command))`, e o
+ * BACKTICK dentro do regex fazia a régua abrir um template ali: o "template"
+ * engolia código até o próximo backtick do arquivo, o mascaramento mentia e a
+ * régua de TLA do `check-tla-closure` deixava de ver o `if (IS_DIRECT_RUN) await
+ * main()` do FIM do arquivo (falso NEGATIVO — a régua cega). Um regex com `//`
+ * (`/https:\/\//`) fazia o mesmo com o `stripComments`.
+ *
+ * @param {string} content
+ * @param {number} i
+ * @returns {boolean}
+ */
+export function abreRegex(content, i) {
+  let j = i - 1
+  while (j >= 0 && /\s/.test(content[j])) j--
+  if (j < 0) return false
+  const c = content[j]
+  if (/[\w$)\]}]/.test(c)) {
+    const palavra = (content.slice(0, j + 1).match(/([\w$]+)$/) ?? [])[1] ?? ""
+    return ANTES_DE_REGEX.has(palavra)
+  }
+  return true
+}
+
+/**
+ * O índice DEPOIS do regex que começa em `i` — ou `-1` quando ele não fecha na
+ * MESMA linha (aí o `/` é divisão: um regex de verdade não atravessa linha).
+ *
+ * @param {string} content
+ * @param {number} i
+ * @returns {number}
+ */
+export function fimDeRegex(content, i) {
+  let j = i + 1
+  let classe = false
+  while (j < content.length) {
+    const c = content[j]
+    if (c === "\\") {
+      j += 2
+      continue
+    }
+    if (c === "\n") return -1
+    if (c === "[") classe = true
+    else if (c === "]") classe = false
+    else if (c === "/" && !classe) {
+      j++
+      while (j < content.length && /[a-z]/.test(content[j])) j++ // flags
+      return j
+    }
+    j++
+  }
+  return -1
+}
+
+/**
+ * Consome UM literal a partir de `i` (a citação está em `content[i]`): grava os
+ * TRECHOS literais em `ranges` e devolve o índice depois do fechamento (ou o fim
+ * do arquivo, se ele não fechar).
+ *
+ * Num TEMPLATE o miolo de `${...}` é CÓDIGO, não texto: os trechos literais vão
+ * para `ranges` (é o que maskStrings apaga) e a interpolação é atravessada com a
+ * mesma régua — chaves balanceadas, aspas e templates ANINHADOS inclusos.
+ *
+ * SEM ISSO a leitura mentia, e não só num caso de borda: um template com
+ * interpolação terminava no PRIMEIRO backtick do miolo e o resto do arquivo era
+ * lido como CÓDIGO. Medido (21/09/2026) com a régua de TLA do
+ * `check-tla-closure.mjs`, que conta `await` de nível de módulo sobre este
+ * mascaramento: 36 módulos "com top-level await" em vez dos 9 reais — 27
+ * acusações falsas, todas nascidas deste trecho.
+ *
+ * @param {string} content
+ * @param {number} i
+ * @param {Array<[number, number]>} [ranges]
+ * @returns {number} índice depois do literal
+ */
+export function consomeLiteral(content, i, ranges = []) {
+  const n = content.length
+  const quote = content[i]
+  const ehTemplate = quote === "`"
+  let j = i + 1
+  let trecho = i
+  while (j < n) {
+    const c = content[j]
+    if (c === "\\") {
+      j += 2
+      continue
+    }
+    if (ehTemplate && c === "$" && content[j + 1] === "{") {
+      if (j > trecho) ranges.push([trecho, j])
+      j = consomeInterpolacao(content, j + 2, ranges)
+      trecho = j
+      continue
+    }
+    if (c === quote) {
+      ranges.push([trecho, j + 1])
+      return j + 1
+    }
+    if (c === "\n" && !ehTemplate) break // literal de aspas não atravessa linha
+    j++
+  }
+  if (n > trecho) ranges.push([trecho, n])
+  return n
+}
+
+/**
+ * Atravessa o MIOLO de um `${...}` — que é CÓDIGO: chaves balanceadas e
+ * literais aninhados com a mesma régua. Devolve o índice depois do `}` que
+ * fecha a interpolação.
+ *
+ * @param {string} content
+ * @param {number} i primeiro caractere depois do `${`
+ * @param {Array<[number, number]>} ranges
+ * @returns {number}
+ */
+function consomeInterpolacao(content, i, ranges) {
+  const n = content.length
+  let prof = 1
+  let j = i
+  while (j < n && prof > 0) {
+    const c = content[j]
+    if (c === "{") {
+      prof++
+      j++
+      continue
+    }
+    if (c === "}") {
+      prof--
+      j++
+      continue
+    }
+    if (c === "'" || c === '"' || c === "`") {
+      j = consomeLiteral(content, j, ranges)
+      continue
+    }
+    j++
+  }
+  return j
 }
 
 /**
@@ -253,25 +416,28 @@ export function stripComments(content) {
     const ch = content[i]
     const next = content[i + 1]
     if (ch === "'" || ch === '"' || ch === "`") {
-      // string: preserva íntegra até o fechamento (ou fim do arquivo)
-      const quote = ch
-      let j = i + 1
-      while (j < n) {
-        if (content[j] === "\\") {
-          j += 2
-          continue
-        }
-        if (content[j] === quote) break
-        j++
-      }
-      out += content.slice(i, Math.min(j, n) + 1)
-      i = Math.min(j, n) + 1
+      // literal (template incluso): preservado ÍNTEGRO — o `//` dentro do MIOLO
+      // de um template não é comentário, é texto do template, e o miolo de uma
+      // interpolação `${...}` continua código (consomeLiteral sabe a diferença).
+      const fim = consomeLiteral(content, i)
+      out += content.slice(i, fim)
+      i = fim
       continue
     }
     if (ch === "/" && next === "/") {
       // comentário de linha: até o \n (não consome o \n)
       while (i < n && content[i] !== "\n") i++
       continue
+    }
+    if (ch === "/" && next !== "*" && abreRegex(content, i)) {
+      // REGEX: preservado ÍNTEGRO — o `//` de `/https:\/\//` não abre comentário
+      // e o backtick de `/["'`$|…/` não abre template.
+      const fim = fimDeRegex(content, i)
+      if (fim !== -1) {
+        out += content.slice(i, fim)
+        i = fim
+        continue
+      }
     }
     if (ch === "/" && next === "*") {
       // comentário de bloco: até */ (não encontrado = até o fim)
