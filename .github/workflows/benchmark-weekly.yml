@@ -1558,10 +1558,24 @@ jobs:
       # ── Publica (ou fecha) — 'não medido' NUNCA passa como verde ───────
       # Sem o relatório ou sem a baseline o publicador sai 1: publicar (ou
       # fechar) a partir de nada é a forma mais barata do alerta mudo.
-      - name: Publicar a regressão de tempo como Issue (fecha quando volta à baseline)
+      # ── Publica (ou fecha) as DUAS dívidas do bench — o tempo e a IDADE ──
+      # A comparação por percentual é cega para QUANDO os dois números foram
+      # medidos: foi assim que a declaração do `mutation-guards` ficou 28% acima da
+      # matriz (271.755ms × 380.700ms) sem que nenhum guard a nomeasse. Então este
+      # mesmo canal publica as duas dívidas do MESMO ativo: a regressão de tempo e
+      # a idade do commit de ORIGEM de cada família medida (issue
+      # `bench-freshness-drift`). O `rc` agregado mantém as duas independentes — um
+      # publicador que falha não impede o outro de publicar — e o passo fica
+      # vermelho se QUALQUER um falhou: NÃO MEDIDO (clone raso, arquivo ilegível)
+      # não pode passar por verde.
+      - name: Publicar a regressão de tempo e a IDADE da régua (fecham quando voltam)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/guard-timing-issue.mjs
+        run: |
+          rc=0
+          node scripts/guard-timing-issue.mjs || rc=1
+          node scripts/bench-freshness-issue.mjs || rc=1
+          exit $rc
 
       # ── Evidência: o run medido (o corpo da issue cita este JSON) ──────
       - name: Upload do run medido (artifact)

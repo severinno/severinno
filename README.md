@@ -1216,9 +1216,12 @@ medidos**: foi por essa fenda que uma divergência de **28%** no `mutation-guard
 (271.755ms declarados × 380.700ms medidos) viveu sem que nenhum guard a nomeasse.
 A régua mede, por família MEDIDA, quantos commits de `HEAD` separam o commit de
 origem gravado da árvore de agora, com o teto declarado de **150 commits** — dois
-ciclos do cron semanal ao ritmo medido do repositório (~10 commits/dia). O
-checkout daquele job é feito com a história inteira (`fetch-depth: 0`): a idade é
-contada em commits e um clone raso responderia "sem idade", nunca "fresca". **LIMITE DECLARADO:** a régua mede FRESCOR, não exatidão — um commit a
+ciclos do cron semanal ao ritmo medido do repositório (~10 commits/dia) —, e o
+mesmo passo semanal que publica a regressão de tempo publica esta como issue
+(`bench-freshness-drift`, dedup por assinatura, fechada sozinha quando a régua é
+re-medida). O checkout daquele job é feito com a história inteira (`fetch-depth:
+0`): a idade é contada em commits e um clone raso responderia "sem idade", nunca
+"fresca". **LIMITE DECLARADO:** a régua mede FRESCOR, não exatidão — um commit a
 mais pode não mudar nada do que a família mede; o que ela impede é o silêncio de
 um número que ninguém re-mediu enquanto a árvore andou. **Gravar nunca
 perde:** o que a rodada não mediu é herdado na ordem `[baseline, latest]` — a

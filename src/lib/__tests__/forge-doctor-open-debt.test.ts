@@ -95,7 +95,9 @@ describe("o REGISTRO da dívida é o dos publicadores (fonte única)", () => {
     for (const subject of DEBT_SUBJECTS) {
       expect(subject.forges.length).toBeGreaterThan(0)
       expect(subject.subject.length).toBeGreaterThan(10)
-      expect([null, "protection", "mirrors", "declaredDebt", "gate"]).toContain(subject.crossCheck)
+      expect([null, "protection", "mirrors", "declaredDebt", "gate", "benchFreshness"]).toContain(
+        subject.crossCheck,
+      )
       // Um cruzamento por GATE nomeia QUAL gate: sem o nome, a caducidade seria
       // afirmada sem dizer de onde o doctor tirou a segunda medição.
       if (subject.crossCheck === "gate") {
@@ -137,6 +139,7 @@ describe("readOpenDebt — a leitura do board", () => {
         "gitea:env-mirror-drift",
         "gitea:required-checks-drift",
         "github:actrc-sync-drift",
+        "github:bench-freshness-drift",
         "github:crlf-scope-drift",
         "github:declared-debt-review",
         "github:github-dependency-new",
@@ -229,6 +232,31 @@ const DRIFT_ISSUE = { "required-checks-drift": [issue(7, "<!-- required-checks-d
 const MIRROR_ISSUE = { "actrc-sync-drift": [issue(9, "<!-- actrc-sync-drift:QUJD -->")] }
 const DEBT_REVIEW_ISSUE = {
   "declared-debt-review": [issue(21, "<!-- declared-debt-review:QUJD -->")],
+}
+// A régua do bench: o doctor mede a MESMA idade, então a caducidade dela é
+// MEDIDA (e não presumida) — é o cruzamento mais forte deste registro.
+const BENCH_FRESHNESS_ISSUE = {
+  "bench-freshness-drift": [issue(23, "<!-- bench-freshness-drift:QUJD -->")],
+}
+const BENCH_FRESHNESS_LIMPA = {
+  state: "measured",
+  head: "HEAD",
+  maxBehind: 150,
+  families: [
+    {
+      family: "mutations",
+      commit: "abc1234",
+      state: "fresh",
+      behind: 3,
+    },
+  ],
+  aged: [],
+  diverged: [],
+  unknown: [],
+  behindMax: 3,
+  detail:
+    "1 família(s) medida(s), a mais antiga 3 commit(s) atrás de HEAD (teto 150) — nenhuma vencida",
+  remedies: [],
 }
 
 describe("readOpenDebt — a issue velha não passa por problema vivo", () => {
@@ -324,6 +352,59 @@ describe("readOpenDebt — a issue velha não passa por problema vivo", () => {
     expect(item.detail).toContain("não é medido pelo doctor")
   })
 
+  it("a RÉGUA do bench: o doctor mede a MESMA idade — issue velha só caduca com a idade fresca", async () => {
+    const stub = listStub(BENCH_FRESHNESS_ISSUE)
+    const fresca = await readOpenDebt({
+      deps: { list: stub.list, now: () => NOW },
+      benchFreshness: BENCH_FRESHNESS_LIMPA,
+    })
+    const caduca = fresca.items[0] as { stale: boolean | null; detail: string }
+    expect(caduca.stale).toBe(true)
+    expect(caduca.detail).toContain("MESMA idade")
+    expect(caduca.detail).toContain("teto 150")
+
+    const velha = await readOpenDebt({
+      deps: { list: stub.list, now: () => NOW },
+      benchFreshness: {
+        ...BENCH_FRESHNESS_LIMPA,
+        families: [{ ...BENCH_FRESHNESS_LIMPA.families[0], state: "aged", behind: 400 }],
+        aged: ["mutations"],
+        behindMax: 400,
+      },
+    })
+    const viva = velha.items[0] as { stale: boolean | null; detail: string }
+    expect(viva.stale).toBe(false)
+    expect(viva.detail).toContain("VIVO")
+    expect(viva.detail).toContain("mutations")
+  })
+
+  it('a régua SEM idade → caducidade NÃO verificada (nunca "caducou")', async () => {
+    const stub = listStub(BENCH_FRESHNESS_ISSUE)
+    // Quatro caminhos, e os quatro têm de responder `null`: o fato ausente, o
+    // pulado por flag, o indisponível (arquivo/git) e uma família SEM idade.
+    // Dizer "caducou" em qualquer um seria a dívida que mente, do outro lado.
+    for (const benchFreshness of [
+      null,
+      { ...BENCH_FRESHNESS_LIMPA, state: "skipped" },
+      { ...BENCH_FRESHNESS_LIMPA, state: "unavailable", reason: "o arquivo não existe" },
+      {
+        ...BENCH_FRESHNESS_LIMPA,
+        unknown: ["lint"],
+        families: [{ ...BENCH_FRESHNESS_LIMPA.families[0], state: "unknown", behind: null }],
+      },
+    ]) {
+      const debt = await readOpenDebt({
+        deps: { list: stub.list, now: () => NOW },
+        benchFreshness,
+      })
+      const item = debt.items[0] as { stale: boolean | null; detail: string }
+      expect(item.stale).toBeNull()
+      // Duas causas possíveis, e as duas DIZEM que não dá para declarar caducidade:
+      // "não consegui medir a idade" e "medi, mas uma família ficou SEM idade".
+      expect(item.detail).toContain("caducada")
+    }
+  })
+
   it("isenções DENTRO da janela + issue aberta → caducada; alguma vencida → VIVA", async () => {
     const stub = listStub(DEBT_REVIEW_ISSUE)
     const limpo = await readOpenDebt({
@@ -349,7 +430,7 @@ describe("readOpenDebt — a issue velha não passa por problema vivo", () => {
     expect(viva.detail).toContain("VIVO")
   })
 
-  it('isenções NÃO medidas nesta run → caducidade NÃO verificada (nunca "caducou")', async () => {
+  it('isenções NÃO medidas nesta run → caducidade NÃO verificada (nunca "caducou") — o mesmo para a régua', async () => {
     const stub = listStub(DEBT_REVIEW_ISSUE)
     // Três caminhos, e os três têm de responder `null`: o fato ausente, o
     // pulado por flag, e o `unread` (uma lista que não pôde ser lida). Dizer
