@@ -22,8 +22,9 @@
 #   (2) a SUÍTE unitária (`merge-latency.test.ts`), que julga as funções puras.
 #
 # UMA MUTAÇÃO POR METADE (a unidade é a metade, não o arquivo):
-#   M1 — a DETECÇÃO da cobertura (`missing.push`): o job sem duração some da
-#        lista e o veredito fica PRONTA com um número incompleto.
+#   M1 — a DETECÇÃO da cobertura (`missing.push` do FALLBACK): o job sem
+#        duração some da lista e o veredito fica PRONTA com um número
+#        incompleto.
 #   M2 — o EXIT CODE do `--check`: a medição continua certa e o CI passa assim
 #        mesmo — o gate vira decoração.
 #   M3 — o PAPEL do dono do merge: com o papel trocado, o veredito passa a
@@ -289,9 +290,21 @@ pass "Controle OK — o \`if:\` do PASSO não é lido como o \`if:\` do job (esp
 # `missing.push(job.name)` é o que transforma "não medido" em veredito. Sem
 # ele, o job sem duração some da lista e o estado fica PRONTA: o número
 # publicado passa a medir menos pipeline do que existe — e fica MENOR.
+#
+# O ALVO carrega CONTEXTO porque a cobertura deixou de ter um push só: a régua
+# da idade (`bench-freshness.mjs`) fez o `ms` sem data própria entrar na MESMA
+# lista, e a mutação nomeia o push do FALLBACK — o job que não tem duração de
+# jeito nenhum, que é o que este fixture sintético exercita. Um alvo de uma
+# linha só passaria a casar nos dois (o injetor recusa alvo ambíguo).
 header "MUTAÇÃO M1 — a detecção da cobertura (missing.push)"
 info "Removendo a entrada do job sem duração da lista de pendências..."
-mutar '    missing.push(job.name)' '    void job // MUTACAO M1: o job sem duracao some da lista'
+mutar '    missing.push(job.name)
+    byJob.set(job.name, {
+      ms: null,
+      provenance: null,' '    void job // MUTACAO M1: o job sem duracao some da lista
+    byJob.set(job.name, {
+      ms: null,
+      provenance: null,'
 pass "Mutação M1 aplicada (sintaxe válida)"
 
 GATE_EXIT=0

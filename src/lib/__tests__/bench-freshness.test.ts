@@ -25,7 +25,12 @@
  *      fecha nada;
  *   8. o canal existe no cron REAL: o job semanal invoca o publicador com a
  *      história completa (`fetch-depth: 0`, sem a qual a idade sai "sem idade") e
- *      o `ci/periodic-alerts.json` classifica o canal como `issue`.
+ *      o `ci/periodic-alerts.json` classifica o canal como `issue`;
+ *   9. a idade vale para QUALQUER número declarado, não só o bench: cada `ms` do
+ *      modelo de latência e cada tabela de custo do README entra no MESMO fato,
+ *      com a origem DERIVADA DA DATA (`rev-list -1 --before`) — e a declaração
+ *      sem data de origem é `unknown` nomeado, nunca uma unidade ignorada. O
+ *      teto é POR TIPO: a prosa do README publica a idade sem vencer por ela.
  */
 
 import { readFileSync } from "node:fs"
@@ -35,12 +40,25 @@ import { describe, expect, it, vi } from "vitest"
 
 import {
   BASELINE_PATH,
+  BLOCK_LOOKBACK,
+  FRESHNESS_CEILINGS,
   FRESHNESS_MAX_COMMITS_BEHIND,
+  MODEL_PATH,
+  README_PATH,
   REMEDY_COMMAND,
+  anchorBefore,
+  anchorLabel,
+  ceilingOf,
   commitAge,
+  commitOfDate,
+  dateAnchor,
+  declarationFamilies,
   familyFreshness,
   freshnessLine,
+  modelDeclarations,
   readBenchFreshness,
+  readFreshness,
+  readmeDeclarations,
 } from "../../../scripts/bench-freshness.mjs"
 import {
   BENCH_FRESHNESS_PUBLISHER,
@@ -50,6 +68,7 @@ import {
   bandOf,
   divergedOf,
   freshnessBody,
+  freshnessTitle,
   inputOf,
   isActionable,
   signatureOf,
@@ -319,6 +338,470 @@ describe("readBenchFreshness — o arquivo e o git", () => {
   })
 })
 
+// ── 3.5. As DECLARAÇÕES datadas: o modelo de latência e as tabelas do README ─
+
+/** Um git dublê para as DUAS perguntas: a âncora vira commit, o commit vira idade. */
+function gitDatas({
+  commits = ["c1", "c2"],
+  count = 7,
+  erro = null,
+}: {
+  commits?: string[]
+  count?: number
+  erro?: Error | null
+} = {}) {
+  const fila = [...commits]
+  return (_cmd: string, args: string[]) => {
+    if (erro) return { error: erro, status: null, stdout: "" }
+    if (args[0] === "rev-list" && args[1] === "-1") {
+      const commit = fila.shift() ?? ""
+      return { status: 0, stdout: commit ? `${commit}\n` : "" }
+    }
+    if (args[0] === "rev-list") return { status: 0, stdout: `${count}\n` }
+    if (args[0] === "cat-file") return { status: 0, stdout: "" }
+    if (args[0] === "merge-base") return { status: 0, stdout: "" }
+    return { status: 1, stdout: "" }
+  }
+}
+
+/**
+ * A FORMA que estes testes leem das unidades e do fato.
+ *
+ * O módulo é JS: os tipos que o TS infere para `units`/`families` são largos
+ * (`object[]`/`FamilyAge[]`) e não cobrem `kind`, `ceiling` nem `date`. A leitura
+ * é tipada AQUI, uma vez, em vez de em cada asserção.
+ */
+type Unidade = {
+  family: string
+  kind: string
+  date: string | null
+  anchorKind?: string
+  origin: string
+  act: string | null
+  source: string
+  ceiling: number | null
+  state: string
+  behind: number | null
+  reason: string | null
+  commit: string | null
+}
+type Problema = { id: string; file: string; reason: string }
+type Fato = {
+  state: string
+  families: Unidade[]
+  aged: string[]
+  diverged: string[]
+  unknown: string[]
+  detail: string
+}
+
+const unidades = (r: unknown) => (r as { units: Unidade[] }).units
+const problemas = (r: unknown) => (r as { problems: Problema[] }).problems
+const fato = (r: unknown) => r as Fato
+const familias = (r: unknown) => (r as { families: Unidade[] }).families
+
+/** As unidades E os problemas de uma leitura só (a fonte é lida uma vez). */
+function leitura<T>(r: T) {
+  return { units: unidades(r), problems: problemas(r), raw: r }
+}
+
+describe("dateAnchor — as três formas da âncora datada", () => {
+  it("dd/mm/aaaa (o que o repositório escreve nas medições datadas)", () => {
+    expect(dateAnchor("Medido em 17/09/2026:")).toEqual({ date: "2026-09-17", kind: "day" })
+  })
+
+  it("aaaa-mm-dd (a forma do próprio modelo)", () => {
+    expect(dateAnchor("2026-09-17")).toEqual({ date: "2026-09-17", kind: "day" })
+  })
+
+  it("mm/aaaa NÃO inventa o dia: a unidade é `month` (o ÚLTIMO commit do mês)", () => {
+    const anchor = dateAnchor("Custo medido em 08/2026 (Windows host)")!
+    expect(anchor).toEqual({ date: "2026-08-01", kind: "month" })
+    expect(anchorBefore(anchor)).toBe("2026-09-01 00:00:00")
+    expect(anchorLabel(anchor)).toBe("08/2026")
+  })
+
+  it("sem data: `null` (não é meia data)", () => {
+    expect(dateAnchor("medido no host local, 3 runs")).toBeNull()
+  })
+})
+
+describe("modelDeclarations — cada `ms` com a SUA data", () => {
+  const modelo = {
+    meta: { date: "2026-09-01" },
+    jobs: {
+      github: {
+        simples: { ms: 100, date: "2026-09-17", source: "s", provenance: "declarado" },
+        semData: { ms: 200, source: "s" },
+        teto: { ms: 600_000, ceiling: true, provenance: "declarado (TETO: timeout-minutes)" },
+        composto: {
+          steps: [
+            { run: "a", ms: 10, date: "2026-09-17", source: "s" },
+            { run: "b", from: { family: "mutations", form: "x" } },
+            { run: "c", ms: 20, source: "s" },
+          ],
+        },
+      },
+    },
+  }
+
+  it("o job declarado e o passo medido entram NOMEADOS, com a data DE CADA UM", () => {
+    const { units } = leitura(modelDeclarations(modelo))
+    const ids = units.map((u) => u.family)
+    expect(ids).toContain("github/simples")
+    expect(ids).toContain("github/composto#1")
+    expect(units.every((u) => u.kind === "declared-number")).toBe(true)
+    expect(units.every((u) => u.origin === "date")).toBe(true)
+  })
+
+  it("o passo DERIVADO não vira unidade: a origem dele é a família do bench (já julgada)", () => {
+    const { units } = leitura(modelDeclarations(modelo))
+    expect(units.map((u) => u.family)).not.toContain("github/composto#2")
+  })
+
+  it("o TETO (`timeout-minutes`) fica FORA: limite não é medição", () => {
+    const { units, problems } = leitura(modelDeclarations(modelo))
+    expect(units.map((u) => u.family)).not.toContain("github/teto")
+    expect(problems.map((p) => p.id)).not.toContain("github/teto")
+  })
+
+  it("`ms` SEM a própria data é PROBLEMA nomeado — o `meta.date` do ato não data o número", () => {
+    const { units, problems } = leitura(modelDeclarations(modelo))
+    expect(units.map((u) => u.family)).not.toContain("github/semData")
+    const p = problems.find((x) => x.id === "github/semData")!
+    expect(p.reason).toContain("SEM data própria")
+    expect(p.reason).toContain("não a da medição")
+  })
+
+  it("o passo medido sem data também: o problema é DELE, não do job", () => {
+    const { units, problems } = leitura(modelDeclarations(modelo))
+    expect(units.map((u) => u.family)).not.toContain("github/composto#3")
+    const p = problems.find((x) => x.id === "github/composto#3")!
+    expect(p.reason).toContain("o passo 3 de github/composto")
+  })
+})
+
+describe("readmeDeclarations — a tabela que declara duração precisa da âncora", () => {
+  const tabela = ["| Camada | Tempo |", "| :----- | ----: |", "| Pre-commit | ~2s |"]
+
+  it("com a âncora datada no bloco: uma unidade por TABELA, com a data do bloco", () => {
+    const texto = ["Tempos como estão desde **03/08/2026**.", "", ...tabela].join("\n")
+    const { units, problems } = leitura(readmeDeclarations(texto))
+    expect(problems).toEqual([])
+    expect(units).toHaveLength(1)
+    expect(units[0]).toMatchObject({
+      kind: "declared-table",
+      date: "2026-08-03",
+      anchorKind: "day",
+    })
+    expect(units[0].family).toContain(`${README_PATH}:L3`)
+  })
+
+  it("sem âncora: PROBLEMA com a linha (nunca uma tabela ignorada em silêncio)", () => {
+    const { units, problems } = leitura(readmeDeclarations(tabela.join("\n")))
+    expect(units).toEqual([])
+    expect(problems).toHaveLength(1)
+    expect(problems[0].reason).toContain(`${README_PATH}:1`)
+    expect(problems[0].reason).toContain("sem âncora datada")
+  })
+
+  it("a âncora vale pelo BLOCO (até BLOCK_LOOKBACK linhas acima da tabela)", () => {
+    const longe = ["Medido em 01/02/2026", ...Array(BLOCK_LOOKBACK + 1).fill("texto"), ...tabela]
+    const { problems } = leitura(readmeDeclarations(longe.join("\n")))
+    expect(problems).toHaveLength(1)
+  })
+
+  it("tabela que só CITA uma duração no meio da frase não é tabela de custo", () => {
+    const prosa = [
+      "| Arquivo | Teste | Descrição |",
+      "| :------ | :---- | :-------- |",
+      "| `x.test.ts` | `p95 > threshold` | Quando P95 é 500ms === 500ms o serviço não degrada |",
+    ].join("\n")
+    const { units, problems } = leitura(readmeDeclarations(prosa))
+    expect(units).toEqual([])
+    expect(problems).toEqual([])
+  })
+})
+
+describe("declarationFamilies — a idade vem do commit DERIVADO da data", () => {
+  const modelo = {
+    jobs: { github: { job: { ms: 1, date: "2026-09-17", source: "s" } } },
+  }
+
+  it("a data vira commit (`rev-list -1 --before`) e o commit vira idade (a MESMA sonda)", () => {
+    const families = familias(
+      declarationFamilies({
+        model: modelo,
+        readme: "",
+        deps: { run: gitDatas({ commits: ["achado"], count: 9 }) as never },
+      }),
+    )
+    expect(families).toHaveLength(1)
+    expect(families[0]).toMatchObject({
+      family: "github/job",
+      commit: "achado",
+      behind: 9,
+      state: "fresh",
+      kind: "declared-number",
+    })
+    expect(families[0].ceiling).toBe(ceilingOf("declared-number"))
+  })
+
+  it("git que não responde: `unknown` com a causa — nunca 'sem idade' virando fresca", () => {
+    const families = familias(
+      declarationFamilies({
+        model: modelo,
+        readme: "",
+        deps: { run: gitDatas({ erro: new Error("spawnSync git ENOENT") }) as never },
+      }),
+    )
+    expect(families[0].state).toBe("unknown")
+    expect(families[0].reason).toContain("git não pôde ser executado")
+  })
+
+  it("nenhum commit antes da âncora: `unknown` nomeando a data", () => {
+    const families = familias(
+      declarationFamilies({
+        model: modelo,
+        readme: "",
+        deps: { run: gitDatas({ commits: [] }) as never },
+      }),
+    )
+    expect(families[0].state).toBe("unknown")
+    expect(families[0].reason).toContain("nenhum commit")
+  })
+
+  it("o MODELO ilegível não some: vira uma unidade `unknown` nomeando o arquivo", () => {
+    const families = familias(
+      declarationFamilies({
+        readme: "",
+        deps: {
+          exists: (p: string) => p.includes("merge-latency"),
+          read: () => "{ truncado",
+          run: gitDatas() as never,
+        },
+      }),
+    )
+    expect(families).toHaveLength(1)
+    // `fonte-ilegivel` e não `declaracao-sem-origem`: o arquivo não foi lido, e o
+    // veredito distingue "não consegui ler" de "li e o dono não datou o número".
+    expect(families[0].kind).toBe("fonte-ilegivel")
+    expect(families[0].state).toBe("unknown")
+    expect(families[0].reason).toContain("JSON válido")
+  })
+
+  it("o README ilegível também não some: `fonte-ilegivel` nomeando o arquivo", () => {
+    const families = familias(
+      declarationFamilies({
+        model: { jobs: {} },
+        deps: {
+          exists: (p: string) => p.endsWith("README.md"),
+          read: () => {
+            throw new Error("EACCES: permission denied")
+          },
+          run: gitDatas() as never,
+        },
+      }),
+    )
+    expect(families).toHaveLength(1)
+    expect(families[0]).toMatchObject({ kind: "fonte-ilegivel", state: "unknown" })
+    expect(families[0].reason).toContain("EACCES")
+  })
+
+  it("a DECLARAÇÃO sem origem é outro `kind` (`declaracao-sem-origem`) — o dono não datou", () => {
+    const families = familias(
+      declarationFamilies({
+        model: { jobs: { github: { job: { ms: 1, source: "s" } } } },
+        readme: "",
+        deps: { run: gitDatas() as never },
+      }),
+    )
+    expect(families).toHaveLength(1)
+    expect(families[0]).toMatchObject({ kind: "declaracao-sem-origem", state: "unknown" })
+    expect(families[0].reason).toContain("SEM data própria")
+  })
+
+  it("`commitOfDate` dá o ÚLTIMO commit do mês numa âncora `mm/aaaa`", () => {
+    const vistos: string[] = []
+    const run = (_cmd: string, args: string[]) => {
+      vistos.push(args[2])
+      return { status: 0, stdout: "c9\n" }
+    }
+    commitOfDate({ anchor: { date: "2026-08-01", kind: "month" } }, { run: run as never })
+    expect(vistos[0]).toBe("--before=2026-09-01 00:00:00")
+  })
+})
+
+describe("readFreshness — o fato completo e o teto POR TIPO", () => {
+  const modelo = {
+    jobs: { github: { job: { ms: 1, date: "2026-09-17", source: "s" } } },
+  }
+
+  it("a tabela do README NÃO tem teto: a idade dela é PUBLICADA, sem vencimento", () => {
+    const longe = ["Medido em 01/02/2026", "", "| c | t |", "| :- | -: |", "| x | ~2s |"].join("\n")
+    const fact = fato(
+      readFreshness({
+        model: { jobs: {} },
+        readme: longe,
+        file: BASELINE_PATH,
+        deps: {
+          probe: () => ({ state: "ancestor", behind: 3, reason: "" }),
+          run: gitDatas({ count: 9999 }) as never,
+        },
+      }),
+    )
+    const tabela = fact.families.find((f) => f.kind === "declared-table")!
+    expect(tabela.behind).toBe(9999)
+    expect(tabela.ceiling).toBeNull()
+    expect(tabela.state).toBe("fresh")
+    expect(fact.aged).toEqual([])
+    expect(fact.detail).toContain("sem teto (a idade é publicada)")
+  })
+
+  it("a família do bench com a MESMA idade é VENCIDA (o teto do tipo dela vale)", () => {
+    const fact = fato(
+      readFreshness({
+        model: { jobs: {} },
+        readme: "",
+        file: BASELINE_PATH,
+        deps: {
+          probe: () => ({
+            state: "ancestor",
+            behind: FRESHNESS_MAX_COMMITS_BEHIND + 1,
+            reason: "",
+          }),
+          run: gitDatas() as never,
+        },
+      }),
+    )
+    expect(fact.aged.length).toBe(fact.families.length)
+    expect(fact.families.every((f) => f.kind === "bench-family")).toBe(true)
+    expect(FRESHNESS_CEILINGS["bench-family"]).toBe(FRESHNESS_MAX_COMMITS_BEHIND)
+  })
+
+  it("o número declarado do MODELO também vence com a MESMA idade (o teto dele vale)", () => {
+    const fact = fato(
+      readFreshness({
+        model: modelo,
+        readme: "",
+        file: BASELINE_PATH,
+        deps: {
+          probe: () => ({ state: "ancestor", behind: 3, reason: "" }),
+          run: gitDatas({ count: FRESHNESS_MAX_COMMITS_BEHIND + 1 }) as never,
+        },
+      }),
+    )
+    expect(fact.aged).toEqual(["github/job"])
+    expect(fact.families.filter((f) => f.kind === "declared-number")).toHaveLength(1)
+  })
+
+  it("a FRONTEIRA do teto vale também para as DECLARAÇÕES: no teto é fresca, teto + 1 vence", () => {
+    // O caminho das declarações tem a SUA comparação (`isAged`, com o teto do
+    // TIPO): a fronteira testada nas famílias do bench não a cobre — e é ela que
+    // decide se a prosa do README e os números do modelo vencem.
+    const declara = (behind: number) =>
+      fato(
+        readFreshness({
+          model: { jobs: { github: { job: { ms: 1, date: "2026-09-17", source: "s" } } } },
+          readme: "",
+          file: BASELINE_PATH,
+          deps: {
+            probe: () => ({ state: "ancestor", behind: 3, reason: "" }),
+            run: gitDatas({ count: behind }) as never,
+          },
+        }),
+      )
+
+    const noTeto = declara(FRESHNESS_MAX_COMMITS_BEHIND)
+    expect(noTeto.aged).toEqual([])
+    expect(noTeto.families.find((f) => f.kind === "declared-number")!.state).toBe("fresh")
+
+    const acima = declara(FRESHNESS_MAX_COMMITS_BEHIND + 1)
+    expect(acima.aged).toEqual(["github/job"])
+  })
+
+  it("a FONTE do bench ilegível não vira 'nada a julgar': vira `fonte-ilegivel` e o fato fica SEM idade", () => {
+    // A TERCEIRA fonte do fato: o arquivo do bench. Ausente, ilegível ou com JSON
+    // quebrado, `readBenchFreshness` devolve `unavailable` com ZERO famílias — e é
+    // este ponto que decide se esse vazio entra no fato como "não consegui ler"
+    // (`fonte-ilegivel`, unknown) ou como "nada a julgar". A segunda leitura é a
+    // forma cara do verde falso: o fato sai MEDIDO, sem nenhum unknown, e o doctor
+    // diria PRONTA sobre um arquivo que ninguém leu.
+    const contaFonte = (deps: Record<string, unknown>) =>
+      fato(
+        readFreshness({
+          model: { jobs: { github: { job: { ms: 1, date: "2026-09-17", source: "s" } } } },
+          readme: "",
+          file: "docs/benchmarks/nao-existe.json",
+          deps: {
+            probe: () => ({ state: "ancestor", behind: 3, reason: "" }),
+            run: gitDatas() as never,
+            ...deps,
+          },
+        }),
+      )
+
+    const casos: Array<[string, Record<string, unknown>]> = [
+      ["ausente", { exists: () => false }],
+      ["com JSON inválido", { exists: () => true, read: () => "{ isso não é json" }],
+    ]
+
+    for (const [caso, deps] of casos) {
+      const fact = contaFonte(deps)
+      const fonte = fact.families.filter((f) => f.kind === "fonte-ilegivel")
+      expect(fonte, `o bench ${caso} sumiu do fato`).toHaveLength(1)
+      expect(fonte[0].family).toContain("nao-existe.json")
+      expect(fonte[0].state).toBe("unknown")
+      expect(fact.unknown).toEqual([fonte[0].family])
+      // A outra fonte CONTINUA medida: a falha de uma não apaga as outras.
+      expect(fact.families.some((f) => f.kind === "declared-number")).toBe(true)
+      // E as famílias do bench NÃO entram: elas não foram lidas.
+      expect(fact.families.some((f) => f.kind === "bench-family")).toBe(false)
+      expect(fact.state).toBe("measured")
+    }
+  })
+
+  it("o repositório REAL: as declarações do modelo e do README entram no fato, e nenhuma vence", () => {
+    const fact = fato(readFreshness({}))
+    expect(fact.state).toBe("measured")
+    const tipos = new Set(fact.families.map((f) => f.kind))
+    expect(tipos.has("bench-family")).toBe(true)
+    expect(tipos.has("declared-number")).toBe(true)
+    expect(tipos.has("declared-table")).toBe(true)
+    expect(fact.aged).toEqual([])
+    expect(fact.diverged).toEqual([])
+    expect(fact.unknown).toEqual([])
+    // As tabelas do README são julgadas (uma unidade por tabela de custo).
+    expect(fact.families.filter((f) => f.kind === "declared-table").length).toBeGreaterThan(2)
+  })
+
+  it("o TETO declarado na PROSA é o da régua (a doc não pode envelhecer calada)", () => {
+    // A régua imprime o teto por tipo no fato, e a doc o repete em prosa: sem esta
+    // ligação, mudar `FRESHNESS_MAX_COMMITS_BEHIND` deixaria a doc mentindo — que é
+    // exatamente a classe de defeito que esta régua existe para nomear.
+    for (const caminho of [README_PATH, "docs/GUARDS.md"]) {
+      const texto = readFileSync(join(ROOT, caminho), "utf8")
+      const numeros = [...texto.matchAll(/(\d+) commits\*\*/g)].map((m) => Number(m[1]))
+      expect(numeros.length, `${caminho} não declara o teto em prosa`).toBeGreaterThan(0)
+      expect([...new Set(numeros)], `${caminho} declara um teto que a régua não tem`).toEqual([
+        FRESHNESS_MAX_COMMITS_BEHIND,
+      ])
+      expect(
+        texto.replace(/\s+/g, " "),
+        `${caminho} não diz que a idade da prosa é publicada`,
+      ).toContain("sem teto (a idade é publicada)")
+    }
+  })
+
+  it("o arquivo do MODELO real é o que a régua lê (a fonte não é uma segunda leitura)", () => {
+    const modeloReal = JSON.parse(readFileSync(join(ROOT, MODEL_PATH), "utf8"))
+    const { units, problems } = leitura(modelDeclarations(modeloReal))
+    expect(problems).toEqual([])
+    expect(units.length).toBeGreaterThan(20)
+    expect(units.every((u) => /^\d{4}-\d{2}-\d{2}$/.test(String(u.date)))).toBe(true)
+  })
+})
+
 // ── 4. O publicador: a assinatura, o fecho e o ciclo ───────────────────────
 
 const VELHA = {
@@ -497,7 +980,10 @@ describe("o ciclo: abre na régua velha, FECHA quando ela volta ao teto", () => 
     expect(res.status).toBe("created")
     expect(String(res.ref)).toContain("#1")
     expect(backend.issues).toHaveLength(1)
-    expect(backend.issues[0].title).toContain("régua do bench")
+    // O título é ESTÁVEL entre runs (sem número nem commit) e agora nomeia o que a
+    // régua julga: as DECLARAÇÕES datadas, não só as famílias do bench.
+    expect(backend.issues[0].title).toBe(freshnessTitle())
+    expect(backend.issues[0].title).toContain("declarações datadas")
     expect(publisherSignatures(backend.issues[0], BENCH_FRESHNESS_PUBLISHER).length).toBe(1)
   })
 

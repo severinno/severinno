@@ -575,6 +575,15 @@ export function resolveSteps(job, entry, index) {
       continue
     }
     if (Number.isFinite(step.ms)) {
+      // A DATA É DO PRÓPRIO NÚMERO: sem ela a idade da declaração não se mede, e
+      // a régua da idade (`bench-freshness.mjs`, que julga este passo como
+      // `declared-number`) a lê daqui — o `meta.date` do arquivo é a data do ATO.
+      if (!step.date) {
+        problems.push(
+          `o passo \`${run}\` declara \`ms\` SEM data própria — a idade da declaração não se mede (o \`meta.date\` do arquivo é a data do ATO, não a da medição)`,
+        )
+        continue
+      }
       parts.push({
         run,
         ms: step.ms,
@@ -671,6 +680,29 @@ export function resolveDurations(jobs, model, forge, index) {
         stepProblems: problemas,
       })
       if (problemas.length > 0) missing.push(job.name)
+      continue
+    }
+
+    // O teto (`ceiling`) fica FORA da regra: o número dele não é uma medição (é o
+    // `timeout-minutes` da pipeline), e o dono já o confronta com a pipeline.
+    if (entry && typeof entry.ms === "number" && entry.ceiling !== true && !entry.date) {
+      // Um número declarado SEM a própria data: a régua da idade
+      // (`bench-freshness.mjs`) não tem de onde medir a idade dele, e herdar o
+      // `meta.date` do arquivo seria datar o número por decurso — o veredito
+      // fica INDETERMINADO com a causa nomeada, como qualquer passo que não fecha.
+      byJob.set(job.name, {
+        ms: null,
+        provenance: entry.provenance ?? null,
+        source: entry.source ?? null,
+        date: null,
+        derivedMs: derived.ms,
+        derivedUnmatched: derived.unmatched.length,
+        diverges: false,
+        stepProblems: [
+          `o job declara \`ms\` SEM data própria — a idade da declaração não se mede (a régua declara o número como \`declared-number\` e lê a data DELE; o \`meta.date\` do arquivo é a data do ATO)`,
+        ],
+      })
+      missing.push(job.name)
       continue
     }
 
@@ -920,10 +952,12 @@ export function measureForge({ forge, content, model, bench, runners = null }) {
     // O job declarado por PASSOS que não fecha tem a CAUSA nomeada: "sem duração"
     // sozinho mandaria procurar no lugar errado (o número existe — o que não
     // existe é a ligação dele, ou a cobertura de um passo).
-    const p = byJob.get(name)?.stepProblems ?? []
+    const entrada = byJob.get(name)
+    const p = entrada?.stepProblems ?? []
+    const porPassos = Array.isArray(entrada?.steps)
     unknowns.push(
       p.length
-        ? `job '${name}' roda no PR e o modelo declara os passos dele, mas ${p.length} não fecham: ${p.join("; ")}`
+        ? `job '${name}' roda no PR e o modelo declara ${porPassos ? "os passos dele" : "o número dele"}, mas ${p.length} não fecha${p.length > 1 ? "m" : ""}: ${p.join("; ")}`
         : `job '${name}' roda no PR e NÃO tem duração (nem declarada em ${MODEL_PATH}, nem derivada do benchmark)`,
     )
   }

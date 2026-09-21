@@ -3,9 +3,9 @@
 // =============================================================================
 // bench-freshness.mjs
 //
-// A IDADE do commit de ORIGEM de cada família do bench: quantos commits de HEAD
-// separam o número que a baseline versionada declara do código que está aqui
-// agora.
+// A IDADE da ORIGEM de cada DECLARAÇÃO datada — as famílias do bench, os números
+// do modelo de latência e as tabelas de custo do README: quantos commits de HEAD
+// separam o número que eles declaram do código que está aqui agora.
 //
 // POR QUE ISSO PRECISA EXISTIR (o defeito real, medido): o
 // `docs/benchmarks/guard-timing-baseline.json` guarda, por família, o ATO que
@@ -24,6 +24,13 @@
 // mede. O que ela impede é o SILÊNCIO — uma baseline de 400 commits atrás
 // declarando custo para o merge é uma afirmação que ninguém re-mediu enquanto a
 // árvore andou, e é exatamente aí que os 28% couberam.
+//
+// AS OUTRAS DECLARAÇÕES QUE ENVELHECEM entram no MESMO fato (ver a seção abaixo):
+// cada `ms` declarado do modelo de latência (`ci/merge-latency.json`) e cada
+// tabela do README que declara duração. O que se cobra delas é o que se cobra da
+// baseline: uma DATA DE ORIGEM visível, da qual a idade se mede — um número sem
+// data própria não é "sem idade", é uma declaração que a régua recusa a datar
+// por decurso.
 //
 // O TETO (`FRESHNESS_MAX_COMMITS_BEHIND`) É DECLARADO, não escolhido por gosto: o
 // cron que re-mede (`guard-timing-alert`, semanal) move a baseline de propósito, e
@@ -61,13 +68,19 @@
 //   node scripts/bench-freshness.mjs --help
 //
 // Exit codes:
-//   0 — MEDIDA e todas as famílias frescas (dentro do teto)
-//   1 — MEDIDA e alguma família VENCIDA (atrás de mais de N commits) ou
+//   0 — MEDIDA e todas as declarações frescas (dentro do teto do TIPO delas; a
+//       tabela do README sem teto nunca vence por idade)
+//   1 — MEDIDA e alguma declaração VENCIDA (atrás de mais de N commits) ou
 //       DIVERGENTE (o commit de origem não é ancestral de HEAD — a história foi
 //       reescrita e o número não se reproduz nesta árvore)
 //   2 — NÃO MEDIDA (arquivo ausente/inválido, ou git incapaz de responder: o
 //       veredito não pode afirmar frescor nem vencimento)
 //   3 — uso inválido
+//
+// OBS: uma declaração SEM idade (fonte ilegível, `ms` sem a própria `data`,
+// tabela sem âncora, clone raso) sai 0 aqui com a marca ⚠️ e o motivo na linha —
+// quem transforma isso em INDETERMINADA é o doctor (seção 9/9) e o publicador
+// (que suspende o fechamento enquanto a medição não cobrir todas elas).
 // =============================================================================
 
 import { spawnSync } from "node:child_process"
@@ -95,6 +108,51 @@ export const BASELINE_PATH = join("docs", "benchmarks", BASELINE_FILE)
  * dos 150: dois ciclos do cron semanal, ao ritmo medido do repositório).
  */
 export const FRESHNESS_MAX_COMMITS_BEHIND = 150
+
+/**
+ * O TETO É POR TIPO DE DECLARAÇÃO, e cada um tem o SEU ritmo — um teto único
+ * acusaria a prosa de custo (re-medida quando o GUARD muda) no ritmo do bench
+ * (re-medido por cron), que é um alerta que sempre acende.
+ *
+ *   bench-family     150  dois ciclos do cron semanal (`guard-timing-alert`) ao
+ *                         ritmo medido do repositório (~70 commits/ciclo);
+ *   declared-number  150  o modelo de latência é re-medido no MESMO ato em que o
+ *                         job muda (e o dono confronta derivado × declarado);
+ *   declared-table   null  a prosa de custo do README é re-medida quando o GUARD
+ *                         muda, não por calendário: um teto em commits compararia
+ *                         o ritmo do CÓDIGO com o ritmo da DOC e abriria alerta
+ *                         permanente (as âncoras vivas hoje vão de 79 a 412
+ *                         commits). O que a régua cobra dela é a ÂNCORA, e a
+ *                         idade sai PUBLICADA — quem decide se o número ainda
+ *                         vale é o dono dele, quando o guard mudar.
+ */
+export const FRESHNESS_CEILINGS = {
+  "bench-family": FRESHNESS_MAX_COMMITS_BEHIND,
+  "declared-number": FRESHNESS_MAX_COMMITS_BEHIND,
+  "declared-table": null,
+}
+
+/**
+ * O teto de um tipo de declaração.
+ *
+ * `null` = SEM teto (a idade é publicada, e o vencimento não é um veredito deste
+ * tipo) — o do bench quando o tipo não é declarado.
+ */
+export function ceilingOf(kind) {
+  return kind in FRESHNESS_CEILINGS ? FRESHNESS_CEILINGS[kind] : FRESHNESS_MAX_COMMITS_BEHIND
+}
+
+/** O teto de um tipo, como TEXTO (o `null` diz que a idade é só publicada). */
+export function ceilingLabel(kind) {
+  const teto = ceilingOf(kind)
+  return teto === null ? "sem teto (a idade é publicada)" : `${teto}`
+}
+
+/** A comparação que decide `aged` — com teto `null` NUNCA há vencimento. */
+export function isAged(behind, kind) {
+  const teto = ceilingOf(kind)
+  return teto !== null && typeof behind === "number" && behind > teto
+}
 
 /** O comando que REMEDEIA (o mesmo que o corpo da issue cita). */
 export const REMEDY_COMMAND = "bun run bench:guard-timing:baseline"
@@ -273,6 +331,35 @@ export function familyFreshness(
     })
   }
 
+  return assembleFact(families, { head, maxBehind })
+}
+
+/**
+ * A MONTAGEM do fato — a parte pura que as DUAS leituras compartilham (as
+ * famílias do bench e as declarações datadas do modelo/README). Os estados vêm
+ * prontos de cada unidade; aqui só se conta, se nomeia e se deriva o remédio.
+ *
+ * @param {object[]} families  as unidades julgadas (cada uma com `state`/`behind`)
+ * @param {{head?: string, maxBehind?: number, emptyReason?: string}} [options]
+ * @returns {BenchFreshness}
+ */
+/** Como cada tipo de declaração se chama no relatório (a chave é o `kind`). */
+export const NOMES_DE_TIPO = {
+  "bench-family": "família do bench",
+  "declared-number": "número declarado (modelo)",
+  "declared-table": "tabela de custo (README)",
+  "declaracao-sem-origem": "declaração SEM origem",
+  "fonte-ilegivel": "fonte ilegível",
+}
+
+export function assembleFact(
+  families,
+  {
+    head = "HEAD",
+    maxBehind = FRESHNESS_MAX_COMMITS_BEHIND,
+    emptyReason = "o arquivo do bench não declara NENHUMA família medida — não há número para envelhecer",
+  } = {},
+) {
   const aged = families.filter((f) => f.state === "aged").map((f) => f.family)
   const diverged = families.filter((f) => f.state === "diverged").map((f) => f.family)
   const unknown = families.filter((f) => f.state === "unknown").map((f) => f.family)
@@ -280,26 +367,30 @@ export function familyFreshness(
   const behindMax = medidas.length > 0 ? Math.max(...medidas.map((f) => f.behind)) : null
 
   if (families.length === 0) {
-    return unavailable(
-      "o arquivo do bench não declara NENHUMA família medida — não há número para envelhecer",
-      {
-        head,
-        maxBehind,
-      },
-    )
+    return unavailable(emptyReason, { head, maxBehind })
   }
+
+  // O TETO POR TIPO vai DITO: com um teto único a prosa de custo seria acusada no
+  // ritmo do bench, e um alerta que sempre acende é o defeito que o repositório
+  // já classificou como tal.
+  const tetos = [...new Set(families.map((f) => f.kind ?? "bench-family"))]
+    .map((k) => {
+      const teto = ceilingOf(k)
+      return `${NOMES_DE_TIPO[k] ?? k} ${teto === null ? "sem teto (a idade é publicada)" : `${teto} commits`}`
+    })
+    .join(", ")
 
   const detail =
     aged.length + diverged.length > 0
-      ? `${families.length} família(s) medida(s) e ${aged.length + diverged.length} VENCIDA(s): ` +
+      ? `${families.length} declaração(ões) medida(s) e ${aged.length + diverged.length} VENCIDA(s): ` +
         `${aged.map((f) => `${f} a ${families.find((x) => x.family === f).behind} commit(s) atrás`).join(", ")}` +
         (diverged.length > 0
           ? `${aged.length > 0 ? " · " : ""}fora da história: ${diverged.join(", ")}`
           : "") +
-        ` (teto ${maxBehind} commits)`
+        ` (teto por tipo: ${tetos})`
       : unknown.length > 0
-        ? `${families.length} família(s) medida(s), ${unknown.length} SEM idade (${unknown.join(", ")}) e nenhuma vencida conhecida (teto ${maxBehind} commits)`
-        : `${families.length} família(s) medida(s), a mais antiga ${behindMax} commit(s) atrás de ${head} (teto ${maxBehind}) — nenhuma vencida`
+        ? `${families.length} declaração(ões) medida(s), ${unknown.length} SEM idade (${unknown.join(", ")}) e nenhuma vencida conhecida (teto por tipo: ${tetos})`
+        : `${families.length} declaração(ões) medida(s), a mais antiga ${behindMax} commit(s) atrás de ${head} (teto por tipo: ${tetos}) — nenhuma vencida`
 
   return {
     state: "measured",
@@ -340,27 +431,46 @@ function unavailable(reason, { head = "HEAD", maxBehind = FRESHNESS_MAX_COMMITS_
 /** Os remédios, derivados do estado — o texto que a issue e o doctor repetem. */
 function remediesFor({ aged, diverged, unknown, maxBehind, families }) {
   const out = []
-  if (aged.length + diverged.length > 0) {
+  const vencidas = new Set([...aged, ...diverged])
+  const porTipo = (tipo) =>
+    families.filter((f) => vencidas.has(f.family) && (f.kind ?? "bench-family") === tipo)
+
+  // O remédio de cada TIPO de declaração, derivado de quem venceu — mandar
+  // re-mediar a baseline por causa de uma tabela do README seria um remédio que
+  // não fecha a dívida que a régua acabou de nomear.
+  if (porTipo("bench-family").length > 0) {
     out.push(
       `${REMEDY_COMMAND} — re-mede e move a baseline DE PROPÓSITO (o ato grava o commit de origem do que mediu); ` +
         `a jogada é deliberada porque o número declarado é o que a issue cobra`,
     )
   }
+  if (porTipo("declared-number").length > 0) {
+    out.push(
+      `os números declarados (${MODEL_PATH}) saem da idade pela DATA de cada um: re-meça o número e atualize a \`date\` da PRÓPRIA entrada — a régua mede a idade da declaração, não a do ato (o \`meta.date\` é do arquivo)`,
+    )
+  }
+  if (porTipo("declared-table").length > 0) {
+    out.push(
+      `as tabelas de custo do ${README_PATH} saem da idade pela âncora datada do bloco: re-meça o que envelheceu e atualize a âncora do bloco (a régua lê a data que ESTÁ na prosa)`,
+    )
+  }
   if (diverged.length > 0) {
     out.push(
-      `as famílias ${diverged.join(", ")} foram medidas num commit que não está na história de HEAD (reescrita): ` +
-        `o número delas não é reproduzível nesta árvore — re-medir é o único remédio`,
+      `as declarações ${diverged.join(", ")} foram datadas num commit que não está na história de HEAD (reescrita): ` +
+        `o número delas não é reproduzível nesta árvore — re-medir (ou re-datar) é o único remédio`,
     )
   }
   if (unknown.length > 0) {
     out.push(
-      `as famílias ${unknown.join(", ")} ficaram sem idade: um clone RASO (fetch-depth) responde "o commit não está aqui", ` +
-        `e não "está fresco" — o job que mede precisa da história`,
+      `as declarações ${unknown.join(", ")} ficaram SEM idade: um clone RASO (fetch-depth) responde "o commit não está aqui", uma declaração sem a PRÓPRIA data responde "não a dataram" — nenhuma das duas é "está fresco", e o job que mede precisa da história`,
     )
   }
   if (out.length === 0) {
+    const tipos = [...new Set(families.map((f) => f.kind ?? "bench-family"))]
+      .map((k) => `${NOMES_DE_TIPO[k] ?? k}: ${ceilingLabel(k)}`)
+      .join(", ")
     out.push(
-      `nenhum: a mais antiga está ${Math.max(0, ...families.map((f) => f.behind ?? 0))} commit(s) atrás, dentro do teto de ${maxBehind}`,
+      `nenhum: a mais antiga está ${Math.max(0, ...families.map((f) => f.behind ?? 0))} commit(s) atrás, e o teto de cada tipo está respeitado (${tipos})`,
     )
   }
   return out
@@ -441,6 +551,439 @@ export function freshnessLine(fact) {
 }
 
 // ---------------------------------------------------------------------------
+// AS DECLARAÇÕES DATADAS — o modelo de latência e as tabelas do README
+// ---------------------------------------------------------------------------
+//
+// A régua nasceu medindo as FAMÍLIAS do bench, mas o defeito que ela nomeia não
+// é do bench: é de QUALQUER número declarado cujo dono não diz de quando ele é.
+// O modelo de latência de merge declara a duração de cada job (e, num job
+// composto, de cada passo) e o README declara tabelas de custo — as duas coisas
+// alimentam decisões e as duas envelhecem em silêncio, porque uma `date` sem
+// idade é só uma data que ninguém lê.
+//
+// O QUE ENTRA NO MESMO FATO (o `kind` de cada unidade diz de onde ela vem):
+//   - `bench-family`   — a origem é o COMMIT que a baseline grava (como sempre);
+//   - `declared-number` — cada `ms` do modelo, com a origem derivada da DATA
+//     DELE. Um número declarado SEM a própria data sai como `unknown` com a
+//     causa nomeada: o `meta.date` do arquivo é a data do ATO, não a da medição,
+//     e usá-lo em silêncio seria datar o número por decurso;
+//   - `declared-table` — cada tabela do README que declara duração, com a origem
+//     derivada da ÂNCORA DATADA do bloco. Tabela de custo sem âncora idem.
+//
+// A ORIGEM É DERIVADA, NÃO ARREDONDADA: a data vira o commit imediatamente
+// ANTERIOR a ela (`git rev-list -1 --before`), e é esse commit que a sonda de
+// idade mede — o MESMO `commitAge` das famílias, com os mesmos estados e a mesma
+// contagem em commits. Uma segunda régua de idade divergiria da primeira no dia
+// em que uma delas fosse ajustada.
+
+/** O MODELO de latência de merge — um dos donos de números declarados. */
+export const MODEL_PATH = join("ci", "merge-latency.json")
+
+/** O README — onde vivem as tabelas de custo (as que declaram duração). */
+export const README_PATH = "README.md"
+
+/**
+ * A célula de DURAÇÃO — o gatilho da exigência de âncora.
+ *
+ * A célula tem de COMEÇAR com a duração: um `500ms` no MEIO de uma frase (o
+ * limiar de um teste, por exemplo) não é um custo declarado, e uma régua que
+ * confundisse os dois pediria data de origem para a prosa que só cita um valor.
+ * O que conta é a célula que AFIRMA o tempo: `~2s`, `<1s`, `131.5s`, `17.175s`.
+ */
+export const DURATION_CELL_RE = /^(?:\*\*)?\s*(?:≈|~|≤|<|>=?)?\s*\d+(?:[.,]\d+)?\s*(?:ms|s)\b/i
+
+/** As células de uma linha de tabela Markdown (sem os pipes das pontas). */
+export function cellsOf(linha) {
+  const texto = String(linha ?? "").trim()
+  if (!texto.startsWith("|")) return []
+  return texto.replace(/^\|/, "").replace(/\|$/, "").split("|")
+}
+
+/** A linha de tabela DECLARA duração? (uma célula dela afirma o tempo) */
+export function rowDeclaresDuration(linha) {
+  return cellsOf(linha).some((celula) => DURATION_CELL_RE.test(celula))
+}
+
+/** Quantas linhas ACIMA da tabela pertencem ao bloco dela (a apresentação). */
+export const BLOCK_LOOKBACK = 12
+
+/**
+ * A ÂNCORA DATADA de um texto — as TRÊS formas que o repositório já usa:
+ * `dd/mm/aaaa` (`Medido em 17/09/2026`), `mm/aaaa` (os rodapés de medição antiga,
+ * `Custo medido em 08/2026`) e `aaaa-mm-dd` (a forma do próprio modelo).
+ *
+ * A forma de MÊS não inventa o dia: a unidade é marcada como `month` e a origem
+ * é o ÚLTIMO commit daquele mês — o mais novo possível —, nunca o primeiro (que
+ * envelheceria a declaração por conta própria).
+ *
+ * @param {string} text
+ * @returns {{date: string, kind: "day"|"month"}|null}
+ */
+export function dateAnchor(text) {
+  const completo = /\b(\d{2})\/(\d{2})\/(\d{4})\b/.exec(text)
+  if (completo) return { date: `${completo[3]}-${completo[2]}-${completo[1]}`, kind: "day" }
+  const iso = /\b(\d{4})-(\d{2})-(\d{2})\b/.exec(text)
+  if (iso) return { date: `${iso[1]}-${iso[2]}-${iso[3]}`, kind: "day" }
+  const mes = /\b(\d{2})\/(\d{4})\b/.exec(text)
+  if (mes) return { date: `${mes[2]}-${mes[1]}-01`, kind: "month" }
+  return null
+}
+
+/**
+ * A âncora como ela aparece na PROSA: `dd/mm/aaaa` para uma data, `mm/aaaa` para
+ * a forma de mês (a que não declara o dia). O relatório mostra o que está escrito;
+ * a normalização ISO é só a forma de comparar.
+ */
+export function anchorLabel(anchor) {
+  if (!anchor) return null
+  const [ano, mes, dia] = String(anchor.date).split("-")
+  return anchor.kind === "month" ? `${mes}/${ano}` : `${dia}/${mes}/${ano}`
+}
+
+/** A expressão de `--before` do git para uma âncora (o fim do dia ou do mês). */
+export function anchorBefore(anchor) {
+  if (anchor.kind === "day") return `${anchor.date} 23:59:59`
+  const [ano, mes] = anchor.date.split("-").map(Number)
+  const proximo = mes === 12 ? `${ano + 1}-01-01` : `${ano}-${String(mes + 1).padStart(2, "0")}-01`
+  return `${proximo} 00:00:00`
+}
+
+/**
+ * O COMMIT de origem de uma âncora datada: o último commit de `head` que existia
+ * quando a data (ou o mês) da âncora terminou.
+ *
+ * @param {{anchor: {date: string, kind: string}, head?: string, cwd?: string}} alvo
+ * @param {{run?: Function}} [deps]
+ * @returns {{commit: string|null, reason: string|null}}
+ */
+export function commitOfDate({ anchor, head = "HEAD", cwd = REPO_ROOT }, { run = spawnSync } = {}) {
+  const saida = run("git", ["rev-list", "-1", `--before=${anchorBefore(anchor)}`, head], {
+    cwd,
+    encoding: "utf8",
+  })
+  if (saida?.error) {
+    return {
+      commit: null,
+      reason: `git não pôde ser executado (${saida.error.message}) — a data ${anchor.date} não virou commit`,
+    }
+  }
+  const commit = String(saida?.stdout ?? "").trim()
+  if (saida?.status !== 0 || commit === "") {
+    return {
+      commit: null,
+      reason: `nenhum commit de ${head} é anterior a ${anchor.date}${anchor.kind === "month" ? " (o fim do mês da âncora)" : ""} — a origem declarada não existe nesta história`,
+    }
+  }
+  return { commit, reason: null }
+}
+
+/**
+ * As unidades do MODELO de latência: cada `ms` declarado, com a SUA data.
+ *
+ * O TETO (`ceiling: true`, o `timeout-minutes` da pipeline) fica FORA: o número
+ * dele não é uma medição, a origem é o próprio workflow, e o dono já confronta a
+ * cópia com o valor vigente (`ceilingAged`). Julgar a idade de um limite seria
+ * cobrar frescor de algo que não se mediu.
+ *
+ * @param {object} model  o `ci/merge-latency.json` já lido
+ * @param {{file?: string}} [options]
+ * @returns {{units: object[], problems: {id: string, file: string, reason: string}[]}}
+ */
+export function modelDeclarations(model, { file = MODEL_PATH } = {}) {
+  const units = []
+  const problems = []
+  if (model === null || typeof model !== "object" || Array.isArray(model)) {
+    return {
+      units,
+      problems: [
+        {
+          id: `modelo:${file}`,
+          file,
+          reason: `o modelo de latência não é um objeto (${file}) — um arquivo truncado não pode virar "nenhum número velho"`,
+        },
+      ],
+    }
+  }
+
+  const coleta = (id, entry, onde) => {
+    if (!entry.date) {
+      problems.push({
+        id,
+        file,
+        reason: `${onde} declara \`ms\` SEM data própria — a idade não se mede sobre um número que não diz de quando é (o \`meta.date\` do arquivo é a data do ATO, não a da medição)`,
+      })
+      return
+    }
+    const anchor = dateAnchor(String(entry.date))
+    if (anchor === null) {
+      problems.push({
+        id,
+        file,
+        reason: `${onde} declara uma \`date\` que não é uma data (${entry.date})`,
+      })
+      return
+    }
+    units.push({
+      family: id,
+      kind: "declared-number",
+      act: entry.provenance ?? "declarado",
+      origin: "date",
+      source: file,
+      date: anchor.date,
+      anchorKind: anchor.kind,
+      label: onde,
+      commit: null,
+    })
+  }
+
+  for (const [forge, jobs] of Object.entries(model.jobs ?? {})) {
+    for (const [nome, entry] of Object.entries(jobs ?? {})) {
+      if (entry === null || typeof entry !== "object") continue
+      if (Array.isArray(entry.steps)) {
+        entry.steps.forEach((passo, i) => {
+          if (typeof passo?.ms !== "number") return
+          coleta(`${forge}/${nome}#${i + 1}`, passo, `o passo ${i + 1} de ${forge}/${nome}`)
+        })
+        continue
+      }
+      if (typeof entry.ms === "number" && entry.ceiling !== true) {
+        coleta(`${forge}/${nome}`, entry, `o job ${forge}/${nome}`)
+      }
+    }
+  }
+  if (model.overhead && typeof model.overhead === "object" && !Array.isArray(model.overhead)) {
+    coleta("overhead", model.overhead, "o overhead por job")
+  }
+  return { units, problems }
+}
+
+/**
+ * As unidades do README: cada TABELA que declara duração, com a âncora datada do
+ * bloco dela (a tabela + as linhas que a apresentam).
+ *
+ * A âncora é procurada no bloco INTEIRO, e a tabela sem ela é um PROBLEMA — não
+ * uma tabela ignorada: uma tabela de custo sem data de origem é exatamente o que
+ * esta régua existe para não deixar viver.
+ *
+ * @param {string} text  o README
+ * @param {{file?: string, lookback?: number}} [options]
+ * @returns {{units: object[], problems: {id: string, file: string, reason: string}[]}}
+ */
+export function readmeDeclarations(text, { file = README_PATH, lookback = BLOCK_LOOKBACK } = {}) {
+  const units = []
+  const problems = []
+  const linhas = String(text ?? "").split("\n")
+
+  let i = 0
+  while (i < linhas.length) {
+    if (!linhas[i].startsWith("|")) {
+      i += 1
+      continue
+    }
+    let fim = i
+    while (fim < linhas.length && linhas[fim].startsWith("|")) fim += 1
+    const tabela = linhas.slice(i, fim)
+    const declaraDuracao = tabela.some((l) => rowDeclaresDuration(l))
+    if (declaraDuracao) {
+      const inicio = Math.max(0, i - lookback)
+      const bloco = linhas.slice(inicio, fim)
+      const comData = bloco
+        .map((linha, k) => ({ linha, n: inicio + k + 1, anchor: dateAnchor(linha) }))
+        .filter((x) => x.anchor !== null)
+      const id = `${file}:L${i + 1}`
+      if (comData.length === 0) {
+        problems.push({
+          id,
+          file,
+          reason: `a tabela em ${file}:${i + 1} declara DURAÇÃO sem âncora datada no bloco (as ${lookback} linhas acima dela) — um custo sem data de origem envelhece sem que ninguém saiba contra o quê`,
+        })
+      } else {
+        const maisRecente = comData[comData.length - 1]
+        units.push({
+          family: id,
+          kind: "declared-table",
+          act: "declarado",
+          origin: maisRecente.anchor.kind === "month" ? "month" : "date",
+          source: file,
+          date: maisRecente.anchor.date,
+          anchorKind: maisRecente.anchor.kind,
+          anchorLine: maisRecente.n,
+          label: `a tabela em ${file}:${i + 1}`,
+          commit: null,
+        })
+      }
+    }
+    i = fim
+  }
+  return { units, problems }
+}
+
+/**
+ * AS UNIDADES DAS DECLARAÇÕES — lê os dois arquivos e resolve a origem de cada
+ * número pela DATA dele.
+ *
+ * Fail-closed por fonte: um arquivo ilegível vira uma unidade `unknown` com a
+ * causa (nunca a omissão de um conjunto que ninguém viu), e uma declaração sem
+ * data própria vira uma unidade `unknown` idem.
+ *
+ * @param {{cwd?: string, model?: object, readme?: string, head?: string, deps?: object}} [options]
+ * @returns {{families: object[]}}
+ */
+export function declarationFamilies({
+  cwd = REPO_ROOT,
+  model,
+  readme,
+  head = "HEAD",
+  deps = {},
+} = {}) {
+  const existe = deps.exists ?? existsSync
+  const ler = deps.read ?? ((path) => readFileSync(path, "utf8"))
+  const run = deps.run ?? spawnSync
+
+  const leituraDoModelo = () => {
+    if (model !== undefined) return { model, reason: null }
+    const caminho = resolve(cwd, MODEL_PATH)
+    if (!existe(caminho))
+      return { model: null, reason: `o modelo de latência não existe: ${MODEL_PATH}` }
+    try {
+      return { model: JSON.parse(ler(caminho)), reason: null }
+    } catch (error) {
+      return {
+        model: null,
+        reason: `o modelo de latência é ilegível ou não é JSON válido (${MODEL_PATH}): ${error.message}`,
+      }
+    }
+  }
+  const leituraDoReadme = () => {
+    if (readme !== undefined) return { text: readme, reason: null }
+    const caminho = resolve(cwd, README_PATH)
+    if (!existe(caminho)) return { text: null, reason: `o README não existe: ${README_PATH}` }
+    try {
+      return { text: ler(caminho), reason: null }
+    } catch (error) {
+      return { text: null, reason: `o README é ilegível (${README_PATH}): ${error.message}` }
+    }
+  }
+
+  const modelo = leituraDoModelo()
+  const prosa = leituraDoReadme()
+
+  // A FONTE QUE NÃO SE LEU e a DECLARAÇÃO SEM ORIGEM são duas coisas: um arquivo
+  // ilegível não perde "a data do número" — perdeu o arquivo inteiro, e o `kind`
+  // disso (`fonte-ilegivel`) é o mesmo que o do bench ilegível. A distinção existe
+  // para o veredito: um é "não consegui ler", o outro é "li e o dono não datou".
+  const declaracoes = [
+    modelo.reason === null
+      ? { ...modelDeclarations(modelo.model), kind: "declaracao-sem-origem" }
+      : {
+          units: [],
+          kind: "fonte-ilegivel",
+          problems: [{ id: `modelo:${MODEL_PATH}`, file: MODEL_PATH, reason: modelo.reason }],
+        },
+    prosa.reason === null
+      ? { ...readmeDeclarations(prosa.text), kind: "declaracao-sem-origem" }
+      : {
+          units: [],
+          kind: "fonte-ilegivel",
+          problems: [{ id: `readme:${README_PATH}`, file: README_PATH, reason: prosa.reason }],
+        },
+  ]
+
+  const families = []
+  for (const { units, problems, kind } of declaracoes) {
+    for (const problema of problems) {
+      families.push({
+        family: problema.id,
+        kind,
+        act: null,
+        origin: "ausente",
+        source: problema.file,
+        commit: null,
+        date: null,
+        ceiling: ceilingOf(kind),
+        state: "unknown",
+        behind: null,
+        reason: problema.reason,
+      })
+    }
+    for (const unidade of units) {
+      const teto = ceilingOf(unidade.kind)
+      const { commit, reason } = commitOfDate(
+        { anchor: { date: unidade.date, kind: unidade.anchorKind }, head, cwd },
+        { run },
+      )
+      const idade = commit
+        ? commitAge({ commit, head, cwd }, { run })
+        : { state: "unknown", behind: null, reason }
+      families.push({
+        ...unidade,
+        commit,
+        commitDate: null,
+        ceiling: teto,
+        state:
+          idade.state === "ancestor"
+            ? isAged(idade.behind, unidade.kind)
+              ? "aged"
+              : "fresh"
+            : idade.state,
+        behind: idade.behind,
+        reason: idade.reason,
+      })
+    }
+  }
+  return { families }
+}
+
+/**
+ * O FATO COMPLETO: as famílias do bench (`kind: bench-family`) + as declarações
+ * datadas do modelo e do README, no MESMO julgamento e contra o MESMO teto.
+ *
+ * A falha de UMA fonte não apaga as outras: o bench ilegível não some — ele vira
+ * uma unidade `unknown` nomeando o arquivo, porque "não consegui ler" não pode
+ * terminar em "nada a julgar".
+ *
+ * @param {{cwd?: string, file?: string, head?: string, maxBehind?: number, deps?: object, model?: object|null, readme?: string|null}} [options]
+ * @returns {BenchFreshness}
+ */
+export function readFreshness({
+  cwd = REPO_ROOT,
+  file = BASELINE_PATH,
+  head = "HEAD",
+  maxBehind = FRESHNESS_MAX_COMMITS_BEHIND,
+  deps = {},
+  model = undefined,
+  readme = undefined,
+} = {}) {
+  const bench = readBenchFreshness({ cwd, file, head, maxBehind, deps })
+  const doBench =
+    bench.state === "measured"
+      ? bench.families.map((f) => ({ ...f, kind: f.kind ?? "bench-family" }))
+      : [
+          {
+            family: `bench:${bench.file ?? file}`,
+            kind: "fonte-ilegivel",
+            ceiling: ceilingOf("fonte-ilegivel"),
+            act: null,
+            origin: "ausente",
+            source: bench.file ?? file,
+            commit: null,
+            date: null,
+            state: "unknown",
+            behind: null,
+            reason: bench.reason,
+          },
+        ]
+  const { families: declaradas } = declarationFamilies({ cwd, model, readme, head, deps })
+  const fato = assembleFact([...doBench, ...declaradas], {
+    head,
+    maxBehind,
+    emptyReason:
+      "nenhuma declaração datada foi lida (bench, modelo de latência e README) — não há número para envelhecer",
+  })
+  return { ...fato, file: bench.file ?? file, benchHead: bench.head ?? head }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -479,16 +1022,18 @@ function main() {
   if (options.help) {
     console.log(USAGE)
     console.log(
-      "\n  Mede a IDADE do commit de origem de cada família medida do bench: quantos\n" +
-        "  commits de HEAD a baseline versionada já deixou para trás (teto declarado:\n" +
-        `  ${FRESHNESS_MAX_COMMITS_BEHIND} — dois ciclos do cron semanal).\n\n` +
+      "\n  Mede a IDADE de cada declaração datada: o commit de origem de cada família\n" +
+        "  MEDIDA do bench, a data própria de cada número declarado do modelo de\n" +
+        "  latência (ci/merge-latency.json) e a âncora datada de cada tabela de custo\n" +
+        "  do README — quantos commits de HEAD cada uma deixou para trás (teto\n" +
+        `  declarado: ${FRESHNESS_MAX_COMMITS_BEHIND} — dois ciclos do cron semanal).\n\n` +
         "  --file: mede OUTRO arquivo do bench (default: docs/benchmarks/guard-timing-baseline.json).\n" +
         "  --head: mede contra outra ref (default: HEAD).",
     )
     return 0
   }
 
-  const fact = readBenchFreshness({ file: options.file, head: options.head })
+  const fact = readFreshness({ file: options.file, head: options.head })
   if (options.json) {
     console.log(JSON.stringify(fact, null, 2))
   } else {
@@ -496,9 +1041,20 @@ function main() {
     for (const f of fact.families) {
       const marca = f.state === "fresh" ? "✅" : f.state === "aged" ? "❌" : "⚠️"
       const idade = f.behind === null ? f.state : `${f.behind} commit(s) atrás`
+      // A ORIGEM de cada unidade, dita: um COMMIT (família do bench) ou a DATA
+      // que se resolveu nele (número declarado do modelo, tabela do README).
+      const origem =
+        f.commit === null
+          ? "?"
+          : `${f.commit.slice(0, 12)}${
+              f.date
+                ? ` (âncora ${anchorLabel({ date: f.date, kind: f.anchorKind })})`
+                : f.commitDate
+                  ? ` (${f.commitDate})`
+                  : ""
+            }`
       console.log(
-        `   ${marca} ${f.family}: ${idade} — origem ${f.commit ?? "?"}` +
-          `${f.commitDate ? ` (${f.commitDate})` : ""}` +
+        `   ${marca} ${f.family}: ${idade} — origem ${origem}` +
           `${f.act ? ` · ${f.act}${f.source ? ` de ${f.source}` : ""}` : ""}`,
       )
     }

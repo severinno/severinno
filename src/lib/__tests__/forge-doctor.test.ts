@@ -5146,7 +5146,7 @@ describe("a idade da régua do bench como FATO do relatório", () => {
     const f = { ...BENCH_FRESHNESS_LIMPA, state: "unavailable", reason: "clone raso", families: [] }
     const v = summarize(facts({ benchFreshness: f }))
     expect(v.verdict).toBe(VERDICT.UNKNOWN)
-    expect(v.unknowns.join(" ")).toContain("a régua do bench NÃO foi medida (clone raso)")
+    expect(v.unknowns.join(" ")).toContain("a idade das declarações NÃO foi medida (clone raso)")
   })
 
   it("uma família SEM idade também não passa por verde (a idade de TODAS é o que a régua promete)", () => {
@@ -5165,7 +5165,7 @@ describe("a idade da régua do bench como FATO do relatório", () => {
     }
     const v = summarize(facts({ benchFreshness: f }))
     expect(v.verdict).toBe(VERDICT.UNKNOWN)
-    expect(v.unknowns.join(" ")).toContain("SEM idade em 1 família(s) (lint)")
+    expect(v.unknowns.join(" ")).toContain("SEM idade em 1 declaração(ões) (lint)")
     expect(v.unknowns.join(" ")).toContain("clone raso")
   })
 
@@ -5200,7 +5200,7 @@ describe("a idade da régua do bench como FATO do relatório", () => {
       { emit: (s = "") => linhas.push(s) },
     )
     const texto = linhas.join("\n")
-    expect(texto).toContain("9/9  Régua do bench")
+    expect(texto).toContain("9/9  Idade das DECLARAÇÕES datadas")
     expect(texto).toContain("mutations: 400 commit(s) atrás")
     expect(texto).toContain("velho111")
     expect(texto).toContain("remédio: bun run bench:guard-timing:baseline")
@@ -5235,7 +5235,7 @@ describe("a idade da régua do bench como FATO do relatório", () => {
       },
       { emit: (s = "") => puladas.push(s) },
     )
-    expect(puladas.join("\n")).toContain("9/9  Régua do bench")
+    expect(puladas.join("\n")).toContain("9/9  Idade das DECLARAÇÕES datadas")
     expect(puladas.join("\n")).toContain("pulada por --no-bench-freshness")
   })
 })

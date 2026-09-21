@@ -508,6 +508,10 @@ Quatro camadas de proteção previnem que arquivos com encoding corrompido (ex: 
 - [Auditoria histórica de blobs CRLF](#auditoria-histórica-de-blobs-crlf) — histórico completo (`rev-list --all`)
 - [Single-line out= Guard](#single-line-out-guard) — `cmd "..." out=$(...)` em 1 linha
 
+⁶Tempos como estão desde **03/08/2026** (o commit que fixou estes valores). O
+bloco precisa da âncora porque ele DECLARA duração: `node scripts/bench-freshness.mjs`
+mede a idade dela como a das famílias do bench.
+
 |       Camada       | Gatilho                    | Comando                                                           | Tempo |     Bloqueia?     |
 | :----------------: | -------------------------- | ----------------------------------------------------------------- | :---: | :---------------: |
 | 🏠 **Pre-commit**  | `git commit`               | `scripts/check-utf8.sh --dry-run --ci src/`                       |  ~2s  |     ✅ Exit 1     |
@@ -1214,12 +1218,26 @@ modelo de latência de merge e as tabelas acima declaram o custo dos jobs a part
 dele —, e a comparação por percentual é **cega para QUANDO os dois números foram
 medidos**: foi por essa fenda que uma divergência de **28%** no `mutation-guards`
 (271.755ms declarados × 380.700ms medidos) viveu sem que nenhum guard a nomeasse.
-A régua mede, por família MEDIDA, quantos commits de `HEAD` separam o commit de
-origem gravado da árvore de agora, com o teto declarado de **150 commits** — dois
+A régua mede, por **declaração datada**, quantos commits de `HEAD` separam a
+origem gravada da árvore de agora, com o teto declarado de **150 commits** — dois
 ciclos do cron semanal ao ritmo medido do repositório (~10 commits/dia) —, e o
 mesmo passo semanal que publica a regressão de tempo publica esta como issue
 (`bench-freshness-drift`, dedup por assinatura, fechada sozinha quando a régua é
-re-medida). O checkout daquele job é feito com a história inteira (`fetch-depth:
+re-medida).
+
+**E ela não mede só o bench: qualquer número declarado entra no MESMO julgamento.**
+São três tipos, e o `kind` de cada um diz de onde ele vem: a família MEDIDA do
+bench (a origem é o `commit` que a baseline grava), cada `ms` do modelo de
+latência (`ci/merge-latency.json`) e cada tabela de custo DESTE README que declara
+duração. Os dois últimos passaram a exigir a própria âncora — o número do modelo a
+sua `date` e a tabela a data no bloco dela —, e a origem é DERIVADA dela
+(`git rev-list -1 --before`), medida pela MESMA sonda (uma segunda régua de idade
+divergiria da primeira no dia em que alguém ajustasse uma delas). O teto é POR
+TIPO: **150 commits** para as famílias e para os números do modelo, e **sem teto (a
+idade é publicada)** para a prosa de custo — ela é re-medida quando o GUARD muda,
+não por calendário, e um teto em commits compararia o ritmo do CÓDIGO com o da DOC.
+A célula que só cita uma duração no meio de uma frase não é tabela de custo: o
+tempo tem de começar a célula. O checkout daquele job é feito com a história inteira (`fetch-depth:
 0`): a idade é contada em commits e um clone raso responderia "sem idade", nunca
 "fresca". **LIMITE DECLARADO:** a régua mede FRESCOR, não exatidão — um commit a
 mais pode não mudar nada do que a família mede; o que ela impede é o silêncio de
@@ -2243,8 +2261,8 @@ que o tier-1 ENGAGOU (0s = sem download), mas a linha
 `Success - Main ./.github/actions/setup-bun [X.XXs]` do log do act NÃO deve
 ser lida como "tempo do setup-bun" — é o composite com o overhead do act.
 
-**Overhead de startup do container (medido, act 0.2.89, job `secrets-guard`
-SEM setup-bun — o mesmo job nas duas imagens, `--pull=false`):**
+**Overhead de startup do container (medido em 02/08/2026, act 0.2.89, job
+`secrets-guard` SEM setup-bun — o mesmo job nas duas imagens, `--pull=false`):**
 
 | Métrica                                             | catthehacker (default) | ubuntu-bun (custom) | Delta                         |
 | --------------------------------------------------- | ---------------------- | ------------------- | ----------------------------- |

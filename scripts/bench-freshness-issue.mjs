@@ -25,7 +25,7 @@
 // quando a régua volta a estar dentro do teto.
 //
 // FONTE ÚNICA: este publicador NÃO reimplementa a medição — ele consome
-// `readBenchFreshness` (`bench-freshness.mjs`), o MESMO fato que o doctor publica
+// `readFreshness` (`bench-freshness.mjs`), o MESMO fato que o doctor publica
 // na seção 9/9 do relatório de prontidão. A issue e o veredito não podem
 // discordar sobre a idade.
 //
@@ -58,9 +58,11 @@ import { pathToFileURL } from "node:url"
 import {
   BASELINE_PATH,
   FRESHNESS_MAX_COMMITS_BEHIND,
+  MODEL_PATH,
   REMEDY_COMMAND,
+  anchorLabel,
   freshnessLine,
-  readBenchFreshness,
+  readFreshness,
 } from "./bench-freshness.mjs"
 import {
   defineDebtPublisher,
@@ -77,7 +79,7 @@ export const ISSUE_LABEL_COLOR = "C5DEF5"
 
 /** Descrição do label (aparece no board e explica a dívida). */
 export const ISSUE_LABEL_DESCRIPTION =
-  "A régua do bench (baseline do guard-timing) envelheceu: família medida com a origem atrás do teto de commits (job semanal)"
+  "Uma declaração datada envelheceu: a origem (commit das famílias do bench, data dos números do modelo de latência) ficou atrás do teto de commits (job semanal)"
 
 /** Id do marcador invisível que carrega a assinatura (o dedup é por publicador). */
 export const MARKER_ID = "bench-freshness-drift"
@@ -130,9 +132,14 @@ export function bandOf(input) {
  * Assinatura estável da dívida: QUAIS famílias estão vencidas/divergentes e a
  * FAIXA da pior.
  *
- * As famílias entram NOMEADAS (e ordenadas): duas famílias de idades diferentes
- * são duas dívidas diferentes, e a lista é estável entre runs (ao contrário do
+ * As declarações entram NOMEADAS (e ordenadas): duas de idades diferentes são
+ * duas dívidas diferentes, e a lista é estável entre runs (ao contrário do
  * `behind`, que anda sozinho a cada commit).
+ *
+ * A CHAVE `families=` do marcador é CONGELADA por compatibilidade: ela nasceu
+ * quando o fato só tinha as famílias do bench, e a assinatura é o contrato do
+ * ciclo abrir/fechar (mudá-la faria o publicador perder a issue aberta). O que a
+ * chave LISTA hoje são todas as declarações vencidas — ver o `kind` de cada uma.
  */
 export function signatureOf(input) {
   const nomes = [
@@ -146,14 +153,14 @@ export function signatureOf(input) {
 
 /** Título ESTÁVEL entre runs — não leva números nem commits (isso vai no corpo). */
 export function freshnessTitle() {
-  return "A régua do bench envelheceu (baseline do guard-timing atrás do teto de commits)"
+  return "A idade das declarações datadas passou o teto (bench · modelo de latência)"
 }
 
-/** A tabela da medição inteira: família, origem, idade e ato. */
+/** A tabela da medição inteira: declaração, origem, idade e ato. */
 function measurementTable(input) {
   const lines = []
-  lines.push("| família | origem | atrás de HEAD | estado | medição |")
-  lines.push("| :------ | :----- | -------------: | :----- | :------ |")
+  lines.push("| declaração | tipo | origem | atrás de HEAD | estado | medição |")
+  lines.push("| :--------- | :--- | :----- | -------------: | :----- | :------ |")
   for (const f of input.families ?? []) {
     const marca =
       f.state === "fresh"
@@ -164,9 +171,16 @@ function measurementTable(input) {
             ? "❌ **fora da história**"
             : "⚠️ sem idade"
     const idade = f.behind === null ? "—" : `${f.behind}`
-    const origem = f.commit ? `\`${f.commit}\`${f.commitDate ? ` (${f.commitDate})` : ""}` : "—"
+    const ancora = f.date
+      ? ` (âncora ${anchorLabel({ date: f.date, kind: f.anchorKind })})`
+      : f.commitDate
+        ? ` (${f.commitDate})`
+        : ""
+    const origem = f.commit ? `\`${f.commit}\`${ancora}` : "—"
     const ato = f.act ? `${f.act}${f.source ? ` de \`${f.source}\`` : ""}` : "—"
-    lines.push(`| \`${f.family}\` | ${origem} | ${idade} | ${marca} | ${ato} |`)
+    lines.push(
+      `| \`${f.family}\` | ${f.kind ?? "bench-family"} | ${origem} | ${idade} | ${marca} | ${ato} |`,
+    )
   }
   return lines
 }
@@ -182,29 +196,37 @@ function freshnessProse(input) {
   const lines = []
 
   lines.push(
-    `A **régua do bench** mediu a idade do commit de ORIGEM de cada família da baseline ` +
-      `(\`${input.file ?? BASELINE_PATH}\`): **${vencidas} vencida(s)**` +
+    `A régua da idade mediu a ORIGEM de cada **declaração datada**: o commit das famílias ` +
+      `MEDIDAS da baseline do bench (\`${input.file ?? BASELINE_PATH}\`), a data própria de cada ` +
+      `número declarado do modelo de latência (\`${MODEL_PATH}\`) e a âncora datada de cada tabela ` +
+      `de custo do README. Hoje: **${vencidas} vencida(s)**` +
       `${fora > 0 ? ` e **${fora} fora da história**` : ""} contra o teto declarado de ` +
-      `**${input.maxBehind ?? FRESHNESS_MAX_COMMITS_BEHIND} commits** (dois ciclos do cron semanal, ` +
-      `ao ritmo medido do repositório).`,
+      `**${input.maxBehind ?? FRESHNESS_MAX_COMMITS_BEHIND} commits** para famílias e números ` +
+      `declarados (tabelas do README não têm teto: a idade delas é PUBLICADA — ver o ` +
+      `\`ceiling\` de cada uma).`,
   )
   lines.push("")
   lines.push("### O que venceu")
   lines.push("")
   for (const f of [...agedOf(input), ...divergedOf(input)]) {
+    const origemDita = f.date
+      ? `o número foi MEDIDO em \`${f.commit}\` (a âncora \`${anchorLabel({ date: f.date, kind: f.anchorKind })}\` do \`${f.source}\` resolve para ele)`
+      : `o número foi medido em \`${f.commit}\``
     const porque =
       f.state === "aged"
-        ? `o número foi medido em \`${f.commit}\` e esse commit está **${f.behind} commit(s)** atrás de \`${input.head}\``
+        ? `${origemDita} e esse commit está **${f.behind} commit(s)** atrás de \`${input.head}\``
         : `o commit de origem \`${f.commit}\` **não é ancestral** de \`${input.head}\` (a história foi reescrita)`
     lines.push(`- **\`${f.family}\`** — ${porque}. ${f.reason}`)
   }
   lines.push("")
   if (semIdade > 0) {
     lines.push(
-      `> ⚠️  ${semIdade} família(s) ficaram SEM idade medida (${unknownOf(input)
+      `> ⚠️  ${semIdade} declaração(ões) ficaram SEM idade medida (${unknownOf(input)
         .map((f) => `\`${f.family}\``)
-        .join(", ")}) — "não consegui medir" não é "está fresca", e o fechamento automático ` +
-        "fica suspenso enquanto a medição não cobrir todas as famílias.",
+        .join(
+          ", ",
+        )}) — "não consegui medir" não é "está fresca" (e uma declaração sem a PRÓPRIA data responde exatamente isso), e o fechamento automático ` +
+        "fica suspenso enquanto a medição não cobrir todas as declarações.",
     )
     lines.push("")
   }
@@ -213,7 +235,8 @@ function freshnessProse(input) {
   lines.push(...measurementTable(input))
   lines.push("")
   lines.push(
-    `> HEAD medido: \`${input.head}\` · teto: ${input.maxBehind ?? FRESHNESS_MAX_COMMITS_BEHIND} commits`,
+    `> HEAD medido: \`${input.head}\` · teto: ${input.maxBehind ?? FRESHNESS_MAX_COMMITS_BEHIND} commits ` +
+      "para famílias do bench e números declarados · tabelas de custo do README: sem teto (a idade é publicada acima)",
   )
   lines.push("")
   lines.push("### Por que isto é dívida, e não ruído")
@@ -232,13 +255,17 @@ function freshnessProse(input) {
   lines.push("```bash")
   lines.push("bun run bench:guard-timing              # mede e imprime a medição inteira")
   lines.push(`${REMEDY_COMMAND}   # re-mede e MOVE a baseline (ato deliberado)`)
-  lines.push("node scripts/bench-freshness.mjs        # só a idade, sem medir nada")
+  lines.push(
+    "node scripts/bench-freshness.mjs        # a idade de TODAS as declarações, sem medir nada",
+  )
   lines.push("```")
   lines.push("")
   lines.push(
     "Mover a baseline é DECISÃO REGISTRADA — o ato grava o commit de origem do que mediu, " +
       "e é essa procedência que esta régua lê. Re-medir sem mover não resolve: o número declarado " +
-      "continua sendo o antigo.",
+      "continua sendo o antigo. Para as declarações datadas vale o mesmo: o número do modelo de " +
+      `latência leva a \`date\` DELE (\`${MODEL_PATH}\`) e a tabela do README a âncora do bloco — ` +
+      "re-medir sem atualizar a data/âncora deixa a idade contando do mesmo lugar.",
   )
   lines.push("")
   return lines.join("\n")
@@ -256,8 +283,8 @@ export function freshnessBody(input) {
 export function resolutionComment(input) {
   const lines = []
   lines.push(
-    `✅ **Resolvido** — todas as ${(input.families ?? []).length} família(s) medida(s) estão dentro do teto de ` +
-      `${input.maxBehind ?? FRESHNESS_MAX_COMMITS_BEHIND} commits, e nenhuma saiu da história.`,
+    `✅ **Resolvido** — as ${(input.families ?? []).length} declaração(ões) julgadas estão dentro do teto de ` +
+      `${input.maxBehind ?? FRESHNESS_MAX_COMMITS_BEHIND} commits (as tabelas de custo do README não têm teto: a idade delas é publicada), e nenhuma saiu da história.`,
   )
   lines.push("")
   lines.push("### A prova (a idade de agora, contra o mesmo HEAD)")
@@ -313,18 +340,22 @@ export const BENCH_FRESHNESS_PUBLISHER = defineDebtPublisher({
   },
   prose: {
     actionable: (input) =>
-      `⚠️  Régua do bench VENCIDA em ${agedOf(input).length + divergedOf(input).length} família(s)` +
-      ` (teto ${input?.maxBehind ?? FRESHNESS_MAX_COMMITS_BEHIND} commits) — publicando issue acionável.`,
-    // O MOTIVO nomeia a família sem idade: "não medido" sozinho deixa quem lê sem
-    // saber o que refazer (o checkout precisa da história? o arquivo sumiu?).
+      `⚠️  Declaração datada VENCIDA em ${agedOf(input).length + divergedOf(input).length} unidade(s)` +
+      ` (teto ${input?.maxBehind ?? FRESHNESS_MAX_COMMITS_BEHIND} commits para famílias e números ` +
+      "declarados; tabelas do README sem teto) — publicando issue acionável.",
+    // O MOTIVO nomeia as unidades sem idade: "não medido" sozinho deixa quem lê sem
+    // saber o que refazer (o checkout precisa da história? o arquivo sumiu? o dono
+    // do número não declarou a própria data?).
     inSync: (input) =>
       input?.state !== "measured"
-        ? `ℹ️  Régua do bench NÃO medida neste run (${input?.reason ?? "motivo não declarado"}) — o fechamento fica suspenso.`
+        ? `ℹ️  Idade das declarações NÃO medida neste run (${input?.reason ?? "motivo não declarado"}) — o fechamento fica suspenso.`
         : unknownOf(input).length > 0
-          ? `ℹ️  Régua do bench sem idade para ${unknownOf(input).length} família(s) — o fechamento fica suspenso.`
+          ? `ℹ️  ${unknownOf(input).length} declaração(ões) sem idade (${unknownOf(input)
+              .map((f) => f.family)
+              .join(", ")}) — o fechamento fica suspenso.`
           : `✅ ${freshnessLine(input)}`,
     alreadyReported: (issue) =>
-      `ℹ️  A mesma régua velha já está reportada na issue #${issue.number} — sem ruído.`,
+      `ℹ️  A mesma dívida já está reportada na issue #${issue.number} — sem ruído.`,
     commented: (issue) => `✅ Comentário adicionado à issue #${issue.number} (dívida nova).`,
     created: (ref) => `✅ Issue criada: ${ref}`,
     reconciled: (count) =>
@@ -408,7 +439,7 @@ export function parseArgs(argv) {
  * vazio (o comparador o leria como "sem família velha").
  */
 export function loadFreshness(options, { deps = {} } = {}) {
-  return readBenchFreshness({ file: options.baseline, head: options.head, deps })
+  return readFreshness({ file: options.baseline, head: options.head, deps })
 }
 
 async function main() {

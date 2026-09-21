@@ -254,7 +254,7 @@ import { analyze as analyzeHookCommands } from "./check-hook-commands.mjs"
 // dono, importada, não uma segunda contagem de commits —, e a mesma função
 // alimenta a issue do cron (`bench-freshness-issue.mjs`) e o publicador da
 // regressão de tempo: o veredito e a issue não podem discordar sobre a idade.
-import { freshnessLine, readBenchFreshness } from "./bench-freshness.mjs"
+import { anchorLabel, freshnessLine, readFreshness } from "./bench-freshness.mjs"
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -983,15 +983,15 @@ export function summarize(facts) {
   // com a causa, e não como "nenhuma família velha".
   if (facts.skippedBenchFreshness) {
     unknowns.push(
-      "a IDADE do commit de origem das famílias do bench foi pulada (--no-bench-freshness): o veredito não cobre se a régua que o modelo de latência consome descreve o código de agora",
+      "a IDADE das declarações datadas foi pulada (--no-bench-freshness): o veredito não cobre se a régua do bench, os números do modelo de latência e as tabelas de custo do README descrevem o código de agora",
     )
   } else if (!facts.benchFreshness) {
     unknowns.push(
-      "a IDADE do commit de origem das famílias do bench não está declarada no relatório: o veredito não cobre se a régua do bench descreve o código de agora",
+      "a IDADE das declarações datadas não está declarada no relatório: o veredito não cobre se a régua do bench (e o que ela alimenta) descreve o código de agora",
     )
   } else if (facts.benchFreshness.state !== "measured") {
     unknowns.push(
-      `a régua do bench NÃO foi medida (${facts.benchFreshness.reason ?? "sem motivo declarado"}): sem ela o veredito não pode afirmar nem frescor nem vencimento`,
+      `a idade das declarações NÃO foi medida (${facts.benchFreshness.reason ?? "sem motivo declarado"}): sem ela o veredito não pode afirmar nem frescor nem vencimento`,
     )
   } else if (facts.benchFreshness.aged.length + facts.benchFreshness.diverged.length > 0) {
     const vencidas = facts.benchFreshness.families
@@ -1006,7 +1006,7 @@ export function summarize(facts) {
     )
   } else if (facts.benchFreshness.unknown.length > 0) {
     unknowns.push(
-      `a régua do bench ficou SEM idade em ${facts.benchFreshness.unknown.length} família(s) (${facts.benchFreshness.unknown.join(", ")}): ${facts.benchFreshness.families.find((f) => f.state === "unknown")?.reason ?? "sem motivo declarado"}`,
+      `a régua do bench ficou SEM idade em ${facts.benchFreshness.unknown.length} declaração(ões) (${facts.benchFreshness.unknown.join(", ")}): ${facts.benchFreshness.families.find((f) => f.state === "unknown")?.reason ?? "sem motivo declarado"}`,
     )
   }
 
@@ -1230,7 +1230,7 @@ export function summarize(facts) {
   }
   if (facts.skippedBenchFreshness) {
     unproven.unshift(
-      "a IDADE do commit de origem das famílias do bench (pulada por --no-bench-freshness)",
+      "a IDADE das declarações datadas (famílias do bench, números do modelo de latência e tabelas de custo do README) — pulada por --no-bench-freshness",
     )
   }
   if (facts.skippedProof) {
@@ -5424,15 +5424,15 @@ export function renderReport(report, { emit = console.log } = {}) {
   // (declarado 271.755ms × medido 380.700ms) viveu sem ser nomeada: a comparação
   // por percentual é cega para a idade dos dois números que compara.
   line()
-  line("  9/9  Régua do bench (a IDADE do commit de origem das famílias medidas)")
+  line("  9/9  Idade das DECLARAÇÕES datadas (bench · modelo de latência · tabelas do README)")
   const bf = facts.benchFreshness
   if (facts.skippedBenchFreshness) {
     line(
-      `       ${MARK.skip()} régua do bench pulada por --no-bench-freshness (a idade da medição que o modelo de latência consome fica fora do veredito)`,
+      `       ${MARK.skip()} pulada por --no-bench-freshness (a idade do que o merge consome fica fora do veredito)`,
     )
   } else if (!bf) {
     line(
-      `       ${MARK.warn()} o fato não está no relatório — a idade da régua do bench fica fora do veredito`,
+      `       ${MARK.warn()} o fato não está no relatório — a idade das declarações fica fora do veredito`,
     )
   } else if (bf.state !== "measured") {
     line(`       ${MARK.warn()} NÃO medida: ${freshnessLine(bf)}`)
@@ -5449,9 +5449,16 @@ export function renderReport(report, { emit = console.log } = {}) {
             ? MARK.fail()
             : MARK.warn()
       const idade = f.behind === null ? f.state : `${f.behind} commit(s) atrás`
+      // A origem de uma declaração datada é a ÂNCORA que a prosa/modelo declara
+      // (a idade dela é publicada, sem veredito de vencimento — ver o teto por
+      // tipo); a de uma família do bench é o COMMIT que a baseline grava.
+      const ancora = f.date
+        ? ` (âncora ${anchorLabel({ date: f.date, kind: f.anchorKind })})`
+        : f.commitDate
+          ? ` (${f.commitDate})`
+          : ""
       line(
-        `           ${fmarca} ${f.family}: ${idade} — origem ${f.commit ? `\`${f.commit}\`` : "(sem commit)"}` +
-          `${f.commitDate ? ` (${f.commitDate})` : ""}` +
+        `           ${fmarca} ${f.family}: ${idade} — origem ${f.commit ? `\`${f.commit}\`` : "(sem commit)"}${ancora}` +
           `${f.act ? ` · ${f.act}${f.source ? ` de ${f.source}` : ""}` : ""}`,
       )
     }
@@ -5527,15 +5534,19 @@ Opções:
                          THIRD_PARTY_ALLOWLIST, ALLOWLIST e o baseline do
                          SIGPIPE). NÃO é preciso em rede/credencial: é leitura
                          do checkout, e por isso roda ATÉ no perfil --ci
-  --no-bench-freshness   pula a IDADE do commit de origem das famílias MEDIDAS da
-                         baseline do bench (scripts/bench-freshness.mjs). Não é
-                         preciso em rede/credencial: é leitura do checkout + git.
-                         NÃO entra no recorte do perfil --ci de propósito — a
-                         idade é contada em COMMITS e o checkout de um PR não é
-                         garantidamente profundo, então num clone raso o fato
-                         sairia "sem idade" em todo PR (um indeterminado
-                         permanente ensina a ignorar a lista). Quem mede é o cron
-                         semanal da régua (checkout completo) e o doctor INTEIRO
+  --no-bench-freshness   pula a IDADE das DECLARAÇÕES datadas
+                         (scripts/bench-freshness.mjs): o commit de origem das
+                         famílias MEDIDAS da baseline do bench, a data própria de
+                         cada número declarado do modelo de latência
+                         (ci/merge-latency.json) e a âncora datada de cada tabela
+                         de custo do README. Não é preciso em rede/credencial: é
+                         leitura do checkout + git. NÃO entra no recorte do perfil
+                         --ci de propósito — a idade é contada em COMMITS e o
+                         checkout de um PR não é garantidamente profundo, então num
+                         clone raso o fato sairia "sem idade" em todo PR (um
+                         indeterminado permanente ensina a ignorar a lista). Quem
+                         mede é o cron semanal da régua (checkout completo) e o
+                         doctor INTEIRO
   --no-pre-commit-proof  pula a PROVA DO BLOQUEIO LOCAL: o doctor deixa de
                          executar o 'git commit' de verdade que mede se o
                          pre-commit recusa um corpo 'run:' quebrado no ÍNDICE
@@ -5944,7 +5955,7 @@ export async function diagnose({
   // permanente ensina a ignorar a lista. Quem mede é o cron semanal da régua (com
   // checkout completo) e o doctor INTEIRO.
   const benchFreshnessFacts = benchFreshness
-    ? readBenchFreshness({ cwd, deps: benchFreshnessDeps })
+    ? readFreshness({ cwd, deps: benchFreshnessDeps })
     : {
         state: "skipped",
         file: null,

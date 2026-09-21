@@ -3293,9 +3293,10 @@ ser a régua) · `bun run bench:guard-timing:compare` (compara) ·
 **Onde roda:** o job **`guard-timing-alert`** (`benchmark-weekly.yml`, semanal)
 mede (`--json`, versionando o run em `guard-timing-latest.json`) e publica as
 **duas** dívidas deste ativo como **issue**, num único passo: a regressão de tempo
-(`scripts/guard-timing-issue.mjs`) e a **idade** do commit de origem de cada
-família medida (`scripts/bench-freshness-issue.mjs`, issue
-`bench-freshness-drift`). São duas perguntas do MESMO arquivo — a comparação de
+(`scripts/guard-timing-issue.mjs`) e a **idade** de cada **declaração datada** —
+as famílias do bench, os números do modelo de latência e as tabelas de custo do
+README (`scripts/bench-freshness-issue.mjs`, issue `bench-freshness-drift`). São duas
+perguntas do MESMO arquivo — a comparação de
 percentual responde "o número subiu?" e não responde "de quando é o número?" —, e
 o step agrega os dois `rc` sem curto-circuitar: um publicador que falha não
 impede o outro de publicar, mas o passo fica vermelho se QUALQUER um falhou (não
@@ -4513,8 +4514,8 @@ declarar —, ou a tabela vazia, que seria "nenhum CI fora dos tipos" por vazio)
 escondido ali). Entra ATÉ no perfil `--ci`: é leitura de checkout, e é no PR que
 a lacuna precisa aparecer — ali a bateria de guards está pulada.
 
-**A IDADE DA RÉGUA DO BENCH (seção 9/9): a prontidão declara QUANDO o número
-que ela própria cita foi medido.** Esta é a fenda por onde a divergência de
+**A IDADE DAS DECLARAÇÕES DATADAS (seção 9/9): a prontidão declara QUANDO o
+número que ela própria cita foi medido.** Esta é a fenda por onde a divergência de
 **28%** passou (o `mutation-guards` do modelo de latência declarado em
 **271.755ms** com a árvore medindo **380.700ms**): a comparação de tempo é por
 PERCENTUAL, e percentual não sabe datas — um número velho e um número de agora
@@ -4530,14 +4531,43 @@ reconciliação das outras dívidas: o publicador carrega `crossCheck:
 fecha sozinha quando a régua volta ao teto, em vez de depender de alguém lembrar
 do número.
 
-Quatro estados, com o peso de sempre: `measured` (todas as famílias medidas têm
+Quatro estados, com o peso de sempre: `measured` (todas as declarações medidas têm
 idade — a mais antiga dentro do teto é fato declarado, a mais antiga FORA dele é
 dúvida com o remédio junto), `unknown` (**INDETERMINADA**: a sonda git não
 conseguiu responder — um clone raso é o caso típico —, e "não consegui medir"
-nunca é "está fresca"), `diverged` (**BLOQUEIA**: o commit de origem gravado não
+nunca é "está fresca"; é também o estado de uma FONTE ilegível — o modelo
+truncado ou o README ilegível viram uma unidade `fonte-ilegivel` nomeando o
+arquivo, e não a omissão de um conjunto que ninguém viu — e o de uma declaração
+SEM origem — o `ms` sem a própria `date` e a tabela de custo sem âncora entram
+como `declaracao-sem-origem`, porque um número não tem de ser datado por decurso
+—), `diverged` (**BLOQUEIA**: o commit de origem gravado não
 está na história de `HEAD` — a história foi reescrita e o número declarado não se
 reproduz nesta árvore) e `skipped` (o `--no-bench-freshness` paga o preço
 declarado).
+
+**E a régua não mede só o bench: qualquer número DECLARADO entra no MESMO fato.**
+O `kind` de cada unidade diz de onde ela vem, e são três: `bench-family` (a
+origem é o `commit` que a baseline grava), `declared-number` (cada `ms` de
+`ci/merge-latency.json`, com a origem DERIVADA DA DATA DELE) e `declared-table`
+(cada tabela do README que DECLARA duração, com a origem derivada da âncora
+datada do bloco dela — a tabela mais as `BLOCK_LOOKBACK` = 12 linhas acima). A
+data vira commit por `git rev-list -1 --before` e é esse commit que a MESMA sonda
+mede (`commitAge`): uma segunda régua de idade divergiria da primeira no dia em
+que uma das duas fosse ajustada. Duas exclusões são deliberadas, e cada uma tem
+régua própria: a célula que só CITA uma duração no meio de uma frase não é tabela
+de custo (o tempo tem de COMEÇAR a célula, senão a régua pediria data de origem
+para prosa que só cita um limiar) e o `ceiling: true` do modelo (o
+`timeout-minutes` da pipeline) fica FORA — a origem de um limite é o próprio
+workflow, e cobrar frescor de um número que não se mediu seria ruído.
+
+**O TETO É POR TIPO, porque o ritmo de cada declaração difere:** 150 commits para
+`bench-family` e `declared-number` (os dois são re-medidos no mesmo ato em que o
+guard ou o job muda) e **sem teto** para `declared-table` — a prosa de custo do
+README é re-medida quando o GUARD muda, não por calendário, e as âncoras vivas
+hoje vão de 79 a 412 commits: um teto em commits compararia o ritmo do CÓDIGO com
+o da DOC e acenderia alerta permanente. O que a régua cobra da tabela é a
+ÂNCORA, e a idade sai PUBLICADA (`ceiling: null` no relatório, `sem teto (a idade
+é publicada)`); quem decide se o número ainda vale é o dono dele.
 
 **E ela NÃO entra no perfil `--ci` — é a oitava declaração de `CI_PROFILE_SKIPS`,
 e o motivo é o instrumento, não o custo.** A idade se conta em COMMITS de `HEAD`
@@ -4551,12 +4581,21 @@ inteira (`fetch-depth: 0`) justamente para que a seção 9/9 não responda "sem
 idade" onde a resposta existe. A seção pulada no PR sai NOMEADA em `unproven`,
 nunca em silêncio.
 
+**O marcador da issue congela a chave que a assinatura usa.** A assinatura do
+publicador (`signatureOf`) lista as declarações vencidas sob a chave
+`families=`, nome que nasceu quando o fato só tinha as famílias do bench: mudá-lo
+faria o publicador PERDER a issue aberta (a assinatura é o contrato do ciclo
+abrir/fechar). O que a chave lista hoje são todas as declarações vencidas, e o
+`kind` de cada linha da tabela diz de que tipo ela é.
+
 **LIMITE DECLARADO:** a régua mede **frescor**, não exatidão. Um commit a mais
 pode não mudar nada do que a família mede, e o teto é um contrato de RITMO, não
 uma prova de que o número reflete a árvore: ele impede o silêncio de um número
 que ninguém re-mediu enquanto o repositório andava, o que é precisamente o
-silêncio em que os 28% viveram. Quem acusa a divergência de tempo é o
-`--compare`; quem acusa a **idade** da régua é este fato.
+silêncio em que os 28% viveram. O teto é o das famílias e dos números declarados;
+as tabelas do README não o têm de propósito, e é por isso que a idade delas sai
+publicada sem acender dívida. Quem acusa a divergência de tempo é o `--compare`;
+quem acusa a **idade** da declaração é este fato.
 
 ---
 

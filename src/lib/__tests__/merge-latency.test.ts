@@ -44,7 +44,6 @@ import {
   criticalPath,
   deriveMs,
   resolveFrom,
-  resolveSteps,
   instrumentKey,
   makespan,
   measure,
@@ -236,11 +235,58 @@ describe("resolveDurations — declarado manda, derivado confronta", () => {
   it("declarado vence, e a divergência só acusa quando os DOIS cobrem a mesma coisa", () => {
     const m = {
       overhead: { perJobMs: 0 },
-      jobs: { x: { guards: { ms: 100, provenance: "declarado", source: "s" } } },
+      jobs: {
+        x: {
+          guards: { ms: 100, provenance: "declarado", source: "s", date: "2026-09-17" },
+        },
+      },
     }
     const { byJob } = resolveDurations(jobs, m, "x", benchIndex(bench))
     expect(byJob.get("guards")!.ms).toBe(100)
     expect(byJob.get("guards")!.diverges).toBe(false)
+  })
+
+  it("um `ms` SEM a PRÓPRIA data indetermina o job — a idade não se mede por decurso", () => {
+    // O `meta.date` do arquivo é a data do ATO, não a da medição: herdá-la seria
+    // datar o número por decurso, e a régua da idade (`bench-freshness.mjs`) não
+    // teria de onde contar a idade DELE.
+    const { byJob, missing } = resolveDurations(
+      jobs,
+      {
+        meta: { date: "2026-09-17" },
+        overhead: { perJobMs: 0 },
+        jobs: { x: { guards: { ms: 100, provenance: "declarado", source: "s" } } },
+      },
+      "x",
+      benchIndex(bench),
+    )
+    expect(byJob.get("guards")!.ms).toBeNull()
+    expect(missing).toContain("guards")
+    expect(byJob.get("guards")!.stepProblems!.join(" ")).toContain("SEM data própria")
+  })
+
+  it("o TETO continua fora da regra da data: ele NÃO é uma medição", () => {
+    const { byJob } = resolveDurations(
+      jobs,
+      {
+        meta: { date: "2026-09-17" },
+        overhead: { perJobMs: 0 },
+        jobs: {
+          x: {
+            build: {
+              ms: 180_000,
+              provenance: "declarado (TETO: timeout-minutes)",
+              ceiling: true,
+              source: "s",
+            },
+          },
+        },
+      },
+      "x",
+      benchIndex(bench),
+    )
+    expect(byJob.get("build")!.ms).toBe(180_000)
+    expect(byJob.get("build")!.ceiling).toBe(true)
   })
 
   it("o TETO declarado é confrontado com o `timeout-minutes` da pipeline", () => {
@@ -274,7 +320,11 @@ describe("resolveDurations — declarado manda, derivado confronta", () => {
   it("divergência além da tolerância é sinalizada, com o derivado marcado como PISO", () => {
     const m = {
       overhead: { perJobMs: 0 },
-      jobs: { x: { guards: { ms: 1000, provenance: "declarado", source: "s" } } },
+      jobs: {
+        x: {
+          guards: { ms: 1000, provenance: "declarado", source: "s", date: "2026-09-17" },
+        },
+      },
     }
     const { byJob } = resolveDurations(jobs, m, "x", benchIndex(bench))
     const d = byJob.get("guards")!
