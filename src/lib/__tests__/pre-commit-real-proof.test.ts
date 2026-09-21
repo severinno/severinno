@@ -112,8 +112,14 @@ const FASE_B_STUB_MEMBROS = [
  * `faseB: false` é a MUTAÇÃO que mede a metade nova: um hook que não roda a fase
  * B deixa o defeito de encoding/link ENTRAR, e é isso que separa "a prova mede a
  * fase B" de "a prova mede um hook que nunca a chamou".
+ *
+ * `controleRecusado: true` é a sabotagem do CONTROLE: o hook recusa TAMBÉM o
+ * commit do corpo FECHADO (só ele: a condição é o `fi` presente no arquivo), e é
+ * esse fixture que torna o PREDICADO do controle load-bearing — sem ele o
+ * "não sabe commitar" do ambiente seria indistinguível de "recusou o defeito",
+ * e a prova não teria como ficar vermelha por essa metade.
  */
-function hookStub({ faseB = true } = {}): string {
+function hookStub({ faseB = true, controleRecusado = false } = {}): string {
   const blocoB = faseB
     ? [
         "PIDS_B=",
@@ -123,11 +129,26 @@ function hookStub({ faseB = true } = {}): string {
         '[ "$FASE_B" -eq 0 ] || exit "$FASE_B"',
       ]
     : []
-  return hookStubBase(blocoB)
+  return hookStubBase(blocoB, { controleRecusado })
 }
 
+/**
+ * A SABOTAGEM do CONTROLE: um hook que recusa o commit do corpo FECHADO.
+ *
+ * A condição é o `fi` no arquivo do gate (`REAL_WORKFLOW`), e é por isso que ela
+ * só morde o commit do CONTROLE: o commit do defeito carrega o corpo ABERTO. É o
+ * cenário "o ambiente não sabe commitar" que o CONTROLE existe para não deixar
+ * virar um verde — o de um hook que sabota até o que está certo.
+ */
+const SABOTAGEM_DO_CONTROLE = [
+  `if grep -aq "^          fi$" ${REAL_WORKFLOW} 2>/dev/null; then`,
+  '  echo "❌ o controle do stub: o hook recusou o commit do corpo FECHADO"',
+  "  exit 1",
+  "fi",
+]
+
 /** O corpo do hook de mentira, com o bloco da fase B que a mutação decide. */
-function hookStubBase(blocoB: string[]): string {
+function hookStubBase(blocoB: string[], { controleRecusado = false } = {}): string {
   return [
     "set -eu",
     "wait_all() {",
@@ -153,6 +174,7 @@ function hookStubBase(blocoB: string[]): string {
     '[ "$FASE_A" -eq 0 ] || exit "$FASE_A"',
     '[ "$SINTAXE" -eq 0 ] || exit "$SINTAXE"',
     ...blocoB,
+    ...(controleRecusado ? SABOTAGEM_DO_CONTROLE : []),
     'echo "FASE C do stub (o commit do controle chega até aqui)"',
     "",
   ].join("\n")
@@ -261,6 +283,7 @@ function checkoutSintetico({
   refutadorCondicional = null,
   runnerSemComandos = false,
   faseBCega = false,
+  controleRecusado = false,
 }: {
   irmaoVermelho?: string | null
   hookExecutavel?: boolean
@@ -271,6 +294,7 @@ function checkoutSintetico({
   refutadorCondicional?: string | null
   runnerSemComandos?: boolean
   faseBCega?: boolean
+  controleRecusado?: boolean
 } = {}): string {
   const root = tempDir("checkout-sintetico-")
   mkdirSync(join(root, "scripts"), { recursive: true })
@@ -341,7 +365,7 @@ function checkoutSintetico({
   writeFileSync(join(root, "scripts", "check-readme-anchors.mjs"), LINK_STUB, "utf8")
   writeFileSync(
     join(root, ".husky", "pre-commit"),
-    faseBCega ? hookStub({ faseB: false }) : HOOK_STUB,
+    faseBCega || controleRecusado ? hookStub({ faseB: !faseBCega, controleRecusado }) : HOOK_STUB,
     "utf8",
   )
   chmodSync(join(root, ".husky", "pre-commit"), hookExecutavel ? 0o755 : 0o644)
@@ -381,6 +405,22 @@ describe("a prova sem dublê — as três metades no mesmo checkout", () => {
     expect(controle.status).toBe(0)
     expect(controle.headDepois).not.toBe(controle.headAntes)
     expect(controle.conteudoEmHead).toBe("igual ao corpo válido")
+  })
+
+  it("um hook que recusa TAMBÉM o commit do CONTROLE: INDETERMINADO, nunca um verde", () => {
+    // O PREDICADO do CONTROLE é a metade que separa "o hook recusou o defeito" de
+    // "o ambiente não sabe commitar": aqui o hook do fixture recusa os DOIS
+    // commits (o do corpo aberto e o do corpo FECHADO) e o HEAD não se move em
+    // nenhum. Sem esse predicado a prova sairia VERDE sobre um ambiente que
+    // recusa tudo — o falso verde que ela existe para não produzir —, e é por
+    // isso que este caso é a testemunha dele.
+    const r = proveRealHookBlocks({ root: checkoutSintetico({ controleRecusado: true }) })
+
+    expect(r.state).toBe("unavailable")
+    expect(r.detail).toContain("o CONTROLE com o corpo válido não comitou")
+    // O defeito FOI recusado (é a metade 1): o que não foi medido é se o ambiente
+    // sabe commitar — e a prova diz isso, em vez de virar verde.
+    expect((r.evidence as any).defeito.headDepois).toBe((r.evidence as any).defeito.headAntes)
   })
 
   it("um IRMÃO vermelho NÃO deixa a prova verde: ela sai INDETERMINADA nomeando o guard", () => {

@@ -411,25 +411,31 @@ jobs:
       # dentro da PRÓPRIA imagem (`ubuntu-bun`, a mesma que o runner mapeia
       # para `ubuntu-latest`) em 20/09/2026:
       #   · node v24.19.0, bun 1.3.14, python3 3.12.3, git 2.55.0, jq 1.6;
-      #   · a suíte da paridade (0.61s) e a matriz COMPLETA (32/32 sub-tests,
-      #     exit 0, 238.7s) rodaram com o MESMO comando do espelho, dentro do
-      #     container — contra 248s medidos nativos no runner do espelho.
+      #   · a suíte da paridade (0.61s) e a matriz COMPLETA (era de 32 sub-tests:
+      #     32/32, exit 0, 238.7s) rodaram com o MESMO comando do espelho, dentro
+      #     do container — contra 248s medidos nativos no runner do espelho.
       # O `python3` não é detalhe: as mutações cirúrgicas dos sub-tests o usam
       # (corte de trecho no guard, sem reescrever o arquivo todo), e a suíte
       # falha ALTO quando ele falta em vez de pular a mutação. Ele vem da base
       # da imagem (não é instalado por nenhum passo) — se a base parar de
       # entregá-lo, o vermelho é deste job e nomeia a causa.
       #
-      # Custo: a matriz é node-pura e não executa docker (medido: nenhuma das 32
-      # sub-tests invoca docker — os `docker` que aparecem são TEXTO de fixture;
-      # e o container do job não tem o socket do daemon, então depender dele
-      # seria uma falha, não uma lentidão). A medição do passo no espelho é
+      # Custo: a matriz é node-pura e não executa docker (medido: nenhum dos 34
+      # sub-tests de hoje invoca docker — os `docker` que aparecem são TEXTO de
+      # fixture; e o container do job não tem o socket do daemon, então depender
+      # dele seria uma falha, não uma lentidão). O count da matriz NÃO entra no
+      # nome deste passo (nem no do job do espelho): etiqueta com número
+      # envelhece — esta esteve em 32 enquanto a matriz subia a 34 — e aqui
+      # ninguém a confere. Quem carrega o count E o confere é o
+      # `check-mutation-count` (README, header do master e summary do espelho);
+      # a matriz de AGORA são 36 sub-tests, medidos em 353.2s (ato VIVO, ver o
+      # README), com o ato versionado da baseline em 271.8s. A medição do passo no espelho é
       # `mutation-guards` = 248s (medido em 20/09/2026) e a soma entrou em
       # `ci/merge-latency.json` — com a procedência DECLARADA: o valor é o do
       # runner do espelho (o MAIOR dos dois), e o PISO do job `guards` vem dos
       # passos fora da soma (o `check:pipefail-sigpipe`, o `bun install` e o
       # checkout), não da falta de medição do runtime.
-      - name: Mutation matrix (32 sub-tests — o guard MORDE?)
+      - name: Mutation matrix (o guard MORDE?)
         run: bash scripts/test-mutation-guards.sh
 
       - name: Forge parity mutation (as regras de classificação)

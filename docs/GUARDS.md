@@ -729,6 +729,35 @@ commit — a decisão está escrita em `HOOK_NOT_RUN` (o hook roda o gate de
 paridade, que exige a classificação de um gate novo). Custo medido nesta árvore:
 **5,2–5,5s** (controle) por rodada.
 
+**Prova por mutação das três réguas que sustentam o veredito**
+(`scripts/test-mutation-mirror-coverage.sh`, matriz do master). O guard passar
+hoje prova que ele não acusou — não que as três réguas do contrato estão no
+lugar. Um **driver** importa o `check-mirror-coverage.mjs` (mutado, quando há
+mutação) e mede contra uma **BANCADA**: um repo git temporário com o espelho
+`KEY=` e três comandos de recorte que se distinguem pelo que pegam (um só a
+TROCA do valor, um só a REMOÇÃO da linha e um que falha **sempre** — o caso
+"ambiente"). O que se lê é o RESULTADO (o que o controle nomeia, o que é
+atribuído a cada mutação, as violações do contrato e a soma por tabela), nunca o
+texto do arquivo — e a suíte unitária é a segunda testemunha, com âncoras (o
+vermelho tem de ser o da metade mutada; as outras seguem verdes).
+
+| metade | o que ela desliga                                                         | o que acontece sem ela                                                                                                                                                                      |
+| :----- | :------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **M1** | o CONTROLE (`confiaveis`: o comando que falha SEM mutação sai da medição) | o comando que só falha por ambiente passa a ser **ATRIBUÍDO** como detector de tudo — a cobertura sai verde por acidente de ambiente, que é o modo de falha que a régua existe para impedir |
+| **M2** | a SOMA POR TABELA (a decisão do recorte dentro de `resumoTabelas`)        | todo espelho medível conta como "com regra" e a lista dos sem-regra fica **VAZIA**: a tabela publica cobertura que não existe, e sem nenhuma violação                                       |
+| **M3** | a RECUSA DO PULO SEM MOTIVO                                               | o pulo sem razão passa como decisão — a porta pela qual uma lacuna deixa de ser medida sem ninguém decidir                                                                                  |
+
+Cada metade é CIRÚRGICA (alvo com 0 ou 2+ ocorrências = a suíte PARA em vez de
+medir outra coisa; o guard mutado tem de continuar válido) e a árvore volta por
+**checksum** no trap `EXIT`. O CONTROLE FINAL exige as três leituras íntegras de
+volta e o guard restaurado.
+
+**LIMITE DECLARADO:** a precedência do `exit 2` (INDETERMINADO) não é injetada —
+o CLI não aceita `--root`, então ele mede a árvore real, onde nenhum comando do
+recorte falha por ambiente; e a precedência é o ANÚNCIO do mesmo fato (o guard
+imprime o `⚠️ INDETERMINADO` com ou sem ela), não uma segunda cegueira. O que
+cega é o filtro, e é ele que a M1 injeta.
+
 ---
 
 ## 3. Mutation tests — `test-mutation-*.sh` + `check-mutation-jobs`
@@ -1612,7 +1641,7 @@ diz "alguma mutação falhou"; como job próprio ela diz **qual** regra de class
 quebrou, e vira check **com nome** no contrato de merge. Custo medido: ≈**0.33s**
 (node-puro, sem docker, sem `node_modules`).
 
-**NAS DUAS FORJAS (a isenção que caiu).** Ela — e a matriz de 33 sub-tests — eram
+**NAS DUAS FORJAS (a isenção que caiu).** Ela — e a matriz de 36 sub-tests — eram
 `GITHUB_ONLY` com a razão _"os jobs de mutation test existem apenas no pipeline do
 GitHub (custo/duração)"_, que é a razão de **conveniência** que a classe
 `GITHUB_ONLY` proíbe por escrito. O furo era concreto: quem mergeia na forja podia
@@ -1637,12 +1666,12 @@ não um ato de fé.
 não por serem específicos da plataforma): auditoria de dependências, baseline de
 segredos, hooks de seed, sentinel producer, fonte única do Bun, proibição do
 `oven-sh/setup-bun`, simetria de hooks e — a maior delas — a **prova por mutação**:
-a matriz de 33 sub-tests e a prova das três regras de classificação, que rodavam
+a matriz de 36 sub-tests e a prova das três regras de classificação, que rodavam
 só no espelho e deixavam o PR da forja mergear com um guard cego. O custo entrou
 no modelo (`ci/merge-latency.json`, job `guards`), e o **runtime** da imagem
 foi re-medido antes de a mudança valer: o MESMO comando dentro do container da
 `ubuntu-bun` (a imagem que o runner da forja mapeia para `ubuntu-latest`) rodou a
-matriz completa com **32/32** sub-tests verdes em **238.7s** contra os 248s
+matriz completa (era de 32 sub-tests) com **32/32** verdes em **238.7s** contra os 248s
 medidos nativos no runner do espelho — ~4% de diferença, e o número maior é o que
 fica. O que faz do valor do dono do merge um **PISO** não é o runtime: são os
 passos fora da soma (o `check:pipefail-sigpipe`, o `bun install` e o checkout).
@@ -3039,23 +3068,32 @@ e o que um sub-test novo tinha acrescentado vinha de medições avulsas (`--scen
 uma a uma) **escritas à mão na prosa** do modelo. Agora o próprio master mede
 (`--json`) e o benchmark **versiona sub-test a sub-test** (família `mutations`,
 esquema v6, em `docs/benchmarks/guard-timing-baseline.json`). Uma rodada só, com
-TODOS os sub-tests — medir um a um custaria 33 subidas de harness, e o harness é
-exatamente o que a conta à mão esquece. Medido em 21/09/2026 nesta máquina
-(`--only mutations`, 33/33 verdes):
+TODOS os sub-tests — medir um a um custaria uma subida de harness POR sub-test, e o
+harness é exatamente o que a conta à mão esquece.A tabela é o ato VIVO, medido em
+21/09/2026 nesta máquina (**36/36 verdes**); o ato VERSIONADO — o que a baseline
+guarda, de 33 sub-tests, 271.8s — sai do mesmo comando e é o que o modelo de
+latência deriva:
 
-| sub-test                                                              |  wall time | fatia | metades |
-| --------------------------------------------------------------------- | ---------: | ----: | ------: |
-| `workflow-run-syntax`                                                 |      67.6s |   25% |      15 |
-| `hook-commands`                                                       |      49.5s |   18% |      25 |
-| `remedy-tty`                                                          |      29.6s |   11% |       2 |
-| `job-deps`                                                            |      24.1s |    9% |       7 |
-| `registry-defaults`                                                   |      20.7s |    8% |       7 |
-| `required-applied`                                                    |      17.8s |    7% |      10 |
-| `canal-fixers` (a 33ª — a descoberta do registro do canal)            |       9.0s |    3% |       6 |
-| … (os 33, do mais caro ao mais barato, sempre na tabela do relatório) |            |       |         |
-| **soma dos 33 sub-tests**                                             | **268.1s** |  100% | **193** |
-| harness (parse das metades, tabelas, subida do master)                |       3.7s |       |         |
-| **total do master**                                                   | **271.8s** |       |         |
+| sub-test                                                                           |  wall time | fatia | metades |
+| ---------------------------------------------------------------------------------- | ---------: | ----: | ------: |
+| `workflow-run-syntax`                                                              |      68.7s |   20% |      15 |
+| `hook-commands`                                                                    |      60.9s |   17% |      27 |
+| `pre-commit-proof` (a 36.ª — a declaração dos recusadores, a descida e o CONTROLE) |      37.9s |   11% |       3 |
+| `remedy-tty`                                                                       |      29.7s |    9% |       2 |
+| `job-deps`                                                                         |      24.3s |    7% |       7 |
+| `registry-defaults`                                                                |      20.9s |    6% |       7 |
+| `required-applied`                                                                 |      17.9s |    5% |      10 |
+| `cut-stages` (a 34.ª — as três invariantes duras do corte do GitHub)               |      17.4s |    5% |       3 |
+| `mirror-coverage` (a 35.ª — o CONTROLE, a soma por tabela e o pulo sem motivo)     |      11.0s |    3% |       3 |
+| … (os 36, do mais caro ao mais barato, sempre na tabela do relatório)              |            |       |         |
+| **soma dos 36 sub-tests**                                                          | **349.1s** |  100% | **205** |
+| harness (parse das metades, tabelas, subida do master)                             |       4.1s |       |         |
+| **total do master**                                                                | **353.2s** |       |         |
+
+Oito sub-tests pagam **80%** da conta e a mediana é **1.8s**: a cauda é barata, e
+o harness é a parte que a conta à mão esquecia (ele sai da DIFERENÇA, não de uma
+constante). O sub-test novo entra na rodada seguinte **MEDIDO** — a 36.ª custou
+37.9s no próprio ato que a estreou.
 
 **O que isso muda no veredito.** O sub-test NOVO não precisa de conta nenhuma:
 ele entra na rodada seguinte **MEDIDO**, e a comparação o publica como forma nova
@@ -3063,7 +3101,16 @@ ele entra na rodada seguinte **MEDIDO**, e a comparação o publica como forma n
 que alguém montou à mão. O modelo de latência passou a **DERIVAR** o passo do
 master desta medição (`benchIndex` lê o total da família), o que já confronta o
 declarado do espelho: **248.0s declarados × 271.8s medidos = 9.6%**, dentro da
-tolerância de 25% — sem divergência, e sem ninguém recontar a soma. A projeção do
+tolerância de 25% — sem divergência, e sem ninguém recontar a soma. **O ato VIVO
+(353.2s, 36/36) contra os mesmos 248.0s dá 42.4% — FORA da tolerância**, e isso é
+um fato do instrumento, não da régua: os 248.0s são a medição do job no runner do
+espelho de 20/09/2026, com **32** sub-tests, e QUATRO entraram na matriz depois
+dela (`github-deps` 12.7s + `cut-stages` 17.4s + `mirror-coverage` 11.0s +
+`pre-commit-proof` 37.9s ≈ 79s dos ~105s de delta; o resto é a deriva de host que
+as rodadas anteriores já registravam). O remédio é re-medir o declarado — o ato do
+benchmark grava o commit de ORIGEM do que mediu, então ele só recolhe as 36 formas
+quando a árvore estiver commitada, e até lá a divergência é NOMEADA pela
+comparação em vez de ficar invisível. A projeção do
 PRÓXIMO sub-test (~8.2s) é dita como **PROJEÇÃO**, não medição: ela é a média dos
 scripts já medidos mais o harness por sub-test, e os dois lados saem de medição.
 A família segue a **mesma régua de cobertura** das outras: sem ela nesta rodada (ou
@@ -6240,6 +6287,32 @@ existe para nomear). O bloco apareceu no relatório da prova — e foi corrigido
 mesmo turno. É o desenho funcionando: "não conseguir julgar" nunca vira "nada a
 julgar", nem dentro de uma prova que roda no runtime do CI.
 
+**Prova por mutação das três réguas do veredito**
+(`scripts/test-mutation-pre-commit-proof.sh`, matriz do master). As metades que o
+`--sem-duble` afirma — a recusa, a atribuição e o CONTROLE — são medidas hoje em
+dia por casos de fixture que mutam a ENTRADA (o hook sem a fase B, o guard do
+encoding cego, o gate cego); nenhum deles muta a RÉGUA, e é isso que esta suíte
+fecha. Cada régua é desligada **no lugar** e o que se exige é o vermelho:
+
+| metade | o que ela desliga                                                                                                                             | onde o vermelho aparece (medido)                                                                                                                                                                                                       |
+| :----- | :-------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **M1** | a DECLARAÇÃO dos recusadores (a comparação do conjunto medido com o `recusadoresEsperados`)                                                   | sem ela a atribuição vira um relatório: a suíte cai em _um refutador DECLARADO que fica verde_ e em _um refutador NÃO declarado_                                                                                                       |
+| **M2** | a DESCIDA do runner (`descidaDoEncodingRunner` deixa de NOMEAR quem recusou)                                                                  | o runner devolve UM exit code (o `set -e` para no primeiro guard): sem a nomeação, a suíte cai nas duas metades da fase B (`ENCODING` e `LINK`) e no caso do gate + controle                                                           |
+| **M3** | o PREDICADO do CONTROLE — as **quatro cláusulas** da mesma régua (status/HEAD e conteúdo do controle da fase A e o de cada defeito da fase B) | a prova sai **VERDE** sobre um hook que recusa até o commit correto; a testemunha é o caso novo _um hook que recusa TAMBÉM o commit do CONTROLE_, que nasceu com esta suíte (nenhum caso do fixture fazia o commit do CONTROLE falhar) |
+
+**A M2 é medida por DUAS testemunhas:** um driver node-puro — que importa o
+módulo e roda a descida contra uma bancada (um runner que declara um comando que
+passa e um que falha) e exige o recusador **nomeado** —, e a suíte unitária. É o
+único driver do repositório que mede esta prova, e ele existe porque a descida é
+uma função exportada: no job do ESPELHO (`mutation-guards`, que não instala
+dependências) a testemunha unitária se declara não julgada e a M2 continua medida
+por execução. A M1 e a M3 vivem DENTRO de `proveRealHookBlocks`, cujo único
+harness é o fixture da suíte — montar um segundo checkout sintético aqui seria a
+mesma fixture em dois lugares (a classe de defeito que o `check-hook-ci-parity`
+existe para não deixar voltar), e é por isso que elas medem onde o vitest existe.
+A suíte é node+bash e roda no master (matriz serial), com a árvore restaurada por
+checksum no trap.
+
 **Onde roda.** Job `pre-commit-in-runner-proof` (nome `Pre-commit Proof (dentro
 da imagem do runner)`) nas duas pipelines, e é **required check**
 (`ci/required-checks.json`). No espelho, `permissions: packages: read` para o
@@ -6297,6 +6370,36 @@ dos CONTRATOS da árvore (quem executa os gates dentro da imagem é o `forge-run
 "estado": "declarado"
 "paridade": 0
 ```
+
+**Prova por mutação:** `scripts/test-mutation-cut-stages.sh` injeta, uma por vez, a
+mudança que cada invariante dura existe para pegar — e exige que o VEREDITO mude: são
+**em TRÊS direções** (M1–M3), cada uma com a segunda metade que DESLIGA a invariante e
+prova que o vermelho vinha dela. A suíte é o 34.º sub-test da matriz do master, e por
+isso roda com o MESMO comando nas DUAS forjas (o job `guards` da dona do merge e o
+`mutation-guards` do espelho): um guard cego para as invariantes duras do corte não
+passa no espelho enquanto a forja muda — medido, ela custa **17.6s** sozinha pelo
+caminho do master (3 metades).
+
+A injeção é a mudança na ÁRVORE, não no guard: (M1) um passo de gate a MAIS no job
+`guards` da forja DONA DO MERGE — os gates da dona vão de 28 para 29 e a paridade
+medida segue em 0, então é a invariante 1 sozinha que denuncia (a direção da REMOÇÃO
+NÃO isola: todo gate da dona é um invariante do CORE, e tirá-lo quebra a paridade
+junto — medido); (M2) um job A MENOS no manifesto da dona (`ci/required-checks.json`:
+os required checks resolvidos caem de 7 para 6); (M3) o BLOCO de um passo do espelho
+removido (o gate do `check-e2e-counts.mjs`: o espelho cai de 56 para 55 gates) numa
+etapa cuja declaração é `espelhoGates: null`. Nas três, a metade seguinte desliga a
+invariante correspondente no `classifyStage` e exige o VERDE com a MESMA injeção no
+lugar — sem ela, "ficou vermelho" poderia ser um crash.
+
+**Por que a injeção não mora num FIXTURE (medido, e é o desenho):** as invariantes
+comparam o ANTES e o DEPOIS do passo (`runStage` copia, aplica e mede; o
+`classifyStage` compara essa medição com a linha de base). Uma árvore de fixture já
+quebrada aparece IGUAL na base e no depois — não muda veredito nenhum. O excesso entra
+DURANTE o passo, na linha do `copyTree` do `runStage` (o mesmo lugar em que a
+transformação escreve), e a âncora é fail-closed: se o texto casar 0 vezes a metade
+FALHA nomeando o motivo. A cirurgia é conferida por checksum (0 ou 2+ ocorrências
+param a suíte) e a restauração é verificada no `trap EXIT`; onde o vitest não está
+instalado, a segunda testemunha é DITA como não julgada.
 
 ---
 

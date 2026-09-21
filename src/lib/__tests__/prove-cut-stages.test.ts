@@ -160,6 +160,30 @@ describe("classifyStage — cada regra na direção que ela protege", () => {
 
   it("required check da DONA DO MERGE mudou: quebrou (é a proteção da forja)", () => {
     const base = medido()
+    // O contexto sai do MANIFESTO da forja DONA (o `gitea`): a proteção da forja
+    // é o que trava o PR, e a invariante compara o conjunto de contextos dela
+    // passo a passo. A direção ESPELHO tem o seu caso ao lado — e é o par que
+    // separa "o contrato da dona não pode mudar" de "o do espelho pode, quando
+    // a etapa declara o delta".
+    const depois = medido({
+      required: {
+        forjas: ["gitea", "github"],
+        contextos: { gitea: ["guards\u0000outro"], github: ["pr-check\u0000pr-check"] },
+        declarados: {},
+      },
+    })
+
+    const r = classifyStage({ medido: depois, base, espera, anterior: base })
+
+    expect(r.estado).toBe("quebrou")
+    expect(r.motivos.join(" ")).toContain("required checks da dona do merge")
+    expect(r.motivos.join(" ")).toContain(OWNER_FORGE)
+    // CONTROLE: com o MESMO medido sem a mudança do contexto da dona, é declarado.
+    expect(classifyStage({ medido: base, base, espera, anterior: base }).estado).toBe("declarado")
+  })
+
+  it("o contrato do ESPELHO pode mudar sem quebrar (o delta dele é declarado por etapa)", () => {
+    const base = medido()
     const depois = medido({
       required: {
         forjas: ["gitea", "github"],
@@ -167,11 +191,10 @@ describe("classifyStage — cada regra na direção que ela protege", () => {
         declarados: {},
       },
     })
-    // O contrato do ESPELHO pode mudar sem quebrar (o seu delta é declarado por
-    // etapa); o da DONA não.
+
     const r = classifyStage({ medido: depois, base, espera, anterior: base })
+
     expect(r.estado).toBe("declarado")
-    expect(r.estado === "declarado" ? "ok" : "?").toBe("ok")
   })
 
   it("o espelho perder gate que a etapa NÃO declara: quebrou", () => {
