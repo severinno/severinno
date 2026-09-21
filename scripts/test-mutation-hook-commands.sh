@@ -7,7 +7,7 @@
 #   ./scripts/test-mutation-hook-commands.sh
 #
 # Exit codes:
-#   0 — as VINTE E QUATRO mutações foram DETECTADAS (pelo gate, pelo ARQUIVO e/ou pela
+#   0 — as VINTE E SETE mutações foram DETECTADAS (pelo gate, pelo ARQUIVO e/ou pela
 #       suíte) e os controles passaram ✅
 #   1 — guard INDIFERENTE a alguma mutação (não cegou / não acusou / não gravou)
 #       OU controle falso ❌
@@ -82,6 +82,22 @@
 #   M11 — os PADRÕES de um `case`. Sem a régua, o `-h|--help)` de um script bem
 #         escrito vira violação e o repositório REAL fica VERMELHO — direção
 #         contrária (como o M4): o defeito da mutação é acusar o são.
+#
+# A CLASSE DE UM ALVO É UMA SÓ (`classeDoAlvo`), e ela tem DUAS mutações próprias
+# (M26–M27) — é a régua que faz o alvo LITERAL e o valor PROVADO por variável
+# responderem igual, em vez de o segundo ser julgado só pela EXISTÊNCIA:
+#
+#   M26 — o valor ABSOLUTO. `/etc/hosts` numa atribuição não promete estar no
+#         repositório (`bash "$ALVO"` com `ALVO="/etc/hosts"` roda um binário de
+#         FORA dele): a mesma régua do literal o resolve como "caminho absoluto
+#         fora do repositório", e a mutação que o julga pela existência ACUSA O
+#         SÃO (direção contrária, como M4/M11/M12/M23/M24).
+#   M27 — o valor de PADRÃO. `scripts/*.sh` nomeia um CONJUNTO, não um arquivo: o
+#         literal o resolve como `indeterminado` ("padrão, não um caminho") e
+#         exige a decisão datada. Julgá-lo pela existência era pior que inútil —
+#         a mensagem acusava "NÃO existe no repositório" e ainda SUGERIA um
+#         vizinho (`a.sh`), que é a distância entre um glob e um nome. A mutação
+#         aceita o padrão como caminho PROVADO e o guard fica CEGO.
 #
 # AS VARIÁVEIS DE CAMINHO TÊM AS SUAS TRÊS REGRAS, e cada uma tem mutação própria —
 # é a metade do guard que PROVA o alvo do interpretador (`python3
@@ -215,6 +231,10 @@
 #      fixture), e a prosa que o publica tem de bater com o que o `analyze()`
 #      mediu. O defeito que ela reinstala está MEDIDO: a prosa dizia 250 comandos
 #      / 244 resolvidos / 105 nos hooks quando o medido era 251 / 245 / 106
+#   7b. MUTAÇÃO M26 (o valor ABSOLUTO do conjunto provado) — o caso SÃO (o
+#       caminho FORA do repositório) passa a ser ACUSADO
+#   7c. MUTAÇÃO M27 (o valor de PADRÃO do conjunto provado) — o glob passa a ser
+#       um caminho PROVADO e o guard fica CEGO para a classe
 #   8. Restauração VERIFICADA (checksum, guard E doc) + CONTROLE FINAL: o guard
 #      volta a reprovar o caminho tipado, provando que a árvore ficou como estava
 #   9. Cleanup (trap EXIT — restaura o guard e a doc, e remove o temp)
@@ -256,6 +276,8 @@ METADES=(
   'M23|a leitura do PRIMEIRO WORD da atribuição'
   'M24|a AUTO-REFERÊNCIA não acrescenta valor novo'
   'M25|o total de comandos ESCRITO À MÃO na prosa da doc → o guard FALHA nomeando o delta'
+  'M26|o valor ABSOLUTO do conjunto provado julgado pela existência → o caso SÃO passa a ser ACUSADO'
+  'M27|o valor de PADRÃO do conjunto provado aceito como caminho → o guard fica CEGO para a classe'
 )
 GUARD="$SCRIPT_DIR/scripts/check-hook-commands.mjs"
 SUITE_ARQUIVO="src/lib/__tests__/check-hook-commands.test.ts"
@@ -801,7 +823,7 @@ mk_arquivo "$FX_VARIAVEL" "scripts/py.sh" "$PY_VARIAVEL"
 exigir_reprovado "M13 (antes da mutação)" "$FX_VARIAVEL"
 pass "CONTROLE: o alvo PROVADO que não existe é VIOLAÇÃO (a variável foi provada e o arquivo, conferido)"
 mutar_guard \
-  '    const faltando = provavel.valores.filter((v) => !arquivoExiste(ctx.root, v))' \
+  '    const faltando = doRepositorio.filter((v) => !arquivoExiste(ctx.root, v))' \
   '    const faltando = [] /* MUTACAO M13 */'
 exigir_cego "M13" "$FX_VARIAVEL"
 pass "M13: sem a conferência, o caminho que NUNCA existe PASSA (CEGO) — a existência do alvo provado é load-bearing"
@@ -1113,10 +1135,59 @@ fi
 pass "M25: o número escrito à mão reprova nomeando a linha da prosa e o delta (${TOTAL_ATUAL} medido vs $((TOTAL_ATUAL - 1)) declarado)"
 restaurar_original
 
+# ── 7b. MUTAÇÃO M26: o valor ABSOLUTO do conjunto provado ────────────────
+# A direção é a CONTRÁRIA (como M4/M11/M12/M23/M24): o valor absoluto de uma
+# atribuição não promete estar no repositório — `ALVO="/etc/hosts"` roda um
+# binário de FORA dele —, e a régua do alvo LITERAL já não o confere no disco.
+# Julgá-lo pela existência ACUSA O SÃO: é o defeito que o veredito do valor
+# provado tinha, e a classe é o que o desfaz.
+header "MUTAÇÃO M26: julgar o valor ABSOLUTO do conjunto pela existência"
+FX_ABSOLUTO="$TMP_DIR/fx-absoluto"
+mkfixture "$FX_ABSOLUTO" $'set -eu\nALVO="/etc/hosts"\nbash "$ALVO"\n'
+exigir_aprovado "M26 (antes da mutação)" "$FX_ABSOLUTO"
+pass "CONTROLE: o valor absoluto provado é 'caminho absoluto fora do repositório' — VERDE"
+mutar_guard '    const doRepositorio = provavel.valores.filter(ehCaminhoDoRepositorio)' \
+  '    const doRepositorio = provavel.valores /* MUTACAO M26 */'
+exigir_reprovado "M26" "$FX_ABSOLUTO"
+pass "M26: julgado pela existência, o caminho FORA do repositório passa a ser ACUSADO — a classe é load-bearing"
+mostrar
+exigir_suite_vermelha "M26"
+restaurar_original
+
+# ── 7c. MUTAÇÃO M27: o valor de PADRÃO do conjunto provado ────────────────
+# `scripts/*.sh` nomeia um CONJUNTO, não um arquivo: o alvo LITERAL o resolve
+# como `indeterminado` ("padrão, não um caminho") e exige a decisão datada — a
+# falsa acusação que o veredito do valor provado cometia era "NÃO existe no
+# repositório" MAIS a sugestão de um vizinho, que é a distância entre um glob e
+# um nome. A metade aceita o padrão como caminho PROVADO (o `resolvido` de uma
+# parte) e mede a cegueira.
+header "MUTAÇÃO M27: aceitar o PADRÃO do conjunto como caminho provado"
+FX_PADRAO="$TMP_DIR/fx-padrao"
+mkfixture "$FX_PADRAO" $'set -eu\nALVO="scripts/*.sh"\nbash "$ALVO"\n'
+mk_arquivo "$FX_PADRAO" "scripts/a.sh" '#!/usr/bin/env bash\n'
+exigir_reprovado "M27 (antes da mutação)" "$FX_PADRAO"
+if ! grep -qF 'padrão, não um caminho' <<<"$GUARD_OUT"; then
+  fail "M27: o guard reprova o padrão mas NÃO nomeia a classe ('padrão, não um caminho') — a acusação falsa ficou de pé"
+  mostrar
+  exit 1
+fi
+if grep -qF 'o mais próximo' <<<"$GUARD_OUT"; then
+  fail "M27: o guard SUGERIU o vizinho de um padrão — um glob não tem vizinho a sugerir"
+  mostrar
+  exit 1
+fi
+pass "CONTROLE: o padrão é 'padrão, não um caminho' (a classe do literal), sem sugestão de vizinho, e a decisão datada segue exigida"
+mutar_guard '      const padrao = provavel.valores.find((v) => classeDoAlvo(v) === "padrao")' \
+  '      const padrao = undefined /* MUTACAO M27 */'
+exigir_cego "M27" "$FX_PADRAO"
+pass "M27: sem a classe do padrão, o guard ACEITA o glob como caminho provado (CEGO) — a régua do padrão é load-bearing"
+exigir_suite_vermelha "M27"
+restaurar_original
+
 # ── 8. CONTROLE FINAL: a árvore ficou como estava ─────────────────────────
 header "CONTROLE FINAL: restauração verificada por checksum"
 exigir_reprovado "CONTROLE FINAL (caminho tipado)" "$FX_TYPO"
 pass "CONTROLE FINAL: o guard restaurado volta a reprovar o caminho tipado"
 
 echo
-echo -e "${GREEN}═══ MUTATION TEST PASSED — as 25 mutações foram detectadas (gate, arquivo, suíte e/ou prosa) ═══${NC}"
+echo -e "${GREEN}═══ MUTATION TEST PASSED — as 27 mutações foram detectadas (gate, arquivo, suíte e/ou prosa) ═══${NC}"

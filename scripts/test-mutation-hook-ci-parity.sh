@@ -72,6 +72,13 @@
 # `cksum` contra o hash capturado no início. Um mutation test que deixa a
 # árvore suja (ou que se declara verde sem ter restaurado) é pior que nenhum.
 #
+#   I) A CLASSE DO ALVO NA DESCIDA. A injeção é da ÁRVORE: um runner de shell
+#      SEM sufixo `.sh`, chamado pela pipeline, executando um guard sem decisão
+#      local. Com a régua da CLASSE (a do `check-hook-commands`) ele entra no
+#      julgamento e o sub-guard é NOMEADO; com a leitura por FORMA
+#      (`alvo.endsWith(".sh")`) o MESMO defeito passa verde. As duas metades são
+#      medidas na mesma rodada: a classe é o que sustenta o vermelho.
+#
 # ⚠️ Source-coupled: os sed ancoram em LINHAS dos arquivos reais e as mensagens
 # reproduzem a saída do guard. Reformular a mensagem em
 # scripts/check-hook-ci-parity.mjs exige atualizar as duas coisas juntas (o
@@ -95,6 +102,7 @@ METADES=(
   'F|hook declarado que não existe (fail-closed)'
   'G|sub-guard de um runner sem decisão local'
   'H|a descida do lado LOCAL cega'
+  'I|a CLASSE do alvo na descida (o runner SEM sufixo `.sh`)'
 )
 cd "$SCRIPT_DIR"
 
@@ -107,6 +115,10 @@ MARKER_FILE="scripts/check-hook-ci-parity.mjs"
 # que existe: um caminho citado e ausente não é sub-guard, é typo).
 RUNNER_PIPELINE="scripts/setup-bun-ci.sh"
 SONDA="scripts/check-subguard-sonda.mjs"
+# A metade I injeta o caso que a leitura por FORMA não via: um runner de shell
+# SEM sufixo `.sh`, chamado pela pipeline, executando um guard sem decisão local.
+PIPELINE_WORKFLOW=".github/workflows/pr-check.yml"
+RUNNER_SEM_SUFIXO="scripts/runner-sem-sufixo"
 
 TMP_DIR="$(mktemp -d)"
 BACKUP="$TMP_DIR/orig"
@@ -125,7 +137,7 @@ header() { echo -e "\n${CYAN}═══ $1 ═══${NC}"; }
 
 # ── Backup + hash de origem (a restauração é PROVADA, não prometida) ──────
 
-TRACKED=("$GUARD" "$PRE_COMMIT" "$PRE_PUSH" "$RUNNER_PIPELINE")
+TRACKED=("$GUARD" "$PRE_COMMIT" "$PRE_PUSH" "$RUNNER_PIPELINE" "$PIPELINE_WORKFLOW")
 declare -a ORIG_HASH=()
 
 for f in "${TRACKED[@]}"; do
@@ -139,6 +151,7 @@ restore() {
     cp -p "$BACKUP/$f" "$f"
   done
   rm -f "$SONDA"
+  rm -f "$RUNNER_SEM_SUFIXO"
 }
 
 verify_restored() {
@@ -152,6 +165,10 @@ verify_restored() {
   # A sonda da mutação G não pode sobreviver: um arquivo novo na árvore é
   # exatamente o tipo de lixo que um mutation test deixa e ninguém vê.
   if [ -e "$SONDA" ]; then
+    return 1
+  fi
+  # Nem o runner sem sufixo da metade I (mesma classe de lixo).
+  if [ -e "$RUNNER_SEM_SUFIXO" ]; then
     return 1
   fi
   return 0
@@ -486,6 +503,75 @@ pass "H DETECTADA (exit 1, 2 violações): a descida do lado local e LOAD-BEARIN
 pass "  (sem ela o hook 'nao roda' o que ele roda de dentro — e o guard acusa os dois)"
 restore
 
+# ── MUTAÇÃO I — a CLASSE do alvo na descida (o runner SEM sufixo) ────────
+
+header "MUTAÇÃO I: a CLASSE do alvo na descida (o runner SEM sufixo .sh)"
+
+# A INJEÇÃO é da ÁRVORE, e não do guard: um runner de shell SEM sufixo `.sh`,
+# chamado pela PIPELINE, executando um guard que não tem decisão local nenhuma.
+# É o caso que a leitura por FORMA (`alvo.endsWith(".sh")`) não via — nem como
+# runner, nem como limite, nem como sub-guard.
+printf '#!/usr/bin/env bash\nset -eu\nnode scripts/check-subguard-sonda.mjs\n' >"$RUNNER_SEM_SUFIXO"
+printf '// sonda da mutação I: o sub-guard que o runner SEM sufixo executa\nprocess.exit(0)\n' >"$SONDA"
+printf '\n      - name: Runner sem sufixo (mutação I)\n        run: bash scripts/runner-sem-sufixo\n' >>"$PIPELINE_WORKFLOW"
+if ! grep -Fq 'runner-sem-sufixo' "$PIPELINE_WORKFLOW"; then
+  fail "mutação I não aplicou (a pipeline não passou a chamar o runner sem sufixo)"
+  exit 1
+fi
+run_guard
+assert_exit 1 "MUTAÇÃO I"
+assert_violations 1 "MUTAÇÃO I"
+if ! violated "scripts/check-subguard-sonda.mjs: SUB-GUARD do runner"; then
+  fail "mutação I: o sub-guard do runner SEM sufixo não foi julgado"
+  sed 's/^/      /' "$VIOLATIONS" | head -6
+  exit 1
+fi
+if ! violated 'scripts/runner-sem-sufixo'; then
+  fail "mutação I: a violação não nomeia o runner sem sufixo"
+  sed 's/^/      /' "$VIOLATIONS" | head -6
+  exit 1
+fi
+assert_intact_rows "$BASE_ROWS" "MUTAÇÃO I"
+pass "I DETECTADA (exit 1, 1 violação): o runner SEM sufixo entra no julgamento"
+pass "  (a classe do alvo diz quem desce — o sufixo não)"
+restore
+
+# A METADE OPOSTA — a leitura por FORMA de volta no guard (o MESMO defeito na
+# árvore): o runner sem sufixo sai da conta e o sub-guard que ele executa passa
+# INVISÍVEL. O corte é cirúrgico (as duas linhas da classe viram o filtro de
+# forma) e falha ALTO se não casar — uma mutação que não aplicou não mede nada.
+printf '#!/usr/bin/env bash\nset -eu\nnode scripts/check-subguard-sonda.mjs\n' >"$RUNNER_SEM_SUFIXO"
+printf '// sonda da muletação I: o sub-guard que o runner SEM sufixo executa\nprocess.exit(0)\n' >"$SONDA"
+printf '\n      - name: Runner sem sufixo (mutação I)\n        run: bash scripts/runner-sem-sufixo\n' >>"$PIPELINE_WORKFLOW"
+python3 - <<'PY'
+from pathlib import Path
+
+caminho = Path("scripts/check-hook-ci-parity.mjs")
+texto = caminho.read_text(encoding="utf8")
+antes = """      const r = alvoDoLancador(comando)
+      const provavel = r.ok ? alvosProvaveis(comando, vars) : { ok: false, motivo: r.motivo }
+"""
+depois = """      if (!(comando.tokens[0] ?? "").endsWith(".sh")) continue
+      const provavel = alvosProvaveis(comando, vars)
+"""
+if antes not in texto:
+    raise SystemExit("mutação I não aplicou (o corte por forma não casou)")
+caminho.write_text(texto.replace(antes, depois, 1), encoding="utf8")
+PY
+if ! grep -Fq 'endsWith(".sh")) continue' "$GUARD"; then
+  fail "mutação I (forma): o sed não produziu o marcador da leitura por forma"
+  exit 1
+fi
+run_guard
+assert_exit 0 "MUTAÇÃO I (leitura por forma)"
+if violated "scripts/check-subguard-sonda.mjs"; then
+  fail "mutação I (forma): o sub-guard foi acusado — a metade oposta não mediu o que devia"
+  exit 1
+fi
+pass "I (metade oposta) com a leitura por FORMA o MESMO defeito passa VERDE: a CLASSE é LOAD-BEARING"
+pass "  (o sub-guard do runner sem sufixo sai da conta e nenhum limite o substitui)"
+restore
+
 # ═════════════════════════════════════════════════════════════════════════
 # RESTAURAÇÃO — hashes idênticos aos do início (a árvore volta limpa)
 # ═════════════════════════════════════════════════════════════════════════
@@ -503,12 +589,13 @@ assert_exit 0 "PÓS-RESTAURAÇÃO"
 pass "guard verde de novo (exit 0) — a mutação foi 100% do harness, não da árvore"
 
 header "VEREDITO"
-pass "MUTATION TEST PASSED — as 8 regressões do veredito local↔CI são detectadas:"
+pass "MUTATION TEST PASSED — as 9 regressões do veredito local↔CI são detectadas:"
 pass "  A) segunda régua no hook (detecção DUPLA: comando + cobertura do CORE)"
 pass "  B) comando novo sem decisão   C) recorte sem razão escrita"
 pass "  D) declaração que envelheceu   E) gate do CORE sumido da lista"
 pass "  F) hook fantasma (fail-closed)"
 pass "  G) sub-guard de um runner sem decisão local"
 pass "  H) a descida do lado local cega (os sub-guards do check-utf8.sh acusam)"
+pass "  I) a CLASSE do alvo na descida (a leitura por FORMA deixa o runner sem sufixo cego)"
 echo ""
 exit 0

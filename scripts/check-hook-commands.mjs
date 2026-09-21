@@ -69,7 +69,18 @@
 // de sintaxe: comentario, heredoc, quote multi-linha e operador ja resolvidos)
 // e exige que cada um resolva:
 //
-//   node|bash|sh|python3 <caminho>    o caminho tem de EXISTIR no repositorio
+//   node|bash|sh|python3 <caminho>    o caminho tem de EXISTIR no repositorio —
+//                                     e a CLASSIFICACAO do alvo e UMA so
+//                                     (`classeDoAlvo`, a MESMA regua que o valor
+//                                     PROVADO por variavel usa): o relativo se
+//                                     PROVA no disco, o absoluto e "fora do
+//                                     repositorio" (resolvido) e o padrao e
+//                                     "padrao, nao um caminho" (indeterminado).
+//                                     Julgar o valor provado so pela EXISTENCIA
+//                                     acusava o sao: o `/etc/hosts` de uma
+//                                     atribuicao era "nao existe no repositorio",
+//                                     e um `scripts/*.sh` ganhava ate a sugestao
+//                                     de um vizinho
 //   bash|sh <script.sh>               o caminho tem de existir E o que ELE executa
 //                                     por dentro e julgado recursivamente: o
 //                                     hook real chama UM runner
@@ -81,9 +92,17 @@
 //                                     (`bash "$SCRIPT_DIR/x.sh"`): o interior de
 //                                     um script que a resolucao acabou de provar
 //                                     NAO fica sem julgamento — so desce o que E
-//                                     arquivo do repositorio (absoluto e glob nao
-//                                     tem o que ler, e o veredito do comando e
-//                                     que diz por que)
+//                                     arquivo do repositorio (o veredito do
+//                                     comando diz por que, na MESMA classe de
+//                                     `classeDoAlvo`: fora do repositorio ou
+//                                     padrao). O ALVO de um lancador e o primeiro
+//                                     token que NAO e um FLAG (`alvoDoLancador`),
+//                                     e a classe do flag decide o que vem depois:
+//                                     `bash -u x.sh` EXECUTA x.sh (desce),
+//                                     `bash -n x.sh` so CONFERE a sintaxe (nao
+//                                     desce, e o motivo DIZ isso) e `bash -o
+//                                     pipefail x.sh` nao e adivinhado (o flag
+//                                     pode consumir o token seguinte)
 //   bun run <entrada>                 a entrada tem de existir em `scripts` do
 //                                     package.json E o comando RESOLVIDO dela e
 //                                     julgado recursivamente (o script que
@@ -201,12 +220,73 @@ export const INTERPRETERS = new Set([
   "deno",
 ])
 
+// ── A CLASSE DO FLAG DE UM LANCADOR DE SHELL ───────────────────────────────
+//
+// O alvo de `bash`/`sh` NAO e o primeiro token: `bash -u scripts/x.sh` executa o
+// arquivo, e ler o `-u` como "o alvo" foi o que fez o guard dizer que um alvo
+// que E caminho do repositorio "nao e um arquivo do repositorio". A classe do
+// flag decide o que vem depois dele — a MESMA leitura para o veredito do
+// comando e para a descida (`alvoDoLancador`).
+
+/** (1) O shell EXECUTA o arquivo: o flag nao consome o token seguinte. */
+export const FLAGS_DE_SHELL_EXECUTA = new Set([
+  "-e",
+  "-u",
+  "-x",
+  "-v",
+  "-a",
+  "-f",
+  "-h",
+  "-k",
+  "-t",
+  "-p",
+  "-r",
+  "-l",
+  "-B",
+  "-C",
+  "-E",
+  "-H",
+  "-P",
+  "-T",
+  "--verbose",
+  "--xtrace",
+  "--errexit",
+  "--nounset",
+  "--noprofile",
+  "--norc",
+  "--posix",
+  "--restricted",
+  "--login",
+])
+
+/**
+ * (2) O shell NAO executa arquivo nenhum: `-n` so CONFERE a sintaxe. Descer no
+ * alvo afirmaria que o interior dele roda — e nao roda.
+ */
+export const FLAGS_DE_SHELL_NAO_EXECUTA = new Set([
+  "-n",
+  "--noexec",
+  "--dump-strings",
+  "--dump-po-strings",
+])
+
+/**
+ * (3) O script vem do STDIN ou do proprio ARGUMENTO (payload inline): nao ha
+ * arquivo do repositorio para julgar nem para descer.
+ *
+ * O `INLINE_FLAGS` e DERIVADO daqui: enquanto a lista era escrita a mao, o `-e`
+ * estava nela por engano — `bash -e x.sh` e o `errexit` com o arquivo EXECUTADO
+ * (`-c` e que e payload), e o veredito dizia "payload inline (bash -e)" de um
+ * comando cujo alvo e um arquivo do repositorio.
+ */
+export const FLAGS_DE_SHELL_SEM_ARQUIVO = new Set(["-c", "--eval", "-", "-s", "-i"])
+
 /**
  * A flag que faz o interpretador ler o payload de um ARGUMENTO: o que ele
  * executa nao existe como arquivo em lugar nenhum — e INDETERMINADO por
  * construcao, nao por limitacao do guard.
  */
-export const INLINE_FLAGS = new Set(["-c", "-e", "--eval", "-"])
+export const INLINE_FLAGS = FLAGS_DE_SHELL_SEM_ARQUIVO
 
 /** Os gerenciadores de pacote e os SUBCOMANDOS nativos deles (nao sao entradas). */
 export const PACKAGE_MANAGERS = new Set(["bun", "bunx", "npm", "npx", "pnpm", "yarn"])
@@ -1465,6 +1545,37 @@ function arquivoExiste(root, rel) {
 }
 
 /**
+ * A CLASSE de um alvo: o que ele E diante do repositorio.
+ *
+ * `repositorio` — um caminho relativo: a unica classe que se PROVA no disco;
+ * `absoluto`    — vive FORA do repositorio (`/etc/hosts`): nao ha disco a
+ *                 conferir, e acusa-lo de "nao existe no repositorio" e uma
+ *                 leitura sem sentido (o literal ja o resolve como "caminho
+ *                 absoluto fora do repositorio");
+ * `padrao`      — um glob (`scripts/*.sh`): nomeia um CONJUNTO, nao um arquivo.
+ *                 O literal ja o resolve como "padrao, nao um caminho", e a
+ *                 mesma leitura vale para o valor provado — julga-lo pela
+ *                 existencia era pior que inutil: `scripts/*.sh` nunca e o nome
+ *                 de um arquivo, e a mensagem ainda SUGERIA um vizinho
+ *                 (`a.sh`), que e a distancia entre um padrao e um nome.
+ *
+ * Antes desta regua a classe existia em TRES lugares e em duas formas: o alvo
+ * LITERAL tinha as duas metades certas (em `scriptAlvo` e no `julgaCaminho`), a
+ * DESCIDA tinha o filtro (`alvosProvaveis`) e o VEREDITO do valor PROVADO por
+ * variavel nao tinha nenhuma — ele julgava todo valor pela existencia.
+ */
+export function classeDoAlvo(valor) {
+  if (valor.startsWith("/")) return "absoluto"
+  if (/[*?[]/.test(valor)) return "padrao"
+  return "repositorio"
+}
+
+/** O alvo E um caminho do repositorio (a unica classe que desce e que se prova)? */
+export function ehCaminhoDoRepositorio(valor) {
+  return classeDoAlvo(valor) === "repositorio"
+}
+
+/**
  * Os hooks julgados: todo arquivo de `.husky/` que nao seja o diretorio interno
  * do husky. A lista e LIDA do diretorio (nao cravada) de proposito: um hook
  * novo entra no julgamento sozinho, e esquecer uma lista a mao e exatamente a
@@ -1525,25 +1636,86 @@ export const SHELL_INTERPRETERS = new Set(["bash", "sh", "dash", "zsh"])
 export const MAX_SCRIPT_DEPTH = 4
 
 /**
+ * O ALVO de um lancador de shell/`source`: o primeiro token que NAO e um flag,
+ * com o motivo NOMEADO quando nao da para le-lo.
+ *
+ * Enquanto o alvo era `tokens[0]`, um flag a frente do arquivo virava "o alvo":
+ * `bash -n "$TMP/x.sh"` era lido como "o alvo e `-n`" e o limite da descida saia
+ * com a afirmacao FALSA de que o alvo "nao e um arquivo do repositorio" — o
+ * arquivo estava ali, na frente do guard, atras de um flag. A classe do flag
+ * (`FLAGS_DE_SHELL_*`) decide o que vem depois, e as tres classes em que a
+ * leitura NAO continua saem com o motivo DITO (payload inline, `-n` que so
+ * confere a sintaxe, flag que pode consumir o token seguinte) — o alvo nao
+ * provado nunca e um caminho chutado.
+ *
+ * @param {{programa: string, tokens: string[]}} comando
+ * @returns {{ok: true, alvo: string}|{ok: false, motivo: string}}
+ */
+export function alvoDoLancador(comando) {
+  for (const token of comando.tokens ?? []) {
+    if (token === "") continue
+    if (!token.startsWith("-")) return { ok: true, alvo: token }
+    if (FLAGS_DE_SHELL_SEM_ARQUIVO.has(token))
+      return {
+        ok: false,
+        motivo: `payload inline de \`${comando.programa} ${token}\` — o script vive no argumento/stdin, nao como arquivo`,
+      }
+    if (FLAGS_DE_SHELL_NAO_EXECUTA.has(token))
+      return {
+        ok: false,
+        motivo: `\`${comando.programa} ${token}\` so CONFERE a sintaxe do alvo — o interior dele nao e executado, entao nao ha o que descer`,
+      }
+    if (!FLAGS_DE_SHELL_EXECUTA.has(token))
+      return {
+        ok: false,
+        motivo: `o flag \`${token}\` de \`${comando.programa}\` pode consumir o token seguinte — o alvo nao e provado por leitura`,
+      }
+  }
+  return { ok: false, motivo: `\`${comando.programa}\` sem alvo de arquivo` }
+}
+
+/**
+ * Por que um valor NAO desce: a CLASSE dele, em palavras (`padrao`, `absoluto`,
+ * `repositorio`).
+ *
+ * O motivo generico ("nao e um arquivo do repositorio") nao distinguia um glob
+ * de um `/opt/x.sh` — e nenhum dos dois e "um arquivo que falta": o primeiro e
+ * um CONJUNTO que so o runtime expande, o segundo e um caminho FORA do
+ * repositorio. A classe e a mesma regua do veredito (`classeDoAlvo`), dita em
+ * vez de implicita.
+ */
+function classeDita(valor) {
+  const classe = classeDoAlvo(valor)
+  if (classe === "padrao")
+    return "padrao, nao um caminho (o conjunto que o runtime expande nao e provado por leitura)"
+  if (classe === "absoluto")
+    return "caminho absoluto, fora do repositorio (nao ha arquivo daqui a ler)"
+  return "caminho do repositorio (que falta no disco)"
+}
+
+/**
  * O arquivo de SHELL que este comando manda executar, ou null.
  *
- * Um flag no lugar do arquivo (`bash -c`, `bash -e`), um ALVO MONTADO EM `$VAR`
- * (`bash "$ALVO"` — quem resolve esse e o `alvosProvaveis`, abaixo), um padrao
- * de glob e um caminho absoluto NAO descem: o primeiro nao nomeia arquivo (o
- * guard ja o diz indeterminado), o terceiro e um conjunto e o quarto vive fora
- * do repositorio.
+ * Um flag antes do arquivo (`bash -u scripts/x.sh`) NAO e um alvo: quem le o
+ * alvo e o `alvoDoLancador`, pela classe do flag. Um ALVO MONTADO EM `$VAR`
+ * (`bash "$ALVO"` — quem resolve esse e o `alvosProvaveis`, abaixo) e tudo o
+ * que NAO e caminho do repositorio tambem nao descem: o primeiro nao nomeia
+ * arquivo (o guard ja o diz indeterminado), e o resto e decidido pela classe do
+ * alvo (`classeDoAlvo`), a MESMA regua que o veredito usa — nao uma segunda
+ * leitura.
  *
  * @param {{programa: string, tokens: string[]}} comando
  * @returns {string|null}
  */
 export function scriptAlvo(comando) {
-  const alvo = comando.tokens[0]
-  if (alvo === undefined || alvo === "") return null
-  if (alvo.startsWith("-") || alvo.startsWith("$") || alvo.startsWith("/")) return null
-  if (/[*?[]/.test(alvo)) return null
-  if (SHELL_INTERPRETERS.has(comando.programa)) return alvo
-  if (SOURCE_COMMANDS.has(comando.programa)) return alvo
-  return null
+  if (!SHELL_INTERPRETERS.has(comando.programa) && !SOURCE_COMMANDS.has(comando.programa))
+    return null
+  const lancador = alvoDoLancador(comando)
+  if (!lancador.ok) return null
+  const alvo = lancador.alvo
+  if (alvo.startsWith("$")) return null
+  if (!ehCaminhoDoRepositorio(alvo)) return null
+  return alvo
 }
 
 /**
@@ -1556,8 +1728,9 @@ export function scriptAlvo(comando) {
  * mais util deste guard (a que acha o defeito um nivel ADIANTE) desligada
  * justamente onde o caminho e mais indireto. Quem decide aqui e a MESMA regua do
  * caminho provado (`caminhosProvaveis`, as atribuicoes do PROPRIO arquivo), e
- * so o que E caminho do repositorio desce: um valor absoluto ou um glob nao tem
- * arquivo a ler (e o veredito do comando ja diz por que).
+ * so o que E caminho do repositorio desce (`ehCaminhoDoRepositorio`): um valor
+ * absoluto ou um padrao nao tem arquivo a ler (e o veredito do comando diz por
+ * que, NA MESMA CLASSE — ver `classeDoAlvo`).
  *
  * Vario valores provaveis = varios arquivos: TODOS descem (e a mesma regra do
  * conjunto que vale para o alvo do interpretador), cada um julgado UMA vez.
@@ -1570,19 +1743,22 @@ export function alvosProvaveis(comando, vars) {
   const doShell = SHELL_INTERPRETERS.has(comando.programa) || SOURCE_COMMANDS.has(comando.programa)
   if (!doShell)
     return { ok: false, motivo: `\`${comando.programa}\` não executa um script de shell` }
-  const alvo = comando.tokens[0]
-  if (alvo === undefined || alvo === "")
-    return { ok: false, motivo: `${comando.programa}: sem alvo` }
+  const lancador = alvoDoLancador(comando)
+  if (!lancador.ok) return { ok: false, motivo: lancador.motivo }
+  const alvo = lancador.alvo
   if (!alvo.startsWith("$"))
-    return scriptAlvo(comando) === null
-      ? { ok: false, motivo: `o alvo de \`${comando.programa}\` não é um arquivo do repositório` }
-      : { ok: true, valores: [alvo] }
+    return ehCaminhoDoRepositorio(alvo)
+      ? { ok: true, valores: [alvo] }
+      : { ok: false, motivo: `o alvo de \`${comando.programa}\` é ${classeDita(alvo)}` }
   if (vars === undefined) return { ok: false, motivo: "o texto do arquivo não está no contexto" }
   const provavel = caminhosProvaveis(alvo, vars)
   if (!provavel.ok) return { ok: false, motivo: provavel.motivo }
-  const valores = provavel.valores.filter((v) => !v.startsWith("/") && !/[*?[]/.test(v))
+  const valores = provavel.valores.filter(ehCaminhoDoRepositorio)
   if (valores.length === 0)
-    return { ok: false, motivo: `nenhum valor provável de \`${alvo}\` é um arquivo do repositório` }
+    return {
+      ok: false,
+      motivo: `nenhum valor provável de \`${alvo}\` é caminho do repositorio (${[...new Set(provavel.valores.map(classeDoAlvo))].join("/")})`,
+    }
   return { ok: true, valores }
 }
 
@@ -1650,6 +1826,24 @@ function classificaBruto(comando, ctx) {
   if (programa.startsWith("$")) return julgaProgramaVariavel(comando, ctx)
 
   if (INTERPRETERS.has(programa)) {
+    // O SHELL le o alvo pela classe do FLAG (`alvoDoLancador`): `bash -e x.sh`
+    // EXECUTA o arquivo (o `-e` e o errexit), e quem dizia "payload inline
+    // (bash -e)" de um comando cujo alvo e um arquivo do repositorio era a
+    // lista de flags escrita a mao. Os interpretadores FOLHA (node, python)
+    // ficam com a leitura propria: o `-e` de um `node -e` e o eval DELE, e a
+    // classe dos flags nao e a mesma — unificar ali seria trocar um erro por
+    // outro.
+    if (SHELL_INTERPRETERS.has(programa)) {
+      const lancador = alvoDoLancador(comando)
+      if (!lancador.ok) return { desfecho: "indeterminado", motivo: lancador.motivo }
+      return julgaCaminho(
+        ctx,
+        lancador.alvo,
+        `script do ${programa}`,
+        comando.linha,
+        comando.origem,
+      )
+    }
     const alvo = tokens[0]
     if (alvo === undefined || alvo.startsWith("-")) {
       if (alvo !== undefined && INLINE_FLAGS.has(alvo))
@@ -1868,6 +2062,17 @@ function julgaEntradaVariavel(ctx, comando, possivelEntrada, explicito) {
  * token de caminho a trocar (a variavel pode ter varios valores, e quem escolhe a
  * atribuicao errada e o operador).
  *
+ * O conjunto e julgado INTEIRO (um ramo que falta reprova), e cada valor cai na
+ * classe do alvo LITERAL (`classeDoAlvo`): o valor ABSOLUTO de uma atribuicao e
+ * "caminho absoluto fora do repositorio" (resolvido, como o literal — julga-lo
+ * pela existencia ACUSAVA o sao, `/etc/hosts` nunca vai estar no repositorio) e o
+ * valor de PADRAO e `indeterminado` ("padrao, nao um caminho", como o literal — a
+ * decisao datada continua sendo exigida, e a mensagem parou de sugerir o vizinho
+ * de um padrao). A ordem e o fail-closed: caminho do repositorio que falta
+ * reprova ANTES de qualquer classe; um padrao no conjunto impede o `resolvido` de
+ * uma parte (ele pode ser o ramo que roda); so o conjunto sem nenhum caminho do
+ * repositorio e que e um alvo absoluto.
+ *
  * @param {{root: string, vars?: {atribuicoes: Map<string, {valores: string[], linhas: number[]}>, dir: string, dirPai?: string}}} ctx
  * @param {string} alvo
  * @param {string} papel
@@ -1886,12 +2091,32 @@ function julgaCaminho(ctx, alvo, papel, linha, origem) {
         desfecho: "indeterminado",
         motivo: `${papel}: caminho montado em runtime (\`${alvo}\`) — ${provavel.motivo}`,
       }
-    const faltando = provavel.valores.filter((v) => !arquivoExiste(ctx.root, v))
-    if (faltando.length === 0)
+    // So o que E caminho do repositorio se prova no disco: o valor absoluto e o
+    // padrao nao tem arquivo a conferir, e julga-los pela EXISTENCIA era a
+    // acusacao falsa que a classe do alvo literal ja nao cometia.
+    const doRepositorio = provavel.valores.filter(ehCaminhoDoRepositorio)
+    const faltando = doRepositorio.filter((v) => !arquivoExiste(ctx.root, v))
+    if (faltando.length === 0) {
+      // A CLASSE de cada valor provado, na MESMA regua do alvo literal
+      // (`classeDoAlvo`): um padrao no conjunto impede o `resolvido` (ele pode ser
+      // o ramo que o runtime expande), e um conjunto que nao tem caminho NENHUM
+      // do repositorio (so absolutos) e "fora do repositorio", como o literal.
+      const padrao = provavel.valores.find((v) => classeDoAlvo(v) === "padrao")
+      if (padrao !== undefined)
+        return {
+          desfecho: "indeterminado",
+          motivo: `${papel} \`${alvo}\` provável (${provavel.motivo}): padrão, não um caminho (\`${padrao}\`)`,
+        }
+      if (doRepositorio.length === 0)
+        return {
+          desfecho: "resolvido",
+          motivo: `${papel} \`${alvo}\` provável (${provavel.motivo}): ${citados(provavel.valores)}, caminho absoluto fora do repositório`,
+        }
       return {
         desfecho: "resolvido",
         motivo: `${papel} \`${alvo}\` provável (${provavel.motivo}): ${citados(provavel.valores)}`,
       }
+    }
     const vizinho = sugestao(basename(faltando[0]), irmaos(ctx.root, faltando[0]))
     return {
       desfecho: "violacao",
@@ -1901,9 +2126,10 @@ function julgaCaminho(ctx, alvo, papel, linha, origem) {
         (vizinho === null ? "" : ` — o mais próximo é \`${vizinho}\``),
     }
   }
-  if (alvo.startsWith("/"))
+  const classe = classeDoAlvo(alvo)
+  if (classe === "absoluto")
     return { desfecho: "resolvido", motivo: `${papel}: caminho absoluto fora do repositório` }
-  if (/[*?[]/.test(alvo))
+  if (classe === "padrao")
     return { desfecho: "indeterminado", motivo: `${papel}: padrão, não um caminho (\`${alvo}\`)` }
   if (arquivoExiste(ctx.root, alvo))
     return { desfecho: "resolvido", motivo: `${papel} \`${alvo}\`` }

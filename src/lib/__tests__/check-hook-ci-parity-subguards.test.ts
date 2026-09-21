@@ -28,7 +28,7 @@
 
 import { describe, expect, it, afterEach } from "vitest"
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
@@ -41,6 +41,7 @@ import {
   localBattery,
   pipelineRunners,
 } from "../../../scripts/check-hook-ci-parity.mjs"
+import { ehCaminhoDoRepositorio } from "../../../scripts/check-hook-commands.mjs"
 
 const RAIZ = resolve(process.cwd())
 const tmpDirs: string[] = []
@@ -129,7 +130,7 @@ describe("no REPO REAL: a descida alcanca os sub-guards dos runners das pipeline
         encoding: "utf8",
       }),
     )
-    const runners = pipelineRunners(RAIZ, scripts)
+    const { runners, limites } = pipelineRunners(RAIZ, scripts)
     // O caso que uma lista por forma perderia: a pipeline nao escreve
     // `bash scripts/test-mutation-guards.sh`, escreve a ENTRADA
     // (`bun run test:mutation-guards`) — sem resolver o package.json o runner
@@ -137,9 +138,16 @@ describe("no REPO REAL: a descida alcanca os sub-guards dos runners das pipeline
     expect([...runners.keys()]).toContain("scripts/test-mutation-guards.sh")
     expect([...runners.keys()]).toContain("scripts/check-utf8.sh")
     expect(runners.size).toBeGreaterThanOrEqual(12)
-    // Todo runner derivado existe (o que nao existir sai como LIMITE nomeado,
-    // nunca como verde silencioso).
-    for (const file of runners.keys()) expect(file.endsWith(".sh")).toBe(true)
+    // A REGUA do runner e a CLASSE do alvo (a do `check-hook-commands`), nao o
+    // sufixo `.sh`: um runner sem extensao E um caminho do repositorio que o
+    // interpretador le, e o sufixo era a segunda leitura que o deixava invisivel.
+    for (const file of runners.keys()) {
+      expect(ehCaminhoDoRepositorio(file)).toBe(true)
+      expect(existsSync(join(RAIZ, file))).toBe(true)
+    }
+    // E o que nao da para provar sai DITO: nenhuma pipeline real tem alvo
+    // irresolvivel hoje, e um alvo novo que apareca vira limite nomeado.
+    expect(limites).toEqual([])
   })
 
   it("a descida alcanca os NOVE sub-guards (inclusive os do idioma `SCRIPT_DIR`)", () => {
@@ -149,7 +157,7 @@ describe("no REPO REAL: a descida alcanca os sub-guards dos runners das pipeline
         encoding: "utf8",
       }),
     )
-    const descida = descendScripts(RAIZ, [...pipelineRunners(RAIZ, scripts).keys()])
+    const descida = descendScripts(RAIZ, [...pipelineRunners(RAIZ, scripts).runners.keys()])
     expect([...descida.alcancados.keys()].sort()).toEqual([
       "scripts/audit-blob-crlf-history.sh",
       "scripts/check-bun-audit-baseline.mjs",
@@ -203,6 +211,16 @@ describe("no REPO REAL: a descida alcanca os sub-guards dos runners das pipeline
     ])
     for (const l of report.limitesDaDescida) expect(l.linha).toBeGreaterThan(0)
     for (const l of report.limitesDaDescida) expect(l.motivo.length).toBeGreaterThan(20)
+    // E o motivo de CADA um e a CLASSE do que nao deu para provar — nao um
+    // generico "nao e um arquivo do repositorio": o `${entry#*|}` e uma
+    // referencia que a regua nao resolve, e o `bash -n` recebe um arquivo que
+    // ele SO NAO EXECUTA (a leitura de antes acusava o alvo de nao existir no
+    // repositorio, o que era falso: o arquivo esta ali, atras do flag).
+    const porArquivo = new Map(report.limitesDaDescida.map((l) => [l.arquivo, l.motivo]))
+    expect(porArquivo.get("scripts/test-mutation-workflow-run-syntax.sh")).toContain(
+      "CONFERE a sintaxe",
+    )
+    expect(porArquivo.get("scripts/test-mutation-guards.sh")).toContain("não resolve")
   })
 })
 
@@ -362,5 +380,110 @@ describe("o sub-guard de um runner exige decisao local", () => {
     const report = analyze({ root: dir })
     expect(daRegra4(report.violations)).toEqual([])
     expect(report.limitesDaDescida.some((l) => l.arquivo === "scripts/runner.sh")).toBe(true)
+  })
+})
+
+// ── 3. a CLASSE do alvo na descida (a mesma regua do check-hook-commands) ─────
+//
+// A leitura de antes era inline e por FORMA (`endsWith(".sh")`,
+// `startsWith("/")`, `includes("$")`): um runner sem sufixo e um alvo com FLAG
+// na frente ficavam invisiveis (nem runner, nem limite), e um GLOB virava runner
+// com um limite que AFIRMAVA "o arquivo nao existe neste checkout". A regua
+// passou a ser a CLASSE do alvo, do dono dela, nos DOIS sentidos: o que E
+// caminho do repositorio desce, e o que nao da para provar sai NOMEADO com a
+// classe (ou com o motivo do flag), em vez de sumir.
+
+describe("a descida le o alvo pela CLASSE (a mesma regua do check-hook-commands)", () => {
+  const pipeline = (comando: string): string =>
+    [
+      "name: ci",
+      "jobs:",
+      "  guards:",
+      "    runs-on: ubuntu-latest",
+      "    steps:",
+      "      - name: o alvo",
+      `        run: ${comando}`,
+      "",
+    ].join("\n")
+
+  /** O sub-guard que o runner executai por dentro (o que exige decisao local). */
+  const COM_SUBGUARD = "#!/usr/bin/env bash\nset -eu\nnode scripts/guard-novo.mjs\n"
+  const ARQUIVOS = { "scripts/guard-novo.mjs": "// guard\n" }
+
+  it("o runner SEM sufixo `.sh` entra na descida (o sufixo era uma segunda regua)", () => {
+    const dir = fixture({
+      gitea: pipeline("bash scripts/runner-sem-sufixo"),
+      github: pipeline("bash scripts/runner-sem-sufixo"),
+      arquivos: {
+        // Sem extensao: quem confirma que da para ler como shell e o SHEBANG.
+        "scripts/runner-sem-sufixo": COM_SUBGUARD,
+        ...ARQUIVOS,
+      },
+    })
+    const report = analyze({ root: dir })
+    expect(report.runners.map((r) => r.file)).toEqual(["scripts/runner-sem-sufixo"])
+    expect(report.subguards.map((s) => s.file)).toEqual(["scripts/guard-novo.mjs"])
+    // E o sub-guard alcancado EXIGE decisao local (a violacao o nomeia).
+    const v = daRegra4(report.violations)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("scripts/guard-novo.mjs")
+    expect(report.limitesDaDescida).toEqual([])
+  })
+
+  it("o alvo com FLAG que EXECUTA (`bash -u x.sh`) desce: o alvo e o arquivo, nao o flag", () => {
+    const dir = fixture({
+      gitea: pipeline("bash -u scripts/runner.sh"),
+      github: pipeline("bash -u scripts/runner.sh"),
+      arquivos: { "scripts/runner.sh": COM_SUBGUARD, ...ARQUIVOS },
+    })
+    const report = analyze({ root: dir })
+    expect(report.runners.map((r) => r.file)).toEqual(["scripts/runner.sh"])
+    expect(report.subguards.map((s) => s.file)).toEqual(["scripts/guard-novo.mjs"])
+    expect(report.limitesDaDescida).toEqual([])
+  })
+
+  it("`bash -n x.sh` NAO desce, e o limite DIZ por que (o arquivo nao e executado)", () => {
+    const dir = fixture({
+      gitea: pipeline("bash -n scripts/runner.sh"),
+      github: pipeline("bash -n scripts/runner.sh"),
+      arquivos: { "scripts/runner.sh": COM_SUBGUARD, ...ARQUIVOS },
+    })
+    const report = analyze({ root: dir })
+    // Nao desce — e nao porque o alvo "nao e um arquivo do repositorio": ele E,
+    // e o que muda e o `-n`, que so confere a sintaxe.
+    expect(report.runners).toEqual([])
+    expect(report.subguards).toEqual([])
+    expect(report.limitesDaDescida.length).toBe(2)
+    for (const l of report.limitesDaDescida) expect(l.motivo).toContain("CONFERE a sintaxe")
+  })
+
+  it("o GLOB e o ABSOLUTO saem como limite NOMEADO com a CLASSE (nunca runner falso)", () => {
+    const casos: [string, string][] = [
+      ["bash scripts/*.sh", "padrao"],
+      ["bash /opt/tool.sh", "absoluto"],
+    ]
+    for (const [comando, classe] of casos) {
+      const dir = fixture({ gitea: pipeline(comando), github: pipeline(comando) })
+      const report = analyze({ root: dir })
+      // A leitura de antes criava um runner `scripts/*.sh` (que "nao existe") e
+      // um arquivo de bateria `/opt/tool.sh` — dois fatos falsos.
+      expect(report.runners).toEqual([])
+      expect(report.bateriaLocal.arquivos).toEqual([])
+      expect(report.limitesDaDescida).toHaveLength(2)
+      for (const l of report.limitesDaDescida) expect(l.motivo).toContain(classe)
+    }
+  })
+
+  it("o alvo em `$VAR` do HOOK vira o valor PROVADO (e nao o texto da variavel)", () => {
+    const dir = fixture({
+      preCommit: '#!/usr/bin/env bash\nset -eu\nRUNNER=scripts/hrunner.sh\nbash "$RUNNER"\n',
+      arquivos: { "scripts/hrunner.sh": COM_SUBGUARD, ...ARQUIVOS },
+    })
+    const local = localBattery(dir, {})
+    expect([...local.runners.keys()]).toEqual(["scripts/hrunner.sh"])
+    expect([...local.arquivos.keys()]).toContain("scripts/hrunner.sh")
+    // O sujeito NAO e o texto da variavel: uma entrada `$RUNNER` aqui afirmaria
+    // que o hook executa um arquivo chamado literalmente `$RUNNER`.
+    expect([...local.arquivos.keys()]).not.toContain("$RUNNER")
   })
 })

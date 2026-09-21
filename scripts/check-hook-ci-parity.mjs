@@ -76,10 +76,13 @@ import { CORE_INVARIANTS, canonicalCommandOf, executedCommands } from "./check-f
 // runners que as PIPELINES chamam — uma implementacao so (ver o ciclo de
 // imports declarado no bloco "O SUB-GUARD DE UM RUNNER").
 import {
+  FLAGS_DE_SHELL_NAO_EXECUTA,
   MAX_SCRIPT_DEPTH,
   SHELL_INTERPRETERS,
+  alvoDoLancador,
   alvosProvaveis,
   caminhosProvaveis,
+  ehCaminhoDoRepositorio,
   shellCommands,
   variaveisDoArquivo,
 } from "./check-hook-commands.mjs"
@@ -468,13 +471,33 @@ function readOrNull(root, path) {
 // dentro de um `.sh` deixa de ser um gate sem dono.
 //
 // A SUPERFICIE DA DESCIDA E A DO `check-hook-commands` (uma regua so, os mesmos
-// primitivos: `SHELL_INTERPRETERS`, `alvosProvaveis`, `variaveisDoArquivo`,
-// `MAX_SCRIPT_DEPTH`). O que este guard ACRESCENTA e a EXIGENCIA: todo arquivo
-// alcancado tem de ter DECISAO LOCAL — ou o hook o executa (a bateria local,
-// medida TAMBEM por descida: o runner `run-encoding-guards.sh` do hook roda os
-// guards de encoding, e sem descer o hook nao cobriria o que ele mesmo roda),
-// ou o invariante do CORE dele esta declarado em HOOK_NOT_RUN, ou a ausencia
-// esta escrita em RUNNER_SUBGUARD com a razao.
+// primitivos: `SHELL_INTERPRETERS`, `alvoDoLancador`, `alvosProvaveis`,
+// `classeDoAlvo`, `variaveisDoArquivo`, `MAX_SCRIPT_DEPTH`). O que este guard
+// ACRESCENTA e a EXIGENCIA: todo arquivo alcancado tem de ter DECISAO LOCAL — ou
+// o hook o executa (a bateria local, medida TAMBEM por descida: o runner
+// `run-encoding-guards.sh` do hook roda os guards de encoding, e sem descer o
+// hook nao cobriria o que ele mesmo roda), ou o invariante do CORE dele esta
+// declarado em HOOK_NOT_RUN, ou a ausencia esta escrita em RUNNER_SUBGUARD com a
+// razao.
+//
+// A CLASSE DO ALVO decidia so METADE: os VALORES vinham da regua do dono
+// (`alvosProvaveis`), mas QUEM ERA runner era lido inline e por FORMA
+// (`!alvo.endsWith(".sh") || alvo.startsWith("/") || alvo.includes("$")` na
+// derivacao das pipelines, `tokens[1]?.endsWith(".sh")` na bateria local e
+// `alvo.endsWith(".sh")` na recursao). O efeito, medido nos dois sentidos: um
+// runner SEM sufixo (`bash scripts/runner`) e um alvo com FLAG na frente
+// (`bash -u scripts/runner.sh`) ficavam INVISIVEIS — nem runner, nem limite, nem
+// sub-guard —, e um GLOB virava runner `scripts/*.sh` com um limite que AFIRMAVA
+// "o arquivo nao existe neste checkout" (dois fatos falsos, um deles negando o
+// conjunto que o runtime expande). Hoje quem decide quem desce e a CLASSE
+// (`ehCaminhoDoRepositorio`, com o shebang confirmando que da para ler o arquivo
+// como shell) e o que NAO da para provar sai NOMEADO — com a classe do alvo ou
+// com o motivo do flag. No repositorio de hoje as duas reguas dao o MESMO
+// conjunto (12 runners, 9 sub-guards, 40 arquivos de bateria, medido: nenhum
+// alvo sem sufixo e nenhum com flag antes do arquivo); o que muda de fato e o
+// MOTIVO do limite do `bash -n "$TMP/x.sh"`, que acusava o alvo de "nao ser um
+// arquivo do repositorio" (o arquivo esta ali) e passou a dizer que o `-n` so
+// confere a sintaxe.
 //
 // O CICLO DE IMPORTS (declarado, e por que ele nao morde): o
 // `check-hook-commands.mjs` importa `resolveCommand` DAQUI. Os dois lados so
@@ -528,6 +551,62 @@ export function fileTargetOf(comando, vars) {
 }
 
 /**
+ * Um comando a partir do TEXTO resolvido (o que `executedCommands` devolve).
+ *
+ * As ASPAS saem aqui: o `run:` de um workflow entrega `bash "$RUNNER"` com os
+ * caracteres `"` no token, e um `"$RUNNER"` lido ao pe da letra e um caminho do
+ * repositorio que existe — nao uma variavel! — para a classe do alvo. O texto de
+ * um SCRIPT ja chega desembrulhado (`shellCommands` le o shell, nao o YAML), e
+ * esta e a mesma leitura do outro lado da fronteira: um token, um valor.
+ */
+function comandoDoTexto(texto) {
+  const tokens = texto
+    .split(/\s+/)
+    .filter((t) => t !== "")
+    .map((t) =>
+      t.length >= 2 &&
+      ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'")))
+        ? t.slice(1, -1)
+        : t,
+    )
+  if (tokens.length === 0) return null
+  return { programa: tokens[0], tokens: tokens.slice(1), linha: 0 }
+}
+
+/**
+ * O lancador APONTA para um ARQUIVO (mesmo quando nao da para prova-lo) — e por
+ * isso o fato tem de sair DITO, em vez de sumir do relatorio?
+ *
+ * A pergunta era feita por heuristica de TEXTO (`startsWith("scripts/")` ou um
+ * sufixo conhecido), que e a leitura que este guard existe para nao ter: um
+ * alvo sem sufixo (`bash scripts/runner`) ficava fora da conta e fora do
+ * relatorio — invisivel nas duas pontas. Quem responde agora e a CLASSE do alvo
+ * (`alvoDoLancador`): um alvo provavel e um arquivo (o que faltou foi a
+ * resolucao), e o `-n` recebe um arquivo que ele so nao EXECUTA — nos dois casos
+ * ha o que dizer. As outras recusas (payload inline, flag que pode consumir o
+ * token seguinte, lancador sem alvo) nao nomeiam arquivo nenhum.
+ */
+function apontaParaArquivoDoLancador(comando) {
+  const lancador = alvoDoLancador(comando)
+  if (lancador.ok) return true
+  return (comando.tokens ?? []).some((t) => FLAGS_DE_SHELL_NAO_EXECUTA.has(t))
+}
+
+/**
+ * Da para LER este arquivo como texto de shell? A classe do alvo decide o que E
+ * alvo; o conteudo tem de confirmar o que ele E (`bash scripts/x.py` nao vira
+ * shell por causa do interpretador). A confirmacao e a extensao OU o shebang:
+ * exigir o sufixo era o que deixava um runner de shell sem extensao invisivel.
+ */
+function ehTextoDeShell(root, rel) {
+  if (rel.endsWith(".sh") || rel.endsWith(".bash")) return true
+  const content = readOrNull(root, rel)
+  if (content === null) return false
+  const primeira = content.split(/\r?\n/, 1)[0]
+  return /^#!.*\b(bash|sh|dash|zsh)\b/.test(primeira)
+}
+
+/**
  * A DESCIDA: os arquivos que um conjunto de scripts de shell executa por dentro.
  *
  * `alcancados` mapeia arquivo → o runner que o executa (a procedencia sai no
@@ -569,11 +648,7 @@ export function descendScripts(root, raizes, { maxDepth = MAX_SCRIPT_DEPTH } = {
       const lancador =
         SHELL_INTERPRETERS.has(comando.programa) || LEAF_INTERPRETERS.has(comando.programa)
       if (!lancador) continue
-      const primeiro = (comando.tokens ?? []).find((t) => t !== "" && !t.startsWith("-")) ?? ""
-      const apontaParaArquivo =
-        primeiro.startsWith("$") ||
-        primeiro.startsWith("scripts/") ||
-        /\.(?:sh|mjs|py|js|cjs)$/.test(primeiro)
+      const apontaParaArquivo = apontaParaArquivoDoLancador(comando)
       const r = fileTargetOf(comando, vars)
       if (!r.ok) {
         if (apontaParaArquivo)
@@ -591,7 +666,18 @@ export function descendScripts(root, raizes, { maxDepth = MAX_SCRIPT_DEPTH } = {
           : normalize(join(vars.dir || dirname(rel), valor))
         if (alvo.startsWith("..") || !existsSync(join(root, alvo))) continue
         if (!alcancados.has(alvo)) alcancados.set(alvo, rel)
-        if (SHELL_INTERPRETERS.has(comando.programa) && alvo.endsWith(".sh") && !vistos.has(alvo)) {
+        // A RECURSAO e decidida pela CLASSE do alvo (e nao pelo sufixo `.sh`):
+        // um runner de shell sem extensao E um arquivo do repositorio que o
+        // interpretador le — o sufixo era uma segunda regua, e ela deixava o
+        // interior dele sem julgamento. O conteudo continua tendo o segundo
+        // criterio de sempre (a extensao OU o shebang de shell): a classe
+        // decide o que E alvo, o shebang confirma que da para le-lo como shell.
+        if (
+          SHELL_INTERPRETERS.has(comando.programa) &&
+          ehCaminhoDoRepositorio(alvo) &&
+          ehTextoDeShell(root, alvo) &&
+          !vistos.has(alvo)
+        ) {
           if (d >= maxDepth) {
             limites.push({
               arquivo: rel,
@@ -620,24 +706,40 @@ export function descendScripts(root, raizes, { maxDepth = MAX_SCRIPT_DEPTH } = {
  *
  * @param {string} root
  * @param {Record<string,string>} scripts  scripts do package.json
- * @returns {Map<string,string>} runner → comando da pipeline (o primeiro)
+ * @returns {{runners: Map<string,string>, limites: {arquivo: string, linha: number,
+ *            programa: string, motivo: string}[]}} runner → comando da pipeline (o
+ *            primeiro) e os alvos que NAO deram para provar (limite NOMEADO)
  */
 export function pipelineRunners(root, scripts) {
   const runners = new Map()
+  const limites = []
   for (const file of PIPELINES) {
     const content = readOrNull(root, file)
     if (content === null) continue
+    const vars = variaveisDoArquivo(content, file)
     for (const bruto of executedCommands(content)) {
       const resolved = resolveCommand(bruto, scripts)
-      const tokens = resolved.split(/\s+/)
-      if (!SHELL_INTERPRETERS.has(tokens[0])) continue
-      const alvo = tokens[1]
-      if (alvo === undefined || !alvo.endsWith(".sh") || alvo.startsWith("/") || alvo.includes("$"))
+      const comando = comandoDoTexto(resolved)
+      if (comando === null || !SHELL_INTERPRETERS.has(comando.programa)) continue
+      const r = alvoDoLancador(comando)
+      const provavel = r.ok ? alvosProvaveis(comando, vars) : { ok: false, motivo: r.motivo }
+      if (!provavel.ok) {
+        // O alvo que NAO da para provar vira LIMITE NOMEADO com a CLASSE dele —
+        // nunca um silencio. A leitura de antes (`!alvo.endsWith(".sh") ||
+        // alvo.startsWith("/") || alvo.includes("$")`) sumia com o comando: o
+        // veredito diria que a pipeline nao chama runner nenhum ali.
+        limites.push({
+          arquivo: file,
+          linha: 0,
+          programa: comando.programa,
+          motivo: `${resolved}: ${provavel.motivo}`,
+        })
         continue
-      if (!runners.has(alvo)) runners.set(alvo, resolved)
+      }
+      for (const alvo of provavel.valores) if (!runners.has(alvo)) runners.set(alvo, resolved)
     }
   }
-  return runners
+  return { runners, limites }
 }
 
 /**
@@ -658,28 +760,45 @@ export function localBattery(root, scripts) {
   const arquivos = new Map()
   const runners = new Map()
   const raizes = []
+  const limites = []
   for (const hook of HOOKS) {
     const content = readOrNull(root, hook)
     if (content === null) continue
+    const vars = variaveisDoArquivo(content, hook)
     for (const cmd of hookCommands(content)) {
       const resolved = resolveCommand(cmd, scripts)
-      arquivos.set(subjectOf(resolved), `executado direto por ${hook}`)
-      const tokens = resolved.split(/\s+/)
-      if (
-        SHELL_INTERPRETERS.has(tokens[0]) &&
-        tokens[1]?.endsWith(".sh") &&
-        !tokens[1].startsWith("$")
-      ) {
-        if (!runners.has(tokens[1])) runners.set(tokens[1], resolved)
-        raizes.push(tokens[1])
+      const comando = comandoDoTexto(resolved)
+      if (comando !== null && SHELL_INTERPRETERS.has(comando.programa)) {
+        // O sujeito e o ALVO provado pela classe (`bash -n x.sh` tem por sujeito
+        // o arquivo, nao o `-n`): `subjectOf` le o primeiro token depois do
+        // lancador, e o que estava la era o flag.
+        const r = alvoDoLancador(comando)
+        const provavel = r.ok ? alvosProvaveis(comando, vars) : { ok: false, motivo: r.motivo }
+        if (!provavel.ok) {
+          if (apontaParaArquivoDoLancador(comando))
+            limites.push({
+              arquivo: hook,
+              linha: comando.linha,
+              programa: comando.programa,
+              motivo: `${resolved}: ${provavel.motivo}`,
+            })
+          continue
+        }
+        for (const alvo of provavel.valores) {
+          if (!arquivos.has(alvo)) arquivos.set(alvo, `executado direto por ${hook}`)
+          if (!runners.has(alvo)) runners.set(alvo, resolved)
+          raizes.push(alvo)
+        }
+        continue
       }
+      arquivos.set(subjectOf(resolved), `executado direto por ${hook}`)
     }
   }
   const descida = descendScripts(root, [...new Set(raizes)])
   for (const [arquivo, via] of descida.alcancados) {
     if (!arquivos.has(arquivo)) arquivos.set(arquivo, `pelo runner ${via} (chamado pelo hook)`)
   }
-  return { arquivos, runners, limites: descida.limites }
+  return { arquivos, runners, limites: [...limites, ...descida.limites] }
 }
 
 /** Os scripts do package.json do root. */
@@ -926,7 +1045,7 @@ export function analyze({ root = ROOT } = {}) {
   // regua do `check-hook-commands`) fecha isso: todo arquivo alcancado dentro
   // dos runners das DUAS pipelines exige decisao local.
   const runners = pipelineRunners(root, scripts)
-  const descida = descendScripts(root, [...runners.keys()])
+  const descida = descendScripts(root, [...runners.runners.keys()])
   const local = localBattery(root, scripts)
   // O nome do invariante pelo INSTRUMENTO (o mesmo subject do resto do guard):
   // e por ele que "este arquivo e o gate X" pode ser afirmado sem uma segunda
@@ -947,7 +1066,7 @@ export function analyze({ root = ROOT } = {}) {
     else if (RUNNER_SUBGUARD.some((e) => e.file === arquivo)) decisao = "RUNNER_SUBGUARD"
     subguards.push({ file: arquivo, via, decision: decisao, invariant: inv })
     if (decisao === null) {
-      const comando = runners.get(via) ?? via
+      const comando = runners.runners.get(via) ?? via
       violations.push(
         `${arquivo}: SUB-GUARD do runner \`${via}\` (o CI o executa por \`${comando}\`) NAO tem decisao local — o veredito do merge o roda e o veredito local nao o ve. Decida: rode-o no hook (uma entrada em HOOK_DECLARED), ou declare a ausencia em RUNNER_SUBGUARD com a razao.`,
       )
@@ -979,8 +1098,8 @@ export function analyze({ root = ROOT } = {}) {
     notRun: [...notRunIds].sort(),
     missing,
     subguards,
-    runners: [...runners.entries()].map(([file, command]) => ({ file, command })),
-    limitesDaDescida: descida.limites,
+    runners: [...runners.runners.entries()].map(([file, command]) => ({ file, command })),
+    limitesDaDescida: [...runners.limites, ...descida.limites],
     bateriaLocal: {
       arquivos: [...local.arquivos.keys()].sort(),
       runners: [...local.runners.entries()].map(([file, command]) => ({ file, command })),

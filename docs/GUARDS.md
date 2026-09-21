@@ -2746,6 +2746,30 @@ local**, e as três formas são medidas: (a) o **hook o executa** — inclusive
 `HOOK_NOT_RUN`; (c) a ausência está escrita em `RUNNER_SUBGUARD` com a razão (e a
 declaração **stale**, que não casa com sub-guard nenhum, é violação).
 
+**A leitura do alvo é a da CLASSE, não a da FORMA.** Os **valores** da descida já
+vinham da régua do dono (`alvosProvaveis`), mas **quem era runner** era lido inline
+e por forma — `!alvo.endsWith(".sh") || alvo.startsWith("/") ||
+`alvo.includes("$")`na derivação das pipelines,`tokens[1]?.endsWith(".sh")`na bateria local e`alvo.endsWith(".sh")` na recursão. A classe do alvo (`classeDoAlvo`, a mesma do
+veredito) passou a decidir quem desce — e o que não dá para provar sai **nomeado**
+com a classe (ou com o motivo do flag). Medido em fixture, nos dois sentidos:
+
+| alvo na pipeline                   | antes                                                 | depois                                                        |
+| :--------------------------------- | :---------------------------------------------------- | :------------------------------------------------------------ |
+| `bash scripts/runner.sh`           | runner, desce                                         | igual                                                         |
+| `bash scripts/runner` (sem sufixo) | **invisível** (nem runner, nem limite)                | runner, desce (o shebang confirma que dá para ler como shell) |
+| `bash -u scripts/runner.sh`        | **invisível** (o `-u` era lido como o alvo)           | runner, desce                                                 |
+| `bash -n scripts/runner.sh`        | invisível                                             | limite nomeado: “o `-n` só CONFERE a sintaxe”                 |
+| `bash scripts/*.sh`                | runner `scripts/*.sh` + limite “o arquivo não existe” | limite nomeado com a CLASSE: “padrão, não um caminho”         |
+| `bash /opt/tool.sh`                | invisível                                             | limite nomeado: “caminho absoluto, fora do repositório”       |
+| `bash "$RUNNER"` (não atribuída)   | invisível                                             | limite nomeado: “a variável `RUNNER` não é atribuída aqui”    |
+
+No repositório de hoje as duas réguas dão o **mesmo** conjunto (12 runners, 9
+sub-guards, 40 arquivos de bateria local — nenhum alvo sem sufixo, nenhum com flag
+antes do arquivo, nenhum glob): o que muda de fato é o **motivo** de um dos dois
+limites — o `bash -n "$TMP_DIR/b-heredoc.sh"` acusava o alvo de “não ser um arquivo
+do repositório” (o arquivo está ali, atrás do flag) e passou a dizer que o `-n` só
+confere a sintaxe.
+
 **O idioma do `SCRIPT_DIR` deixou de ser um limite.** A régua de caminho
 (`check-hook-commands`, a mesma para toda descida) passou a ler o idioma com que
 os scripts da casa chegam na **raiz** — `SCRIPT_DIR="$(cd "$(dirname "$0")/.."
@@ -2785,21 +2809,22 @@ declaração não iguala os vereditos; torna a **diferença visível e revisáve
 é o que uma decisão de escopo precisa ser.
 
 **Prova por mutação:** `bash scripts/test-mutation-hook-ci-parity.sh` — sub-test
-`hook-ci-parity` do master `mutation-guards`. Oito mutações, cada uma
+`hook-ci-parity` do master `mutation-guards`. Nove mutações, cada uma
 exigindo a asserção da **própria regra** e medindo as irmãs (as linhas do
 relatório não podem encolher: um guard que aborta cedo também "falha", só que
 por não ter medido):
 
-| Mutação | O que volta                                                                | Detecção                                                                                                                                     |
-| ------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| A       | `bun run typecheck` → `bunx tsc --noEmit` nos dois hooks (a segunda régua) | **dupla**: o comando não é o do CI **E** o invariante `typecheck` fica sem cobertura                                                         |
-| B       | comando novo no hook sem entrada em `HOOK_DECLARED`                        | 1 violação, nomeando o comando                                                                                                               |
-| C       | `why` de um recorte esvaziado                                              | 1 violação "SEM razão escrita"; o recorte segue reconhecido como o MESMO instrumento                                                         |
-| D       | `match` de uma entrada que não casa com comando nenhum                     | 2 violações: a declaração **stale** e o comando que perdeu a decisão                                                                         |
-| E       | id removido de `HOOK_NOT_RUN`                                              | 1 violação: gate do CORE que não roda em lugar nenhum                                                                                        |
-| F       | `HOOKS` aponta para um hook inexistente                                    | 1 violação (fail-closed: não se varre o que não se leu)                                                                                      |
-| G       | um runner da pipeline passa a executar uma sonda que existe                | 1 violação nomeando o sub-guard, o runner e o comando do CI que o executa                                                                    |
-| H       | a descida do lado **local** deixa de acontecer (o hook "para" no runner)   | 2 violações: os dois sub-guards do `check-utf8.sh` perdem a decisão local (as "executado direto" seguem de pé: elas não passam pela descida) |
+| Mutação | O que volta                                                                | Detecção                                                                                                                                                             |
+| ------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A       | `bun run typecheck` → `bunx tsc --noEmit` nos dois hooks (a segunda régua) | **dupla**: o comando não é o do CI **E** o invariante `typecheck` fica sem cobertura                                                                                 |
+| B       | comando novo no hook sem entrada em `HOOK_DECLARED`                        | 1 violação, nomeando o comando                                                                                                                                       |
+| C       | `why` de um recorte esvaziado                                              | 1 violação "SEM razão escrita"; o recorte segue reconhecido como o MESMO instrumento                                                                                 |
+| D       | `match` de uma entrada que não casa com comando nenhum                     | 2 violações: a declaração **stale** e o comando que perdeu a decisão                                                                                                 |
+| E       | id removido de `HOOK_NOT_RUN`                                              | 1 violação: gate do CORE que não roda em lugar nenhum                                                                                                                |
+| F       | `HOOKS` aponta para um hook inexistente                                    | 1 violação (fail-closed: não se varre o que não se leu)                                                                                                              |
+| G       | um runner da pipeline passa a executar uma sonda que existe                | 1 violação nomeando o sub-guard, o runner e o comando do CI que o executa                                                                                            |
+| H       | a descida do lado **local** deixa de acontecer (o hook "para" no runner)   | 2 violações: os dois sub-guards do `check-utf8.sh` perdem a decisão local (as "executado direto" seguem de pé: elas não passam pela descida)                         |
+| I       | um runner **SEM sufixo `.sh`** entra na pipeline executando uma sonda      | 1 violação nomeando o sub-guard e o runner — e, com a leitura por **FORMA** de volta no guard, o MESMO defeito passa **verde**: a classe é o que sustenta o vermelho |
 
 A árvore é restaurada por backup + `trap` (nunca `git checkout`) e conferida por
 `cksum` contra o hash de origem — um mutation test que deixa o worktree sujo é
@@ -5618,6 +5643,26 @@ UMA vez, com a proveniência de quem o chamou: `origem` =
 os guards que leem o grafo de imports — descer só no que um interpretador de
 SHELL lê é uma régua, não uma lista de arquivos escolhidos a mão.
 
+**O ALVO de um lançador é o primeiro token que não é FLAG.** Enquanto o alvo era
+`tokens[0]`, um flag à frente do arquivo **virava** o alvo: `bash -n "$TMP/x.sh"`
+era lido como “o alvo é `-n`”, e o limite da descida saía com a afirmação FALSA de
+que o alvo “não é um arquivo do repositório” — o arquivo estava ali, atrás do flag.
+A classe do flag (`alvoDoLancador`) é uma só para o veredito do comando e para a
+descida, e são quatro as direções, todas medidas:
+
+| comando                 | o que a classe decide                                                                     |
+| :---------------------- | :---------------------------------------------------------------------------------------- |
+| `bash -u x.sh`          | `-u` não consome o alvo: o shell EXECUTA `x.sh` (desce)                                   |
+| `bash -n x.sh`          | `-n` só CONFERE a sintaxe: não desce, e o motivo DIZ isso                                 |
+| `bash -c 'texto'`       | payload inline: o script vive no argumento (INDETERMINADO declarado, como o `python3 -c`) |
+| `bash -o pipefail x.sh` | o flag pode CONSUMIR o token seguinte: não é adivinhado, sai nomeado                      |
+
+De quebra, o `-e` saiu da lista do payload inline: ele é o `errexit` com o arquivo
+EXECUTADO (`bash -e x.sh`), e o veredito dizia “payload inline (bash -e)” de um
+comando cujo alvo é um arquivo do repositório. A lista dos flags com payload é
+derivada da classe (não escrita à mão) — a mesma que o `check-hook-ci-parity` usa
+na descida das pipelines.
+
 **E a descida segue o alvo que a RESOLUÇÃO acabou de PROVAR.** `bash
 "$SCRIPT_DIR/x.sh"` saía `resolvido` (o caminho foi provado por leitura!) e o
 interior do `x.sh` não era julgado por ninguém — a metade mais útil deste guard
@@ -5627,7 +5672,9 @@ mesmo lugar: o LITERAL e os valores que as atribuições do próprio arquivo pro
 julgado uma vez, com ciclo e teto nomeados). O que NÃO desce é dito pelo veredito
 do comando, nunca por um silêncio: um valor absoluto ou um glob não é arquivo do
 repositório, e um programa que não é shell (um `node "$ALVO"`) não entra na
-descida — a régua é a do interpretador de SHELL.
+descida — a régua é a do interpretador de SHELL. E o motivo NOMEIA a CLASSE
+(`absoluto`, `padrao`) em vez do genérico “não é um arquivo do repositório”: um
+glob não é um arquivo que falta, é um CONJUNTO que só o runtime expande.
 
 O que muda no veredito, medido: o veredito do comando que CHAMA continua o mesmo
 (ele já era `resolvido` — a descida não reescreve a resolução), e o que muda é o
@@ -5760,6 +5807,20 @@ regras seguram o veredito:
    entrada pode ser vazia sai **VERDE**. As duas têm mutação própria (M18/M19) e o
    CONTROLE na direção oposta: dentro do teto / sem a atribuição vazia, o MESMO
    comando resolve.
+4. **A CLASSE do alvo é UMA SÓ — a mesma do alvo literal.** Um valor provado cai
+   em uma de três classes (`classeDoAlvo`, a régua que o alvo literal já usava e
+   que a descida já usava como filtro): `repositorio` (caminho relativo — a única
+   que se PROVA no disco), `absoluto` (o `/etc/hosts` de uma atribuição —
+   **fora do repositório**, resolvido, como o literal) e `padrao` (o
+   `scripts/*.sh` de uma atribuição — **padrão, não um caminho**, indeterminado,
+   como o literal, com a decisão datada exigida). Julgar o valor provado só pela
+   EXISTÊNCIA acusava o são DUAS vezes: o `/etc/hosts` de uma atribuição saía
+   "NÃO existe no repositório" (um caminho que nunca prometeu estar lá) e o
+   `scripts/*.sh` ganhava até a sugestão de um vizinho (`a.sh`), que é a distância
+   entre um glob e um nome. O fail-closed NÃO mudou: um padrão no conjunto impede
+   o `resolvido` de uma parte (ele pode ser o ramo que o runtime expande) e um
+   caminho do repositório que FALTA reprova antes de qualquer classe. As duas têm
+   mutação própria (M26/M27).
 
 **A HERANÇA: o escopo do shell não é o arquivo, e o guard passou a modelá-lo.**
 Um script chamado com `bash`/`sh` roda num processo NOVO: ele vê o AMBIENTE (só o
@@ -5862,7 +5923,7 @@ mede nada (o relatório diz isso em voz alta); no repositório, doc ausente é
 violação.
 
 **Prova por mutação:** `scripts/test-mutation-hook-commands.sh` muta o próprio
-guard em VINTE E CINCO direções, cada uma com as testemunhas do veredito do CLI
+guard em VINTE E SETE direções, cada uma com as testemunhas do veredito do CLI
 sobre uma fixture e a suíte unitária, que tem de ficar VERMELHA.
 
 As QUATRO primeiras são do lado que DETECTA: três na direção de CEGAR —
@@ -5893,6 +5954,14 @@ são os dois elos do congelamento do diretório: a fixture tem o alvo verdadeiro
 AUSENTE e o caminho que o filho veria se re-avaliasse a expressão PRESENTE — cada
 mutação, sozinha, faz o guard sair VERDE apontando para um alvo que o processo
 novo nunca pode ver.
+
+As **DUAS DO MEIO** (M26–M27) medem a CLASSE do alvo provado — a régua que o
+veredito passou a compartilhar com o alvo literal: a M26 julga o valor ABSOLUTO
+de uma atribuição pela existência (o `/etc/hosts` de um `ALVO=` vira "NÃO existe
+no repositório" e o caso SÃO é ACUSADO) e a M27 aceita o PADRÃO como caminho
+PROVADO (o `scripts/*.sh` de uma atribuição sai verde, sem a decisão datada que o
+alvo literal exige). A M26 é na direção OPOSTA (como M4/M11/M12/M23/M24): sem a
+classe, o guard fica mais ESTRITO que a verdade.
 
 A **ÚLTIMA** (M25) é a única mutação **na doc** e não no guard: ela devolve o total
 de comandos ao valor escrito à mão (um a menos que o medido) e exige o vermelho
@@ -5937,6 +6006,8 @@ deve; as demais medem o lado que JULGA. A tabela, na ordem do script:
 | M23     | a leitura do PRIMEIRO WORD da atribuição                               | o prefixo de ambiente vira CICLO e o guard ACUSA o são (violação falsa)     |
 | M24     | a AUTO-REFERÊNCIA não acrescenta valor                                 | o `GUARD="$GUARD"` de uma linha vira CICLO e o alvo fica sem julgamento     |
 | M25     | o total de comandos da prosa é DERIVADO do medido (não à mão)          | a doc publica 250 onde o guard mede 251: a ESCALA dele mente para quem lê   |
+| M26     | a CLASSE do alvo provado (o ABSOLUTO é "fora do repositório")          | o `/etc/hosts` de uma atribuição é ACUSADO de não existir no repositório    |
+| M27     | a CLASSE do alvo provado (o PADRÃO é "padrão, não um caminho")         | o `scripts/*.sh` de uma atribuição é aceito como caminho PROVADO (cegueira) |
 
 A testemunha da M8 é o **CONTEÚDO do arquivo**, não o exit code — nos dois casos
 o veredito é 1 (a violação de verdade continua lá) e é o `cmp` contra os bytes
@@ -5945,7 +6016,7 @@ escondido). A M11 também é na direção OPOSTA (como a M4): sem a régua do `c
 guard fica mais ESTRITO do que a verdade e o repositório real vira vermelho. Cada
 mutação é cirúrgica (as outras metades seguem reprovando), o arquivo é restaurado
 por checksum e o total roda em ~30s. A regressão que reintroduzir qualquer uma
-dessas vinte e cinco metades morre no job, não no hook de quem commita.
+dessas vinte e sete metades morre no job, não no hook de quem commita.
 
 **E a PERGUNTA tem um dono só, fora do remédio.** `scripts/confirm-prompt.mjs` é
 onde vive a régua da confirmação — o terminal de CONTROLE, o default NÃO, o teto

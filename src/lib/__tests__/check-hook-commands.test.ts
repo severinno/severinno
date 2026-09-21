@@ -37,16 +37,20 @@ import {
   FIX_MAX_DISTANCE,
   HOOKS_DIR,
   INDETERMINATE,
+  INLINE_FLAGS,
   INTERPRETERS,
   MAX_VALORES,
   SOURCE_COMMANDS,
   analyze,
+  alvoDoLancador,
   alvosProvaveis,
   aplicarRemendo,
   arquivosDoRemendo,
   atribuicoesDoTexto,
   caminhosProvaveis,
+  classeDoAlvo,
   definedFunctions,
+  ehCaminhoDoRepositorio,
   extractSubstitutions,
   fix,
   hookFiles,
@@ -57,6 +61,7 @@ import {
   programOf,
   renderPlano,
   reviewViolations,
+  scriptAlvo,
   shellCommands,
   variaveisDoArquivo,
   vizinhoAceito,
@@ -602,6 +607,127 @@ describe("as variáveis de caminho dos scripts são RESOLVIDAS pelas atribuiçõ
 
     expect(report.violacoes).toHaveLength(1)
     expect(motivos(report)[0]).toContain("não é atribuída neste arquivo")
+  })
+
+  // ── A CLASSE do valor provado: a MESMA régua do alvo literal ──────────────
+  //
+  // O veredito julgava TODO valor provado pela EXISTÊNCIA, e o preço eram duas
+  // acusações falsas: o valor ABSOLUTO de uma atribuição (`ALVO="/etc/hosts"`)
+  // era "não existe no repositório" — um caminho que nunca prometeu estar lá —,
+  // e o valor de PADRÃO (`ALVO="scripts/*.sh"`) ganhava até a sugestão de um
+  // vizinho (`a.sh`), que é a distância entre um glob e um nome. As duas classes
+  // já existiam para o alvo LITERAL (`classeDoAlvo`); o valor provado passa a
+  // responder por elas — uma régua só, e não uma segunda leitura do mesmo alvo.
+
+  it("PROVA: o valor ABSOLUTO é 'fora do repositório' — não uma violação", () => {
+    const daVariavel = fixture({
+      hooks: { "pre-commit": 'set -eu\nALVO="/etc/hosts"\nbash "$ALVO"\n' },
+    })
+    const doLiteral = fixture({ hooks: { "pre-commit": "set -eu\nbash /etc/hosts\n" } })
+
+    const report = relatorio(daVariavel)
+
+    expect(report.violacoes).toEqual([])
+    expect(report.indeterminados).toEqual([])
+    const doBash = report.resolvidos.find((r) => r.programa === "bash")
+    expect(doBash?.motivo).toContain("caminho absoluto fora do repositório")
+    // A MESMA classe do alvo LITERAL: um caminho absoluto não é conferido no
+    // disco em nenhuma das duas formas de escrever a mesma coisa.
+    expect(motivos(relatorio(doLiteral))).toEqual([])
+    expect(relatorio(doLiteral).resolvidos.find((r) => r.programa === "bash")?.motivo).toContain(
+      "caminho absoluto fora do repositório",
+    )
+    expect(rodaCli(daVariavel).status).toBe(EXIT.OK)
+  })
+
+  it("PROVA: o valor de PADRÃO é 'padrão, não um caminho' — e não sugere vizinho", () => {
+    const daVariavel = fixture({
+      hooks: { "pre-commit": 'set -eu\nALVO="scripts/*.sh"\nbash "$ALVO"\n' },
+      arquivos: { "scripts/a.sh": "#!/usr/bin/env bash\n" },
+    })
+    const doLiteral = fixture({
+      hooks: { "pre-commit": "set -eu\nbash scripts/*.sh\n" },
+      arquivos: { "scripts/a.sh": "#!/usr/bin/env bash\n" },
+    })
+
+    const motivo = motivos(relatorio(daVariavel))[0]!
+
+    expect(motivo).toContain("padrão, não um caminho (`scripts/*.sh`)")
+    // A falsa acusação que a classe corrige: um PADRÃO não é um nome que se
+    // procura no disco, e o vizinho mais próximo de um glob não é informação.
+    expect(motivo).not.toContain("o mais próximo")
+    expect(motivo).not.toContain("que NÃO existe no repositório")
+    // O literal diz o MESMO — é essa simetria que a régua garante.
+    expect(motivos(relatorio(doLiteral))).toHaveLength(1)
+    expect(motivos(relatorio(doLiteral))[0]).toContain("padrão, não um caminho (`scripts/*.sh`)")
+    // Fail-closed PRESERVADO: um padrão não é provável por leitura, então a
+    // decisão datada continua sendo exigida (como no literal). O que muda é a
+    // CLASSE da acusação, não a régua do indeterminado.
+    expect(rodaCli(daVariavel).status).toBe(EXIT.VIOLATIONS)
+    expect(rodaCli(doLiteral).status).toBe(EXIT.VIOLATIONS)
+  })
+
+  it("CONTROLE: o caminho do repositório que FALTA segue reprovando (a classe não cega)", () => {
+    const dir = fixture({
+      // DUAS variáveis (a régua é a UNIÃO das atribuições de CADA nome): o
+      // absoluto resolve e o caminho do repositório que falta reprova, no MESMO
+      // arquivo — a classe nova não pode cegar a existência.
+      hooks: {
+        "pre-commit":
+          'set -eu\nPRESENTE="/etc/hosts"\nbash "$PRESENTE"\nFALTANDO="scripts/nao-existe.sh"\nbash "$FALTANDO"\n',
+      },
+      arquivos: { "scripts/nao-existeX.sh": "#!/usr/bin/env bash\n" },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toHaveLength(1)
+    expect(motivos(report)[0]).toContain("`scripts/nao-existe.sh`")
+    expect(motivos(report)[0]).toContain("que NÃO existe no repositório")
+    expect(rodaCli(dir).status).toBe(EXIT.VIOLATIONS)
+  })
+
+  it("o conjunto MISTO (padrão + caminho que existe) não vira 'resolvido' de uma parte", () => {
+    const dir = fixture({
+      hooks: {
+        "pre-commit": 'set -eu\nALVO="scripts/a.sh"\nALVO="scripts/*.sh"\nbash "$ALVO"\n',
+      },
+      arquivos: { "scripts/a.sh": "#!/usr/bin/env bash\n" },
+    })
+
+    const report = relatorio(dir)
+
+    // O padrão pode ser o ramo que o runtime expande: provar só o outro e
+    // chamar o conjunto de resolvido seria provar uma PARTE.
+    expect(motivos(report)[0]).toContain("padrão, não um caminho (`scripts/*.sh`)")
+    expect(rodaCli(dir).status).toBe(EXIT.VIOLATIONS)
+  })
+
+  it("a régua da classe é UMA só: o veredito, a descida e o alvo literal concordam", () => {
+    // A classe é uma função, não uma leitura repetida: `absoluto` ganha da
+    // `padrao` (um `/usr/local/bin/*.sh` é absoluto), que ganha de `repositorio`.
+    expect(classeDoAlvo("/etc/hosts")).toBe("absoluto")
+    expect(classeDoAlvo("/usr/local/bin/*.sh")).toBe("absoluto")
+    expect(classeDoAlvo("scripts/*.sh")).toBe("padrao")
+    expect(classeDoAlvo("scripts/a?.sh")).toBe("padrao")
+    expect(classeDoAlvo("scripts/a.sh")).toBe("repositorio")
+    expect(ehCaminhoDoRepositorio("scripts/a.sh")).toBe(true)
+    expect(ehCaminhoDoRepositorio("scripts/*.sh")).toBe(false)
+    // A DESCIDA usa a MESMA régua: o alvo provado que não é caminho do
+    // repositório não tem o que ler, e o motivo diz que não há valor provável.
+    const vars = variaveisDoArquivo(
+      ['ALVO="/etc/hosts"', 'OUTRO="scripts/*.sh"', ""].join("\n"),
+      ".husky/pre-commit",
+    )
+    const razao = (r: ReturnType<typeof alvosProvaveis>) => (r.ok ? "ok" : r.motivo)
+    // E o motivo diz a CLASSE do valor (o absoluto e o padrão não são "um
+    // arquivo que falta": um não está no repositório, o outro é um conjunto).
+    expect(razao(alvosProvaveis({ programa: "bash", tokens: ["$ALVO"] }, vars))).toContain(
+      "nenhum valor provável de `$ALVO` é caminho do repositorio (absoluto)",
+    )
+    expect(razao(alvosProvaveis({ programa: "bash", tokens: ["$OUTRO"] }, vars))).toContain(
+      "nenhum valor provável de `$OUTRO` é caminho do repositorio (padrao)",
+    )
   })
 })
 
@@ -1204,6 +1330,70 @@ describe("a descida nos scripts de shell que o hook chama", () => {
 // agora, e o que NÃO desce (valor absoluto, glob, programa que não é shell)
 // continua nomeado pelo veredito do comando — nunca um silêncio.
 
+describe("o alvo de um lançador: a CLASSE do FLAG decide o que vem depois", () => {
+  // A leitura de antes era `tokens[0]`: um flag na frente do arquivo VIRAVA o
+  // alvo, e o guard dizia de um alvo que É caminho do repositório "não é um
+  // arquivo do repositório" (o `-n` de um `bash -n "$TMP/x.sh"`). A classe do
+  // flag é uma só para o veredito do comando e para a descida.
+
+  it("um flag que EXECUTA o arquivo não é o alvo (`bash -u x.sh`)", () => {
+    const comando = { programa: "bash", tokens: ["-u", "scripts/run-ci.sh"] }
+    expect(alvoDoLancador(comando)).toEqual({ ok: true, alvo: "scripts/run-ci.sh" })
+    expect(scriptAlvo(comando)).toBe("scripts/run-ci.sh")
+  })
+
+  it("`bash -n x.sh` só CONFERE a sintaxe: o alvo sai NOMEADO, não descido", () => {
+    const razao = (r: ReturnType<typeof alvoDoLancador>) => (r.ok ? "ok" : r.motivo)
+    expect(
+      razao(alvoDoLancador({ programa: "bash", tokens: ["-n", "scripts/run-ci.sh"] })),
+    ).toContain("CONFERE a sintaxe")
+    const dir = fixture({
+      hooks: { "pre-commit": "set -eu\nbash -n scripts/run-ci.sh\n" },
+      arquivos: {
+        "scripts/run-ci.sh": "#!/usr/bin/env bash\nnode scripts/check-utf8-scopez.mjs\n",
+      },
+    })
+    const report = relatorio(dir)
+    // O interior NÃO é executado — então não desce (o defeito que o arquivo
+    // carrega não é cobrado deste comando), e o que sobra é o VEREDITO do
+    // comando, que nomeia o flag: antes a mesma linha saía como um genérico
+    // "sem arquivo de script (bash -n)", que não dizia por que.
+    expect(report.scripts).toEqual([])
+    expect(report.violacoes).toHaveLength(1)
+    expect(report.violacoes[0]!.motivo).toContain("CONFERE a sintaxe")
+  })
+
+  it("o payload inline continua sem alvo — e o `-e` NÃO é payload", () => {
+    expect(alvoDoLancador({ programa: "bash", tokens: ["-c", "echo oi"] }).ok).toBe(false)
+    expect(alvoDoLancador({ programa: "bash", tokens: ["-s"] }).ok).toBe(false)
+    // `bash -e x.sh` é o errexit com o arquivo EXECUTADO: quem dizia "payload
+    // inline (bash -e)" de um comando cujo alvo é um arquivo do repositório era
+    // a lista escrita à mão (`INLINE_FLAGS`), agora derivada da classe 3.
+    expect(INLINE_FLAGS.has("-e")).toBe(false)
+    expect(alvoDoLancador({ programa: "bash", tokens: ["-e", "scripts/run-ci.sh"] })).toEqual({
+      ok: true,
+      alvo: "scripts/run-ci.sh",
+    })
+  })
+
+  it("um flag que pode CONSUMIR o token seguinte não é adivinhado (`-o pipefail`)", () => {
+    const razao = (r: ReturnType<typeof alvoDoLancador>) => (r.ok ? "ok" : r.motivo)
+    expect(
+      razao(alvoDoLancador({ programa: "bash", tokens: ["-o", "pipefail", "scripts/run-ci.sh"] })),
+    ).toContain("pode consumir")
+  })
+
+  it("a MESMA classe no veredito do comando: `bash -e x.sh` é o ARQUIVO, não payload", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": "set -eu\nbash -e scripts/run-ci.sh\n" },
+      arquivos: { "scripts/run-ci.sh": "#!/usr/bin/env bash\necho ok\n" },
+    })
+    const report = relatorio(dir)
+    expect(report.violacoes).toEqual([])
+    expect(report.scripts).toEqual(["scripts/run-ci.sh"])
+  })
+})
+
 describe("a descida segue o alvo PROVADO por variável", () => {
   const HOOK = 'set -eu\nALVO="scripts/inner.sh"\nbash "$ALVO"\n'
 
@@ -1324,7 +1514,7 @@ describe("a descida segue o alvo PROVADO por variável", () => {
     })
     expect(alvosProvaveis({ programa: "bash", tokens: [] }, vars)).toEqual({
       ok: false,
-      motivo: "bash: sem alvo",
+      motivo: "`bash` sem alvo de arquivo",
     })
     expect(alvosProvaveis({ programa: "bash", tokens: ["scripts/x.sh"] }, vars)).toEqual({
       ok: true,
