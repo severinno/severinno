@@ -36,6 +36,7 @@ import {
   ESPERA_SINTAXE,
   HOOK_FORMS,
   HOOK_RUIDO_MS,
+  LATEST_FILE,
   OFERTA_FIM,
   OFERTA_INICIO,
   REUSED_FAMILY_LABELS,
@@ -393,7 +394,9 @@ describe("bench-guard-timing — a família `hook` no registro", () => {
   it("a família herdada (`--no-hook --merge`) sai do veredito e é marcada com a origem", () => {
     const anterior = comHook({ "comum-hoje": 100 })
     const atual = { ...comHook({}), hook: null }
-    const merged = reuseFamilies(atual as never, anterior as never) as unknown as {
+    const merged = reuseFamilies(atual as never, [
+      { source: LATEST_FILE, report: anterior },
+    ]) as unknown as {
       hook: { forms: { role: string }[] } | null
       meta: { reused: Record<string, { commit: string }> }
       summary: { hookOfferFalhaMs: number | null }

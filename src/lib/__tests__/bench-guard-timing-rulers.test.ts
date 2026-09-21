@@ -48,13 +48,16 @@ import {
   TYPECHECK_LEGACY_INLINE_CMD,
   TYPECHECK_UPGRADED_SITES,
   ACT_LABELS,
+  BASELINE_FILE,
   FAMILY_MEASURED,
+  LATEST_FILE,
   REUSED_FAMILY_LABELS,
   canonicalCallSites,
   compareTimings,
   excludedScopeDir,
   familyProvenance,
   hookRulerFacts,
+  inheritanceChain,
   legacyRulerFiles,
   reuseFamilies,
   testCostViolations,
@@ -63,6 +66,10 @@ import {
   typecheckWhatItAdded,
   workflowFilesMatching,
 } from "../../../scripts/bench-guard-timing.mjs"
+// O CONSUMIDOR real do arquivo gravado: `merge-latency.mjs` itera
+// `Object.values(bench.rulers)` para derivar o custo dos gates, e um `rulers`
+// com seção `null` o derrubava — o teste da herança mede as duas direções.
+import { benchIndex } from "../../../scripts/merge-latency.mjs"
 
 const REPO_ROOT = join(__dirname, "..", "..", "..")
 
@@ -284,12 +291,14 @@ describe("bench-guard-timing — medir em partes (--merge)", () => {
 
   it("sem arquivo anterior não há herança", () => {
     const result = emptyRun({})
-    expect(reuseFamilies(result, null)).toBe(result)
+    expect(reuseFamilies(result, [])).toBe(result)
   })
 
   it("herda só o que esta rodada NÃO mediu, com commit e timestamp de origem", () => {
     const medidos = { tests: { canonicalMs: 132_000, addedPerFanOutMs: -300_000 } }
-    const merged = reuseFamilies(emptyRun(medidos), previous) as never as {
+    const merged = reuseFamilies(emptyRun(medidos), [
+      { source: LATEST_FILE, report: previous },
+    ]) as never as {
       meta: { reused: Record<string, { commit: string }> }
       lint: { canonicalMs: number } | null
       rulers: { typecheck: { canonicalMs: number } | null; tests: { canonicalMs: number } | null }
@@ -322,7 +331,9 @@ describe("bench-guard-timing — medir em partes (--merge)", () => {
       lint: { canonicalMs: 52_000, addedPerSiteMs: 20_800, addedPerFanOutMs: 52_000 },
       tests: { canonicalMs: 132_000, addedPerFanOutMs: -300_000 },
     })
-    const merged = reuseFamilies(fresh, previousFull) as never as object
+    const merged = reuseFamilies(fresh, [
+      { source: LATEST_FILE, report: previousFull },
+    ]) as never as object
 
     const cmpFresh = compareTimings(fresh as never, null as never) as unknown as {
       forms: { kind: string }[]
@@ -349,7 +360,9 @@ describe("bench-guard-timing — medir em partes (--merge)", () => {
 
     // …e quando a família herdada é a do LINT, ela sai do veredito também.
     const soTypecheck = emptyRun({ typecheck: { canonicalMs: 24_000, addedPerFanOutMs: 0 } })
-    const herdado = reuseFamilies(soTypecheck, previousFull) as never as object
+    const herdado = reuseFamilies(soTypecheck, [
+      { source: LATEST_FILE, report: previousFull },
+    ]) as never as object
     const cmpHerdado = compareTimings(herdado as never, null as never) as unknown as {
       forms: { kind: string }[]
       reused: string[]
@@ -357,6 +370,192 @@ describe("bench-guard-timing — medir em partes (--merge)", () => {
     expect(kinds(cmpHerdado)).toContain("typecheck")
     expect(kinds(cmpHerdado)).not.toContain("lint")
     expect(cmpHerdado.reused).toEqual(["lint"])
+  })
+
+  // ── A CADEIA: a gravação nunca PERDE o que já estava gravado ──────────────
+  // O defeito medido (09/2026): uma rodada parcial (`--only hook --json`, ou o
+  // `--no-lint` do dispatch) gravava as seções que ela não mediu como `null`; a
+  // rodada seguinte (`--only mutations --baseline --merge`) herdava o VAZIO, e o
+  // `rulers` da BASELINE saía `{typecheck: null, tests: null}` — o consumidor
+  // (`merge-latency.mjs`) quebrava no `Object.values(bench.rulers)`.
+
+  it("`--only hook --json`: o arquivo gravado não fica com seção null", () => {
+    // A rodada mede SÓ o hook: a bateria é pulada pelo `--only`, e o resto sai
+    // null — é assim que o resultado da rodada chega na herança.
+    const soOHook = {
+      ...emptyRun({}),
+      guards: [],
+      doctor: null,
+      lint: null,
+      rulers: { typecheck: null, tests: null },
+      mutations: null,
+      hook: { measured: true, forms: [], deltas: {} },
+    }
+    // O predecessor tem as famílias de régua; a RÉGUA é magra (o arquivo v1, sem
+    // elas): a cadeia tem de usar AS DUAS fontes.
+    const latestAnterior = {
+      ...emptyRun({
+        lint: { addedPerSiteMs: 20_800, addedPerFanOutMs: 83_200, canonicalMs: 52_000 },
+        typecheck: { canonicalMs: 24_000, addedPerFanOutMs: 0 },
+        tests: { canonicalMs: 132_000, addedPerFanOutMs: -300_000 },
+      }),
+      mutations: { measured: true, forms: [], deltas: { subtestsMs: 1000 } },
+    }
+    const reguaMagra = {
+      ...emptyRun({}),
+      guards: [{ label: "check:x", ms: 10, ok: true }],
+      doctor: { ms: 3000, exit: 0, ok: true },
+    }
+
+    const merged = reuseFamilies(soOHook as never, [
+      { source: BASELINE_FILE, report: reguaMagra },
+      { source: LATEST_FILE, report: latestAnterior },
+    ]) as never as {
+      lint: { addedPerFanOutMs: number } | null
+      rulers: { typecheck: { canonicalMs: number } | null; tests: { canonicalMs: number } | null }
+      mutations: { measured: boolean } | null
+      guards: unknown[]
+      summary: { guardsCount: number; guardsTotalMs: number; totalMs: number }
+      meta: {
+        reused: Record<string, { source: string }>
+        families: Record<string, { act: string }>
+      }
+    }
+
+    // NENHUMA seção null no arquivo gravado — nem as que a rodada não mediu.
+    expect(merged.lint?.addedPerFanOutMs).toBe(83_200)
+    expect(merged.rulers.typecheck?.canonicalMs).toBe(24_000)
+    expect(merged.rulers.tests?.canonicalMs).toBe(132_000)
+    expect(merged.mutations?.measured).toBe(true)
+    // A bateria veio do PISO (a régua), as réguas do predecessor: a caminhada
+    // continua até achar quem tem o número, e a FONTE fica nomeada em cada uma.
+    expect(merged.guards.length).toBe(1)
+    expect(merged.meta.reused.battery.source).toBe(BASELINE_FILE)
+    expect(merged.meta.reused.lint.source).toBe(LATEST_FILE)
+    expect(merged.meta.families.lint.act).toBe("reused")
+    // O resumo descreve o arquivo GRAVADO (a bateria herdada inclusive), não
+    // metade dele: um `summary` com os números da rodada parcial seria uma
+    // incoerência gerada pelo próprio benchmark.
+    expect(merged.summary.guardsCount).toBe(1)
+    expect(merged.summary.totalMs).toBe(3010)
+  })
+
+  it("a CADEIA da gravação: a régua é o PISO de toda cadeia, e o `--merge` é o que a faz absorver o scratch", () => {
+    expect(inheritanceChain({ targets: [LATEST_FILE] })).toEqual([BASELINE_FILE, LATEST_FILE])
+    expect(inheritanceChain({ targets: [LATEST_FILE, BASELINE_FILE] })).toEqual([
+      BASELINE_FILE,
+      LATEST_FILE,
+    ])
+    // Gravação SÓ da régua: sem `--merge` ela não absorve o `latest`...
+    expect(inheritanceChain({ targets: [BASELINE_FILE] })).toEqual([BASELINE_FILE])
+    // ...com `--merge`, sim — promover para a régua o que foi medido em partes é
+    // ato DELIBERADO.
+    expect(inheritanceChain({ targets: [BASELINE_FILE], merge: true })).toEqual([
+      BASELINE_FILE,
+      LATEST_FILE,
+    ])
+    // Sem gravação (`--merge` sozinho, que só imprime): a cadeia é a da leitura.
+    expect(inheritanceChain({})).toEqual([BASELINE_FILE, LATEST_FILE])
+
+    // O INVARIANTE, como PROPRIEDADE da cadeia: a régua está em TODA cadeia — é
+    // o que faz "uma família que a baseline tem nunca chega null ao arquivo" ser
+    // estrutural, e não um caso particular de quem chamou.
+    for (const targets of [[], [LATEST_FILE], [BASELINE_FILE], [LATEST_FILE, BASELINE_FILE]]) {
+      for (const merge of [false, true]) {
+        expect(inheritanceChain({ targets, merge })).toContain(BASELINE_FILE)
+      }
+    }
+  })
+
+  it("um `latest` VAZIO não apaga o que a régua tinha — e o consumidor não tropeça mais", () => {
+    const regua = emptyRun({
+      lint: { addedPerSiteMs: 20_800, addedPerFanOutMs: 83_200, canonicalMs: 52_000 },
+      typecheck: { canonicalMs: 24_000, addedPerFanOutMs: 0 },
+      tests: { canonicalMs: 132_000, addedPerFanOutMs: -300_000 },
+    })
+    // O arquivo que o DEFEITO gravava: a rodada parcial SEM herança. É este o
+    // arquivo que a rodada seguinte encontrava como `previous`.
+    const latestVazio = {
+      meta: {
+        tool: "bench-guard-timing",
+        version: 6,
+        commit: "cccc3333",
+        timestamp: "2026-09-21T10:00:00.000Z",
+        reused: {},
+      },
+      summary: { totalMs: 120 },
+      guards: [],
+      doctor: null,
+      lint: null,
+      rulers: { typecheck: null, tests: null },
+      hook: { measured: true, forms: [], deltas: {} },
+      mutations: null,
+    }
+    // O ato da rodada seguinte: `--only mutations --baseline --merge`.
+    const soMutacoes = {
+      ...emptyRun({}),
+      guards: [],
+      doctor: null,
+      mutations: { measured: true, forms: [], deltas: { subtestsMs: 1000 } },
+    }
+
+    // A DIREÇÃO do defeito, medida no consumidor real: o arquivo vazio derruba.
+    expect(() => benchIndex(latestVazio as never)).toThrow(TypeError)
+
+    const merged = reuseFamilies(soMutacoes as never, [
+      { source: BASELINE_FILE, report: regua },
+      { source: LATEST_FILE, report: latestVazio },
+    ]) as never as {
+      lint: { canonicalMs: number } | null
+      rulers: { typecheck: { canonicalMs: number } | null; tests: { canonicalMs: number } | null }
+      mutations: { measured: boolean } | null
+      meta: { reused: Record<string, { source: string; commit: string }> }
+    }
+
+    // O que a rodada mediu fica; o resto vem da RÉGUA, com a procedência DELA.
+    expect(merged.mutations?.measured).toBe(true)
+    expect(merged.rulers.typecheck?.canonicalMs).toBe(24_000)
+    expect(merged.rulers.tests?.canonicalMs).toBe(132_000)
+    expect(merged.lint?.canonicalMs).toBe(52_000)
+    expect(merged.meta.reused.typecheck.source).toBe(BASELINE_FILE)
+    expect(merged.meta.reused.typecheck.commit).toBe("bbbb2222")
+    // O hook existia SÓ no `latest`: a cadeia desce até ele — e diz de onde veio.
+    expect(merged.meta.reused.hook.source).toBe(LATEST_FILE)
+
+    // O arquivo GRAVADO atravessa o consumidor: nenhuma seção null em `rulers`.
+    expect(Object.values(merged.rulers).every((r) => r !== null)).toBe(true)
+    expect(() => benchIndex(merged as never)).not.toThrow()
+  })
+
+  it("quando as duas fontes têm a família, o número da RÉGUA vence (o scratch não a rebaixa)", () => {
+    const comLint = (commit: string, ms: number) => ({
+      meta: {
+        tool: "bench-guard-timing",
+        version: 6,
+        commit,
+        timestamp: "2026-09-21T10:00:00.000Z",
+        reused: {},
+      },
+      summary: {},
+      guards: [{ label: "check:x", ms: 10, ok: true }],
+      doctor: null,
+      lint: { addedPerSiteMs: ms, addedPerFanOutMs: ms, canonicalMs: ms },
+      rulers: { typecheck: null, tests: null },
+    })
+
+    const merged = reuseFamilies(emptyRun({}) as never, [
+      { source: BASELINE_FILE, report: comLint("aaaa1111", 52_000) },
+      { source: LATEST_FILE, report: comLint("cccc3333", 61_000) },
+    ]) as never as {
+      lint: { addedPerFanOutMs: number } | null
+      meta: { reused: Record<string, { source: string; commit: string }> }
+    }
+
+    // A família herdada NUNCA perde o que a régua tinha: 52_000 dela, não os
+    // 61_000 do scratch — e a procedência diz de QUEM é o número.
+    expect(merged.lint?.addedPerFanOutMs).toBe(52_000)
+    expect(merged.meta.reused.lint.source).toBe(BASELINE_FILE)
+    expect(merged.meta.reused.lint.commit).toBe("aaaa1111")
   })
 })
 
@@ -535,7 +734,9 @@ describe("bench-guard-timing — a procedência de cada família", () => {
       { commit: "bbbb2222", timestamp: "2026-09-17T10:00:00.000Z" },
     )
     const agora = rodada() // sem o lint: só a bateria
-    const merged = reuseFamilies(agora as never, anterior as never) as unknown as {
+    const merged = reuseFamilies(agora as never, [
+      { source: LATEST_FILE, report: anterior },
+    ]) as unknown as {
       meta: {
         families: Record<string, { act: string; commit: string | null; source: string | null }>
       }
@@ -554,7 +755,7 @@ describe("bench-guard-timing — a procedência de cada família", () => {
   })
 
   it("sem a rodada e sem o arquivo anterior, é `not-measured` e o commit é NULO", () => {
-    const p = familyProvenance({ result: rodada(), previous: null })
+    const p = familyProvenance({ result: rodada() })
 
     expect(p.lint.act).toBe("not-measured")
     expect(p.lint.commit).toBeNull()
