@@ -1458,8 +1458,9 @@ era de 5 sub-tests e o timing-budget (~1s) foi adicionado após a medição de 1
 ³Medição da MUDANÇA (host Linux 16 cpus / 31 GB, 09/2026). O ato de **31
 sub-tests** mediu ≈ **221s** com mediana de 3 runs warm, TODAS verdes
 (221 · 221 · 221); o ato SEGUINTE — a CATRACA do inventário do GitHub entrou na
-matriz — mediu **248s** numa rodada WARM da matriz COMPLETA, 32/32 verdes, e é o
-valor que `ci/merge-latency.json` ainda declara; o ato da DESCOBERTA
+matriz — mediu **248s** numa rodada WARM da matriz COMPLETA, 32/32 verdes, e foi
+por um tempo o valor declarado por `ci/merge-latency.json` (hoje ele declara o ato
+da baseline, abaixo); o ato da DESCOBERTA
 do registro do canal entrou na matriz — mediu
 **271.8s**, 33/33 verdes, com a 33ª custando **9.0s** sozinha (`canal-fixers`), e
 é a medição VERSIONADA na família `mutations` do `bench-guard-timing` (esquema v6:
@@ -1744,6 +1745,22 @@ PostGIS e matrix). O TETO é o `timeout-minutes` que a própria pipeline escreve
 job: um LIMITE SUPERIOR, não uma medição — o relatório imprime os quatro
 nomeados, publica a **soma sem os tetos** ao lado e o veredito diz que a latência
 do espelho é um limite.
+
+**E um passo deixou de ter número próprio.** O `mutation-count-guard` do espelho é
+o primeiro job do repositório declarado por **PASSOS** (`steps`): o `setup-bun`
+(17.175s), o `install` (62ms), o `check-mutation-count` (93ms) e o `Summary`
+(98ms, um bloco) são MEDIDOS ali, e o passo da suíte —
+`bash scripts/test-mutation-mutation-count.sh` — **LÊ** a forma `mutation-count`
+da baseline versionada (3.897s, com o commit `eee4f65e` ao lado) em vez de repetir
+o número. Antes, os dois números do MESMO passo viviam separados: 3870ms no modelo
+contra 3897ms na baseline (e, na versão anterior da suíte, 155ms contra 447ms —
+**3x**), e nenhum dos dois era derivado do outro, então a divergência era
+invisível por construção. Ligado, o custo da suíte muda nos dois lugares ao mesmo
+tempo (é o mesmo número), a procedência do passo nomeia a forma e o commit dela, e
+o `Summary` — que estava FORA do total declarado (21198ms = setup + install + suíte
+
+- check) — entrou pela cobertura exata: todo `run:` do job tem de estar contado, e
+  um passo novo na pipeline indetermina o veredito em vez de entrar custando zero.
 
 O gate de sintaxe julga três fontes: os **482 corpos** `run:` das duas forjas, os
 **124 scripts de shell** versionados e — desde a terceira fonte — **33 textos de

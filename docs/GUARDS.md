@@ -3144,6 +3144,14 @@ Oito sub-tests pagam **80%** da conta e a mediana é **1.8s**: a cauda é barata
 o harness é a parte que a conta à mão esquecia (ele sai da DIFERENÇA, não de uma
 constante). O sub-test novo entra na rodada seguinte **MEDIDO** — a 36.ª entrou
 medida (37.9s) e o ato seguinte já a mede em 40.0s, sem ninguém recompor a soma.
+**E a derivação desceu ao PASSO.** O mesmo mecanismo, um nível abaixo: o job
+`mutation-count-guard` do espelho passou a declarar os seus **PASSOS**, e o passo
+da suíte não tem número próprio — ele **LÊ** a forma `mutation-count` desta mesma
+tabela (3.897s, com o commit `eee4f65e` ao lado), como o `benchIndex` já fazia com
+o total do master. O defeito que a ligação elimina é o de dois números do MESMO
+passo: o declarado dizia 3870ms contra os 3897ms da forma, e nenhum dos dois era
+derivado do outro — 27ms de diferença de contexto que ninguém veria até alguém
+comparar dois arquivos.
 
 **O que isso muda no veredito.** O sub-test NOVO não precisa de conta nenhuma:
 ele entra na rodada seguinte **MEDIDO**, e a comparação o publica como forma nova
@@ -3363,6 +3371,24 @@ medido)` (soma dos passos medidos, com o passo que ficou de fora NOMEADO na
    fonte, usada para CONFRONTAR o declarado. Divergência além de 25% sai como
    aviso — e o derivado é marcado como **PISO** quando o job tem passo fora do
    benchmark (um alarme que sempre toca não é alarme).
+   Há ainda uma QUARTA forma, para o job cujo número JÁ vive no benchmark: o job
+   declarado por **PASSOS** (`steps`), com `provenance` `declarado + derivado
+(benchmark)`. Cada passo ou tem `ms` (medido neste repositório, com fonte e
+   data) ou tem `from: { family, form }` — e aí o número é **LIDO** da forma
+   versionada, nunca repetido aqui. Foi assim que o passo da suíte do
+   `mutation-count-guard` deixou de ter DOIS números: o declarado dizia 3870ms
+   enquanto a forma `mutation-count` da baseline publicava 3897ms (27ms de
+   diferença de CONTEXTO) e, antes, 155ms contra 447ms da sub-test de `d9356e8d`
+   (**3x**) — nenhum dos dois derivado do outro, então a divergência era
+   invisível por construção. Com a ligação, o custo da suíte muda nos dois lugares
+   ao mesmo tempo (é o mesmo número), e a procedência do passo nomeia a forma e o
+   **commit** dela.
+   A cobertura é **EXATA nos dois sentidos**: todo `run:` do job tem de estar
+   contado por um passo declarado (um passo novo custaria **ZERO** na conta do PR —
+   a mesma classe do denominador que encolhe) e todo passo declarado tem de
+   existir na pipeline. O que não fecha deixa o job **sem duração**, com a causa
+   NOMEADA no relatório (`stepProblems` no `--json`) — e um `ms` junto de `steps`
+   é recusado, porque dois totais do mesmo job teriam de concordar.
 3. **Os dois extremos são reportados.** Com 1 runner (o `act_runner` que o
    compose da forja sobe) o makespan degenera na SOMA e o paralelismo não
    economiza nada; com runners de sobra ele converge para o caminho crítico. Um
@@ -3386,6 +3412,14 @@ PRONTO **com 4 jobs por TETO**: a latência publicada do espelho é um LIMITE
 SUPERIOR, e a soma sem os tetos aparece ao lado. O dono do merge, não: se ele não
 cobrir todos os jobs do PR, o número publicado mede menos pipeline do que existe.
 
+O primeiro job do repositório declarado por PASSOS é o `mutation-count-guard` do
+espelho: `setup-bun` (17.175s, 17/09), `install` (62ms), `check-mutation-count`
+(93ms) e o `Summary` (98ms, um bloco) são MEDIDOS, e o passo da suíte (3.897s) é
+LIDO da forma `mutation-count` da baseline — a mesma sub-test que o master mede,
+com o commit `eee4f65e` ao lado. O `Summary` estava FORA do total declarado antes
+(a conta antiga, 21198ms = setup + install + suíte + check, não o contava) e a
+cobertura exata o trouxe para dentro: é exatamente para isso que a regra existe.
+
 No dono, o job `guards` é o PISO declarado: o benchmark versionado não cobre
 `check:workflow-run-syntax` nem `check:pipefail-sigpipe`, e o job também roda
 `install`/checkout. O gate de sintaxe entrou na soma com os **2464ms MEDIDOS**
@@ -3407,7 +3441,7 @@ porque o `--check` lê os dois arquivos fixos de qualquer jeito.
 **Como testar:** `bun run bench:merge-latency` (relatório), `bun run
 bench:merge-latency:json` (o `mergeOwner` sai como fato próprio), `bun run
 check:merge-latency` (o veredito do gate). Testes unitários em
-`src/lib/__tests__/merge-latency.test.ts` (38 casos), com repositório SINTÉTICO
+`src/lib/__tests__/merge-latency.test.ts` (47 casos), com repositório SINTÉTICO
 para injetar o defeito que o gate existe para pegar.
 
 **Prova por mutação** (`scripts/test-mutation-merge-latency.sh`, sub-test
