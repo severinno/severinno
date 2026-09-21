@@ -251,8 +251,9 @@ import { analyze as analyzeHookCommands } from "./check-hook-commands.mjs"
 // A IDADE DA RÉGUA DO BENCH: quantos commits de HEAD separam o commit de ORIGEM
 // de cada família medida da baseline (`docs/benchmarks/guard-timing-baseline.json`)
 // do código que está aqui. A medição é a do `bench-freshness.mjs` — a régua do
-// dono, importada, não uma segunda contagem de commits: quem mede a idade é UM
-// lugar só, e o veredito não pode discordar dele.
+// dono, importada, não uma segunda contagem de commits —, e a mesma função
+// alimenta a issue do cron (`bench-freshness-issue.mjs`) e o publicador da
+// regressão de tempo: o veredito e a issue não podem discordar sobre a idade.
 import { freshnessLine, readBenchFreshness } from "./bench-freshness.mjs"
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
@@ -2800,6 +2801,19 @@ export const DEBT_SUBJECTS = [
     crossCheck: "gate",
   },
   {
+    label: "bench-freshness-drift",
+    markerId: "bench-freshness-drift",
+    subject:
+      "a régua do bench (a baseline versionada do guard-timing) envelheceu: família MEDIDA com o commit de origem atrás do teto de commits",
+    forges: ["github"],
+    // O doctor MEDE o mesmo assunto por conta própria — a MESMA função
+    // (`readBenchFreshness`), publicada como fato próprio na seção 9/9. É o
+    // cruzamento mais forte deste registro: a issue diz que alguém foi avisado, o
+    // fato diz se a régua ainda está velha. O teto é o mesmo (a régua é uma só),
+    // então o doctor e o publicador não podem discordar sobre "vencida".
+    crossCheck: "benchFreshness",
+  },
+  {
     label: "merge-gate-proof",
     markerId: "merge-gate-proof",
     subject:
@@ -2857,7 +2871,11 @@ function debtIssue(issue, nowMs) {
  * dá para declarar caducidade daqui). `null` nunca vira `true`: dizer "caducou"
  * sobre o que não se mediu é a dívida que mente, do outro lado.
  */
-function debtStaleness(subject, forge, { protection, mirrors, declaredDebt, gates }) {
+function debtStaleness(
+  subject,
+  forge,
+  { protection, mirrors, declaredDebt, benchFreshness, gates },
+) {
   // GATE EXECUTADO: o assunto desta issue é medido pela bateria de gates do
   // próprio doctor. `stale` só sai `true` quando a medição ACONTECEU nesta run e
   // passou — um guard pulado (`--no-guards`, perfil `--ci`) devolve `null`, nunca
@@ -2934,6 +2952,42 @@ function debtStaleness(subject, forge, { protection, mirrors, declaredDebt, gate
           stale: false,
           detail: `o doctor também mede os espelhos das variáveis da imagem (${compared.join(", ")}) e eles NÃO estão limpos agora`,
         }
+  }
+
+  if (subject.crossCheck === "benchFreshness") {
+    // A IDADE da régua do bench: o doctor mede o MESMO par (o fato `benchFreshness`
+    // é a mesma função que o publicador consome), então aqui a caducidade é
+    // medida, não presumida — e "sem idade" (clone raso, arquivo ilegível) devolve
+    // `null`, porque dizer "caducou" sobre o que não se mediu é a dívida que mente
+    // do outro lado.
+    if (
+      !benchFreshness ||
+      benchFreshness.state === "skipped" ||
+      benchFreshness.state !== "measured"
+    ) {
+      return {
+        stale: null,
+        detail:
+          "a idade do commit de origem das famílias do bench não foi medida nesta run — o doctor não pode declarar a issue caducada",
+      }
+    }
+    const vencidas = benchFreshness.aged.length + benchFreshness.diverged.length
+    if (vencidas === 0 && benchFreshness.unknown.length > 0) {
+      return {
+        stale: null,
+        detail: `o doctor mede a MESMA idade agora, mas ${benchFreshness.unknown.length} família(s) ficaram SEM idade (${benchFreshness.unknown.join(", ")}) — sem a idade de todas, não há como declarar a issue caducada`,
+      }
+    }
+    if (vencidas === 0) {
+      return {
+        stale: true,
+        detail: `o doctor mede a MESMA idade agora (${benchFreshness.families.length} família(s) medida(s), a mais antiga ${benchFreshness.behindMax} commit(s) atrás de ${benchFreshness.head}, teto ${benchFreshness.maxBehind}) e nenhuma passou o teto — a issue fala de uma régua que já foi re-medida (o publicador a fecha por assinatura quando a idade volta ao teto)`,
+      }
+    }
+    return {
+      stale: false,
+      detail: `o doctor também mede a idade da régua e ${vencidas} família(s) SEGUEM fora do teto de ${benchFreshness.maxBehind} commits (${[...benchFreshness.aged, ...benchFreshness.diverged].join(", ")}) — a issue fala de um problema VIVO`,
+    }
   }
 
   if (subject.crossCheck === "declaredDebt") {
@@ -3022,7 +3076,7 @@ function describeOpenDebt({ forge, subject, ours, alien, staleness }) {
  * (`githubReadConfig`) — o relatório não pode declarar um canal que não foi o
  * usado.
  *
- * @param {{cwd?: string, env?: Record<string,string|undefined>, deps?: {list?: Function, now?: () => number, githubChannel?: Function}, protection?: object|null, mirrors?: object|null, declaredDebt?: object|null, gates?: {results?: {gate?: string, code?: number|null, error?: string|null}[]}|null}} [args]
+ * @param {{cwd?: string, env?: Record<string,string|undefined>, deps?: {list?: Function, now?: () => number, githubChannel?: Function}, protection?: object|null, mirrors?: object|null, declaredDebt?: object|null, benchFreshness?: object|null, gates?: {results?: {gate?: string, code?: number|null, error?: string|null}[]}|null}} [args]
  * @returns {Promise<{state: string, detail: string, reads: object[], items: object[], labels: string[], excluded: object}>}
  */
 export async function readOpenDebt({
@@ -3032,6 +3086,11 @@ export async function readOpenDebt({
   protection = null,
   mirrors = null,
   declaredDebt = null,
+  // A IDADE da régua do bench (o mesmo fato da seção 9/9): é a segunda
+  // testemunha do assunto `bench-freshness-drift` — o doctor mede o mesmo par que
+  // o publicador, então a issue velha não passa por problema vivo (nem o
+  // contrário).
+  benchFreshness = null,
   // Os resultados da bateria de gates DESTA run: é por eles que um assunto
   // cruzado por `crossCheck: "gate"` vira caducidade (`null` quando a bateria
   // não rodou — a resposta honesta sobre o que não se mediu).
@@ -3102,7 +3161,13 @@ export async function readOpenDebt({
         else alien.push({ number: issue?.number ?? null, title: issue?.title ?? "" })
       }
       if (ours.length === 0 && alien.length === 0) continue
-      const staleness = debtStaleness(subject, forge, { protection, mirrors, declaredDebt, gates })
+      const staleness = debtStaleness(subject, forge, {
+        protection,
+        mirrors,
+        declaredDebt,
+        benchFreshness,
+        gates,
+      })
       open += ours.length + alien.length
       foreign += alien.length
       items.push({
@@ -5870,8 +5935,9 @@ export async function diagnose({
         total: 0,
       }
   // A IDADE DA RÉGUA DO BENCH sai antes da leitura do board, pelo MESMO motivo do
-  // fato acima: computá-lo depois faria a leitura do board responder com um fato
-  // que ainda não existe — ou pior, com uma segunda medição do mesmo dado.
+  // fato acima: a issue `bench-freshness-drift` é cruzada com ele (o doctor mede a
+  // mesma idade), e computá-lo depois faria a leitura do board responder com um
+  // fato que ainda não existe — ou pior, com uma segunda medição do mesmo dado.
   //
   // NÃO entra no perfil `--ci` (`CI_PROFILE_SKIPS`): a idade é contada em commits,
   // e um checkout raso responderia "sem idade" em TODO PR — um indeterminado

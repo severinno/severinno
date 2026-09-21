@@ -3278,8 +3278,18 @@ ser a régua) · `bun run bench:guard-timing:compare` (compara) ·
 `bun run bench:guard-timing:full` (salva + compara)
 
 **Onde roda:** o job **`guard-timing-alert`** (`benchmark-weekly.yml`, semanal)
-mede (`--json`, versionando o run em `guard-timing-latest.json`) e publica a
-regressão como **issue** (`scripts/guard-timing-issue.mjs`). Manual:
+mede (`--json`, versionando o run em `guard-timing-latest.json`) e publica as
+**duas** dívidas deste ativo como **issue**, num único passo: a regressão de tempo
+(`scripts/guard-timing-issue.mjs`) e a **idade** do commit de origem de cada
+família medida (`scripts/bench-freshness-issue.mjs`, issue
+`bench-freshness-drift`). São duas perguntas do MESMO arquivo — a comparação de
+percentual responde "o número subiu?" e não responde "de quando é o número?" —, e
+o step agrega os dois `rc` sem curto-circuitar: um publicador que falha não
+impede o outro de publicar, mas o passo fica vermelho se QUALQUER um falhou (não
+medir não pode passar por verde). O checkout deste job — e o do `doctor` da
+Gitea, que mede a **mesma régua** na seção 9/9 — é feito com a história inteira
+(`fetch-depth: 0`): a idade se conta em commits, e um clone raso responderia "sem
+idade" para sempre. Manual:
 `bun run bench:guard-timing` / `:compare` / `:full`. O exit 1 do `--compare`
 continua sendo o sinal de regressão >20% em algum guard, no doctor, no custo do
 lint por rodada ou no comando canônico das famílias nova — mas ele NÃO é o canal
@@ -4468,9 +4478,14 @@ PERCENTUAL, e percentual não sabe datas — um número velho e um número de ag
 diferem na mesma proporção, seja qual for o tempo que os separa. O doctor publica
 por família MEDIDA a idade do commit de origem que a baseline grava
 (`scripts/bench-families.mjs` é a régua das famílias, e
-`scripts/bench-freshness.mjs` a da idade) e uma família além do teto declarado de
-**150 commits** — dois ciclos do cron semanal ao ritmo medido do repositório
-(~10 commits/dia) — **entra nas dúvidas**.
+`scripts/bench-freshness.mjs` a da idade) e o veredito dela não fica no relatório
+sozinho: uma família além do teto declarado de **150 commits** — dois ciclos do
+cron semanal ao ritmo medido do repositório (~10 commits/dia) — **entra nas
+dúvidas** e vira issue (`bench-freshness-issue.mjs`), no mesmo ciclo de
+reconciliação das outras dívidas: o publicador carrega `crossCheck:
+"benchFreshness"`, então o doctor mede o MESMO par na prontidão e a issue se
+fecha sozinha quando a régua volta ao teto, em vez de depender de alguém lembrar
+do número.
 
 Quatro estados, com o peso de sempre: `measured` (todas as famílias medidas têm
 idade — a mais antiga dentro do teto é fato declarado, a mais antiga FORA dele é
@@ -4809,7 +4824,8 @@ abre o log de um cron verde. É o mesmo defeito que o repositório corrigiu dez
 vezes (`actrc-sync-issue.mjs`, `readme-reverse-issue.mjs`,
 `required-checks-drift-issue.mjs`, `forge-doctor-issue.mjs`,
 `mutation-trend-issue.mjs`, `blob-crlf-scope-issue.mjs`,
-`env-mirror-drift-issue.mjs`, `guard-timing-issue.mjs`, `runner-shells-issue.mjs`,
+`env-mirror-drift-issue.mjs`, `guard-timing-issue.mjs`, `bench-freshness-issue.mjs`,
+`runner-shells-issue.mjs`,
 `merge-gate-issue.mjs`, `github-dependencies-issue.mjs`) — mas a REGRA vivia na
 cabeça de quem escreveu cada job, então o décimo primeiro caso entraria em
 silêncio.
