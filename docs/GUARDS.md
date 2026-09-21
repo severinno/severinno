@@ -867,7 +867,7 @@ vermelho por um número que o commit seguinte ia consertar, e um
 O recorte `--staged` fecha a janela: o veredito é o **conteúdo do ÍNDICE**. O
 mesmo `run()` de sempre roda sobre uma árvore do índice materializada num
 diretório temporário (`git show :path` de cada arquivo que o veredito lê: o
-master, **as 36 suítes que o master cita**, o `pr-check.yml`, o README e a doc),
+master, **as 37 suítes que o master cita**, o `pr-check.yml`, o README e a doc),
 com o working tree **fora** — a diferença entre os dois escopos é o ponto, e ela
 é medida nos dois sentidos (`check-mutation-count.test.ts`: o WIP partido da
 árvore com o índice coerente passa; a árvore já consertada com o índice partido
@@ -1690,7 +1690,7 @@ diz "alguma mutação falhou"; como job próprio ela diz **qual** regra de class
 quebrou, e vira check **com nome** no contrato de merge. Custo medido: ≈**0.33s**
 (node-puro, sem docker, sem `node_modules`).
 
-**NAS DUAS FORJAS (a isenção que caiu).** Ela — e a matriz de 36 sub-tests — eram
+**NAS DUAS FORJAS (a isenção que caiu).** Ela — e a matriz de 37 sub-tests — eram
 `GITHUB_ONLY` com a razão _"os jobs de mutation test existem apenas no pipeline do
 GitHub (custo/duração)"_, que é a razão de **conveniência** que a classe
 `GITHUB_ONLY` proíbe por escrito. O furo era concreto: quem mergeia na forja podia
@@ -1715,7 +1715,7 @@ não um ato de fé.
 não por serem específicos da plataforma): auditoria de dependências, baseline de
 segredos, hooks de seed, sentinel producer, fonte única do Bun, proibição do
 `oven-sh/setup-bun`, simetria de hooks e — a maior delas — a **prova por mutação**:
-a matriz de 36 sub-tests e a prova das três regras de classificação, que rodavam
+a matriz de 37 sub-tests e a prova das três regras de classificação, que rodavam
 só no espelho e deixavam o PR da forja mergear com um guard cego. O custo entrou
 no modelo (`ci/merge-latency.json`, job `guards`), e o **runtime** da imagem
 foi re-medido antes de a mudança valer: o MESMO comando dentro do container da
@@ -3145,8 +3145,9 @@ o harness é a parte que a conta à mão esquecia (ele sai da DIFERENÇA, não d
 constante). O sub-test novo entra na rodada seguinte **MEDIDO** — a 36.ª entrou
 medida (37.9s) e o ato seguinte já a mede em 40.0s, sem ninguém recompor a soma.
 (A coluna de metades da tabela é a do ATO de `eee4f65e` — **209**; a matriz viva
-declara **210** desde a metade M5 do gate da latência, e é o próximo ato do bench
-que recolhe o número novo: a baseline guarda o count do ato que a mediu, e o
+declara **216** desde as SEIS metades da régua da idade (`bench-freshness`, a
+37.ª) por cima da M5 do gate da latência, e é o próximo ato do bench que recolhe o
+número novo: a baseline guarda o count do ato que a mediu, e o
 `check:mutation-count` compara as refs vivas entre si.)
 
 **E a derivação desceu ao PASSO.** O mesmo mecanismo, um nível abaixo: o job
@@ -4587,6 +4588,36 @@ publicador (`signatureOf`) lista as declarações vencidas sob a chave
 faria o publicador PERDER a issue aberta (a assinatura é o contrato do ciclo
 abrir/fechar). O que a chave lista hoje são todas as declarações vencidas, e o
 `kind` de cada linha da tabela diz de que tipo ela é.
+
+**Prova por mutação das SEIS réguas do veredito**
+(`scripts/test-mutation-bench-freshness.sh`). Esta suíte existe porque o sujeito é
+o único em que o verde CEGO é indistinguível do verde honesto: uma régua de idade
+que ficasse cega não acusaria nada, e o repositório seguiria publicando o mesmo
+verde sobre um número que ninguém re-mediu. Cada REGRA que o veredito consome é
+desligada no lugar, e o vermelho é exigido — são **em SEIS direções** (M1–M6):
+
+| metade | a regra que ela desliga                           | o vermelho que ela exige (medido)                                                                                              |
+| :----- | :------------------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------- |
+| **M1** | a DERIVAÇÃO da origem pela data (`commitOfDate`)  | datando tudo por HEAD, toda declaração fica a ZERO commits atrás — a régua declara frescor sem ter medido nada                 |
+| **M2** | a ÂNCORA de mês (`anchorBefore`)                  | com `mm/aaaa` resolvendo no PRIMEIRO dia, a origem cai um mês atrás do que o dono declarou e a idade sai MAIOR do que é        |
+| **M3** | o TETO POR TIPO (`FRESHNESS_CEILINGS`)            | com o teto das famílias na prosa do README, a mesma âncora de 412 commits passa a vencer e o canal abre dívida para sempre     |
+| **M4** | a FRONTEIRA do teto (`isAged`)                    | com `>=`, a declaração exatamente NO teto vira dívida (no teto é fresca; no teto + 1, vencida)                                 |
+| **M5** | o fail-closed da FONTE (`readFreshness`)          | sem a unidade `fonte-ilegivel`, "não consegui ler" vira "nada a julgar" e o estado sai MEDIDO sobre um arquivo que ninguém leu |
+| **M6** | o fail-closed da DECLARAÇÃO (`modelDeclarations`) | sem a unidade, o `ms` sem a própria `date` some do veredito em silêncio                                                        |
+
+**Duas testemunhas, e o teste exige a que a mutação atinge.** A régua por
+EXECUÇÃO — o CLI (`node scripts/bench-freshness.mjs --json`) sobre o repositório
+REAL, que é o fato que o doctor e o publicador consomem: para o fail-closed da
+FONTE ele recebe `--file` apontando para um arquivo que não existe, e o caminho
+"não consegui ler" é medido de ponta a ponta. E a suíte unitária
+(`src/lib/__tests__/bench-freshness.test.ts`), a única testemunha das duas metades
+que o repositório de hoje NÃO consegue mostrar — nenhuma declaração está
+exatamente nos 150, e todos os números do modelo já carregam a data deles (que é,
+em si, a prova de que a regra é seguida). Cada mutação é CIRÚRGICA (o alvo tem de
+aparecer UMA vez, e o arquivo mutado tem de seguir com sintaxe válida) e a régua é
+RESTAURADA entre as medições, com o CONTROLE final medindo o mesmo fato (412
+commits) de novo. A suíte é a **37.ª** da matriz do master e custa **17.7s**
+sozinha (6 metades), medida pelo mesmo caminho do job.
 
 **LIMITE DECLARADO:** a régua mede **frescor**, não exatidão. Um commit a mais
 pode não mudar nada do que a família mede, e o teto é um contrato de RITMO, não

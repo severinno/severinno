@@ -921,7 +921,7 @@ single-grep). Os testes entram apenas quando arquivos-fonte mudaram
 
 **Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
 rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
-**36 sub-tests node-puro** via `scripts/test-mutation-guards.sh` — e, desde que a
+**37 sub-tests node-puro** via `scripts/test-mutation-guards.sh` — e, desde que a
 isenção `GITHUB_ONLY` da classe caiu, o **mesmo comando** roda também no job
 `guards` da **forja dona do merge** (o `check-forge-parity` exige a matriz e a
 prova das três regras de classificação nas duas pipelines): quem mergeia na forja
@@ -1185,7 +1185,7 @@ sai verde e **uma** no fail-closed), e a detecção da oferta contra a árvore r
 depois: `escreveu: true` é violação da família, não um detalhe do log.
 
 **O custo do job mais caro do PR deixou de ser uma conta à mão** (família
-`mutations` do `bench-guard-timing`). O job `mutation-guards` roda 36 sub-tests, e
+`mutations` do `bench-guard-timing`). O job `mutation-guards` roda 37 sub-tests, e
 agora o que CADA um custa é medido pelo próprio master (`--json`) e versionado
 sub-test a sub-test na baseline: o ato VERSIONADO — o MESMO comando, com a árvore já COMMITADA: é o que a baseline
 passou a guardar (esquema v6, commit de origem `eee4f65e`) — mediu **376.7s** de
@@ -1239,7 +1239,13 @@ não por calendário, e um teto em commits compararia o ritmo do CÓDIGO com o d
 A célula que só cita uma duração no meio de uma frase não é tabela de custo: o
 tempo tem de começar a célula. O checkout daquele job é feito com a história inteira (`fetch-depth:
 0`): a idade é contada em commits e um clone raso responderia "sem idade", nunca
-"fresca". **LIMITE DECLARADO:** a régua mede FRESCOR, não exatidão — um commit a
+"fresca". **A régua tem prova por mutação própria** (`scripts/test-mutation-bench-freshness.sh`,
+**em SEIS direções**): cada regra que o veredito consome é desligada no lugar — a
+derivação da origem pela data, a âncora de mês, o teto por tipo, a fronteira dele
+e o fail-closed das duas fontes — e o vermelho é exigido, com a régua restaurada e
+medindo o mesmo fato de novo no controle final.
+
+**LIMITE DECLARADO:** a régua mede FRESCOR, não exatidão — um commit a
 mais pode não mudar nada do que a família mede; o que ela impede é o silêncio de
 um número que ninguém re-mediu enquanto a árvore andou. **Gravar nunca
 perde:** o que a rodada não mediu é herdado na ordem `[baseline, latest]` — a
@@ -1451,7 +1457,7 @@ warm):
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (36 sub-tests)³  |    **353.2s** (1 run)³     |     **step ≈ 9.1s**²      |
+| master `mutation-guards` (37 sub-tests)³  |    **353.2s** (1 run)³     |     **step ≈ 9.1s**²      |
 | checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
 | Summary                                   |             —              |           0.34s           |
 
@@ -1492,7 +1498,13 @@ ato de AGORA — as três suítes acima mais as QUATRO metades novas (a CLASSE d
 no `job-deps` e as K/L/M do recorte do count), com a árvore COMMITADA — mediu
 **381.0s** (376.7s de sub-tests + 4.3s de harness) numa rodada da matriz COMPLETA,
 36/36 verdes, e é ele que a baseline passa a guardar e que `ci/merge-latency.json`
-passa a declarar para o espelho (**380950ms** medidos): os **28% de divergência**
+passa a declarar para o espelho (**380950ms** medidos). Depois dele a matriz ganhou
+a **37.ª** — a régua da idade (`bench-freshness`), que custou **17.7s** sozinha pelo
+mesmo caminho do job —, e a matriz de 37 foi rodada inteira **UMA** vez
+(**402s**, 37/37 verdes, este host). O ato VERSIONADO de 37 (com o commit de origem
+de cada forma) ainda **não existe**: o número declarado segue o do ato de 36, e é
+o próximo ato do bench que recolhe o novo — o PISO do job só sobe com a medição
+no arquivo. Os **28% de divergência**
 que a baseline ancorada em outro commit sustentava ficaram em zero, e o PISO do job
 `guards` da forja dona do merge foi re-declarado em **414838ms**. A
 32ª custa **11.0s** sozinha pelo caminho do master (`--scenario github-deps`:
@@ -1691,7 +1703,7 @@ runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 | 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |                      — (n/a)                       |         <2s         |
 | `utf8-check` (837 arquivos, `--ci src/`)          |        ≈ **0.92s**         |                     **7.46s**                      |    ~2-5s (est.)     |
 | `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |                     **3.61s**                      |    ~1-2s (est.)     |
-| `mutation-guards` (36 sub-tests node-puro)³       |        **353.2s**³         |                     **9.1s**²                      |   ~15-25s (est.)    |
+| `mutation-guards` (37 sub-tests node-puro)³       |        **353.2s**³         |                     **9.1s**²                      |   ~15-25s (est.)    |
 | `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |                    **4m37.6s**                     |   ~35-45s (est.)³   |
 | `unused-deps-guard` (mutation test + guard real)  |        ≈ **0.5s**⁴         |          **26.8s** cold / **20.9s** warm⁴          |   ~10-15s (est.)    |
 | `lint-guard` (prettier --check + eslint zero)     |     ~**4min** (local)⁵     | **7m22s** 1ª run / **6m23s** 2ª run (lint total)⁴  |   ~4-7 min (est.)   |

@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 36 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 37 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -167,6 +167,7 @@ SUBTESTS=(
   "cut-stages|scripts/test-mutation-cut-stages.sh"
   "mirror-coverage|scripts/test-mutation-mirror-coverage.sh"
   "pre-commit-proof|scripts/test-mutation-pre-commit-proof.sh"
+  "bench-freshness|scripts/test-mutation-bench-freshness.sh"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────

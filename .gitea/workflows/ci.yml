@@ -440,7 +440,7 @@ jobs:
       # da imagem (não é instalado por nenhum passo) — se a base parar de
       # entregá-lo, o vermelho é deste job e nomeia a causa.
       #
-      # Custo: a matriz é node-pura e não executa docker (medido: nenhum dos 34
+      # Custo: a matriz é node-pura e não executa docker (medido: nenhum dos 37
       # sub-tests de hoje invoca docker — os `docker` que aparecem são TEXTO de
       # fixture; e o container do job não tem o socket do daemon, então depender
       # dele seria uma falha, não uma lentidão). O count da matriz NÃO entra no
@@ -448,8 +448,10 @@ jobs:
       # envelhece — esta esteve em 32 enquanto a matriz subia a 34 — e aqui
       # ninguém a confere. Quem carrega o count E o confere é o
       # `check-mutation-count` (README, header do master e summary do espelho);
-      # a matriz de AGORA são 36 sub-tests, medidos em 353.2s (ato VIVO, ver o
-      # README), com o ato versionado da baseline em 271.8s. A medição do passo no espelho é
+      # a matriz de AGORA são 37 sub-tests — a régua da idade entrou como a
+      # 37.ª —, medida UMA vez inteira em 402s (37/37 verdes; o ato VIVO de 36
+      # deu 353.2s, ver o README) e é o próximo ato do bench que versiona o
+      # total novo, com o ato versionado da baseline em 271.8s. A medição do passo no espelho é
       # `mutation-guards` = 248s (medido em 20/09/2026) e a soma entrou em
       # `ci/merge-latency.json` — com a procedência DECLARADA: o valor é o do
       # runner do espelho (o MAIOR dos dois), e o PISO do job `guards` vem dos
