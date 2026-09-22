@@ -1239,7 +1239,7 @@ A célula que só cita uma duração no meio de uma frase não é tabela de cust
 tempo tem de começar a célula. O checkout daquele job é feito com a história inteira (`fetch-depth:
 0`): a idade é contada em commits e um clone raso responderia "sem idade", nunca
 "fresca". **A régua tem prova por mutação própria** (`scripts/test-mutation-bench-freshness.sh`,
-**em SEIS direções**): cada regra que o veredito consome é desligada no lugar — a
+**em OITO direções**): cada regra que o veredito consome é desligada no lugar — a
 derivação da origem pela data, a âncora de mês, o teto por tipo, a fronteira dele
 e o fail-closed das duas fontes — e o vermelho é exigido, com a régua restaurada e
 medindo o mesmo fato de novo no controle final.

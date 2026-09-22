@@ -7,7 +7,7 @@
 #   ./scripts/test-mutation-bench-freshness.sh
 #
 # Exit codes:
-#   0 — as SEIS mutações DETECTADAS (por EXECUÇÃO e/ou pela suíte) e os controles
+#   0 — as OITO mutações DETECTADAS (por EXECUÇÃO e/ou pela suíte) e os controles
 #       mordendo ✅
 #   1 — régua CEGA a alguma mutação (não viu / não acusou) / mutação não-cirúrgica
 #       / infra ❌
@@ -55,6 +55,17 @@
 #        do veredito em silêncio. Witness: só a SUÍTE — o modelo real carrega a
 #        data de TODOS os seus números (que é, em si, a prova de que a regra é
 #        seguida).
+#   M7 — o TETO DERIVADO do ritmo (`tetoDoRitmo`): voltando ao literal, o teto
+#        deixa de seguir o repositório — um repositório que acelerou passa a ter
+#        o teto do ritmo de meses atrás, e o canal acusa (ou deixa passar) pelo
+#        número ERRADO. Witness: as DUAS — o CLI, recomputando o teto a partir do
+#        que o próprio fato mediu (`piso × ciclos` contra `commits ÷ janela`), e a
+#        suíte, que fixa os dois lados do produto (ritmo alto × piso).
+#   M8 — a PROCEDÊNCIA do teto (`teto.origem`): com a reserva se declarando
+#        "medido", um teto de fail-closed (o git não respondeu o ritmo) sai com a
+#        cara de um teto medido de agora — a diferença entre veredito e dúvida
+#        some justamente onde ela decide. Witness: só a SUÍTE — no repositório de
+#        hoje o ritmo É medido, e é a suíte que mede o caminho da reserva.
 #
 # CADA mutação é CIRÚRGICA: o injetor recusa alvo ausente ou ambíguo (o alvo tem
 # de aparecer UMA vez) e o arquivo mutado tem de continuar com sintaxe válida —
@@ -82,6 +93,8 @@ METADES=(
   'M4|a FRONTEIRA do teto: com >=, a declaração exatamente no teto vira vencida'
   'M5|o fail-closed da FONTE: sem a unidade, "não consegui ler" vira "nada a julgar"'
   'M6|o fail-closed da DECLARAÇÃO: sem a data própria, o número some do veredito'
+  'M7|o TETO DERIVADO do ritmo: com o literal, o teto deixa de seguir o repositório'
+  'M8|a PROCEDÊNCIA do teto: com a reserva se dizendo "medido", a dúvida vira veredito'
 )
 cd "$SCRIPT_DIR"
 
@@ -124,8 +137,10 @@ cli() {
 
 # `fato <campo>`: lê do fato o que a asserção precisa. Campos: `state`,
 # `behindMax`, `aged`, `unknown`, `behind:<kind>` (a MAIOR idade entre as
-# declarações daquele tipo), `aged:<kind>` (os ids vencidos daquele tipo) e
-# `ancora:month` (a maior idade entre as âncoras de MÊS — `mm/aaaa`).
+# declarações daquele tipo), `aged:<kind>` (os ids vencidos daquele tipo),
+# `ancora:month` (a maior idade entre as âncoras de MÊS — `mm/aaaa`) e os do
+# teto: `teto` (o número), `teto:origem`, `teto:commits`, `teto:commitsPorCiclo`,
+# `teto:janelaDias`, `teto:ciclos`, `teto:cicloDias`, `teto:pisoDeCiclo`.
 fato() {
   python3 - "$CLI_JSON" "$1" <<'PY'
 import json, sys
@@ -150,6 +165,10 @@ elif campo == "ancora:month":
     print(max(idades) if idades else "-")
 elif campo == "fonte-ilegivel":
     print(",".join(x["family"] for x in fam if x.get("kind") == "fonte-ilegivel"))
+elif campo == "teto":
+    print((f.get("teto") or {}).get("teto"))
+elif campo.startswith("teto:"):
+    print((f.get("teto") or {}).get(campo.split(":", 1)[1]))
 else:
     raise SystemExit("campo desconhecido: " + campo)
 PY
@@ -476,6 +495,91 @@ fi
 pass "E no repositório real nenhuma declaração ficou sem idade: os 27 números do modelo carregam a data DELE"
 
 cp "$BACKUP" "$GUARD"
+pass "Régua restaurada — base íntegra para a mutação M7"
+
+# ── MUTAÇÃO M7 — o TETO DERIVADO do ritmo (`tetoDoRitmo`) ─────────────────
+# O teto nasceu declarado à mão (150) e passou a ser o PRODUTO do ritmo medido
+# (`ciclos × commits por ciclo`, com o piso declarado). Voltando ao literal, o
+# teto deixa de seguir o repositório: um repositório que acelerou continua com o
+# teto do ritmo de meses atrás — apertado em silêncio (acusa quem tem menos de
+# uma semana de calendário) — e um que desacelerou fica frouxo (não acusa quem
+# passou meses sem re-medição).
+#
+# TESTEMUNHA: as DUAS. O CLI porque o repositório mede o ritmo de verdade e o
+# fato é AUTO-DESCRITO: o teto tem de ser o produto do que o próprio fato mediu
+# (`piso × ciclos` contra `commits ÷ janelaDias × ciclos`, recomputado AQUI a
+# partir do fato — sem uma segunda cópia da regra no harness). A suíte porque
+# fixa os dois lados do produto (ritmo alto → 300; ritmo baixo → o piso) — no
+# repositório de hoje o ritmo dá um número só, e um só não distingue produto de
+# coincidência.
+header "MUTAÇÃO M7 — o teto DERIVADO do ritmo (o literal volta)"
+info "Devolvendo o teto ao literal declarado, em vez do produto do ritmo medido..."
+mutar '    teto: Math.max(piso, bruto),' \
+  '    teto: FRESHNESS_MAX_COMMITS_BEHIND, // MUTACAO M7: o teto volta a ser declarado a mao'
+pass "Mutação M7 aplicada (sintaxe válida)"
+
+cli
+M7_ORIGEM="$(fato teto:origem)"
+M7_TETO="$(fato teto)"
+M7_COMMITS="$(fato teto:commits)"
+M7_ESPERADO="$(python3 - "$CLI_JSON" <<'PY'
+import json, sys
+t = json.load(open(sys.argv[1], encoding="utf-8")).get("teto") or {}
+commits, janela, ciclo, ciclos, piso = (
+    t.get(k) for k in ("commits", "janelaDias", "cicloDias", "ciclos", "pisoDeCiclo")
+)
+print(max(piso * ciclos, round(commits / (janela / ciclo) * ciclos)))
+PY
+)"
+if [ "$M7_ORIGEM" != "medido" ]; then
+  fail "M7 NÃO DETECTADA: o teto saiu com origem '$M7_ORIGEM' (esperado 'medido') — a régua não mediu o ritmo."
+  exit 1
+fi
+if [ "$M7_TETO" = "$M7_ESPERADO" ]; then
+  fail "M7 NÃO DETECTADA pelo CLI: o teto ($M7_TETO) continua sendo o produto do ritmo medido (${M7_COMMITS} commits → $M7_ESPERADO)."
+  exit 1
+fi
+pass "M7 DETECTADA pela RÉGUA por execução: com ${M7_COMMITS} commits na janela o teto tinha de ser $M7_ESPERADO, e saiu $M7_TETO (o literal) — o teto deixou de seguir o repositório"
+
+SUITE_EXIT=0
+run_suite || SUITE_EXIT=$?
+if [ "$SUITE_EXIT" -eq 0 ]; then
+  fail "M7 NÃO DETECTADA pela suíte: o teto literal passou em silêncio."
+  fail "No repositório de hoje o ritmo dá UM número: sem a suíte, o produto e a coincidência ficariam indistinguíveis."
+  exit 1
+fi
+pass "M7 DETECTADA também pela suíte unitária (exit $SUITE_EXIT) — os dois lados do produto e a reserva ficam fixos"
+
+cp "$BACKUP" "$GUARD"
+pass "Régua restaurada — base íntegra para a mutação M8"
+
+# ── MUTAÇÃO M8 — a PROCEDÊNCIA do teto (`teto.origem`) ────────────────────
+# O teto tem DUAS origens: `medido` (o ritmo de agora) e `reserva declarada` (o
+# git não respondeu o ritmo — fail-closed). Se a reserva se declarar "medido",
+# um teto de emergência sai com a cara de um teto medido: a diferença entre
+# VEREDITO e DÚVIDA ("o repositório anda assim" × "não consegui medir") some
+# justamente onde ela decide — no relatório, no doctor e na issue.
+#
+# TESTEMUNHA: só a SUÍTE, e isso é declarado — no repositório de hoje o ritmo É
+# medido (o CLI mostra o caminho feliz), e é o fixture que mede o caminho da
+# reserva, onde a origem passa a mentir.
+header "MUTAÇÃO M8 — a procedência do teto (a reserva se dizendo medido)"
+info "Fazendo o caminho da reserva se declarar medido..."
+mutar '      teto: FRESHNESS_MAX_COMMITS_BEHIND,
+      origem: "reserva declarada",' \
+  '      teto: FRESHNESS_MAX_COMMITS_BEHIND,
+      origem: "medido", // MUTACAO M8: a reserva vira medicao'
+pass "Mutação M8 aplicada (sintaxe válida)"
+
+SUITE_EXIT=0
+run_suite || SUITE_EXIT=$?
+if [ "$SUITE_EXIT" -eq 0 ]; then
+  fail "M8 NÃO DETECTADA: a suíte passou com a reserva se declarando 'medido'."
+  exit 1
+fi
+pass "M8 DETECTADA pela suíte unitária (exit $SUITE_EXIT) — a reserva sai nomeada, e o teto de emergência não se confunde com uma medição"
+
+cp "$BACKUP" "$GUARD"
 pass "Régua RESTAURADA (checksum conferido abaixo)"
 
 # ── CONTROLE FINAL — a árvore voltou ao comportamento original ────────────
@@ -494,7 +598,7 @@ pass "Controle final OK — a régua restaurada mede de novo ${CTRL_BEHIND} comm
 # ── Veredito ──────────────────────────────────────────────────────────────
 echo ""
 echo "  ═════════════════════════════════════════════════════════════════"
-echo -e "   ${GREEN}✅ MUTATION TEST PASSOU${NC} — as SEIS regras são LOAD-BEARING:"
+echo -e "   ${GREEN}✅ MUTATION TEST PASSOU${NC} — as OITO regras são LOAD-BEARING:"
 echo "      • a DERIVAÇÃO da origem pela DATA → datada por HEAD, a régua"
 echo "        declara frescor sem ter medido nada"
 echo "      • a ÂNCORA de MÊS no último commit → no primeiro dia, a idade"
@@ -506,6 +610,10 @@ echo "      • o fail-closed da FONTE → sem a unidade, o arquivo que ninguém
 echo "        leu conta como árvore sã (estado MEDIDO, rc=0)"
 echo "      • o fail-closed da DECLARAÇÃO → sem a unidade, o número sem a"
 echo "        própria data some do veredito em silêncio"
+echo "      • o TETO DERIVADO do ritmo → com o literal, o teto deixa de seguir"
+echo "        o repositório (apertado num que acelerou, frouxo num que parou)"
+echo "      • a PROCEDÊNCIA do teto → com a reserva se dizendo medido, a dúvida"
+echo "        (o git não respondeu o ritmo) sai com cara de veredito"
 echo "      Cada metade é CIRÚRGICA (o alvo tem de aparecer UMA vez, o arquivo"
 echo "      segue com sintaxe válida) e é restaurada entre as medições, com a"
 echo "      régua medindo o mesmo fato de novo no controle final."
