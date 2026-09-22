@@ -1188,24 +1188,23 @@ depois: `escreveu: true` é violação da família, não um detalhe do log.
 `mutations` do `bench-guard-timing`). O job `mutation-guards` roda 37 sub-tests, e
 agora o que CADA um custa é medido pelo próprio master (`--json`) e versionado
 sub-test a sub-test na baseline: o ato VERSIONADO — o MESMO comando, com a árvore já COMMITADA: é o que a baseline
-passou a guardar (esquema v6, commit de origem `eee4f65e`) — mediu **376.7s** de
-sub-tests + **4.3s** de harness = **381.0s**, com `workflow-run-syntax` (69.2s,
-18%), `hook-commands` (61.2s, 16%), `job-deps` (42.1s, 11%) e `pre-commit-proof`
-(40.0s, 11%) no topo — antes disso ninguém sabia QUAL sub-test pagava a conta. O
-delta contra o ato ANTERIOR (271.8s, quando a matriz era TRÊS suítes menor) são as três suítes que entraram
-(`cut-stages` 17.9s, `mirror-coverage` 11.4s e `pre-commit-proof` 40.0s) e as
-QUATRO metades novas (a CLASSE do alvo no `job-deps` e as K/L/M do recorte do
-count), cada uma entrando MEDIDA, sem ninguém recontar a soma. Quem entra com um sub-test novo não compõe nada: ele entra
+passou a guardar (esquema v6, commit de origem `fa75f732`) — mediu **390.8s** de
+sub-tests + **4.2s** de harness = **395.0s**, com `workflow-run-syntax` (69.7s,
+18%), `hook-commands` (60.3s, 15%), `job-deps` (42.7s, 11%) e `pre-commit-proof`
+(38.5s, 10%) no topo — antes disso ninguém sabia QUAL sub-test pagava a conta. O
+delta contra o ato ANTERIOR (a medição de 36 sub-tests, **381.0s**, commit `eee4f65e`) é a régua
+da idade, que entrou como a 37.ª com **17.3s** sozinha e 6 metades, MEDIDA como as
+demais, sem ninguém recontar a soma. Quem entra com um sub-test novo não compõe nada: ele entra
 **MEDIDO** na rodada seguinte (forma nova, `➕`, com o ms dele no relatório), e o
 modelo de latência passou a **derivar** o passo do master da medição VERSIONADA — o
 confronto com o declarado do espelho dá **0%**, porque o declarado passou a ser a
-própria medição (**380950ms**). A projeção de quanto o PRÓXIMO sub-test acrescenta (~8.2s) é dita como
+própria medição (**394959ms**). A projeção de quanto o PRÓXIMO sub-test acrescenta (~10.7s) é dita como
 **projeção**, não como medição: é a média dos scripts já medidos mais o harness por
 sub-test. **LIMITE DECLARADO:** a baseline é reescrita pelo ato do
-`bench-guard-timing`, que grava o commit de ORIGEM do que mediu — as 36 formas
-entraram no ato de 21/09/2026, com a árvore COMMITADA (`eee4f65e`), e o ato é o
-que re-declara o número: o declarado do espelho passa a ser a medição (**380950ms**)
-e o PISO do job `guards` da forja dona do merge passa a **414838ms** (a bateria
+`bench-guard-timing`, que grava o commit de ORIGEM do que mediu — as 37 formas
+entraram no ato de 21/09/2026, com a árvore COMMITADA (`fa75f732`), e o ato é o
+que re-declara o número: o declarado do espelho passa a ser a medição (**394959ms**)
+e o PISO do job `guards` da forja dona do merge passa a **428880ms** (a bateria
 re-medida + o gate de sintaxe + a matriz + a paridade das regras de classificação).
 O ato é feito em DUAS rodadas, e isso é deliberado: `--no-mutations` mede a
 bateria, o lint, o typecheck, a suíte e o hook, e `--only mutations --baseline
@@ -1457,7 +1456,7 @@ warm):
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (37 sub-tests)³  |    **353.2s** (1 run)³     |     **step ≈ 9.1s**²      |
+| master `mutation-guards` (37 sub-tests)³  |    **395.0s** (1 run)³     |     **step ≈ 9.1s**²      |
 | checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
 | Summary                                   |             —              |           0.34s           |
 
@@ -1497,16 +1496,17 @@ a soma por tabela e a recusa do pulo sem motivo) e a 36.ª **37.9s**
 ato de AGORA — as três suítes acima mais as QUATRO metades novas (a CLASSE do alvo
 no `job-deps` e as K/L/M do recorte do count), com a árvore COMMITADA — mediu
 **381.0s** (376.7s de sub-tests + 4.3s de harness) numa rodada da matriz COMPLETA,
-36/36 verdes, e é ele que a baseline passa a guardar e que `ci/merge-latency.json`
-passa a declarar para o espelho (**380950ms** medidos). Depois dele a matriz ganhou
-a **37.ª** — a régua da idade (`bench-freshness`), que custou **17.7s** sozinha pelo
-mesmo caminho do job —, e a matriz de 37 foi rodada inteira **UMA** vez
-(**402s**, 37/37 verdes, este host). O ato VERSIONADO de 37 (com o commit de origem
-de cada forma) ainda **não existe**: o número declarado segue o do ato de 36, e é
-o próximo ato do bench que recolhe o novo — o PISO do job só sobe com a medição
-no arquivo. Os **28% de divergência**
-que a baseline ancorada em outro commit sustentava ficaram em zero, e o PISO do job
-`guards` da forja dona do merge foi re-declarado em **414838ms**. A
+36/36 verdes (ato anterior, baseline ancorada em `eee4f65e`); e o ato de AGORA
+MESMO — a **37.ª**, a régua da idade (`bench-freshness`), MEDIDA pelo mesmo caminho
+do job (**17.3s** sozinha, 6 metades) — mediu **395.0s** (390.8s de sub-tests +
+4.2s de harness) numa rodada da matriz COMPLETA, **37/37 verdes**, com a árvore
+COMMITADA (`fa75f732`). É esse ato que a baseline passa a guardar e que
+`ci/merge-latency.json` passa a declarar para o espelho (**394959ms** medidos, 0% de
+delta contra o derivado), e ele fecha a defasagem que o ato de 36 sustentava: o PISO
+do job `guards` da forja dona do merge foi re-declarado em **428880ms** (a bateria + o
+gate de sintaxe + a matriz de 395.0s + a paridade das regras de classificação). Os
+**28% de divergência**
+que a baseline ancorada em outro commit sustentava ficaram em zero. A
 32ª custa **11.0s** sozinha pelo caminho do master (`--scenario github-deps`:
 10.97 · 11.06 · 11.02); o resto do delta (≈221 + 11 = 232s esperados contra os
 248 medidos) é a deriva de host que as rodadas anteriores já registravam, somada
@@ -1703,7 +1703,7 @@ runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 | 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |                      — (n/a)                       |         <2s         |
 | `utf8-check` (837 arquivos, `--ci src/`)          |        ≈ **0.92s**         |                     **7.46s**                      |    ~2-5s (est.)     |
 | `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |                     **3.61s**                      |    ~1-2s (est.)     |
-| `mutation-guards` (37 sub-tests node-puro)³       |        **353.2s**³         |                     **9.1s**²                      |   ~15-25s (est.)    |
+| `mutation-guards` (37 sub-tests node-puro)³       |        **395.0s**³         |                     **9.1s**²                      |   ~15-25s (est.)    |
 | `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |                    **4m37.6s**                     |   ~35-45s (est.)³   |
 | `unused-deps-guard` (mutation test + guard real)  |        ≈ **0.5s**⁴         |          **26.8s** cold / **20.9s** warm⁴          |   ~10-15s (est.)    |
 | `lint-guard` (prettier --check + eslint zero)     |     ~**4min** (local)⁵     | **7m22s** 1ª run / **6m23s** 2ª run (lint total)⁴  |   ~4-7 min (est.)   |

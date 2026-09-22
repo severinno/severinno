@@ -3118,42 +3118,43 @@ uma a uma) **escritas à mão na prosa** do modelo. Agora o próprio master mede
 (`--json`) e o benchmark **versiona sub-test a sub-test** (família `mutations`,
 esquema v6, em `docs/benchmarks/guard-timing-baseline.json`). Uma rodada só, com
 TODOS os sub-tests — medir um a um custaria uma subida de harness POR sub-test, e o
-harness é exatamente o que a conta à mão esquece.A tabela é o ato VIVO, medido em
-21/09/2026 nesta máquina (**36/36 verdes**); o ato VERSIONADO — o que a baseline
-guarda, de 36 sub-tests com a árvore COMMITADA (o commit de origem gravado é
-`eee4f65e`), 381.0s — sai do mesmo comando e é o que o modelo de latência
-deriva:
+harness é exatamente o que a conta à mão esquece. A tabela é o ato VIVO **E** o
+VERSIONADO — o mesmo comando, com a árvore COMMITADA: medido em 21/09/2026 nesta
+máquina (**37/37 verdes**), o commit de origem gravado é `fa75f732` e a baseline
+guarda 37 sub-tests com 216 metades e 395.0s — e é este total que o modelo de
+latência deriva:
 
 | sub-test                                                                           |  wall time | fatia | metades |
 | ---------------------------------------------------------------------------------- | ---------: | ----: | ------: |
-| `workflow-run-syntax`                                                              |      69.2s |   18% |      15 |
-| `hook-commands`                                                                    |      61.2s |   16% |      27 |
-| `job-deps`                                                                         |      42.1s |   11% |       8 |
-| `pre-commit-proof` (a 36.ª — a declaração dos recusadores, a descida e o CONTROLE) |      40.0s |   11% |       3 |
-| `remedy-tty`                                                                       |      30.0s |    8% |       2 |
-| `registry-defaults`                                                                |      21.0s |    6% |       7 |
-| `required-applied`                                                                 |      18.8s |    5% |      10 |
-| `cut-stages` (a 34.ª — as três invariantes duras do corte do GitHub)               |      17.9s |    5% |       3 |
-| `mirror-coverage` (a 35.ª — o CONTROLE, a soma por tabela e o pulo sem motivo)     |      11.4s |    3% |       3 |
-| … (os 36, do mais caro ao mais barato, sempre na tabela do relatório)              |            |       |         |
-| **soma dos 36 sub-tests**                                                          | **376.7s** |  100% | **209** |
-| harness (parse das metades, tabelas, subida do master)                             |       4.3s |       |         |
-| **total do master**                                                                | **380.9s** |       |         |
+| `workflow-run-syntax`                                                              |      69.7s |   18% |      15 |
+| `hook-commands`                                                                    |      60.3s |   15% |      27 |
+| `job-deps`                                                                         |      42.7s |   11% |       8 |
+| `pre-commit-proof` (a 36.ª — a declaração dos recusadores, a descida e o CONTROLE) |      38.5s |   10% |       3 |
+| `remedy-tty`                                                                       |      29.8s |    8% |       2 |
+| `registry-defaults`                                                                |      21.2s |    5% |       7 |
+| `required-applied`                                                                 |      18.0s |    5% |      10 |
+| `bench-freshness` (a 37.ª — a régua da idade, as SEIS metades)                     |      17.3s |    4% |       6 |
+| `cut-stages` (a 34.ª — as três invariantes duras do corte do GitHub)               |      17.3s |    4% |       3 |
+| `github-deps` (a 32.ª — a catraca do inventário do GitHub)                         |      12.8s |    3% |       9 |
+| `mirror-coverage` (a 35.ª — o CONTROLE, a soma por tabela e o pulo sem motivo)     |      11.0s |    3% |       3 |
+| … (os 37, do mais caro ao mais barato, sempre na tabela do relatório)              |            |       |         |
+| **soma dos 37 sub-tests**                                                          | **390.8s** |  100% | **216** |
+| harness (parse das metades, tabelas, subida do master)                             |       4.2s |       |         |
+| **total do master**                                                                | **395.0s** |       |         |
 
-Oito sub-tests pagam **80%** da conta e a mediana é **1.8s**: a cauda é barata, e
+**Nove** sub-tests pagam **80%** da conta e a mediana é **2.1s**: a cauda é barata, e
 o harness é a parte que a conta à mão esquecia (ele sai da DIFERENÇA, não de uma
-constante). O sub-test novo entra na rodada seguinte **MEDIDO** — a 36.ª entrou
-medida (37.9s) e o ato seguinte já a mede em 40.0s, sem ninguém recompor a soma.
-(A coluna de metades da tabela é a do ATO de `eee4f65e` — **209**; a matriz viva
-declara **216** desde as SEIS metades da régua da idade (`bench-freshness`, a
-37.ª) por cima da M5 do gate da latência, e é o próximo ato do bench que recolhe o
-número novo: a baseline guarda o count do ato que a mediu, e o
-`check:mutation-count` compara as refs vivas entre si.)
+constante). O sub-test novo entra na rodada seguinte **MEDIDO** — a 37.ª entrou
+medida (17.3s) **sem ninguém recompor a soma**, que é o contrato desta família. A
+coluna de metades da tabela é a do PRÓPRIO ato (**216**): desde que o bench passou a
+medir a matriz inteira no mesmo ato do commit de origem, o count do ato e o count
+vivo deixaram de poder divergir — o `check:mutation-count` continua comparando as
+refs vivas entre si.
 
 **E a derivação desceu ao PASSO.** O mesmo mecanismo, um nível abaixo: o job
 `mutation-count-guard` do espelho passou a declarar os seus **PASSOS**, e o passo
 da suíte não tem número próprio — ele **LÊ** a forma `mutation-count` desta mesma
-tabela (3.897s, com o commit `eee4f65e` ao lado), como o `benchIndex` já fazia com
+tabela (3.812s, com o commit `fa75f732` ao lado), como o `benchIndex` já fazia com
 o total do master. O defeito que a ligação elimina é o de dois números do MESMO
 passo: o declarado dizia 3870ms contra os 3897ms da forma, e nenhum dos dois era
 derivado do outro — 27ms de diferença de contexto que ninguém veria até alguém
@@ -3165,14 +3166,16 @@ ele entra na rodada seguinte **MEDIDO**, e a comparação o publica como forma n
 que alguém montou à mão. O modelo de latência passou a **DERIVAR** o passo do
 master desta medição (`benchIndex` lê o total da família), o que já confronta o
 declarado do espelho: **0%** — o ato de 21/09/2026 (`--only mutations --json
---baseline --merge`, com a árvore commitada em `eee4f65e`) re-declarou o job em
-**380950ms**, que é a própria medição; antes dele a baseline guardava a medição de
-OUTRO commit (**271.8s** com 33 sub-tests contra um derivado de 380.9s) e a
-comparação NOMEAVA os **28% de divergência** em vez de escondê-los. O mesmo ato
-re-declarou o PISO do job `guards` da forja dona do merge (**414838ms**: a bateria
-re-medida de 30.9s + o gate de sintaxe + a matriz + a paridade das regras de
-classificação). A projeção do
-PRÓXIMO sub-test (~10.6s) é dita como **PROJEÇÃO**, não medição: ela é a média dos
+--baseline --merge`, com a árvore commitada em `fa75f732`, a régua da idade como a
+37.ª) re-declarou o job em **394959ms**, que é a própria medição; antes dele o ato
+de 36 sub-tests (`eee4f65e`) declarava 380950ms e o primeiro ato desta série
+guardava a medição de OUTRO commit (**271.8s** com 33 sub-tests contra um derivado
+de 380.9s), onde a comparação NOMEAVA os **28% de divergência** em vez de
+escondê-los. O mesmo ato
+re-declarou o PISO do job `guards` da forja dona do merge (**428880ms**: a bateria
+re-medida de 30.9s + o gate de sintaxe + a matriz de 395.0s + a paridade das regras
+de classificação). A projeção do
+PRÓXIMO sub-test (~10.7s) é dita como **PROJEÇÃO**, não medição: ela é a média dos
 scripts já medidos mais o harness por sub-test, e os dois lados saem de medição.
 A família segue a **mesma régua de cobertura** das outras: sem ela nesta rodada (ou
 com o master sem produzir o JSON) a comparação fica `measured: false` e **nomeia**
