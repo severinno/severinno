@@ -4616,8 +4616,9 @@ exatamente nos 150, e todos os números do modelo já carregam a data deles (que
 em si, a prova de que a regra é seguida). Cada mutação é CIRÚRGICA (o alvo tem de
 aparecer UMA vez, e o arquivo mutado tem de seguir com sintaxe válida) e a régua é
 RESTAURADA entre as medições, com o CONTROLE final medindo o mesmo fato (412
-commits) de novo. A suíte é a **37.ª** da matriz do master e custa **17.7s**
-sozinha (6 metades), medida pelo mesmo caminho do job.
+commits) de novo. A suíte é a **37.ª** da matriz do master e custa **17.3s**
+sozinha (6 metades) no ato versionado — a MESMA ordem de grandeza que os **17.7s**
+medidos pelo `--scenario` isolado antes de ela entrar na matriz.
 
 **LIMITE DECLARADO:** a régua mede **frescor**, não exatidão. Um commit a mais
 pode não mudar nada do que a família mede, e o teto é um contrato de RITMO, não
