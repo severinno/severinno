@@ -66,6 +66,7 @@
     "merge-gate:prove": "node scripts/prove-gitea-merge-gate.mjs",
     "gitea-registry:prove": "node scripts/prove-gitea-registry.mjs",
     "cut-stages:prove": "node scripts/prove-cut-stages.mjs",
+    "stack-per-commit:prove": "node scripts/prove-stack-per-commit.mjs",
     "tla-cycle:prove": "node scripts/prove-tla-cycle.mjs",
     "pre-commit-in-runner:prove": "node scripts/prove-pre-commit-in-runner.mjs",
     "check:e2e-counts": "node scripts/check-e2e-counts.mjs",

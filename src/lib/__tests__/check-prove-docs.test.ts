@@ -97,7 +97,7 @@ function docBlock(
 // ── a FAMÍLIA, derivada ────────────────────────────────────────────────────
 
 describe("discoverFamily — derivada de package.json, não listada", () => {
-  it("acha os ONZE comandos da família e deixa o PUBLICADOR de fora", () => {
+  it("acha os DOZE comandos da família e deixa o PUBLICADOR de fora", () => {
     const pkg = JSON.parse(
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require("node:fs").readFileSync(join(ROOT, "package.json"), "utf8"),
@@ -114,6 +114,7 @@ describe("discoverFamily — derivada de package.json, não listada", () => {
       "pre-commit-in-runner:prove",
       "runner-image:prove",
       "smoke-render:prove",
+      "stack-per-commit:prove",
       "tla-cycle:prove",
     ])
     // O `doctor:issue` PUBLICA o veredito; não mede nada — não há saída de prova
@@ -483,22 +484,25 @@ describe("CLI real — o fixture prova a cobertura E a fidelidade", () => {
 // ── o ESTADO REAL do repositório ───────────────────────────────────────────
 
 describe("audit — o repositório como ele está", () => {
-  it("nenhuma violação: os onze comandos documentam e a saída real bate", () => {
+  it("nenhuma violação: os doze comandos documentam e a saída real bate", () => {
     const report = audit({ root: ROOT })
     expect(report.violations).toEqual([])
-    expect(report.family).toHaveLength(11)
-    expect(report.results).toHaveLength(11)
+    expect(report.family).toHaveLength(12)
+    expect(report.results).toHaveLength(12)
     // O desfecho é REPORTADO, não presumido: o que não foi rodado com docker
     // aparece como indeterminado DECLARADO, nunca como "provado".
     const provados = report.results.filter(
       (r: { ok: boolean; desfecho: string }) => r.ok && r.desfecho === "provado",
     )
-    // TRÊS provas rodam SEM docker e saem provadas neste host: as duas do
+    // QUATRO provas rodam SEM docker e saem provadas neste host: as duas do
     // contrato da árvore (`runner-image:prove`, que confere os contratos da
-    // imagem, e o `cut-stages:prove`) e a do ciclo de TLA (`tla-cycle:prove`,
-    // medida nos dois loaders do runtime local). A ORDEM é a dos blocos na doc.
+    // imagem, e o `cut-stages:prove`), a do ciclo de TLA (`tla-cycle:prove`,
+    // medida nos dois loaders do runtime local) e a da PILHA por commit
+    // (`stack-per-commit:prove`, que mede worktrees de git, sem container).
+    // A ORDEM é a dos blocos na doc.
     expect(provados.map((r: { command: string }) => r.command)).toEqual([
       "runner-image:prove",
+      "stack-per-commit:prove",
       "cut-stages:prove",
       "tla-cycle:prove",
     ])

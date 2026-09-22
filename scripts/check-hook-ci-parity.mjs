@@ -307,6 +307,14 @@ export const HOOK_NOT_RUN = [
   // que a maquina remenda. Com o comando na fase B, a classe
   // `pipefail-sigpipe` do remedio do pre-commit passa a ser ALCANCAVEL no momento
   // do defeito. O CI continua rodando a varredura inteira (as duas forjas).
+  // A prova da PILHA commit a commit e do CONTRATO DE MERGE (a historia que o
+  // merge leva ficou verde commit a commit?), e ela NAO cabe no caminho de um
+  // commit: o custo e por COMMIT medido (~5,4s — 86s numa cadeia de 16) e a
+  // pilha de um PR passa de 100. O hook pagaria minutos em cada commit.
+  {
+    ids: ["stack-per-commit"],
+    why: "o veredito e da PILHA inteira (cada commit num worktree proprio, ~5,4s por commit: 86s na cadeia de 16 do #25, medido) e a pilha de um PR passa de 100 commits — nao existe recorte local que caiba no caminho de um commit. A pergunta e sobre o CONTRATO DE MERGE (a historia que o merge leva ficou verde commit a commit?), e quem a responde a cada PR sao as DUAS pipelines: o job `stack-per-commit` da forja dona do merge e o do espelho, os dois com install.",
+  },
   {
     ids: ["job-deps"],
     why: "o veredito e do ESTADO do repositorio inteiro (os 33 workflows das duas forjas e o grafo de imports de cada comando que um job roda): ele muda com um commit de WORKFLOW e tambem com um commit que muda o GRAFO de um script que um job ja rodava — nao existe recorte --staged que cubra as duas metades (um recorte sobre os workflows tocados ficaria cego no import novo de um script). O hook ja roda `bun run check:forge-parity` em TODO commit, que e quem exige a CLASSIFICACAO de um gate novo — e o CI roda o gate em todo PR, nas duas forjas.",

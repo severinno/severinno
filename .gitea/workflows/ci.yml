@@ -505,6 +505,54 @@ jobs:
       - name: Bring-up contra env divergente (a stack não sobe)
         run: node scripts/prove-runner-image-gate.mjs
 
+  # ── Cada COMMIT da pilha passa SOZINHO (worktree próprio) ────────────────
+  # O PR mede o TOPO; a pilha tem commits no MEIO. Medido: o `eee4f65e` pôs o
+  # `check-mutation-count` na bateria local e invalidou a expectativa do teste da
+  # descida — o vermelho viajou 12 commits acima, e quem media só o topo (o
+  # `test:run` do PR) nunca viu o commit que nasceu vermelho.
+  #
+  # Aqui, na forja DONA DO MERGE, cada commit da pilha é materializado num `git
+  # worktree` próprio e medido SOZINHO: os testes que o DIFF dele alcança (o
+  # grafo de imports e a convenção de nome) e três invariantes de ÁRVORE que
+  # qualquer commit pode quebrar sem tocar o dono delas (a contagem da matriz, a
+  # paridade das forjas e a prosa da versão). Um commit que não passa sozinho
+  # REPROVA o job nomeando o commit e o gate; acima do teto de commits o veredito
+  # é INDETERMINADO (exit 2), nunca verde. O `fetch-depth: 0` é CONDIÇÃO da
+  # medição (sem a história não há worktree do commit) e `node_modules` é
+  # INSTALADO — o job roda `vitest` dentro dos worktrees, e é o `check-job-deps`
+  # quem cobra isso de todo job.
+  stack-per-commit:
+    name: Stack Per-Commit (cada commit sozinho)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Script (não composite action): `run:` não passa pelo resolvedor de
+      # actions locais do runner — ver scripts/setup-bun-ci.sh.
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - run: bun install --frozen-lockfile
+      - run: bun run db:generate
+
+      # `PILHA_HEAD`: no PR o checkout é o commit de MERGE — medir a pilha a
+      # partir dele mediria outra pilha. O head real do PR entra por env, e a
+      # BASE sai do `GITHUB_BASE_REF` (a mesma régua do `--base`).
+      - name: Cada commit da pilha, sozinho
+        env:
+          PILHA_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/prove-stack-per-commit.mjs
+
+      - name: Summary
+        run: echo "✅ Cada commit da pilha foi materializado num worktree próprio e medido SOZINHO — os testes que o diff dele alcança (grafo de imports + convenção de nome) e as três invariantes de árvore (contagem da matriz, paridade das forjas, prosa da versão). Um commit que não passa sozinho nomeia o commit e o gate; a pilha acima do teto sai INDETERMINADA (nunca verde)."
+
   # ── Prova do bloqueio do PRE-COMMIT DENTRO da imagem do runner ────────────
   # O doctor publica o fato do bloqueio do pre-commit e EXECUTA a prova
   # (`proveCommitBlocks`), mas ele roda onde o doctor roda: na máquina do

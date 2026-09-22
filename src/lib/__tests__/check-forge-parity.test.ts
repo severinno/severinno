@@ -90,6 +90,7 @@ const REAL_LINES = [
   "      - run: node scripts/check-doctor-ci.mjs",
   "      - run: node scripts/prove-runner-image-gate.mjs",
   "      - run: node scripts/prove-pre-commit-in-runner.mjs",
+  "      - run: node scripts/prove-stack-per-commit.mjs",
   "      - run: node scripts/merge-latency.mjs --check",
   // A prova por mutação não é isenta do dono do merge: a matriz (que mede se um
   // guard MORDE) e a prova das três regras de classificação rodam nas DUAS

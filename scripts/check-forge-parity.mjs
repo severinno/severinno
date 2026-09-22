@@ -704,6 +704,18 @@ export const CORE_INVARIANTS = [
     jobIds: { gitea: "pre-commit-in-runner-proof", github: "pre-commit-in-runner-proof" },
   },
   {
+    id: "stack-per-commit",
+    // A prova de que CADA commit da pilha passa SOZINHO. O PR mede o TOPO; o
+    // vermelho nasce no MEIO — medido: o `eee4f65e` invalidou a expectativa do
+    // teste da descida e o vermelho viajou 12 commits acima. O comando é o MESMO
+    // nas duas forjas, e a dona do merge é quem PRECISA dele: um commit que
+    // nasce vermelho chega ao merge por este caminho se o portão só olhar o topo.
+    matches: /prove-stack-per-commit/,
+    command: /^node scripts\/prove-stack-per-commit\.mjs$/m,
+    why: "um commit do MEIO da pilha que nao passa sozinho e um vermelho que o portao do topo nao ve — e o merge leva para a base uma historia que nunca ficou verde commit a commit",
+    jobIds: { gitea: "stack-per-commit", github: "stack-per-commit" },
+  },
+  {
     id: "script-headers",
     matches: /check-script-headers/,
     command: /^node scripts\/check-script-headers\.mjs$/m,

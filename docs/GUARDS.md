@@ -3123,12 +3123,14 @@ VERSIONADO — o mesmo comando, com a árvore COMMITADA: medido em 21/09/2026 ne
 máquina (**37/37 verdes**), o commit de origem gravado é `fa75f732` e a baseline
 guarda 37 sub-tests com 216 metades e 395.0s — e é este total que o modelo de
 latência deriva. **A coluna de metades é a do ATO** (216, medido em `fa75f732`) e
-não a da árvore de agora (o `check:mutation-count` publica **218**: as duas
-metades do teto derivado — M7 e M8 — entraram depois daquele ato, e o custo do
-sub-test `bench-freshness` com elas foi medido por execução em 22/09/2026
+não a da árvore de agora (o `check:mutation-count` publica **223**: as duas
+metades do teto derivado — M7 e M8 — entraram depois daquele ato, e as CINCO da
+pilha commit a commit — M1–M5, a 38.ª entrada da matriz — também; o custo do
+sub-test `bench-freshness` com as suas foi medido por execução em 22/09/2026
 (`time bash scripts/test-mutation-bench-freshness.sh`, três corridas: 22.8 · 22.8
-· 22.7s): **22.8s** contra os 17.3s do ato — as duas metades custam uma suíte
-unitária e um CLI a mais cada uma; o ato seguinte as versiona junto):
+· 22.7s): **22.8s** contra os 17.3s do ato, e a suíte nova mede **3.3s** (o
+fixture dela é node-puro, sem `node_modules`) — nenhuma das duas entrou no ato:
+o ato seguinte as versiona junto):
 
 | sub-test                                                                           |  wall time | fatia | metades |
 | ---------------------------------------------------------------------------------- | ---------: | ----: | ------: |
@@ -6647,6 +6649,87 @@ turno (JSDoc sem o campo novo), e o pegou antes de qualquer outra rede.
 não dá para provar o bloqueio dentro do runtime do CI
 o docker não respondeu
 ```
+
+**`stack-per-commit:prove`** — cada commit da pilha passa SOZINHO? O PR mede o TOPO, e
+a pilha tem commits no MEIO: um commit que nasce vermelho só aparece muitos commits
+acima (medido — o `eee4f65e` pôs o `check-mutation-count` na bateria local, invalidou a
+expectativa do teste da descida, e o vermelho viajou **12 commits** até o topo, que era o
+único lugar onde ele era olhado).
+
+O comando materializa CADA commit da pilha num `git worktree` próprio (com o
+`node_modules` do repo medido ligado por symlink) e mede, por commit, o que ele sozinho
+quebra:
+
+1. os **TESTES AFETADOS** pelo diff dele, derivados por duas réguas — o **grafo de
+   imports** (o teste que importa um arquivo que o commit mudou, pela mesma régua de
+   código-vs-string do `check-tla-closure`) e a **convenção de nome**
+   (`scripts/check-foo.mjs` → `check-foo*.test.ts`; `src/lib/foo.ts` → `foo.test.ts`);
+2. o **CONJUNTO SEMPRE** (declarado): três invariantes de **árvore** que qualquer commit
+   pode quebrar SEM tocar o guard que as possui — a contagem da matriz, a paridade das
+   forjas e a prosa da versão. A bateria inteira (48 guards) por commit custaria horas, e
+   o que fica de fora está nomeado no limite do próprio script.
+
+O veredito é por commit: `verde` (passa sozinho), `vermelho` (nomeia o commit e o gate
+que reprovou) e `indeterminado` — worktree que não abriu, comando ausente ou timeout
+NUNCA valem verde. A pilha REPROVA se algum commit não passar sozinho, e fica
+INDETERMINADA (exit 2) se algum não pôde ser medido ou se a pilha estoura o teto de
+commits (um job que não cabe no tempo não vira verde por não ter sido olhado).
+
+**O ESCOPO DO BLOCO ABAIXO É DECLARADO, e ele é o CONJUNTO SEMPRE.** Os testes
+afetados são o custo DOMINANTE e ele é função do diff do commit: medido no tip que
+introduziu esta prova (15 arquivos), a derivação alcançou **25 arquivos de teste e
+201s** — acima do teto de 180s do próprio `check-prove-docs`, isto é, um bloco de
+doc com custo ilimitado, que reprovaria o guard por TEMPO quando o tip crescesse.
+Com `--sem-afetados` o bloco mede o CONJUNTO SEMPRE do HEAD de verdade (worktree,
+as três invariantes de árvore, o veredito e o `--json` reais) em **0,8s**, e os
+testes afetados seguem medidos onde eles SÃO a pergunta: o job `stack-per-commit`
+das duas forjas e a suíte de mutação. No escopo SEMPRE o relatório escreve
+`afetados — (NÃO MEDIDOS: escopo --sem-afetados)` e o `--json` marca
+`escopo: "sempre"`: um `0` ali NUNCA é "o diff não alcança teste nenhum".
+
+<!-- prove-doc: stack-per-commit:prove
+     run: --only HEAD --sem-afetados --json
+     exit: 0
+     cenario: ambiente
+     desfecho: provado
+-->
+
+```text
+"commits": 1
+"veredito": "ok"
+```
+
+**O que ele mediu na primeira subida** (a cadeia do `#25`, 16 commits entre a base da
+pilha e o topo): o gate achou **três commits que não passam sozinhos** — `7335cd1a`,
+`48e14651` e `4c0851b7` — todos pela MESMA causa: a régua da idade do bench acusa a
+origem gravada na baseline como fora da história, porque a reescrita de uma rebase troca
+o hash do commit em que o ato foi medido. O topo é verde (o ato re-datou a proveniência),
+e é EXATAMENTE isso que o topo esconde: um commit do meio que nasceu vermelho. A dobra que
+move um conserto para baixo também reescreve esses hashes, e o mesmo gate pegou o efeito
+dela: o ato re-datado para o commit PRÉ-dobra ficou órfão, e o topo passou a acusar.
+
+**Prova por mutação:** `scripts/test-mutation-stack-per-commit.sh` tira cada regra do
+veredito do lugar, uma por vez, e exige que o veredito MUDE — são **em CINCO direções**
+(M1–M5): a **régua nomeada** e a **do grafo** fora da DERIVAÇÃO dos testes afetados
+(em M1 o commit vermelho que só o nome alcança sai ✅; em M2, o que só o import alcança),
+o **veredito por commit** (M3: os dois commits que nascem vermelhos saem ✅ e a pilha sai
+APROVADA) e o **da série** (M4: o relatório segue dizendo os dois vermelhos e o exit vira
+0 — o job ficaria verde com dois commits vermelhos dentro), e o **TETO** (M5: acima dele
+o gate sai 0 sem ter medido um único commit, quando a regra é INDETERMINADO).
+O **fixture é um repositório git de verdade**, com uma pilha de **três commits sobre uma
+base sã** onde **dois NASCEM vermelhos** — e cada um quebra **um** dos dois testes, por
+uma régua diferente, o que torna as réguas separáveis: derrubar uma da derivação tira do
+veredito **um** vermelho, e não os dois. O **TOPO** os conserta, e um controle roda o gate
+com `--only` no topo: ele passa sozinho (exit 0) — é a classe do defeito medida, o topo
+verde escondendo o vermelho do meio. A detecção é o **CONJUNTO de commits vermelhos**
+(não o exit code: com uma régua só fora, o outro vermelho ainda reprova a pilha) e a
+**DERIVAÇÃO lida na fonte**: o runner do fixture registra, por commit, os arquivos que
+recebeu. O fixture DECLARA o próprio `vitest` (um script no `package.json` dele que
+importa os arquivos e reprova se algum levantar): o sujeito é o veredito do gate sobre o
+exit code do runner, e um fixture que exigisse `node_modules` iria a vermelho por
+AMBIENTE num job sem dependências. A suíte é a **38.ª sub-test** da matriz do master, e
+por isso roda com o MESMO comando nas DUAS forjas (o job `guards` da dona do merge e o
+`mutation-guards` do espelho).
 
 **`cut-stages:prove`** — cada etapa do corte do GitHub é shippable sozinha? Aplica as
 cinco etapas de `docs/GITHUB_CUT.md` §3, EM SEQUÊNCIA, numa cópia da árvore rastreada

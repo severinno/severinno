@@ -518,7 +518,8 @@ jobs:
   # Linux do release v0.2.89 (mesma versão da validação local — o default
   # do script é o act.exe do Windows; ACT_BIN aponta para o Linux) e puxamos
   # as DUAS imagens antes (o act usa --pull=false — sem re-download por
-  # run). A tag da custom vem de vars.BUN_VERSION (fonte única) via --image.
+  # run). A tag da custom vem da fonte única da versão (a variable do repositório)
+  # via --image.
   act-startup-bench:
     name: Act startup bench (delta 30%)
     runs-on: self-hosted
