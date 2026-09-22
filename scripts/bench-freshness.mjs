@@ -32,14 +32,31 @@
 // data própria não é "sem idade", é uma declaração que a régua recusa a datar
 // por decurso.
 //
-// O TETO (`FRESHNESS_MAX_COMMITS_BEHIND`) É DECLARADO, não escolhido por gosto: o
-// cron que re-mede (`guard-timing-alert`, semanal) move a baseline de propósito, e
-// o ritmo MEDIDO do repositório é de ~10 commits/dia (303 em 30 dias, 494 em 90 —
-// medido com `git log --since`), ou seja ~70 commits por ciclo do cron. O teto de
-// 150 é DOIS ciclos: uma semana perdida (cron que falhou, feriado, fila) não abre
-// ticket — duas semanas sem re-medição abrem. Abaixo disso o canal viraria ruído
-// (o repositório já classificou alerta que sempre acende como defeito), acima
-// disso o número teria passado meses envelhecendo sem que ninguém lesse.
+// O TETO NÃO É DECLARADO À MÃO: o ritmo que o repositório ANDA, medido, é que o
+// decide. A POLÍTICA (`POLITICA_DO_TETO`) diz o que não se mede — o ciclo do cron
+// que re-mede (`guard-timing-alert`, semanal), QUANTOS ciclos uma re-medição
+// perdida pode atrasar (2: uma semana perdida não abre ticket, duas abrem), a
+// janela em que o ritmo é medido (28 dias = 4 ciclos) e o PISO por ciclo (um
+// repositório parado daria teto 0 e acusaria tudo). O NÚMERO sai de
+// `tetoDoRitmo(medirRitmoDeCommits(...))`: `ciclos × commits por ciclo`.
+//
+// A JANELA É MEDIDA, não escolhida por gosto — o teto que cada janela daria,
+// re-medido em 22/09/2026 (`git rev-list --count --since`): 14 dias → 164 ·
+// 21 dias → 163 · **28 dias → 157** · 35 dias → 139 · 90 dias → 79. (A janela
+// ROLA: na véspera a de 14 dias dava 170 e a de 21, 165 — o número é do dia em
+// que se mede, e é justamente por isso que a política declara a JANELA e não o
+// número.) Janela curta: uma semana atípica manda no teto; longa: o ritmo de
+// meses atrás decide o de hoje, e num repositório que acelerou o teto fica
+// APERTADO em silêncio (a de 90 dias acusaria hoje 22 das 35 declarações QUE TÊM
+// teto — 28 das 41, contando as tabelas do README, que são publicadas — todas
+// de menos de uma semana em tempo de calendário). 4 ciclos é a janela que contém
+// ciclos inteiros (a cadência semanal — fim de semana, feriado — se dilui) sem
+// sair da ordem do horizonte que o teto cobre.
+//
+// FAIL-CLOSED: sem ritmo medido (git que não roda, saída que não é contagem) o
+// teto cai na RESERVA declarada (`FRESHNESS_MAX_COMMITS_BEHIND`, 150 — os ~157
+// que a janela de 28 dias dava quando a régua foi escrita), e o fato PUBLICA
+// qual das duas réguas valeu (`teto.origem`) — nunca um teto silencioso.
 //
 // AS FONTES SÃO AS DO DONO, não uma segunda leitura: o conjunto de famílias é o
 // `FAMILY_MEASURED` do `bench-guard-timing.mjs` (a MESMA régua que decide "foi
@@ -104,19 +121,157 @@ const REPO_ROOT = join(SCRIPT_DIR, "..")
 export const BASELINE_PATH = join("docs", "benchmarks", BASELINE_FILE)
 
 /**
- * O TETO, em commits de HEAD (a régua da casa — ver o cabeçalho para o porquê
- * dos 150: dois ciclos do cron semanal, ao ritmo medido do repositório).
+ * A POLÍTICA do teto de idade: o que se DECLARA (o ciclo do cron e quantos
+ * ciclos uma re-medição perdida pode atrasar) e o que se MEDE (o ritmo de
+ * commits do repositório). O NÚMERO do teto não é declarado à mão: ele é o
+ * produto `ciclos × commits por ciclo`, e o ritmo sai do git na hora de medir.
+ *
+ * O QUE É DECLARADO, e por quê:
+ *   - `cicloDias: 7`    — o cron que re-mede a baseline (`guard-timing-alert`)
+ *     é SEMANAL: o ciclo da política é o ciclo do dono, não um número escolhido;
+ *   - `ciclos: 2`       — UMA semana perdida (cron que falhou, feriado, fila de
+ *     runner) não abre ticket; DUAS abrem — é a decisão que o teto codifica;
+ *   - `janelaDias: 28`  — a janela em que o ritmo é medido: QUATRO ciclos. Menos
+ *     que isso, uma semana atípica manda no teto; mais, o ritmo de meses atrás
+ *     decide o de hoje (a janela de 90 dias daria 79 e acusaria 22 das 35
+ *     declarações que TÊM teto, todas com menos de uma semana de calendário —
+ *     ver o cabeçalho);
+ *   - `pisoDeCiclo: 20` — o PISO por ciclo. Um repositório parado (ou uma janela
+ *     sem commits de código) daria um teto de 0 e acusaria TUDO; o piso é
+ *     declarado, não medido, e quando ele morde o relatório diz.
+ *
+ * FAIL-CLOSED: quando o git não responde o ritmo (não é repositório, `HEAD`
+ * ausente, objeto fora do checkout), o teto NÃO vira `null` (sem teto = tudo
+ * fresco por omissão) nem um palpite: cai no TETO DE RESERVA × ciclos, e a causa
+ * sai publicada no fato (`teto.origem: "reserva declarada"`).
+ */
+export const POLITICA_DO_TETO = {
+  cicloDias: 7,
+  ciclos: 2,
+  janelaDias: 28,
+  pisoDeCiclo: 20,
+}
+
+/**
+ * O TETO DE RESERVA, em commits de HEAD — a política aplicada ao ritmo que o
+ * repositório tinha quando este valor foi escrito (a janela de 28 dias da
+ * política, re-medida em 22/09/2026 com `git rev-list --count --since`: 314
+ * commits — 506 em 90 dias; o produto dá 157, e a reserva é o 150 que se
+ * declarava à mão antes desta derivação).
+ *
+ * Ele NÃO é a fonte do teto: é o valor usado quando o ritmo não pôde ser medido
+ * AGORA, e o fato diz qual dos dois valeu (`teto.origem`).
  */
 export const FRESHNESS_MAX_COMMITS_BEHIND = 150
+
+/**
+ * MEDE o ritmo de commits do repositório na janela da política.
+ *
+ * O veredito é o do comando (`git rev-list --count`), não o de um filtro: uma
+ * contagem vazia, um erro do git ou um número que não é inteiro positivo saem
+ * como `unknown` com a CAUSA nomeada — e `unknown` aqui nunca vira "fresco",
+ * porque o teto cai na reserva declarada e o fato publica qual régua valeu.
+ *
+ * @param {{cwd?: string, run?: Function, agora?: Date, politica?: typeof POLITICA_DO_TETO}} [options]
+ * @returns {{state: "medido"|"unknown", desde: string, janelaDias: number, commits?: number, commitsPorCiclo?: number, reason: string|null}}
+ */
+export function medirRitmoDeCommits({
+  cwd = REPO_ROOT,
+  run = spawnSync,
+  agora = new Date(),
+  politica = POLITICA_DO_TETO,
+} = {}) {
+  const desde = new Date(agora.getTime() - politica.janelaDias * 86400000).toISOString()
+  const base = { desde, janelaDias: politica.janelaDias, commits: null, commitsPorCiclo: null }
+  // O canal de git é o MESMO dos outros medidores deste módulo (`run("git", args,
+  // { cwd })`): a sonda injetada pelo teste responde por subcomando, e um
+  // `-C` avulso aqui sairia por um canal que o dublê não conhece.
+  const r = run("git", ["rev-list", "--count", `--since=${desde}`, "HEAD"], {
+    cwd,
+    encoding: "utf8",
+    timeout: 30000,
+  })
+  if (r?.error || r?.status !== 0) {
+    const causa = r?.error?.message ?? `exit ${r?.status ?? "?"}`
+    return {
+      ...base,
+      state: "unknown",
+      reason: `o git não respondeu a contagem de commits desde ${desde.slice(0, 10)} (${String(causa).split("\n")[0]})`,
+    }
+  }
+  const commits = Number(String(r.stdout ?? "").trim())
+  if (!Number.isInteger(commits) || commits <= 0) {
+    const saida = String(r.stdout ?? "")
+      .trim()
+      .slice(0, 40)
+    return {
+      ...base,
+      state: "unknown",
+      reason: `o git respondeu algo que não é uma contagem de commits (${saida || "saída vazia"})`,
+    }
+  }
+  const ciclosNaJanela = politica.janelaDias / politica.cicloDias
+  return {
+    ...base,
+    state: "medido",
+    commits,
+    commitsPorCiclo: commits / ciclosNaJanela,
+    reason: null,
+  }
+}
+
+/**
+ * Deriva o TETO de idade do ritmo medido: `ciclos × commits por ciclo`, com o
+ * piso declarado como limite inferior. É o ÚNICO lugar que transforma ritmo em
+ * teto — quem publica o número publica junto de onde ele veio.
+ *
+ * O objeto devolvido sai AUTO-DESCRITO (a política, o medido e o resultado): é
+ * dele que o relatório, o doctor e a issue leem a procedência, e é ele que
+ * permite recomputar o teto do lado de fora (`piso` × `ciclos` contra
+ * `commits` ÷ `janelaDias` × `ciclos`) sem uma segunda cópia da regra.
+ *
+ * @param {{state: string, commitsPorCiclo?: number|null, reason?: string|null, desde?: string}} ritmo
+ * @param {typeof POLITICA_DO_TETO} [politica]
+ * @returns {TetoDeIdade}
+ */
+export function tetoDoRitmo(ritmo, politica = POLITICA_DO_TETO) {
+  const base = {
+    ciclos: politica.ciclos,
+    cicloDias: politica.cicloDias,
+    janelaDias: ritmo?.janelaDias ?? politica.janelaDias,
+    pisoDeCiclo: politica.pisoDeCiclo,
+    desde: ritmo?.desde ?? null,
+    commits: ritmo?.commits ?? null,
+  }
+  if (ritmo?.state !== "medido" || typeof ritmo.commitsPorCiclo !== "number") {
+    return {
+      ...base,
+      teto: FRESHNESS_MAX_COMMITS_BEHIND,
+      origem: "reserva declarada",
+      motivo: ritmo?.reason ?? "o ritmo de commits não foi medido",
+      commitsPorCiclo: null,
+    }
+  }
+  const piso = politica.pisoDeCiclo * politica.ciclos
+  const bruto = Math.round(ritmo.commitsPorCiclo * politica.ciclos)
+  return {
+    ...base,
+    teto: Math.max(piso, bruto),
+    origem: "medido",
+    commitsPorCiclo: ritmo.commitsPorCiclo,
+    motivo:
+      bruto < piso ? `o ritmo medido daria ${bruto} commit(s) e o PISO declarado é ${piso}` : null,
+  }
+}
 
 /**
  * O TETO É POR TIPO DE DECLARAÇÃO, e cada um tem o SEU ritmo — um teto único
  * acusaria a prosa de custo (re-medida quando o GUARD muda) no ritmo do bench
  * (re-medido por cron), que é um alerta que sempre acende.
  *
- *   bench-family     150  dois ciclos do cron semanal (`guard-timing-alert`) ao
- *                         ritmo medido do repositório (~70 commits/ciclo);
- *   declared-number  150  o modelo de latência é re-medido no MESMO ato em que o
+ *   bench-family    idade  segue o teto DERIVADO do ritmo (dois ciclos do cron
+ *                         semanal `guard-timing-alert` × commits por ciclo);
+ *   declared-number idade  o modelo de latência é re-medido no MESMO ato em que o
  *                         job muda (e o dono confronta derivado × declarado);
  *   declared-table   null  a prosa de custo do README é re-medida quando o GUARD
  *                         muda, não por calendário: um teto em commits compararia
@@ -127,30 +282,36 @@ export const FRESHNESS_MAX_COMMITS_BEHIND = 150
  *                         vale é o dono dele, quando o guard mudar.
  */
 export const FRESHNESS_CEILINGS = {
-  "bench-family": FRESHNESS_MAX_COMMITS_BEHIND,
-  "declared-number": FRESHNESS_MAX_COMMITS_BEHIND,
+  "bench-family": "idade",
+  "declared-number": "idade",
   "declared-table": null,
 }
 
 /**
- * O teto de um tipo de declaração.
+ * O teto de um tipo de declaração, com o VALOR vindo da derivação do ritmo.
  *
- * `null` = SEM teto (a idade é publicada, e o vencimento não é um veredito deste
- * tipo) — o do bench quando o tipo não é declarado.
+ * A tabela declara a POLÍTICA do tipo (`"idade"` = segue o teto derivado; `null`
+ * = sem teto, a idade só é publicada); o número sai de `tetoDoRitmo`. Um literal
+ * aqui seria o defeito que este passo removeu: o teto voltaria a ser declarado à
+ * mão, e o ritmo do repositório viveria em prosa.
+ *
+ * @param {string} kind
+ * @param {number} tetoDeIdade o teto derivado (ou o de reserva, quando o ritmo não foi medido)
  */
-export function ceilingOf(kind) {
-  return kind in FRESHNESS_CEILINGS ? FRESHNESS_CEILINGS[kind] : FRESHNESS_MAX_COMMITS_BEHIND
+export function ceilingOf(kind, tetoDeIdade = FRESHNESS_MAX_COMMITS_BEHIND) {
+  const politica = kind in FRESHNESS_CEILINGS ? FRESHNESS_CEILINGS[kind] : "idade"
+  return politica === null ? null : tetoDeIdade
 }
 
 /** O teto de um tipo, como TEXTO (o `null` diz que a idade é só publicada). */
-export function ceilingLabel(kind) {
-  const teto = ceilingOf(kind)
+export function ceilingLabel(kind, tetoDeIdade) {
+  const teto = ceilingOf(kind, tetoDeIdade)
   return teto === null ? "sem teto (a idade é publicada)" : `${teto}`
 }
 
 /** A comparação que decide `aged` — com teto `null` NUNCA há vencimento. */
-export function isAged(behind, kind) {
-  const teto = ceilingOf(kind)
+export function isAged(behind, kind, tetoDeIdade) {
+  const teto = ceilingOf(kind, tetoDeIdade)
   return teto !== null && typeof behind === "number" && behind > teto
 }
 
@@ -245,6 +406,9 @@ export function commitAge(
  *
  * @typedef {object} FamilyAge
  * @property {string} family
+ * @property {string} [kind]            o TIPO da declaração (e com ele a POLÍTICA
+ *                                      do teto dela); opcional porque um fato de
+ *                                      famílias sozinho não o carrega
  * @property {string|null} act          o ato do bench que a mediu (`measured`/…)
  * @property {"family"|"meta.commit"|"ausente"} origin
  * @property {string|null} source
@@ -256,6 +420,27 @@ export function commitAge(
  */
 
 /**
+ * O TETO de idade EFETIVO com a PROCEDÊNCIA dele: o número e de onde ele veio
+ * viajam JUNTOS, porque um teto sem origem é indistinguível de um teto medido.
+ *
+ * É o objeto que o doctor, o relatório e a issue repetem (`tetoLine`) — o
+ * `origem` é o que separa "seguiu o ritmo de agora" de "o git não respondeu e
+ * caiu na reserva declarada" de "o chamador fixou".
+ *
+ * @typedef {object} TetoDeIdade
+ * @property {number} teto                o número efetivo, em commits de `head`
+ * @property {"medido"|"reserva declarada"|"declarado pelo chamador"} origem
+ * @property {number} ciclos              ciclos do cron que o teto cobre (a POLÍTICA)
+ * @property {number} cicloDias
+ * @property {number} janelaDias          a janela em que o ritmo foi medido
+ * @property {number} pisoDeCiclo         o piso declarado por ciclo
+ * @property {string|null} desde          o começo da janela medida
+ * @property {number|null} commits        os commits contados na janela
+ * @property {number|null} commitsPorCiclo
+ * @property {string|null} motivo         por que o derivado caiu no piso (ou na reserva)
+ */
+
+/**
  * O FATO da idade inteiro — o shape que o doctor e o publicador compartilham.
  *
  * @typedef {object} BenchFreshness
@@ -263,6 +448,9 @@ export function commitAge(
  * @property {string|null} file
  * @property {string} head
  * @property {number} maxBehind
+ * @property {TetoDeIdade|null} teto    a procedência do teto efetivo (`null` num
+ *                                     fato montado sem derivação — nunca um teto
+ *                                     silencioso; `tetoLine` nomeia a dúvida)
  * @property {FamilyAge[]} families
  * @property {string[]} aged
  * @property {string[]} diverged
@@ -357,6 +545,7 @@ export function assembleFact(
   {
     head = "HEAD",
     maxBehind = FRESHNESS_MAX_COMMITS_BEHIND,
+    teto = null,
     emptyReason = "o arquivo do bench não declara NENHUMA família medida — não há número para envelhecer",
   } = {},
 ) {
@@ -370,13 +559,14 @@ export function assembleFact(
     return unavailable(emptyReason, { head, maxBehind })
   }
 
-  // O TETO POR TIPO vai DITO: com um teto único a prosa de custo seria acusada no
-  // ritmo do bench, e um alerta que sempre acende é o defeito que o repositório
-  // já classificou como tal.
+  // O TETO POR TIPO vai DITO — e com o NÚMERO derivado do ritmo, não com o
+  // literal da reserva: o teto efetivo é o mesmo para estes dois tipos, e a
+  // prosa de custo do README fica de fora porque um alerta que sempre acende é
+  // o defeito que o repositório já classificou como tal.
   const tetos = [...new Set(families.map((f) => f.kind ?? "bench-family"))]
     .map((k) => {
-      const teto = ceilingOf(k)
-      return `${NOMES_DE_TIPO[k] ?? k} ${teto === null ? "sem teto (a idade é publicada)" : `${teto} commits`}`
+      const doTipo = ceilingOf(k, maxBehind)
+      return `${NOMES_DE_TIPO[k] ?? k} ${doTipo === null ? "sem teto (a idade é publicada)" : `${doTipo} commits`}`
     })
     .join(", ")
 
@@ -397,6 +587,7 @@ export function assembleFact(
     file: null,
     head,
     maxBehind,
+    teto,
     families,
     aged,
     diverged,
@@ -409,12 +600,16 @@ export function assembleFact(
 }
 
 /** O fato INDISPONÍVEL — o mesmo shape, com a causa nomeada (nunca "fresca"). */
-function unavailable(reason, { head = "HEAD", maxBehind = FRESHNESS_MAX_COMMITS_BEHIND } = {}) {
+function unavailable(
+  reason,
+  { head = "HEAD", maxBehind = FRESHNESS_MAX_COMMITS_BEHIND, teto = null } = {},
+) {
   return {
     state: "unavailable",
     file: null,
     head,
     maxBehind,
+    teto,
     families: [],
     aged: [],
     diverged: [],
@@ -467,7 +662,7 @@ function remediesFor({ aged, diverged, unknown, maxBehind, families }) {
   }
   if (out.length === 0) {
     const tipos = [...new Set(families.map((f) => f.kind ?? "bench-family"))]
-      .map((k) => `${NOMES_DE_TIPO[k] ?? k}: ${ceilingLabel(k)}`)
+      .map((k) => `${NOMES_DE_TIPO[k] ?? k}: ${ceilingLabel(k, maxBehind)}`)
       .join(", ")
     out.push(
       `nenhum: a mais antiga está ${Math.max(0, ...families.map((f) => f.behind ?? 0))} commit(s) atrás, e o teto de cada tipo está respeitado (${tipos})`,
@@ -548,6 +743,35 @@ export function freshnessLine(fact) {
     return `régua do bench NÃO medida: ${fact?.reason ?? "sem motivo declarado"}`
   }
   return fact.detail
+}
+
+/**
+ * O TETO EFETIVO e a sua PROCEDÊNCIA, numa linha — o que o relatório, o doctor e
+ * a issue repetem.
+ *
+ * Sem ela, um teto DERIVADO do ritmo de agora e um teto de RESERVA (o git não
+ * respondeu) sairiam com o mesmo texto, e a diferença entre "o repositório anda
+ * assim" e "não consegui medir" — que é a diferença entre um veredito e uma
+ * dúvida — ficaria invisível justamente onde ela decide.
+ *
+ * O parâmetro é declarado pela PARTE que a função lê (`maxBehind` + `teto`), não
+ * pelo fato inteiro: quem só tem a procedência em mãos — o teste da régua, um
+ * chamador que montou o teto à mão — não precisa fabricar um fato completo para
+ * publicar a linha.
+ *
+ * @param {{maxBehind?: number, teto?: TetoDeIdade|null}} [fact]
+ * @returns {string}
+ */
+export function tetoLine(fact) {
+  const t = fact?.teto
+  if (!t) return `teto ${fact?.maxBehind ?? "?"} commits (a procedência não foi registrada)`
+  const porCiclo = t.commitsPorCiclo === null ? null : Math.round(t.commitsPorCiclo * 10) / 10
+  const de = {
+    medido: `derivado do ritmo — ${t.commits} commits em ${t.janelaDias} dias (${porCiclo}/ciclo × ${t.ciclos} ciclos de ${t.cicloDias}d)`,
+    "reserva declarada": `RESERVA declarada (o ritmo não foi medido: ${t.motivo})`,
+    "declarado pelo chamador": "declarado pelo chamador (não é o teto derivado)",
+  }[t.origem]
+  return `teto ${t.teto} commits — ${de ?? t.origem}`
 }
 
 // ---------------------------------------------------------------------------
@@ -826,7 +1050,12 @@ export function readmeDeclarations(text, { file = README_PATH, lookback = BLOCK_
  * causa (nunca a omissão de um conjunto que ninguém viu), e uma declaração sem
  * data própria vira uma unidade `unknown` idem.
  *
- * @param {{cwd?: string, model?: object, readme?: string, head?: string, deps?: object}} [options]
+ * O TETO de cada unidade sai do TIPO dela (`ceilingOf(kind, tetoDeIdade)`) — e o
+ * `tetoDeIdade` é o DERIVADO do ritmo, que o dono do fato (`readFreshness`) mede
+ * uma vez e passa: uma segunda derivação aqui divergiria do teto que a frase do
+ * fato publica.
+ *
+ * @param {{cwd?: string, model?: object, readme?: string, head?: string, maxBehind?: number, deps?: object}} [options]
  * @returns {{families: object[]}}
  */
 export function declarationFamilies({
@@ -834,6 +1063,7 @@ export function declarationFamilies({
   model,
   readme,
   head = "HEAD",
+  maxBehind = FRESHNESS_MAX_COMMITS_BEHIND,
   deps = {},
 } = {}) {
   const existe = deps.exists ?? existsSync
@@ -900,14 +1130,14 @@ export function declarationFamilies({
         source: problema.file,
         commit: null,
         date: null,
-        ceiling: ceilingOf(kind),
+        ceiling: ceilingOf(kind, maxBehind),
         state: "unknown",
         behind: null,
         reason: problema.reason,
       })
     }
     for (const unidade of units) {
-      const teto = ceilingOf(unidade.kind)
+      const teto = ceilingOf(unidade.kind, maxBehind)
       const { commit, reason } = commitOfDate(
         { anchor: { date: unidade.date, kind: unidade.anchorKind }, head, cwd },
         { run },
@@ -922,7 +1152,7 @@ export function declarationFamilies({
         ceiling: teto,
         state:
           idade.state === "ancestor"
-            ? isAged(idade.behind, unidade.kind)
+            ? isAged(idade.behind, unidade.kind, maxBehind)
               ? "aged"
               : "fresh"
             : idade.state,
@@ -942,19 +1172,45 @@ export function declarationFamilies({
  * uma unidade `unknown` nomeando o arquivo, porque "não consegui ler" não pode
  * terminar em "nada a julgar".
  *
- * @param {{cwd?: string, file?: string, head?: string, maxBehind?: number, deps?: object, model?: object|null, readme?: string|null}} [options]
+ * @param {{cwd?: string, file?: string, head?: string, maxBehind?: number|null, politica?: object, agora?: Date, deps?: object, model?: object|null, readme?: string|null}} [options]
  * @returns {BenchFreshness}
  */
 export function readFreshness({
   cwd = REPO_ROOT,
   file = BASELINE_PATH,
   head = "HEAD",
-  maxBehind = FRESHNESS_MAX_COMMITS_BEHIND,
+  maxBehind = null,
+  politica = POLITICA_DO_TETO,
+  agora = new Date(),
   deps = {},
   model = undefined,
   readme = undefined,
 } = {}) {
-  const bench = readBenchFreshness({ cwd, file, head, maxBehind, deps })
+  // O TETO EFETIVO, e a sua PROCEDÊNCIA: derivado do ritmo medido do repositório
+  // (o caminho normal) ou declarado pelo CHAMADOR — o doctor com uma dúvida
+  // datada e o teste, que precisa de um teto fixo para medir a fronteira. Nos
+  // dois casos o número e a origem viajam JUNTOS no fato (`teto`), porque um teto
+  // sem procedência é exatamente o que este passo removeu.
+  const teto =
+    maxBehind === null
+      ? tetoDoRitmo(
+          medirRitmoDeCommits({ cwd, run: deps.run ?? spawnSync, agora, politica }),
+          politica,
+        )
+      : {
+          teto: maxBehind,
+          origem: "declarado pelo chamador",
+          ciclos: politica.ciclos,
+          cicloDias: politica.cicloDias,
+          janelaDias: politica.janelaDias,
+          pisoDeCiclo: politica.pisoDeCiclo,
+          desde: null,
+          commits: null,
+          commitsPorCiclo: null,
+          motivo: null,
+        }
+  const efetivo = teto.teto
+  const bench = readBenchFreshness({ cwd, file, head, maxBehind: efetivo, deps })
   const doBench =
     bench.state === "measured"
       ? bench.families.map((f) => ({ ...f, kind: f.kind ?? "bench-family" }))
@@ -973,10 +1229,18 @@ export function readFreshness({
             reason: bench.reason,
           },
         ]
-  const { families: declaradas } = declarationFamilies({ cwd, model, readme, head, deps })
+  const { families: declaradas } = declarationFamilies({
+    cwd,
+    model,
+    readme,
+    head,
+    maxBehind: efetivo,
+    deps,
+  })
   const fato = assembleFact([...doBench, ...declaradas], {
     head,
-    maxBehind,
+    maxBehind: efetivo,
+    teto,
     emptyReason:
       "nenhuma declaração datada foi lida (bench, modelo de latência e README) — não há número para envelhecer",
   })
@@ -1025,8 +1289,12 @@ function main() {
       "\n  Mede a IDADE de cada declaração datada: o commit de origem de cada família\n" +
         "  MEDIDA do bench, a data própria de cada número declarado do modelo de\n" +
         "  latência (ci/merge-latency.json) e a âncora datada de cada tabela de custo\n" +
-        "  do README — quantos commits de HEAD cada uma deixou para trás (teto\n" +
-        `  declarado: ${FRESHNESS_MAX_COMMITS_BEHIND} — dois ciclos do cron semanal).\n\n` +
+        "  do README — quantos commits de HEAD cada uma deixou para trás.\n" +
+        `  O teto é DERIVADO do ritmo do repositório: ${POLITICA_DO_TETO.ciclos} ciclos de ` +
+        `${POLITICA_DO_TETO.cicloDias}d × os commits por ciclo medidos na janela de ` +
+        `${POLITICA_DO_TETO.janelaDias} dias (piso: ${POLITICA_DO_TETO.pisoDeCiclo}/ciclo), e o ` +
+        `  relatório diz de onde o número veio; sem ritmo medido ele cai na reserva de\n` +
+        `  ${FRESHNESS_MAX_COMMITS_BEHIND} commits e o motivo sai dito.\n\n` +
         "  --file: mede OUTRO arquivo do bench (default: docs/benchmarks/guard-timing-baseline.json).\n" +
         "  --head: mede contra outra ref (default: HEAD).",
     )
@@ -1038,6 +1306,7 @@ function main() {
     console.log(JSON.stringify(fact, null, 2))
   } else {
     console.log(`📏 Régua do bench — ${freshnessLine(fact)}`)
+    console.log(`📐 Teto de idade: ${tetoLine(fact)}`)
     for (const f of fact.families) {
       const marca = f.state === "fresh" ? "✅" : f.state === "aged" ? "❌" : "⚠️"
       const idade = f.behind === null ? f.state : `${f.behind} commit(s) atrás`

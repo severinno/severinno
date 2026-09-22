@@ -254,7 +254,7 @@ import { analyze as analyzeHookCommands } from "./check-hook-commands.mjs"
 // dono, importada, não uma segunda contagem de commits —, e a mesma função
 // alimenta a issue do cron (`bench-freshness-issue.mjs`) e o publicador da
 // regressão de tempo: o veredito e a issue não podem discordar sobre a idade.
-import { anchorLabel, freshnessLine, readFreshness } from "./bench-freshness.mjs"
+import { anchorLabel, freshnessLine, readFreshness, tetoLine } from "./bench-freshness.mjs"
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -1002,7 +1002,7 @@ export function summarize(facts) {
         (facts.benchFreshness.diverged.length > 0
           ? `${vencidas.length > 0 ? " · " : ""}fora da história de HEAD: ${facts.benchFreshness.diverged.join(", ")} (a história foi reescrita e o número declarado não se reproduz nesta árvore)`
           : "") +
-        ` — teto de ${facts.benchFreshness.maxBehind} commits; o número declarado descreve outro commit, e o remédio é a re-medição deliberada (${facts.benchFreshness.remedies[0] ?? "bun run bench:guard-timing:baseline"})`,
+        ` — ${tetoLine(facts.benchFreshness)}; o número declarado descreve outro commit, e o remédio é a re-medição deliberada (${facts.benchFreshness.remedies[0] ?? "bun run bench:guard-timing:baseline"})`,
     )
   } else if (facts.benchFreshness.unknown.length > 0) {
     unknowns.push(
@@ -2981,12 +2981,12 @@ function debtStaleness(
     if (vencidas === 0) {
       return {
         stale: true,
-        detail: `o doctor mede a MESMA idade agora (${benchFreshness.families.length} família(s) medida(s), a mais antiga ${benchFreshness.behindMax} commit(s) atrás de ${benchFreshness.head}, teto ${benchFreshness.maxBehind}) e nenhuma passou o teto — a issue fala de uma régua que já foi re-medida (o publicador a fecha por assinatura quando a idade volta ao teto)`,
+        detail: `o doctor mede a MESMA idade agora (${benchFreshness.families.length} família(s) medida(s), a mais antiga ${benchFreshness.behindMax} commit(s) atrás de ${benchFreshness.head}, ${tetoLine(benchFreshness)}) e nenhuma passou o teto — a issue fala de uma régua que já foi re-medida (o publicador a fecha por assinatura quando a idade volta ao teto)`,
       }
     }
     return {
       stale: false,
-      detail: `o doctor também mede a idade da régua e ${vencidas} família(s) SEGUEM fora do teto de ${benchFreshness.maxBehind} commits (${[...benchFreshness.aged, ...benchFreshness.diverged].join(", ")}) — a issue fala de um problema VIVO`,
+      detail: `o doctor também mede a idade da régua e ${vencidas} família(s) SEGUEM fora do teto (${tetoLine(benchFreshness)}) — ${[...benchFreshness.aged, ...benchFreshness.diverged].join(", ")} — a issue fala de um problema VIVO`,
     }
   }
 
@@ -5441,6 +5441,10 @@ export function renderReport(report, { emit = console.log } = {}) {
     const vencidas = bf.aged.length + bf.diverged.length
     const marca = vencidas > 0 ? MARK.fail() : bf.unknown.length > 0 ? MARK.warn() : MARK.ok()
     line(`       ${marca} ${freshnessLine(bf)}`)
+    // O TETO e a sua PROCEDÊNCIA: um teto derivado do ritmo de agora e um teto de
+    // reserva (o git não respondeu) não podem sair com o mesmo texto justamente
+    // onde a diferença entre veredito e dúvida é decidida.
+    line(`       ${MARK.info()} ${tetoLine(bf)}`)
     for (const f of bf.families) {
       const fmarca =
         f.state === "fresh"

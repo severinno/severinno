@@ -439,6 +439,21 @@ const BENCH_FRESHNESS_LIMPA = {
   file: "docs/benchmarks/guard-timing-baseline.json",
   head: "HEAD",
   maxBehind: 150,
+  // O teto DERIVADO que o fato real carrega (`readFreshness` mede o ritmo e o
+  // publica com a procedência): aqui o ritmo medido dá 150, para o fixture medir
+  // o veredito e não o número do dia.
+  teto: {
+    ciclos: 2,
+    cicloDias: 7,
+    janelaDias: 28,
+    pisoDeCiclo: 20,
+    desde: "2026-08-24T00:00:00.000Z",
+    commits: 300,
+    commitsPorCiclo: 75,
+    teto: 150,
+    origem: "medido",
+    motivo: null,
+  },
   families: [
     {
       family: "mutations",
@@ -5116,7 +5131,11 @@ describe("a idade da régua do bench como FATO do relatório", () => {
     const texto = v.unknowns.join(" ")
     expect(texto).toContain("RÉGUA DO BENCH envelheceu")
     expect(texto).toContain("mutations (400 commit(s) atrás em velho111)")
-    expect(texto).toContain("teto de 150 commits")
+    // O TETO vai com a PROCEDÊNCIA (a régua derivada do ritmo): a dúvida nomeia
+    // contra QUE régua a declaração venceu, e um teto de reserva (o git não
+    // respondeu) não sai com a cara de uma medição.
+    expect(texto).toContain("teto 150 commits")
+    expect(texto).toContain("derivado do ritmo")
     // O remédio vai com a dúvida: uma dúvida sem endereço não é acionável.
     expect(texto).toContain("bun run bench:guard-timing:baseline")
   })

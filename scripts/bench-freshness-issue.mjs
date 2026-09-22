@@ -63,6 +63,7 @@ import {
   anchorLabel,
   freshnessLine,
   readFreshness,
+  tetoLine,
 } from "./bench-freshness.mjs"
 import {
   defineDebtPublisher,
@@ -114,6 +115,16 @@ export function isActionable(input) {
 }
 
 /**
+ * O NÚMERO do teto efetivo: o DERIVADO do ritmo (`fact.teto`, o caminho normal)
+ * ou, quando o fato não traz procedência, o que o fato declara (`maxBehind`) — e
+ * a reserva só como último recurso de um input antigo. Um litério aqui seria um
+ * segundo teto, e o texto da issue passaria a divergir da régua.
+ */
+function tetoEfetivo(input) {
+  return input?.teto?.teto ?? input?.maxBehind ?? FRESHNESS_MAX_COMMITS_BEHIND
+}
+
+/**
  * A FAIXA da severidade: QUANTOS tetos a família mais velha já passou.
  *
  * É a severidade em ordem de grandeza, não o número do commit — a assinatura
@@ -124,7 +135,7 @@ export function isActionable(input) {
  */
 export function bandOf(input) {
   const pior = Math.max(0, ...agedOf(input).map((f) => f.behind ?? 0))
-  const teto = input?.maxBehind ?? FRESHNESS_MAX_COMMITS_BEHIND
+  const teto = tetoEfetivo(input)
   return teto > 0 ? Math.floor(pior / teto) : 0
 }
 
@@ -200,10 +211,10 @@ function freshnessProse(input) {
       `MEDIDAS da baseline do bench (\`${input.file ?? BASELINE_PATH}\`), a data própria de cada ` +
       `número declarado do modelo de latência (\`${MODEL_PATH}\`) e a âncora datada de cada tabela ` +
       `de custo do README. Hoje: **${vencidas} vencida(s)**` +
-      `${fora > 0 ? ` e **${fora} fora da história**` : ""} contra o teto declarado de ` +
-      `**${input.maxBehind ?? FRESHNESS_MAX_COMMITS_BEHIND} commits** para famílias e números ` +
-      `declarados (tabelas do README não têm teto: a idade delas é PUBLICADA — ver o ` +
-      `\`ceiling\` de cada uma).`,
+      `${fora > 0 ? ` e **${fora} fora da história**` : ""} contra o teto de ` +
+      `**${tetoEfetivo(input)} commits** para famílias e números ` +
+      `declarados (${tetoLine(input)}; tabelas do README não têm teto: a idade delas é ` +
+      `PUBLICADA — ver o \`ceiling\` de cada uma).`,
   )
   lines.push("")
   lines.push("### O que venceu")
@@ -235,9 +246,11 @@ function freshnessProse(input) {
   lines.push(...measurementTable(input))
   lines.push("")
   lines.push(
-    `> HEAD medido: \`${input.head}\` · teto: ${input.maxBehind ?? FRESHNESS_MAX_COMMITS_BEHIND} commits ` +
+    `> HEAD medido: \`${input.head}\` · teto: ${tetoEfetivo(input)} commits ` +
       "para famílias do bench e números declarados · tabelas de custo do README: sem teto (a idade é publicada acima)",
   )
+  lines.push("")
+  lines.push(`> ${tetoLine(input)}`)
   lines.push("")
   lines.push("### Por que isto é dívida, e não ruído")
   lines.push("")
@@ -284,7 +297,7 @@ export function resolutionComment(input) {
   const lines = []
   lines.push(
     `✅ **Resolvido** — as ${(input.families ?? []).length} declaração(ões) julgadas estão dentro do teto de ` +
-      `${input.maxBehind ?? FRESHNESS_MAX_COMMITS_BEHIND} commits (as tabelas de custo do README não têm teto: a idade delas é publicada), e nenhuma saiu da história.`,
+      `${tetoEfetivo(input)} commits (${tetoLine(input)}; as tabelas de custo do README não têm teto: a idade delas é publicada), e nenhuma saiu da história.`,
   )
   lines.push("")
   lines.push("### A prova (a idade de agora, contra o mesmo HEAD)")
@@ -341,7 +354,7 @@ export const BENCH_FRESHNESS_PUBLISHER = defineDebtPublisher({
   prose: {
     actionable: (input) =>
       `⚠️  Declaração datada VENCIDA em ${agedOf(input).length + divergedOf(input).length} unidade(s)` +
-      ` (teto ${input?.maxBehind ?? FRESHNESS_MAX_COMMITS_BEHIND} commits para famílias e números ` +
+      ` (teto ${tetoEfetivo(input)} commits para famílias e números ` +
       "declarados; tabelas do README sem teto) — publicando issue acionável.",
     // O MOTIVO nomeia as unidades sem idade: "não medido" sozinho deixa quem lê sem
     // saber o que refazer (o checkout precisa da história? o arquivo sumiu? o dono

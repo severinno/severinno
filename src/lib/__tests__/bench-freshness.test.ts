@@ -44,6 +44,7 @@ import {
   FRESHNESS_CEILINGS,
   FRESHNESS_MAX_COMMITS_BEHIND,
   MODEL_PATH,
+  POLITICA_DO_TETO,
   README_PATH,
   REMEDY_COMMAND,
   anchorBefore,
@@ -55,10 +56,13 @@ import {
   declarationFamilies,
   familyFreshness,
   freshnessLine,
+  medirRitmoDeCommits,
   modelDeclarations,
   readBenchFreshness,
   readFreshness,
   readmeDeclarations,
+  tetoDoRitmo,
+  tetoLine,
 } from "../../../scripts/bench-freshness.mjs"
 import {
   BENCH_FRESHNESS_PUBLISHER,
@@ -88,6 +92,16 @@ const SCRIPT_REF = "scripts/bench-freshness-issue.mjs"
 // ── 1. A régua: a sonda de git e o teto ────────────────────────────────────
 
 /**
+ * A JANELA do ritmo é uma pergunta DIFERENTE da idade em commits: o dublê só a
+ * responde quando o teste DECLARA o ritmo (`ritmo`), porque "não consegui medir o
+ * ritmo" é um caminho próprio do teto (a reserva declarada, com a origem
+ * publicada) e um dublê que respondesse tudo apagaria os dois caminhos.
+ */
+function janelaDoRitmo(args: string[]): boolean {
+  return args.some((a) => a.startsWith("--since="))
+}
+
+/**
  * Um git dublê: responde por SUBCOMANDO (`cat-file`, `merge-base`, `rev-list`).
  * É por ele que os três estados da idade são medidos sem repositório de verdade.
  */
@@ -95,11 +109,13 @@ function gitStub({
   existe = true,
   ancestral = true,
   count = 3,
+  ritmo = null,
   erro = null,
 }: {
   existe?: boolean
   ancestral?: boolean
   count?: number
+  ritmo?: number | null
   erro?: Error | null
 } = {}) {
   return (_cmd: string, args: string[]) => {
@@ -111,6 +127,11 @@ function gitStub({
         : { status: 128, stdout: "", stderr: "fatal: Not a valid object name" }
     }
     if (sub === "merge-base") return { status: ancestral ? 0 : 1, stdout: "" }
+    if (sub === "rev-list" && janelaDoRitmo(args)) {
+      return ritmo === null
+        ? { status: 1, stdout: "", stderr: "dublê: o ritmo não foi declarado neste teste" }
+        : { status: 0, stdout: `${ritmo}\n` }
+    }
     if (sub === "rev-list") return { status: 0, stdout: `${count}\n` }
     return { status: 1, stdout: "" }
   }
@@ -153,6 +174,122 @@ describe("commitAge — a idade de UM commit de origem", () => {
     const idade = commitAge({ commit: null }, { run: gitStub() as never })
     expect(idade.state).toBe("unknown")
     expect(idade.reason).toContain("não declara commit de origem")
+  })
+})
+
+// ── 1.5. O TETO: derivado do ritmo, com a política declarando o que não se mede ─
+
+describe("o teto de idade é DERIVADO do ritmo medido do repositório", () => {
+  const medir = (ritmo: number | null) =>
+    medirRitmoDeCommits({
+      run: gitStub({ ritmo }) as never,
+      agora: new Date("2026-09-21T12:00:00Z"),
+    })
+
+  it("`medirRitmoDeCommits`: conta a JANELA da política e devolve commits por ciclo", () => {
+    const ritmo = medir(314)
+    expect(ritmo.state).toBe("medido")
+    expect(ritmo.commits).toBe(314)
+    expect(ritmo.janelaDias).toBe(POLITICA_DO_TETO.janelaDias)
+    expect(ritmo.desde).toContain("2026-08-24") // 28 dias antes do `agora`
+    expect(ritmo.commitsPorCiclo).toBeCloseTo(314 / (POLITICA_DO_TETO.janelaDias / 7))
+  })
+
+  it("git que não responde — ou saída que não é contagem: `unknown` com a CAUSA", () => {
+    const semGit = medirRitmoDeCommits({
+      run: gitStub({ erro: new Error("spawnSync git ENOENT") }) as never,
+    })
+    expect(semGit.state).toBe("unknown")
+    expect(semGit.reason).toContain("não respondeu a contagem")
+    expect(semGit.commits).toBeNull()
+
+    const lixo = medirRitmoDeCommits({
+      run: (() => ({ status: 0, stdout: "não é número\n" })) as never,
+    })
+    expect(lixo.state).toBe("unknown")
+    expect(lixo.reason).toContain("não é uma contagem de commits")
+
+    // ZERO commits na janela também não vira "teto 0": um repositório parado é o
+    // caso em que o PISO existe, e a decisão dele é outra (o desconhecido não
+    // pode virar um teto por omissão).
+    const parado = medirRitmoDeCommits({ run: (() => ({ status: 0, stdout: "0\n" })) as never })
+    expect(parado.state).toBe("unknown")
+  })
+
+  it("o teto é `ciclos × commits por ciclo` — e o PISO declarado vence um ritmo baixo, dito no motivo", () => {
+    const rapido = tetoDoRitmo(medir(600))
+    expect(rapido).toMatchObject({ origem: "medido", teto: 300, commits: 600 })
+    expect(rapido.commitsPorCiclo).toBeCloseTo(150)
+    expect(rapido.motivo).toBeNull()
+
+    const devagar = tetoDoRitmo(medir(8))
+    expect(devagar.teto).toBe(POLITICA_DO_TETO.pisoDeCiclo * POLITICA_DO_TETO.ciclos)
+    expect(devagar.motivo).toContain("PISO")
+  })
+
+  it("sem ritmo medido o teto é a RESERVA declarada — e a ORIGEM sai dita, nunca um teto silencioso", () => {
+    const reserva = tetoDoRitmo(medir(null))
+    expect(reserva.origem).toBe("reserva declarada")
+    expect(reserva.teto).toBe(FRESHNESS_MAX_COMMITS_BEHIND)
+    expect(reserva.motivo).toContain("não respondeu a contagem")
+    expect(tetoLine({ maxBehind: reserva.teto, teto: reserva })).toContain("RESERVA declarada")
+  })
+
+  it("o VEREDITO segue o teto derivado: a MESMA idade é FRESCA com ritmo alto e VENCIDA com ritmo baixo", () => {
+    // Load-bearing: entre as duas medições só o RITMO muda — a idade da
+    // declaração é a mesma (100 commits atrás), e quem decide é o teto derivado.
+    const mede = (ritmo: number) =>
+      readFreshness({
+        model: { jobs: { github: { job: { ms: 1, date: "2026-09-17", source: "s" } } } },
+        readme: "",
+        file: BASELINE_PATH,
+        deps: {
+          probe: () => ({ state: "ancestor", behind: 5, reason: "" }),
+          run: gitDatas({ count: 100, ritmo }) as never,
+        },
+      })
+
+    const rapido = mede(600)
+    expect(rapido.teto).toMatchObject({ origem: "medido", teto: 300 })
+    expect(rapido.aged).toEqual([])
+    expect(rapido.families.find((f) => f.kind === "declared-number")!.state).toBe("fresh")
+
+    const devagar = mede(8)
+    expect(devagar.teto?.teto).toBe(POLITICA_DO_TETO.pisoDeCiclo * POLITICA_DO_TETO.ciclos)
+    expect(devagar.aged).toContain("github/job")
+    expect(devagar.families.find((f) => f.kind === "declared-number")!.state).toBe("aged")
+  })
+
+  it("o fato publica a PROCEDÊNCIA do número — e o teto explícito do chamador se declara como tal", () => {
+    const derivado = readFreshness({
+      model: { jobs: {} },
+      readme: "",
+      file: BASELINE_PATH,
+      deps: {
+        probe: () => ({ state: "ancestor", behind: 5 }),
+        run: gitDatas({ ritmo: 314 }) as never,
+      },
+    })
+    expect(derivado.teto).toMatchObject({
+      origem: "medido",
+      commits: 314,
+      janelaDias: POLITICA_DO_TETO.janelaDias,
+      ciclos: POLITICA_DO_TETO.ciclos,
+      teto: 157,
+    })
+    expect(derivado.maxBehind).toBe(derivado.teto?.teto)
+    expect(tetoLine(derivado)).toContain("derivado do ritmo — 314 commits em 28 dias")
+
+    const doChamador = readFreshness({
+      model: { jobs: {} },
+      readme: "",
+      file: BASELINE_PATH,
+      maxBehind: 42,
+      deps: { probe: () => ({ state: "ancestor", behind: 5 }), run: gitDatas() as never },
+    })
+    expect(doChamador.teto).toMatchObject({ teto: 42, origem: "declarado pelo chamador" })
+    expect(doChamador.maxBehind).toBe(42)
+    expect(tetoLine(doChamador)).toContain("declarado pelo chamador")
   })
 })
 
@@ -211,13 +348,27 @@ describe("familyFreshness — a régua do teto", () => {
     expect(fact.aged).toEqual(nomes)
   })
 
-  it("o commit é sondado UMA vez por valor (as seis famílias do mesmo ato custam uma pergunta)", () => {
+  it("o commit é sondado UMA vez por VALOR (as seis famílias do mesmo ato custam uma pergunta)", () => {
+    // As seis famílias de UM ato custam UMA pergunta: TODAS no mesmo commit.
+    const umaOrigem = Object.fromEntries(
+      Object.keys(REAL.meta.families).map((f) => [f, "mesmo-ato"]),
+    )
     const probe = vi.fn(() => ({ state: "ancestor", behind: 4 }))
-    const fact = familyFreshness(bench(), { probe })
+    const fact = familyFreshness(bench({ commits: umaOrigem }), { probe })
     expect(fact.families.length).toBe(6)
     expect(probe).toHaveBeenCalledTimes(1)
+
     expect(fact.behindMax).toBe(4)
     expect(fact.aged).toEqual([])
+
+    // E DUAS procedências custam DUAS perguntas (uma por commit distinto — não
+    // uma por família): é a cache por valor, não um contador de chamadas.
+    const probeDois = vi.fn(() => ({ state: "ancestor", behind: 4 }))
+    const doisAtos = familyFreshness(bench({ commits: { ...umaOrigem, mutations: "outro-ato" } }), {
+      probe: probeDois,
+    })
+    expect(doisAtos.families.length).toBe(6)
+    expect(probeDois).toHaveBeenCalledTimes(2)
   })
 
   it("a PROCEDÊNCIA é dita: sem `meta.families` a origem é o `meta.commit` do arquivo", () => {
@@ -250,9 +401,15 @@ describe("familyFreshness — a régua do teto", () => {
   })
 
   it("família SEM idade (clone raso) deixa o fato medido, mas a lista `unknown` não some", () => {
+    // A baseline tem procedência POR FAMÍLIA (dois atos): o dublê mapeia cada
+    // commit distinto — o de `lint`, o do ato novo — senão as famílias do outro
+    // commit caíssem em `unknown` por um dublê que só conhece `meta.commit`.
+    const origens = [
+      ...new Set((Object.values(REAL.meta.families) as { commit: string }[]).map((f) => f.commit)),
+    ]
     const fact = familyFreshness(bench({ commits: { lint: "ausente" } }), {
       probe: probeDe({
-        [REAL.meta.commit]: { state: "ancestor", behind: 2 },
+        ...Object.fromEntries(origens.map((c: string) => [c, { state: "ancestor", behind: 2 }])),
         ausente: {
           state: "unknown",
           behind: null,
@@ -340,14 +497,17 @@ describe("readBenchFreshness — o arquivo e o git", () => {
 
 // ── 3.5. As DECLARAÇÕES datadas: o modelo de latência e as tabelas do README ─
 
-/** Um git dublê para as DUAS perguntas: a âncora vira commit, o commit vira idade. */
+/** Um git dublê para as TRÊS perguntas: a âncora vira commit, o commit vira idade,
+ * e a janela do ritmo só responde se o teste declarar `ritmo` (ver `gitStub`). */
 function gitDatas({
   commits = ["c1", "c2"],
   count = 7,
+  ritmo = null,
   erro = null,
 }: {
   commits?: string[]
   count?: number
+  ritmo?: number | null
   erro?: Error | null
 } = {}) {
   const fila = [...commits]
@@ -356,6 +516,11 @@ function gitDatas({
     if (args[0] === "rev-list" && args[1] === "-1") {
       const commit = fila.shift() ?? ""
       return { status: 0, stdout: commit ? `${commit}\n` : "" }
+    }
+    if (args[0] === "rev-list" && janelaDoRitmo(args)) {
+      return ritmo === null
+        ? { status: 1, stdout: "", stderr: "dublê: o ritmo não foi declarado neste teste" }
+        : { status: 0, stdout: `${ritmo}\n` }
     }
     if (args[0] === "rev-list") return { status: 0, stdout: `${count}\n` }
     if (args[0] === "cat-file") return { status: 0, stdout: "" }
@@ -676,7 +841,10 @@ describe("readFreshness — o fato completo e o teto POR TIPO", () => {
     )
     expect(fact.aged.length).toBe(fact.families.length)
     expect(fact.families.every((f) => f.kind === "bench-family")).toBe(true)
-    expect(FRESHNESS_CEILINGS["bench-family"]).toBe(FRESHNESS_MAX_COMMITS_BEHIND)
+    // A tabela do tipo declara a POLÍTICA ("segue o teto derivado"), não o número:
+    // um literal aqui seria o teto declarado à mão que este passo removeu.
+    expect(FRESHNESS_CEILINGS["bench-family"]).toBe("idade")
+    expect(FRESHNESS_CEILINGS["declared-table"]).toBeNull()
   })
 
   it("o número declarado do MODELO também vence com a MESMA idade (o teto dele vale)", () => {
@@ -775,23 +943,6 @@ describe("readFreshness — o fato completo e o teto POR TIPO", () => {
     expect(fact.families.filter((f) => f.kind === "declared-table").length).toBeGreaterThan(2)
   })
 
-  it("o TETO declarado na PROSA é o da régua (a doc não pode envelhecer calada)", () => {
-    // A régua imprime o teto por tipo no fato, e a doc o repete em prosa: sem esta
-    // ligação, mudar `FRESHNESS_MAX_COMMITS_BEHIND` deixaria a doc mentindo — que é
-    // exatamente a classe de defeito que esta régua existe para nomear.
-    for (const caminho of [README_PATH, "docs/GUARDS.md"]) {
-      const texto = readFileSync(join(ROOT, caminho), "utf8")
-      const numeros = [...texto.matchAll(/(\d+) commits\*\*/g)].map((m) => Number(m[1]))
-      expect(numeros.length, `${caminho} não declara o teto em prosa`).toBeGreaterThan(0)
-      expect([...new Set(numeros)], `${caminho} declara um teto que a régua não tem`).toEqual([
-        FRESHNESS_MAX_COMMITS_BEHIND,
-      ])
-      expect(
-        texto.replace(/\s+/g, " "),
-        `${caminho} não diz que a idade da prosa é publicada`,
-      ).toContain("sem teto (a idade é publicada)")
-    }
-  })
 
   it("o arquivo do MODELO real é o que a régua lê (a fonte não é uma segunda leitura)", () => {
     const modeloReal = JSON.parse(readFileSync(join(ROOT, MODEL_PATH), "utf8"))
@@ -809,6 +960,21 @@ const VELHA = {
   file: "docs/benchmarks/guard-timing-baseline.json",
   head: "HEAD",
   maxBehind: FRESHNESS_MAX_COMMITS_BEHIND,
+  // O teto vem DERIVADO (o fato real sempre traz a procedência): aqui o ritmo
+  // medido dá exatamente o número da reserva, para o fixture medir o veredito e
+  // não o acaso do ritmo.
+  teto: {
+    ciclos: POLITICA_DO_TETO.ciclos,
+    cicloDias: POLITICA_DO_TETO.cicloDias,
+    janelaDias: POLITICA_DO_TETO.janelaDias,
+    pisoDeCiclo: POLITICA_DO_TETO.pisoDeCiclo,
+    desde: "2026-08-24T00:00:00.000Z",
+    commits: 314,
+    commitsPorCiclo: 314 / (POLITICA_DO_TETO.janelaDias / POLITICA_DO_TETO.cicloDias),
+    teto: FRESHNESS_MAX_COMMITS_BEHIND,
+    origem: "medido",
+    motivo: null,
+  },
   families: [
     {
       family: "mutations",
@@ -867,6 +1033,10 @@ describe("o publicador da régua velha", () => {
     expect(corpo).toContain(String(FRESHNESS_MAX_COMMITS_BEHIND))
     expect(corpo).toContain(REMEDY_COMMAND)
     expect(corpo).toContain("28%")
+    // A PROCEDÊNCIA do teto vai no corpo: quem lê a issue sabe de onde veio o
+    // número (e se ele é o ritmo medido ou a reserva do fail-closed).
+    expect(corpo).toContain("derivado do ritmo — 314 commits em 28 dias")
+    expect(corpo).not.toContain("RESERVA declarada")
   })
 
   it("a assinatura NÃO carrega o `behind` (que anda a cada commit) — só o conjunto e a FAIXA", () => {
