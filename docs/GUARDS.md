@@ -3122,7 +3122,13 @@ harness é exatamente o que a conta à mão esquece. A tabela é o ato VIVO **E*
 VERSIONADO — o mesmo comando, com a árvore COMMITADA: medido em 21/09/2026 nesta
 máquina (**37/37 verdes**), o commit de origem gravado é `fa75f732` e a baseline
 guarda 37 sub-tests com 216 metades e 395.0s — e é este total que o modelo de
-latência deriva:
+latência deriva. **A coluna de metades é a do ATO** (216, medido em `fa75f732`) e
+não a da árvore de agora (o `check:mutation-count` publica **218**: as duas
+metades do teto derivado — M7 e M8 — entraram depois daquele ato, e o custo do
+sub-test `bench-freshness` com elas foi medido por execução em 22/09/2026
+(`time bash scripts/test-mutation-bench-freshness.sh`, três corridas: 22.8 · 22.8
+· 22.7s): **22.8s** contra os 17.3s do ato — as duas metades custam uma suíte
+unitária e um CLI a mais cada uma; o ato seguinte as versiona junto):
 
 | sub-test                                                                           |  wall time | fatia | metades |
 | ---------------------------------------------------------------------------------- | ---------: | ----: | ------: |
@@ -3133,7 +3139,7 @@ latência deriva:
 | `remedy-tty`                                                                       |      29.8s |    8% |       2 |
 | `registry-defaults`                                                                |      21.2s |    5% |       7 |
 | `required-applied`                                                                 |      18.0s |    5% |      10 |
-| `bench-freshness` (a 37.ª — a régua da idade, as SEIS metades)                     |      17.3s |    4% |       6 |
+| `bench-freshness` (a 37.ª — a régua da idade, as OITO metades)                     |      17.3s |    4% |       8 |
 | `cut-stages` (a 34.ª — as três invariantes duras do corte do GitHub)               |      17.3s |    4% |       3 |
 | `github-deps` (a 32.ª — a catraca do inventário do GitHub)                         |      12.8s |    3% |       9 |
 | `mirror-coverage` (a 35.ª — o CONTROLE, a soma por tabela e o pulo sem motivo)     |      11.0s |    3% |       3 |
@@ -4527,9 +4533,12 @@ diferem na mesma proporção, seja qual for o tempo que os separa. O doctor publ
 por família MEDIDA a idade do commit de origem que a baseline grava
 (`scripts/bench-families.mjs` é a régua das famílias, e
 `scripts/bench-freshness.mjs` a da idade) e o veredito dela não fica no relatório
-sozinho: uma família além do teto declarado de **150 commits** — dois ciclos do
-cron semanal ao ritmo medido do repositório (~10 commits/dia) — **entra nas
-dúvidas** e vira issue (`bench-freshness-issue.mjs`), no mesmo ciclo de
+sozinho: uma família além do teto **DERIVADO do ritmo** do repositório — a
+política declara **2 ciclos** do cron semanal e mede os commits por ciclo numa
+janela de **28 dias**, com **piso de 20/ciclo**; quando o git não responde o
+ritmo o número cai na reserva declarada de **150 commits** e a origem sai dita
+(`teto.origem`) — **entra nas dúvidas** e vira issue
+(`bench-freshness-issue.mjs`), no mesmo ciclo de
 reconciliação das outras dívidas: o publicador carrega `crossCheck:
 "benchFreshness"`, então o doctor mede o MESMO par na prontidão e a issue se
 fecha sozinha quando a régua volta ao teto, em vez de depender de alguém lembrar
@@ -4564,9 +4573,11 @@ para prosa que só cita um limiar) e o `ceiling: true` do modelo (o
 `timeout-minutes` da pipeline) fica FORA — a origem de um limite é o próprio
 workflow, e cobrar frescor de um número que não se mediu seria ruído.
 
-**O TETO É POR TIPO, porque o ritmo de cada declaração difere:** 150 commits para
-`bench-family` e `declared-number` (os dois são re-medidos no mesmo ato em que o
-guard ou o job muda) e **sem teto** para `declared-table` — a prosa de custo do
+**O TETO É POR TIPO, porque o ritmo de cada declaração difere:** o teto derivado
+do ritmo para `bench-family` e `declared-number` (os dois são re-medidos no mesmo
+ato em que o guard ou o job muda — o que o tipo declara é a POLÍTICA "segue a
+idade", nunca o número: ele sai de `ciclos × commits por ciclo`, medido) e **sem
+teto** para `declared-table` — a prosa de custo do
 README é re-medida quando o GUARD muda, não por calendário, e as âncoras vivas
 hoje vão de 79 a 412 commits: um teto em commits compararia o ritmo do CÓDIGO com
 o da DOC e acenderia alerta permanente. O que a régua cobra da tabela é a
@@ -4592,31 +4603,37 @@ faria o publicador PERDER a issue aberta (a assinatura é o contrato do ciclo
 abrir/fechar). O que a chave lista hoje são todas as declarações vencidas, e o
 `kind` de cada linha da tabela diz de que tipo ela é.
 
-**Prova por mutação das SEIS réguas do veredito**
-(`scripts/test-mutation-bench-freshness.sh`). Esta suíte existe porque o sujeito é
+**Prova por mutação das regras do veredito**
+(`scripts/test-mutation-bench-freshness.sh` — a suíte declara **8 metades**). Esta
+suíte existe porque o sujeito é
 o único em que o verde CEGO é indistinguível do verde honesto: uma régua de idade
 que ficasse cega não acusaria nada, e o repositório seguiria publicando o mesmo
 verde sobre um número que ninguém re-mediu. Cada REGRA que o veredito consome é
-desligada no lugar, e o vermelho é exigido — são **em SEIS direções** (M1–M6):
+desligada no lugar, e o vermelho é exigido — são **em OITO direções** (M1–M8):
 
-| metade | a regra que ela desliga                           | o vermelho que ela exige (medido)                                                                                              |
-| :----- | :------------------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------- |
-| **M1** | a DERIVAÇÃO da origem pela data (`commitOfDate`)  | datando tudo por HEAD, toda declaração fica a ZERO commits atrás — a régua declara frescor sem ter medido nada                 |
-| **M2** | a ÂNCORA de mês (`anchorBefore`)                  | com `mm/aaaa` resolvendo no PRIMEIRO dia, a origem cai um mês atrás do que o dono declarou e a idade sai MAIOR do que é        |
-| **M3** | o TETO POR TIPO (`FRESHNESS_CEILINGS`)            | com o teto das famílias na prosa do README, a mesma âncora de 412 commits passa a vencer e o canal abre dívida para sempre     |
-| **M4** | a FRONTEIRA do teto (`isAged`)                    | com `>=`, a declaração exatamente NO teto vira dívida (no teto é fresca; no teto + 1, vencida)                                 |
-| **M5** | o fail-closed da FONTE (`readFreshness`)          | sem a unidade `fonte-ilegivel`, "não consegui ler" vira "nada a julgar" e o estado sai MEDIDO sobre um arquivo que ninguém leu |
-| **M6** | o fail-closed da DECLARAÇÃO (`modelDeclarations`) | sem a unidade, o `ms` sem a própria `date` some do veredito em silêncio                                                        |
+| metade | a regra que ela desliga                           | o vermelho que ela exige (medido)                                                                                                 |
+| :----- | :------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------- |
+| **M1** | a DERIVAÇÃO da origem pela data (`commitOfDate`)  | datando tudo por HEAD, toda declaração fica a ZERO commits atrás — a régua declara frescor sem ter medido nada                    |
+| **M2** | a ÂNCORA de mês (`anchorBefore`)                  | com `mm/aaaa` resolvendo no PRIMEIRO dia, a origem cai um mês atrás do que o dono declarou e a idade sai MAIOR do que é           |
+| **M3** | o TETO POR TIPO (`FRESHNESS_CEILINGS`)            | com o teto das famílias na prosa do README, a mesma âncora de 412 commits passa a vencer e o canal abre dívida para sempre        |
+| **M4** | a FRONTEIRA do teto (`isAged`)                    | com `>=`, a declaração exatamente NO teto vira dívida (no teto é fresca; no teto + 1, vencida)                                    |
+| **M5** | o fail-closed da FONTE (`readFreshness`)          | sem a unidade `fonte-ilegivel`, "não consegui ler" vira "nada a julgar" e o estado sai MEDIDO sobre um arquivo que ninguém leu    |
+| **M6** | o fail-closed da DECLARAÇÃO (`modelDeclarations`) | sem a unidade, o `ms` sem a própria `date` some do veredito em silêncio                                                           |
+| **M7** | o TETO DERIVADO do ritmo (`tetoDoRitmo`)          | com o literal, o teto deixa de seguir o repositório: com 314 commits na janela o CLI saiu **150** onde o produto medido é **157** |
+| **M8** | a PROCEDÊNCIA do teto (`teto.origem`)             | com a reserva se dizendo "medido", o teto de fail-closed (o git não respondeu o ritmo) sai com a cara de uma medição de agora     |
 
 **Duas testemunhas, e o teste exige a que a mutação atinge.** A régua por
 EXECUÇÃO — o CLI (`node scripts/bench-freshness.mjs --json`) sobre o repositório
 REAL, que é o fato que o doctor e o publicador consomem: para o fail-closed da
 FONTE ele recebe `--file` apontando para um arquivo que não existe, e o caminho
 "não consegui ler" é medido de ponta a ponta. E a suíte unitária
-(`src/lib/__tests__/bench-freshness.test.ts`), a única testemunha das duas metades
-que o repositório de hoje NÃO consegue mostrar — nenhuma declaração está
-exatamente nos 150, e todos os números do modelo já carregam a data deles (que é,
-em si, a prova de que a regra é seguida). Cada mutação é CIRÚRGICA (o alvo tem de
+(`src/lib/__tests__/bench-freshness.test.ts`), a única testemunha das QUATRO
+metades que o repositório de hoje NÃO consegue mostrar sozinho — nenhuma
+declaração está exatamente num teto fixo, todos os números do modelo já carregam
+a data deles (que é, em si, a prova de que a regra é seguida), o ritmo de hoje dá
+**um** número (o produto e a coincidência ficariam indistinguíveis sem os dois
+lados — ritmo alto × piso) e o caminho da RESERVA só aparece quando o git não
+responde. Cada mutação é CIRÚRGICA (o alvo tem de
 aparecer UMA vez, e o arquivo mutado tem de seguir com sintaxe válida) e a régua é
 RESTAURADA entre as medições, com o CONTROLE final medindo o mesmo fato (412
 commits) de novo. A suíte é a **37.ª** da matriz do master e custa **17.3s**

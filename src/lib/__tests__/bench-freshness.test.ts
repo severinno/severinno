@@ -943,6 +943,32 @@ describe("readFreshness — o fato completo e o teto POR TIPO", () => {
     expect(fact.families.filter((f) => f.kind === "declared-table").length).toBeGreaterThan(2)
   })
 
+  it("a POLÍTICA do teto é a que a doc declara — e a doc diz que o NÚMERO é derivado", () => {
+    // A régua imprime o teto (derivado) por tipo no fato, e a doc declara a
+    // POLÍTICA: sem esta ligação, mudar a janela, os ciclos ou o piso deixaria a
+    // doc mentindo — a mesma classe de defeito que esta régua existe para nomear.
+    for (const caminho of [README_PATH, "docs/GUARDS.md"]) {
+      const texto = readFileSync(join(ROOT, caminho), "utf8").replace(/\s+/g, " ")
+      // Cada número da política, um a um: a doc do repositório não pode cravar o
+      // teto como se fosse constante (ele sai do ritmo medido de agora).
+      expect(texto, `${caminho} não declara os ciclos`).toContain(
+        `${POLITICA_DO_TETO.ciclos} ciclos`,
+      )
+      expect(texto, `${caminho} não declara a janela`).toContain(
+        `${POLITICA_DO_TETO.janelaDias} dias`,
+      )
+      expect(texto, `${caminho} não declara o piso`).toContain(
+        `${POLITICA_DO_TETO.pisoDeCiclo}/ciclo`,
+      )
+      expect(texto, `${caminho} não nomeia a RESERVA do fail-closed`).toContain(
+        `${FRESHNESS_MAX_COMMITS_BEHIND} commits`,
+      )
+      expect(texto, `${caminho} não diz que o teto é derivado`).toContain("DERIVADO do ritmo")
+      expect(texto, `${caminho} não diz que a idade da prosa é publicada`).toContain(
+        "sem teto (a idade é publicada)",
+      )
+    }
+  })
 
   it("o arquivo do MODELO real é o que a régua lê (a fonte não é uma segunda leitura)", () => {
     const modeloReal = JSON.parse(readFileSync(join(ROOT, MODEL_PATH), "utf8"))

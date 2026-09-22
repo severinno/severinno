@@ -1218,8 +1218,17 @@ dele —, e a comparação por percentual é **cega para QUANDO os dois números
 medidos**: foi por essa fenda que uma divergência de **28%** no `mutation-guards`
 (271.755ms declarados × 380.700ms medidos) viveu sem que nenhum guard a nomeasse.
 A régua mede, por **declaração datada**, quantos commits de `HEAD` separam a
-origem gravada da árvore de agora, com o teto declarado de **150 commits** — dois
-ciclos do cron semanal ao ritmo medido do repositório (~10 commits/dia) —, e o
+origem gravada da árvore de agora, e o teto é **DERIVADO do ritmo** do próprio
+repositório, medido na hora: a política declara o que **não** se mede — **2
+ciclos** do cron semanal, ritmo contado numa janela de **28 dias** e um **piso de
+20/ciclo** (um repositório parado daria teto 0 e acusaria tudo) — e o número sai
+desse produto (`ciclos × commits por ciclo`). A janela é fato medido, não gosto:
+re-medida em 22/09/2026, ela dava 157 commits (14 dias dariam 164, 90 dariam 79 —
+e a de 90 acusaria 22 das 35 declarações que têm teto, todas de menos de uma
+semana de calendário; a janela ROLA, e é por isso que a política declara a janela
+e nunca o número). Quando o git não
+responde o ritmo, o teto cai na **reserva declarada de 150 commits** e o fato diz
+qual das duas réguas valeu (`teto.origem`) — um teto silencioso é o defeito. O
 mesmo passo semanal que publica a regressão de tempo publica esta como issue
 (`bench-freshness-drift`, dedup por assinatura, fechada sozinha quando a régua é
 re-medida).
@@ -1232,17 +1241,23 @@ duração. Os dois últimos passaram a exigir a própria âncora — o número d
 sua `date` e a tabela a data no bloco dela —, e a origem é DERIVADA dela
 (`git rev-list -1 --before`), medida pela MESMA sonda (uma segunda régua de idade
 divergiria da primeira no dia em que alguém ajustasse uma delas). O teto é POR
-TIPO: **150 commits** para as famílias e para os números do modelo, e **sem teto (a
-idade é publicada)** para a prosa de custo — ela é re-medida quando o GUARD muda,
+TIPO: o teto derivado para as famílias e para os números do modelo (os dois são
+re-medidos no mesmo ato em que o guard ou o job muda — só o tipo tem política, não
+o número), e **sem teto (a idade é publicada)** para a prosa de custo — ela é
+re-medida quando o GUARD muda,
 não por calendário, e um teto em commits compararia o ritmo do CÓDIGO com o da DOC.
 A célula que só cita uma duração no meio de uma frase não é tabela de custo: o
 tempo tem de começar a célula. O checkout daquele job é feito com a história inteira (`fetch-depth:
 0`): a idade é contada em commits e um clone raso responderia "sem idade", nunca
 "fresca". **A régua tem prova por mutação própria** (`scripts/test-mutation-bench-freshness.sh`,
 **em OITO direções**): cada regra que o veredito consome é desligada no lugar — a
-derivação da origem pela data, a âncora de mês, o teto por tipo, a fronteira dele
-e o fail-closed das duas fontes — e o vermelho é exigido, com a régua restaurada e
-medindo o mesmo fato de novo no controle final.
+derivação da origem pela data, a âncora de mês, o teto por tipo, a fronteira dele,
+o fail-closed das duas fontes, o TETO DERIVADO do ritmo e a PROCEDÊNCIA dele — e o
+vermelho é exigido, com a régua restaurada e
+medindo o mesmo fato de novo no controle final. E a régua publica a procedência do
+próprio teto: o relatório, o doctor e a issue repetem a linha do `tetoLine`
+("derivado do ritmo — N commits em J dias …" ou "RESERVA declarada …"), para um
+teto de fail-closed nunca sair com a cara de um teto medido.
 
 **LIMITE DECLARADO:** a régua mede FRESCOR, não exatidão — um commit a
 mais pode não mudar nada do que a família mede; o que ela impede é o silêncio de
