@@ -1398,10 +1398,14 @@ medida no simulador (a suíte e o ensaio do pty). Ela custa **≈0,61s** (median
 > tocar o dono delas (a contagem da matriz, a paridade das forjas e a prosa da versão). O
 > veredito é por commit: `vermelho` nomeia o commit e o gate, `indeterminado` (worktree que
 > não abriu, comando ausente, timeout) nunca vale verde, e acima do teto de commits a pilha
-> sai INDETERMINADA. Medido na cadeia do `#25` (16 commits): **três commits NÃO passam
-> sozinhos** — `7335cd1a`, `48e14651` e `4c0851b7`, todos porque a origem gravada na
-> baseline fica órfã quando uma reescrita troca o hash do commit do ato; o topo é verde, e é
-> ele que esconde o commit do meio que nasceu vermelho.
+> sai INDETERMINADA. Medido na cadeia do `#25` (16 commits): **três commits NÃO passavam
+> sozinhos** — `7335cd1a`, `48e14651` e `4c0851b7` (nomes daquela série; hoje `4962399e`,
+> `5cb3abf2` e `a318c9c2`), todos porque a origem gravada na baseline fica órfã quando uma
+> reescrita troca o hash do commit do ato; o topo é verde, e é ele que esconde o commit do
+> meio que nasceu vermelho. **A dobra que o gate pediu foi feita e medida: os 20 commits que
+> ela produziu passam SOZINHOS** (`--only` em cada um, 0 vermelhos — mais o commit da doc que
+> declara isso) — e as DUAS causas que o primeiro vermelho escondia, da mesma classe (uma
+> asserção que viaja antes do que ela mede), foram consertadas DENTRO do commit que as criou.
 >
 > **A régua tem prova por mutação própria** (`scripts/test-mutation-stack-per-commit.sh`,
 > **em CINCO direções** — a 38.ª sub-test da matriz): o fixture é um repositório git de

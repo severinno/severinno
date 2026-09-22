@@ -6701,12 +6701,26 @@ das duas forjas e a suíte de mutação. No escopo SEMPRE o relatório escreve
 
 **O que ele mediu na primeira subida** (a cadeia do `#25`, 16 commits entre a base da
 pilha e o topo): o gate achou **três commits que não passam sozinhos** — `7335cd1a`,
-`48e14651` e `4c0851b7` — todos pela MESMA causa: a régua da idade do bench acusa a
-origem gravada na baseline como fora da história, porque a reescrita de uma rebase troca
-o hash do commit em que o ato foi medido. O topo é verde (o ato re-datou a proveniência),
-e é EXATAMENTE isso que o topo esconde: um commit do meio que nasceu vermelho. A dobra que
-move um conserto para baixo também reescreve esses hashes, e o mesmo gate pegou o efeito
-dela: o ato re-datado para o commit PRÉ-dobra ficou órfão, e o topo passou a acusar.
+`48e14651` e `4c0851b7` (nomes daquela série; hoje `4962399e`, `5cb3abf2` e `a318c9c2`) —
+todos pela MESMA causa: a régua da idade do bench acusa a origem gravada na baseline como
+fora da história, porque a reescrita de uma rebase troca o hash do commit em que o ato foi
+medido. O topo é verde (o ato re-datou a proveniência), e é EXATAMENTE isso que o topo
+esconde: um commit do meio que nasceu vermelho. A dobra que move um conserto para baixo
+também reescreve esses hashes, e o mesmo gate pegou o efeito dela: o ato re-datado para o
+commit PRÉ-dobra ficou órfão, e o topo passou a acusar.
+
+**A dobra foi feita — e medida.** A re-dating passou a viajar DENTRO dos commits que a
+carregam (o valor pré-dobra é re-datado onde ele NASCE, não num commit solto no topo), e os
+**20 commits que a dobra produziu passam SOZINHOS**: `--only <sha>` em cada um, **0
+vermelhos** — mais o commit da doc que declara isso —, e o pre-push do recorte não tem mais
+o que recusar. O mesmo gate mediu, no caminho, as DUAS
+causas que o primeiro vermelho ESCONDIA — as duas da MESMA classe, uma asserção que viaja
+antes do que ela mede: o caso `a POLÍTICA do teto é a que a doc declara` nasceu no commit
+do MECANISMO, com a prosa que ele lê chegando dois commits acima (a asserção foi para o
+commit da doc), e o bloco de doc do `stack-per-commit:prove` estourava o teto de **180s** do
+`check:prove-docs` no PRÓPRIO commit que o criou — medido: 15 arquivos de diff → 25 de teste
+→ **201s** (o escopo passou a ser declarado, `--sem-afetados`, e o commit caiu para
+**20,4s**).
 
 **Prova por mutação:** `scripts/test-mutation-stack-per-commit.sh` tira cada regra do
 veredito do lugar, uma por vez, e exige que o veredito MUDE — são **em CINCO direções**
@@ -6753,12 +6767,14 @@ não-zero como "um commit do meio é vermelho", isto é, uma prova que mede o am
 uma ACUSAÇÃO ao commit.
 
 **O que o recorte mediu na primeira subida** (na própria série desta thread, os 12 commits
-acima da dobra): **dois commits do MEIO vermelhos** — `48e14651` e `3aaa260b` — ambos pela
-causa já nomeada acima (a origem gravada na baseline que a dobra tornou órfã), e nenhum dos
-dois é visível no topo. A consequência é a promessa do gate em ato: o push daquela série é
-RECUSADO até o conserto nascer no commit que quebrou o invariante — a re-dating da
-proveniência precisa viajar DENTRO dos commits que a carregam (uma nova dobra), ou o push sai
-com `--no-verify` e o CI mede.
+acima da dobra): **dois commits do MEIO vermelhos** — `48e14651` e `3aaa260b` (hoje
+`5cb3abf2` e `7c10eb29`) — ambos pela causa já nomeada acima (a origem gravada na baseline
+que a dobra tornou órfã), e nenhum dos dois é visível no topo. A consequência foi a promessa
+do gate EM ATO: o push daquela série saiu RECUSADO até o conserto nascer no commit que
+quebrou o invariante — a re-dating da proveniência tinha de viajar DENTRO dos commits que a
+carregam (uma nova dobra). Foi o que aconteceu: a dobra está feita e a série inteira passa
+SOZINHA, então o recorte **não tem mais nada a recusar** — a promessa do gate não precisou do
+`--no-verify` nem do CI para valer.
 
 O **fixture é um repositório git de verdade**, com uma pilha de **três commits sobre uma
 base sã** onde **dois NASCEM vermelhos** — e cada um quebra **um** dos dois testes, por
