@@ -71,7 +71,7 @@
 
 import { existsSync, readFileSync } from "node:fs"
 import { spawnSync } from "node:child_process"
-import { join } from "node:path"
+import { dirname, join, relative } from "node:path"
 
 import {
   REPO_ROOT,
@@ -89,6 +89,10 @@ import {
   wrapperSource,
   writeHook,
 } from "./hook-simulator.mjs"
+// O conjunto SEMPRE é importado do dono (o recorte): o fixture dubla os guards de
+// árvore DERIVANDO a lista deles — um guard novo no conjunto não pode virar um
+// ENOENT que deixaria o recorte INDETERMINADO por um buraco do fixture.
+import { CONJUNTO_SEMPRE } from "./prove-stack-per-commit.mjs"
 
 /** O hook REAL do repositório (o arquivo que o git executa num push). */
 export const HOOK = join(REPO_ROOT, ".husky", "pre-push")
@@ -732,6 +736,493 @@ export function provePushBlocks({ root = REPO_ROOT, hookSourceTexto = null } = {
     return {
       state: "unavailable",
       detail: `a prova do bloqueio do push não pôde rodar: ${err instanceof Error ? err.message : String(err)}`,
+      evidence: null,
+      remedies,
+    }
+  } finally {
+    cleanupFixtures()
+  }
+}
+
+// =============================================================================
+// A PROVA DO RECORTE DA PILHA — o commit do MEIO, no caminho do push
+// =============================================================================
+//
+// A promessa que ela mede é OUTRA que a de cima, e a diferença é o que torna a
+// segunda prova necessária: a de cima mede a ÁRVORE do topo (a árvore vermelha
+// não sai desta máquina); esta mede o que a de cima NÃO via — uma pilha em que o
+// commit do MEIO nasce vermelho e o TOPO é verde. É a classe medida no
+// repositório (o `eee4f65e` invalidou a expectativa de outro teste e o vermelho
+// viajou 12 commits: o topo estava verde, o PR estava verde, e o commit que
+// quebrou o invariante nunca foi julgado).
+//
+// AS DUAS METADES, no MESMO fixture, medidas no REMOTO (nunca no stdout de
+// ninguém):
+//
+//   A. o MEIO vermelho: um `git push` de verdade tem de ser RECUSADO, com ZERO
+//      objeto no banco do remoto e ZERO ref atualizada — e o veredito tem de
+//      NOMEAR o commit do meio (um bloqueio por outro motivo não é esta prova);
+//   B. o CONTROLE: o MESMO push, no MESMO fixture, com o meio VERDE — tem de
+//      CHEGAR (ref no remoto, objetos no banco e o conteúdo conferido na ref).
+//      Sem ele, "nada chegou" seria indistinguível de um fixture cujo push não
+//      funciona — e a metade A estaria provando o bloqueio de um gate quebrado.
+//
+// O QUE É REAL E O QUE É DUBLÊ (declarado, nunca implícito):
+//
+//   - REAL: o `pre-push` do repositório (o arquivo, com as fases dele), o
+//     módulo `scripts/prove-stack-per-commit.mjs` (copiado com o fecho que ele
+//     importa), o `git` (worktrees de verdade por commit), o `bun` (o binário de
+//     verdade rodando o `package.json` DO FIXTURE) e o `git push` (é o git que
+//     invoca o hook pelo `core.hooksPath`);
+//   - DUBLÊ DECLARADO: os três guards do CONJUNTO SEMPRE (as invariantes de
+//     ÁRVORE que eles medem são do repositório — a matriz, as duas forjas, a
+//     prosa dos cabeçalhos — e não deste fixture: aqui eles passam para que o
+//     veredito medido seja o dos COMMITS, não o do ambiente), o `bash` do runner
+//     de encoding (irmão de fase, não é o assunto) e o `curl` do bloco ADVISORY
+//     (o mesmo motivo do fixture de cima: determinismo do push).
+
+/**
+ * O FECHO que o fixture do recorte COPIA — a lista é o que o `closure` do
+ * `novoRepo` leva, e a completude dela é CONFERIDA contra o grafo real de
+ * imports (`fechoDoRecorteProblemas`), não presumida.
+ *
+ * POR QUE a conferência existe: a primeira execução desta prova morreu com
+ * `ERR_MODULE_NOT_FOUND` (o `check-tla-closure.mjs` importa o
+ * `check-no-leaked-imports.mjs`, que não estava na lista) — e o não-zero do
+ * módulo do recorte, com o hook tratando qualquer não-zero como "um commit do
+ * meio é vermelho", virou uma ACUSAÇÃO ao commit. Um fecho incompleto é uma
+ * prova que mede o fixture; por isso ele aparece NOMEADO no teste.
+ */
+export const FECHO_DO_RECORTE = [
+  "prove-stack-per-commit.mjs",
+  "check-tla-closure.mjs",
+  "check-no-leaked-imports.mjs",
+  "remedy-canal.mjs",
+]
+
+/**
+ * A COMPLETUDE do fecho, DERIVADA do grafo: fecha transitivamente as dependências
+ * relativas do módulo do recorte e compara com a lista declarada — nos DOIS
+ * sentidos (uma dependência nova falta na lista; uma linha da lista que ninguém
+ * importa é uma cópia a mais, que envelhece sem avisar).
+ *
+ * @param {string} [root]
+ * @returns {string[]} os problemas (vazio = o fecho está completo)
+ */
+export function fechoDoRecorteProblemas(root = REPO_ROOT) {
+  const problemas = []
+  const visto = new Set()
+  const anda = (rel) => {
+    if (visto.has(rel)) return
+    visto.add(rel)
+    const path = join(root, "scripts", rel)
+    if (!existsSync(path)) {
+      problemas.push(`${rel} → ausente do checkout`)
+      return
+    }
+    const src = readFileSync(path, "utf8")
+    for (const m of src.matchAll(/from\s+"(\.\/[^"]+)"/g)) {
+      anda(relative("scripts", join("scripts", dirname(rel), m[1])))
+    }
+  }
+  anda("prove-stack-per-commit.mjs")
+  for (const f of visto) {
+    if (!FECHO_DO_RECORTE.includes(f))
+      problemas.push(
+        `${f} → importado pelo recorte e FORA de FECHO_DO_RECORTE (o fixture não o copiaria)`,
+      )
+  }
+  for (const f of FECHO_DO_RECORTE) {
+    if (!visto.has(f)) problemas.push(`${f} → declarado no fecho e ninguém o importa (lista velha)`)
+  }
+  return problemas
+}
+
+/** O arquivo que o commit do MEIO quebra — o veredito é do CONTEÚDO versionado. */
+export const MEDIDO_ARQUIVO = "src/medido.js"
+
+/** O marcador do defeito: é este texto que faz o teste derivado reprovar. */
+export const MEDIDO_MARCADOR = "QUEBRA_NO_MEIO"
+
+/** A árvore BOA do arquivo medido (o commit verde). */
+export const MEDIDO_BOM = 'export const medido = "ok"\n'
+
+/** A árvore do MEIO: o conteúdo que o teste derivado reprova. */
+export const MEDIDO_QUEBRADO = `export const medido = "${MEDIDO_MARCADOR}"\n`
+
+/**
+ * O teste que a régua NOMEADA alcança: o commit muda `src/medido.js`, e a
+ * convenção de nome leva a `medido.test.ts`. Ele nunca é EXECUTADO (quem roda é
+ * o payload declarado do `vitest` do fixture) — o que ele prova é a DERIVAÇÃO.
+ */
+export const TESTE_DERIVADO = "src/lib/__tests__/medido.test.ts"
+
+/** O script que o fixture declara como o `vitest` do próprio `package.json`. */
+export const VITEST_PAYLOAD_FILE = "scripts/vitest-fixture.mjs"
+
+/** O log das MEDIÇÕES por commit — o rastro de que o recorte mediu o MEIO. */
+export const VITEST_LOG = "vitest-invocado.log"
+
+/** A variável que diz ao payload onde gravar (o worktree do commit é descartado). */
+export const PROVA_LOG_ENV = "PROVA_VITEST_LOG"
+
+/**
+ * O PAYLOAD declarado do `bun run vitest` do fixture.
+ *
+ * Duas coisas, e as duas são load-bearing: (a) o veredito vem do CONTEÚDO
+ * versionado do arquivo que o commit do MEIO mudou, não de um arquivo fora do
+ * git; (b) ele REPROVA se a lista de testes que recebeu vier VAZIA — é ela a
+ * régua dos AFETADOS, e um recorte que não derivasse teste nenhum estaria
+ * medindo o ambiente e se dizendo medido. O log é o rastro (caminho do worktree
+ * do commit, veredito, arquivos derivados): é por ele que se prova que o MEIO foi
+ * mesmo medido, e não só que o push foi recusado.
+ */
+export const VITEST_PAYLOAD = `// O PAYLOAD declarado do \`bun run vitest\` do FIXTURE do recorte da pilha.
+import { appendFileSync, readFileSync } from "node:fs"
+
+const args = process.argv.slice(2)
+const arquivos = args.filter((a) => a.endsWith(".test.ts"))
+const quebrado = readFileSync("${MEDIDO_ARQUIVO}", "utf8").includes("${MEDIDO_MARCADOR}")
+const log = process.env.${PROVA_LOG_ENV}
+if (log)
+  appendFileSync(
+    log,
+    \`\${process.cwd()}|\${quebrado ? "QUEBRADO" : "ok"}|\${arquivos.join(",")}\\n\`,
+  )
+
+if (arquivos.length === 0) {
+  console.error("o recorte chamou o vitest SEM teste derivado — a régua dos afetados não achou nada")
+  process.exit(1)
+}
+if (quebrado) {
+  console.error("FAIL ${TESTE_DERIVADO} > 1 test failed")
+  process.exit(1)
+}
+console.log("vitest do fixture: OK")
+`
+
+/**
+ * O typecheck do fixture da pilha: a ÁRVORE do topo é VERDE — quem tem de
+ * reprovar é o commit do MEIO, medido pelo recorte. Um payload que reprovasse
+ * aqui bloquearia o push ANTES do recorte, e a prova mediria a fase errada (foi
+ * o que a primeira execução desta prova mediu: o payload do fixture de cima lê
+ * um arquivo que este fixture não tem).
+ */
+export const TYPECHECK_PAYLOAD_PILHA = `// O typecheck do fixture da PILHA: verde, de propósito.
+console.log("typecheck do fixture da pilha: OK (a árvore do topo é verde — o assunto é o MEIO)")
+`
+
+/** O `package.json` do fixture da pilha: os dois comandos que o hook e o recorte usam. */
+export const PACKAGE_JSON_PILHA = `${JSON.stringify(
+  {
+    name: "fixture-hook-pilha",
+    private: true,
+    scripts: { typecheck: `node ${PAYLOAD_FILE}`, vitest: `node ${VITEST_PAYLOAD_FILE}` },
+  },
+  null,
+  2,
+)}\n`
+
+/**
+ * O dublê de um guard do CONJUNTO SEMPRE, DERIVADO do conjunto real: se um guard
+ * de árvore novo entrar no `CONJUNTO_SEMPRE`, o fixture passa a dublá-lo sozinho
+ * — um recorte que ganhasse uma invariante de árvore nova e não a encontrasse no
+ * fixture sairia INDETERMINADO por ENOENT, e a prova mediria o fixture.
+ */
+const stubDoSempre = (id) =>
+  `// O DUBLÊ DECLARADO do guard de árvore '${id}' no fixture do recorte.\n` +
+  `// A invariante que ele mede é do REPOSITÓRIO (a matriz, as duas forjas, a prosa\n` +
+  `// dos cabeçalhos) — no fixture ele passa, para o veredito medido ser o dos\n` +
+  `// COMMITS do MEIO, e não o do ambiente.\n` +
+  `process.exit(0)\n`
+
+/**
+ * O dublê do hook para o fixture da pilha: o `bun` passa nos DOIS comandos reais
+ * (o typecheck do hook e o `vitest` do recorte).
+ *
+ * O `vitest` merece a nota: o recorte o chama de DENTRO de um processo `node`
+ * filho, onde as funções deste dublê não valem — quem decide é o
+ * `package.json` do fixture. O passthrough aqui só garante que a fase do hook não
+ * morra com `command not found` no caminho somado.
+ */
+export const WRAPPER_PILHA = wrapperSource([
+  {
+    tool: "bun",
+    match: "typecheck",
+    why: "o typecheck do hook é REAL no fixture: o dublê só o reconhece para liberar `command bun`",
+  },
+  {
+    tool: "bun",
+    match: "vitest",
+    why: "o `bun run vitest` do RECORTE é real (o binário de verdade, o `package.json` do fixture) — e ele roda num processo filho, onde este dublê não alcança",
+  },
+  {
+    tool: "bash",
+    why: `irmão de fase (${ENCODING_GUARDS_COMMAND}): não existe no fixture e não é o assunto`,
+  },
+  {
+    tool: "curl",
+    code: 1,
+    why: "o bloco ADVISORY do Lighthouse tem de ser determinístico: 1 = 'Server not running',\nque é o caminho que o hook sabe tratar (o mesmo motivo do fixture de cima)",
+  },
+])
+
+/**
+ * O fixture da PILHA: TRÊS commits em que o do MEIO nasce vermelho e o TOPO o
+ * conserta — e o topo é verde.
+ *
+ * É essa forma que torna a prova necessária: qualquer medição da ÁRVORE do topo
+ * (o typecheck, os testes afetados da faixa, o PR) sai VERDE, e é exatamente por
+ * isso que o commit do meio vive sem julgamento. O `--sem-topo` do recorte tira
+ * o topo da medição — ele é o que as outras fases já medem — e o que sobra é o
+ * MEIO, que é o que esta prova põe à prova.
+ *
+ * O arquivo medido é `.js` de propósito: o mapeamento de testes afetados do
+ * PRÓPRIO hook (o smart-skip, por nome de arquivo) só olha `src/lib/*.ts` e
+ * `src/app/api/*` — assim quem deriva o afetado é a régua do RECORTE (o grafo e a
+ * convenção de nome), e não a do hook.
+ *
+ * @param {{meio?: "verde"|"vermelho", hookSourceTexto?: string, wrapper?: string}} [opts]
+ * @returns {{dir: string, remoto: string, hook: string, base: string, c1: string, meio: string, topo: string, estadoInicial: {refs: string[], objetos: number, conteudo: string}}}
+ */
+export function montaPushPilhaFixture({ meio = "vermelho", hookSourceTexto, wrapper } = {}) {
+  const dir = novoRepoSim({
+    prefix: "pre-push-pilha-",
+    wrapper: wrapper ?? WRAPPER_PILHA,
+    dirs: ["scripts", "src", "src/lib/__tests__"],
+    // O RECORTE é o módulo REAL, com o fecho que ele importa: a prova mede a
+    // régua do repositório, não uma reimplementação dela. A lista é a MESMA que
+    // `fechoDoRecorteProblemas` confere contra o grafo (uma dependência nova
+    // aparece acusada, em vez de virar um `ERR_MODULE_NOT_FOUND` na prova).
+    closure: [...FECHO_DO_RECORTE],
+  })
+  stage(dir, "package.json", PACKAGE_JSON_PILHA)
+  stage(dir, PAYLOAD_FILE, TYPECHECK_PAYLOAD_PILHA)
+  stage(dir, VITEST_PAYLOAD_FILE, VITEST_PAYLOAD)
+  for (const g of CONJUNTO_SEMPRE) stage(dir, g.cmd[1], stubDoSempre(g.id))
+  stage(dir, MEDIDO_ARQUIVO, MEDIDO_BOM)
+  stage(dir, TESTE_DERIVADO, `// O teste que a régua NOMEADA alcança (nunca executado aqui).\n`)
+  const base = runGit(dir, ["commit", "-q", "-m", "base"])
+  if (base.status !== 0) throw new Error(`o fixture da pilha não comitou a base: ${base.output}`)
+  runGit(dir, ["branch", "-M", "main"])
+  const remoto = bareRemote()
+  runGit(dir, ["remote", "add", "origin", remoto])
+  const baseSha = runGit(dir, ["rev-parse", "HEAD"]).output.trim().split("\n")[0]
+
+  // O REMOTO RECEBE A BASE ANTES DE O HOOK EXISTIR (sem `hooksPath`, nenhum hook
+  // roda — a base não é o assunto). É o caso REAL que a prova mede: commits
+  // NOVOS sobre um branch que o remoto já tem. Um push de ref NOVO não delimita
+  // pilha nenhuma (o recorte sai INDETERMINADO — o comportamento declarado dele),
+  // e sem esta metade a prova mediria o caminho indeterminado e o chamaria de
+  // bloqueio. O estado do remoto fica MEDIDO aqui, para o defeito ser "nada
+  // MUDOU" (uma ref que não anda e nenhum objeto novo), e não "nada existia".
+  const pushDaBase = runGit(dir, ["push", "-q", "origin", "main"])
+  if (pushDaBase.status !== 0)
+    throw new Error(`o fixture da pilha não empurrou a base: ${pushDaBase.output}`)
+  const estadoInicial = {
+    refs: refsOf(remoto),
+    objetos: countObjects(remoto),
+    conteudo: contentAtRef(remoto, "refs/heads/main", MEDIDO_ARQUIVO),
+  }
+
+  const comita = (conteudo, msg) => {
+    stage(dir, MEDIDO_ARQUIVO, conteudo)
+    const r = runGit(dir, ["commit", "-q", "-m", msg])
+    if (r.status !== 0) throw new Error(`o fixture da pilha não comitou '${msg}': ${r.output}`)
+    return runGit(dir, ["rev-parse", "HEAD"]).output.trim().split("\n")[0]
+  }
+  const c1 = comita(`${MEDIDO_BOM}// C1: o primeiro commit da pilha\n`, "C1 (verde)")
+  const meioSha = comita(
+    meio === "vermelho" ? MEDIDO_QUEBRADO : `${MEDIDO_BOM}// C2 (verde no controle)\n`,
+    "C2 (o MEIO)",
+  )
+  const topo = comita(`${MEDIDO_BOM}// C3: o topo conserta o meio\n`, "C3 (o topo, verde)")
+
+  const hook = writeHook(dir, {
+    name: HOOK_NAME,
+    source: hookSourceTexto ?? hookSource() ?? "",
+    hooksPath: HOOKS_DIR,
+  })
+  return { dir, remoto, hook, base: baseSha, c1, meio: meioSha, topo, estadoInicial }
+}
+
+/**
+ * O rastro das medições do recorte: uma linha por commit medido, com o caminho do
+ * worktree, o veredito do CONTEÚDO e os testes que a régua derivou.
+ *
+ * @param {string} dir
+ * @returns {Array<{cwd: string, veredito: string, arquivos: string[]}>}
+ */
+export function medicoesDoRecorte(dir) {
+  const caminho = join(dir, VITEST_LOG)
+  if (!existsSync(caminho)) return []
+  return readFileSync(caminho, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((linha) => {
+      const [cwd, veredito, arquivos] = linha.split("|")
+      return { cwd, veredito, arquivos: arquivos ? arquivos.split(",") : [] }
+    })
+}
+
+/**
+ * A PROVA DO RECORTE: o commit do MEIO de uma pilha é medido no caminho do push,
+ * e o push da pilha com o meio vermelho é RECUSADO sem deixar objeto no remoto.
+ *
+ * O CONTROLE é o MESMO fixture com o meio VERDE: sem ele, a recusa poderia ser de
+ * outro motivo (um hook que não roda, um fixture que não empurra) — e o veredito
+ * medição estaria provando o bloqueio de um gate quebrado.
+ *
+ * As três coisas que o `state: "proven"` exige, todas MEDIDAS:
+ *   1. o push do meio vermelho sai NÃO-ZERO, com ZERO ref e ZERO objeto no
+ *      remoto (o remoto é o único lugar onde "nada chegou" pode ser medido);
+ *   2. o veredito NOMEIA o commit do MEIO — um bloqueio por outro gate não é esta
+ *      prova (o commit, e não o ambiente, tem de ser o acusado);
+ *   3. o rastro do payload mostra o MEIO medido com o veredito do CONTEÚDO
+ *      (QUEBRADO) e com teste derivado (a régua dos afetados rodou);
+ *   — e o CONTROLE verde CHEGA (ref atualizada, objetos no banco, conteúdo na ref).
+ *
+ * @param {{root?: string, hookSourceTexto?: string|null}} [opts]
+ * @returns {{state: "proven"|"violated"|"unavailable", detail: string, evidence: object|null, remedies: string[]}}
+ */
+export function provePushBlocksMiddle({ root = REPO_ROOT, hookSourceTexto = null } = {}) {
+  const remedies = [
+    "o recorte do push mede uma AMOSTRA (PILHA_PUSH_MAX, default 6) dos commits do MEIO: os PULADOS saem nomeados no relatório e o veredito da pilha INTEIRA é o job stack-per-commit do CI (o mesmo comando, sem amostra)",
+    "um commit do meio que nasce vermelho se conserta onde ele nasceu (o remédio é reescrever o commit que quebrou o invariante), não no topo: o recorte existe para o defeito não viajar",
+    "o recorte segue o push quando NÃO conseguiu medir (`indeterminado`) e o `git push --no-verify` não executa o hook — as duas metades desse limite estão medidas em provePushBypass()",
+  ]
+  const fonte = hookSourceTexto ?? hookSource(root)
+  if (fonte === null) {
+    return {
+      state: "unavailable",
+      detail: `${join(root, ".husky", "pre-push")} não existe neste checkout — não há recorte para medir`,
+      evidence: null,
+      remedies,
+    }
+  }
+  if (!bunResolve()) {
+    return {
+      state: "unavailable",
+      detail:
+        "não dá para medir o recorte: `bun` não resolve neste ambiente (o recorte morreria com `command not found`, e o não-zero seria do ambiente)",
+      evidence: null,
+      remedies,
+    }
+  }
+
+  try {
+    // ── A: o MEIO vermelho — tem de ser recusado, sem objeto no remoto ────
+    const vermelho = montaPushPilhaFixture({
+      meio: "vermelho",
+      ...(hookSourceTexto === null ? {} : { hookSourceTexto }),
+    })
+    const bloqueio = runPush(vermelho.dir, "origin", {
+      [PROVA_LOG_ENV]: join(vermelho.dir, VITEST_LOG),
+    })
+    const medicoes = medicoesDoRecorte(vermelho.dir)
+    const refsDefeito = refsOf(vermelho.remoto)
+    const objetosDefeito = countObjects(vermelho.remoto)
+    const conteudoDefeito = contentAtRef(vermelho.remoto, "refs/heads/main", MEDIDO_ARQUIVO)
+    const evidencia = {
+      defeito: {
+        ...resumoPush(bloqueio),
+        refs: refsDefeito,
+        objetosNoRemoto: objetosDefeito,
+        objetosAntes: vermelho.estadoInicial.objetos,
+        refMudou: conteudoDefeito !== vermelho.estadoInicial.conteudo,
+        meio: vermelho.meio.slice(0, 8),
+        medicoes,
+        nomeouOMeio: bloqueio.output.includes(vermelho.meio.slice(0, 8)),
+      },
+    }
+    if (bloqueio.status === 0) {
+      return {
+        state: "violated",
+        detail: `o push da pilha com o MEIO vermelho (${vermelho.meio.slice(0, 8)}) PASSOU — o recorte não mediu o commit do meio`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    // O remoto já tinha a BASE (medida em `estadoInicial`): o defeito é "nada
+    // MUDOU" — a ref não andou e nenhum OBJETO novo chegou ao banco.
+    if (
+      objetosDefeito !== vermelho.estadoInicial.objetos ||
+      conteudoDefeito !== vermelho.estadoInicial.conteudo
+    ) {
+      return {
+        state: "violated",
+        detail: `o push foi recusado, mas o remoto MUDOU (${vermelho.estadoInicial.objetos} → ${objetosDefeito} objeto(s), ref ${vermelho.estadoInicial.conteudo === conteudoDefeito ? "parada" : "andou"}) — o gate não barra ANTES do pack`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    if (!evidencia.defeito.nomeouOMeio) {
+      return {
+        state: "violated",
+        detail: `o push foi recusado, mas o veredito não NOMEIA o commit do MEIO (${vermelho.meio.slice(0, 8)}): o bloqueio pode ser de outro gate, e a prova mediria outra coisa`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    const mediuOQuebrado = medicoes.some((m) => m.veredito === "QUEBRADO" && m.arquivos.length > 0)
+    if (!mediuOQuebrado) {
+      return {
+        state: "violated",
+        detail: `o rastro não mostra o MEIO medido com veredito do CONTEÚDO e teste derivado (${JSON.stringify(medicoes)}) — a recusa pode ter vindo de outra fase do hook`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+
+    // ── B: o CONTROLE — o MESMO push com o meio verde tem de CHEGAR ───────
+    const verde = montaPushPilhaFixture({
+      meio: "verde",
+      ...(hookSourceTexto === null ? {} : { hookSourceTexto }),
+    })
+    const controle = runPush(verde.dir, "origin", {
+      [PROVA_LOG_ENV]: join(verde.dir, VITEST_LOG),
+    })
+    const refsControle = refsOf(verde.remoto)
+    const objetosControle = countObjects(verde.remoto)
+    evidencia.controle = {
+      ...resumoPush(controle),
+      refs: refsControle,
+      objetosNoRemoto: objetosControle,
+      medicoes: medicoesDoRecorte(verde.dir),
+      conteudoNaRef: contentAtRef(verde.remoto, "refs/heads/main", MEDIDO_ARQUIVO),
+    }
+    if (controle.status !== 0 || refsControle.length === 0 || objetosControle === 0) {
+      return {
+        state: "violated",
+        detail: `o CONTROLE com o MEIO verde não chegou ao remoto (exit ${controle.status}, ${refsControle.length} ref(s), ${objetosControle} objeto(s)) — sem ele, o bloqueio medido na metade A não é do defeito`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    if (evidencia.controle.conteudoNaRef !== `${MEDIDO_BOM}// C3: o topo conserta o meio\n`) {
+      return {
+        state: "unavailable",
+        detail: `o CONTROLE chegou ao remoto com outro conteúdo em ${MEDIDO_ARQUIVO} — o harness não está medindo o que diz`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+
+    return {
+      state: "proven",
+      detail:
+        `um 'git push' de verdade de uma pilha com o commit do MEIO vermelho (${vermelho.meio.slice(0, 8)}) ` +
+        `é RECUSADO (exit ${bloqueio.status}, o remoto segue com ${objetosDefeito} objeto(s) — os MESMOS ${vermelho.estadoInicial.objetos} de antes — e a ref parada, ` +
+        `o veredito NOMEIA o commit e o rastro mostra o meio medido com teste derivado) e o ` +
+        `MESMO push com o meio verde CHEGA (exit ${controle.status}, ${refsControle.join(", ")}, ` +
+        `${objetosControle} objeto(s), conteúdo conferido na ref)`,
+      evidence: evidencia,
+      remedies,
+    }
+  } catch (err) {
+    return {
+      state: "unavailable",
+      detail: `a prova do recorte da pilha não pôde rodar: ${err instanceof Error ? err.message : String(err)}`,
       evidence: null,
       remedies,
     }

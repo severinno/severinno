@@ -907,6 +907,7 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 | Imports diretos (check:direct-rtl-import + barrel-lint)                         |     ✅     |       —       |
 | Barrel lint (`barrel-lint`)                                                     |     ✅     |       —       |
 | Typecheck (`bun run typecheck`)                                                 |     ✅     |      ✅       |
+| Recorte do MEIO no push (`prove-stack-per-commit.mjs --pushed`)                 |     —      |      ✅       |
 | Snapshots (quando `.snap`/snapshot tests alterados)                             |  ✅ cond.  |       —       |
 | Testes unitários + fuzz (`test:unit`/`fuzz:ci`/`fuzz`)                          |     —      | ✅ smart-skip |
 
@@ -1413,6 +1414,18 @@ medida no simulador (a suíte e o ensaio do pty). Ela custa **≈0,61s** (median
 > detecção é o CONJUNTO de commits vermelhos, e a derivação é lida na fonte (o runner do
 > fixture registra os arquivos que recebeu, por commit). Custa **3,3s** e é node-pura (o
 > fixture declara o próprio runner, sem `node_modules`).
+>
+> **E o pre-push passou a medir o MEIO da pilha** (o mesmo módulo, com `--pushed`): as refs
+> que saem chegam pelo stdin (o protocolo do git), o recorte é a união `remote_sha..local_sha`
+> **sem o topo** — a árvore do topo é o que as outras fases do hook e o PR já medem —, e o que
+> o faz caber no push é uma **amostra declarada** (`PILHA_PUSH_MAX`, default 6): determinística,
+> com o mais antigo sempre dentro e os **PULADOS NOMEADOS** (pulado não é verde, é NÃO MEDIDO).
+> Medido neste host: um push de UM commit não tem meio e sai em **0,04s** (o caminho comum); a
+> amostra cheia de 6 custou **37,8s**. Um commit do MEIO que nasce vermelho **bloqueia o push**
+> — provado por execução (`git push` de verdade recusado, os MESMOS objetos no remoto, a ref
+> parada e o commit NOMEADO), com o controle verde chegando —, enquanto `indeterminado` e o
+> próprio recorte sem veredito seguem o push, nomeados: a mesma postura do `--no-verify`, e o
+> job `stack-per-commit` do CI mede a pilha inteira.
 >
 > **A pergunta seguinte — "cada etapa do corte do GitHub é shippable sozinha?" — também
 > tem medidor** (`bun run cut-stages:prove`, `scripts/prove-cut-stages.mjs`): as cinco

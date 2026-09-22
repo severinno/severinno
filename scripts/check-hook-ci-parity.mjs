@@ -212,6 +212,16 @@ export const HOOK_DECLARED = [
     why: "recorte por ARQUIVOS AFETADOS (smart-skip do pre-push): roda os testes mapeados dos arquivos que mudaram, nao a suite. E o caminho rapido do push; o CI roda `bun run test:run` inteiro.",
   },
   {
+    // O recorte da PILHA no caminho do push: o instrumento e o MESMO do
+    // invariante `stack-per-commit` (o mesmo script), o que muda e o ESCOPO —
+    // os commits do MEIO que ESTE push leva, amostrados, e nao a pilha inteira.
+    match:
+      /^node scripts\/prove-stack-per-commit\.mjs --pushed --amostra ["{]?\$?\{?PILHA_PUSH_MAX[^ ]* --sem-topo/,
+
+    of: "stack-per-commit",
+    why: "RECORTE do `stack-per-commit` no caminho do push: o CI roda o comando inteiro (a pilha TODA, sem amostra e com `--max-commits`), e aqui e o recorte dos commits do MEIO que ESTE push leva — a uniao `remote_sha..local_sha` lida do protocolo do git no stdin, SEM o topo (a arvore dele e o que as outras fases deste hook e o PR ja medem) e no maximo `PILHA_PUSH_MAX` (default 6) commits MEDIDOS, com os PULADOS NOMEADOS no relatorio: pulado nao e verde, e NAO MEDIDO. A amostra e o que faz o recorte caber no push (medido: recorte vazio ~0,04s; amostra cheia ~38s, 6,3s/commit). O veredito do recorte NAO substitui o do CI: `indeterminado` (worktree que nao abriu, gate ausente) segue o push e e nomeado — a mesma postura declarada do `--no-verify` —, e o job mede a pilha inteira.",
+  },
+  {
     match: /^bun run fuzz:ci$/,
     of: null,
     ciMirror: "bun run fuzz:ci",
@@ -307,14 +317,15 @@ export const HOOK_NOT_RUN = [
   // que a maquina remenda. Com o comando na fase B, a classe
   // `pipefail-sigpipe` do remedio do pre-commit passa a ser ALCANCAVEL no momento
   // do defeito. O CI continua rodando a varredura inteira (as duas forjas).
-  // A prova da PILHA commit a commit e do CONTRATO DE MERGE (a historia que o
-  // merge leva ficou verde commit a commit?), e ela NAO cabe no caminho de um
-  // commit: o custo e por COMMIT medido (~5,4s — 86s numa cadeia de 16) e a
-  // pilha de um PR passa de 100. O hook pagaria minutos em cada commit.
-  {
-    ids: ["stack-per-commit"],
-    why: "o veredito e da PILHA inteira (cada commit num worktree proprio, ~5,4s por commit: 86s na cadeia de 16 do #25, medido) e a pilha de um PR passa de 100 commits — nao existe recorte local que caiba no caminho de um commit. A pergunta e sobre o CONTRATO DE MERGE (a historia que o merge leva ficou verde commit a commit?), e quem a responde a cada PR sao as DUAS pipelines: o job `stack-per-commit` da forja dona do merge e o do espelho, os dois com install.",
-  },
+  // `stack-per-commit` SAIA desta lista, e a razao escrita era medida: "nao
+  // existe recorte local que caiba no caminho de um commit" (~5s por commit, e a
+  // pilha de um PR passa de 100). Continua verdade no caminho do COMMIT — e
+  // deixou de ser no caminho do PUSH: o pre-push mede os commits do MEIO que
+  // ESTE push leva (a uniao `remote_sha..local_sha`, do protocolo do git), sem o
+  // topo e com uma AMOSTRA declarada (`PILHA_PUSH_MAX`, default 6; medido: vazio
+  // ~0,04s, amostra cheia ~38s). O que entra aqui e o recorte DECLARADO em
+  // HOOK_DECLARED; o que NAO entra e o veredito da serie inteira, que segue
+  // sendo das duas pipelines (a amostra nomeia os pulados, nunca os perdoa).
   {
     ids: ["job-deps"],
     why: "o veredito e do ESTADO do repositorio inteiro (os 33 workflows das duas forjas e o grafo de imports de cada comando que um job roda): ele muda com um commit de WORKFLOW e tambem com um commit que muda o GRAFO de um script que um job ja rodava — nao existe recorte --staged que cubra as duas metades (um recorte sobre os workflows tocados ficaria cego no import novo de um script). O hook ja roda `bun run check:forge-parity` em TODO commit, que e quem exige a CLASSIFICACAO de um gate novo — e o CI roda o gate em todo PR, nas duas forjas.",

@@ -6248,8 +6248,8 @@ UNIÃO com a atribuição do filho, o `source` sem `export` e o `export VAR` soz
 de linha, `$( )`, `case`, função, continuação). E o repositório REAL é julgado com
 um **PISO de cobertura** (`comandos >= 200`, os três hooks e os scripts descidos nomeados): se a extração
 ou a descida pararem de funcionar, a contagem cai e o guard "passa" — o piso é o
-que impede o verde por vazio. Em produção: **253 comandos** (108 nos 3 hooks +
-145 dentro dos 5 scripts chamados), **247 resolvidos** e **6 indeterminados
+que impede o verde por vazio. Em produção: **270 comandos** (125 nos 3 hooks +
+145 dentro dos 5 scripts chamados), **264 resolvidos** e **6 indeterminados
 DECLARADOS** (as quatro decisões de caminho viraram prova; sobraram os payloads de
 `-c`).
 
@@ -6716,6 +6716,50 @@ o **veredito por commit** (M3: os dois commits que nascem vermelhos saem ✅ e a
 APROVADA) e o **da série** (M4: o relatório segue dizendo os dois vermelhos e o exit vira
 0 — o job ficaria verde com dois commits vermelhos dentro), e o **TETO** (M5: acima dele
 o gate sai 0 sem ter medido um único commit, quando a regra é INDETERMINADO).
+
+**O RECORTE NO PUSH — o MEIO medido onde o defeito nasce.** As duas medições acima vivem
+DEPOIS do push: o job mede o topo do PR e o harness mede a pilha inteira quando alguém o
+chama. Quem empurra não via o commit do meio nascer vermelho. O `.husky/pre-push` passou a
+chamar o MESMO módulo com `--pushed`: as refs que saem chegam pelo stdin (o protocolo do
+git) e o recorte é a união `remote_sha..local_sha` **sem o topo** — a árvore do topo é o que
+as outras fases do hook e o PR já medem, e é no MEIO que o vermelho vive. Um ref NOVO (sha do
+remoto todo zero) não delimita pilha nenhuma: a base dele sai da base declarada, e sem base
+resolvida o recorte é INDETERMINADO (nunca "medir a história inteira e chamá-la de pilha
+deste push").
+
+O que faz o recorte CABER no caminho do push é a **AMOSTRA declarada** (`PILHA_PUSH_MAX`,
+default **6**; `--amostra N`): no máximo N commits medidos, escolhidos **deterministicamente**
+(o mais antigo sempre dentro, os outros espaçados por igual) e com os **PULADOS NOMEADOS** no
+relatório — pulado não é verde, é NÃO MEDIDO, e o veredito diz quantos mediu de quantos o push
+leva. **Custo medido neste host (09/2026):** um push de UM commit não tem meio — o recorte é
+vazio e sai em **0,04s** (é o caminho comum); a amostra cheia de 6 custou **37,8s** (6,3s por
+commit, medidos na própria cadeia).
+
+**O que ele BARRA, provado por execução** (`pre-push-stack-recorte-blocks.test.ts`, sobre o
+harness de `pre-push-proof.mjs`): o fixture é uma pilha de TRÊS commits em que o do MEIO nasce
+vermelho e o TOPO o conserta, com o remoto já em posse da BASE (senão o ref seria NOVO e a
+metade do defeito seria "o remoto estava vazio") — um `git push` de verdade é **RECUSADO**, o
+remoto fica com os MESMOS objetos de antes e a ref PARADA, o veredito **NOMEIA o commit do
+meio** e o rastro do runner mostra o meio medido com o teste que a régua dos afetados derivou.
+O **CONTROLE** é o mesmo fixture com o meio verde: ele **CHEGA** (ref atualizada, objetos no
+banco, conteúdo conferido na ref) — sem isso, a recusa poderia ser de outro gate.
+
+`indeterminado` (worktree que não abriu, gate ausente) **e** o caso em que o próprio recorte
+não chega a um veredito (fecho incompleto, flag inválida) SEGUEM o push e são NOMEADOS — a
+mesma postura declarada do `--no-verify`, com o job `stack-per-commit` do CI medindo a pilha
+inteira. O bloqueio exige as DUAS coisas (exit 1 **e** o veredito no relatório): foi um achado
+medido — a primeira execução da prova morreu com `ERR_MODULE_NOT_FOUND` e o hook tratou o
+não-zero como "um commit do meio é vermelho", isto é, uma prova que mede o ambiente virando
+uma ACUSAÇÃO ao commit.
+
+**O que o recorte mediu na primeira subida** (na própria série desta thread, os 12 commits
+acima da dobra): **dois commits do MEIO vermelhos** — `48e14651` e `3aaa260b` — ambos pela
+causa já nomeada acima (a origem gravada na baseline que a dobra tornou órfã), e nenhum dos
+dois é visível no topo. A consequência é a promessa do gate em ato: o push daquela série é
+RECUSADO até o conserto nascer no commit que quebrou o invariante — a re-dating da
+proveniência precisa viajar DENTRO dos commits que a carregam (uma nova dobra), ou o push sai
+com `--no-verify` e o CI mede.
+
 O **fixture é um repositório git de verdade**, com uma pilha de **três commits sobre uma
 base sã** onde **dois NASCEM vermelhos** — e cada um quebra **um** dos dois testes, por
 uma régua diferente, o que torna as réguas separáveis: derrubar uma da derivação tira do
