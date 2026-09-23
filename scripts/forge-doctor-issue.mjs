@@ -90,6 +90,8 @@ import process from "node:process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { NESTED_GUARD_ENV, NESTED_GUARD_EXIT, NESTED_GUARD_FLAG, VERDICT } from "./forge-doctor.mjs"
+import { matrixItem, matrixItemLine } from "./bench-freshness.mjs"
+import { datarLinhas } from "./doctor-unproven.mjs"
 import {
   defineDebtPublisher,
   publisherBody,
@@ -137,7 +139,15 @@ export function verdictResolutionComment(report) {
     ["interpolação do compose", facts.compose?.state],
     ["registro do act_runner", facts.runnerLabels?.state],
     ["registro do runner do GitHub", facts.githubRunnerLabels?.state],
+    // A VERSÃO registrada × o PIN do script: a prova de resolução também diz de
+    // qual lado ficou o par (o registro pode estar certo e o pin não ser o que o
+    // serviço aceita — o defeito que prende o job no meio da execução).
+    ["versao do runner do GitHub x o pin do setup", facts.githubRunnerLabels?.version?.state],
     ["dívida aberta no board", facts.openDebt?.state],
+    // O REGISTRO do que o veredito não cobre: o fechamento desta issue é também
+    // o fechamento das DECLARAÇÕES datadas — sem esta linha, quem lê a prova de
+    // resolução não sabe se alguma lacuna venceu ou virou letra morta no caminho.
+    ["registro do que o veredito NÃO cobre", facts.unprovenDebt?.state],
   ].filter(([, state]) => state !== undefined)
   for (const [label, state] of saida) lines.push(`- ${label}: \`${state}\``)
   if (facts.mirrors?.expected !== undefined) {
@@ -485,12 +495,26 @@ function doctorIssueProse(report) {
   return forgeVerdictProse(report)
 }
 
-/** A prosa do veredito da FORJA (o caso comum: o doctor mediu). */
+/** A prosa do veredito da FORJA (o caso comum: o doctor mediu).
+ *
+ * AS TRÊS LISTAS SAEM DATADAS TAMBÉM AQUI, e é o dono do registro que as data
+ * (`datarLinhas` — a MESMA função do relatório do doctor, uma régua só): a issue
+ * é o canal de RECONCILIAÇÃO das dívidas declaradas, e uma linha de 'não provado'
+ * sem data deixa o operador exatamente onde ele estava — sem saber se a lacuna
+ * nasceu ontem ou se venceu a janela e ninguém a reafirmou. A data NÃO entra na
+ * assinatura da issue (`verdictSignatureOf` lê o veredito CRU): uma assinatura
+ * que mudasse com o calendário comentaria toda semana na MESMA issue.
+ */
 function forgeVerdictProse(report) {
+  // O registro datado viaja no próprio relatório (`facts.unprovenDebt`), então a
+  // data sai do DADO — nunca de uma segunda leitura de `ci/unproven.json`, que
+  // divergiria da que o veredito acabou de medir. Um relatório sem o fato (ou de
+  // um publicador chamado com `--report` antigo) imprime as listas como estão.
+  const datado = datarLinhas(report, report?.facts?.unprovenDebt)
   const verdict = report?.verdict ?? {}
-  const blockers = verdict.blockers ?? []
-  const unknowns = verdict.unknowns ?? []
-  const unproven = verdict.unproven ?? []
+  const blockers = datado.blockers
+  const unknowns = datado.unknowns
+  const unproven = datado.unproven
 
   const lines = []
   lines.push(
@@ -512,6 +536,29 @@ function forgeVerdictProse(report) {
     lines.push("### Não provado — o veredito NÃO cobre")
     lines.push("")
     for (const u of unknowns) lines.push(`- ${u}`)
+    lines.push("")
+  }
+
+  // O ITEM DATADO que o doctor ABRE quando o registro do ato fica atrás da
+  // MATRIZ: ele sai como bloco próprio porque o que o operador precisa ver é uma
+  // DÍVIDA COM IDADE — desde quando (a data do primeiro commit que a matriz
+  // ganhou depois do ato), contra qual teto (o DELA, com procedência) e por qual
+  // das duas saídas ela fecha —, e não mais um 'não provado' sem data no meio da
+  // lista. A frase é a MESMA do relatório (`matrixItemLine`, do dono da régua):
+  // o canal da régua (`bench-freshness-issue.mjs`) e esta issue não podem contar
+  // o mesmo item com dois textos.
+  const item = matrixItem(report?.facts?.benchFreshness?.matrix)
+  if (item) {
+    lines.push("### O ITEM DATADO do registro do ato × a matriz (o relógio dela)")
+    lines.push("")
+    lines.push(`- ${matrixItemLine(item)}`)
+    lines.push("")
+    lines.push(
+      "> A data do item é DERIVADA da história (o primeiro commit que a matriz ganhou depois" +
+        " do ato): ela não se renova a cada run, então a dívida envelhece como qualquer outra do" +
+        ` registro. Declarando-a em \`ci/unproven.json\` com \`closedBy: ${item.closedBy}\`, ela passa a` +
+        " ter janela de revisão e fecha por MEDIÇÃO — nunca por esquecimento.",
+    )
     lines.push("")
   }
 

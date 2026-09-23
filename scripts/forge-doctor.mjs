@@ -22,7 +22,11 @@
 //   node scripts/forge-doctor.mjs --expected 1.3.14 \
 //     --expected-var IMAGE_REGISTRY=... --expected-var IMAGE_NAMESPACE=...
 //   node scripts/forge-doctor.mjs --gitea-env deploy/.env.gitea
-//   node scripts/forge-doctor.mjs --timeout 300   # segundos por guard (default 120)
+//   node scripts/forge-doctor.mjs --timeout 300   # PISO de segundos por guard
+//                                                # (default 120): o teto de um
+//                                                # gate é DERIVADO do custo
+//                                                # versionado do bench
+//                                                # (`max(piso, custo × 1.5)`)
 //
 // O PERFIL `--ci` (e por que ele existe): o job `guards` da forja roda o doctor
 // a CADA PR para o VALOR das repository variables ser conferido no merge e não
@@ -254,7 +258,23 @@ import { analyze as analyzeHookCommands } from "./check-hook-commands.mjs"
 // dono, importada, não uma segunda contagem de commits —, e a mesma função
 // alimenta a issue do cron (`bench-freshness-issue.mjs`) e o publicador da
 // regressão de tempo: o veredito e a issue não podem discordar sobre a idade.
-import { anchorLabel, freshnessLine, readFreshness, tetoLine } from "./bench-freshness.mjs"
+import {
+  BASELINE_PATH,
+  REMEDY_COMMAND,
+  agedDeclarations,
+  anchorLabel,
+  formOriginLine,
+  freshnessLine,
+  matrixItem,
+  matrixItemLine,
+  matrixLagLine,
+  readBench,
+  readFreshness,
+  tetoLine,
+  unknownDeclarations,
+} from "./bench-freshness.mjs"
+import { benchIndex, instrumentKey } from "./merge-latency.mjs"
+import { UNPROVEN_REGISTRY_PATH, collectUnproven, datarLinhas } from "./doctor-unproven.mjs"
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -666,6 +686,113 @@ export function forgeGates(content) {
 // 2. Execução de um gate
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 2a. O TETO DE TEMPO DE UM GATE, DERIVADO DO CUSTO VERSIONADO
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** O PISO de tempo por gate — o teto de quem NÃO tem custo versionado. */
+export const DEFAULT_TIMEOUT_S = 120
+
+/**
+ * A MARGEM do teto derivado. Ela é DECLARADA, não medida: o custo do bench é de
+ * UM host e de UM ato, e o teto existe para separar "demorou" de "travou".
+ */
+export const MARGEM_DO_TETO = 1.5
+
+/**
+ * O CUSTO versionado de um gate, se a baseline conhecer um.
+ *
+ * O casamento é pelo INSTRUMENTO (`instrumentKey`), a mesma régua do
+ * `merge-latency`: o gate é o mesmo ainda que a invocação mude de forma (com
+ * `--json`, por `bun`, por `bash`). Duas chaves são tentadas — a do RÓTULO (que
+ * nos gates da forja é o comando) e a do `run:` dele —, e a segunda é a reserva
+ * para um rótulo que não cite o script.
+ *
+ * @param {{label?: string|null, command?: string|null, index?: object|null}} args
+ * @returns {{custoMs: number|null, alvo: string|null}}
+ */
+export function custoVersionadoDoGate({ label = null, command = null, index = null }) {
+  if (!index) return { custoMs: null, alvo: null }
+  for (const texto of [label, command]) {
+    if (typeof texto !== "string" || texto.trim() === "") continue
+    const chave = instrumentKey(texto)
+    const porComando = chave ? (index.byCmd?.get(chave) ?? null) : null
+    if (Number.isFinite(porComando)) return { custoMs: porComando, alvo: chave }
+    const script = /scripts\/([\w.-]+\.mjs)/.exec(texto)
+    const porScript = script ? (index.byScript?.get(script[1]) ?? null) : null
+    if (Number.isFinite(porScript)) return { custoMs: porScript, alvo: script[1] }
+  }
+  return { custoMs: null, alvo: null }
+}
+
+/**
+ * O TETO de um gate: `max(piso, custo versionado × MARGEM)`.
+ *
+ * POR QUE O TETO NÃO PODE SER UM NÚMERO À MÃO (medido): o master de mutação
+ * custa **~395s** na baseline (`docs/benchmarks/guard-timing-baseline.json`,
+ * família `mutations`) e o `--timeout` default era **120s** — o doctor NUNCA
+ * conseguia verificar o gate mais caro do repositório, e a lista de não-provados
+ * carregava um "não terminou em 120s (timeout)" que parecia do AMBIENTE e era do
+ * TETO. Um não-provado estrutural é pior que uma espera: ele ensina a ignorar a
+ * lista.
+ *
+ * O `--timeout` passa a ser o PISO (o que vale para um gate sem custo medido), e
+ * a PROCEDÊNCIA viaja no resultado (`tetoOrigem`, `custoMs`, `alvo`): um teto
+ * derivado de um número datado não pode sair com o mesmo texto de um teto de
+ * reserva.
+ *
+ * @param {{label?: string|null, command?: string|null, index?: object|null, pisoS?: number, margem?: number}} args
+ * @returns {{tetoS: number, origem: "bench"|"piso", custoMs: number|null, alvo: string|null}}
+ */
+export function tetoDoGate({
+  label = null,
+  command = null,
+  index = null,
+  pisoS = DEFAULT_TIMEOUT_S,
+  margem = MARGEM_DO_TETO,
+}) {
+  const piso = Number.isFinite(pisoS) && pisoS > 0 ? pisoS : DEFAULT_TIMEOUT_S
+  const { custoMs, alvo } = custoVersionadoDoGate({ label, command, index })
+  if (custoMs === null) return { tetoS: piso, origem: "piso", custoMs: null, alvo: null }
+  const derivado = Math.ceil((custoMs / 1000) * margem)
+  return derivado > piso
+    ? { tetoS: derivado, origem: "bench", custoMs, alvo }
+    : { tetoS: piso, origem: "piso", custoMs, alvo }
+}
+
+/**
+ * O ÍNDICE do bench para os tetos — lido UMA vez por execução.
+ *
+ * Sem bench legível o índice é `null` e todo teto cai no piso, com a procedência
+ * DITA (o fato `benchFreshness` já carrega o motivo da não-leitura: a mesma
+ * verdade não pode ter dois textos).
+ *
+ * @param {{cwd?: string, deps?: object}} [options]
+ * @returns {object|null}
+ */
+export function indiceDoBench({ cwd = REPO_ROOT, deps = {} } = {}) {
+  const lido = readBench({ cwd, file: BASELINE_PATH, deps })
+  return lido.erro ? null : benchIndex(lido.bench)
+}
+
+/**
+ * A FRASE da procedência do teto — a MESMA usada no erro de um gate estourado e
+ * no relatório.
+ *
+ * @param {{tetoS: number, origem: string, custoMs: number|null, alvo: string|null}} teto
+ * @returns {string}
+ */
+export function tetoDoGateLine(teto) {
+  if (teto.origem === "bench") {
+    return `${teto.tetoS}s DERIVADO do custo versionado (${teto.alvo}: ${Math.round(
+      teto.custoMs / 1000,
+    )}s × ${MARGEM_DO_TETO})`
+  }
+  return teto.custoMs === null
+    ? `${teto.tetoS}s (--timeout: o bench não versiona custo para este gate)`
+    : `${teto.tetoS}s (--timeout: acima do derivado de ${Math.round(teto.custoMs / 1000)}s)`
+}
+
 /**
  * Roda um gate da bateria e devolve o resultado cru. `code === null` significa
  * que o processo não terminou (timeout/sinal) ou não pôde ser executado — que
@@ -691,17 +818,22 @@ function gateSpawn(gate) {
  * lugar só: o caminho síncrono (dublê injetado) e o concorrente têm de produzir
  * o MESMO shape — senão o veredito passaria a depender de qual caminho rodou.
  */
-function shapeGateResult(label, res, seconds, timeoutS) {
+function shapeGateResult(label, res, seconds, teto) {
+  const marca = { tetoS: teto.tetoS, tetoOrigem: teto.origem }
   if (res.error) {
     // ENOENT (binário ausente) chega aqui — é "não executado", não "falhou".
-    return { gate: label, code: null, seconds, error: res.error.message }
+    return { gate: label, code: null, seconds, ...marca, error: res.error.message }
   }
   if (res.signal || res.status === null) {
     return {
       gate: label,
       code: null,
       seconds,
-      error: `não terminou em ${timeoutS}s (timeout) — trate como NÃO verificado`,
+      ...marca,
+      // O TETO e a sua PROCEDÊNCIA na mensagem: "não terminou em 120s" num gate
+      // cujo custo versionado é 395s não é uma leitura do AMBIENTE, é do TETO — e
+      // as duas levam a remédios opostos (investigar o gate vs. ajustar o piso).
+      error: `não terminou em ${tetoDoGateLine(teto)} (timeout) — trate como NÃO verificado`,
     }
   }
   const out = `${res.stdout ?? ""}\n${res.stderr ?? ""}`.trim()
@@ -709,6 +841,7 @@ function shapeGateResult(label, res, seconds, timeoutS) {
     gate: label,
     code: res.status,
     seconds,
+    ...marca,
     tail: res.status === 0 ? undefined : out.split("\n").slice(-12).join("\n"),
   }
 }
@@ -722,21 +855,34 @@ function shapeGateResult(label, res, seconds, timeoutS) {
  * concorrente (`runGatesConcurrent`) só existe em produção, onde não há dublê.
  *
  * @param {{label: string, command: string|null}} gate
- * @param {{cwd?: string, timeoutS?: number, run?: Function}} [deps]
- * @returns {{gate: string, code: number|null, seconds: number, error?: string, tail?: string}}
+ * @param {{cwd?: string, timeoutS?: number, run?: Function, teto?: object}} [deps]
+ * @returns {{gate: string, code: number|null, seconds: number, tetoS: number, tetoOrigem: string, error?: string, tail?: string}}
  */
-export function runGate(gate, { cwd = REPO_ROOT, timeoutS = 120, run = spawnSync } = {}) {
+export function runGate(
+  gate,
+  { cwd = REPO_ROOT, timeoutS = DEFAULT_TIMEOUT_S, run = spawnSync, teto = null } = {},
+) {
+  const tetoEfetivo =
+    teto ?? tetoDoGate({ label: gate.label, command: gate.command, pisoS: timeoutS })
   const spawn0 = gateSpawn(gate)
-  if (spawn0.error) return { gate: gate.label, code: null, seconds: 0, error: spawn0.error }
+  if (spawn0.error)
+    return {
+      gate: gate.label,
+      code: null,
+      seconds: 0,
+      tetoS: tetoEfetivo.tetoS,
+      tetoOrigem: tetoEfetivo.origem,
+      error: spawn0.error,
+    }
 
   const started = Date.now()
   const res = run(spawn0.cmd, spawn0.args, {
     cwd,
     encoding: "utf8",
-    timeout: timeoutS * 1000,
+    timeout: tetoEfetivo.tetoS * 1000,
     env: process.env,
   })
-  return shapeGateResult(gate.label, res, (Date.now() - started) / 1000, timeoutS)
+  return shapeGateResult(gate.label, res, (Date.now() - started) / 1000, tetoEfetivo)
 }
 
 /**
@@ -791,15 +937,31 @@ function spawnGate(cmd, args, { cwd, timeoutMs }) {
  * paralelo sem bloquear o event loop. Mesmo shape.
  *
  * @param {{label: string, command: string|null}} gate
- * @param {{cwd?: string, timeoutS?: number}} [deps]
- * @returns {Promise<{gate: string, code: number|null, seconds: number, error?: string, tail?: string}>}
+ * @param {{cwd?: string, timeoutS?: number, teto?: object}} [deps]
+ * @returns {Promise<{gate: string, code: number|null, seconds: number, tetoS: number, tetoOrigem: string, error?: string, tail?: string}>}
  */
-export async function runGateAsync(gate, { cwd = REPO_ROOT, timeoutS = 120 } = {}) {
+export async function runGateAsync(
+  gate,
+  { cwd = REPO_ROOT, timeoutS = DEFAULT_TIMEOUT_S, teto = null } = {},
+) {
+  const tetoEfetivo =
+    teto ?? tetoDoGate({ label: gate.label, command: gate.command, pisoS: timeoutS })
   const spawn0 = gateSpawn(gate)
-  if (spawn0.error) return { gate: gate.label, code: null, seconds: 0, error: spawn0.error }
+  if (spawn0.error)
+    return {
+      gate: gate.label,
+      code: null,
+      seconds: 0,
+      tetoS: tetoEfetivo.tetoS,
+      tetoOrigem: tetoEfetivo.origem,
+      error: spawn0.error,
+    }
   const started = Date.now()
-  const res = await spawnGate(spawn0.cmd, spawn0.args, { cwd, timeoutMs: timeoutS * 1000 })
-  return shapeGateResult(gate.label, res, (Date.now() - started) / 1000, timeoutS)
+  const res = await spawnGate(spawn0.cmd, spawn0.args, {
+    cwd,
+    timeoutMs: tetoEfetivo.tetoS * 1000,
+  })
+  return shapeGateResult(gate.label, res, (Date.now() - started) / 1000, tetoEfetivo)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -836,7 +998,7 @@ export const VERDICT = {
  *                                 o check-forge-parity foi escrito para matar)
  *                                 nem "bloqueada" (mentiria para o outro lado)
  *                                 → INDETERMINADA.
- * * @param {{contract: object, gateContracts?: {results: object[], violations: string[]}, bringUpGate?: object, guards: object, image: object, proof: object, mirrors: object, openDebt?: object, declaredDebt?: object, shellInheritance?: object, skippedGuards?: boolean, skippedOpenDebt?: boolean, skippedGateContracts?: boolean}} facts
+ * * @param {{contract: object, gateContracts?: {results: object[], violations: string[]}, bringUpGate?: object, guards: object, image: object, proof: object, mirrors: object, openDebt?: object, declaredDebt?: object, shellInheritance?: object, unprovenDebt?: object, skippedGuards?: boolean, skippedOpenDebt?: boolean, skippedGateContracts?: boolean, skippedUnprovenDebt?: boolean}} facts
  * @returns {{verdict: string, blockers: string[], unknowns: string[], unproven: string[]}}
  */
 export function summarize(facts) {
@@ -880,13 +1042,12 @@ export function summarize(facts) {
     for (const v of gc.violations) blockers.push(`gate CORE nao esta cobrado no merge — ${v}`)
   }
   if (gc?.results) {
-    for (const r of gc.results) {
-      if (r.state !== "proven" && r.state !== "violated") {
-        unknowns.push(
-          `gate '${r.jobId}' (invariante '${r.invariantId}') não foi conferido: ${r.detail}`,
-        )
-      }
-    }
+    // UMA CAUSA, UMA LINHA: as causas de CLASSE (a forja cuja proteção não foi
+    // lida, a forja que não tem o recurso) saem agregadas; o que é do gate
+    // (o workflow ausente deste checkout, o manifesto sem forja) sai um por
+    // linha. A régua é do dono do veredito (`gateContractUnknowns`), e o detalhe
+    // de cada gate continua no FATO.
+    for (const u of gateContractUnknowns(gc.results)) unknowns.push(u)
   }
   // Compatibilidade: o bringUpGate legado continua sendo verificado.
   const gate = facts.bringUpGate
@@ -967,6 +1128,31 @@ export function summarize(facts) {
     for (const u of declaredDebtUnknowns(facts.declaredDebt)) unknowns.push(u)
   }
 
+  // O REGISTRO DATADO do que o veredito NÃO cobre (`ci/unproven.json`): a
+  // segunda dívida DECLARADA deste repositório, com a mesma disciplina da
+  // primeira — `invalid`/`unread` BLOQUEIA (uma declaração sem data, ou um
+  // registro ilegível, não tem como envelhecer: `invalid` é fail-closed do dado,
+  // `unread` é ausência de prova, e nenhum dos dois pode virar "nada fora de
+  // alcance") e `aged`/`proven` não deixam PRONTA (a janela venceu; ou o fato foi
+  // MEDIDO e a entrada virou letra morta que alguém precisa remover).
+  //
+  // Um item `open` dentro da janela não acrescenta linha nenhuma: o que ele
+  // acrescenta é a DATA na linha que ele já declara (`datarLinhas`, aplicado na
+  // hora de IMPRIMIR — o veredito continua com texto estável, senão a assinatura
+  // da issue do veredito mudaria a cada dia que passa e o dedup não seguraria).
+  if (facts.skippedUnprovenDebt) {
+    unknowns.push(
+      "o REGISTRO do que o veredito NÃO cobre foi pulado (--no-unproven-registry): as lacunas datadas de ci/unproven.json deixam de ser conferidas, e a prontidão não pode afirmar que cada 'não provado' tem data e janela",
+    )
+  } else if (!facts.unprovenDebt) {
+    unknowns.push(
+      "o REGISTRO do que o veredito NÃO cobre (ci/unproven.json) não está declarado no relatório: o veredito não cobre se as lacunas dele estão datadas, vencidas ou já provadas",
+    )
+  } else {
+    for (const b of unprovenDebtBlockers(facts.unprovenDebt)) blockers.push(b)
+    for (const u of unprovenDebtUnknowns(facts.unprovenDebt)) unknowns.push(u)
+  }
+
   // A IDADE DA RÉGUA DO BENCH: o commit de ORIGEM de cada família MEDIDA da
   // baseline (`meta.families`), contado em commits até HEAD. O número dela é
   // consumido FORA do bench — o modelo de latência de merge declara o custo dos
@@ -1010,6 +1196,72 @@ export function summarize(facts) {
     )
   }
 
+  // AS FORMAS MEDIDAS × O COMMIT DE ORIGEM entram como pergunta PRÓPRIA — não
+  // como `else if` da cadeia acima: a idade responde "de QUANDO é o número" e
+  // esta responde "o que aquela origem CONTÉM". Uma idade vencida não pode
+  // MASCARAR uma forma que o commit de origem não tem (foi assim que a
+  // `doc-hashes` viveu: medida numa árvore que o `8e76c9a6` não carregava).
+  // E O RELÓGIO DA MATRIZ entra como TERCEIRA pergunta própria, pelo mesmo motivo
+  // da segunda: a idade responde "de QUANDO é o número" e as formas respondem "o
+  // que a origem CONTÉM" — nenhuma das duas olha o relógio do OBJETO medido. Um
+  // sub-test cujo ALVO muda ou um corpo de suíte que muda de CUSTO deixam o
+  // número declarado descrevendo uma matriz que já andou **sem mexer em contagem
+  // nenhuma**, e era só o `check-mutation-count` (um guard, de CONTEÚDO) que
+  // podia acusar — quando um sub-test ENTRA na matriz. Aqui a pergunta é de
+  // commits: quantos a matriz ganhou depois do ato.
+  if (!facts.skippedBenchFreshness && facts.benchFreshness?.matrix) {
+    const m = facts.benchFreshness.matrix
+    if (m.state !== "measured") {
+      unknowns.push(
+        `o REGISTRO DO ATO × a MATRIZ não foi medido (${m.reason ?? "sem motivo declarado"}): o veredito não cobre se a matriz que o ato registrou é a de agora`,
+      )
+    } else if (m.aged) {
+      // O ITEM DATADO (e não uma linha anônima): o doctor ABRE a dívida do
+      // relógio da matriz, e o que ele publica é o item — com a data derivada da
+      // HISTÓRIA (o primeiro commit que a matriz ganhou depois do ato), o delta, o
+      // teto DELA e o `closedBy` que o fecha por medição. Sem isso a dívida só
+      // aparecia quando um sub-test ENTRAVA na matriz (o `check-mutation-count`,
+      // que é de CONTEÚDO): um alvo que muda ou um corpo de suíte que muda de
+      // custo deixariam o número declarado descrevendo uma matriz que a árvore
+      // não tem mais, sem ninguém ser avisado.
+      const item = matrixItem(m)
+      unknowns.push(
+        `o ITEM DATADO \`${item.id}\` está ABERTO ${
+          item.declaredAt ? `desde ${item.declaredAt}` : "(sem a data no git)"
+        }: o REGISTRO DO ATO está ${m.lag} commit(s) atrás da MATRIZ: ela andou desde ${
+          m.since?.commit ? String(m.since.commit).slice(0, 12) : "?"
+        }${m.since?.date ? ` (${m.since.date})` : ""} e o último commit que a tocou é ${
+          m.tip?.commit ? String(m.tip.commit).slice(0, 12) : "?"
+        } — a origem do ato é ${String(m.origin?.commit ?? "?").slice(0, 12)} e o teto do ritmo DELA é ${m.teto?.teto} commit(s)${
+          m.teto?.origem === "medido"
+            ? ""
+            : " (RESERVA declarada: o ritmo da matriz não foi medido)"
+        }; o número declarado (e o PISO do job que dele se soma) descreve uma matriz que já não existe — o remédio é a re-medição deliberada (${REMEDY_COMMAND}, com a árvore JÁ COMMITADA); e se ela não couber agora, DECLARE o item em \`ci/unproven.json\` com \`closedBy: ${item.closedBy}\` (o predicado fecha por MEDIÇÃO — o próprio relatório prova o item quando o relógio voltar ao teto)`,
+      )
+    }
+  }
+
+  if (!facts.skippedBenchFreshness && facts.benchFreshness?.forms) {
+    const formas = facts.benchFreshness.forms
+    if (formas.state !== "measured") {
+      unknowns.push(
+        `o COMMIT DE ORIGEM das formas medidas do bench não foi julgado (${formas.reason ?? "sem motivo declarado"}): o veredito não cobre se o número declarado descreve uma árvore que aquele commit tem`,
+      )
+    } else if ((formas.missing?.length ?? 0) > 0) {
+      unknowns.push(
+        `o COMMIT DE ORIGEM não contém ${formas.missing.length} forma(s) MEDIDA(s) do bench (${formas.missing
+          .map((m) => `${m.family}/${m.form} @ ${String(m.commit ?? "?").slice(0, 12)}`)
+          .join(
+            ", ",
+          )}): o número declarado descreve uma árvore que aquele commit não carrega — commite a árvore e rode o ato de novo (${REMEDY_COMMAND})`,
+      )
+    } else if ((formas.semResposta ?? 0) > 0) {
+      unknowns.push(
+        `o COMMIT DE ORIGEM não pôde ser perguntado para ${formas.semResposta} forma(s) medida(s) do bench: NÃO julgadas (nunca "no commit")`,
+      )
+    }
+  }
+
   // A interpolação do compose: variável vazia / valor literal BLOQUEIA (o
   // runner roda uma imagem que não é a declarada). Não conseguir renderizar é
   // ausência de prova — nunca "pronta".
@@ -1051,21 +1303,41 @@ export function summarize(facts) {
     )
   } else if (facts.protection?.state === "drift") {
     for (const b of protectionBlockers(facts.protection)) blockers.push(b)
-  } else if (facts.protection?.state === "unsupported") {
-    // A forja NÃO TEM o recurso: não é "não li", é "não existe portão daquele
-    // lado". Vai para o NÃO PROVADO (o veredito não pode afirmar que a forja
-    // bloqueia) e NÃO para os bloqueios: uma limitação de plano acenderia o
-    // veredito em todo run para sempre, e um veredito que sempre acende não
-    // bloqueia nada — a mesma razão pela qual a dívida do board não bloqueia.
-    // O que o operador precisa está dito: o merge daquela forja não tem portão.
-    const semPortao = (facts.protection.forges ?? [])
-      .filter((f) => f.state === "unsupported")
-      .map((f) => f.forge)
-    unknowns.push(
-      `a forja ${semPortao.join(", ")} NÃO SUPORTA branch protection: nenhum required check pode ser aplicado nem lido, e o merge dessa forja não tem portão — ${facts.protection.detail}`,
-    )
   } else if (facts.protection && facts.protection.state !== "in-sync") {
-    unknowns.push(`a branch protection REGISTRADA nao foi lida: ${facts.protection.detail}`)
+    // AS DUAS CAUSAS SÃO DITAS SEPARADAMENTE — a mesma disciplina dos gates
+    // CORE (uma causa, uma linha). Eram um `else if`: com o ESPELHO privado num
+    // plano sem a feature (403) e a forja dona do merge sem token, o veredito
+    // publicava só "a forja github NÃO SUPORTA..." — e a LEITURA que faltava da
+    // Gitea desaparecia das linhas dele. MEDIDO em 22/09/2026 no perfil
+    // completo: o par coexistia, e a lacuna de credencial (que fecha com
+    // `GITEA_TOKEN`) não aparecia em lugar nenhum do relatório impresso.
+    //
+    // A forja NÃO TEM o recurso (não é "não li", é "não existe portão daquele
+    // lado") vai para o NÃO PROVADO, e NÃO para os bloqueios: uma limitação de
+    // plano acenderia o veredito em todo run para sempre, e um veredito que
+    // sempre acende não bloqueia nada — a mesma razão pela qual a dívida do
+    // board não bloqueia.
+    const forges = facts.protection.forges ?? []
+    const semPortao = forges.filter((f) => f.state === "unsupported").map((f) => f.forge)
+    const naoLidas = forges
+      .filter((f) => f.state !== "unsupported" && f.state !== "in-sync")
+      .map((f) => f.forge)
+    if (semPortao.length > 0) {
+      unknowns.push(
+        `a forja ${semPortao.join(", ")} NÃO SUPORTA branch protection: nenhum required check pode ser aplicado nem lido, e o merge dessa forja não tem portão — ${facts.protection.detail}`,
+      )
+    }
+    if (naoLidas.length > 0) {
+      unknowns.push(
+        `a branch protection REGISTRADA nao foi lida: ${naoLidas.join(", ")} — ${facts.protection.detail}`,
+      )
+    }
+    // A leitura que não devolveu FORJA nenhuma (o manifesto não declara uma):
+    // não há por-forja a nomear, e a linha volta a ser a do fato inteiro — sem
+    // isto, um manifesto sem forja sairia de `unavailable` para PRONTA.
+    if (semPortao.length === 0 && naoLidas.length === 0 && forges.length === 0) {
+      unknowns.push(`a branch protection REGISTRADA nao foi lida: ${facts.protection.detail}`)
+    }
   }
 
   // As referencias em configuracao NAO VERSIONADA: o que o repositorio NAO
@@ -1132,6 +1404,30 @@ export function summarize(facts) {
         `o registro do act_runner nao foi comparado com o compose (${facts.runnerLabels.state}): ${facts.runnerLabels.detail}`,
       )
     }
+    // A VERSÃO do binário × a TAG do compose — a segunda pergunta ao MESMO
+    // container, e o irmão do pin do runner do GitHub. Duas linhas: o drift
+    // BLOQUEIA (o container roda outra versão do que o repositório declara) e o
+    // que não foi julgado rebaixa.
+    //
+    // AQUI O PORTÃO É OUTRO, e é de propósito. No GitHub o fato só tem `version`
+    // quando um runner foi selecionado — e por isso lá a metade da versão espera
+    // o fato ter sido lido. O act_runner lê a versão ANTES do registro (ela é um
+    // fato do CONTAINER, não do arquivo), então ela existe sempre que um
+    // container chegou a ser resolvido, inclusive quando o REGISTRO não pôde ser
+    // lido — e um drift é justamente o defeito que o registro ilegível esconderia.
+    // O que NÃO entra: o caminho em que nenhum container foi resolvido (sem
+    // compose, sem docker, sem labels no render), onde `version` é null — ele não
+    // é "versão em dia", é "não houve onde lê-la".
+    if (!facts.skippedRunnerLabels && facts.runnerLabels?.version) {
+      const verAct = facts.runnerLabels.version
+      if (verAct.state === "drift") {
+        for (const b of runnerVersionBlocker(facts.runnerLabels)) blockers.push(b)
+      } else if (verAct.state !== "proven") {
+        unknowns.push(
+          `a VERSAO do act_runner nao foi provada contra a tag de ${GITEA_COMPOSE} (${verAct.state}): ${verAct.detail}`,
+        )
+      }
+    }
     // A OUTRA forja: o mesmo registro velho, e no GitHub ele não tem arquivo —
     // quem decide é a API. Mesmos estados, mesmos pesos: violação BLOQUEIA (o
     // runner que existe pega os jobs numa configuração que o repositório não
@@ -1143,6 +1439,34 @@ export function summarize(facts) {
       unknowns.push(
         `o registro do runner do GitHub nao foi comparado com ${GITHUB_RUNNER_SCRIPT} (${facts.githubRunnerLabels.state}): ${facts.githubRunnerLabels.detail}`,
       )
+    }
+    // A VERSÃO registrada × o PIN do script — a terceira pergunta ao MESMO
+    // registro, e a única cujo sintoma não aparece na forja: o pin recusado se
+    // auto-atualiza no meio do primeiro job e o job fica PRESO. Duas linhas para
+    // este assunto (o drift BLOQUEIA; "não deu para julgar" rebaixa), como no
+    // registro do runner, porque as duas metades são do mesmo fato.
+    //
+    //
+    // O fato foi LIDO (provado ou violado) mas a versão não foi julgada — o runner
+    // não chegou a ser selecionado (`version: null`), o script não declara o pin
+    // (`no-pin`) ou a API não devolveu o campo (`unread`). Os três casos são a
+    // MESMA pergunta sem resposta, e o veredito a publica em vez de ficar calado:
+    // "o registro casa com o setup" NÃO diz nada sobre a versão que o serviço
+    // aceitou. Um fato não lido (unavailable/env-missing/skipped) não entra aqui:
+    // a linha do fato já declara que o registro inteiro ficou sem comparação.
+    const ghState = facts.githubRunnerLabels?.state
+    if (ghState === "proven" || ghState === "violated") {
+      const versaoRunner = facts.githubRunnerLabels?.version
+      if (versaoRunner?.state === "drift") {
+        for (const b of githubRunnerVersionBlocker(facts.githubRunnerLabels)) blockers.push(b)
+      } else if (versaoRunner?.state !== "proven") {
+        const porque = versaoRunner
+          ? `(${versaoRunner.state}): ${versaoRunner.detail}`
+          : "(nao lida): esta leitura do registro nao chegou a selecionar um runner, entao a versao dele nao foi julgada contra o pin"
+        unknowns.push(
+          `a VERSAO do runner do GitHub nao foi comparada com o pin de ${GITHUB_RUNNER_SCRIPT} ${porque}`,
+        )
+      }
     }
   }
 
@@ -1623,6 +1947,87 @@ export function scriptOfCommand(expectedCommand) {
   return shell ? shell[1] : null
 }
 
+/**
+ * AS CAUSAS DE CLASSE do "não conferido" — o que agrupa as linhas do veredito.
+ *
+ * POR QUE ELAS EXISTEM: quando a branch protection de uma forja não pôde ser
+ * lida (ou não existe naquela forja), TODOS os gates CORE que ela declara saem
+ * pelo MESMO motivo. MEDIDO no perfil completo em 22/09/2026: 64 das 71 linhas
+ * de "não provado" eram `gate 'X' (invariante 'Y') não foi conferido: ... a
+ * branch protection de github, gitea não foi lida`, duas causas repetidas 38
+ * vezes cada. Uma causa repetida N vezes não são N problemas — é UM, e o muro de
+ * linhas idênticas esconde o resto do veredito.
+ *
+ * A causa é um CAMPO do fato (`causes[]`), nunca deduzida da prosa na hora de
+ * imprimir: a agregação por texto casaria a frase errada no dia em que alguém
+ * reescrevesse a `detail` de um gate.
+ */
+export const GATE_CAUSE = {
+  /** A forja TEM o recurso e o canal (token) faltou: resolve com credencial. */
+  PROTECTION_NAO_LIDA: "protection-nao-lida",
+  /** A forja NÃO TEM o recurso (repo privado num plano sem a feature): nenhum token resolve. */
+  PROTECTION_NAO_SUPORTADA: "protection-nao-suportada",
+}
+
+/**
+ * A LINHA de uma causa de classe: a CONTAGEM, a causa e as invariantes alcançadas.
+ *
+ * A linha agregada diz QUANTOS gates não foram conferidos, POR QUÊ e QUAIS
+ * invariantes eles cobrem — o que o leitor precisa para decidir. O job e a
+ * invariante de cada gate continuam no FATO (`gateContracts.results[]`), com a
+ * `detail` própria: o que muda aqui é o que o veredito PUBLICA, não o que ele
+ * mediu.
+ */
+function gateCauseLine({ cause, forge, gates, invariantes }) {
+  const texto =
+    cause === GATE_CAUSE.PROTECTION_NAO_SUPORTADA
+      ? `a forja ${forge} NÃO SUPORTA branch protection — não há registro a conferir, e o merge daquele lado não tem portão`
+      : `a branch protection de ${forge} não foi lida — o registro não pode ser confirmado`
+  return `os ${gates.length} gate(s) CORE do merge não foram conferidos: ${texto} [invariantes: ${invariantes.join(" · ")}]`
+}
+
+/**
+ * AS LINHAS DE "NÃO CONFERIDO" DOS GATES CORE — uma CAUSA, uma linha.
+ *
+ * O agrupamento é por (causa, forja) e o gate que tem DUAS causas aparece nas
+ * DUAS linhas: são duas lacunas diferentes, com remédios diferentes (dar o token
+ * × tornar o repositório público/Pro). O que NÃO é causa de classe (o workflow
+ * ausente deste checkout, o manifesto sem forja) continua uma linha por gate —
+ * ali o motivo é do gate, e não da forja.
+ *
+ * A ORDEM das linhas é a da primeira aparição de cada causa: o veredito mantém a
+ * ordem da medição em vez de agrupar no fim.
+ *
+ * @param {Array<{state: string, jobId: string, invariantId: string, detail: string, causes?: Array<{cause: string, forge: string}>}>} results
+ * @returns {string[]}
+ */
+export function gateContractUnknowns(results) {
+  const grupos = new Map()
+  const linhas = []
+  for (const r of results ?? []) {
+    if (r.state === "proven" || r.state === "violated") continue
+    if (!r.causes || r.causes.length === 0) {
+      linhas.push(
+        `gate '${r.jobId}' (invariante '${r.invariantId}') não foi conferido: ${r.detail}`,
+      )
+      continue
+    }
+    for (const { cause, forge } of r.causes) {
+      const chave = `${cause}|${forge}`
+      let grupo = grupos.get(chave)
+      if (!grupo) {
+        grupo = { cause, forge, gates: [], invariantes: [], pos: linhas.length }
+        grupos.set(chave, grupo)
+        linhas.push(null)
+      }
+      grupo.gates.push(`${r.jobId} (${r.invariantId})`)
+      if (!grupo.invariantes.includes(r.invariantId)) grupo.invariantes.push(r.invariantId)
+    }
+  }
+  for (const grupo of grupos.values()) linhas[grupo.pos] = gateCauseLine(grupo)
+  return linhas
+}
+
 export function readGateContract({
   jobId,
   expectedCommand,
@@ -1830,10 +2235,25 @@ export function readGateContract({
       const semPortao = (protection.forges ?? [])
         .filter((f) => f.state === "unsupported")
         .map((f) => f.forge)
+      // AS CAUSAS por FORJA, declaradas no FATO (e não deduzidas da prosa na
+      // hora de imprimir): cada forja não lida contribui com a SUA causa, e uma
+      // forja sem o recurso é uma causa DIFERENTE da que só não foi lida. Com as
+      // duas juntas, a `detail` acima saía só com a primeira — e a leitura que
+      // faltava desaparecia atrás do plano. Aqui as duas viajam, e cada uma vira
+      // a SUA linha agregada no veredito.
+      const causes = [
+        ...naoLidas
+          .filter((f) => semPortao.includes(f))
+          .map((forge) => ({ cause: GATE_CAUSE.PROTECTION_NAO_SUPORTADA, forge })),
+        ...naoLidas
+          .filter((f) => !semPortao.includes(f))
+          .map((forge) => ({ cause: GATE_CAUSE.PROTECTION_NAO_LIDA, forge })),
+      ]
       return {
         ...base,
         state: "unavailable",
         forges: entries,
+        causes,
         detail:
           semPortao.length > 0
             ? `o gate '${jobId}' está no contrato e o job roda o comando, mas a forja ${semPortao.join(", ")} NÃO SUPORTA branch protection — não há registro a conferir, e o merge daquele lado não tem portão`
@@ -2009,7 +2429,7 @@ export function readAllGateContracts({
  * merge daquele lado não ter portão nenhum. As duas pedem ações diferentes, e
  * por isso são estados diferentes.
  *
- * @param {{cwd?: string, forges?: string[], run?: Function, nodePath?: string}} [args]
+ * @param {{cwd?: string, forges?: string[], run?: Function, nodePath?: string, env?: Record<string,string|undefined>}} [args] o `env` é o ambiente de onde sai o CANAL de cada forja
  * @returns {{state: "in-sync"|"drift"|"unsupported"|"unavailable", detail: string, forges: object[]}}
  */
 export function readProtection({
@@ -2017,15 +2437,93 @@ export function readProtection({
   forges = [],
   run = spawnSync,
   nodePath = process.execPath,
+  env = process.env,
 } = {}) {
-  const reads = forges.map((forge) => readForgeProtection({ cwd, forge, run, nodePath }))
+  const reads = forges.map((forge) => readForgeProtection({ cwd, forge, run, nodePath, env }))
   return { ...summarizeProtection(reads), forges: reads }
 }
 
+/**
+ * O REPO de cada forja vem do CANAL DAQUELA forja — nunca do ambiente
+ * compartilhado.
+ *
+ * POR QUE ISTO É EXPLÍCITO: o aplicador resolve o repo por `GITHUB_REPOSITORY`
+ * (github) e `GITEA_REPOSITORY` (gitea), e no RUNNER DA GITEA o primeiro aponta
+ * para o repositório DA GITEA (o contexto emulado é o da forja) — o doctor que
+ * rodasse ali com o token do GitHub iria ler o repositório errado, e só
+ * continuaria correto enquanto os dois slugs fossem iguais. O canal próprio do
+ * GitHub é `GH_REPOSITORY` (o mesmo que o board e o publicador usam): daqui ele
+ * viaja por `--repo`, que o aplicador aceita.
+ */
+const FORGE_REPO_ENV = { github: "GH_REPOSITORY", gitea: "GITEA_REPOSITORY" }
+
+/**
+ * As variáveis de contexto da forja EMULADA que `GITHUB_REPOSITORY`/`_API_URL`
+ * carregam. Ver `channelEnv` para o porquê de só elas entrarem na lista.
+ */
+const SHARED_GITHUB_CONTEXT = ["GITHUB_REPOSITORY", "GITHUB_API_URL"]
+
+/**
+ * O REPO que a forja DECLARA no canal dela — `{name, value}`, com `value: null`
+ * quando o canal não está no ambiente.
+ *
+ * O `name` sai junto de propósito: quem não encontrou o canal precisa DIZER qual
+ * variável falta (`GH_REPOSITORY`), e não "sem repositório" — a diferença é o
+ * que separa "o operador esqueceu a variável" de "o repositório não existe".
+ *
+ * @param {"github"|"gitea"} forge
+ * @param {Record<string, string|undefined>} [env]
+ * @returns {{name: string, value: string|null}}
+ */
+export function forgeRepo(forge, env = process.env) {
+  const name = FORGE_REPO_ENV[forge]
+  const raw = name ? env[name] : undefined
+  const value = typeof raw === "string" ? raw.trim() : ""
+  return { name, value: value || null }
+}
+
+/**
+ * O CONTEXTO COMPARTILHADO que nenhuma leitura do doctor pode ver.
+ *
+ * POR QUE ISTO EXISTE, e por que não é a mesma coisa que `forgeRepo`: o runner da
+ * Gitea EMULA o contexto do GitHub — lá `GITHUB_REPOSITORY` e `GITHUB_API_URL`
+ * apontam para a FORJA (o repositório e a API do Gitea), não para o GitHub. Um
+ * fato que leia qualquer um dos dois "por acaso" acerta só enquanto os dois
+ * slugs coincidem; no dia em que divergirem, o doctor consulta o repositório
+ * errado e publica o veredito do repositório errado — sem nada no relatório
+ * dizendo que a origem foi outra.
+ *
+ * A lista é CURTA e NOMEADA de propósito. Ela é a do CONTEXTO (quem é o repo,
+ * qual é a API), não a das credenciais: `GITHUB_TOKEN`/`GITHUB_ACTOR`/`GHCR_*`
+ * são credencial de quem chamou (o `credentialsFromEnv` do contrato da imagem
+ * depende delas, e negá-las só faria o doctor perder o canal do registry), e
+ * onde uma credencial do GitHub for aceita, `GH_TOKEN` já vence.
+ *
+ * @param {Record<string, string|undefined>} [env]
+ * @returns {Record<string, string|undefined>} uma CÓPIA, sem as duas variáveis
+ */
+export function channelEnv(env = process.env) {
+  const out = { ...env }
+  for (const name of SHARED_GITHUB_CONTEXT) delete out[name]
+  return out
+}
+
 /** Executa o aplicador para UMA forja e interpreta o relatório JSON. */
-function readForgeProtection({ cwd, forge, run, nodePath }) {
+function readForgeProtection({ cwd, forge, run, nodePath, env = process.env }) {
   const args = [REQUIRED_CHECKS_APPLIER, "--check", "--forge", forge, "--json"]
-  const res = run(nodePath, args, { cwd, encoding: "utf8", timeout: 60_000, env: process.env })
+  // O canal da forja, quando declarado: `--repo` vence o ambiente no aplicador.
+  const canal = forgeRepo(forge, env)
+  if (canal.value) args.push("--repo", canal.value)
+  // O ambiente vai SEM o contexto compartilhado: sem o canal declarado, o
+  // aplicador do GitHub resolveria o repo por `GITHUB_REPOSITORY` — que no runner
+  // da forja é o repositório DO GITEA. Sem o canal ele falha ("defina --repo"),
+  // que é a resposta honesta: não ler é melhor que ler o repositório errado.
+  const res = run(nodePath, args, {
+    cwd,
+    encoding: "utf8",
+    timeout: 60_000,
+    env: channelEnv(env),
+  })
   // `missing: null` (e NÃO `[]`) é o que significa "não li": os consumidores
   // deste fato traduzem `[]` como "tudo registrado" — e o defeito medido era
   // exatamente esse, com as DUAS forjas sem proteção lida e o veredito
@@ -2071,7 +2569,14 @@ function readForgeProtection({ cwd, forge, run, nodePath }) {
   }
   if (errors.length > 0) {
     // Falta de credencial/rede NÃO é evidência sobre a forja: é ausência de prova.
-    return { ...empty, detail: errors.map((e) => e.message).join("; ") }
+    // O caso do CANAL AUSENTE é nomeado: o operador via "defina --repo owner/name
+    // ou GITHUB_REPOSITORY" e ia procurar `GITHUB_REPOSITORY` — que existe (com o
+    // slug da forja) e é justamente a variável que o doctor RECUSA ler.
+    const semCanal =
+      !canal.value && forge === "github" && env.GITHUB_REPOSITORY
+        ? ` — o repo NAO sai do contexto compartilhado deste runner (\`GITHUB_REPOSITORY\` aponta para o da forja); o canal do GitHub é \`${canal.name}\``
+        : ""
+    return { ...empty, detail: errors.map((e) => e.message).join("; ") + semCanal }
   }
   const data = report?.forges?.[forge]
   if (!data) {
@@ -2186,12 +2691,50 @@ export function protectionBlockers(protection) {
  * @returns {string[]}
  */
 export function runnerLabelBlockers(labels) {
+  // SEM violação de LABEL não há esta linha: o MESMO guard agora julga também a
+  // VERSÃO do binário, e um drift de versão tem a sua própria linha (com o seu
+  // próprio remédio). Emitir aqui uma acusação de labels com zero violações
+  // faria a linha mentir sobre o que está errado — o mesmo cuidado do
+  // `githubRunnerLabelBlockers`.
+  if ((labels?.violations ?? []).length === 0) return []
   const where = labels?.container
     ? `${labels.container} · ${labels.stateFile}`
     : "o registro do runner"
   const remedies = (labels?.remedies ?? []).join(" ")
   return [
     `o registro do act_runner NAO é o do compose (${labels?.detail}): ${where} x ${GITEA_COMPOSE} — ${(labels?.violations ?? []).join(" · ")}${remedies ? ` ${remedies}` : ""}`,
+  ]
+}
+
+/**
+ * O bloqueio da VERSÃO do act_runner — a segunda linha do MESMO fato.
+ *
+ * POR QUE É UMA LINHA PRÓPRIA (e não mais um trecho da anterior): o remédio é
+ * OUTRO. "O registro não é o do compose" se conserta re-registrando (o registro
+ * é ESTADO no volume); "o binário que roda não é o da tag declarada" se conserta
+ * na IMAGEM (alinhar a tag ou trazer o container para ela) — re-registrar não
+ * muda a versão do binário um milímetro. Duas causas, dois remédios, duas
+ * linhas.
+ *
+ * O sintoma é a mesma classe do pin do GitHub, do lado da forja: o container do
+ * act_runner não se auto-atualiza (a versão vem da imagem), então o defeito é
+ * uma DECLARAÇÃO que não descreve o que roda — e nada na forja acusa. MEDIDO em
+ * 22/09/2026: `gitea/act_runner:latest` reporta `v0.6.1` e a tag `0.2.11`
+ * reporta `v0.2.11`, com as duas imagens no disco e o compose sem dizer qual
+ * delas a stack sobe.
+ *
+ * @param {object} labels o fato `runnerLabels`, com o campo `version`
+ * @returns {string[]} zero ou uma linha
+ */
+export function runnerVersionBlocker(labels) {
+  const ver = labels?.version ?? {}
+  if (ver.state !== "drift") return []
+  const where = labels?.container
+    ? `${labels.container} · ${labels.stateFile}`
+    : "o container do runner"
+  const remedies = (labels?.remedies ?? []).join(" ")
+  return [
+    `a VERSAO do act_runner nao e a da tag declarada: o binario em ${where} reporta '${ver.reported}' e ${GITEA_COMPOSE} declara '${ver.tag}' — o runner RODA outra versao do que o repositorio declara (a versao vem da IMAGEM, e o container nao se auto-atualiza: trazer a imagem do dia troca o que roda sem uma linha do repositorio mudar)${remedies ? ` ${remedies}` : ""}`,
   ]
 }
 
@@ -2536,12 +3079,25 @@ export async function readProof({ cwd = REPO_ROOT, deps = {} } = {}) {
  * `unavailable`/`env-missing` (sem docker, sem socket, sem container, registro
  * ilegível ⇒ NÃO PROVADO). Nunca lança: ausência de prova não é prova de falha.
  *
- * `deps` é a fronteira de dependência do teste (`check` e o `run` do guard).
+ * `deps` é a fronteira de dependência do teste (`check` e o `run` do guard), e o
+ * `container`/`env` são a SONDA: o container declarado de onde a versão é lida
+ * (a variável `RUNNER_CONTAINER_ENV` viaja no `env`, a mesma forma do guard).
+ *
+ * @param {{cwd?: string, envFile?: string|null, container?: string|null,
+ *   env?: Record<string, string | undefined>, deps?: object}} [options]
  */
-export function readRunnerLabels({ cwd = REPO_ROOT, envFile = null, deps = {} } = {}) {
+export function readRunnerLabels({
+  cwd = REPO_ROOT,
+  envFile = null,
+  container = null,
+  env = process.env,
+  deps = {},
+} = {}) {
   const { check = checkRunnerLabels, ...rest } = deps
   const empty = {
     violations: [],
+    versionViolations: [],
+    version: null,
     remedies: [],
     declared: [],
     registered: [],
@@ -2549,10 +3105,20 @@ export function readRunnerLabels({ cwd = REPO_ROOT, envFile = null, deps = {} } 
     stateFile: null,
   }
   try {
-    const res = check({ cwd, envFile, ...rest })
+    // O CONTAINER do runner, declarado: `--container` do doctor entra pelo MESMO
+    // parâmetro do guard, e a variável `RUNNER_CONTAINER_ENV`
+    // (`GITEA_RUNNER_CONTAINER`) é lida por ele do ambiente — a mesma forma nos
+    // dois consumidores. É o que deixa a metade da VERSÃO ser medida contra uma
+    // SONDA sem tomar o nome que a stack usa.
+    const res = check({ cwd, envFile, container, env, ...rest })
     return {
       state: res.state,
       violations: res.violations ?? [],
+      // A VERSÃO do binário × a TAG do compose: a terceira pergunta ao MESMO
+      // container, e o irmão do pin do runner do GitHub. O fato a transporta
+      // para o veredito poder datá-la e bloqueá-la.
+      versionViolations: res.versionViolations ?? [],
+      version: res.version ?? null,
       remedies: res.remedies ?? [],
       detail: res.detail,
       declared: res.declared ?? [],
@@ -2589,6 +3155,8 @@ export function readRunnerLabels({ cwd = REPO_ROOT, envFile = null, deps = {} } 
  * prova não é prova de falha.
  *
  * `deps` é a fronteira de dependência do teste (`check`).
+ *
+ * @param {{cwd?: string, env?: Record<string,string|undefined>, deps?: {check?: Function}}} [args] o `env` só carrega CREDENCIAL: o REPO vai por parâmetro, resolvido do canal
  */
 export async function readGithubRunnerLabels({
   cwd = REPO_ROOT,
@@ -2598,6 +3166,8 @@ export async function readGithubRunnerLabels({
   const { check = checkGithubRunnerLabels, ...rest } = deps
   const empty = {
     violations: [],
+    versionViolations: [],
+    version: null,
     remedies: [],
     declared: [],
     registered: [],
@@ -2606,10 +3176,26 @@ export async function readGithubRunnerLabels({
     repo: null,
   }
   try {
-    const res = await check({ cwd, env, ...rest })
+    // O REPO vai EXPLÍCITO e o ambiente vai SEM o contexto compartilhado: o
+    // guard do GitHub resolvia o repo por `GITHUB_REPOSITORY` quando o script do
+    // setup não declara `REPO_URL` — e no runner da forja essa variável é o
+    // repositório DO GITEA. Com o canal (`GH_REPOSITORY`) ele lê o registro do
+    // repo certo; sem ele, diz que falta o canal em vez de consultar o outro.
+    const res = await check({
+      cwd,
+      env: channelEnv(env),
+      repo: forgeRepo("github", env).value,
+      ...rest,
+    })
     return {
       state: res.state,
       violations: res.violations ?? [],
+      // A VERSÃO registrada × o PIN do script: a terceira pergunta ao MESMO
+      // registro, e a única cujo sintoma a forja NÃO mostra (o pin recusado se
+      // auto-atualiza no meio do primeiro job e o job fica preso). O fato a
+      // transporta para o veredito poder datá-la e bloqueá-la.
+      versionViolations: res.versionViolations ?? [],
+      version: res.version ?? null,
       remedies: res.remedies ?? [],
       detail: res.detail,
       declared: res.declared ?? [],
@@ -2638,12 +3224,45 @@ export async function readGithubRunnerLabels({
  * @returns {string[]}
  */
 export function githubRunnerLabelBlockers(labels) {
+  // SEM violação de LABEL não há esta linha: o mesmo guard agora julga também a
+  // VERSÃO, e um drift de versão tem a sua própria linha (e o seu próprio
+  // remédio). Emitir aqui uma acusação de labels com zero violações faria a
+  // linha mentir sobre o que está errado — o pior tipo de prosa num veredito.
+  if ((labels?.violations ?? []).length === 0) return []
   const where = labels?.runner
     ? `runner '${labels.runner}' (${labels.status}) · repos/${labels.repo}/actions/runners`
     : `repos/${labels?.repo}/actions/runners`
   const remedies = (labels?.remedies ?? []).join(" ")
   return [
     `o registro do runner do GITHUB NAO é o que o setup declara (${labels?.detail}): ${where} x ${GITHUB_RUNNER_SCRIPT} — ${(labels?.violations ?? []).join(" · ")}${remedies ? ` ${remedies}` : ""}`,
+  ]
+}
+
+/**
+ * O bloqueio da VERSÃO do runner do GitHub — a segunda linha do MESMO fato.
+ *
+ * Por que é uma linha PRÓPRIA (e não mais um trecho da anterior): o remédio é
+ * OUTRO. "O registro não é o do setup" se conserta re-registrando; "o pin não é o
+ * da versão que o serviço aceita" se conserta ALINHANDO O PIN — re-registrar com
+ * o mesmo pin recusado reproduz o defeito. Duas causas, dois remédios, duas
+ * linhas.
+ *
+ * O sintoma é o que a classifica: um pin recusado NÃO deixa a forja vermelha — o
+ * runner se auto-atualiza no meio do primeiro job, derruba o worker e o job fica
+ * PRESO segurando o runner. MEDIDO em 22/09/2026 (2.320.0 → 2.337.0).
+ *
+ * @param {object} labels o fato `githubRunnerLabels`, com o campo `version`
+ * @returns {string[]} zero ou uma linha
+ */
+export function githubRunnerVersionBlocker(labels) {
+  const ver = labels?.version ?? {}
+  if (ver.state !== "drift") return []
+  const where = labels?.runner
+    ? `runner '${labels.runner}' (${labels.status}) · repos/${labels.repo}/actions/runners`
+    : `repos/${labels?.repo}/actions/runners`
+  const remedies = (labels?.remedies ?? []).join(" ")
+  return [
+    `a VERSAO do runner do GITHUB nao é a do pin: o registro responde '${ver.registered}' e ${GITHUB_RUNNER_SCRIPT} pina '${ver.pin}' (${where}) — um pin que o servico RECUSA se AUTO-ATUALIZA no meio do primeiro job, o update derruba o worker e o job fica PRESO segurando o runner: a forja fica PARADA em vez de vermelha (medido em 22/09/2026, 2.320.0 -> 2.337.0)${remedies ? ` ${remedies}` : ""}`,
   ]
 }
 
@@ -2971,22 +3590,31 @@ function debtStaleness(
           "a idade do commit de origem das famílias do bench não foi medida nesta run — o doctor não pode declarar a issue caducada",
       }
     }
-    const vencidas = benchFreshness.aged.length + benchFreshness.diverged.length
-    if (vencidas === 0 && benchFreshness.unknown.length > 0) {
+    // A RÉGUA ÚNICA do que está vencido/sem medição: as declarações de idade E o
+    // REGISTRO DO ATO × a matriz (`agedDeclarations`/`unknownDeclarations`). Sem
+    // ela, uma issue aberta pelo relógio da MATRIZ seria declarada caducada pelo
+    // relógio de HEAD — dois relógios, um veredito.
+    const vencidas = agedDeclarations(benchFreshness)
+    const semMedicao = unknownDeclarations(benchFreshness)
+    if (vencidas.length === 0 && semMedicao.length > 0) {
       return {
         stale: null,
-        detail: `o doctor mede a MESMA idade agora, mas ${benchFreshness.unknown.length} família(s) ficaram SEM idade (${benchFreshness.unknown.join(", ")}) — sem a idade de todas, não há como declarar a issue caducada`,
+        detail: `o doctor mede a MESMA idade agora, mas ${semMedicao.length} declaração(ões) ficaram SEM medição (${semMedicao
+          .map((f) => f.family)
+          .join(", ")}) — sem a medição de todas, não há como declarar a issue caducada`,
       }
     }
-    if (vencidas === 0) {
+    if (vencidas.length === 0) {
       return {
         stale: true,
-        detail: `o doctor mede a MESMA idade agora (${benchFreshness.families.length} família(s) medida(s), a mais antiga ${benchFreshness.behindMax} commit(s) atrás de ${benchFreshness.head}, ${tetoLine(benchFreshness)}) e nenhuma passou o teto — a issue fala de uma régua que já foi re-medida (o publicador a fecha por assinatura quando a idade volta ao teto)`,
+        detail: `o doctor mede a MESMA idade agora (${benchFreshness.families.length} família(s) medida(s), a mais antiga ${benchFreshness.behindMax} commit(s) atrás de ${benchFreshness.head}, ${tetoLine(benchFreshness)}) e, no relógio da matriz, ${matrixLagLine(benchFreshness.matrix)} — nenhuma passou o teto: a issue fala de uma régua que já foi re-medida (o publicador a fecha por assinatura quando a idade volta ao teto)`,
       }
     }
     return {
       stale: false,
-      detail: `o doctor também mede a idade da régua e ${vencidas} família(s) SEGUEM fora do teto (${tetoLine(benchFreshness)}) — ${[...benchFreshness.aged, ...benchFreshness.diverged].join(", ")} — a issue fala de um problema VIVO`,
+      detail: `o doctor também mede a idade da régua e ${vencidas.length} declaração(ões) SEGUEM fora do teto (${tetoLine(benchFreshness)}) — ${vencidas
+        .map((f) => f.family)
+        .join(", ")} — a issue fala de um problema VIVO`,
     }
   }
 
@@ -3108,9 +3736,16 @@ export async function readOpenDebt({
     const subjects = DEBT_SUBJECTS.filter((s) => s.forges.includes(forge))
     if (subjects.length === 0) continue
     const labels = subjects.map((s) => s.label)
+    // O REPO de CADA forja, resolvido UMA vez pelo canal dela: sem isso o canal
+    // do GitHub (a API) cairia no `gh`, que resolve o repo pelo REMOTO do
+    // checkout — no runner da forja, o remoto do Gitea, lido como se fosse o
+    // board do GitHub. O ambiente vai SEM o contexto compartilhado pelo mesmo
+    // motivo do fato dos labels.
+    const repo = forgeRepo(forge, env).value
+    const envLeitura = channelEnv(env)
     // Só o GitHub tem dois canais (a API e o `gh`): a forja lê pela API de
     // issues dela, sempre, e declarar um "canal" ali seria inventar diferença.
-    const channel = forge === "github" ? githubChannel({ env }) : null
+    const channel = forge === "github" ? githubChannel({ env: envLeitura, repo }) : null
 
     let listed
     try {
@@ -3118,7 +3753,7 @@ export async function readOpenDebt({
       for (const subject of subjects) {
         listed.push({
           subject,
-          issues: (await list({ forge, label: subject.label, env, cwd })) ?? [],
+          issues: (await list({ forge, label: subject.label, env: envLeitura, repo, cwd })) ?? [],
         })
       }
     } catch (err) {
@@ -3417,8 +4052,18 @@ export function deriveBringUpEnv(compose = {}) {
  * testes e qualquer chamada que precise de determinismo de ordem de chamada).
  * A produção usa `runGatesConcurrent`.
  */
-export function runGuards(gates, { cwd = REPO_ROOT, timeoutS = 120, run } = {}) {
-  return gates.map((gate) => runGate(gate, { cwd, timeoutS, run: run ?? spawnSync }))
+export function runGuards(
+  gates,
+  { cwd = REPO_ROOT, timeoutS = DEFAULT_TIMEOUT_S, run, resolverTeto = null } = {},
+) {
+  return gates.map((gate) =>
+    runGate(gate, {
+      cwd,
+      timeoutS,
+      run: run ?? spawnSync,
+      teto: resolverTeto ? resolverTeto(gate) : null,
+    }),
+  )
 }
 
 /**
@@ -3447,21 +4092,26 @@ export const DEFAULT_GATE_CONCURRENCY = 4
  * síncrono e determinístico, e paralelizá-lo não traria ganho nenhum — só
  * mudaria a ordem de chamada que os testes observam.
  *
+ * O `resolverTeto` é DERIVADO do custo versionado (ver `tetoDoGate`) e resolve
+ * POR GATE: um teto único para uma bateria que vai de 40ms a 395s é o defeito que
+ * ele remove.
+ *
  * @param {{label: string, command: string|null}[]} gates
- * @param {{cwd?: string, timeoutS?: number, run?: Function, concurrency?: number, gateAsync?: Function}} [deps]
- * @returns {Promise<{gate: string, code: number|null, seconds: number, error?: string, tail?: string}[]>}
+ * @param {{cwd?: string, timeoutS?: number, run?: Function, concurrency?: number, gateAsync?: Function, resolverTeto?: Function}} [deps]
+ * @returns {Promise<{gate: string, code: number|null, seconds: number, tetoS: number, tetoOrigem: string, error?: string, tail?: string}[]>}
  */
 export async function runGatesConcurrent(
   gates,
   {
     cwd = REPO_ROOT,
-    timeoutS = 120,
+    timeoutS = DEFAULT_TIMEOUT_S,
     run,
     concurrency = DEFAULT_GATE_CONCURRENCY,
     gateAsync = runGateAsync,
+    resolverTeto = null,
   } = {},
 ) {
-  if (run) return runGuards(gates, { cwd, timeoutS, run })
+  if (run) return runGuards(gates, { cwd, timeoutS, run, resolverTeto })
 
   const results = new Array(gates.length)
   const workers = Math.max(1, Math.min(concurrency, gates.length))
@@ -3472,14 +4122,23 @@ export async function runGatesConcurrent(
       next += 1
       if (i >= gates.length) return
       try {
-        results[i] = await gateAsync(gates[i], { cwd, timeoutS })
+        results[i] = await gateAsync(gates[i], {
+          cwd,
+          timeoutS,
+          teto: resolverTeto ? resolverTeto(gates[i]) : null,
+        })
       } catch (err) {
         // Um gate que estoura (spawn do interpretador, dublê) não pode derrubar
         // a bateria inteira: vira NÃO verificado, como qualquer falha de exec.
+        const teto = resolverTeto
+          ? resolverTeto(gates[i])
+          : tetoDoGate({ label: gates[i].label, command: gates[i].command, pisoS: timeoutS })
         results[i] = {
           gate: gates[i].label,
           code: null,
           seconds: 0,
+          tetoS: teto.tetoS,
+          tetoOrigem: teto.origem,
           error: `não foi possível executar o gate: ${err?.message ?? String(err)}`,
         }
       }
@@ -3614,6 +4273,66 @@ export function declaredDebtBlockers(fato) {
             "; ",
           )}): uma isenção sem data não tem como envelhecer, então não há janela que a revise`,
     )
+}
+
+/**
+ * O que o REGISTRO do que o veredito não cobre tem de BLOQUEANTE — o fail-closed
+ * do próprio DADO, dito no veredito.
+ *
+ * Dois casos, a mesma família: `invalid` é uma declaração que o coletor não
+ * conseguiu julgar (sem data, data no futuro, `kind` ou `closedBy` desconhecido) e
+ * `unread` é o registro que não pôde ser lido. Nos dois, o veredito perde o
+ * alcance que o registro descreve — e "não consegui ler" NUNCA pode ser lido como
+ * "nada fora de alcance", que é o otimismo que este fato existe para não ter.
+ *
+ * @param {object|undefined} fato
+ * @returns {string[]}
+ */
+export function unprovenDebtBlockers(fato) {
+  if (!fato) return []
+  if (fato.state === "unread") {
+    return [
+      `o REGISTRO do que o veredito NÃO cobre não pôde ser lido (${fato.detail ?? "sem detalhe"}): sem ele o veredito não pode afirmar quais lacunas têm data, janela e prova — não ler não é o mesmo que não haver`,
+    ]
+  }
+  if (fato.state !== "invalid") return []
+  const invalidos = (fato.invalid ?? []).map((i) => `'${i.id}': ${i.why}`).join("; ")
+  return [
+    `o REGISTRO do que o veredito NÃO cobre está SEM REGISTRO VÁLIDO (${invalidos}): uma declaração que o registro não consegue julgar não vence nem fecha — ela é indistinguível de uma lacuna apagada em silêncio (${UNPROVEN_REGISTRY_PATH})`,
+  ]
+}
+
+/**
+ * O que o REGISTRO acrescenta ao "não provado": uma linha por item VENCIDO e
+ * uma por item PROVADO (letra morta), com a data dentro do texto.
+ *
+ * Por que cada estado tem a PRÓPRIA linha (em vez de uma "há lacuna vencida"
+ * agregada): o leitor precisa saber QUAL declaração venceu, QUANDO ela foi feita
+ * e o que a fecha — e "declarada há 3 dias" e "declarada há 200" pedem decisões
+ * diferentes. É a mesma razão pela qual a dívida aberta tem uma linha por
+ * assunto, e não um resumo.
+ *
+ * Um item `open` DENTRO da janela não entra aqui: ele não é uma pendência, é uma
+ * lacuna já declarada cuja NOVIDADE é a data (que viaja na linha do item, por
+ * `datarLinhas`).
+ *
+ * @param {object|undefined} fato
+ * @returns {string[]}
+ */
+export function unprovenDebtUnknowns(fato) {
+  if (!fato || fato.state === "skipped") return []
+  const unknowns = []
+  for (const item of fato.aged ?? []) {
+    unknowns.push(
+      `a declaração '${item.id}' VENCEU a janela de revisão: ${item.subject} (declarada em ${item.declaredAt}, janela de ${item.limit}d${item.days === null ? "" : `, vencida há ${item.days - item.limit} dia(s)`}) — o remédio é reafirmar a data em ${UNPROVEN_REGISTRY_PATH} ou fechar a lacuna (${item.proveWith ?? item.remedy ?? "sem prova declarada"})`,
+    )
+  }
+  for (const item of fato.proven ?? []) {
+    unknowns.push(
+      `a declaração '${item.id}' ficou LETRA MORTA: o próprio relatório de agora MEDE o que ela declarava fora de alcance (${item.subject}) — remova a entrada de ${UNPROVEN_REGISTRY_PATH}, senão ela conta uma lacuna que já não existe`,
+    )
+  }
+  return unknowns
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -4760,6 +5479,11 @@ export function renderReport(report, { emit = console.log } = {}) {
       const note = r.code === null ? `  ${r.error}` : r.code === 0 ? "" : `  exit ${r.code}`
       line(`       ${status} ${r.gate.padEnd(40)}${time}${note}`)
       if (r.tail) for (const l of r.tail.split("\n")) line(`           ${color(C.gray, l)}`)
+      // O TETO DERIVADO é dito quando ele é maior que o piso: um gate que roda
+      // perto do teto precisa do número à vista (senão "demorou 340s" parece
+      // problema de ambiente, e o teto é que era o número errado).
+      if (r.tetoOrigem === "bench" && r.tetoS > DEFAULT_TIMEOUT_S)
+        line(`           ${color(C.gray, `teto ${r.tetoS}s DERIVADO do custo versionado`)}`)
     }
   }
 
@@ -4847,6 +5571,16 @@ export function renderReport(report, { emit = console.log } = {}) {
     const where = labels.container ? ` (${labels.container} · ${labels.stateFile})` : ""
     line(`       ${labelsMark} registro do act_runner${where}: ${labels.detail}`)
     for (const v of labels.violations ?? []) line(`           ${color(C.gray, v)}`)
+    // A VERSÃO do binário × a TAG do compose: a linha que o guard compara desde
+    // 22/09/2026 (a versão vem da IMAGEM, e o container não se auto-atualiza).
+    // Sai ao lado do registro para o leitor ver as DUAS perguntas na mesma seção,
+    // e sai TAMBÉM quando o registro não foi lido: a versão é um fato do container
+    // e a leitura dela não depende do arquivo de registro.
+    if (labels.version) {
+      line(
+        `           ${color(C.gray, `versao do binario: ${labels.version.reported ?? "<nao lida>"} ${labels.version.state === "proven" ? "=" : "!="} tag ${labels.version.tag ?? "<nao declarada>"} (${labels.version.state})`)}`,
+      )
+    }
     for (const r of labels.remedies ?? []) line(`           ${color(C.gray, `→ ${r}`)}`)
   }
 
@@ -4869,6 +5603,14 @@ export function renderReport(report, { emit = console.log } = {}) {
       : ""
     line(`       ${ghMark} registro do runner (github)${ghWhere}: ${ghLabels.detail}`)
     for (const v of ghLabels.violations ?? []) line(`           ${color(C.gray, v)}`)
+    // A VERSÃO do registro × o PIN do script: a linha que o guard compara desde
+    // 22/09/2026 (o pin recusado se auto-atualiza e prende o job) — dita ao lado
+    // do registro para o leitor ver os DOIS lados do pin na mesma seção.
+    if (ghLabels.version) {
+      line(
+        `           ${color(C.gray, `versao registrada: ${ghLabels.version.registered ?? "<nao lida>"} ${ghLabels.version.state === "proven" ? "=" : "!="} pin ${ghLabels.version.pin ?? "<nao declarado>"} (${ghLabels.version.state})`)}`,
+      )
+    }
     for (const r of ghLabels.remedies ?? []) line(`           ${color(C.gray, `→ ${r}`)}`)
   }
 
@@ -5424,7 +6166,9 @@ export function renderReport(report, { emit = console.log } = {}) {
   // (declarado 271.755ms × medido 380.700ms) viveu sem ser nomeada: a comparação
   // por percentual é cega para a idade dos dois números que compara.
   line()
-  line("  9/9  Idade das DECLARAÇÕES datadas (bench · modelo de latência · tabelas do README)")
+  line(
+    "  9/9  Idade das DECLARAÇÕES datadas (bench · modelo de latência · tabelas do README) e o registro do ato × a MATRIZ",
+  )
   const bf = facts.benchFreshness
   if (facts.skippedBenchFreshness) {
     line(
@@ -5445,6 +6189,34 @@ export function renderReport(report, { emit = console.log } = {}) {
     // reserva (o git não respondeu) não podem sair com o mesmo texto justamente
     // onde a diferença entre veredito e dúvida é decidida.
     line(`       ${MARK.info()} ${tetoLine(bf)}`)
+    // O COMMIT DE ORIGEM × as FORMAS medidas: o número declarado pode ser fresco
+    // (a origem está a poucos commits) e ainda assim descrever uma árvore que
+    // aquela origem não tem — é a segunda pergunta, e ela sai ao lado da primeira.
+    if (bf.forms) {
+      const fora = bf.forms.missing?.length ?? 0
+      const fmark =
+        bf.forms.state !== "measured" || (bf.forms.semResposta ?? 0) > 0
+          ? MARK.warn()
+          : fora > 0
+            ? MARK.fail()
+            : MARK.ok()
+      line(`       ${fmark} ${formOriginLine(bf.forms)}`)
+    }
+    // O RELÓGIO DA MATRIZ: a terceira pergunta do mesmo ativo — a idade responde
+    // "de QUANDO é o número" e as formas respondem "o que a origem CONTÉM"; esta
+    // responde "a matriz ANDOU?", que é o único relógio do OBJETO medido.
+    if (bf.matrix) {
+      const mmark =
+        bf.matrix.state !== "measured" ? MARK.warn() : bf.matrix.aged ? MARK.fail() : MARK.ok()
+      line(`       ${mmark} ${matrixLagLine(bf.matrix)}`)
+      // O ITEM DATADO que este relatório ABRE: a linha acima diz o estado do
+      // relógio, esta diz a DÍVIDA — desde quando ela existe (data derivada da
+      // história, não do relógio da run), quanto pesa e por qual das duas saídas
+      // ela fecha. Ele sai no relatório porque é aqui que o operador lê o
+      // veredito, e sai também na issue do doctor (a MESMA frase, uma régua só).
+      const item = matrixItem(bf.matrix)
+      if (item) line(`           ${MARK.fail()} ${matrixItemLine(item)}`)
+    }
     for (const f of bf.families) {
       const fmarca =
         f.state === "fresh"
@@ -5477,20 +6249,76 @@ export function renderReport(report, { emit = console.log } = {}) {
   line(`  VEREDITO: ${VERDICT_LINE[verdict.verdict]()}`)
   line("  ─────────────────────────────────────────────────────────────────")
 
+  // AS DUAS LISTAS DO VEREDITO SAEM DATADAS. A data não entra no DADO do
+  // veredito (a assinatura da issue é derivada dele, e uma assinatura que muda
+  // com o calendário comentaria toda semana na MESMA issue): ela é aplicada aqui,
+  // na hora de IMPRIMIR, pelo dono do registro (`datarLinhas`) — e é isso que faz
+  // a lacuna deixar de ser anônima no tempo exatamente onde o operador a lê.
+  const datado = datarLinhas(report, facts.unprovenDebt)
+
   if (verdict.blockers.length > 0) {
     line()
     line(`  ${color(C.red, "Bloqueios")} (corrigir antes de confiar o merge à forja):`)
-    for (const b of verdict.blockers) line(`    ${MARK.fail()} ${b}`)
+    for (const b of datado.blockers) line(`    ${MARK.fail()} ${b}`)
   }
-  if (verdict.unknowns.length > 0) {
+  if (datado.unknowns.length > 0) {
     line()
     line(`  ${color(C.yellow, "Não provado")}:`)
-    for (const u of verdict.unknowns) line(`    ${MARK.warn()} ${u}`)
+    for (const u of datado.unknowns) line(`    ${MARK.warn()} ${u}`)
+  }
+
+  // ── O REGISTRO DATADO ────────────────────────────────────────────────────
+  // A PROVENIÊNCIA das linhas acima: cada declaração de `ci/unproven.json` com a
+  // data, a janela, o que a fecha e o remédio. Sem esta seção, a data viajaria
+  // como um sufixo em prosa — legível, não auditável: quem lê precisa ver QUAIS
+  // lacunas estão declaradas, QUAIS já foram provadas (letra morta) e QUAL venceu.
+  const ud = facts.unprovenDebt
+  if (facts.skippedUnprovenDebt) {
+    line()
+    line(
+      `  ${color(C.gray, "Registro do que o veredito NÃO cobre:")} ${MARK.skip()} pulado por --no-unproven-registry (as lacunas ficam sem data e sem janela)`,
+    )
+  } else if (ud) {
+    line()
+    line(
+      `  ${color(C.gray, "Registro DATADO do que o veredito NÃO cobre")} (${UNPROVEN_REGISTRY_PATH}):`,
+    )
+    line(`       ${MARK.info()} ${ud.detail}`)
+    for (const item of ud.items ?? []) {
+      const marca =
+        item.state === "aged" || item.state === "invalid" || item.state === "unread"
+          ? MARK.fail()
+          : item.state === "proven"
+            ? MARK.ok()
+            : item.state === "open"
+              ? MARK.warn()
+              : MARK.info()
+      const janela =
+        item.limit === null || item.limit === undefined
+          ? ""
+          : ` · janela ${item.limit}d${item.state === "aged" ? ` VENCIDA há ${item.days - item.limit}d` : ""}`
+      // O LIMITE por desenho é dito como tal na própria linha: ele é datado e
+      // NÃO vence — confundir os dois faria o operador procurar revisão onde o
+      // que falta é declarar a fronteira da medição.
+      const classe = `${item.kind}${item.kind === "limite" ? " por desenho" : ""}`
+      line(
+        `       ${marca} ${item.id.padEnd(28)} ${item.state.padEnd(10)} ${classe}${item.declaredAt ? ` · declarada em ${item.declaredAt}` : " · SEM DATA"}${janela}`,
+      )
+      if (item.subject) line(`           ${color(C.gray, item.subject)}`)
+      if (item.state === "aged") line(`           ${MARK.info()} remédio: ${item.remedy}`)
+      if (item.state === "aged" || item.state === "open")
+        line(`           ${MARK.info()} prova que fecha: ${item.proveWith}`)
+      if (item.state === "proven")
+        line(
+          `           ${MARK.info()} o próprio relatório de agora MEDE o que esta entrada declarava fora de alcance: remova-a do registro`,
+        )
+      if (item.why) line(`           ${MARK.warn()} ${item.why}`)
+    }
   }
 
   line()
   line(`  ${color(C.gray, "O veredito NÃO cobre:")}`)
-  for (const u of verdict.unproven) line(`    ${color(C.gray, `· ${u}`)}`)
+  for (const u of datado.unproven) line(`    ${color(C.gray, `· ${u}`)}`)
   line()
 }
 
@@ -5512,6 +6340,13 @@ sondar de novo seria uma segunda verdade sobre o mesmo arquivo.
 Opções:
   --no-guards            pula a bateria de guards (mais rápido; o veredito fica parcial)
   --no-protection        pula a leitura da branch protection registrada na forja
+  --container <nome>     lê a VERSÃO do act_runner do container DECLARADO, em vez de
+                         resolver pelo container_name do compose: a metade da
+                         versão pode ser medida contra uma SONDA (um container de
+                         teste com a imagem pinada) sem tomar o nome que a stack
+                         usa. A variável GITEA_RUNNER_CONTAINER faz o mesmo sem
+                         flag — nos dois consumidores (aqui e no
+                         check-runner-labels), e ela perde para esta flag
   --no-runner-labels     pula a comparação do registro do runner NAS DUAS forjas:
                          o act_runner (os labels são ESTADO no volume:
                          /data/.runner x o compose) e o runner auto-hospedado do
@@ -5584,7 +6419,10 @@ Opções:
                          Repetível; BUN_VERSION entra por --expected
   --gitea-env <path>     env do HOST (default: deploy/.env.gitea) — e ele que o
                          doctor compara com o template comitado
-  --timeout <segundos>   limite por gate (default: 120)
+  --timeout <segundos>   PISO de tempo por gate (default: 120). O TETO de um gate
+                         é max(piso, custo versionado do bench × 1.5) — sem o
+                         derivado, um gate de 395s nunca caberia em 120s e o
+                         veredito carregaria um não-provado estrutural.
   --json                 sai como JSON (mesma informação do relatório)
   --ci                   PERFIL de pipeline (o job \`guards\` da forja, a cada PR):
                          a fatia que não precisa de rede, credencial nem do
@@ -5672,12 +6510,15 @@ export function parseArgs(argv) {
     proof: true,
     protection: true,
     runnerLabels: true,
+    /** a SONDA do container do runner (`--container`); `null` = a resolução do guard */
+    container: null,
     imageContract: true,
     composeRender: true,
     registryProbe: true,
     gateContractsCheck: true,
     openDebt: true,
     declaredDebt: true,
+    unprovenDebt: true,
     benchFreshness: true,
     preCommitProof: true,
     prePushProof: true,
@@ -5694,6 +6535,14 @@ export function parseArgs(argv) {
     if (arg === "--ci") {
       opts.ciProfile = true
       for (const name of CI_PROFILE_SKIPS) opts[name] = false
+    } else if (arg === "--container") {
+      // A SONDA: aponta o container do runner sem exigir o `container_name` do
+      // compose (o default é o dele; a variável GITEA_RUNNER_CONTAINER faz o mesmo
+      // sem flag). O `name`/`label` declarado NÃO muda: só o de onde a versão é lida.
+      const valor = argv[++i] ?? ""
+      if (valor === "" || valor.startsWith("--")) {
+        opts.error = `--container exige um nome, nao uma flag (recebi '${valor}')`
+      } else opts.container = valor
     } else if (arg === "--no-guards") opts.guards = false
     else if (arg === "--no-protection") opts.protection = false
     else if (arg === "--no-runner-labels") opts.runnerLabels = false
@@ -5702,6 +6551,7 @@ export function parseArgs(argv) {
     else if (arg === "--no-registry-probe") opts.registryProbe = false
     else if (arg === "--no-open-debt") opts.openDebt = false
     else if (arg === "--no-declared-debt") opts.declaredDebt = false
+    else if (arg === "--no-unproven-registry") opts.unprovenDebt = false
     else if (arg === "--no-bench-freshness") opts.benchFreshness = false
     else if (arg === "--no-pre-commit-proof") opts.preCommitProof = false
     else if (arg === "--no-pre-push-proof") opts.prePushProof = false
@@ -5811,6 +6661,10 @@ export function parseArgs(argv) {
  * @param {object} [options.prePushBlockDeps] dependências do fato da prova do
  * bloqueio do push (`prove` substitui a prova inteira) — o ponto de injeção do
  * teste, e o que mantém o fluxo do veredito fora do git real
+ * @param {Record<string,string|undefined>} [options.env] o ambiente da run, do qual
+ * toda leitura que consulta um repositório tira o CANAL da forja (e do qual o
+ * contexto compartilhado da forja emulada, `GITHUB_REPOSITORY`/`_API_URL`, é
+ * removido antes de qualquer consulta — ver `channelEnv`)
  * @param {object} [options.pushBypassDeps] dependências da MEDIDA DO LIMITE do
  * gate local (o `--no-verify` contorna o hook e quem barra é o CI;
  * `prove` substitui a medida inteira) — o ponto de injeção do teste
@@ -5828,12 +6682,21 @@ export async function diagnose({
   proof = true,
   protection = true,
   runnerLabels = true,
+  /**
+   * A SONDA do runner: o container de onde a metade da VERSÃO é lida. `null` (o
+   * default) = a resolução do guard (`GITEA_RUNNER_CONTAINER` → o `container_name`
+   * do compose → o service label). Declarar aqui NÃO exige `container_name`
+   * nenhum: é o que permite medir contra um container de teste sem TOMAR o nome
+   * que a stack usa.
+   */
+  container = null,
   imageContract = true,
   composeRender = true,
   registryProbe = true,
   gateContractsCheck = true,
   openDebt = true,
   declaredDebt = true,
+  unprovenDebt = true,
   benchFreshness = true,
   preCommitProof = true,
   prePushProof = true,
@@ -5854,6 +6717,8 @@ export async function diagnose({
   declaredDebtDeps = {},
   /** Injeção do FATO da idade da régua do bench (`exists`/`read`/`probe`/`run`) — o teste mede os estados sem tocar o disco nem rodar git. */
   benchFreshnessDeps = {},
+  /** Injeção do FATO do registro do que o veredito não cobre (`exists`/`read`/`now`) — o teste mede o envelhecimento sem depender do relógio. */
+  unprovenDeps = {},
   /** Injeção do FATO da herança de shell (`list`/`readFile`) — o teste mede os estados sem um checkout de verdade. */
   shellInheritanceDeps = {},
   /** Injeção do FATO da cobertura de terceiro (`medir`) — o teste mede os estados sem um checkout de verdade. */
@@ -5869,6 +6734,11 @@ export async function diagnose({
   identityProbe,
   gateContractsDeps = {},
 } = {}) {
+  // O ambiente que TODA leitura que consulta um repositório recebe: sem o
+  // contexto compartilhado da forja emulada (`GITHUB_REPOSITORY`/`_API_URL`).
+  // Resolvido UMA vez, aqui, e não em cada fato — oito fatos com a própria cópia
+  // da régua divergem no primeiro que alguém esquecer de atualizar.
+  const envLeituras = channelEnv(env)
   const contractRun = runGate(
     { label: "check:required-checks", command: "bun run check:required-checks" },
     { cwd, timeoutS, run },
@@ -5883,6 +6753,7 @@ export async function diagnose({
         cwd,
         forges: contract.forges.map((f) => f.forge),
         run,
+        env: envLeituras,
         ...protectionDeps,
       })
     : { state: "skipped", detail: "pulada por --no-protection", forges: [] }
@@ -5913,9 +6784,28 @@ export async function diagnose({
     gatesResult = { gates: [], error: `${MERGE_OWNER_PIPELINE}: ausente` }
   }
 
+  // O TETO de cada gate sai do CUSTO versionado do bench (não do `--timeout`, que
+  // passa a ser o PISO): o master de mutação custa ~395s na baseline e o default
+  // de 120s o deixava NÃO VERIFICADO para sempre — um não-provado estrutural que
+  // parecia do ambiente. A leitura usa a MESMA injeção do fato da idade (o teste
+  // que monta um bench também governa o teto), e sem bench o resolver é `null`:
+  // todo teto cai no piso, com a procedência DITA no resultado de cada gate.
+  const indiceDoTeto = indiceDoBench({ cwd, deps: benchFreshnessDeps })
+  const resolverTeto = indiceDoTeto
+    ? (gate) =>
+        tetoDoGate({
+          label: gate.label,
+          command: gate.command,
+          index: indiceDoTeto,
+          pisoS: timeoutS,
+        })
+    : null
+
   // A bateria roda CONCORRENTE (ordem dos resultados preservada). Um `run`
   // injetado — dublê síncrono dos testes — volta ao caminho sequencial.
-  const results = guards ? await runGatesConcurrent(gatesResult.gates, { cwd, timeoutS, run }) : []
+  const results = guards
+    ? await runGatesConcurrent(gatesResult.gates, { cwd, timeoutS, run, resolverTeto })
+    : []
 
   // UMA identidade do registry para os DOIS fatos que a perguntam (invariante 9
   // e o contrato da imagem publicada): sem o cache, o mesmo manifesto + config
@@ -5970,6 +6860,19 @@ export async function diagnose({
         diverged: [],
         unknown: [],
         behindMax: null,
+        // O FATO DAS FORMAS sai `unavailable` no skip — nunca ausente: sem ele o
+        // veredito não pode afirmar "tudo no commit de origem" (o
+        // `--no-bench-freshness` pulou a leitura que responde isso).
+        forms: {
+          state: "unavailable",
+          families: [],
+          judged: 0,
+          notJudged: 0,
+          semResposta: 0,
+          missing: [],
+          detail: "pulada por --no-bench-freshness",
+          reason: "pulada por --no-bench-freshness",
+        },
         detail: "pulada por --no-bench-freshness",
         reason: "pulada por --no-bench-freshness",
         remedies: [],
@@ -5977,7 +6880,7 @@ export async function diagnose({
   const openDebtFacts = openDebt
     ? await readOpenDebt({
         cwd,
-        env,
+        env: envLeituras,
         deps: openDebtDeps,
         protection: protectionFacts,
         mirrors: mirrorsFacts,
@@ -6011,7 +6914,7 @@ export async function diagnose({
             image,
             expected,
             cwd,
-            env,
+            env: envLeituras,
             deps: { resolveIdentity: registryIdentity, ...imageContractDeps },
           })
         : {
@@ -6060,6 +6963,8 @@ export async function diagnose({
       ? readRunnerLabels({
           cwd,
           envFile: envFile === DEFAULT_ENV_FILE ? null : envFile,
+          container,
+          env,
           deps: runnerLabelsDeps,
         })
       : {
@@ -6071,7 +6976,7 @@ export async function diagnose({
     // A outra forja, com a MESMA flag: as duas são "o registro do runner", e
     // separá-las em duas flags faria a segunda ser esquecida.
     githubRunnerLabels: runnerLabels
-      ? await readGithubRunnerLabels({ cwd, env, deps: githubRunnerLabelsDeps })
+      ? await readGithubRunnerLabels({ cwd, env: envLeituras, deps: githubRunnerLabelsDeps })
       : {
           state: "skipped",
           detail: "pulada por --no-runner-labels",
@@ -6148,10 +7053,38 @@ export async function diagnose({
     skippedImageContract: !imageContract,
     skippedOpenDebt: !openDebt,
     skippedDeclaredDebt: !declaredDebt,
+    skippedUnprovenDebt: !unprovenDebt,
     skippedBenchFreshness: !benchFreshness,
     skippedGateContracts: !gateContractsCheck,
     skippedProof: !proof,
   }
+
+  // O REGISTRO DO QUE O VEREDITO NÃO COBRE — computado DEPOIS do objeto `facts`
+  // por uma razão de desenho: cada `closedBy` é um predicado sobre os FATOS do
+  // relatório (a forja foi lida? o env do host existe? o contrato da imagem foi
+  // provado?), e o registro é justamente um JULGAMENTO do que o veredito
+  // alcançou. Uma segunda leitura da forja aqui seria a segunda verdade sobre o
+  // mesmo assunto — é o mesmo motivo pelo qual o cruzamento do board recebe os
+  // fatos em vez de medir de novo.
+  //
+  // Entra ATÉ no perfil `--ci`: é leitura de checkout (um JSON) e sem ele o
+  // veredito de todo PR diria "não provado" sem data — exatamente onde a janela
+  // de revisão precisa aparecer.
+  facts.unprovenDebt = unprovenDebt
+    ? collectUnproven({ facts, root: cwd, deps: unprovenDeps })
+    : {
+        state: "skipped",
+        items: [],
+        aged: [],
+        invalid: [],
+        proven: [],
+        open: [],
+        declarado: [],
+        total: 0,
+        reviewAfterDays: null,
+        detail: "pulada por --no-unproven-registry",
+        reason: "pulada por --no-unproven-registry",
+      }
 
   return { facts }
 }
