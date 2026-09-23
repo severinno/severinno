@@ -30,17 +30,25 @@ import { afterAll, describe, expect, it } from "vitest"
 import {
   DEFAULT_GITHUB_API_URL,
   EXIT,
+  RUNNER_CONTAINER_ENV,
   checkGithubRunnerLabels,
   checkRunnerLabels,
+  compareActRunnerVersion,
   compareLabelSets,
+  compareRunnerVersion,
+  normalizeRunnerVersion,
   declaredLabels,
   exitCodeFor,
   fetchGithubRunners,
+  imageDigest,
+  imageTag,
+  isVersionTag,
   normalizeLabelEntries,
   parseArgs,
   parseGithubRunnerSetup,
   parseGithubRunners,
   parseLabelEntries,
+  parseRunnerBinaryVersion,
   parseRunnerState,
   renderReport,
   repoFromUrl,
@@ -66,6 +74,7 @@ function makeRun(handlers: {
   composeVersion?: RunResult
   render?: RunResult
   exec?: RunResult
+  version?: RunResult
   ps?: RunResult
 }) {
   const calls: string[] = []
@@ -76,6 +85,12 @@ function makeRun(handlers: {
     }
     if (args[0] === "compose" && args.includes("config")) {
       return handlers.render ?? ok(JSON.stringify(RENDER))
+    }
+    // O MESMO `docker exec` responde DUAS perguntas: o `cat` do registro e o
+    // `act_runner --version`. Elas se distinguem pelo binário chamado, e é assim
+    // que um teste estraga só uma delas.
+    if (args[0] === "exec" && args.includes("act_runner")) {
+      return handlers.version ?? ok("act_runner version v0.6.1")
     }
     if (args[0] === "exec") return handlers.exec ?? ok(JSON.stringify({ labels: REGISTERED }))
     if (args[0] === "ps") return handlers.ps ?? ok("gitea-runner\n")
@@ -299,6 +314,46 @@ describe("resolveRunnerContainer", () => {
     expect(res.ok).toBe(false)
     expect(res.detail).toContain("nenhum container")
   })
+
+  it("o DECLARADO vence o container_name do compose — e a FONTE sai dita", () => {
+    // A SONDA: um container de teste, com o nome que o ensaio escolher. O nome
+    // da stack (`gitea-runner`, no render) NÃO é tomado nem exigido.
+    const { run, calls } = makeRun({})
+    const res = resolveRunnerContainer({
+      cwd: "/repo",
+      run,
+      rendered: RENDER,
+      declarado: "sonda-do-ensaio",
+    })
+    expect(res).toEqual({
+      ok: true,
+      container: "sonda-do-ensaio",
+      detail: `declarado por ${RUNNER_CONTAINER_ENV}`,
+    })
+    expect(calls).toEqual([]) // nem um `docker` foi chamado para descobrir o nome
+  })
+
+  it("o declarado em BRANCO (espaços, string vazia) cai para o compose: não é declaração", () => {
+    const { run } = makeRun({})
+    for (const vazio of ["", "   ", null, undefined]) {
+      const res = resolveRunnerContainer({ cwd: "/repo", run, rendered: RENDER, declarado: vazio })
+      expect(res.container).toBe("gitea-runner")
+      expect(res.detail).toBe("container_name do compose")
+    }
+  })
+
+  it("a variável declarada chega pelo `env` do guard, e `--container` ganha dela", () => {
+    const { run } = makeRun({})
+    // a variável sozinha (o caminho do doctor, que a herda do ambiente)
+    const viaEnv = resolveRunnerContainer({
+      cwd: "/repo",
+      run,
+      rendered: RENDER,
+      declarado: "sonda-via-env",
+    })
+    expect(viaEnv.container).toBe("sonda-via-env")
+    expect(viaEnv.detail).toContain(RUNNER_CONTAINER_ENV)
+  })
 })
 
 describe("checkRunnerLabels — a decisão", () => {
@@ -486,6 +541,239 @@ describe("checkRunnerLabels — a decisão", () => {
   })
 })
 
+// ── A VERSÃO do binário × a TAG do compose (o irmão do pin do GitHub) ──────
+
+describe("parseRunnerBinaryVersion — a saída do PRÓPRIO binário", () => {
+  it("lê a versão da forma que o act_runner imprime, e normaliza o `v`", () => {
+    expect(parseRunnerBinaryVersion("act_runner version v0.6.1")).toBe("0.6.1")
+    expect(parseRunnerBinaryVersion("v0.2.11\n")).toBe("0.2.11")
+  })
+
+  it("tolera ruído na MESMA linha (é a linha do binário, não um formato nosso)", () => {
+    expect(parseRunnerBinaryVersion("act_runner version v0.6.1 (build 48f4b0a)")).toBe("0.6.1")
+  })
+
+  it("saída sem versão → null (quem lê diz 'não li', nunca 'em sincronia')", () => {
+    expect(parseRunnerBinaryVersion("")).toBeNull()
+    expect(parseRunnerBinaryVersion(null)).toBeNull()
+    expect(parseRunnerBinaryVersion("act_runner version dev")).toBeNull()
+  })
+})
+
+describe("imageTag / imageDigest — o que a referência DECLARA", () => {
+  it("a tag é o que vem DEPOIS da última barra (a porta do registry não confunde)", () => {
+    expect(imageTag("gitea/act_runner:latest")).toBe("latest")
+    expect(imageTag("git.severinno.cloud:3000/severinno/act_runner:0.6.1")).toBe("0.6.1")
+    expect(imageTag("localhost:5000/gitea/act_runner")).toBeNull()
+    expect(imageTag("gitea/act_runner")).toBeNull()
+    expect(imageTag("")).toBeNull()
+  })
+
+  it("um DIGEST não é uma tag (o hash como 'tag' acusaria uma tag que não existe)", () => {
+    const hash = `sha256:${"a".repeat(64)}`
+    expect(imageDigest(`ghcr.io/severinno/act_runner@${hash}`)).toBe(hash)
+    expect(imageTag(`ghcr.io/severinno/act_runner@${hash}`)).toBeNull()
+    expect(imageTag(`ghcr.io/severinno/act_runner:0.6.1@${hash}`)).toBeNull()
+    expect(imageDigest("ghcr.io/severinno/act_runner:0.6.1")).toBeNull()
+  })
+
+  it("`isVersionTag` é a FORMA, não uma lista de nomes flutuantes", () => {
+    expect(isVersionTag("0.6.1")).toBe(true)
+    expect(isVersionTag("v0.6.1")).toBe(true)
+    expect(isVersionTag("latest")).toBe(false)
+    expect(isVersionTag("stable")).toBe(false)
+    expect(isVersionTag(null)).toBe(false)
+  })
+})
+
+describe("compareActRunnerVersion — a versão do binário × a tag do compose", () => {
+  const cmp = (declaredImage: string, reported: string | null = null) =>
+    compareActRunnerVersion({ declaredImage, reported, container: "gitea-runner" })
+
+  it("a tag pina a versão que o binário reporta → PROVADO (o `v` e espaço não são drift)", () => {
+    expect(cmp("gitea/act_runner:0.6.1", "v0.6.1").state).toBe("proven")
+    expect(cmp("gitea/act_runner:v0.6.1", " 0.6.1 ").state).toBe("proven")
+    expect(cmp("git.severinno.cloud:3000/severinno/act_runner:0.6.1", "v0.6.1").state).toBe(
+      "proven",
+    )
+  })
+
+  it("o binário reporta OUTRA versão → DRIFT, nomeando os dois lados", () => {
+    const r = cmp("gitea/act_runner:0.2.11", "v0.6.1")
+    expect(r.state).toBe("drift")
+    expect(r.tag).toBe("0.2.11")
+    expect(r.reported).toBe("0.6.1")
+    expect(r.detail).toContain("o que RODA nao e o que o repositorio declara")
+  })
+
+  it("`latest` NÃO pina versão → FLOATING: declaração pendente, nem verde nem divergência", () => {
+    const r = cmp("gitea/act_runner:latest", "v0.6.1")
+    expect(r.state).toBe("floating")
+    expect(r.tag).toBe("latest")
+    expect(r.reported).toBe("0.6.1")
+    // O que a prosa DIZ: a versão que roda é a que o pull do dia tiver servido.
+    expect(r.detail).toContain("docker pull do dia")
+  })
+
+  it("DIGEST: o conteúdo é imutável, mas um digest não declara VERSÃO → `digest` (não `floating`)", () => {
+    const hash = `sha256:${"a".repeat(64)}`
+    const r = cmp(`ghcr.io/severinno/act_runner@${hash}`, "v0.6.1")
+    expect(r.state).toBe("digest")
+    // A frase do `floating` seria FALSA aqui (num pin imutável não há "a versão
+    // que roda é a que o pull do dia tiver servido"): o estado existe para o
+    // relatório não afirmar isso, e a prova é a AUSÊNCIA da frase.
+    expect(r.detail).not.toContain("tiver servido")
+    expect(r.detail).toContain("IMUTAVEL")
+    expect(r.detail).toContain("NAO declara VERSAO")
+    // Com tag E digest, a tag continua sendo informação — mas não decide o estado.
+    const ambos = cmp(`ghcr.io/severinno/act_runner:0.6.1@${hash}`, "0.6.1")
+    expect(ambos.tag).toBe("0.6.1")
+    expect(ambos.state).toBe("digest")
+  })
+
+  it("imagem SEM tag cai em `floating` (o docker assume `latest`) — e sem imagem é `no-image`", () => {
+    expect(cmp("gitea/act_runner", "v0.6.1").state).toBe("floating")
+    expect(cmp("gitea/act_runner", "v0.6.1").tag).toBeNull()
+    expect(cmp("", "v0.6.1").state).toBe("no-image")
+  })
+
+  it("o que NÃO foi julgado tem estado próprio: `unread` (a versão não foi lida)", () => {
+    const r = cmp("gitea/act_runner:0.6.1", null)
+    expect(r.state).toBe("unread")
+    expect(r.detail).toContain("NAO foi lida")
+  })
+})
+
+describe("checkRunnerLabels — a VERSÃO do binário, ao lado do registro", () => {
+  const cwd = process.cwd()
+
+  /** O render com a IMAGEM do serviço: é ela que declara a versão a comparar. */
+  const renderWith = (image: string | null) =>
+    ok(
+      JSON.stringify({
+        services: {
+          runner: {
+            container_name: "gitea-runner",
+            ...(image === null ? {} : { image }),
+            environment: { GITEA_RUNNER_LABELS: DECLARED.join(",") },
+            volumes: [
+              { type: "bind", source: "/var/run/docker.sock", target: "/var/run/docker.sock" },
+              { type: "volume", source: "runner-data", target: "/data" },
+            ],
+          },
+        },
+      }),
+    )
+
+  it("labels ÍNTEGROS e o binário em outra versão → DIVERGENTE com o remédio da IMAGEM", () => {
+    // O drift do binário é um problema PRÓPRIO: `violations` (labels) fica vazio
+    // — re-registrar não muda a versão de um milímetro —, e o remédio é o da tag.
+    const { run } = makeRun({
+      render: renderWith("gitea/act_runner:0.2.11"),
+      version: ok("act_runner version v0.6.1"),
+    })
+    const res = checkRunnerLabels({ cwd, run })
+    expect(res.state).toBe("violated")
+    expect(exitCodeFor(res)).toBe(EXIT.MISMATCH)
+    expect(res.violations).toEqual([])
+    expect(res.versionViolations).toHaveLength(1)
+    expect(res.versionViolations[0]).toContain("0.6.1")
+    expect(res.versionViolations[0]).toContain("0.2.11")
+    expect(res.remedies.join("\n")).toContain("alinhe a tag da imagem do runner")
+    expect(res.detail).toContain("roda outra versao")
+  })
+
+  it("labels íntegros + tag flutuante (`latest`) → PROVADO, com a versão saindo como declaração pendente", () => {
+    // O `latest` NÃO bloqueia: é uma declaração que o repositório ainda não fez.
+    // Quem a publica como não-provado é o doctor; o guard não inventa um defeito.
+    const { run } = makeRun({ render: renderWith("gitea/act_runner:latest") })
+    const res = checkRunnerLabels({ cwd, run })
+    expect(res.state).toBe("proven")
+    expect(exitCodeFor(res)).toBe(EXIT.OK)
+    expect(res.version?.state).toBe("floating")
+    expect(res.versionViolations).toEqual([])
+  })
+
+  it("a SONDA declarada pela variável: a versão sai do container DELA, e o veredito diz a fonte", () => {
+    // O defeito que isto fecha: o nome do container saía só do `container_name`
+    // do compose, então medir a metade da VERSÃO exigia tomar o nome que a stack
+    // usa — uma sonda (a imagem pinada num container de teste) não tinha como se
+    // declarar. Aqui o compose DECLARA `gitea-runner` e a medição vai na sonda.
+    const { run, calls } = makeRun({
+      render: renderWith("gitea/act_runner:0.2.11"),
+      version: ok("act_runner version v0.6.1"),
+    })
+    const res = checkRunnerLabels({ cwd, run, env: { GITEA_RUNNER_CONTAINER: "sonda-do-ensaio" } })
+    expect(res.container).toBe("sonda-do-ensaio")
+    // A versão foi lida do container DECLARADO (e não do `gitea-runner`)
+    expect(calls).toContain("exec sonda-do-ensaio act_runner --version")
+    expect(calls).not.toContain("exec gitea-runner act_runner --version")
+    // O drift continua sendo o MESMO defeito (a tag declara 0.2.11, roda 0.6.1)...
+    expect(res.version?.state).toBe("drift")
+    // ...e a FONTE da sonda está dita no veredito: medir a sonda NÃO é medir a stack.
+    expect(res.versionViolations[0]).toContain(`sonda-do-ensaio`)
+    expect(res.versionViolations[0]).toContain(RUNNER_CONTAINER_ENV)
+  })
+
+  it("`--container` (a CLI) vence a variável: a declaração mais específica é a que mede", () => {
+    const { run, calls } = makeRun({ render: renderWith("gitea/act_runner:0.6.1") })
+    const res = checkRunnerLabels({
+      cwd,
+      run,
+      container: "sonda-da-cli",
+      env: { GITEA_RUNNER_CONTAINER: "sonda-do-ambiente" },
+    })
+    expect(res.container).toBe("sonda-da-cli")
+    expect(calls).toContain("exec sonda-da-cli act_runner --version")
+    expect(res.version?.state).toBe("proven")
+  })
+
+  it("o render SEM imagem → `no-image` (não há versão declarada a comparar)", () => {
+    const { run } = makeRun({ render: renderWith(null) })
+    const res = checkRunnerLabels({ cwd, run })
+    expect(res.state).toBe("proven")
+    expect(res.version?.state).toBe("no-image")
+  })
+
+  it("a versão é lida ANTES do registro: um registro ILEGÍVEL não esconde o drift", () => {
+    const { run } = makeRun({
+      render: renderWith("gitea/act_runner:0.2.11"),
+      exec: ok("isso não é json"),
+      version: ok("act_runner version v0.6.1"),
+    })
+    const res = checkRunnerLabels({ cwd, run })
+    expect(res.state).toBe("unavailable")
+    expect(res.version?.state).toBe("drift")
+    expect(res.versionViolations).toHaveLength(1)
+    expect(renderReport(res)).toContain("versao        : 0.6.1 != tag 0.2.11 (drift)")
+  })
+
+  it("o binário que não responde → `unread`, nunca 'em sincronia'", () => {
+    const { run } = makeRun({
+      render: renderWith("gitea/act_runner:0.6.1"),
+      version: { status: 1, stdout: "", stderr: "Error response from daemon: No such container" },
+    })
+    const res = checkRunnerLabels({ cwd, run })
+    expect(res.state).toBe("proven")
+    expect(res.version?.state).toBe("unread")
+    expect(res.versionViolations).toEqual([])
+  })
+
+  it("o relatório dita a versão nos DOIS desfechos (é ela que explica um vermelho sem label)", () => {
+    const provado = makeRun({ render: renderWith("gitea/act_runner:0.6.1") })
+    expect(renderReport(checkRunnerLabels({ cwd, run: provado.run }))).toContain(
+      "versao        : 0.6.1 = tag 0.6.1 (proven)",
+    )
+    const drift = makeRun({
+      render: renderWith("gitea/act_runner:0.2.11"),
+      version: ok("act_runner version v0.6.1"),
+    })
+    const vermelho = renderReport(checkRunnerLabels({ cwd, run: drift.run }))
+    expect(vermelho).toContain("❌")
+    expect(vermelho).toContain("versao        : 0.6.1 != tag 0.2.11 (drift)")
+  })
+})
+
 describe("parseArgs", () => {
   it("lê as flags e reporta argumento desconhecido", () => {
     expect(parseArgs(["--json", "--gitea-env", "/x/.env"])).toEqual({
@@ -539,11 +827,20 @@ function githubRepo(script: string): string {
   return dir
 }
 
-/** O script REAL do repositório (a fonte única dos labels, do nome e do repo). */
+/** A versão que o SERVIÇO aceitou — é ela que o pin do script tem de casar. */
+const RUNNER_VERSION_OK = "2.337.0"
+
+/**
+ * O script REAL do repositório (a fonte única dos labels, do nome, do repo e do
+ * PIN da versão). O pin entra aqui porque ele é a OUTRA declaração que o serviço
+ * tem de aceitar: sem ele no fixture, a comparação da versão sairia `no-pin` em
+ * todo teste do fluxo, e o caminho provado seria medido por omissão.
+ */
 const REAL_SETUP = `
 RUNNER_NAME="hostinger-runner"
 RUNNER_LABELS="self-hosted,linux,x64,docker"
 REPO_URL="https://github.com/severinno/severinno"
+RUNNER_VERSION="${RUNNER_VERSION_OK}"
 `
 
 /** Um runner como a API devolve: os labels `read-only` vêm com a caixa do GitHub. */
@@ -551,6 +848,7 @@ const RUNNER_ONLINE = {
   id: 7,
   name: "hostinger-runner",
   status: "online",
+  version: RUNNER_VERSION_OK,
   labels: ["self-hosted", "Linux", "X64", "docker"].map((name) => ({
     id: 1,
     name,
@@ -564,12 +862,19 @@ const RUNNER_ONLINE = {
  * essa língua, para não testar um tipo que o guard nunca vê.
  */
 function parsedRunner(
-  over: Partial<{ id: number; name: string; status: string; labels: string[] }> = {},
+  over: Partial<{
+    id: number
+    name: string
+    status: string
+    labels: string[]
+    version: string
+  }> = {},
 ) {
   return {
     id: 7,
     name: "hostinger-runner",
     status: "online",
+    version: "2.337.0",
     labels: ["self-hosted", "Linux", "X64", "docker"],
     ...over,
   }
@@ -620,13 +925,17 @@ describe("shellAssignment / repoFromUrl — a fonte única do lado declarado", (
     expect(repoFromUrl("")).toBeNull()
   })
 
-  it("o script REAL do repositório declara 4 labels, um nome e um repo", () => {
+  it("o script REAL do repositório declara 4 labels, um nome, um repo E o pin da versão", () => {
     const setup = parseGithubRunnerSetup(
       readFileSync(join(process.cwd(), "deploy", "setup-github-runner.sh"), "utf8"),
     )
     expect(setup.entries.map((e) => e.raw)).toEqual(["self-hosted", "linux", "x64", "docker"])
     expect(setup.name).toBe("hostinger-runner")
     expect(setup.repo).toBe("severinno/severinno")
+    // O pin é lido do MESMO texto (a fonte única): o valor em si é bumpável, então
+    // o que se prova aqui é a LEITURA — a forma da versão, e não um número cravado
+    // que envelheceria a cada bump do runner.
+    expect(setup.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 })
 
@@ -645,13 +954,68 @@ describe("normalizeLabelEntries — caixa é irrelevante (e o raw continua o ori
   })
 })
 
+describe("compareRunnerVersion — a versão registrada × o PIN do script (a classe 2.320.0 → 2.337.0)", () => {
+  it("o `v` de prefixo e o espaço NÃO são drift (compara por VALOR, nunca por texto)", () => {
+    expect(normalizeRunnerVersion("v2.337.0")).toBe("2.337.0")
+    expect(normalizeRunnerVersion(" 2.337.0 ")).toBe("2.337.0")
+    expect(normalizeRunnerVersion("")).toBeNull()
+    expect(normalizeRunnerVersion(null)).toBeNull()
+    const ig = compareRunnerVersion({ pin: "v2.337.0", registered: "2.337.0" })
+    expect(ig.state).toBe("proven")
+    expect(ig.detail).toContain("= o pin")
+  })
+
+  it("pin RECUSADO (o registro está em outra versão) → drift, nomeando os DOIS lados", () => {
+    // O defeito medido: o pin 2.320.0 registrou, pegou o primeiro job e se
+    // auto-atualizou para 2.337.0 no meio dele.
+    const d = compareRunnerVersion({ pin: "2.320.0", registered: "2.337.0" })
+    expect(d.state).toBe("drift")
+    expect(d.pin).toBe("2.320.0")
+    expect(d.registered).toBe("2.337.0")
+    expect(d.detail).toContain("RECUSOU o pin")
+    expect(d.detail).toContain("'2.320.0'")
+    expect(d.detail).toContain("'2.337.0'")
+  })
+
+  it("script SEM o pin, e API SEM o campo `version`: NENHUM dos dois vira 'em sincronia'", () => {
+    // "Não deu para julgar" tem estado próprio — e é ele que o doctor publica como
+    // não-provado. Sem esta distinção, um payload sem o campo passaria por ✅.
+    const semPino = compareRunnerVersion({ pin: null, registered: "2.337.0" })
+    expect(semPino.state).toBe("no-pin")
+    expect(semPino.pin).toBeNull()
+    expect(semPino.detail).toContain("NAO declara RUNNER_VERSION")
+
+    const semCampo = compareRunnerVersion({ pin: "2.337.0", registered: null })
+    expect(semCampo.state).toBe("unread")
+    expect(semCampo.registered).toBeNull()
+    expect(semCampo.detail).toContain("NAO foi julgada")
+
+    expect(compareRunnerVersion({ pin: null, registered: null }).state).toBe("no-pin")
+  })
+
+  it("o nome do runner aparece na mensagem quando ele é conhecido", () => {
+    const d = compareRunnerVersion({
+      pin: "1.0.0",
+      registered: "2.0.0",
+      runnerName: "hostinger-runner",
+    })
+    expect(d.detail).toContain("hostinger-runner")
+  })
+})
+
 describe("parseGithubRunners / selectGithubRunner", () => {
   it("lê nome, status e labels do payload da API", () => {
     const parsed = parseGithubRunners({ runners: [RUNNER_ONLINE] })
     expect(parsed.ok).toBe(true)
     expect(parsed.runners?.[0].name).toBe("hostinger-runner")
     expect(parsed.runners?.[0].status).toBe("online")
+    expect(parsed.runners?.[0].version).toBe(RUNNER_VERSION_OK)
     expect(parsed.runners?.[0].labels).toEqual(["self-hosted", "Linux", "X64", "docker"])
+  })
+
+  it("payload SEM o campo `version` vira string vazia (não vira a versão do vizinho)", () => {
+    const parsed = parseGithubRunners({ runners: [{ ...RUNNER_ONLINE, version: undefined }] })
+    expect(parsed.runners?.[0].version).toBe("")
   })
 
   it("payload sem a lista 'runners' NÃO é lista vazia (é resposta que não entendemos)", () => {
@@ -820,6 +1184,70 @@ describe("checkGithubRunnerLabels — a decisão", () => {
     expect(res.state).toBe("proven")
   })
 
+  it("a versão registrada = o PIN do script entra no relatório (o outro lado do registro)", async () => {
+    const { fetchImpl } = fetchWith([RUNNER_ONLINE])
+    const res = await checkGithubRunnerLabels({ cwd, env: ENV, fetchImpl })
+    expect(res.state).toBe("proven")
+    expect(res.version?.state).toBe("proven")
+    expect(res.version?.pin).toBe(RUNNER_VERSION_OK)
+    expect(res.version?.registered).toBe(RUNNER_VERSION_OK)
+    const report = renderReport(res)
+    expect(report).toContain("versao        : 2.337.0 = pin 2.337.0")
+  })
+
+  it("o serviço RECUSOU o pin (o registro está em outra versão) → DIVERGENTE, com remédio do PIN", async () => {
+    // A classe medida em 22/09/2026: com o pin em 2.320.0 o runner registrou,
+    // pegou o primeiro job e se AUTO-ATUALIZOU para 2.337.0 — o update derruba o
+    // worker e o job fica PRESO segurando o runner. Aqui os LABELS estão certos:
+    // quem acusa é a versão, e o remédio é outro (re-registrar com o mesmo pin
+    // recusado reproduziria o defeito).
+    const { fetchImpl } = fetchWith([{ ...RUNNER_ONLINE, version: "2.320.0" }])
+    const res = await checkGithubRunnerLabels({ cwd, env: ENV, fetchImpl })
+    expect(res.state).toBe("violated")
+    expect(exitCodeFor(res)).toBe(EXIT.MISMATCH)
+    // `violations` continua sendo a lista dos LABELS (zero aqui): somar as duas
+    // faria `violations.length` deixar de significar o que ele diz.
+    expect(res.violations).toEqual([])
+    expect(res.versionViolations).toHaveLength(1)
+    expect(res.versionViolations[0]).toContain("RECUSOU o pin")
+    expect(res.versionViolations[0]).toContain("PRESO")
+    expect(res.remedies.join("\n")).toContain("RUNNER_VERSION")
+    expect(res.detail).toContain("PARADA")
+    const report = renderReport(res)
+    expect(report).toContain("2.320.0 != pin 2.337.0")
+  })
+
+  it("o pin do script em OUTRA versão também acusa (o drift não tem lado certo)", async () => {
+    const dir = githubRepo(
+      'RUNNER_NAME="hostinger-runner"\nRUNNER_LABELS="self-hosted,linux,x64,docker"\nREPO_URL="https://github.com/severinno/severinno"\nRUNNER_VERSION="2.300.0"\n',
+    )
+    const { fetchImpl } = fetchWith([RUNNER_ONLINE])
+    const res = await checkGithubRunnerLabels({ cwd: dir, env: ENV, fetchImpl })
+    expect(res.state).toBe("violated")
+    expect(res.version?.pin).toBe("2.300.0")
+    expect(res.version?.state).toBe("drift")
+  })
+
+  it("NENHUM runner registrado: a versão fica NÃO julgada (null), nunca 'em sincronia'", async () => {
+    const { fetchImpl } = fetchWith([])
+    const res = await checkGithubRunnerLabels({ cwd, env: ENV, fetchImpl })
+    expect(res.state).toBe("violated")
+    expect(res.version).toBeNull()
+  })
+
+  it("script sem o PIN: a versão não é julgada e o guard NÃO a dá por certa", async () => {
+    const dir = githubRepo(
+      'RUNNER_NAME="hostinger-runner"\nRUNNER_LABELS="self-hosted,linux,x64,docker"\nREPO_URL="https://github.com/severinno/severinno"\n',
+    )
+    const { fetchImpl } = fetchWith([RUNNER_ONLINE])
+    const res = await checkGithubRunnerLabels({ cwd: dir, env: ENV, fetchImpl })
+    // Os labels casam: o veredito segue PROVADO neles, e a versão sai com o
+    // estado próprio (`no-pin`) para o doctor publicá-la como não-provada.
+    expect(res.state).toBe("proven")
+    expect(res.version?.state).toBe("no-pin")
+    expect(res.versionViolations).toEqual([])
+  })
+
   it("script SEM RUNNER_LABELS → DIVERGENTE sem tocar na rede (a declaração é legível aqui)", async () => {
     const dir = githubRepo('RUNNER_NAME="r"\nREPO_URL="https://github.com/a/b"\n')
     const { fetchImpl, calls } = fetchWith([RUNNER_ONLINE])
@@ -846,7 +1274,7 @@ describe("checkGithubRunnerLabels — a decisão", () => {
     expect(exitCodeFor(res)).toBe(EXIT.ENV)
   })
 
-  it("repo DESCONHECIDO (script sem REPO_URL e sem GITHUB_REPOSITORY) → env, não palpite", async () => {
+  it("repo DESCONHECIDO (script sem REPO_URL e sem o canal `GH_REPOSITORY`) → env, não palpite", async () => {
     const dir = githubRepo('RUNNER_LABELS="self-hosted"\n')
     const res = await checkGithubRunnerLabels({ cwd: dir, env: ENV, ...fetchWith([RUNNER_ONLINE]) })
     expect(res.state).toBe("env-missing")
@@ -874,15 +1302,49 @@ describe("checkGithubRunnerLabels — a decisão", () => {
     expect(res.detail).toContain("SELF-HOSTED RUNNERS")
   })
 
-  it("GITHUB_REPOSITORY do ambiente serve quando o script não declara REPO_URL", async () => {
+  it("`GH_REPOSITORY` (o CANAL) serve quando o script não declara REPO_URL", async () => {
     const dir = githubRepo('RUNNER_LABELS="self-hosted"\n')
     const res = await checkGithubRunnerLabels({
       cwd: dir,
-      env: { ...ENV, GITHUB_REPOSITORY: "o/r" },
+      env: { ...ENV, GH_REPOSITORY: "o/r" },
       ...fetchWith([{ ...RUNNER_ONLINE, name: "a", labels: [{ name: "self-hosted" }] }]),
     })
     expect(res.state).toBe("proven")
     expect(res.repo).toBe("o/r")
+  })
+
+  it("o `GITHUB_REPOSITORY` COMPARTILHADO não serve — e o canal vence quando os dois estão no ambiente", async () => {
+    // O runner da forja EMULA o contexto do GitHub: ali `GITHUB_REPOSITORY` é o
+    // repositório DO GITEA. Lê-lo aqui consultaria o registro de outro
+    // repositório (a resposta seria o registro vazio de um repo que não é o
+    // nosso, publicada como se fosse o nosso) — e só continuaria correto
+    // enquanto os dois slugs coincidissem.
+    const dir = githubRepo('RUNNER_LABELS="self-hosted"\n')
+    const { fetchImpl, calls } = fetchWith([
+      { ...RUNNER_ONLINE, name: "a", labels: [{ name: "self-hosted" }] },
+    ])
+    const comCanal = await checkGithubRunnerLabels({
+      cwd: dir,
+      env: { ...ENV, GH_REPOSITORY: "canal/r", GITHUB_REPOSITORY: "forja-emulada/decoy" },
+      fetchImpl,
+    })
+    expect(comCanal.state).toBe("proven")
+    expect(comCanal.repo).toBe("canal/r")
+    expect(calls.join(" ")).toContain("/repos/canal/r/actions/runners")
+    expect(calls.join(" ")).not.toContain("decoy")
+
+    // E com SÓ o compartilhado: falta de canal (2), nunca uma consulta ao repo
+    // da forja emulada — e a mensagem NOMEIA a variável que falta.
+    const soDecoy = await checkGithubRunnerLabels({
+      cwd: dir,
+      env: { ...ENV, GITHUB_REPOSITORY: "forja-emulada/decoy" },
+      ...fetchWith([RUNNER_ONLINE]),
+    })
+    expect(soDecoy.state).toBe("env-missing")
+    expect(exitCodeFor(soDecoy)).toBe(EXIT.ENV)
+    expect(soDecoy.repo).toBeNull()
+    expect(soDecoy.detail).toContain("GH_REPOSITORY")
+    expect(soDecoy.detail).not.toContain("decoy")
   })
 })
 
@@ -1016,9 +1478,17 @@ describe.skipIf(!HAS_COMPOSE)("o lado declarado, no repositório real", () => {
     expect(new Set(tags).size).toBe(1)
   })
 
-  it("no repositório o registro não é comparável (sem a forja no ar) — e isso é indeterminado, nunca 'provado'", () => {
+  it("no repositório o veredito é o do ESTADO medido — e o exit sai dele, nunca de uma constante", () => {
+    // O host decide o estado, e ele NÃO é sempre o mesmo: com a forja no ar e o
+    // registro em sincronia sai `proven`; com um container sem registro (uma
+    // sonda, ou o volume apagado) sai `violated`; sem container nenhum sai
+    // `unavailable`. O que este teste cobra é a LIGAÇÃO: o exit é DERIVADO do
+    // estado — afirmar um código fixo aqui passaria a mentir no dia em que o
+    // host estivesse num dos outros dois.
     const res = checkRunnerLabels({ cwd: process.cwd() })
     expect(["proven", "violated", "unavailable"]).toContain(res.state)
-    if (res.state !== "proven") expect(exitCodeFor(res)).toBe(EXIT.UNKNOWN)
+    const esperado =
+      res.state === "proven" ? EXIT.OK : res.state === "violated" ? EXIT.MISMATCH : EXIT.UNKNOWN
+    expect(exitCodeFor(res)).toBe(esperado)
   })
 })

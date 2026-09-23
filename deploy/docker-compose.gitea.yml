@@ -123,7 +123,24 @@ services:
 
   # ── Gitea Act Runner (CI/CD) ────────────────────────────────────────────
   runner:
-    image: gitea/act_runner:latest
+    # A TAG PINA A VERSÃO que a stack roda (era `latest`, até 22/09/2026).
+    # O act_runner NÃO se auto-atualiza: quem decide a versão do binário é a
+    # IMAGEM (ao contrário do runner auto-hospedado do GitHub, cujo serviço
+    # pega o update no meio do primeiro job e deixa o job PRESO). Então uma tag
+    # que não declara versão é o furo: o `docker compose pull` de outro dia
+    # troca o que a forja RODA sem uma linha do repositório mudar e sem
+    # sintoma nenhum na forja. O `check-runner-labels` (a versão que o binário
+    # reporta × a tag daqui, em `runner-labels:check`) compara por VALOR.
+    #
+    # MEDIDO em 22/09/2026, antes de pinar: `latest` reportava `v0.6.1` e a tag
+    # `0.2.11` reportava `v0.2.11` — as duas imagens conviviam no disco e nada
+    # dizia qual delas a stack subia. `0.6.1` é o pin porque: (a) `docker pull
+    # gitea/act_runner:0.6.1` resolve e devolve o MESMO digest que o `latest`
+    # do dia (sha256:b5c35d6d…), ou seja, é exatamente o que rodava; e (b)
+    # `v0.6.1` NÃO existe no registry (`not found`) — a tag com `v` seria um
+    # pin quebrado. Trocar a versão aqui exige puxar a imagem de novo e
+    # re-subir o runner (o registro em /data/.runner não muda a versão).
+    image: gitea/act_runner:0.6.1
     container_name: gitea-runner
     restart: unless-stopped
     security_opt:
