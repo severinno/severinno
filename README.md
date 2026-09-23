@@ -1251,14 +1251,14 @@ depois: `escreveu: true` é violação da família, não um detalhe do log.
 **O custo do job mais caro do PR não é uma conta à mão** (família `mutations` do
 `bench-guard-timing`). O job `mutation-guards` roda 40 sub-tests, e o que CADA um
 custa é medido pelo próprio master (`--json`) e versionado sub-test a sub-test no
-registro: o ato VERSIONADO de 25/09/2026 (`98878d98`) — o MESMO comando, com a árvore COMMITADA —
-mediu **246.1s** de sub-tests + **4.6s** de harness =
-**250.7s**, com `hook-commands` (60.9s, 25%), `remedy-tty` (30.3s, 12%), `registry-defaults` (22.1s, 9%) e `required-applied` (18.1s, 7%) no topo — antes disso
-ninguém sabia QUAL sub-test pagava a conta. A mediana é **1.5s**, dez sub-tests
-pagam **81%** da soma, e o registro guarda **246 metades**.
+registro: o ato VERSIONADO de 23/09/2026 (`2604a370`) — o MESMO comando, com a árvore COMMITADA —
+mediu **553.9s** de sub-tests + **4.7s** de harness =
+**558.6s**, com `pre-commit-proof` (135.2s, 24%), `workflow-run-syntax` (72.8s, 13%), `hook-commands` (61.9s, 11%) e `job-deps` (46.2s, 8%) no topo — antes disso
+ninguém sabia QUAL sub-test pagava a conta. A mediana é **2.9s**, dez sub-tests
+pagam **84%** da soma, e o registro guarda **246 metades**.
 Quem entra com um sub-test novo não compõe nada: ele entra **MEDIDO** na rodada seguinte
-(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~6.3s**) é dita
-como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test. **LIMITE DECLARADO:** na rodada do ato, 6 sub-test(s) NÃO passaram (`mutation-count`, `workflow-run-syntax`, `job-deps`, `github-deps`, `pre-commit-proof`, `bench-freshness`) — o custo deles não julga nada.
+(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~14.0s**) é dita
+como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test.
 
 Esta prosa é **DERIVADA**: quem a reescreve é o ato (o bloco é dele), e o
 `check:mutation-count` recusa o commit em que ela divirja do registro versionado.
