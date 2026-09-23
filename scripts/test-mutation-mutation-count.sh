@@ -1050,6 +1050,47 @@ bench_ato() {
     echo '  }'
     echo '}'
   } > "$destino"
+
+  # O ato NÃO termina no registro: ele REESCREVE as duas prosas (é o
+  # `escreverDocs` do `--baseline`). Um fixture que só carregasse o registro
+  # mediaria uma árvore que o ato nunca produz — e a regra 6 acusaria as duas
+  # prosas em TODA metade desta seção, mascarando o defeito sob teste (medido:
+  # o CONTROLE N saía "FALSO POSITIVO" com a doc sintética sem os blocos).
+  bench_blocos
+}
+
+# ── bench_blocos: o ato reescreve as DUAS prosas a partir do registro ────────
+# A FOLHA é a do REPOSITÓRIO (`scripts/bench-table.mjs`, pelo mesmo caminho do
+# ato): um renderizador reescrito aqui mediria o fixture em vez do guard. O
+# marcador é o da folha — a doc do fixture nasce sem ele (o operador o posiciona
+# uma vez) e a inserção usa a MESMA constante que o guard lê.
+bench_blocos() {
+  node --input-type=module -e '
+    import { existsSync, readFileSync, writeFileSync } from "node:fs"
+    import { join } from "node:path"
+    const [tmp, repo] = process.argv.slice(1)
+    const folha = await import(`file://${repo}/scripts/bench-table.mjs`)
+    const registro = JSON.parse(
+      readFileSync(join(tmp, "docs/benchmarks/guard-timing-baseline.json"), "utf8"),
+    )
+    for (const { arquivo, bloco } of folha.DOCS) {
+      const p = join(tmp, arquivo)
+      if (!existsSync(p)) {
+        console.error(`fixture sem ${arquivo}`)
+        process.exit(1)
+      }
+      const texto = readFileSync(p, "utf8")
+      if (folha.blocoDoTexto(texto, bloco) === null) {
+        writeFileSync(p, `${texto}\n${bloco.abre}\n\n${bloco.fecha}\n`)
+      }
+    }
+    const notas = folha.escreverDocs({ cwd: tmp, registro })
+    const ruins = notas.filter((n) => n.status !== "reescrito" && n.status !== "jaEstava")
+    if (ruins.length) {
+      console.error(`fixture: ${JSON.stringify(ruins)}`)
+      process.exit(1)
+    }
+  ' "$TMP_DIR" "$SCRIPT_DIR"
 }
 
 # ── CONTROLE N: o ato versionou a MATRIZ INTEIRA ─────────────────────────
