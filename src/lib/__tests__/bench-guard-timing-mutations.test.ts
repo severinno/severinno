@@ -41,6 +41,7 @@ import {
   MUTATION_CMD,
   MUTATION_MASTER_CMD,
   REUSED_FAMILY_LABELS,
+  comMetadesDaMatriz,
   compareTimings,
   familyProvenance,
   measureMutationCost,
@@ -49,6 +50,12 @@ import {
   parseOnly,
   reuseFamilies,
 } from "../../../scripts/bench-guard-timing.mjs"
+import {
+  MASTER_DOS_SUBTESTS,
+  mapaDoMaster,
+  metadesDaMatriz,
+} from "../../../scripts/bench-families.mjs"
+import { comparaComOAto, run as runCountGuard } from "../../../scripts/check-mutation-count.mjs"
 import { benchIndex, instrumentKey } from "../../../scripts/merge-latency.mjs"
 
 const REPO_ROOT = join(__dirname, "..", "..", "..")
@@ -585,6 +592,267 @@ describe("bench-guard-timing — a baseline versionada carrega CADA sub-test", (
 })
 
 // ── 7. O modelo de latência deriva o passo do master desta medição ────────
+
+// ── 6. A COLUNA de metades: derivada da MATRIZ, não herdada do ato ─────────
+
+/**
+ * O fixture de uma MATRIZ: o `SUBTESTS` do master (id|script) e os blocos
+ * `METADES=(...)` das suítes — os dois que a derivação lê.
+ */
+const matrizSrc = (ids: string[]) =>
+  ["SUBTESTS=(", ...ids.map((id) => `  "${id}|scripts/${id}.sh"`), ")"].join("\n")
+const suiteSrc = (metades: string[]) =>
+  [
+    "#!/usr/bin/env bash",
+    "METADES=(",
+    ...metades.map((id) => `  '${id}|descrição da metade ${id}'`),
+    ")",
+  ].join("\n")
+const derivacao = (suites: Record<string, string[]>, ids = Object.keys(suites)) =>
+  metadesDaMatriz({
+    masterSrc: matrizSrc(ids),
+    // `lerSuite` devolve o TEXTO da suíte (é ele que carrega o bloco), não a
+    // lista de ids: a derivação passa pelo mesmo parser que a doc lê.
+    lerSuite: (rel) => {
+      const metades = suites[rel.replace("scripts/", "").replace(".sh", "")]
+      return metades ? suiteSrc(metades) : null
+    },
+  })
+
+/** Uma família `mutations` medida, com a coluna que o registro GRAVOU. */
+const familiaGravada = (formas: { id: string; metades: number }[], total: number) => ({
+  measured: true,
+  reason: null,
+  cmd: MUTATION_CMD,
+  exit: 0,
+  wallMs: 60_000,
+  subtests: formas.length,
+  metades: total,
+  forms: formas.map((f) => ({
+    role: f.id,
+    label: f.id,
+    ms: 10_000,
+    exit: 0,
+    metades: f.metades,
+    ok: true,
+    runs: [{ ms: 10_000, ok: true }],
+  })),
+  deltas: { subtestsMs: 20_000, harnessMs: 1_000, totalMs: 21_000, wallMs: 21_000 },
+  violations: [],
+  whatItAdded: ["MEDIDO: a frase do ato anterior"],
+})
+
+/**
+ * A família DEPOIS de passar pela derivação: `comMetadesDaMatriz` é JS puro (o
+ * `.mjs` não declara tipos), então a marca que ela acrescenta precisa ser nomeada
+ * aqui — sem isso o `as typeof familia` apagaria justamente o campo que esta suíte
+ * veio medir.
+ */
+type FamiliaComColuna = ReturnType<typeof familiaGravada> & {
+  metadesDaMatriz: {
+    total: number
+    atualizadas: number
+    semDerivacao: string[]
+    naoMedidas: { id: string; motivo: string }[]
+  }
+}
+
+describe("bench-guard-timing — a coluna de metades é DERIVADA da matriz", () => {
+  it("a unidade que entrou DEPOIS da medição é corrigida, com o TOTAL e a frase", () => {
+    // O caso medido (23/09/2026): a `bench-freshness` declarava 8 metades quando
+    // o ato mediu o custo dela, e a suíte passou a declarar 10. A rodada que
+    // HERDA a família trazia o `8` junto — e o registro descrevia a unidade
+    // anterior.
+    const familia = familiaGravada(
+      [
+        { id: "a", metades: 8 },
+        { id: "b", metades: 3 },
+      ],
+      11,
+    )
+    const derivadas = derivacao({
+      a: ["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10"],
+      b: ["C1", "C2", "C3"],
+    })
+    const depois = comMetadesDaMatriz(familia, derivadas) as FamiliaComColuna
+
+    expect(depois.forms.find((f: { role: string }) => f.role === "a")?.metades).toBe(10)
+    expect(depois.forms.find((f) => f.role === "b")?.metades).toBe(3)
+    expect(depois.metades).toBe(13)
+    // A procedência da COLUNA deixa de ser promessa da prosa: ela é dado.
+    expect(depois.metadesDaMatriz).toEqual({
+      total: 13,
+      atualizadas: 1,
+      semDerivacao: [],
+      naoMedidas: [],
+    })
+    // A frase narra o MESMO que a coluna: 8+3=11 → 13.
+    expect(depois.whatItAdded[0]).toContain("13 metade(s)")
+    expect(depois.whatItAdded[0]).not.toContain("11 metade(s)")
+  })
+
+  it("o CUSTO não é tocado — o ms, o exit e os deltas seguem da medição", () => {
+    const familia = familiaGravada([{ id: "a", metades: 1 }], 1)
+    const depois = comMetadesDaMatriz(familia, derivacao({ a: ["M1", "M2"] })) as FamiliaComColuna
+
+    expect(depois.forms[0].ms).toBe(familia.forms[0].ms)
+    expect(depois.forms[0].exit).toBe(familia.forms[0].exit)
+    expect(depois.forms[0].runs).toBe(familia.forms[0].runs)
+    expect(depois.deltas).toBe(familia.deltas)
+    expect(depois.wallMs).toBe(familia.wallMs)
+  })
+
+  it("a forma que a matriz NÃO conhece fica intocada e é DITA (nada é inventado)", () => {
+    const familia = familiaGravada(
+      [
+        { id: "a", metades: 2 },
+        { id: "saiu-da-matriz", metades: 7 },
+      ],
+      9,
+    )
+    const depois = comMetadesDaMatriz(familia, derivacao({ a: ["M1"] })) as FamiliaComColuna
+
+    expect(depois.forms.find((f) => f.role === "saiu-da-matriz")?.metades).toBe(7)
+    expect(depois.metadesDaMatriz.semDerivacao).toEqual(["saiu-da-matriz"])
+  })
+
+  it("a unidade que a matriz NÃO conseguiu medir fica intocada: zero não é a resposta", () => {
+    const familia = familiaGravada([{ id: "a", metades: 5 }], 5)
+    // A suíte `a` existe no master e não está na árvore: a derivação devolve 0
+    // com o MOTIVO, e gravar 0 apagaria o número que o registro já tinha.
+    const derivadas = metadesDaMatriz({ masterSrc: matrizSrc(["a"]), lerSuite: () => null })
+    const depois = comMetadesDaMatriz(familia, derivadas) as FamiliaComColuna
+
+    expect(depois.forms[0].metades).toBe(5)
+    expect(depois.metadesDaMatriz.naoMedidas).toEqual([
+      { id: "a", motivo: "`scripts/a.sh` não está nesta árvore" },
+    ])
+  })
+
+  it("sem derivação não há reescrita — e a família sai pela MESMA referência", () => {
+    const familia = familiaGravada([{ id: "a", metades: 5 }], 5)
+
+    expect(comMetadesDaMatriz(familia, null)).toBe(familia)
+    expect(comMetadesDaMatriz(familia, new Map())).toBe(familia)
+    expect(comMetadesDaMatriz(null, derivacao({ a: ["M1"] }))).toBeNull()
+  })
+
+  it("a derivação que não corrigiu nada AINDA deixa a marca (nada mudou ≠ não rodou)", () => {
+    // A família já coerente com a matriz: nenhuma forma é reescrita, e a
+    // procedência é o único dado que distingue "a derivação rodou e conferiu"
+    // de "a derivação não rodou" no arquivo versionado.
+    const familia = familiaGravada([{ id: "a", metades: 2 }], 2)
+    const depois = comMetadesDaMatriz(familia, derivacao({ a: ["M1", "M2"] })) as FamiliaComColuna
+
+    expect(depois).not.toBe(familia)
+    expect(depois.forms[0].metades).toBe(2)
+    expect(depois.metades).toBe(2)
+    expect(depois.metadesDaMatriz).toEqual({
+      total: 2,
+      atualizadas: 0,
+      semDerivacao: [],
+      naoMedidas: [],
+    })
+  })
+
+  it("a régua é a MESMA do guard da contagem (duas leituras, um só número)", () => {
+    // Aqui não há fixture: é a árvore real. O `check-mutation-count` conta as
+    // metades pelo caminho dele (para julgar a doc e o registro) e a derivação
+    // do ato pelo caminho dela (para gravar o registro) — se as duas
+    // divergissem, o ato gravaria um número que o guard recusa.
+    const doGuard = runCountGuard(REPO_ROOT) as {
+      derivedCount: number
+      derivedMetades: number
+      metades: { id: string; count: number }[]
+    }
+    const derivadas = metadesDaMatriz({
+      masterSrc: readFileSync(join(REPO_ROOT, MASTER_DOS_SUBTESTS), "utf8"),
+      lerSuite: (rel) => {
+        try {
+          return readFileSync(join(REPO_ROOT, rel), "utf8")
+        } catch {
+          return null
+        }
+      },
+    })
+
+    expect(derivadas.size).toBe(doGuard.derivedCount)
+    expect([...derivadas.keys()]).toEqual(doGuard.metades.map((m) => m.id))
+    expect([...derivadas.values()].reduce((s, d) => s + d.count, 0)).toBe(doGuard.derivedMetades)
+    // E o master é a fonte dos ids: nenhuma forma do registro fica sem matriz.
+    expect([
+      ...mapaDoMaster(readFileSync(join(REPO_ROOT, MASTER_DOS_SUBTESTS), "utf8")).keys(),
+    ]).toEqual(doGuard.metades.map((m) => m.id))
+  })
+
+  it("o registro REAL tem a coluna da matriz — e UMA unidade perdida é o único vermelho", () => {
+    // A prova do elo (ato → arquivo → guard), sobre o registro versionado de
+    // AGORA: a coluna dele é a que a MATRIZ declara hoje (é o ato que a derivou),
+    // e o caso da unidade que entrou depois da medição é injetado a partir da
+    // PRÓPRIA derivação — nenhum número reescrito à mão.
+    const bench = jsonDo("docs/benchmarks/guard-timing-baseline.json")
+    const doGuard = runCountGuard(REPO_ROOT) as {
+      metades: { id: string; count: number }[]
+      derivedMetades: number
+    }
+    const derivadas = metadesDaMatriz({
+      masterSrc: readFileSync(join(REPO_ROOT, MASTER_DOS_SUBTESTS), "utf8"),
+      lerSuite: (rel) => {
+        try {
+          return readFileSync(join(REPO_ROOT, rel), "utf8")
+        } catch {
+          return null
+        }
+      },
+    })
+    const ids = doGuard.metades.map((m) => m.id)
+
+    // O elo no tip: a coluna do registro é a da matriz (nenhuma forma atrás).
+    const comoEsta = comparaComOAto(bench, ids, { metades: doGuard.metades })
+    expect(comoEsta.metadesDivergentes).toEqual([])
+
+    // O DEFEITO (o caso de 23/09/2026): a suíte ganha uma metade DEPOIS da
+    // medição e o registro segue com a unidade anterior. A forma alvo sai da
+    // derivação (a que declara mais de uma metade), não de uma lista à mão.
+    const alvo = doGuard.metades.find((m) => m.count > 1)
+    expect(alvo).toBeDefined()
+    const atrasada = {
+      ...bench,
+      mutations: {
+        ...bench.mutations,
+        metades: bench.mutations.metades - 1,
+        forms: bench.mutations.forms.map((f: { role: string; metades: number }) =>
+          f.role === alvo!.id ? { ...f, metades: f.metades - 1 } : f,
+        ),
+      },
+    }
+
+    const antes = comparaComOAto(atrasada, ids, { metades: doGuard.metades })
+    const corrigida = comMetadesDaMatriz(atrasada.mutations, derivadas) as typeof bench.mutations
+    const depois = comparaComOAto({ ...atrasada, mutations: corrigida }, ids, {
+      metades: doGuard.metades,
+    })
+
+    // Antes: a divergência é da COLUNA (as formas existem, o custo está medido) —
+    // e nenhuma outra violação do ato aparece, senão este teste mediria outra
+    // coisa que não o assunto dele.
+    expect(antes.faltando).toEqual([])
+    expect(antes.metadesDivergentes).toEqual([
+      { id: alvo!.id, gravado: alvo!.count - 1, derivado: alvo!.count },
+    ])
+    expect(antes.ok).toBe(false)
+    expect(antes.violations.every((v) => !v.includes("não versionou"))).toBe(true)
+
+    // Depois: a derivação fecha o veredito, sem tocar no custo.
+    expect(depois.metadesDivergentes).toEqual([])
+    expect(depois.violations.filter((v) => v.includes("metade"))).toEqual([])
+    expect(corrigida.metades).toBe(doGuard.derivedMetades)
+    expect(
+      corrigida.forms.every((f: { ms: number }, i: number) => f.ms === bench.mutations.forms[i].ms),
+    ).toBe(true)
+    expect(derivadas.get(alvo!.id)?.count).toBe(alvo!.count)
+  })
+})
 
 describe("merge-latency — o passo do master vem da MEDIÇÃO, não da conta à mão", () => {
   const bench = jsonDo("docs/benchmarks/guard-timing-baseline.json")

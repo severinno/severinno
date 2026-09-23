@@ -103,7 +103,27 @@
 //      após" — ex.: a nota de overhead cita "era de 5 sub-tests... depois
 //      de 10" como histórico da medição, não como count atual).
 //
-// --json: { ok, derivedCount, refs: { prCheck: [...], masterHeader, readme:
+//   4. O ATO QUE VERSIONA A MATRIZ (`docs/benchmarks/guard-timing-baseline.json`,
+//      família `mutations`) — a defasagem que a PROSA sozinha não vê. Todo
+//      sub-test do SUBTESTS tem de ter a FORMA dele no registro (a medição por
+//      sub-test que o modelo de latência deriva), o count GRAVADO tem de ser o
+//      da matriz e o número de formas tem de bater com ela; `measured` ≠ true
+//      também acusa (não medido não é versionado). E a COLUNA de metades de cada
+//      forma é julgada contra a UNIDADE QUE A MATRIZ DECLARA HOJE (`scripts/
+//      metades.mjs`, a mesma leitura da doc): a coluna é DERIVADA da matriz, não
+//      herdada do ato — uma unidade que entrou na suíte DEPOIS da medição deixa
+//      a forma descrevendo a unidade anterior, e isso passa a ser violação
+//      nomeada. O remédio sai no veredito: o ato `--only mutations --json
+//      --baseline --merge` com a árvore JÁ COMMITADA (é ele que reescreve a
+//      coluna a partir da matriz). NÃO julga a forma que SOBRA (ela existe até o
+//      próximo ato, e sai listada como `sobrando` no relatório/JSON), nem a
+//      coluna cuja suíte a derivação não conseguiu medir ("não medido" ≠ "zero
+//      metades": listado em `metadesNaoMedidas`); o registro AUSENTE da árvore
+//      sai declarado (`bench.present: false`) — e no recorte `--staged` o caminho
+//      entra na materialização do índice, então o que o commit carrega é o que é
+//      julgado.
+//
+// --json: { ok, derivedCount, derivedMetades, metades, bench, refs: { prCheck:
 // [...] }, violations: [...] } — exit 0 mesmo com violações (modo report).
 //
 // CONTRATO DE FRASE: o guard exige a string EXATA "Roda os N mutation tests
@@ -118,6 +138,14 @@ import { dirname, join, resolve } from "node:path"
 import { tmpdir } from "node:os"
 import { pathToFileURL } from "node:url"
 
+import {
+  BLOCO_README,
+  DOCS,
+  blocoDoTexto,
+  divergencia,
+  estadoDaMatriz,
+  linhasDoBloco,
+} from "./bench-table.mjs"
 import { metadesDeclaradas } from "./metades.mjs"
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -235,11 +263,24 @@ function numeroPorExtenso(texto) {
  * Devolve TODAS as ocorrências (para o veredito citar a linha) — o chamador
  * compara com o número de metades declaradas pelo bloco da suíte.
  *
+ * A ÊNFASE DO MARKDOWN É RETIRADA ANTES DE LER (`**8 metades**`), e isso não é
+ * cosmética: com o negrito no meio, a contagem escrita no documento saía do
+ * alcance da régua e a prosa ficava VELHA EM SILÊNCIO — o laço MEDIDO: a doc
+ * dizia `a suíte declara **8 metades**` com a suíte declarando dez, e o guard da
+ * contagem passava verde. Uma contagem que a régua não lê é a mesma coisa que a
+ * contagem que ninguém confere, e é justamente o que este guard veio fechar.
+ *
  * @param {string} texto
  * @returns {{trecho: string, valor: number|null}[]}
  */
 export function contagensNaProsa(texto) {
   const achados = []
+  // `**negrito**` sai por inteiro (é a forma de DUAS marcas) e o `*`/`_` solto
+  // que abre uma palavra sai com o espaço que vem antes — o que sobra é o texto
+  // que o operador lê no documento, sem a marcação que o formatador inseriu.
+  const limpo = String(texto ?? "")
+    .replace(/\*\*/g, "")
+    .replace(/(^|\s)[*_]/g, "$1")
   // O substantivo vai no PLURAL: é onde uma contagem mora (`DUAS metades`,
   // `VINTE E QUATRO direções`). O singular é determinante (`cada metade`, `uma
   // metade do arquivo`) e uma régua que o cobrasse produziria ruído em prosa
@@ -259,7 +300,7 @@ export function contagensNaProsa(texto) {
   const vistos = new Set()
   for (const re of formas) {
     let m
-    while ((m = re.exec(texto)) !== null) {
+    while ((m = re.exec(limpo)) !== null) {
       if (vistos.has(m[0])) continue
       vistos.add(m[0])
       const bruto = m[1].toLowerCase()
@@ -381,10 +422,12 @@ function isHistoricalLine(line) {
 }
 
 /** Coleta refs vivas de count num texto: { lineNo, match, historical }[] */
-function collectCountRefs(text, patterns) {
+function collectCountRefs(text, patterns, ignorar = []) {
   const refs = []
   const lines = text.split("\n")
+  const dentro = (n) => ignorar.some(([i, f]) => n >= i && n <= f)
   for (let i = 0; i < lines.length; i++) {
+    if (dentro(i + 1)) continue
     const line = lines[i]
     for (const pat of patterns) {
       const re = new RegExp(pat, "g")
@@ -400,6 +443,206 @@ function collectCountRefs(text, patterns) {
     }
   }
   return refs
+}
+
+// ── A MATRIZ × O ATO QUE A VERSIONA ───────────────────────────────────────
+
+/** O REGISTRO VERSIONADO do custo da matriz — a família `mutations` do bench. */
+export const BENCH_PATH = "docs/benchmarks/guard-timing-baseline.json"
+
+/** A família cujas FORMAS são os sub-tests da matriz, um por um. */
+export const BENCH_FAMILY = "mutations"
+
+/** O ato que re-ancora a família (o remédio diz o comando inteiro). */
+export const BENCH_ACT =
+  "node scripts/bench-guard-timing.mjs --only mutations --json --baseline --merge"
+
+/**
+ * A MATRIZ de agora × o ATO que versiona o custo dela.
+ *
+ * POR QUE ESTA METADE EXISTE (a defasagem real, medida em 22/09/2026): a matriz
+ * ganhou o `doc-hashes` e o `stack-per-commit` e o registro versionado
+ * (`${BENCH_PATH}`, família `mutations`) seguiu com as 37 formas do ato anterior
+ * — o número declarado do job `mutation-guards` (e o PISO do job `guards`, que a
+ * ele se soma) passou a descrever uma matriz que já não existia, e NADA no
+ * repositório olhava isso: o `check:mutation-count` cobrava o count na PROSA
+ * (README, summary, header, doc), e a prosa pode estar toda certa enquanto o
+ * ato — a única medição POR sub-test — ficou para trás. Aqui a ligação passa a
+ * ser julgada: todo sub-test da matriz tem de ter a FORMA dele no ato, e o count
+ * GRAVADO tem de ser o da matriz.
+ *
+ * A COLUNA DE METADES É DERIVADA DA MATRIZ, NÃO HERDADA DO ATO.
+ *
+ * Até 23/09/2026 a coluna era declarável como "a do ATO": ela saía da rodada que
+ * mediu o custo, e uma unidade acrescentada à suíte DEPOIS daquela medição ficava
+ * invisível — o registro dizia `8 metades` para uma suíte que já declarava dez, e
+ * o número sobrevivia porque ninguém o comparava com a matriz. Aqui a coluna
+ * passa a ser conferida contra a UNIDADE QUE A MATRIZ DECLARA HOJE (a mesma
+ * `scripts/metades.mjs` que a doc e o master leem, por suíte citada): uma forma
+ * cujo `metades` divergiu do declarado, ou que não declara número nenhum, é
+ * violação nomeada — e o remédio é o ato, que reescreve a coluna a partir da
+ * matriz.
+ *
+ * O QUE ELA NÃO JULGA (declarado, e de propósito):
+ *   - a COBERTURA das metades (quais ids cada forma protege): o registro guarda a
+ *     contagem por forma, não a lista — quem lista os ids é o bloco `METADES=(...)`
+ *     da suíte, e é ele que a doc confere;
+ *   - a forma que SOBRA (um sub-test que saiu da matriz e continua no registro):
+ *     ela existe até o próximo ato, e é ele que a remove — o resultado a lista
+ *     em `sobrando` para o relatório poder dizê-lo, sem virar violação;
+ *   - o ARQUIVO ausente da árvore: aí não há ligação a julgar e o resultado sai
+ *     com `present: false` (a ligação NÃO julgada fica DITA, nunca silenciosa).
+ *     No recorte `--staged` o caminho entra na materialização do índice: se o
+ *     commit carrega o registro, é o conteúdo DELE que é julgado.
+ *
+ * @param {unknown} bench conteúdo JÁ PARSEADO do arquivo do bench (null = ausente)
+ * @param {string[]} ids os ids do `SUBTESTS` do master, na ordem da matriz
+ * @param {{metades?: {id: string, count: number}[]}} [opts]
+ *   `metades` é a derivação da MATRIZ (o que cada suíte da matriz declara hoje),
+ *   como `analisaMetades` a calcula. Sem ela a coluna não é julgada (e o
+ *   resultado DIZ que não foi, em `metadesJulgadas: false`) — ausência de
+ *   derivação não pode virar "a coluna está certa".
+ * @returns {{present: boolean, ok: boolean, versionados: string[], faltando: string[],
+ *            sobrando: string[], gravado: number|null, motivo: string|null,
+ *            metadesJulgadas: boolean, metadesDivergentes: {id: string, gravado: number|null, derivado: number}[],
+ *            metadesNaoMedidas: string[], violations: string[]}}
+ */
+export function comparaComOAto(bench, ids, { metades = [] } = {}) {
+  const nomes = Array.isArray(ids) ? ids.map((i) => String(i)) : []
+  const derivadas = new Map(
+    (Array.isArray(metades) ? metades : []).map((m) => [String(m.id), Number(m.count)]),
+  )
+  const metadesJulgadas = derivadas.size > 0
+  if (bench === null || bench === undefined) {
+    return {
+      present: false,
+      ok: true,
+      versionados: [],
+      faltando: [],
+      sobrando: [],
+      gravado: null,
+      motivo: `o registro versionado (\`${BENCH_PATH}\`) não está nesta árvore — a ligação matriz ↔ ato NÃO foi julgada aqui`,
+      metadesJulgadas: false,
+      metadesDivergentes: [],
+      metadesNaoMedidas: [],
+      violations: [],
+    }
+  }
+  const familia = bench?.[BENCH_FAMILY]
+  if (familia === undefined || familia === null) {
+    return {
+      present: true,
+      ok: false,
+      versionados: [],
+      faltando: [...nomes],
+      sobrando: [],
+      gravado: null,
+      motivo: `sem a família \`${BENCH_FAMILY}\``,
+      metadesJulgadas,
+      metadesDivergentes: [],
+      metadesNaoMedidas: [],
+      violations: [
+        `${BENCH_PATH}: o registro versionado do bench não tem a família \`${BENCH_FAMILY}\` — nenhum ato versionou o custo da matriz (sem ela, o ms por sub-test que o modelo de latência deriva não existe). Rode, com a árvore JÁ COMMITADA: \`${BENCH_ACT}\``,
+      ],
+    }
+  }
+  const forms = Array.isArray(familia.forms) ? familia.forms : []
+  const versionados = [
+    ...new Set(
+      forms.map((f) => (typeof f?.role === "string" ? f.role.trim() : "")).filter(Boolean),
+    ),
+  ]
+  const faltando = nomes.filter((id) => !versionados.includes(id))
+  const sobrando = versionados.filter((id) => !nomes.includes(id))
+  const gravado = Number.isFinite(familia.subtests) ? familia.subtests : null
+
+  const violations = []
+  if (familia.measured !== true) {
+    violations.push(
+      `${BENCH_PATH}: a família \`${BENCH_FAMILY}\` está no registro e NÃO foi medida (\`measured\` ≠ true) — "não medido" não é "versionado", e o custo do job ficaria sem a medição por sub-test. Rode, com a árvore JÁ COMMITADA: \`${BENCH_ACT}\``,
+    )
+  }
+  if (faltando.length > 0) {
+    violations.push(
+      `${BENCH_PATH}: a matriz tem ${faltando.length} sub-test(s) que o ATO não versionou (${faltando.join(", ")}) — o registro segue com as formas do ato anterior, então o número declarado do job descreve uma matriz que já não existe. Rode, com a árvore JÁ COMMITADA: \`${BENCH_ACT}\``,
+    )
+  }
+  if (gravado !== null && gravado !== nomes.length) {
+    violations.push(
+      `${BENCH_PATH}: a família \`${BENCH_FAMILY}\` GRAVOU ${gravado} sub-test(s) e a matriz tem ${nomes.length} — o count do ato envelheceu junto com as formas (rode o mesmo ato: \`${BENCH_ACT}\`)`,
+    )
+  }
+  if (gravado !== null && forms.length !== nomes.length) {
+    violations.push(
+      `${BENCH_PATH}: a família \`${BENCH_FAMILY}\` tem ${forms.length} forma(s) e a matriz tem ${nomes.length} sub-test(s) — as formas e o count do ato têm de descrever a MESMA matriz (rode o mesmo ato: \`${BENCH_ACT}\`)`,
+    )
+  }
+
+  // A COLUNA DE METADES, forma a forma, contra a UNIDADE QUE A MATRIZ DECLARA
+  // HOJE. A comparação é por id (o `role` da forma é o id do sub-test no master),
+  // e uma unidade acrescentada à suíte depois da medição cai aqui: a forma segue
+  // dizendo o número antigo, e é isso que ninguém via.
+  const metadesDivergentes = []
+  const metadesNaoMedidas = []
+  if (metadesJulgadas) {
+    for (const form of forms) {
+      const id = typeof form?.role === "string" ? form.role.trim() : ""
+      if (!id || !derivadas.has(id)) continue
+      const derivado = derivadas.get(id)
+      // A derivação que NÃO conseguiu medir a suíte (ela sumiu da árvore, o bloco
+      // `METADES` está ilegível) devolve 0 — e 0 não é "a matriz declara zero
+      // metades", é "não medida". Acusar a coluna aqui seria acusar a leitura que
+      // falhou; o guard já nomeia essa falta na metade das METADES, e o que fica
+      // é DITO (`metadesNaoMedidas`) em vez de virar silêncio ou falso positivo.
+      if (!(derivado > 0)) {
+        metadesNaoMedidas.push(id)
+        continue
+      }
+      const anotado = Number.isFinite(form?.metades) ? Number(form.metades) : null
+      if (anotado === null || anotado <= 0) {
+        metadesDivergentes.push({ id, gravado: anotado, derivado })
+        violations.push(
+          `${BENCH_PATH}: a forma '${id}' NÃO declara metades (a matriz declara ${derivado}) — o custo dela entra no job sem que o registro diga o que ela protege. Rode, com a árvore JÁ COMMITADA: \`${BENCH_ACT}\``,
+        )
+        continue
+      }
+      if (anotado !== derivado) {
+        metadesDivergentes.push({ id, gravado: anotado, derivado })
+        violations.push(
+          `${BENCH_PATH}: a forma '${id}' GRAVOU ${anotado} metade(s) e a matriz declara ${derivado} — a coluna de metades é DERIVADA da matriz, não herdada do ato: uma unidade entrou na suíte depois daquela medição e o registro ficou descrevendo a unidade anterior (rode o mesmo ato: \`${BENCH_ACT}\`)`,
+        )
+      }
+    }
+    // O TOTAL da família × a COLUNA do MESMO registro: as duas leituras da mesma
+    // medição têm de fechar. Contra a MATRIZ quem confere é a COLUNA, forma a
+    // forma (acima), e a lista de faltantes — comparar o total com a soma da
+    // derivação acusaria a forma que SOBRA (ela é tolerada até o próximo ato, e
+    // as metades dela entram no total do registro).
+    const totalFormas = forms.reduce(
+      (s, f) => s + (Number.isFinite(f?.metades) ? Number(f.metades) : 0),
+      0,
+    )
+    const totalFamilia = Number.isFinite(familia.metades) ? Number(familia.metades) : null
+    if (totalFamilia !== null && totalFamilia !== totalFormas) {
+      violations.push(
+        `${BENCH_PATH}: a família \`${BENCH_FAMILY}\` GRAVOU ${totalFamilia} metade(s) e as formas dela somam ${totalFormas} — o total e a coluna do mesmo registro têm de descrever a MESMA medição (rode o mesmo ato: \`${BENCH_ACT}\`)`,
+      )
+    }
+  }
+
+  return {
+    present: true,
+    ok: violations.length === 0,
+    versionados,
+    faltando,
+    sobrando,
+    gravado,
+    motivo: null,
+    metadesJulgadas,
+    metadesDivergentes,
+    metadesNaoMedidas,
+    violations,
+  }
 }
 
 // ── Guard principal ────────────────────────────────────────────────────────
@@ -468,7 +711,16 @@ export function run(root) {
 
   // 3. README.md — toda ocorrência viva deve ter M == N
   // Um padrão ÚNICO (sub-tests com opcional node-puro) evita ref duplicada por linha.
-  const readmeRefs = collectCountRefs(readmeSrc, ["(\\d+) sub-tests( node-puro)?"])
+  // O bloco DERIVADO do README responde à DERIVAÇÃO (a regra 6), não a esta: o
+  // número dele descreve a RODADA versionada, e a matriz pode ter sub-test que
+  // o ato ainda não versionou — essa divergência é da matriz × o ato, e quem a
+  // nomeia é a regra 5. Fora do bloco, a ref segue sendo do autor.
+  const blocoDoReadme = blocoDoTexto(readmeSrc, BLOCO_README)
+  const readmeRefs = collectCountRefs(
+    readmeSrc,
+    ["(\\d+) sub-tests( node-puro)?"],
+    blocoDoReadme ? [[blocoDoReadme.linhaDoInicio, blocoDoReadme.linhaDoFim]] : [],
+  )
   for (const ref of readmeRefs) {
     if (ref.number !== N && !ref.historical) {
       violations.push(`README.md:${ref.lineNo}: '${ref.match}' ≠ ${N} (ref viva divergente)`)
@@ -484,11 +736,27 @@ export function run(root) {
   const metades = analisaMetades(root, entries)
   violations.push(...metades.violations)
 
+  // 5. A MATRIZ × O ATO QUE A VERSIONA (a defasagem que o count sozinho não vê).
+  //    O registro é LIDO, não exigido: um fixture (ou um checkout sem o bench)
+  //    não tem a ligação a julgar, e é o `present: false` que o diz.
+  const bench = julgaOAto(root, N, idsDoMaster(masterSrc), metades.metades)
+  violations.push(...bench.violations)
+
+  // 6. AS DUAS PROSAS DERIVADAS — a TABELA por sub-test do GUARDS e o PARÁGRAFO
+  //    de custo do README. A prosa declarava números que o registro não
+  //    sustentava (medido: `524.0s`/`238 metades` na prosa contra os
+  //    `404.9s`/`240 metades` do arquivo) e quem a reescrevia era o OPERADOR, a
+  //    cada ato. Agora quem a reescreve é o ato (o `--baseline` chama o
+  //    `escreverDocs`) e este guard a recusa quando ela divirge do registro —
+  //    linha a linha, porque um número trocado à mão não muda a contagem.
+  violations.push(...julgaAsProsas(root))
+
   return {
     ok: violations.length === 0,
     derivedCount: N,
     derivedMetades: metades.metades.reduce((s, m) => s + m.count, 0),
     metades: metades.metades,
+    bench,
     refs: {
       prCheck: {
         context: contextName,
@@ -500,6 +768,96 @@ export function run(root) {
     },
     violations,
   }
+}
+
+/**
+ * AS DUAS PROSAS DERIVADAS × o registro versionado (a tabela do GUARDS e o
+ * parágrafo do README).
+ *
+ * O bloco tem de existir UMA vez entre os marcadores (fail-closed): um marcador
+ * APAGADO ou DUPLICADO não é "nada a julgar" — é a prosa saindo do julgamento,
+ * que é o defeito que esta regra existe para impedir. A divergência é nomeada
+ * na LINHA do arquivo, com o renderizado e o vivo lado a lado: a régua é a
+ * folha `scripts/bench-table.mjs`, e o remédio é o mesmo ato de sempre.
+ *
+ * @param {string} root
+ * @returns {string[]}
+ */
+function julgaAsProsas(root) {
+  const caminho = join(root, BENCH_PATH)
+  // O registro é LIDO, não exigido — a mesma régua da regra 5: um fixture (ou um
+  // checkout sem o bench) não tem prosa derivada a julgar. Sem o registro NÃO
+  // existe o que a prosa declare; exigir o marcador aí seria julgar o nada.
+  if (!existsSync(caminho)) return []
+  let registro = null
+  try {
+    registro = JSON.parse(readFileSync(caminho, "utf8"))
+  } catch {
+    // A corrupção do registro é INFRA na regra 5 (fail-closed lá): aqui não
+    // se inventa uma segunda opinião sobre o mesmo arquivo ilegível.
+    return []
+  }
+  const estado = estadoDaMatriz(registro)
+  const violations = []
+  const curto = (t) => (t.length > 110 ? `${t.slice(0, 107)}...` : t)
+  for (const { arquivo, bloco, render, nome } of DOCS) {
+    const p = join(root, arquivo)
+    // A doc das metades é o ÚNICO opcional da lista (`DOC_OPCIONAL`): ausente do
+    // fixture = não haver o que julgar. O README não chega aqui ausente (o
+    // `run()` o lê com `readOrDie`).
+    if (!existsSync(p)) continue
+    const vivo = blocoDoTexto(readFileSync(p, "utf8"), bloco)
+    if (!vivo) {
+      violations.push(
+        `${arquivo}: o bloco de ${nome} não está entre os marcadores ('${bloco.abre}' … '${bloco.fecha}') — o bloco derivado existe UMA vez, e sem ele a prosa sai do julgamento`,
+      )
+      continue
+    }
+    const esperado = render(estado)
+    if (esperado === null) {
+      violations.push(
+        `${arquivo}: ${nome} não pôde ser renderizado — a família 'mutations' não está medida no registro (${BENCH_PATH})`,
+      )
+      continue
+    }
+    const d = divergencia(vivo.conteudo, linhasDoBloco(esperado))
+    if (d) {
+      violations.push(
+        `${arquivo}:${vivo.linhaDoInicio + d.linha}: ${nome} DIVERGE do registro versionado (${d.motivo}) — rode o mesmo ato: \`${BENCH_ACT}\`; renderizado: '${curto(d.esperado)}' · no arquivo: '${curto(d.vivo)}'`,
+      )
+    }
+  }
+  return violations
+}
+
+/**
+ * O julgamento do ATO a partir da ÁRVORE julgada: lê o registro versionado (se
+ * ele estiver lá) e entrega matriz e registro à régua pura.
+ *
+ * Um arquivo PRESENTE e ilegível é INFRA (exit 2): um registro corrompido não
+ * pode virar "nenhuma ligação a julgar" — a ausência é declarada, a corrupção
+ * não. É a mesma distinção do `readOrDie`.
+ */
+function julgaOAto(root, count, ids, metadesDaMatriz = []) {
+  const caminho = join(root, BENCH_PATH)
+  if (!existsSync(caminho)) return comparaComOAto(null, ids, { metades: metadesDaMatriz })
+  let json
+  try {
+    json = JSON.parse(readFileSync(caminho, "utf8"))
+  } catch (e) {
+    const err = new Error(`${BENCH_PATH} ilegível: ${e.message}`)
+    err.code = "INFRA"
+    throw err
+  }
+  const resultado = comparaComOAto(json, ids, { metades: metadesDaMatriz })
+  // O `count` derivado entra na mensagem de quem lê o relatório: a régua pura
+  // trabalha com os IDS (é deles que a comparação é feita).
+  return { ...resultado, derivedCount: count }
+}
+
+/** Os ids do SUBTESTS — derivados uma vez, para a régua do ato. */
+function idsDoMaster(masterSrc) {
+  return deriveSubtestCount(masterSrc).ids
 }
 
 // ── O MODO --staged (a ÁRVORE DO ÍNDICE) ──────────────────────────────────
@@ -551,12 +909,20 @@ export function lerDoIndice(root, rel) {
 export const DOC_OPCIONAL = "docs/GUARDS.md"
 
 /**
+ * Os caminhos que o recorte `--staged` materializa mas NÃO exige: os que o
+ * veredito lê com `existsSync` (a doc das metades e o registro do ato). Ausente
+ * do índice = ausente da árvore (não há veredito a dar sobre ele), e o `run()`
+ * o DIZ (`present: false` / sem doc) em vez de o inventar.
+ */
+export const CAMINHOS_OPCIONAIS = [DOC_OPCIONAL, BENCH_PATH]
+
+/**
  * @param {string} masterSrc
  * @returns {string[]}
  */
 export function caminhosDoVeredito(masterSrc) {
   const { entries } = deriveSubtestCount(masterSrc)
-  const rels = [MASTER, ".github/workflows/pr-check.yml", "README.md", DOC_OPCIONAL]
+  const rels = [MASTER, ".github/workflows/pr-check.yml", "README.md", ...CAMINHOS_OPCIONAIS]
   for (const { script } of entries) if (!rels.includes(script)) rels.push(script)
   return rels
 }
@@ -593,9 +959,9 @@ export function runStaged(root, { ler = lerDoIndice } = {}) {
       // `git show` no mesmo blob.
       const r = rel === MASTER ? master : ler(root, rel)
       if (!r.ok) {
-        // A doc opcional ausente do índice é a doc ausente da árvore (o `run()`
-        // a lê com existsSync): não é violação, é não haver doc para conferir.
-        if (rel === DOC_OPCIONAL) continue
+        // O caminho OPCIONAL ausente do índice é o ausente da árvore (o `run()`
+        // o lê com existsSync): não é violação, é não haver o que conferir.
+        if (CAMINHOS_OPCIONAIS.includes(rel)) continue
         ausentes.push(`${rel}: ${r.motivo}`)
         continue
       }
@@ -658,9 +1024,17 @@ function main() {
     process.exit(0)
   }
 
+  // O ATO entra no veredito VERDE também: "as refs batem" não diz que a matriz
+  // está versionada, e é a diferença entre os dois que este guard veio fechar
+  // (a prosa pode estar toda certa com o registro do ato descrevendo a matriz
+  // anterior).
+  const ato = result.bench?.present
+    ? ` O ATO versionou a matriz: ${result.bench.versionados.length} forma(s) na família \`${BENCH_FAMILY}\` de ${BENCH_PATH}${result.bench.sobrando.length > 0 ? ` — fora da matriz (até o próximo ato): ${result.bench.sobrando.join(", ")}` : ""}.`
+    : ` ⚠️ a ligação matriz ↔ ato NÃO foi julgada aqui: ${result.bench?.motivo}`
+
   if (result.ok) {
     console.log(
-      `✅ check-mutation-count: ${result.derivedCount} sub-tests da matriz (${result.derivedMetades} metades declaradas) ${escopo} — pr-check.yml, master, README e a doc das metades consistentes.`,
+      `✅ check-mutation-count: ${result.derivedCount} sub-tests da matriz (${result.derivedMetades} metades declaradas) ${escopo} — pr-check.yml, master, README e a doc das metades consistentes.${ato}`,
     )
     process.exit(0)
   }

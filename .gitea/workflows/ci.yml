@@ -60,6 +60,17 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run lint
 
+      # O ESCOPO do lint (`node scripts/check-lint-scope.mjs`): todo diretório
+      # versionado cujo arquivo o prettier julga tem de estar coberto pelos globs
+      # do script `lint` — o hook julga TODO arquivo estagiado e o lint julhava uma
+      # LISTA A MAO (13 diretórios com arquivo julgado ficavam fora dela, `.gitea/`
+      # incluso, e o `ci/unproven.json` fora do padrao passou o lint verde). Roda no
+      # job do lint porque e o unico lugar onde a pergunta e sobre ESTE comando — e
+      # porque o CLI responde pelo `package.json` que o `bun install` acabou de
+      # instalar (o oráculo do guard e o proprio prettier).
+      - name: Lint scope (o lint cobre o que o hook julga)
+        run: node scripts/check-lint-scope.mjs
+
   # ── Repo Guards (invariantes do repositório, node-puro) ───────────────────
   # NÃO dependem do app rodar: são consistência de manifesto, de referências e
   # de fonte única. Job próprio para que a falha aponte o INVARIANTE violado em
@@ -193,6 +204,19 @@ jobs:
       # "ausência de prova nunca vira sucesso", e ela roda hermeticamente (~1s).
       - name: Probe docs contract
         run: node scripts/check-prove-docs.mjs
+
+      # Toda citação de commit na prosa pertence à HISTÓRIA do HEAD. A rewrite
+      # (rebase/amend/dobra) troca o NOME do commit preservando o assunto — o
+      # objeto antigo continua no repositório (o reflog o segura), então um
+      # `git cat-file -e` diz "existe" e a citação órfã passa.
+      #
+      # Por que é BLOQUEANTE aqui: a doc que cita o nome pré-dobra descreve um
+      # ato que ninguém consegue abrir, e mente com aparência de precisão — que
+      # é pior que a ausência da citação. O guard julga a prosa contra a
+      # história viva (o hash certo muda a cada rewrite; a régua não) e, no
+      # órfão, nomeia o commit de MESMO assunto: o nome que a rewrite deixou.
+      - name: Doc commit citations (história do HEAD)
+        run: node scripts/check-doc-hashes.mjs
 
       # Fonte única do registry OCI (imagens da app + mirrors de toolchain).
       # Impede o reacoplamento ao GHCR: um `ghcr.io/...` solto volta a exigir
@@ -575,7 +599,13 @@ jobs:
     name: Pre-commit Proof (dentro da imagem do runner)
     runs-on: ubuntu-latest
     steps:
+      # `fetch-depth: 0` é CONDIÇÃO da forma `--sem-duble` (o irmão do job no
+      # GitHub diz o mesmo): a fase B do hook tem um membro que pergunta pela
+      # HISTÓRIA, e num checkout RASO ele recusa todo arquivo citado — a prova
+      # sairia INDETERMINADA (exit 2) em vez de medir o hook.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.
@@ -599,9 +629,15 @@ jobs:
         run: node scripts/prove-pre-commit-in-runner.mjs
 
       # A MESMA prova SEM o dublê dos guards irmãos: o hook REAL sobre uma cópia
-      # do checkout, com os CINCO guards de fase A rodando de verdade. É o que
+      # do checkout, com os SEIS guards de fase A rodando de verdade. É o que
       # fecha o limite que o passo acima declara ("os irmãos rodam no dublê") e o
       # que atribui a recusa: um refutador só, e é o GATE.
+      #
+      # E ela mede TAMBÉM o defeito que só o commit local produz: o BUMP DE
+      # MATRIZ sem o ato que a versiona (a matriz num commit, o registro do custo
+      # no seguinte). O `check-mutation-count --staged` recusa o MESMO índice com
+      # os seis irmãos, os dez membros da fase B e o GATE verdes ali — e o
+      # CONTROLE (o mesmo índice com o ato versionado) ENTRA.
       - name: A prova SEM o dublê (a fase A real recusa o corpo quebrado)
         env:
           IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
@@ -615,7 +651,7 @@ jobs:
       # provado na saída do commit, e o fixer do dono fechando o ciclo (o
       # `--staged` volta a 0 e o commit de CONTROLE entra).
       - name: Summary
-        run: echo "✅ Um 'git commit' de verdade DENTRO do container do runner invocou o hook REAL do checkout — o corpo 'run:' quebrado no índice foi RECUSADO (zero objetos de commit) e o mesmo commit com o corpo fechado ENTROU (o CONTROLE). A MESMA medição exercita o REMÉDIO da declaração de espelho apagada — o guard dono recusa o commit que remove o arg `BUN_VERSION`, a OFERTA nomeia a classe `bun-mirror-removal` (e o hook a publica no próprio commit), e o fixer do dono devolve a declaração ao índice — o `--staged` volta a 0 e o commit de CONTROLE entra. E a forma sem o dublê dos irmãos — a fase A REAL (os cinco guards do índice, rodados de verdade) aprova o índice e o GATE é o ÚNICO refutador do corpo quebrado."
+        run: echo "✅ Um 'git commit' de verdade DENTRO do container do runner invocou o hook REAL do checkout — o corpo 'run:' quebrado no índice foi RECUSADO (zero objetos de commit) e o mesmo commit com o corpo fechado ENTROU (o CONTROLE). A MESMA medição exercita o REMÉDIO da declaração de espelho apagada — o guard dono recusa o commit que remove o arg `BUN_VERSION`, a OFERTA nomeia a classe `bun-mirror-removal` (e o hook a publica no próprio commit), e o fixer do dono devolve a declaração ao índice — o `--staged` volta a 0 e o commit de CONTROLE entra. E a forma sem o dublê dos irmãos — a fase A REAL (os SEIS guards do índice, rodados de verdade) aprova o índice e o GATE é o ÚNICO refutador do corpo quebrado — mede TAMBÉM o bump de matriz sem o ato que a versiona (o `check-mutation-count --staged` recusa aquele índice (nomeando a defasagem e o sub-test novo) com os irmãos, os dez membros da fase B e o GATE verdes no MESMO índice, e o CONTROLE, o mesmo índice com o ato versionado, ENTRA)."
 
   # ── TypeScript check ─────────────────────────────────────────────────────
   typecheck:
