@@ -43,10 +43,15 @@ import {
   BLOCK_LOOKBACK,
   FRESHNESS_CEILINGS,
   FRESHNESS_MAX_COMMITS_BEHIND,
+  MATRIX_CLOSED_BY,
+  MATRIX_DECLARATION,
+  MATRIX_ITEM_ANCHOR,
+  MATRIX_ITEM_ID,
   MODEL_PATH,
   POLITICA_DO_TETO,
   README_PATH,
   REMEDY_COMMAND,
+  agedDeclarations,
   anchorBefore,
   anchorLabel,
   ceilingOf,
@@ -56,6 +61,10 @@ import {
   declarationFamilies,
   familyFreshness,
   freshnessLine,
+  matrixItem,
+  matrixItemLine,
+  matrixLagFact,
+  matrixLagLine,
   medirRitmoDeCommits,
   modelDeclarations,
   readBenchFreshness,
@@ -63,6 +72,7 @@ import {
   readmeDeclarations,
   tetoDoRitmo,
   tetoLine,
+  unknownDeclarations,
 } from "../../../scripts/bench-freshness.mjs"
 import {
   BENCH_FRESHNESS_PUBLISHER,
@@ -1043,6 +1053,439 @@ const FRESCA = {
   detail:
     "2 família(s) medida(s), a mais antiga 4 commit(s) atrás de HEAD (teto 150) — nenhuma vencida",
 }
+
+// ── 2c. O RELÓGIO DA MATRIZ: o registro do ato × o que ela andou ───────────
+//
+// A TERCEIRA pergunta do mesmo ativo, e a única no relógio do OBJETO medido: a
+// idade responde "de QUANDO é o número" (contra `HEAD`), as formas respondem "a
+// origem CONTÉM o que ela mediu" — esta responde "a matriz ANDOU?". As duas
+// primeiras são de CONTEÚDO/tempo do repositório; um sub-test cujo ALVO muda ou
+// um corpo de suíte que muda de CUSTO passam pelas duas e só aparecem aqui.
+
+/** A leitura tipada do fato da matriz (o módulo é JS: os tipos vêm daqui). */
+type Matriz = {
+  state: string
+  origin: { commit: string | null; date: string | null; act: string | null; via: string } | null
+  since: { commit: string; date: string | null } | null
+  tip: { commit: string; date: string | null } | null
+  matriz: { commit: string; date: string | null } | null
+  lag: number | null
+  aged: boolean
+  teto: {
+    teto: number
+    origem: string
+    ciclos: number
+    janelaDias: number
+    pisoDeCiclo: number
+    commits: number | null
+    commitsPorCiclo: number | null
+    motivo: string | null
+  } | null
+  escopo: {
+    master: string
+    paths: string[]
+    naOrigem: number
+    noHead: number
+    state: string
+    reason: string | null
+  } | null
+  detail: string
+  reason: string | null
+}
+const matriz = (r: unknown) => r as Matriz
+
+/**
+ * O BENCH dublê: a família `mutations` é a que MEDE a matriz (é dela que sai o
+ * commit de origem do relógio), e a `hook` entra junto porque um arquivo só com a
+ * `mutations` também é medido — o teste do "sem a família" usa o outro caso.
+ */
+const benchDaMatriz = (over: Record<string, unknown> = {}) => ({
+  meta: { commit: "ato123", families: { mutations: { act: "measured", commit: "ato123" } } },
+  mutations: { measured: true },
+  hook: { measured: true },
+  ...over,
+})
+
+/** O master dublê: duas suítes citadas (o ESCOPO da matriz). */
+const MASTER_DUBLO = [
+  "SUBTESTS=(",
+  '  "a|scripts/test-mutation-a.sh"',
+  '  "b|scripts/test-mutation-b.sh"',
+  ")",
+].join("\n")
+
+/**
+ * Um git dublê DO RELÓGIO DA MATRIZ: o commit existe (`cat-file`), a matriz da
+ * árvore (`log -1`), o intervalo DESDE o ato (`log`) e o ritmo DELA
+ * (`rev-list --count` com o recorte `-- <caminhos>`, que é o que o distingue do
+ * ritmo do repositório).
+ */
+function gitDaMatriz({
+  lag = [] as string[],
+  matriz = "ato123",
+  ritmo = 8 as number | null,
+  existe = true,
+  erro = null as Error | null,
+} = {}) {
+  return (_cmd: string, args: string[]) => {
+    if (erro) return { error: erro, status: null, stdout: "" }
+    if (args[0] === "cat-file") {
+      return existe ? { status: 0, stdout: "" } : { status: 128, stdout: "", stderr: "ausente" }
+    }
+    if (args[0] === "log" && args.includes("-1")) {
+      return { status: 0, stdout: `${matriz}\t2026-09-20\n` }
+    }
+    if (args[0] === "log") {
+      // A ordem é a do `git log`: do MAIS NOVO para o mais antigo — e a data anda
+      // com a posição, para a asserção do `since` medir a data do ÚLTIMO commit do
+      // intervalo (o primeiro que a matriz ganhou depois do ato).
+      const linhas = lag.map((c, i) => `${c}\t2026-09-${String(10 + i).padStart(2, "0")}`)
+      return { status: 0, stdout: linhas.join("\n") }
+    }
+    if (args[0] === "rev-list" && args.includes("--")) {
+      return ritmo === null
+        ? { status: 1, stdout: "", stderr: "dublê: o ritmo da matriz não foi declarado" }
+        : { status: 0, stdout: `${ritmo}\n` }
+    }
+    return { status: 1, stdout: "" }
+  }
+}
+
+/** O leitor de commit dublê: o master existe na origem E no HEAD (o mesmo texto). */
+const lerMaster =
+  (conteudo = MASTER_DUBLO) =>
+  () => ({ ok: true, conteudo })
+
+/** O fato da matriz de um caso, com o git e o leitor dublados. */
+function fatoDaMatriz(
+  bench: Record<string, unknown>,
+  deps: { run?: unknown; ler?: unknown } = {},
+): Matriz {
+  return matriz(
+    matrixLagFact(bench, {
+      cwd: ROOT,
+      head: "HEAD",
+      deps: { run: gitDaMatriz(), ler: lerMaster(), ...deps } as never,
+    }),
+  )
+}
+
+describe("o relógio da MATRIZ — o registro do ato × o que ela andou", () => {
+  it("o LAG é o número de commits que a matriz ganhou depois do ato — e o `since` é o PRIMEIRO deles (a data do item)", () => {
+    const m = fatoDaMatriz(benchDaMatriz(), {
+      run: gitDaMatriz({ lag: ["m3", "m2", "m1"], matriz: "m3" }),
+    })
+    expect(m.state).toBe("measured")
+    expect(m.lag).toBe(3)
+    // A saída do git vem do mais NOVO para o mais antigo: o `tip` é o último que
+    // tocou a matriz e o `since` é onde o registro começou a ficar atrás.
+    expect(m.tip?.commit).toBe("m3")
+    expect(m.since?.commit).toBe("m1")
+    expect(m.since?.date).toBe("2026-09-12")
+    expect(m.detail).toContain("3 commit(s) atrás da matriz")
+  })
+
+  it("a FRONTEIRA: `lag === teto` é FRESCA e `teto + 1` é VENCIDA", () => {
+    // ritmo 8 na janela de 28 dias (4 ciclos) = 2/ciclo × 2 ciclos = teto 4.
+    const noTeto = fatoDaMatriz(benchDaMatriz(), {
+      run: gitDaMatriz({ lag: ["m4", "m3", "m2", "m1"], matriz: "m4", ritmo: 8 }),
+    })
+    expect(noTeto.teto?.teto).toBe(4)
+    expect(noTeto.lag).toBe(4)
+    expect(noTeto.aged).toBe(false)
+
+    const passou = fatoDaMatriz(benchDaMatriz(), {
+      run: gitDaMatriz({ lag: ["m5", "m4", "m3", "m2", "m1"], matriz: "m5", ritmo: 8 }),
+    })
+    expect(passou.lag).toBe(5)
+    expect(passou.aged).toBe(true)
+  })
+
+  it("o teto é o ritmo DELA (não o do repositório) — e o PISO declarado impede um teto 0", () => {
+    // Uma matriz que NÃO andou na janela: o ritmo dá 0/ciclo e o teto cai no PISO
+    // (1/ciclo × 2 ciclos = 2). Sem o piso, qualquer commit da matriz abriria
+    // dívida — e uma matriz parada acusaria tudo, que é o defeito que o piso do
+    // repositório já existe para evitar.
+    const parada = fatoDaMatriz(benchDaMatriz(), {
+      run: gitDaMatriz({ lag: ["m2", "m1"], matriz: "m2", ritmo: 0 }),
+    })
+    expect(parada.teto?.teto).toBe(2)
+    expect(parada.teto?.motivo).toContain("PISO")
+    expect(parada.aged).toBe(false)
+
+    const acima = fatoDaMatriz(benchDaMatriz(), {
+      run: gitDaMatriz({ lag: ["m3", "m2", "m1"], matriz: "m3", ritmo: 0 }),
+    })
+    expect(acima.aged).toBe(true)
+  })
+
+  it("lag ZERO: nenhum commit tocou a matriz depois do ato — e o fato DIZ se o ato É o commit da matriz", () => {
+    const igual = fatoDaMatriz(benchDaMatriz(), { run: gitDaMatriz({ lag: [], matriz: "ato123" }) })
+    expect(igual.state).toBe("measured")
+    expect(igual.lag).toBe(0)
+    expect(igual.aged).toBe(false)
+    expect(igual.since).toBeNull()
+    expect(igual.detail).toContain("ato É o commit da matriz")
+
+    const anterior = fatoDaMatriz(benchDaMatriz(), {
+      run: gitDaMatriz({ lag: [], matriz: "antes00" }),
+    })
+    expect(anterior.detail).toContain("antes00")
+    expect(anterior.detail).not.toContain("ato É o commit da matriz")
+  })
+
+  it("o ESCOPO é o master + as suítes que ele CITA (a união da origem com o HEAD, sem repetição)", () => {
+    const soOrigem = fatoDaMatriz(benchDaMatriz(), { run: gitDaMatriz() })
+    expect(soOrigem.escopo?.master).toBe("scripts/test-mutation-guards.sh")
+    expect(soOrigem.escopo?.paths).toEqual([
+      "scripts/test-mutation-a.sh",
+      "scripts/test-mutation-b.sh",
+      "scripts/test-mutation-guards.sh",
+    ])
+    expect(soOrigem.escopo?.naOrigem).toBe(2)
+
+    // A suíte que só existe NO HEAD entra no escopo: a matriz de agora também é
+    // matriz, e um commit nela move o custo declarado.
+    const soNoHead = fatoDaMatriz(benchDaMatriz(), {
+      ler: (commit: string) =>
+        commit === "HEAD"
+          ? {
+              ok: true,
+              conteudo: 'SUBTESTS=(\n  "c|scripts/test-mutation-c.sh"\n)',
+            }
+          : { ok: true, conteudo: MASTER_DUBLO },
+    })
+    expect(soNoHead.escopo?.noHead).toBe(1)
+    expect(soNoHead.escopo?.paths).toContain("scripts/test-mutation-c.sh")
+  })
+
+  it("FAIL-CLOSED: o commit de origem FORA do checkout (clone raso) → `unavailable`, com a causa — nunca 'na matriz'", () => {
+    const m = fatoDaMatriz(benchDaMatriz(), { run: gitDaMatriz({ existe: false }) })
+    expect(m.state).toBe("unavailable")
+    expect(m.lag).toBeNull()
+    expect(m.aged).toBe(false)
+    expect(m.reason).toContain("não está neste checkout")
+    expect(matrixLagLine(m as never)).toContain("NÃO foi medido")
+  })
+
+  it("FAIL-CLOSED: sem a família `mutations` MEDIDA não há ato para ancorar — `unavailable` nomeando o motivo", () => {
+    const semFamilia = fatoDaMatriz(benchDaMatriz({ mutations: { measured: false } }))
+    expect(semFamilia.state).toBe("unavailable")
+    expect(semFamilia.reason).toContain("mutations")
+
+    const benchVazio = fatoDaMatriz({ meta: { commit: "ato123" }, hook: { measured: true } })
+    expect(benchVazio.state).toBe("unavailable")
+    expect(benchVazio.reason).toContain("não declara a família")
+  })
+
+  it("a PROCEDÊNCIA do teto: sem o ritmo DELA o teto é a RESERVA declarada (política × piso), dita no motivo", () => {
+    const m = fatoDaMatriz(benchDaMatriz(), { run: gitDaMatriz({ ritmo: null }) })
+    expect(m.teto?.origem).toBe("reserva declarada")
+    expect(m.teto?.teto).toBe(2)
+    expect(m.teto?.motivo).toContain("não respondeu a contagem de commits da matriz")
+    // O teto de emergência NÃO pode fechar sozinho: com o ritmo desconhecido o
+    // fato continua medido (a decisão `aged` é a do teto de reserva, e a
+    // procedência viaja junto para o relatório poder dizê-la).
+    expect(m.state).toBe("measured")
+  })
+
+  it("a régua ÚNICA do que está vencido/sem medição INCLUI a matriz (o doctor e o canal leem a MESMA)", () => {
+    const vencida = fatoDaMatriz(benchDaMatriz(), {
+      run: gitDaMatriz({ lag: ["m9", "m8", "m7", "m6", "m5"], matriz: "m9", ritmo: 4 }),
+    })
+    expect(vencida.aged).toBe(true)
+    const fatoVencido = { state: "measured", families: [], matrix: vencida }
+    expect(
+      agedDeclarations(fatoVencido as never).map((u) => (u as { family: string }).family),
+    ).toEqual([MATRIX_DECLARATION])
+    expect(unknownDeclarations(fatoVencido as never)).toEqual([])
+
+    // E o contrário: uma medição que não aconteceu entra como SEM MEDIÇÃO, nunca
+    // como ausência — é ela que suspende o fechamento do canal.
+    const semMedicao = fatoDaMatriz(benchDaMatriz(), { run: gitDaMatriz({ existe: false }) })
+    const fatoCego = { state: "measured", families: [], matrix: semMedicao }
+    expect(agedDeclarations(fatoCego as never)).toEqual([])
+    expect(
+      unknownDeclarations(fatoCego as never).map((u) => (u as { family: string }).family),
+    ).toEqual([MATRIX_DECLARATION])
+  })
+
+  it("o canal: a matriz vencida é ACIONÁVEL, a assinatura muda com ela e o corpo traz o item datado", () => {
+    const vencida = fatoDaMatriz(benchDaMatriz(), {
+      run: gitDaMatriz({ lag: ["m9", "m8", "m7", "m6", "m5"], matriz: "m9", ritmo: 4 }),
+    })
+    const fatoDoCanal = {
+      state: "measured",
+      head: "HEAD",
+      file: BASELINE_PATH,
+      families: [],
+      aged: [],
+      diverged: [],
+      unknown: [],
+      matrix: vencida,
+    }
+    expect(isActionable(fatoDoCanal as never)).toBe(true)
+    expect(signatureOf(fatoDoCanal as never)).toContain(`families=${MATRIX_DECLARATION}`)
+    expect(agedOf(fatoDoCanal as never).map((u) => (u as { family: string }).family)).toEqual([
+      MATRIX_DECLARATION,
+    ])
+    // A assinatura NÃO leva o `lag`: ele anda a cada commit da matriz. Ela leva o
+    // CONJUNTO e a FAIXA (quantos tetos da matriz) — o lag 4 e o 5 ficam na MESMA
+    // faixa (teto 2) e não podem produzir duas dívidas.
+    const umaAtras = fatoDaMatriz(benchDaMatriz(), {
+      run: gitDaMatriz({ lag: ["m4", "m3", "m2", "m1"], matriz: "m4", ritmo: 4 }),
+    })
+    expect(umaAtras.lag).toBe(4)
+    expect(umaAtras.aged).toBe(true)
+    expect(signatureOf({ ...fatoDoCanal, matrix: umaAtras } as never)).toBe(
+      signatureOf(fatoDoCanal as never),
+    )
+    // E o corpo traz o ITEM DATADO: o primeiro commit que a matriz ganhou depois
+    // do ato, com a data — é dela que a dívida envelhece.
+    const corpo = freshnessBody(fatoDoCanal as never)
+    expect(corpo).toContain("### O registro do ato × a MATRIZ (o relógio dela)")
+    expect(corpo).toContain("matriz andou 5 commit(s)** desde então")
+    expect(corpo).toContain("o primeiro deles em")
+    expect(corpo).toContain("O teto DESSA pergunta é o ritmo DELA")
+    expect(corpo).toContain("o primeiro deles em `m5`")
+    // O item DATADO: o primeiro commit que a matriz ganhou depois do ato traz a
+    // data — é ela que envelhece (e não o `lag`, que anda sozinho).
+    expect(corpo).toContain("2026-09-14")
+  })
+
+  it("o canal: matriz NÃO MEDIDA não fecha (o fechamento é a medição, não a ausência dela)", () => {
+    const semMedicao = fatoDaMatriz(benchDaMatriz(), { run: gitDaMatriz({ existe: false }) })
+    const quando = BENCH_FRESHNESS_PUBLISHER.resolution.when as (i: unknown) => boolean
+    expect(
+      quando({
+        state: "measured",
+        head: "HEAD",
+        families: [],
+        aged: [],
+        diverged: [],
+        unknown: [],
+        matrix: semMedicao,
+      }),
+    ).toBe(false)
+    const fresco = fatoDaMatriz(benchDaMatriz(), {
+      run: gitDaMatriz({ lag: [], matriz: "ato123" }),
+    })
+    expect(
+      quando({
+        state: "measured",
+        head: "HEAD",
+        families: [],
+        aged: [],
+        diverged: [],
+        unknown: [],
+        matrix: fresco,
+      }),
+    ).toBe(true)
+  })
+})
+
+// ── 2d. O ITEM DATADO do relógio da matriz ────────────────────────────────
+//
+// O doctor ABRE a dívida quando o registro do ato fica atrás da matriz além do
+// teto DELA — e o que ele publica é um ITEM com o formato do registro
+// (`ci/unproven.json`), não uma linha anônima de "não provado": a dívida precisa
+// de data (para envelhecer), de teto com procedência, de prova e de `closedBy`
+// (para fechar por medição). O que se prova aqui: a DERIVAÇÃO da data (da
+// história, não do relógio da run), a fronteira (item só quando venceu), e que a
+// frase do item carrega a âncora que a declaração colável cita.
+
+describe("o ITEM DATADO do relógio da matriz", () => {
+  /** O fato VENCIDO do teste (ritmo 4 → teto 2; cinco commits da matriz). */
+  const vencido = () =>
+    fatoDaMatriz(benchDaMatriz(), {
+      run: gitDaMatriz({ lag: ["m9", "m8", "m7", "m6", "m5"], matriz: "m9", ritmo: 4 }),
+    })
+
+  it("o item nasce com a DATA DA HISTÓRIA (o primeiro commit que a matriz ganhou depois do ato), não com o relógio da run", () => {
+    const m = vencido()
+    expect(m.aged).toBe(true)
+    const item = matrixItem(m as never)
+    expect(item).not.toBeNull()
+    expect(item?.id).toBe(MATRIX_ITEM_ID)
+    expect(item?.kind).toBe("lacuna")
+    expect(item?.clock).toBe("matriz")
+    // A data: o `since` do dublê é o ÚLTIMO do intervalo (o primeiro que a matriz
+    // ganhou depois do ato) — `m5` com 2026-09-14.
+    expect(item?.declaredAt).toBe("2026-09-14")
+    expect(item?.since).toBe("m5")
+    expect(item?.behind).toBe(5)
+    expect(item?.ceiling).toBe(2)
+    expect(item?.ceilingOrigem).toBe("medido")
+    expect(item?.closedBy).toBe(MATRIX_CLOSED_BY)
+    expect(item?.matches).toEqual([MATRIX_ITEM_ANCHOR])
+    expect(item?.proveWith).toContain(REMEDY_COMMAND)
+
+    // A PROVA de que a data não é a da run: o mesmo fato medido por um relógio
+    // muito à frente (o `agora` vai para a medição do ritmo) mantém a data da
+    // HISTÓRIA — um item que se re-datasse a cada run nunca envelheceria.
+    const noFuturo = matriz(
+      matrixLagFact(benchDaMatriz(), {
+        cwd: ROOT,
+        head: "HEAD",
+        deps: {
+          run: gitDaMatriz({ lag: ["m9", "m8", "m7", "m6", "m5"], matriz: "m9", ritmo: 4 }),
+          ler: lerMaster(),
+          agora: new Date("2030-01-01T00:00:00Z"),
+        } as never,
+      }),
+    )
+    expect(matrixItem(noFuturo as never)?.declaredAt).toBe("2026-09-14")
+  })
+
+  it("a FRONTEIRA do item: dentro do teto e sem medição NÃO abrem item (cada ausência com o seu motivo)", () => {
+    // Dentro do teto: o registro descreve a matriz de agora — não há dívida.
+    const fresco = fatoDaMatriz(benchDaMatriz(), {
+      run: gitDaMatriz({ lag: ["m2", "m1"], matriz: "m2", ritmo: 4 }),
+    })
+    expect(fresco.aged).toBe(false)
+    expect(matrixItem(fresco as never)).toBeNull()
+
+    // No TETO exato também não (a fronteira é a MESMA das famílias: `>`).
+    const noTeto = fatoDaMatriz(benchDaMatriz(), {
+      run: gitDaMatriz({ lag: ["m2", "m1"], matriz: "m2", ritmo: 8 }),
+    })
+    expect(noTeto.lag).toBe(2)
+    expect(noTeto.aged).toBe(false)
+    expect(matrixItem(noTeto as never)).toBeNull()
+
+    // Sem medição: o que falta é MEDIR (isso o relógio publica como
+    // `unavailable`), não abrir item sobre o que não se mediu.
+    const cega = fatoDaMatriz(benchDaMatriz(), { run: gitDaMatriz({ existe: false }) })
+    expect(cega.state).toBe("unavailable")
+    expect(matrixItem(cega as never)).toBeNull()
+    expect(matrixItem(null)).toBeNull()
+  })
+
+  it("a frase do item carrega a ÂNCORA, a data, o teto DELA e as duas saídas (re-rodar o ato ou DECLARAR)", () => {
+    const item = matrixItem(vencido() as never)
+    const linha = matrixItemLine(item as never)
+    // A âncora é o que a declaração colável cita no `matches`: a linha do
+    // relatório tem de conter o MESMO texto, senão a data nunca viaja.
+    expect(linha).toContain(MATRIX_ITEM_ANCHOR)
+    expect(linha).toContain(MATRIX_ITEM_ID)
+    expect(linha).toContain("desde 2026-09-14")
+    expect(linha).toContain("5 commit(s) atrás da matriz")
+    expect(linha).toContain("acima do teto DELA (2 commit(s) da matriz")
+    expect(linha).toContain(REMEDY_COMMAND)
+    expect(linha).toContain("ci/unproven.json")
+    expect(linha).toContain(`closedBy: ${MATRIX_CLOSED_BY}`)
+    expect(linha).toContain("fecha por MEDIÇÃO")
+
+    // A procedência do teto vai DITA: um teto de reserva não pode sair com o
+    // mesmo texto de um derivado do ritmo justamente onde a dúvida é decidida.
+    const deReserva = fatoDaMatriz(benchDaMatriz(), {
+      run: gitDaMatriz({ lag: ["m9", "m8", "m7"], matriz: "m9", ritmo: null }),
+    })
+    expect(deReserva.teto?.origem).toBe("reserva declarada")
+    expect(deReserva.aged).toBe(true)
+    expect(matrixItemLine(matrixItem(deReserva as never) as never)).toContain("RESERVA declarada")
+  })
+})
 
 describe("o publicador da régua velha", () => {
   it("não há dívida quando nenhuma família passou o teto", () => {

@@ -104,7 +104,13 @@ import { NO_PROMPT_ENV } from "./pre-commit-remedy.mjs"
 // comando do lint a partir do `package.json`, varrer os workflows). O contrato
 // daqui não muda — os três nomes são REEXPORTADOS (o critério de cada família
 // está documentado em `bench-families.mjs`).
-import { BASELINE_FILE, FAMILY_MEASURED, LATEST_FILE } from "./bench-families.mjs"
+import {
+  BASELINE_FILE,
+  FAMILY_MEASURED,
+  FORM_SECTION,
+  LATEST_FILE,
+  fonteDaForma,
+} from "./bench-families.mjs"
 
 export { BASELINE_FILE, FAMILY_MEASURED, LATEST_FILE }
 
@@ -2939,3 +2945,147 @@ const isMain =
   !!process.argv[1] && process.argv[1].split(/[\\/]/).pop() === "bench-guard-timing.mjs"
 
 if (isMain) process.exit(main())
+
+export function treeState({ cwd = REPO_ROOT, run = spawnSync } = {}) {
+  let res
+  try {
+    res = run("git", ["status", "--porcelain"], { cwd, encoding: "utf8", timeout: 30_000 })
+  } catch (error) {
+    return {
+      state: "unavailable",
+      clean: null,
+      staged: [],
+      unstaged: [],
+      reason: `git status não rodou: ${error.message}`,
+    }
+  }
+  if (res?.status !== 0) {
+    return {
+      state: "unavailable",
+      clean: null,
+      staged: [],
+      unstaged: [],
+      reason: `git status não respondeu (exit ${res?.status ?? "?"})`,
+    }
+  }
+  const linhas = String(res.stdout ?? "")
+    .split("\n")
+    .filter((l) => l.trim() !== "")
+  const staged = []
+  const unstaged = []
+  for (const linha of linhas) {
+    const codigo = linha.slice(0, 2)
+    const caminho = linha.slice(3).trim()
+    if (codigo === "??") {
+      unstaged.push(caminho)
+      continue
+    }
+    if (codigo[0] !== " ") staged.push(caminho)
+    if (codigo[1] !== " ") unstaged.push(caminho)
+  }
+  return {
+    state: "measured",
+    clean: linhas.length === 0,
+    staged: [...new Set(staged)].sort(),
+    unstaged: [...new Set(unstaged)].sort(),
+    reason: null,
+  }
+}
+
+/**
+ * A árvore do COMMIT tem este caminho?
+ *
+ * `null` quando não há como julgar (sem caminho, sem commit, ou `git` que não
+ * rodou): "não consegui perguntar" nunca vira "não está lá" — a diferença é a
+ * mesma que separa uma dívida de uma dúvida.
+ *
+ * @param {string} path
+ * @param {string} commit
+ * @returns {boolean|null}
+ */
+export function pathInCommit(path, commit, { cwd = REPO_ROOT, run = spawnSync } = {}) {
+  if (!path || !commit || commit === "unknown") return null
+  try {
+    const res = run("git", ["cat-file", "-e", `${commit}:${path}`], {
+      cwd,
+      encoding: "utf8",
+      timeout: 10_000,
+    })
+    return res?.status === 0
+  } catch {
+    return null
+  }
+}
+
+/**
+ * AS FORMAS MEDIDAS × O COMMIT DE ORIGEM — a pergunta que a procedência sozinha
+ * não responde (ela diz DE QUANDO é o número, não o que a origem CONTÉM).
+ *
+ * A régua de "de qual arquivo veio esta forma?" é UMA SÓ e mora na folha
+ * (`fonteDaForma`, `bench-families.mjs`): aqui ela é aplicada à rodada, e a mesma
+ * função é aplicada pela régua da idade contra o commit de origem — duas
+ * derivações divergiriam no dia em que uma delas mudasse.
+ *
+ * O QUE NÃO É JULGADO fica DITO (`notJudged`): as famílias cujas formas medem
+ * COMANDOS (o hook, o lint, o tsc, a suíte unitária) não nomeiam arquivo próprio,
+ * e um `0` silencioso ali seria lido como "tudo no commit".
+ *
+ * @param {{result: object, commit: string|null, scripts?: Map<string,string>|null, deps?: {inCommit?: Function}}} args
+ * @returns {{state: string, judged: number, notJudged: number, semResposta: number, missing: {family: string, form: string, path: string|null, id?: string, via: string}[], families: Record<string, object[]>, reason: string|null}}
+ */
+export function formOrigin({ result, commit, scripts = null, deps = {} } = {}) {
+  const inCommit = deps.inCommit ?? ((path) => pathInCommit(path, commit))
+  const missing = []
+  const families = {}
+  let judged = 0
+  let notJudged = 0
+  let semResposta = 0
+
+  for (const [family, secao] of Object.entries(FORM_SECTION)) {
+    const formas = secao(result)
+    if (!Array.isArray(formas) || formas.length === 0) continue
+    const faltam = []
+    for (const form of formas) {
+      const fonte = fonteDaForma(family, form, { scripts })
+      if (fonte === null) {
+        notJudged += 1
+        continue
+      }
+      judged += 1
+      const nome = String(form?.role ?? form?.id ?? "?")
+      if (fonte.via === "sem-master") {
+        // Sem o master daquele commit a pergunta não foi feita — e "não
+        // perguntei" sai CONTADO, nunca como "está no commit".
+        semResposta += 1
+        continue
+      }
+      if (fonte.path === null) {
+        // O id NÃO está no master daquele commit: a forma foi medida numa árvore
+        // cuja matriz o commit não tem (o caso da `doc-hashes`).
+        const achado = { family, form: nome, path: null, id: fonte.id ?? nome, via: fonte.via }
+        faltam.push(achado)
+        continue
+      }
+      const existe = inCommit(fonte.path)
+      if (existe === null) {
+        semResposta += 1
+        continue
+      }
+      if (existe === false) faltam.push({ family, form: nome, path: fonte.path, via: fonte.via })
+    }
+    families[family] = faltam
+    missing.push(...faltam)
+  }
+
+  return {
+    state: "measured",
+    judged,
+    notJudged,
+    // O que não pôde ser perguntado também é dito: sem isso, um `git` que não
+    // respondeu sairia com a mesma cara de "tudo no commit de origem".
+    semResposta,
+    missing,
+    families,
+    reason: null,
+  }
+}

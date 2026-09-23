@@ -60,10 +60,13 @@ import {
   FRESHNESS_MAX_COMMITS_BEHIND,
   MODEL_PATH,
   REMEDY_COMMAND,
+  agedDeclarations,
   anchorLabel,
   freshnessLine,
+  matrixLagLine,
   readFreshness,
   tetoLine,
+  unknownDeclarations,
 } from "./bench-freshness.mjs"
 import {
   defineDebtPublisher,
@@ -80,7 +83,7 @@ export const ISSUE_LABEL_COLOR = "C5DEF5"
 
 /** Descrição do label (aparece no board e explica a dívida). */
 export const ISSUE_LABEL_DESCRIPTION =
-  "Uma declaração datada envelheceu: a origem (commit das famílias do bench, data dos números do modelo de latência) ficou atrás do teto de commits (job semanal)"
+  "Uma declaração datada envelheceu: a origem (commit das famílias do bench, data dos números do modelo de latência) ficou atrás do teto de commits, ou o REGISTRO DO ATO ficou atrás da própria MATRIZ (o master e as suítes que ele cita) — o teto dela é o ritmo DELA (job semanal)"
 
 /** Id do marcador invisível que carrega a assinatura (o dedup é por publicador). */
 export const MARKER_ID = "bench-freshness-drift"
@@ -94,9 +97,14 @@ export function inputOf(fact) {
   return fact
 }
 
-/** As famílias VENCIDAS (atrás de mais de N commits) — a dívida de agora. */
+/**
+ * O que está VENCIDO — a dívida de agora: as declarações atrás do teto de idade
+ * E o REGISTRO DO ATO atrás da matriz (a régua única é a do `bench-freshness.mjs`,
+ * para o doctor, o `crossCheck` e este publicador não terem três noções do que é
+ * estar fora do teto).
+ */
 export function agedOf(input) {
-  return input?.families?.filter((f) => f.state === "aged") ?? []
+  return agedDeclarations(input)
 }
 
 /** As famílias cuja origem SAIU da história (o número não se reproduz aqui). */
@@ -104,9 +112,9 @@ export function divergedOf(input) {
   return input?.families?.filter((f) => f.state === "diverged") ?? []
 }
 
-/** As famílias SEM idade medida (clone raso, git ausente) — não são "frescas". */
+/** As declarações SEM medição (clone raso, git ausente) — não são "frescas". */
 export function unknownOf(input) {
-  return input?.families?.filter((f) => f.state === "unknown") ?? []
+  return unknownDeclarations(input)
 }
 
 /** `true` se ALGUMA família medida venceu o teto ou saiu da história. */
@@ -134,9 +142,26 @@ function tetoEfetivo(input) {
  * certo.
  */
 export function bandOf(input) {
-  const pior = Math.max(0, ...agedOf(input).map((f) => f.behind ?? 0))
   const teto = tetoEfetivo(input)
-  return teto > 0 ? Math.floor(pior / teto) : 0
+  // A faixa das declarações de IDADE (commits até `HEAD`): a unidade da matriz NÃO
+  // entra nesta conta — os dois números não são comparáveis, e um `behind` de
+  // matriz medido contra o teto de `HEAD` seria um número inventado.
+  const pior = Math.max(
+    0,
+    ...agedOf(input)
+      .filter((f) => (f.clock ?? "head") !== "matriz")
+      .map((f) => f.behind ?? 0),
+  )
+  const banda = teto > 0 ? Math.floor(pior / teto) : 0
+  // A faixa do RELÓGIO DA MATRIZ é contra o teto DELA: a assinatura muda quando a
+  // dívida DOBRA em qualquer um dos dois relógios — comentar é o certo —, e não a
+  // cada commit que a matriz andar (o ruído que o dedup existe para impedir).
+  const tetoDaMatriz = input?.matrix?.teto?.teto
+  const bandaMatriz =
+    input?.matrix?.aged && typeof tetoDaMatriz === "number" && tetoDaMatriz > 0
+      ? Math.floor((input.matrix.lag ?? 0) / tetoDaMatriz)
+      : 0
+  return Math.max(banda, bandaMatriz)
 }
 
 /**
@@ -162,9 +187,16 @@ export function signatureOf(input) {
   return `bench-freshness:families=${nomes || "none"}:band=${bandOf(input)}`
 }
 
-/** Título ESTÁVEL entre runs — não leva números nem commits (isso vai no corpo). */
+/**
+ * Título ESTÁVEL entre runs — não leva números nem commits (isso vai no corpo).
+ *
+ * Ele nomeia as DUAS perguntas que este canal carrega: a idade das declarações
+ * datadas (com o teto do ritmo do repositório) e o relógio da MATRIZ (com o teto
+ * do ritmo DELA). Mudá-lo faria o publicador perder a issue aberta (o marcador é
+ * o contrato do ciclo), então ele muda UMA vez, aqui, e não por run.
+ */
 export function freshnessTitle() {
-  return "A idade das declarações datadas passou o teto (bench · modelo de latência)"
+  return "A idade das declarações datadas passou o teto (bench · modelo de latência · matriz)"
 }
 
 /** A tabela da medição inteira: declaração, origem, idade e ato. */
@@ -214,12 +246,25 @@ function freshnessProse(input) {
       `${fora > 0 ? ` e **${fora} fora da história**` : ""} contra o teto de ` +
       `**${tetoEfetivo(input)} commits** para famílias e números ` +
       `declarados (${tetoLine(input)}; tabelas do README não têm teto: a idade delas é ` +
-      `PUBLICADA — ver o \`ceiling\` de cada uma).`,
+      `PUBLICADA — ver o \`ceiling\` de cada uma). ` +
+      "A MESMA régua mede o RELÓGIO DA MATRIZ: quantos commits o master e as suítes " +
+      "que ele cita andaram DEPOIS do commit de origem do ato — o teto DESSA pergunta " +
+      "é o ritmo dela, não o do repositório (ver o bloco do item datado abaixo).",
   )
   lines.push("")
   lines.push("### O que venceu")
   lines.push("")
   for (const f of [...agedOf(input), ...divergedOf(input)]) {
+    // O relógio de cada declaração vai DITO: a de idade conta commits até `HEAD`,
+    // a da MATRIZ conta commits dela. Sem o `clock` na frase, as duas seriam a
+    // mesma dívida com dois números que não se comparam.
+    if (f.clock === "matriz") {
+      // A frase da matriz já carrega o número, a data do primeiro commit que ela
+      // ganhou depois do ato e o teto DELA (é a MESMA linha do relatório): repetir
+      // aqui um segundo número seria a segunda régua do mesmo fato.
+      lines.push(`- **\`${f.family}\`** — ${f.reason}`)
+      continue
+    }
     const origemDita = f.date
       ? `o número foi MEDIDO em \`${f.commit}\` (a âncora \`${anchorLabel({ date: f.date, kind: f.anchorKind })}\` do \`${f.source}\` resolve para ele)`
       : `o número foi medido em \`${f.commit}\``
@@ -230,6 +275,7 @@ function freshnessProse(input) {
     lines.push(`- **\`${f.family}\`** — ${porque}. ${f.reason}`)
   }
   lines.push("")
+  lines.push(...matrixProse(input))
   if (semIdade > 0) {
     lines.push(
       `> ⚠️  ${semIdade} declaração(ões) ficaram SEM idade medida (${unknownOf(input)
@@ -284,6 +330,64 @@ function freshnessProse(input) {
   return lines.join("\n")
 }
 
+/**
+ * O ITEM DATADO DO REGISTRO DO ATO no corpo — o relógio da matriz.
+ *
+ * O que ele DATA é o primeiro commit que a matriz ganhou DEPOIS da origem do ato:
+ * é ali que o registro passou a descrever uma matriz que não existe mais, e é
+ * dessa data que a dívida envelhece. O teto vem do ritmo DELA (`tetoDaMatriz`),
+ * com a procedência dita — um teto derivado do ritmo e um de reserva não podem
+ * sair com o mesmo texto justamente onde a diferença entre veredito e dúvida é
+ * decidida.
+ *
+ * Uma medição que NÃO aconteceu sai como SUSPENSÃO do fechamento, nunca como "a
+ * matriz não andou": é a mesma disciplina do resto do canal.
+ */
+function matrixProse(input) {
+  const m = input?.matrix
+  if (!m) return []
+  const lines = []
+  lines.push("### O registro do ato × a MATRIZ (o relógio dela)")
+  lines.push("")
+
+  if (m.state !== "measured") {
+    lines.push(
+      `> ⚠️  **NÃO medido** — ${matrixLagLine(m)}. O fechamento automático fica suspenso: ` +
+        "'não consegui medir' não é 'a matriz que o ato registrou é a de agora'.",
+    )
+    lines.push("")
+    return lines
+  }
+
+  const curto = (alvo) =>
+    alvo?.commit ? `\`${alvo.commit.slice(0, 12)}\`${alvo.date ? ` (${alvo.date})` : ""}` : "—"
+  const teto = m.teto ?? {}
+  const doRitmo =
+    teto.origem === "medido"
+      ? `${teto.commits} commit(s) em ${teto.janelaDias} dias = ` +
+        `${Math.round((teto.commitsPorCiclo ?? 0) * 10) / 10}/ciclo × ${teto.ciclos} ciclos de ${teto.cicloDias}d`
+      : `RESERVA declarada: ${teto.motivo}`
+
+  lines.push(
+    `O ato ancorou em ${curto(m.origin)} e a **matriz andou ${m.lag} commit(s)** desde então` +
+      (m.since
+        ? ` — o primeiro deles em ${curto(m.since)}, e é essa a data em que o registro passou a descrever uma matriz que esta árvore não tem mais`
+        : ` (a matriz desta árvore é ${curto(m.matriz)}` +
+          `${m.matriz?.commit === m.origin?.commit ? ", o PRÓPRIO commit do ato" : ", e nenhum commit a tocou depois do ato"})`) +
+      `. O teto DESSA pergunta é o ritmo DELA: **${teto.teto} commit(s) da matriz** (${doRitmo}).`,
+  )
+  lines.push("")
+  lines.push(
+    `- Escopo julgado: \`${m.escopo?.master}\` + as **${m.escopo?.paths?.length ?? 1}** suíte(s) que ele cita, na origem e agora (as suítes entram porque é nelas que o CUSTO mora: um corpo de suíte que muda move o número declarado do job tanto quanto um sub-test novo).`,
+  )
+  if (m.escopo?.state !== "lido" && m.escopo?.reason) lines.push(`- ⚠️  ${m.escopo.reason}`)
+  lines.push(
+    `- Remédio: \`${REMEDY_COMMAND}\` — o ato re-ancora o registro na matriz DESTA árvore (é o commit de origem que ele grava que esta régua lê), com a árvore JÁ COMMITADA.`,
+  )
+  lines.push("")
+  return lines
+}
+
 /** O corpo COMPLETO da issue: a prosa + o marcador, como o contrato os compõe. */
 export function freshnessBody(input) {
   return publisherBody(BENCH_FRESHNESS_PUBLISHER, input)
@@ -298,6 +402,12 @@ export function resolutionComment(input) {
   lines.push(
     `✅ **Resolvido** — as ${(input.families ?? []).length} declaração(ões) julgadas estão dentro do teto de ` +
       `${tetoEfetivo(input)} commits (${tetoLine(input)}; as tabelas de custo do README não têm teto: a idade delas é publicada), e nenhuma saiu da história.`,
+  )
+  lines.push("")
+  lines.push(
+    input?.matrix?.state === "measured"
+      ? `O REGISTRO DO ATO também voltou: ${matrixLagLine(input.matrix)}.`
+      : `O relógio da MATRIZ NÃO foi medido nesta run (${matrixLagLine(input?.matrix)}) — o fechamento sai pela idade das declarações, com essa falta dita.`,
   )
   lines.push("")
   lines.push("### A prova (a idade de agora, contra o mesmo HEAD)")
