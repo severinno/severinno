@@ -790,33 +790,46 @@ describe("a ATRIBUIÇÃO da recusa — a régua pura", () => {
   })
 })
 
+/**
+ * O guard e o recorte da fase A são DERIVADOS do PRÓPRIO hook (`.husky/pre-commit`):
+ * o primeiro `node scripts/X.mjs --flag &` que ele executa. Cravar o nome do guard e
+ * a flag no teste fazia a expectativa envelhecer a cada commit em que a fase A mudava
+ * — a lista e o recorte são do hook, e é dele que a prova os lê.
+ */
+function guardDeFaseADoHook(): { guard: string; recorte: string } {
+  const hook = join(REPO_ROOT, ".husky", "pre-commit")
+  for (const linha of readFileSync(hook, "utf8").split("\n")) {
+    const m = linha.match(/^\s*node\s+scripts\/([a-z0-9-]+\.mjs)\s+(--[a-z-]+)\s*&\s*$/)
+    if (m) return { guard: m[1] as string, recorte: m[2] as string }
+  }
+  throw new Error(
+    "o hook não tem linha de fase A (`node scripts/X.mjs --staged &`) — a prova depende dela",
+  )
+}
+
 describe("o guard de fase A é rodado com o RECORTE do índice", () => {
-  it("o argv leva `--staged` e o node que executa a prova", () => {
+  it("o argv leva o recorte que o HOOK declara e o node que executa a prova", () => {
+    const { guard, recorte } = guardDeFaseADoHook()
     const vistos: any[] = []
     const run = ((cmd: string, args: string[], opts: any) => {
       vistos.push({ cmd, args, opts })
       return { status: 0, stdout: "✅ ok\n", stderr: "" }
     }) as any
 
-    const r = rodaGuardDeFaseA("/tmp/qualquer", "check-unused-deps.mjs", { run })
+    const r = rodaGuardDeFaseA("/tmp/qualquer", guard, { run })
 
-    // O `output` é a saída INTEIRA ao lado da última linha: quem ATRIBUI a recusa a
-    // uma regra do guard (o marcador da defasagem da matriz, na metade 6) não pode
-    // depender de a linha estar na última posição do relatório dele.
-    expect(r).toEqual({
-      guard: "check-unused-deps.mjs",
-      status: 0,
-      linha: "✅ ok",
-      output: "✅ ok",
-    })
+    // O CONTRATO do helper é o que a prova USA (o guard, o exit e a última linha);
+    // o `output` ao lado é detalhe do relatório — um campo NOVO do relatório não
+    // pode quebrar quem consome o contrato.
+    expect(r).toMatchObject({ guard, status: 0, linha: "✅ ok" })
     expect(vistos[0].cmd).toBe(process.execPath)
-    expect(vistos[0].args).toEqual([join("scripts", "check-unused-deps.mjs"), FASE_A_RECORTE])
+    expect(vistos[0].args).toEqual([join("scripts", guard), recorte])
     expect(vistos[0].opts.cwd).toBe("/tmp/qualquer")
   })
 
   it("um guard que não termina sai como `null` (nunca como 0)", () => {
     const run = (() => ({ status: null, stdout: "", stderr: "" })) as any
-    expect(rodaGuardDeFaseA("/tmp/x", "check-bun-mirror.mjs", { run }).status).toBeNull()
+    expect(rodaGuardDeFaseA("/tmp/x", guardDeFaseADoHook().guard, { run }).status).toBeNull()
   })
 })
 
