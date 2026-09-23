@@ -327,6 +327,42 @@ export function legacyCallSites(root = REPO_ROOT) {
  * @param {{before?: () => void}} [options]
  * @returns {{ms: number, minMs: number, maxMs: number, runs: {ms: number, exit: number}[], exit: number, ok: boolean}}
  */
+/**
+ * Escreve um JSON do bench na forma que o `bun run lint` EXIGE do arquivo
+ * versionado — formatado pelo MESMO prettier que o julga.
+ *
+ * O `JSON.stringify(…, 2)` expande TODO array; o prettier colapsa o que cabe na
+ * largura. Medido: um `treeState.staged` de dois caminhos saía em quatro linhas
+ * onde o lint exige uma, e o arquivo versionado nascia REPROVANDO o lint de quem
+ * o commitasse (o hook o recusou). A regra de estabilidade desta família já
+ * valia para as amostras (array de OBJETOS, ver `measureRepeats`); esta função a
+ * fecha para qualquer forma que a rodada venha a gravar — formatar com o binário
+ * do repositório é o que faz o escrito sair estável POR CONSTRUÇÃO, em vez de
+ * depender de quem escreve adivinhar a largura.
+ *
+ * O binário vem do `node_modules` do repositório (o mesmo do `lint`): sem ele o
+ * arquivo sai cru e o ato DIZ isso — quem julga o JSON é o gate, não este aviso.
+ *
+ * @param {string} caminho
+ * @param {unknown} dados
+ */
+function escreveJson(caminho, dados) {
+  writeFileSync(caminho, JSON.stringify(dados, null, 2) + "\n")
+  const bin = join(REPO_ROOT, "node_modules", ".bin", "prettier")
+  if (!existsSync(bin)) {
+    console.error(
+      `  ⚠️  ${caminho}: prettier não encontrado em node_modules — o JSON saiu CRU (pode reprovar o lint)`,
+    )
+    return
+  }
+  const r = spawnSync(bin, ["--write", caminho], { cwd: REPO_ROOT, encoding: "utf8" })
+  if (r.status !== 0) {
+    console.error(
+      `  ⚠️  ${caminho}: o prettier do repositório não formatou (exit ${r.status}) — o JSON saiu CRU`,
+    )
+  }
+}
+
 function measureRepeats(cmd, samples, { before } = {}) {
   const raw = []
   for (let i = 0; i < samples; i++) {
@@ -1063,16 +1099,41 @@ export const OFERTA_INICIO =
 export const OFERTA_FIM = "# ── Phase C: Sequential checks"
 
 /**
- * As âncoras da espera do gate de sintaxe: SEPARADA (hoje) × agregada.
- *
- * A linha do `wait_all` vive DENTRO da função `fase_a` (a fase é função para
- * poder ser re-executada depois de um remédio verde) — a âncora leva a indentação
- * dela, porque a transformação é textual.
+ * O PID do gate de sintaxe — o único que a agregação acrescenta à espera da fase A.
  */
-export const WAIT_SEPARADO =
-  "  wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS $PID_COUNT $PID_LINTSCOPE"
-export const WAIT_AGREGADO =
-  "  wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS $PID_COUNT $PID_LINTSCOPE $PID_RUNSYNTAX"
+export const PID_DA_SINTAXE = "$PID_RUNSYNTAX"
+
+/**
+ * A linha do `wait_all` da fase A de um texto — a âncora sai DELE, e não de uma
+ * lista à mão.
+ *
+ * A lista escrita à mão envelheceu no dia em que a fase A ganhou um guard (o
+ * `$PID_LINTSCOPE`): a âncora deixou de casar com o hook e o contrafactual passou
+ * a se declarar NÃO MEDIDO — a constante desatualizada transformava uma medição
+ * em ausência de medição.
+ *
+ * A discriminação é estrutural: a espera da fase A é a única que precede o bloco
+ * do gate de sintaxe (`ESPERA_SINTAXE`, que vem logo depois dela) — o `wait_all`
+ * da fase B vive no fim do hook e não entra. Sem essa âncora o retorno é `null`:
+ * a família inteira se declara NÃO MEDIDA, e não mede o hook contra ele mesmo.
+ *
+ * @param {string} fonte
+ * @returns {string|null} a linha, com a indentação dela
+ */
+export function linhaDaEsperaA(fonte) {
+  const fim = fonte.indexOf(ESPERA_SINTAXE)
+  if (fim < 0) return null
+  const linhas = fonte
+    .slice(0, fim)
+    .split("\n")
+    .filter((l) => /^[ \t]*wait_all \$(?:PID_[A-Z]+)(?: \$(?:PID_[A-Z]+))*[ \t]*$/.test(l))
+  return linhas.length === 1 ? linhas[0] : null
+}
+
+/**
+ * A âncora da ESPERA separada (hoje): a linha do gate de sintaxe aguardada fora do
+ * `wait_all` — substituída pelo veredito agregado.
+ */
 export const ESPERA_SINTAXE =
   'SINTAXE=0\nif [ -n "$PID_RUNSYNTAX" ]; then\n  wait "$PID_RUNSYNTAX" || SINTAXE=$?\nfi'
 export const ESPERA_AGREGADA = "SINTAXE=$FASE_A"
@@ -1120,9 +1181,12 @@ export function hookSemOferta(fonte) {
  * @returns {string|null}
  */
 export function hookWaitAgregada(fonte) {
-  if (fonte.split(WAIT_SEPARADO).length !== 2) return null
+  const separado = linhaDaEsperaA(fonte)
+  if (separado === null) return null
+  if (fonte.split(separado).length !== 2) return null
   if (fonte.split(ESPERA_SINTAXE).length !== 2) return null
-  return fonte.split(WAIT_SEPARADO).join(WAIT_AGREGADO).split(ESPERA_SINTAXE).join(ESPERA_AGREGADA)
+  const agregado = `${separado} ${PID_DA_SINTAXE}`
+  return fonte.split(separado).join(agregado).split(ESPERA_SINTAXE).join(ESPERA_AGREGADA)
 }
 
 /** As amostras por forma do hook: ele roda em ~0,3s — 3 tira o ruído por pouco. */
@@ -3185,7 +3249,7 @@ Exit codes: 0 sucesso · 1 falha/regressão · 2 argumento inválido`)
 
   if (opts.baseline) {
     const p = join(BENCH_DIR, BASELINE_FILE)
-    writeFileSync(p, JSON.stringify(result, null, 2) + "\n")
+    escreveJson(p, result)
     console.log(`  📁 Baseline salvo: ${p}`)
     // `--baseline --json`: a rodada que MOVE a baseline também é a última
     // medição (o publicador da issue lê o `latest`). Sem isto, mover a baseline
@@ -3193,7 +3257,7 @@ Exit codes: 0 sucesso · 1 falha/regressão · 2 argumento inválido`)
     // sairia de um arquivo que ninguém acabou de medir.
     if (opts.json) {
       const l = join(BENCH_DIR, LATEST_FILE)
-      writeFileSync(l, JSON.stringify(result, null, 2) + "\n")
+      escreveJson(l, result)
       console.log(`  📁 Resultado salvo: ${l}`)
     }
     // ── A PROSA DERIVADA (a tabela do GUARDS e o parágrafo do README) ──────
@@ -3215,14 +3279,14 @@ Exit codes: 0 sucesso · 1 falha/regressão · 2 argumento inválido`)
     }
   } else if (opts.json) {
     const p = join(BENCH_DIR, LATEST_FILE)
-    writeFileSync(p, JSON.stringify(result, null, 2) + "\n")
+    escreveJson(p, result)
     console.log(`  📁 Resultado salvo: ${p}`)
   }
 
   if (opts.save && !opts.baseline) {
     const date = new Date().toISOString().slice(0, 10)
     const p = join(BENCH_DIR, `guard-timing-${date}.json`)
-    writeFileSync(p, JSON.stringify(result, null, 2) + "\n")
+    escreveJson(p, result)
     console.log(`  📁 Resultado salvo: ${p}`)
   }
 
