@@ -506,7 +506,7 @@ jobs:
         run: node scripts/prove-runner-image-gate.mjs
 
   # ── Cada COMMIT da pilha passa SOZINHO (worktree próprio) ────────────────
-  # O PR mede o TOPO; a pilha tem commits no MEIO. Medido: o `eee4f65e` pôs o
+  # O PR mede o TOPO; a pilha tem commits no MEIO. Medido: o `2757e3a5` pôs o
   # `check-mutation-count` na bateria local e invalidou a expectativa do teste da
   # descida — o vermelho viajou 12 commits acima, e quem media só o topo (o
   # `test:run` do PR) nunca viu o commit que nasceu vermelho.

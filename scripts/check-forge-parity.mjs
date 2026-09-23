@@ -706,7 +706,7 @@ export const CORE_INVARIANTS = [
   {
     id: "stack-per-commit",
     // A prova de que CADA commit da pilha passa SOZINHO. O PR mede o TOPO; o
-    // vermelho nasce no MEIO — medido: o `eee4f65e` invalidou a expectativa do
+    // vermelho nasce no MEIO — medido: o `2757e3a5` invalidou a expectativa do
     // teste da descida e o vermelho viajou 12 commits acima. O comando é o MESMO
     // nas duas forjas, e a dona do merge é quem PRECISA dele: um commit que
     // nasce vermelho chega ao merge por este caminho se o portão só olhar o topo.

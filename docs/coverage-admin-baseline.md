@@ -31,7 +31,7 @@
 
 A varredura revelou **48 testes quebrados por um bug de mock** (chaining
 `)(vi.mocked(...)` que a ASI interpreta como chamada de função → `mockResolvedValue is not a
-function`). Mesma classe de bug já atacada no commit `f604b77`, mas que persistia nestes
+function`). Mesma classe de bug já atacada no commit `25b6f58e`, mas que persistia nestes
 arquivos. **Todos corrigidos** com split em statements separados (prefixo `;`):
 
 | Arquivo                                                                   | Testes quebrados | Testes agora |

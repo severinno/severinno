@@ -2962,13 +2962,13 @@ commits. O benchmark transforma o wall time em dado estruturado: cada guard
 tem o seu tempo, o doctor tem o seu, e a comparação nomeia QUAL guard
 piorou e de quanto.
 
-**Custo da unificação do lint — medido, não impresso:** desde `586b7c07` o
+**Custo da unificação do lint — medido, não impresso:** desde `eefc6408` o
 `lint` deixou de ser `eslint .` (sem prettier, sem teto de warnings) e passou a
 ser o par completo (`bun run lint`), que as DUAS forjas invocam. Quatro call
 sites passaram a pagar a metade que não pagavam — o `lint` da Gitea, o `lint` do
 `ci.yml` do GitHub, o passo `Lint` do job `check` do `pr-check.yml` e o
 `release-deploy`; o `lint-guard` do MESMO `pr-check.yml` já rodava o par inline
-(era a única fonte da régua) e por isso não entra na conta. Medido em `586b7c07`
+(era a única fonte da régua) e por isso não entra na conta. Medido em `eefc6408`
 com 3 amostras por forma (mediana alta):
 
 | forma medida                                     | wall time  |
@@ -2997,7 +2997,7 @@ nenhum — se aparecer, a unificação está incompleta, o delta tem mais de uma
 causa e o relatório lista a violação.
 
 **Custo da unificação do typecheck — medido, e ele NÃO é wall time.** Desde
-`f8d4ce7d` o `typecheck` é UM comando nas duas forjas e no veredito local: o
+`2f85d803` o `typecheck` é UM comando nas duas forjas e no veredito local: o
 comando INTEIRO (o `tsc` com o heap de 4GB) vive no script `typecheck` do
 package.json. Antes, o heap era um `env: NODE_OPTIONS` inline em QUATRO
 workflows, e o hook de push rodava `bunx tsc --noEmit` SEM o heap. A medição
@@ -3022,7 +3022,7 @@ fato do repositório. Em qualquer das duas, o hook roda o comando canônico: é
 essa a asserção que o benchmark prende.
 
 **Custo da unificação da suíte — medido, e o sinal é NEGATIVO.** Desde
-`f8d4ce7d` as duas forjas rodam `bun run test:run` (config do app, que INCLUI
+`2f85d803` as duas forjas rodam `bun run test:run` (config do app, que INCLUI
 `src/components/**`); o check EXIGIDO do GitHub rodava `bun run test:unit`
 (config unit, que EXCLUI `src/components/**`) — o lado mais FRACO do par era o
 que decidia o merge no espelho. A conta, medida em 16/09/2026 nesta máquina
@@ -3120,9 +3120,9 @@ esquema v6, em `docs/benchmarks/guard-timing-baseline.json`). Uma rodada só, co
 TODOS os sub-tests — medir um a um custaria uma subida de harness POR sub-test, e o
 harness é exatamente o que a conta à mão esquece. A tabela é o ato VIVO **E** o
 VERSIONADO — o mesmo comando, com a árvore COMMITADA: medido em 21/09/2026 nesta
-máquina (**37/37 verdes**), o commit de origem gravado é `fa75f732` e a baseline
+máquina (**37/37 verdes**), o commit de origem gravado é `6125c9da` e a baseline
 guarda 37 sub-tests com 216 metades e 395.0s — e é este total que o modelo de
-latência deriva. **A coluna de metades é a do ATO** (216, medido em `fa75f732`) e
+latência deriva. **A coluna de metades é a do ATO** (216, medido em `6125c9da`) e
 não a da árvore de agora (o `check:mutation-count` publica **223**: as duas
 metades do teto derivado — M7 e M8 — entraram depois daquele ato, e as CINCO da
 pilha commit a commit — M1–M5, a 38.ª entrada da matriz — também; o custo do
@@ -3162,7 +3162,7 @@ refs vivas entre si.
 **E a derivação desceu ao PASSO.** O mesmo mecanismo, um nível abaixo: o job
 `mutation-count-guard` do espelho passou a declarar os seus **PASSOS**, e o passo
 da suíte não tem número próprio — ele **LÊ** a forma `mutation-count` desta mesma
-tabela (3.812s, com o commit `fa75f732` ao lado), como o `benchIndex` já fazia com
+tabela (3.812s, com o commit `6125c9da` ao lado), como o `benchIndex` já fazia com
 o total do master. O defeito que a ligação elimina é o de dois números do MESMO
 passo: o declarado dizia 3870ms contra os 3897ms da forma, e nenhum dos dois era
 derivado do outro — 27ms de diferença de contexto que ninguém veria até alguém
@@ -3174,9 +3174,9 @@ ele entra na rodada seguinte **MEDIDO**, e a comparação o publica como forma n
 que alguém montou à mão. O modelo de latência passou a **DERIVAR** o passo do
 master desta medição (`benchIndex` lê o total da família), o que já confronta o
 declarado do espelho: **0%** — o ato de 21/09/2026 (`--only mutations --json
---baseline --merge`, com a árvore commitada em `fa75f732`, a régua da idade como a
+--baseline --merge`, com a árvore commitada em `6125c9da`, a régua da idade como a
 37.ª) re-declarou o job em **394959ms**, que é a própria medição; antes dele o ato
-de 36 sub-tests (`eee4f65e`) declarava 380950ms e o primeiro ato desta série
+de 36 sub-tests (`2757e3a5`) declarava 380950ms e o primeiro ato desta série
 guardava a medição de OUTRO commit (**271.8s** com 33 sub-tests contra um derivado
 de 380.9s), onde a comparação NOMEAVA os **28% de divergência** em vez de
 escondê-los. O mesmo ato
@@ -3434,7 +3434,7 @@ O primeiro job do repositório declarado por PASSOS é o `mutation-count-guard` 
 espelho: `setup-bun` (17.175s, 17/09), `install` (62ms), `check-mutation-count`
 (93ms) e o `Summary` (98ms, um bloco) são MEDIDOS, e o passo da suíte (3.897s) é
 LIDO da forma `mutation-count` da baseline — a mesma sub-test que o master mede,
-com o commit `eee4f65e` ao lado. O `Summary` estava FORA do total declarado antes
+com o commit `2757e3a5` ao lado. O `Summary` estava FORA do total declarado antes
 (a conta antiga, 21198ms = setup + install + suíte + check, não o contava) e a
 cobertura exata o trouxe para dentro: é exatamente para isso que a regra existe.
 
@@ -6652,7 +6652,7 @@ o docker não respondeu
 
 **`stack-per-commit:prove`** — cada commit da pilha passa SOZINHO? O PR mede o TOPO, e
 a pilha tem commits no MEIO: um commit que nasce vermelho só aparece muitos commits
-acima (medido — o `eee4f65e` pôs o `check-mutation-count` na bateria local, invalidou a
+acima (medido — o `2757e3a5` pôs o `check-mutation-count` na bateria local, invalidou a
 expectativa do teste da descida, e o vermelho viajou **12 commits** até o topo, que era o
 único lugar onde ele era olhado).
 
@@ -6700,8 +6700,8 @@ das duas forjas e a suíte de mutação. No escopo SEMPRE o relatório escreve
 ```
 
 **O que ele mediu na primeira subida** (a cadeia do `#25`, 16 commits entre a base da
-pilha e o topo): o gate achou **três commits que não passam sozinhos** — `7335cd1a`,
-`48e14651` e `4c0851b7` (nomes daquela série; hoje `4962399e`, `5cb3abf2` e `a318c9c2`) —
+pilha e o topo): o gate achou **três commits que não passam sozinhos** — `4962399e`,
+`5cb3abf2` e `a318c9c2` (nomes daquela série; hoje `4962399e`, `5cb3abf2` e `a318c9c2`) —
 todos pela MESMA causa: a régua da idade do bench acusa a origem gravada na baseline como
 fora da história, porque a reescrita de uma rebase troca o hash do commit em que o ato foi
 medido. O topo é verde (o ato re-datou a proveniência), e é EXATAMENTE isso que o topo
@@ -6767,7 +6767,7 @@ não-zero como "um commit do meio é vermelho", isto é, uma prova que mede o am
 uma ACUSAÇÃO ao commit.
 
 **O que o recorte mediu na primeira subida** (na própria série desta thread, os 12 commits
-acima da dobra): **dois commits do MEIO vermelhos** — `48e14651` e `3aaa260b` (hoje
+acima da dobra): **dois commits do MEIO vermelhos** — `5cb3abf2` e `7c10eb29` (hoje
 `5cb3abf2` e `7c10eb29`) — ambos pela causa já nomeada acima (a origem gravada na baseline
 que a dobra tornou órfã), e nenhum dos dois é visível no topo. A consequência foi a promessa
 do gate EM ATO: o push daquela série saiu RECUSADO até o conserto nascer no commit que

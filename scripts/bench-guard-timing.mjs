@@ -179,7 +179,7 @@ if (!LINT_INVARIANT) {
 export const LINT_CANONICAL_CMD = canonicalCommandOf(LINT_INVARIANT)
 
 /**
- * A REGUA ANTERIOR dos call sites que pagaram a unificacao: ate 586b7c07 o script
+ * A REGUA ANTERIOR dos call sites que pagaram a unificacao: ate eefc6408 o script
  * `lint` do package.json era `eslint .` — sem prettier e sem o teto de warnings.
  * `bunx` e o binario local, que e o que o `bun run` resolvia.
  */
@@ -241,7 +241,7 @@ export function lintCallSites(root = REPO_ROOT) {
  * Os call sites que PAGARAM o custo novo da unificacao.
  *
  * O `lint-guard` do pr-check.yml NAO entra: ele JA rodava o par completo inline
- * antes de 586b7c07 (era a unica fonte da regua) — a unificacao levou a MESMA
+ * antes de eefc6408 (era a unica fonte da regua) — a unificacao levou a MESMA
  * regua aos outros, e o custo novo e so desses. Declarar de menos inflaria a
  * conta; de mais, esconderia um call site que continua laxo.
  *
