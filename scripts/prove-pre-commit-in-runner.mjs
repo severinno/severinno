@@ -74,14 +74,19 @@
 //     runtime) e o REMÉDIO. É a forma BARATA: o fixture não tem o `package.json`
 //     do projeto, e a fase C real (`lint-staged`, `typecheck`) não caberia nele;
 //   - `--sem-duble` — o hook REAL sobre uma CÓPIA do checkout (`proveRealHookBlocks`):
-//     as DUAS fases rodam de VERDADE (sem wrapper, sem dublê) — os CINCO guards
+//     as DUAS fases rodam de VERDADE (sem wrapper, sem dublê) — os SEIS guards
 //     de fase A, o gate e os DEZ membros da fase B —, e a fase C roda real,
 //     porque a cópia tem o `package.json` e o `node_modules`. É o que fecha o
 //     limite que a forma padrão declara, e responde "quem recusa" nas duas
 //     fases: na fase A o refutador tem de ser ÚNICO, e tem de ser o GATE, com os
-//     cinco irmãos aprovando o MESMO índice; na fase B, os defeitos de
+//     seis irmãos aprovando o MESMO índice; na fase B, os defeitos de
 //     encoding/link são recusados, a DESCIDA do runner nomeia o guard de cada
-//     classe e o arquivo REMENDADO entra.
+//     classe e o arquivo REMENDADO entra; e o BUMP DE MATRIZ sem o ato que a
+//     versiona (o commit local que a matriz e o ato separam em dois) é recusado
+//     pelo `check-mutation-count` no MESMO índice, com os irmãos, os membros da
+//     fase B e o gate verdes ali — e o CONTROLE, o MESMO índice com o ato
+//     versionado, ENTRANDO. Essa metade é o que o `--staged` do count comprou: o
+//     recorte julga o COMMIT, e o defeito é de quem commita, não do CI.
 //
 // E A FORMA PADRÃO MEDE DUAS METADES, não uma (o exit code é o da PIOR delas):
 //
@@ -105,7 +110,7 @@
 //     do hook (`lint-staged`, `typecheck`) rodaria num fixture que não tem o
 //     `package.json` do repositório, e o CONTROLE nunca comitaria — o dublê é o
 //     que torna a medição sobre o FIO sob teste. QUEM RODA OS IRMÃOS DE VERDADE É
-//     O `--sem-duble` (medido: os cinco guards de fase A, com o mesmo `--staged`,
+//     O `--sem-duble` (medido: os seis guards de fase A, com o mesmo `--staged`,
 //     saem 0 enquanto o gate recusa);
 //   - a ref é a que o repositório DECLARA (`IMAGE_REGISTRY`/`IMAGE_NAMESPACE`/
 //     `BUN_VERSION`): o digest sai como proveniência MEDIDA, mas quem diz se o
@@ -202,7 +207,7 @@ export const IMAGE_REF_ENV = "PROVA_IMAGE_REF"
 
 /** O que NÃO é negociável: o hook, o guard que ele executa e o fixture. */
 export const LIMITS = [
-  "os guards IRMÃOS do hook rodam no DUBLÊ DECLARADO do simulador (`bun`/`bash`/`node` deles devolvem 0): quem roda de verdade é o guard do defeito, com o `node` REAL do runtime. Quem roda os irmãos DE VERDADE é o `--sem-duble`, que mede os cinco guards de fase A com o mesmo `--staged` E os dez membros da fase B sobre o índice do defeito de encoding/link — o limite desta forma, não do comando",
+  "os guards IRMÃOS do hook rodam no DUBLÊ DECLARADO do simulador (`bun`/`bash`/`node` deles devolvem 0): quem roda de verdade é o guard do defeito, com o `node` REAL do runtime. Quem roda os irmãos DE VERDADE é o `--sem-duble`, que mede os SEIS guards de fase A com o mesmo `--staged`, os dez membros da fase B e o bump de matriz sem o ato — o limite desta forma, não do comando",
   "o repositório da prova é o FIXTURE do simulador (o mesmo da suíte e do doctor), não o checkout do PR",
   "a ref é a DECLARADA pelo repositório (IMAGE_REGISTRY/IMAGE_NAMESPACE/BUN_VERSION): o digest sai como proveniência medida, mas quem prova qual imagem o runner registrou é o `check-runner-labels`/o smoke",
   "a metade do REMÉDIO (a classe `bun-mirror-removal`) roda no MESMO fixture do simulador, com o guard DONO real e os irmãos de fase no dublê: ela mede a OFERTA e o fecho daquele defeito, não o resto da fase — quem mede a fase inteira é o `--sem-duble`",
@@ -213,7 +218,7 @@ export const LIMITS = [
  * O escopo declarado da forma `--sem-duble` — o que ela NÃO promete.
  *
  * A primeira entrada do `LIMITS` acima (o dublê dos irmãos) sai daqui: nesta
- * forma os cinco guards de fase A e os dez membros da fase B rodam de verdade, e
+ * forma os seis guards de fase A e os dez membros da fase B rodam de verdade, e
  * o refutador da fase A tem de ser o gate. O que sobra é o que ela realmente não
  * cobre: o RECORTE do defeito, a origem da árvore e o teto de tempo por comando.
  */
@@ -223,6 +228,7 @@ export const REAL_LIMITS = [
   "o REMÉDIO fica sem operador (`NO_PROMPT_ENV` do simulador): a prova mede o caminho NÃO interativo — quem mede o interativo é o ensaio do pty",
   "o teto de tempo por comando do simulador (`runGit`, 60s): um commit de controle mais lento que isso sai como INDETERMINADO, nunca como verde",
   "a OFERTA do remédio NÃO é medida nesta forma (`--sem-duble`): quem a mede é a forma padrão (`proveRemedyOffered`), no MESMO runtime — o job roda os dois passos, e é o primeiro que carrega esta metade",
+  "o ATO do bump de matriz não é EXECUTADO nesta forma: o fixture escreve a forma nova no registro versionado pelo mesmo caminho que o ato escreveria (o guard é quem decide que ele passa), mas o custo do sub-test NÃO é medido aqui — quem o mede é `bench-guard-timing`, e quem cobra a existência dele é o `check:mutation-count` sobre a árvore",
 ]
 
 /**
@@ -335,6 +341,21 @@ export function evidenceLines(r) {
     linhas.push(
       `${EVIDENCE_PREFIX}HEAD=defeito:${headDefeito === headBase ? "intacto" : "avancou"} controle:${headControle === headBase ? "intacto" : "avancou"}`,
     )
+  }
+  // A metade do BUMP DE MATRIZ (a recusa da defasagem do ato): só existe na forma
+  // `--sem-duble`, e sai por chave PRÓPRIA pela mesma razão das outras — quem lê o
+  // container não precisa deduzir do estado composto o que essa metade publicou.
+  const bump = r.proof?.evidence?.bump
+  if (bump?.defeito) {
+    const headIntacto = bump.defeito.headDepois === bump.defeito.headAntes
+    linhas.push(
+      `${EVIDENCE_PREFIX}MATRIZ=sub-test:${bump.subTest} exit:${bump.defeito.status} head:${headIntacto ? "intacto" : "avancou"} refutador:${bump.atribuicao?.guard ?? "nao medido"} marcador:${bump.atribuicao?.citouMarcador ? "sim" : "nao"} sub-test-citado:${bump.atribuicao?.citouSubTest ? "sim" : "nao"} irmas:${(bump.irmaos ?? []).filter((i) => i.status === 0).length}/${(bump.irmaos ?? []).length} membros:${(bump.membros ?? []).filter((m) => m.status === 0).length}/${(bump.membros ?? []).length} gate:${bump.gate?.status ?? "sem veredito"}`,
+    )
+    if (bump.controle) {
+      linhas.push(
+        `${EVIDENCE_PREFIX}MATRIZ-CONTROLE=exit:${bump.controle.status} formas-no-ato:${bump.controle.formas ?? "?"} formas-em-head:${bump.controle.formasEmHead ?? "?"}`,
+      )
+    }
   }
   return linhas
 }
@@ -654,10 +675,18 @@ function detailFromFacts(state, facts, output) {
       : `; e o REMÉDIO da classe apagada: ${facts.REMEDEIO} com a oferta '${facts.OFERTA ?? "não publicada"}'` +
         (facts["OFERTA-FIXER"] ? ` (fixer \`${facts["OFERTA-FIXER"]}\`)` : "") +
         (facts["OFERTA-CONTROLE"] ? `, fecho medido: ${facts["OFERTA-CONTROLE"]}` : "")
+  // A metade do bump de matriz, quando o container a publicou: o sub-test, a
+  // recusa, QUEM recusou e o fecho do controle. Ausente é ausente — a forma padrão
+  // não a mede, e dizer "não publicada" aqui não é o mesmo que dizer "passou".
+  const matriz =
+    facts.MATRIZ === undefined
+      ? ""
+      : `; e o bump de matriz sem o ato: ${facts.MATRIZ}` +
+        (facts["MATRIZ-CONTROLE"] ? `, CONTROLE ${facts["MATRIZ-CONTROLE"]}` : "")
   if (state === "proven") {
     return (
       `DENTRO da imagem '${facts.IMAGE ?? "?"}', um 'git commit' de verdade com o corpo 'run:' quebrado no índice ` +
-      `foi RECUSADO (${defeito}) e o mesmo commit com o corpo fechado ENTROU (${controle})${remedio}; ` +
+      `foi RECUSADO (${defeito}) e o mesmo commit com o corpo fechado ENTROU (${controle})${remedio}${matriz}; ` +
       `runtime medido no container: ${runtime}`
     )
   }
@@ -725,6 +754,12 @@ export function renderReport(report, { emit = console.log } = {}) {
         `   medido no container (remédio): ${report.facts.REMEDEIO} · oferta ${report.facts.OFERTA ?? "?"}` +
           `${report.facts["OFERTA-FIXER"] ? ` · fixer ${report.facts["OFERTA-FIXER"]}` : ""}` +
           `${report.facts["OFERTA-CONTROLE"] ? ` · ${report.facts["OFERTA-CONTROLE"]}` : ""}`,
+      )
+    }
+    if (report.facts.MATRIZ !== undefined) {
+      linha(
+        `   medido no container (bump de matriz): ${report.facts.MATRIZ}` +
+          `${report.facts["MATRIZ-CONTROLE"] ? ` · ${report.facts["MATRIZ-CONTROLE"]}` : ""}`,
       )
     }
   }

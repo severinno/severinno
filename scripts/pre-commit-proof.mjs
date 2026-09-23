@@ -14,7 +14,7 @@
  * sabe commitar.
  *
  * E a MESMA prova SEM O DUBLÊ (`proveRealHookBlocks`, no fim do arquivo): o hook
- * REAL sobre uma CÓPIA do checkout, com os cinco guards de fase A rodando de
+ * REAL sobre uma CÓPIA do checkout, com os seis guards de fase A rodando de
  * verdade. As duas formas medem o mesmo fato em dois lugares — o fixture mede o
  * FIO do hook; a cópia mede o hook inteiro, o ambiente inteiro.
  *
@@ -36,6 +36,12 @@
 import { spawnSync } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
+// O CAMINHO do registro versionado e a RÉGUA da matriz saem do próprio guard
+// (`check-mutation-count.mjs`): o fixture e o veredito falam do MESMO arquivo e
+// do MESMO parser — uma segunda cópia do caminho divergiria no dia do primeiro
+// ajuste, e a divergência apareceria como "o fixture recusa o que o guard não".
+import { BENCH_PATH, run as runCountGuard } from "./check-mutation-count.mjs"
+import { MASTER_DOS_SUBTESTS, comMetadesDaMatriz, metadesDaMatriz } from "./bench-families.mjs"
 // O diretório de workflow das forjas vem da FONTE ÚNICA (cravar o literal aqui
 // deixaria as outras forjas fora da varredura — foi assim que a pipeline dona do
 // merge ficou fora da cobertura dos guards).
@@ -1038,7 +1044,7 @@ export function proveRemedyOffered({ root = REPO_ROOT, deps = /** @type {any} */
 // rodava era o dublê.
 //
 // Aqui o mesmo `git commit` acontece sobre uma CÓPIA do checkout: o hook do
-// `core.hooksPath` é o REAL, os cinco guards de fase A são os REAIS (sem
+// `core.hooksPath` é o REAL, os seis guards de fase A são os REAIS (sem
 // wrapper, sem dublê), o gate é o REAL e a fase C (lint-staged, typecheck) roda
 // de verdade — porque a cópia tem o `package.json` e o `node_modules` que o
 // fixture não tem.
@@ -1121,10 +1127,54 @@ export const FASE_A_GUARDS = [
   "check-unused-deps.mjs",
   "check-mutation-timing-contract.mjs",
   "check-required-checks.mjs",
+  // O SEXTO — e o que carrega a recusa do BUMP DE MATRIZ sem o ato (ver a metade
+  // 6 de `proveRealHookBlocks`). Ele entrou no hook junto com o recorte
+  // `--staged` do `check:mutation-count`, e a lista daqui ficou para trás: a
+  // prova dizia "os CINCO guards de fase A" enquanto o hook rodava SEIS, de modo
+  // que uma recusa DELE não era nem esperada nem atribuída. Uma lista à mão de
+  // um conjunto que o hook declara é exatamente o tipo de segunda fonte que este
+  // repositório fecha com guard — e é o teste da completude da fase que cobra
+  // cada comando do hook `fase_a()`.
+  "check-mutation-count.mjs",
 ]
 
 /** O recorte que a fase A usa — o mesmo que o hook passa a cada um deles. */
 export const FASE_A_RECORTE = "--staged"
+
+/**
+ * O membro da fase B que pergunta pela HISTÓRIA do repositório (ver
+ * `ligaObjetosDoCheckout`): o `check-doc-hashes` exige que todo commit citado na
+ * prosa exista na história de HEAD, e é ele que torna o `.git` COMPLETO uma
+ * premissa da medição.
+ *
+ * A prova procura ESTE nome no corpo do hook (em vez de um segundo lugar que
+ * diga "há um membro da história"): a premissa acompanha o hook.
+ */
+export const MEMBRO_DA_HISTORIA = "check-doc-hashes.mjs"
+
+/**
+ * O checkout é um clone RASO? (`git rev-parse --is-shallow-repository`)
+ *
+ * "Não consegui perguntar" não é "é profundo": sem a resposta do git a premissa
+ * falha, e a prova sai `unavailable` com o motivo em vez de medir o fixture.
+ *
+ * @param {string} dir
+ * @param {{run?: typeof spawnSync}} [deps]
+ * @returns {boolean}
+ */
+export function repoRaso(dir, { run = spawnSync } = {}) {
+  try {
+    const r = run("git", ["rev-parse", "--is-shallow-repository"], {
+      cwd: dir,
+      encoding: "utf8",
+      timeout: 30_000,
+    })
+    if (r?.status !== 0) return true
+    return String(r.stdout ?? "").trim() !== "false"
+  } catch {
+    return true
+  }
+}
 
 /**
  * O marcador do INVARIANTE do gate no texto dele: o `bash -n` dos corpos `run:`.
@@ -1435,7 +1485,75 @@ export function rodaGuardDeFaseA(dir, guard, deps = {}) {
     guard,
     status: r?.status ?? null,
     linha: saida.split("\n").filter(Boolean).slice(-1)[0] ?? "",
+    // A SAÍDA INTEIRA, ao lado da última linha: quem precisa ATRIBUIR a recusa a
+    // uma regra do guard (o marcador da defasagem da matriz, a metade 6) não pode
+    // depender de a linha estar na última posição do relatório dele.
+    output: saida,
   }
+}
+
+/**
+ * O `alternates` da cópia: os objetos do CHECKOUT ficam disponíveis sem serem
+ * copiados.
+ *
+ * POR QUE ELE EXISTE (o defeito MEDIDO em 23/09/2026): a cópia é feita sem o
+ * `.git` (o deste repositório tem centenas de MB, e a cópia acontece a cada
+ * execução da prova), e o `git init` dela criava um repositório SEM história. A
+ * fase B do hook ganhou um membro que pergunta pela HISTÓRIA —
+ * `check-doc-hashes.mjs` exige que todo commit citado na prosa exista na história
+ * de HEAD — e, num repositório de um commit só, TODA citação é órfã: medido,
+ * **88** refutadores de outros guards apareceram no relatório do hook e a prova
+ * saiu `unavailable` ("o gate recusou, mas 88 OUTROS refutaram junto"), medindo o
+ * FIXTURE em vez do hook. O `alternates` resolve o mesmo problema sem copiar
+ * objeto nenhum: a cópia ENXERGA o store do checkout (só leitura — os objetos
+ * novos que ela criar ficam no store DELA), e o commit de base nasce em cima do
+ * HEAD REAL (`update-ref HEAD`), de modo que a história que a fase B pergunta é a
+ * história de verdade.
+ *
+ * A CONSEQUÊNCIA DECLARADA: um checkout SEM `.git` (ou RASO) não permite medir a
+ * fase B inteira — a prova sai `unavailable` NOMEANDO isso, em vez de acusar o
+ * hook. É o que torna o `fetch-depth: 0` dos dois jobs uma CONDIÇÃO da medição.
+ *
+ * @param {string} copia
+ * @param {{root?: string}} [opts]
+ * @returns {{ok: boolean, caminho: string, destino: string, motivo: string|null}}
+ */
+export function ligaObjetosDoCheckout(copia, { root = REPO_ROOT } = {}) {
+  const destino = join(root, ".git", "objects")
+  const caminho = join(copia, ".git", "objects", "info", "alternates")
+  try {
+    mkdirSync(dirname(caminho), { recursive: true })
+    writeFileSync(caminho, `${destino}\n`)
+    return { ok: true, caminho, destino, motivo: null }
+  } catch (e) {
+    return { ok: false, caminho, destino, motivo: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+/**
+ * Quantos commits a cópia ACRESCENTOU ao commit de base (`git rev-list --count
+ * <base>..HEAD`).
+ *
+ * É a medida LOCAL de "o commit entrou?" na forma SEM DUBLÊ, e ela precisa ser
+ * LOCAL porque a cópia compartilha os objetos do checkout por `alternates`: um
+ * `git cat-file --batch-all-objects` enxergaria a história INTEIRA (milhares de
+ * commits) e o número deixaria de dizer se ESTE commit entrou. O que a prova
+ * mede é o delta — um commit recusado não move o HEAD, então a contagem não anda.
+ *
+ * @param {string} dir
+ * @param {string|null} base  o SHA do commit de base da cópia
+ * @param {{run?: typeof spawnSync}} [deps]
+ * @returns {number|null}
+ */
+export function commitsAcimaDaBase(dir, base, { run = spawnSync } = {}) {
+  if (!base) return null
+  const r = run("git", ["rev-list", "--count", `${base}..HEAD`], {
+    cwd: dir,
+    encoding: "utf8",
+    timeout: 60_000,
+  })
+  if (r?.status !== 0) return null
+  return Number(String(r.stdout ?? "").trim())
 }
 
 /**
@@ -1455,6 +1573,261 @@ export function shaDoHead(dir) {
   return sha === "" ? null : sha
 }
 
+// =============================================================================
+// AS RECUSAS DA FASE A COM O ÍNDICE COERENTE
+// =============================================================================
+//
+// A metade do `run:` quebrado mede a recusa do GATE. Esta mede a de outro guard —
+// e a diferença de tratamento é a mesma régua: para atribuir uma recusa a UM
+// guard, o índice tem de estar bom em TODO o resto. Um bump de matriz feito à
+// mão toca SEIS arquivos (o master, o summary do job, o comentário do job, o
+// header e as refs do README — mais a suíte nova), e um fixture que mexesse só na
+// matriz seria recusado pelo count das REFS, não pela defasagem do ato: mediria
+// a classe errada.
+
+/** O sub-test que o bump da metade 6 acrescenta à matriz. */
+export const BUMP_SUBTEST = "prova-bump"
+
+/**
+ * O GUARD DONO da classe da metade 6 — o da contagem da matriz, no recorte
+ * `--staged`. Ele sai da lista da fase A (`FASE_A_GUARDS`) pelo NOME porque a
+ * atribuição precisa perguntar "ele recusou?" separado dos irmãos: um irmão
+ * vermelho no MESMO índice tira a atribuição, e um dono verde a tira também.
+ */
+export const DONO_DO_COUNT = "check-mutation-count.mjs"
+
+/** O arquivo da suíte do sub-test novo (o que a matriz passa a citar). */
+export const BUMP_SUITE = "scripts/test-mutation-prova-bump.sh"
+
+/** O master (a matriz) — o mesmo nome que o guard da contagem lê. */
+export const MASTER_DA_MATRIZ = "scripts/test-mutation-guards.sh"
+
+/**
+ * O MARCADOR da classe da metade 6 no texto do guard: a defasagem do ATO.
+ *
+ * É a violação da terceira metade do `check-mutation-count` — a matriz ganhou um
+ * sub-test que o registro versionado do bench não tem. É por ele que a recusa é
+ * atribuída à DEFASAGEM (e não a qualquer outra violação do mesmo guard): o
+ * texto da violação é a fonte, e a mensagem cita o sub-test e o comando do ato.
+ */
+export const ATO_MARCADOR = "que o ATO não versionou"
+
+/**
+ * A suíte nova do bump — o mínimo que o guard da contagem exige de uma suíte: o
+ * bloco `METADES=(...)` (a fonte única da descrição do sub-test e da prosa da
+ * doc). O conteúdo do script não é exercitado por ninguém na prova: quem o lê é
+ * o guard, para derivar as metades.
+ *
+ * @param {string} id
+ * @returns {string}
+ */
+function suiteDoBump(id) {
+  return [
+    "#!/usr/bin/env bash",
+    "# =============================================================================",
+    `# scripts/test-mutation-${id}.sh — o sub-test que a metade 6 acrescenta à matriz.`,
+    "#",
+    "# Ele existe para MEDIR uma recusa: o bump coerente da matriz (master + as",
+    "# refs + este arquivo) SEM o ato que versiona o custo dele. O commit tem de",
+    "# ser recusado pelo `check-mutation-count`, e a recusa tem de nomear ESTE id.",
+    "#",
+    "# O CABEÇALHO (Usage + Exit code) não é enfeite: o `barrel-lint` da fase B",
+    "# varre o cabeçalho de todo script do índice, e uma suíte sem ele faria o",
+    "# commit do DEFEITO ser recusado pela fase B também — a recusa deixaria de",
+    "# ser atribuível ao guard da contagem (medido: era isso que acontecia).",
+    "#",
+    "# Usage:",
+    `#   bash scripts/test-mutation-${id}.sh`,
+    "#",
+    "# Exit codes:",
+    "#   0 — a suíte do fixture passou (ela não mede nada: existe para a matriz)",
+    "#   1 — falha",
+    "# =============================================================================",
+    "set -euo pipefail",
+    "",
+    "METADES=(",
+    `  'M1|a metade que prova o bump da matriz (${id})'`,
+    "  'M2|o controle do bump (o ato versionado faz o mesmo commit entrar)'",
+    ")",
+    "",
+    'echo "suite do bump (fixture da prova): nada a rodar"',
+    "",
+  ].join("\n")
+}
+
+/**
+ * O BUMP COERENTE da matriz, por INTEIRO — a premissa que torna a recusa
+ * atribuível.
+ *
+ * COERENTE quer dizer: o master (a entrada nova e o header), as refs de count no
+ * `pr-check.yml` (o summary e o comentário do job) e as refs VIVAS do README, mais
+ * o ARQUIVO da suíte nova. Só o ATO fica de fora — no defeito. O `verso` decide:
+ *
+ * O DEFEITO é este: o bump INTEIRO e mais nada — o registro versionado segue com
+ * as formas do ato anterior → o commit tem de ser RECUSADO. O CONTROLE é o MESMO
+ * índice mais o ato versionado (`versionaOAto`), e ele tem de ENTRAR: é ele que
+ * prova que a recusa é da DEFASAGEM, e não do bump (ou de um fixture que não sabe
+ * commitar).
+ *
+ * O N e as LINHAS das refs do README saem do PRÓPRIO guard (`run()`, em modo
+ * árvore): uma segunda derivação do count divergiria no dia em que o guard fosse
+ * ajustado, e a divergência apareceria como "o fixture recusa o que o guard não
+ * recusa".
+ *
+ * @param {string} copia
+ * @param {{ler?: typeof readFileSync}} [opts]
+ * @returns {{ok: boolean, motivo: string|null, n: number|null, nNovo: number|null, refs: number}}
+ */
+export function bumpDaMatriz(copia, { ler = readFileSync } = {}) {
+  const atual = runCountGuard(copia)
+  if (atual.ok !== true) {
+    return {
+      ok: false,
+      motivo:
+        `a cópia JÁ chega inconsistente ao bump (${atual.violations[0] ?? "sem motivo"}): ` +
+        "sem uma base coerente a recusa mediria a inconsistência que veio de fora, não o bump",
+      n: null,
+      nNovo: null,
+      refs: 0,
+    }
+  }
+  const n = atual.derivedCount
+  const nNovo = n + 1
+
+  // 1. A SUÍTE nova (o arquivo que a matriz passa a citar).
+  writeFileSync(join(copia, BUMP_SUITE), suiteDoBump(BUMP_SUBTEST), { mode: 0o755 })
+
+  // 2. O MASTER: a entrada nova na matriz e o count do header.
+  const caminhoMaster = join(copia, MASTER_DA_MATRIZ)
+  const masterSrc = String(ler(caminhoMaster, "utf8"))
+  const bloco = /SUBTESTS=\(([\s\S]*?)\n\)/
+  if (!bloco.test(masterSrc)) {
+    return {
+      ok: false,
+      motivo: `${MASTER_DA_MATRIZ} não tem o bloco SUBTESTS=(...)`,
+      n,
+      nNovo,
+      refs: 0,
+    }
+  }
+  const masterNovo = masterSrc
+    .replace(bloco, (_t, corpo) => `SUBTESTS=(${corpo}\n  "${BUMP_SUBTEST}|${BUMP_SUITE}"\n)`)
+    .split(`Roda os ${n} mutation tests node-puro`)
+    .join(`Roda os ${nNovo} mutation tests node-puro`)
+  writeFileSync(caminhoMaster, masterNovo)
+
+  // 3. O `pr-check.yml`: o summary e o comentário do job (as duas refs do count).
+  const caminhoWf = join(copia, WORKFLOW_DO_COUNT)
+  const wfSrc = String(ler(caminhoWf, "utf8"))
+    .split(`All ${n} node-pure mutation tests passed`)
+    .join(`All ${nNovo} node-pure mutation tests passed`)
+    .split(`Roda os ${n} mutation tests node-puro`)
+    .join(`Roda os ${nNovo} mutation tests node-puro`)
+  writeFileSync(caminhoWf, wfSrc)
+
+  // 4. O README: cada ref VIVA que o próprio guard listou, na linha dela.
+  const caminhoReadme = join(copia, "README.md")
+  const linhas = String(ler(caminhoReadme, "utf8")).split("\n")
+  const vivas = atual.refs.readmeLive ?? []
+  for (const ref of vivas) {
+    const i = ref.lineNo - 1
+    if (i < 0 || i >= linhas.length) continue
+    // O NÚMERO QUE ABRE o match é trocado (e só ele): um `replace` do valor solto
+    // casaria o `3` dentro de um `13 sub-tests` e produziria `140`.
+    const novo = ref.match.replace(/^\d+/, String(nNovo))
+    linhas[i] = linhas[i].split(ref.match).join(novo)
+  }
+  writeFileSync(caminhoReadme, linhas.join("\n"))
+
+  return { ok: true, motivo: null, n, nNovo, refs: vivas.length }
+}
+
+/**
+ * O CONTROLE do bump: o ATO versionado — a forma nova no registro versionado do
+ * bench e o count da família.
+ *
+ * É o remédio que o próprio guard nomeia (o comando do ato), aplicado no fixture
+ * SEM rodar o ato (que custa minutos e depende do master inteiro): o que se mede
+ * aqui é o VEREDITO do guard sobre um índice com a forma versionada, não o custo
+ * do sub-test.
+ *
+ * @param {string} copia
+ * @param {{nNovo: number, ler?: typeof readFileSync}} opts
+ * @returns {{ok: boolean, motivo: string|null, formas: number|null}}
+ */
+export function versionaOAto(copia, { nNovo, ler = readFileSync }) {
+  const caminhoBench = join(copia, BENCH_PATH)
+  let bench
+  try {
+    bench = JSON.parse(String(ler(caminhoBench, "utf8")))
+  } catch (e) {
+    return { ok: false, motivo: `${BENCH_PATH} ilegível: ${e.message}`, formas: null }
+  }
+  const familia = bench?.mutations
+  if (!familia || !Array.isArray(familia.forms)) {
+    return {
+      ok: false,
+      motivo: `${BENCH_PATH} não tem a família \`mutations\` com formas`,
+      formas: null,
+    }
+  }
+  familia.forms.push({
+    role: BUMP_SUBTEST,
+    label: BUMP_SUBTEST,
+    ms: 1000,
+    exit: 0,
+    metades: 2,
+    ok: true,
+    script: BUMP_SUITE,
+    runs: [{ ms: 1000, ok: true }],
+  })
+  familia.subtests = nNovo
+  // A COLUNA: pelo MESMO caminho do ato (`comMetadesDaMatriz`) — a suíte nova
+  // declara as metades dela no bloco da própria suíte, e o fixture não pode
+  // gravar um número que o ato não gravaria. Sem a derivação (master ilegível),
+  // o fixture ainda fecha o TOTAL com as formas: um fixture incoerente por
+  // dentro seria recusado pela coerência, e não pela defasagem que ele mede.
+  const derivadas = derivacaoDaCopia(copia, ler)
+  const corrigida = comMetadesDaMatriz(familia, derivadas) ?? familia
+  const total = corrigida.forms.reduce(
+    (s, f) => s + (Number.isFinite(f?.metades) ? Number(f.metades) : 0),
+    0,
+  )
+  bench.mutations = corrigida.metades === total ? corrigida : { ...corrigida, metades: total }
+  writeFileSync(caminhoBench, `${JSON.stringify(bench, null, 2)}\n`)
+  return { ok: true, motivo: null, formas: corrigida.forms.length }
+}
+
+/**
+ * A derivação das metades da MATRIZ de uma CÓPIA — a régua da folha sobre os
+ * arquivos dela (o master e cada suíte citada).
+ *
+ * `null` quando nem o master foi lido: o fixture então mantém o total fechando
+ * com as formas, mas não inventa unidade por forma.
+ *
+ * @param {string} copia
+ * @param {typeof readFileSync} [ler]
+ * @returns {Map<string, {count: number}>|null}
+ */
+export function derivacaoDaCopia(copia, ler = readFileSync) {
+  const lerDe = (rel) => {
+    try {
+      return String(ler(join(copia, rel), "utf8"))
+    } catch {
+      return null
+    }
+  }
+  const masterSrc = lerDe(MASTER_DOS_SUBTESTS)
+  if (masterSrc === null) return null
+  return metadesDaMatriz({ masterSrc, lerSuite: (rel) => lerDe(rel) })
+}
+
+/**
+ * O workflow do count (o `pr-check.yml`) — a fonte das refs do job `mutation-guards`.
+ * Ele fica aqui como constante para o fixture e o guard falarem do MESMO caminho.
+ */
+export const WORKFLOW_DO_COUNT = ".github/workflows/pr-check.yml"
+
 /**
  * A prova do bloqueio SEM O DUBLÊ.
  *
@@ -1467,7 +1840,7 @@ export function shaDoHead(dir) {
  * AS METADES:
  *   1. o DEFEITO da fase A (corpo `run:` aberto num workflow novo) tem de ser
  *      RECUSADO, com o HEAD intacto;
- *   2. a ATRIBUIÇÃO por exit code: os cinco guards de fase A aprovam o MESMO
+ *   2. a ATRIBUIÇÃO por exit code: os seis guards de fase A aprovam o MESMO
  *      índice e o GATE é quem recusa;
  *   3. o CONTROLE: o corpo fechado tem de ENTRAR;
  *   4. o DEFEITO da fase B (um de ENCODING e um de LINK, num arquivo novo cada)
@@ -1475,7 +1848,13 @@ export function shaDoHead(dir) {
  *   5. a ATRIBUIÇÃO da fase B: os membros da fase B rodados DIRETO sobre o MESMO
  *      índice (veredito por exit code) e a DESCIDA do runner do encoding nomeando
  *      o guard que recusou — e o CONTROLE de cada defeito (o arquivo REMENDADO)
- *      entrando.
+ *      entrando;
+ *   6. o BUMP DE MATRIZ SEM O ATO: um bump COERENTE da matriz (o master, as refs
+ *      do count e o arquivo da suíte nova) sem o ato que a versiona tem de ser
+ *      RECUSADO, a recusa tem de ser ATRIBUÍVEL (o guard dono medido direto sobre
+ *      o MESMO índice, nomeando a defasagem e o sub-test novo, com os irmãos e o
+ *      gate verdes) e o CONTROLE (o MESMO índice com o ato versionado) tem de
+ *      ENTRAR com a forma nova em HEAD.
  *
  * @param {{root?: string, deps?: {run?: typeof spawnSync, node?: string, existe?: (p: string) => boolean}}} [opts]
  * @returns {CommitBlockProof}
@@ -1485,15 +1864,35 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
   const existe = deps.existe ?? existsSync
   const remedies = [
     `o hook REAL tem de existir E ser EXECUTÁVEL: um hook sem o bit de execução é IGNORADO por git EM SILÊNCIO (o commit entra sem veredito)`,
-    `os CINCO guards de fase A e o gate (${GUARD}) têm de existir em scripts/: sem eles a fase A não roda, e o não-zero seria do ambiente`,
+    `os SEIS guards de fase A e o gate (${GUARD}) têm de existir em scripts/: sem eles a fase A não roda, e o não-zero seria do ambiente`,
     `\`node_modules\` tem de existir no checkout (a fase C roda de verdade na cópia: \`lint-staged\` e \`typecheck\`)`,
     `a cópia precisa do \`git\` e do \`bash\` vivos (o commit é um \`git commit\` de verdade, e o hook é um script de shell)`,
+    `o checkout precisa da HISTÓRIA (\`fetch-depth: 0\`): a fase B tem um membro que pergunta pela história (\`${MEMBRO_DA_HISTORIA}\` exige que todo commit citado na prosa exista em HEAD), e a cópia a vê pelo \`alternates\` do \`.git/objects\` — sem um checkout PROFUNDO, esse membro recusa todo arquivo citado e a prova mediria o fixture`,
   ]
   const faltando = []
   if (!existe(join(root, "node_modules"))) faltando.push("node_modules no checkout")
   if (hookSource(root) === null) faltando.push(`${join(root, ".husky", "pre-commit")} não existe`)
   for (const g of [...FASE_A_GUARDS, GUARD]) {
     if (!existe(join(root, "scripts", g))) faltando.push(`scripts/${g}`)
+  }
+  // As premissas da HISTÓRIA (ver `ligaObjetosDoCheckout`): a fase B pergunta
+  // pelo passado do repositório, e a cópia responde pelo `alternates` do store do
+  // checkout. Sem o store (checkout sem `.git`) ou com a história TRUNCADA
+  // (checkout raso) o membro da história recusaria TODO arquivo citado — e a
+  // atribuição da recusa passaria a falar do fixture, não do hook.
+  //
+  // A exigência é DERIVADA do hook (o membro aparece no corpo dele?), não cravada:
+  // no dia em que a fase B deixar de ter um membro que lê a história, a premissa
+  // some com ele.
+  const fonteDoHook = hookSource(root)
+  if ((fonteDoHook ?? "").includes(MEMBRO_DA_HISTORIA)) {
+    if (!existe(join(root, ".git", "objects"))) {
+      faltando.push(`o objeto store do checkout (${join(root, ".git", "objects")})`)
+    } else if (repoRaso(root, { run })) {
+      faltando.push(
+        `a HISTÓRIA COMPLETA do checkout (o repositório é RASO: \`${MEMBRO_DA_HISTORIA}\` pergunta em HEAD e as citações são de commits do passado — busque com \`fetch-depth: 0\`)`,
+      )
+    }
   }
   // As premissas da FASE B: cada defeito precisa de um arquivo NOVO (o refutador
   // tem de ser nomeável) e o runner do encoding tem de DECLARAR os comandos que a
@@ -1557,6 +1956,13 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
     runGit(copia, ["init", "-q"])
     runGit(copia, ["config", "user.email", "pre-commit-proof@local"])
     runGit(copia, ["config", "user.name", "pre-commit proof"])
+    // A HISTÓRIA (ver `ligaObjetosDoCheckout`): o store do checkout entra por
+    // `alternates` e o commit de base nasce EM CIMA do HEAD real — a fase B
+    // pergunta pelo passado do repositório, e uma cópia de um commit só faria
+    // todo arquivo citado parecer órfão.
+    const objetos = ligaObjetosDoCheckout(copia, { root })
+    const headDoCheckout = objetos.ok ? shaDoHead(root) : null
+    if (objetos.ok && headDoCheckout) runGit(copia, ["update-ref", "HEAD", headDoCheckout])
     runGit(copia, ["add", "-A"])
     const base = runGit(copia, ["commit", "-q", "-m", "base da cópia"])
     if (base.status !== 0) {
@@ -1570,13 +1976,16 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
     // O `hooksPath` entra DEPOIS do commit base (o base não é o assunto) e o
     // hook do `hooksPath` é o do CHECKOUT, copiado — não há wrapper, nem dublê.
     runGit(copia, ["config", "core.hooksPath", ".husky"])
-    const objetosBase = commitObjects(copia)
-    const headBase = shaDoHead(copia)
+    const baseSha = shaDoHead(copia)
+    // A medida LOCAL (a cópia compartilha o store do checkout): o que interessa é
+    // o que ELA acrescentou ao base — um commit recusado não move o HEAD.
+    const objetosBase = commitsAcimaDaBase(copia, baseSha, { run })
+    const headBase = baseSha
 
     // ── METADE 1: o defeito no ÍNDICE tem de ser RECUSADO pelo GATE ────────
     stage(copia, REAL_WORKFLOW, REAL_WORKFLOW_QUEBRADO)
     const bloqueio = runGit(copia, ["commit", "-m", "defeito (corpo `run:` aberto)"])
-    const objetosDepois = commitObjects(copia)
+    const objetosDepois = commitsAcimaDaBase(copia, baseSha, { run })
     const headDepois = shaDoHead(copia)
     const atribuicao = atribuicaoDaRecusa(bloqueio.output)
     const evidencia = {
@@ -1670,7 +2079,7 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
     // ── METADE 3 (o CONTROLE): o corpo fechado tem de ENTRAR ──────────────
     stage(copia, REAL_WORKFLOW, REAL_WORKFLOW_VALIDO)
     const controle = runGit(copia, ["commit", "-m", "controle (corpo fechado)"])
-    const objetosControle = commitObjects(copia)
+    const objetosControle = commitsAcimaDaBase(copia, baseSha, { run })
     const headControle = shaDoHead(copia)
     evidencia.controle = {
       status: controle.status,
@@ -1899,6 +2308,225 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
       }
     }
 
+    // ── METADE 6: o BUMP DE MATRIZ sem o ATO ──────────────────────────────
+    //
+    // A classe é a terceira metade do `check-mutation-count`, no recorte que o
+    // hook usa: um bump COERENTE da matriz (o master, as refs do count no
+    // `pr-check.yml` e as refs VIVAS do README, mais o ARQUIVO da suíte nova)
+    // cujo ATO que versiona o custo dele não vai no mesmo commit. É a janela que
+    // o recorte do índice existe para fechar — a matriz num commit e o ato no
+    // seguinte deixam o primeiro INCONSISTENTE, e quem o aprova na forja recebe
+    // um CI vermelho por um número que o commit seguinte ia consertar.
+    //
+    // A atribuição é a mesma das outras metades: o guard dono medido DIRETO sobre
+    // o MESMO índice (exit code + o marcador da violação, que nomeia o sub-test
+    // novo) e os irmãos da fase A verdes ali — sem isso, "recusou" não diz QUEM
+    // recusou. E o CONTROLE: o MESMO índice com o ato versionado tem de ENTRAR,
+    // que é o que separa "a defasagem recusa" de "a cópia não sabe commitar".
+    const bump = bumpDaMatriz(copia)
+    const entradaBump = {
+      subTest: BUMP_SUBTEST,
+      escrito: bump.ok,
+      motivoDoFixture: bump.motivo,
+      n: bump.n,
+      nNovo: bump.nNovo,
+      refs: bump.refs,
+      defeito: null,
+      atribuicao: null,
+      irmaos: [],
+      membros: [],
+      gate: null,
+      controle: null,
+    }
+    evidencia.bump = entradaBump
+    if (!bump.ok) {
+      return {
+        state: "unavailable",
+        detail:
+          `o bump coerente da matriz não pôde ser escrito na cópia — ${bump.motivo}: ` +
+          `sem o índice do defeito a recusa não é medível (e a prova não pode dizer que o guard recusa o que ele não julgou)`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    runGit(copia, ["add", "-A"])
+    const headAntesBump = shaDoHead(copia)
+    const recusaBump = runGit(copia, [
+      "commit",
+      "-m",
+      `bump de matriz (${BUMP_SUBTEST}, sem o ato)`,
+    ])
+    const headDepoisBump = shaDoHead(copia)
+    entradaBump.defeito = {
+      status: recusaBump.status,
+      output: recusaBump.output.trim().split("\n").slice(0, 6).join(" | "),
+      headAntes: headAntesBump,
+      headDepois: headDepoisBump,
+    }
+    if (recusaBump.status === null) {
+      return {
+        state: "unavailable",
+        detail: `o \`git commit\` do bump de matriz não terminou (o teto por comando do simulador, \`runGit\`, ou um sinal) — o veredito da recusa não foi medido`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    if (recusaBump.status === 0 || headDepoisBump !== headAntesBump) {
+      return {
+        state: "violated",
+        detail:
+          `o hook REAL (sem dublê) NÃO bloqueou o bump da matriz SEM o ato que a versiona: ` +
+          `exit ${recusaBump.status} e o HEAD ` +
+          `${headDepoisBump === headAntesBump ? "NÃO avançou" : `avançou de ${String(headAntesBump).slice(0, 12)} para ${String(headDepoisBump).slice(0, 12)}`} — ` +
+          `a matriz entra num commit cujo número declarado descreve a matriz do commit SEGUINTE`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+
+    // A ATRIBUIÇÃO, no MESMO índice do bump: o guard dono (exit + o marcador da
+    // violação, com o sub-test novo nomeado) e os irmãos da fase A verdes aqui.
+    const donoDoCount = rodaGuardDeFaseA(copia, DONO_DO_COUNT, { run, node: deps.node })
+    const irmaosDoBump = FASE_A_GUARDS.filter((g) => g !== DONO_DO_COUNT).map((g) =>
+      rodaGuardDeFaseA(copia, g, { run, node: deps.node }),
+    )
+    const gateDoBump = rodaGuardDeFaseA(copia, GUARD, { run, node: deps.node })
+    // Os membros da fase B TAMBÉM entram na atribuição — e não é zelo: medido,
+    // uma suíte nova sem o cabeçalho (Usage + Exit code) fazia o `barrel-lint`
+    // reprovar o MESMO índice, e como a fase A recusa ANTES de a fase B rodar, a
+    // recusa do commit teria ficado atribuída ao guard da contagem sem ser dele.
+    const estagioDoIndiceBump = arquivosDeFormatoDoIndice(copia)
+    const membrosDoBump = FASE_B_MEMBROS.map((m) =>
+      rodaMembroDeFaseB(copia, m, { run, node: deps.node, estagio: estagioDoIndiceBump }),
+    )
+    entradaBump.irmaos = irmaosDoBump
+    entradaBump.gate = gateDoBump
+    entradaBump.membros = membrosDoBump
+    entradaBump.atribuicao = {
+      guard: DONO_DO_COUNT,
+      status: donoDoCount.status,
+      citouMarcador: donoDoCount.output.includes(ATO_MARCADOR),
+      citouSubTest: donoDoCount.output.includes(BUMP_SUBTEST),
+    }
+    if (donoDoCount.status === null) {
+      return {
+        state: "unavailable",
+        detail: `o guard dono da contagem (${DONO_DO_COUNT} --staged) não terminou sobre o índice do bump — sem exit code, a recusa não é atribuível`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    if (donoDoCount.status === 0) {
+      return {
+        state: "unavailable",
+        detail:
+          `o commit do bump foi recusado, mas o guard dono (${DONO_DO_COUNT} --staged) APROVOU o mesmo índice (exit 0): ` +
+          `a recusa não é da defasagem da matriz — sem um refutador nomeado, a prova não pode dizer que esta classe é recusada`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    if (!entradaBump.atribuicao.citouMarcador || !entradaBump.atribuicao.citouSubTest) {
+      return {
+        state: "unavailable",
+        detail:
+          `o guard dono recusou o índice do bump (exit ${donoDoCount.status}), mas a saída dele não traz ` +
+          `${!entradaBump.atribuicao.citouMarcador ? `o marcador da defasagem ('${ATO_MARCADOR}')` : ""}` +
+          `${!entradaBump.atribuicao.citouMarcador && !entradaBump.atribuicao.citouSubTest ? " e " : ""}` +
+          `${!entradaBump.atribuicao.citouSubTest ? `o sub-test novo ('${BUMP_SUBTEST}')` : ""}` +
+          ` — o vermelho pode ser de outra regra do mesmo guard, e a prova mediria uma classe que ela não nomeia`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    const irmaosBumpVermelhos = irmaosDoBump.filter((i) => i.status !== 0)
+    const membrosBumpVermelhos = membrosDoBump.filter((m) => m.status !== 0)
+    if (
+      irmaosBumpVermelhos.length > 0 ||
+      membrosBumpVermelhos.length > 0 ||
+      gateDoBump.status !== 0
+    ) {
+      return {
+        state: "unavailable",
+        detail:
+          `a recusa do bump NÃO é atribuível ao guard da contagem — no MESMO índice, ` +
+          `${irmaosBumpVermelhos.map((i) => `${i.guard}=${i.status}`).join(", ") || "nenhum irmão de fase A vermelho"}` +
+          `, ${membrosBumpVermelhos.map((m) => `${m.guard}=${m.status}`).join(", ") || "nenhum membro de fase B vermelho"}` +
+          ` e o gate saiu ${gateDoBump.status === null ? "sem veredito" : gateDoBump.status}`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+
+    // O CONTROLE: o MESMO índice com o ATO versionado (o remédio que o próprio
+    // guard nomeia) tem de ENTRAR — e o que entra em HEAD tem de ser o registro
+    // com a forma nova, não "algum commit passou".
+    const ato = versionaOAto(copia, { nNovo: bump.nNovo })
+    if (!ato.ok) {
+      return {
+        state: "unavailable",
+        detail: `o ato do bump não pôde ser escrito na cópia — ${ato.motivo}: sem ele não há CONTROLE, e "a defasagem recusa" fica indistinguível de "a cópia não sabe commitar"`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    runGit(copia, ["add", "--", BENCH_PATH])
+    const controleBump = runGit(copia, [
+      "commit",
+      "-m",
+      `bump de matriz (${BUMP_SUBTEST}, com o ato)`,
+    ])
+    const headControleBump = shaDoHead(copia)
+    entradaBump.controle = {
+      status: controleBump.status,
+      output: controleBump.output.trim().split("\n").slice(0, 6).join(" | "),
+      formas: ato.formas,
+      headAntes: headDepoisBump,
+      headDepois: headControleBump,
+    }
+    if (controleBump.status === null) {
+      return {
+        state: "unavailable",
+        detail: `o \`git commit\` do CONTROLE do bump não terminou — sem ele, a recusa medida acima não é da defasagem`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    if (controleBump.status !== 0 || headControleBump === headDepoisBump) {
+      return {
+        state: "unavailable",
+        detail:
+          `o CONTROLE do bump (a MESMA matriz com o ato versionado) não comitou ` +
+          `(exit ${controleBump.status}, HEAD ${headControleBump === headDepoisBump ? "NÃO avançou" : "avançou"}) — ` +
+          `sem ele, a recusa do índice não se distingue de uma cópia que não sabe commitar`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    const benchEmHead = committedContent(copia, BENCH_PATH)
+    let formasEmHead = null
+    try {
+      const parsed = JSON.parse(benchEmHead)
+      const familia = parsed?.mutations
+      formasEmHead = Array.isArray(familia?.forms)
+        ? familia.forms.filter((f) => f.role === BUMP_SUBTEST).length
+        : 0
+    } catch {
+      formasEmHead = null
+    }
+    entradaBump.controle.formasEmHead = formasEmHead
+    if (formasEmHead !== 1) {
+      return {
+        state: "unavailable",
+        detail:
+          `o CONTROLE do bump comitou um registro SEM a forma do sub-test novo em HEAD ` +
+          `(${formasEmHead === null ? `${BENCH_PATH} ilegível em HEAD` : `${formasEmHead} forma(s) '${BUMP_SUBTEST}'`}) — ` +
+          `a cópia não está medindo o que a prova diz`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+
     const faseBResumo = evidencia.faseB
       .map(
         (f) =>
@@ -1921,10 +2549,13 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
           : ` (o relatório do hook não citou ${REAL_WORKFLOW} — a linha pode ter se perdido no pipe; o que decide é o exit code)`) +
         `; os ${irmaos.length} guards de fase A rodaram de verdade sobre o MESMO índice e saíram 0; ` +
         `o mesmo commit com o corpo fechado ENTROU (exit ${controle.status}, HEAD em ${String(headControle).slice(0, 12)}, conteúdo conferido em HEAD)` +
-        `; e a fase B REAL recusou ${evidencia.faseB.length} defeito(s) de encoding/link no índice — ${faseBResumo} —, ` +
+        `; a fase B REAL recusou ${evidencia.faseB.length} defeito(s) de encoding/link no índice — ${faseBResumo} —, ` +
         `cada um com os ${FASE_B_MEMBROS.length} membros da fase B medidos DIRETO sobre o MESMO índice ` +
         `(os esperados vermelhos e nenhum outro), a fase A e o gate verdes nesse índice, ` +
-        `e o CONTROLE de cada um (o arquivo REMENDADO) ENTRANDO`,
+        `e o CONTROLE de cada um (o arquivo REMENDADO) ENTRANDO` +
+        `; e o bump da matriz SEM o ato que a versiona foi recusado também ` +
+        `(${DONO_DO_COUNT} --staged, exit ${entradaBump.atribuicao?.status}, nomeando '${ATO_MARCADOR}' e o sub-test '${BUMP_SUBTEST}'), ` +
+        `com os irmãos e o gate verdes no MESMO índice e o CONTROLE (o ato versionado) ENTRANDO com a forma nova em HEAD`,
       evidence: evidencia,
       remedies,
     }

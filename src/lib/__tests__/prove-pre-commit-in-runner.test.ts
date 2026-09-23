@@ -259,6 +259,8 @@ describe("a escolha do lugar", () => {
           `${EVIDENCE_PREFIX}GIT=git version 2.55.0`,
           `${EVIDENCE_PREFIX}DEFEITO=exit:1 objetos:0 head:nao`,
           `${EVIDENCE_PREFIX}CONTROLE=exit:0 objetos:1`,
+          `${EVIDENCE_PREFIX}MATRIZ=sub-test:prova-bump exit:1 head:intacto refutador:check-mutation-count.mjs marcador:sim sub-test-citado:sim irmas:5/5 membros:10/10 gate:0`,
+          `${EVIDENCE_PREFIX}MATRIZ-CONTROLE=exit:0 formas-no-ato:40 formas-em-head:1`,
         ].join("\n"),
       }
     })
@@ -277,6 +279,13 @@ describe("a escolha do lugar", () => {
     expect(r.state).toBe("proven")
     expect(r.detail).toContain("DENTRO da imagem 'ghcr.io/ns/ubuntu-bun:1.3.14'")
     expect(r.detail).toContain("git version 2.55.0")
+    // A terceira metade da forma sem dublê atravessa a ponte: o pai NARRA o bump
+    // de matriz a partir do que o container publicou, em vez de deduzi-lo do
+    // estado composto.
+    expect(r.detail).toContain("bump de matriz sem o ato")
+    expect(r.detail).toContain("sub-test:prova-bump")
+    expect(r.detail).toContain("CONTROLE exit:0 formas-no-ato:40 formas-em-head:1")
+    expect(r.facts?.MATRIZ).toContain("refutador:check-mutation-count.mjs")
 
     const run = chamadas.find((c) => c.args[0] === "run")?.args ?? []
     // O checkout é montado NO MESMO CAMINHO: o `node_modules` do fixture é um
@@ -524,6 +533,20 @@ describe("o contrato com quem invoca (as linhas de evidência)", () => {
               { guard: "b.mjs", status: 1, linha: "" },
             ],
             controle: { status: 0, objetosDeCommit: 2, headAntes: "aaa", headDepois: "bbb" },
+            bump: {
+              subTest: "prova-bump",
+              defeito: { status: 1, headAntes: "bbb", headDepois: "bbb" },
+              atribuicao: {
+                guard: "check-mutation-count.mjs",
+                status: 1,
+                citouMarcador: true,
+                citouSubTest: true,
+              },
+              irmaos: [{ guard: "a.mjs", status: 0 }],
+              membros: [{ guard: "m", status: 0 }],
+              gate: { guard: "g.mjs", status: 0 },
+              controle: { status: 0, formas: 40, formasEmHead: 1 },
+            },
           },
         }),
       }),
@@ -535,6 +558,24 @@ describe("o contrato com quem invoca (as linhas de evidência)", () => {
     expect(facts.REFUTADORES).toBe("1")
     expect(facts.IRMAOS).toBe("1/2")
     expect(facts.HEAD).toBe("defeito:intacto controle:avancou")
+    // O bump de matriz sai em chave PRÓPRIA: o estado composto não diz o que cada
+    // metade publicou, e quem lê o container confere a recusa e o CONTROLE sem
+    // reexecutá-lo.
+    expect(facts.MATRIZ).toBe(
+      "sub-test:prova-bump exit:1 head:intacto refutador:check-mutation-count.mjs marcador:sim sub-test-citado:sim irmas:1/1 membros:1/1 gate:0",
+    )
+    expect(facts["MATRIZ-CONTROLE"]).toBe("exit:0 formas-no-ato:40 formas-em-head:1")
+  })
+
+  it("a forma padrão NÃO publica a chave do bump (ela não mede essa metade — e ausente ≠ zero)", () => {
+    const r = innerReport({
+      deps: depsBase({ exists: existsOf([CONTAINER_MARKERS[0], IMAGE_BASE_MARKER]) }),
+    })
+    const texto = evidenceLines(r).join("\n")
+    const { facts } = parseInImage(texto)
+    expect(facts.MATRIZ).toBeUndefined()
+    expect(facts["MATRIZ-CONTROLE"]).toBeUndefined()
+    expect(texto).not.toContain(`${EVIDENCE_PREFIX}MATRIZ`)
   })
 
   it("a forma com dublê NÃO ganha a linha de HEAD (o contrato dela segue igual)", () => {
