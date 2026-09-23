@@ -124,7 +124,7 @@ const SIM = { askFn: async () => "s" }
 const CTX = { bash: resolveBash() }
 
 describe("a lista de classes (o que o remédio OFERECE)", () => {
-  it("são as SETE classes mecânicas do commit, sem duplicata e sem sobra", () => {
+  it("são as OITO classes mecânicas do commit, sem duplicata e sem sobra", () => {
     // A cobertura é o contrato: uma classe a mais aqui é um remendo que o
     // repositório passaria a oferecer; uma a menos, um defeito mecânico que volta
     // a ser corrigido à mão. A lista é LITERAL de propósito — a descoberta já
@@ -139,6 +139,7 @@ describe("a lista de classes (o que o remédio OFERECE)", () => {
       "hook-commands",
       "pipefail-sigpipe",
       "bun-mirror-removal",
+      "doc-hashes",
     ])
   })
 
