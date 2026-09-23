@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 40 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 41 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -147,6 +147,7 @@ SUBTESTS=(
   "mutation-count|scripts/test-mutation-mutation-count.sh"
   "no-setup-bun|scripts/test-mutation-no-setup-bun.sh"
   "runner-base|scripts/test-mutation-runner-base.sh"
+  "runner-labels|scripts/test-mutation-runner-labels.sh"
   "no-leaked-imports|scripts/test-mutation-no-leaked-imports.sh"
   "reconciliation|scripts/test-mutation-reconciliation.sh"
   "nested-guard|scripts/test-mutation-nested-guard.sh"
