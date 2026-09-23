@@ -33,7 +33,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs"
-import { dirname, join } from "node:path"
+import { dirname, join, relative, resolve } from "node:path"
 import { afterAll, describe, expect, it } from "vitest"
 
 import { REPO_ROOT, cleanupFixtures, tempDir } from "@/lib/__tests__/helpers/hook-simulator"
@@ -288,6 +288,33 @@ function runnerStub({ semComandos = false } = {}): string {
 
 /** Um checkout sintético: os guards das duas fases (stubs), o hook e o layout. */
 /**
+ * Os módulos que um script do repositório IMPORTA — transitivo, e só os
+ * RELATIVOS.
+ *
+ * O guard da contagem não é um arquivo só: ele importa folhas
+ * (`scripts/bench-table.mjs`, e o que ela importa). Uma lista à mão aqui
+ * envelheceria no primeiro import novo e a fixture passaria a medir um
+ * `ERR_MODULE_NOT_FOUND` — foi exatamente o que aconteceu quando a régua das
+ * prosas entrou (medido: os dez casos da suíte sem dublê saíram `unavailable`
+ * com `check-mutation-count.mjs=1`, sem que nenhum guard estivesse errado). Um
+ * pacote do `node_modules` NÃO entra: a cópia o resolve pelo link do repo.
+ *
+ * @returns caminhos RELATIVOS à raiz do repositório (as folhas primeiro)
+ */
+function modulosImportados(rel: string, visitados = new Set<string>()): string[] {
+  if (visitados.has(rel)) return []
+  visitados.add(rel)
+  const caminho = join(REPO_ROOT, rel)
+  if (!existsSync(caminho)) return []
+  const descobertos: string[] = []
+  for (const m of readFileSync(caminho, "utf8").matchAll(/from\s+"(\.[^"]*)"/g)) {
+    const alvo = relative(REPO_ROOT, resolve(dirname(caminho), m[1]))
+    descobertos.push(...modulosImportados(alvo, visitados), alvo)
+  }
+  return descobertos
+}
+
+/**
  * O MATERIAL da metade 6 (o bump de matriz sem o ato) dentro da fixture.
  *
  * A metade 6 mede a recusa de um bump COERENTE — e "coerente" quer dizer o master,
@@ -321,6 +348,9 @@ function copiaMaterialDoCount(root: string, { countGuardCego = false } = {}): Se
     "README.md",
     "docs/GUARDS.md",
     "docs/benchmarks/guard-timing-baseline.json",
+    // As FOLHAS do guard, DERIVADAS dos imports dele: a cópia carrega o guard
+    // inteiro, e o guard inteiro é ele mais o que ele importa.
+    ...modulosImportados(`scripts/${DONO_DO_COUNT}`),
     ...suites,
   ]) {
     const origem = join(REPO_ROOT, rel)

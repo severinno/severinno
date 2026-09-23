@@ -717,6 +717,7 @@ describe("a premissa: o hook chama o remédio, e de dentro do bloco do gate", ()
       "$PID_TIMING",
       "$PID_REQCHECKS",
       "$PID_COUNT",
+      "$PID_LINTSCOPE",
     ])
   })
 

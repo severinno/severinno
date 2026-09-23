@@ -163,6 +163,7 @@ describe("bench-guard-timing — os contrafactuais do hook", () => {
         "$PID_BUN",
         "$PID_COUNT",
         "$PID_DEPS",
+        "$PID_LINTSCOPE",
         "$PID_MUT",
         "$PID_REQCHECKS",
         "$PID_RUNSYNTAX",
@@ -174,7 +175,15 @@ describe("bench-guard-timing — os contrafactuais do hook", () => {
         .match(/\$PID_[A-Z]+/g)
         ?.sort(),
     ).toEqual(
-      ["$PID_BUN", "$PID_COUNT", "$PID_DEPS", "$PID_MUT", "$PID_REQCHECKS", "$PID_TIMING"].sort(),
+      [
+        "$PID_BUN",
+        "$PID_COUNT",
+        "$PID_DEPS",
+        "$PID_LINTSCOPE",
+        "$PID_MUT",
+        "$PID_REQCHECKS",
+        "$PID_TIMING",
+      ].sort(),
     )
     // Fora das duas âncoras, as duas formas são byte a byte o mesmo hook: uma
     // causa por delta.
