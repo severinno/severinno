@@ -6,13 +6,13 @@
 #   ./scripts/test-mutation-doctor-facts.sh
 #
 # Exit codes:
-#   0 — as TRÊS mutações DETECTADAS: cada fio cortado deixa a suíte VERMELHA
+#   0 — as QUATRO mutações DETECTADAS: cada fio cortado deixa a suíte VERMELHA
 #       pelas âncoras de CADA fato ✅
 #   1 — suíte CEGA (verde com a mutação) / falhou por outro motivo / a mutação
 #       não aplicou / uma âncora sumiu ou virou ambígua / infra ❌
 #
 # POR QUE: o doctor não MEDE os fatos da forja — ele os TRANSPORTA para o
-# veredito. Essa travessia tem TRÊS fios, e cada um é uma regressão silenciosa
+# veredito. Essa travessia tem QUATRO fios, e cada um é uma regressão silenciosa
 # de um tipo diferente:
 #
 #   A) o fio VIOLAÇÃO→BLOQUEIO. Cada seção (contrato de merge, o GATE do
@@ -41,7 +41,19 @@
 #      transforma "não medi isto" em "isto está certo" — e quem lê não tem como
 #      saber que a pergunta ficou aberta.
 #
-# COMO: três mutações, cada uma com âncoras POR FATO (a unidade é o FATO, não o
+#   D) o fio do CANAL de repo. Toda leitura que consulta um repositório (a
+#      branch protection, o board, os labels do runner, a consulta ao registry)
+#      recebe o ambiente SEM o CONTEXTO COMPARTILHADO da forja emulada
+#      (`GITHUB_REPOSITORY`/`GITHUB_API_URL`, que num runner da Gitea apontam
+#      para a FORJA). Cortar essa sanitização não quebra NENHUMA seção: o doctor
+#      continua rodando, as leituras continuam respondendo e o veredito sai
+#      igual — o que muda é a ORIGEM do repositório consultado, e ela só
+#      divergiria no dia em que os dois slugs deixassem de coincidir. É a
+#      regressão mais barata de cometer e a mais cara de perceber: um veredito
+#      do repositório errado, com a assinatura de um veredito do repositório
+#      certo.
+#
+# COMO: quatro mutações, cada uma com âncoras POR FATO (a unidade é o FATO, não o
 # arquivo) e o mesmo controle:
 #
 #   A) `const blockers = []` (em `summarize`) → objeto com `push` no-op. Todo
@@ -57,6 +69,11 @@
 #      declaração do que o doctor não cobre. Sem esta mutação, "declarar o
 #      limite" seria uma promessa escrita na prosa; com ela, apagar a lista
 #      acende a suíte.
+#   D) o `channelEnv` deixa de apagar o contexto compartilhado (a lista de
+#      variáveis vira vazia): as leituras voltam a sair com `GITHUB_REPOSITORY`
+#      no ambiente, e o repositório consultado passa a poder ser o da forja
+#      emulada. O que cai com a mutação são as asserções de ORIGEM — o env que
+#      cada leitura recebeu e o veredito que saiu dele —, não as de conteúdo.
 #
 # Cada mutação é IN-PLACE com backup + trap de restauração (NUNCA
 # `git checkout`), roda o vitest REAL (precisa de node_modules — por isso o job
@@ -65,7 +82,7 @@
 # (--reporter=json), não por texto:
 #
 #   CONTROLE — arquivo íntegro → suíte VERDE (success=true, 0 falhas) e TODAS as
-#     âncoras das TRÊS mutações EXISTEM e PASSAM agora. Cada âncora tem de casar
+#     âncoras das QUATRO mutações EXISTEM e PASSAM agora. Cada âncora tem de casar
 #     EXATAMENTE UM teste: uma âncora ambígua mediria o fato errado (e uma
 #     renomeada/removida não teria o que acender) — fail-fast AQUI, para a
 #     detecção abaixo não ser vácuo;
@@ -130,6 +147,19 @@ C3_ANCHOR_DOC="  return { verdict, blockers, unknowns, unproven }"
 C3_SED='/^  return { verdict, blockers, unknowns, unproven }$/ s/unproven }$/unproven: [] } \/\/ MUTATION-DOCTOR-UNPROVEN/'
 C3_MARKER="unproven: [] } // MUTATION-DOCTOR-UNPROVEN"
 
+# ── Caso D — o CANAL de repo de TODAS as leituras ────────────────────────
+# A mutação esvazia a lista do contexto compartilhado: `channelEnv` continua
+# devolvendo uma CÓPIA (nada mais quebra) e volta a deixar `GITHUB_REPOSITORY`
+# e `GITHUB_API_URL` no ambiente que cada leitura recebe. O fio é UM só — a
+# régua vive num lugar de propósito —, e as âncoras abaixo medem a ORIGEM da
+# consulta (o env recebido e o que o veredito carrega), não o veredito.
+C4_ANCHOR_DOC="for (const name of SHARED_GITHUB_CONTEXT) delete out[name]"
+C4_SED='/^export function channelEnv(env = process.env) {$/,+2 s/^  for (const name of SHARED_GITHUB_CONTEXT) delete out\[name\]$/  for (const name of []) delete out[name] \/\/ MUTATION-DOCTOR-CHANNEL/'
+C4_MARKER="  for (const name of []) delete out[name] // MUTATION-DOCTOR-CHANNEL"
+# A linha da régua é ÚNICA no arquivo: sobrando alguma, a mutação não teria
+# cortado o fio que ela nomeia.
+C4_LEFTOVER="for (const name of SHARED_GITHUB_CONTEXT) delete out[name]"
+
 # ── Âncoras — UM FATO TRANSPORTADO POR ÂNCORA ────────────────────────────
 # Formato: "nome do fato|substring ÚNICA do fullName do teste".
 # A unidade é o FATO, não o arquivo: se um fato perder o fio, a sua âncora tem
@@ -144,7 +174,9 @@ C1_RED=(
   "referências não versionadas da imagem|VIOLADA → BLOQUEADA, com a violação no relatório de bloqueios"
   "contrato da imagem PUBLICADA|VIOLADO bloqueia: o job roda uma imagem que não cumpre a promessa do build"
   "registro do act_runner|registro VELHO bloqueia, nomeando o arquivo lido e o remédio do guard"
+  "a VERSAO do BINARIO do act_runner fora da TAG|a VERSÃO do binário fora da TAG bloqueia num bloqueio PRÓPRIO"
   "registro do runner do GitHub|o registro do GitHub DIVERGENTE bloqueia mesmo com TODO o resto verde"
+  "a VERSAO do runner fora do PIN|o drift da VERSÃO BLOQUEIA mesmo com TODO o resto verde"
   "interpolação do compose|a interpolação VIOLADA bloqueia mesmo com guards, imagem e prova verdes"
   "branch protection REGISTRADA|a branch protection em DRIFT bloqueia mesmo com guards, imagem, prova e render verdes"
   "gate do bring-up no contrato de merge|GATE do bring-up fora do contrato → BLOQUEADA, nomeando a forja e o remédio"
@@ -168,7 +200,9 @@ C2_RED=(
   "referências não versionadas da imagem|INDETERMINADO rebaixa para INDETERMINADA e nomeia o que faltou (sem os não aplicáveis)"
   "contrato da imagem PUBLICADA|INDETERMINADO não bloqueia e não vira pronta: é ausência de prova"
   "registro do act_runner|INDISPONÍVEL (sem docker/container/registro ilegível) rebaixa e diz POR QUÊ"
+  "a versão do BINARIO do act_runner NÃO julgada|a versão NÃO julgada (tag flutuante, binário mudo, render sem imagem) rebaixa nomeando o estado"
   "registro do runner do GitHub|sem token / API fora → INDETERMINADA, nunca 'em sincronia'"
+  "a versão do runner NÃO julgada|a versão NÃO julgada rebaixa o veredito e nomeia o pin"
   "interpolação do compose|indisponível → INDETERMINADA (nunca 'pronta' sem a prova)"
   "branch protection REGISTRADA|não lida (sem token de administração) → INDETERMINADA, nunca 'pronta'"
   "gate do bring-up não conferido|GATE do bring-up não conferido → INDETERMINADA (nunca 'pronta' por omissão)"
@@ -205,6 +239,26 @@ C3_INTACT=(
   "o caminho da violação (veredito intocado)|check:required-checks vermelho BLOQUEIA pelo contrato"
 )
 
+# ── Caso D — a ORIGEM do repositório consultado ──────────────────────────
+# Uma âncora por LEITURA que resolve um repositório (as duas proteções, o board
+# das duas forjas, os labels do runner do GitHub e a consulta ao registry), mais
+# as duas que medem a régua sozinha (a unidade do `channelEnv` e o fluxo
+# COMPLETO, em que o slug da forja emulada não pode aparecer em lugar nenhum).
+C4_RED=(
+  "a régua sozinha (o canal do doctor)|tira SÓ o contexto compartilhado"
+  "a ORIGEM de cada consulta no fluxo completo|NENHUMA consulta resolve o repositório pelo contexto compartilhado"
+  "a proteção do GitHub|nunca do ambiente compartilhado"
+  "a proteção sem canal|e o ambiente vai SEM o compartilhado"
+  "os labels do runner do GitHub|o repo vai por PARÂMETRO (o canal) e o env vai SEM o contexto compartilhado"
+  "os labels do runner sem canal|só o contexto compartilhado no ambiente → \`repo\` vai NULO"
+)
+# A cirurgia do caso D: o veredito fica INTACTO (a mutação não toca em blocker
+# nem em unknown) — PRONTA segue PRONTA e BLOQUEADA segue BLOQUEADA.
+C4_INTACT=(
+  "o caminho saudável (veredito intocado)|forja completa e registry 200 → PRONTA"
+  "o caminho da violação (veredito intocado)|check:required-checks vermelho BLOQUEIA pelo contrato"
+)
+
 # Todas as âncoras — o CONTROLE exige cada uma VIVA (1 teste casando, passed).
 ALL_ANCHORS=(
   "${C1_RED[@]}"
@@ -213,6 +267,8 @@ ALL_ANCHORS=(
   "${C2_INTACT[@]}"
   "${C3_RED[@]}"
   "${C3_INTACT[@]}"
+  "${C4_RED[@]}"
+  "${C4_INTACT[@]}"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────
@@ -237,6 +293,19 @@ restore_doctor() {
   rm -rf "$TMP_DIR"
 }
 trap restore_doctor EXIT
+# TERM/INT também RESTAURAM: MEDIDO — uma execução morta no meio de uma mutação
+# (o `timeout` do terminal, um Ctrl-C, o runner matando o job) deixava o doctor
+# MUTADO em disco. O caso B é o pior: a mutação dele NÃO tem marcador próprio
+# (ela reaproveita uma linha que existe no arquivo íntegro), então o doctor
+# segue com sintaxe válida, sem sinal nenhum do que aconteceu, e a suíte passa a
+# medir um doctor que não é o do checkout. O `exit` aqui dispara o trap de EXIT
+# acima (que é quem copia o backup).
+#
+# O LIMITE declarado: SIGKILL (`kill -9`) não dá chance a trap nenhum. Quem roda
+# isto num runner que mata por SIGKILL confere depois com
+# `git diff scripts/forge-doctor.mjs` — a mutação do caso B aparece ali como uma
+# linha do ternário do veredito.
+trap 'exit 130' INT TERM
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -334,7 +403,7 @@ assert_control_pass() {
   fi
 
   if ! CONTROL_ALIVE="$(assert_anchors "$RESULTS_CONTROL" passed "${ALL_ANCHORS[@]}")"; then
-    fail "CONTROLE FALHOU: nem todas as âncoras das TRÊS mutações estão vivas agora."
+    fail "CONTROLE FALHOU: nem todas as âncoras das QUATRO mutações estão vivas agora."
     exit 1
   fi
 
@@ -439,10 +508,11 @@ assert_mutation_detected() {
 
 echo ""
 echo "  ═════════════════════════════════════════════════════════════════"
-echo "   🧪 SEVERINNO — MUTATION TEST (os três fios do veredito do doctor)"
+echo "   🧪 SEVERINNO — MUTATION TEST (os quatro fios do veredito do doctor)"
 echo "   A. 'const blockers = []' → push no-op (violação→bloqueio)"
 echo "   B. o ternário para de consultar unknowns.length (a honestidade)"
 echo "   C. 'unproven' volta vazio (o que o relatório NÃO cobre)"
+echo "   D. 'channelEnv' para de apagar o contexto compartilhado (o CANAL de repo)"
 echo "   (scripts/forge-doctor.mjs IN-PLACE, backup + trap de restauração)"
 echo "  ═════════════════════════════════════════════════════════════════"
 echo ""
@@ -489,16 +559,27 @@ CASE_RED=("${C3_RED[@]}")
 CASE_INTACT=("${C3_INTACT[@]}")
 assert_mutation_detected "C (o relatório deixa de declarar o que NÃO cobre)"
 
+echo ""
+info "Caso D — cortando a régua do CANAL de repo (o contexto compartilhado)..."
+CASE_ANCHOR_DOC="$C4_ANCHOR_DOC"
+CASE_SED="$C4_SED"
+CASE_MARKER="$C4_MARKER"
+CASE_LEFTOVER="$C4_LEFTOVER"
+CASE_RED=("${C4_RED[@]}")
+CASE_INTACT=("${C4_INTACT[@]}")
+assert_mutation_detected "D (o contexto compartilhado volta a resolver o repo)"
+
 # ═════════════════════════════════════════════════════════════════════════
 # Result (restore roda no trap EXIT)
 # ═════════════════════════════════════════════════════════════════════════
 
 echo ""
-pass "MUTATION TEST PASSED — os três fios do veredito do doctor"
+pass "MUTATION TEST PASSED — os quatro fios do veredito do doctor"
 pass "  • controle: doctor íntegro → verde, com as ${#ALL_ANCHORS[@]} âncoras vivas (1 teste cada)"
 pass "  • A: violação→bloqueio cortado → vermelha por CADA fato (${#C1_RED[@]})"
 pass "  • B: veredito sem o não-provado → vermelha por CADA fato (${#C2_RED[@]})"
 pass "  • C: 'NÃO cobre' vazio → vermelha por CADA limite (${#C3_RED[@]})"
+pass "  • D: contexto compartilhado de volta no ambiente → vermelha por CADA consulta (${#C4_RED[@]})"
 pass "  • cirúrgicas: o caminho SAUDÁVEL segue PRONTA, o da VIOLAÇÃO segue bloqueando"
 pass "    e o arquivo roda inteiro em todos os casos"
 exit 0

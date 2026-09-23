@@ -80,13 +80,58 @@
 #  11. CONTROLE L + MUTAÇÃO L: o arquivo que o commit não carrega
 #  12. CONTROLE M + MUTAÇÃO M: o fail-closed do master ilegível
 #  13. CONTROLE FINAL do recorte (a restauração por checksum devolve o guard)
-#  14. Cleanup (trap EXIT — restaura o guard e rm -rf dos temps)
+#  14. CONTROLE N + MUTAÇÃO N: a MATRIZ × O ATO (o sub-test novo que o registro
+#      do ato não versionou) → DEVE FALHAR; com a ligação desligada, PASSA
+#  15. CONTROLE P (o registro ausente, dito) + MUTAÇÃO O (o registro ilegível:
+#      mutado, o exit 2 vira "nada a julgar" VERDE)
+#  16. CONTROLE Q + MUTAÇÃO Q: a COLUNA de metades do registro é DERIVADA da
+#      matriz — a unidade que entrou na suíte DEPOIS da medição → DEVE FALHAR
+#      nomeando a forma e o delta; sem a derivação passada à régua, PASSA
+#  17. MUTAÇÃO R: o TOTAL da família que não soma a própria coluna → DEVE FALHAR
+#  18. Cleanup (trap EXIT — restaura o guard e rm -rf dos temps)
 #
 # Usage:
 #   ./scripts/test-mutation-mutation-count.sh
 #
 # Exit codes:
 #   0 — mutações DETECTADAS + controles passam ✅
+#   A TERCEIRA METADE DESTA SUÍTE (a matriz × o ATO que a versiona):
+#
+#   CONTROLE N:             o registro versionado versiona a matriz INTEIRA (13
+#                           formas para 13 sub-tests) → exit 0, e o veredito
+#                           VERDE diz o que o ato versionou (não é silencioso).
+#   Cenário N (A DEFASAGEM): a matriz ganha o sub-14 e o registro do ato segue
+#                           com as 13 formas do ato anterior → DEVE FALHAR
+#                           nomeando o sub-test que ninguém versionou e o comando
+#                           do ato (é a defasagem real de 22/09/2026: o número
+#                           declarado do job passou a descrever uma matriz que já
+#                           não existia, e nada no repositório olhava isso).
+#   CONTROLE N (a AUSÊNCIA): o registro FORA da árvore NÃO é violação — e a
+#                           ligação não julgada fica DITA (present: false).
+#   Cenário O (O FAIL-CLOSED): o registro presente e ILEGÍVEL é exit 2 (INFRA),
+#                           nunca "nenhuma ligação a julgar"; mutado para devolver
+#                           a ausência, a defasagem volta a passar (CEGO).
+#
+# A QUARTA METADE DESTA SUÍTE (a COLUNA de metades × a MATRIZ):
+#
+#   CONTROLE Q:             o registro com a coluna que a MATRIZ declara hoje (a
+#                           sub-1 com as 2 metades da suíte) → exit 0.
+#   Cenário Q (A COLUNA
+#   HERDADA DO ATO):        a suíte ganha uma metade DEPOIS de a medição ter
+#                           gravado a coluna: a `sub-1` grava 1, a suíte declara 2,
+#                           e nada mais diverge (as 13 formas estão versionadas,
+#                           o count bate, o total fecha com a coluna) → DEVE
+#                           FALHAR nomeando a forma, o delta e o ato como
+#                           remédio. É a defasagem de 23/09/2026 — a coluna
+#                           herdada dizia 8 metades para uma suíte que já
+#                           declarava 10, e nada a confrontava com a matriz.
+#   Cenário R (O TOTAL):    o total da família que não soma a própria coluna (as
+#                           duas leituras da MESMA medição) → DEVE FALHAR com os
+#                           dois números.
+#
+# N/O/Q/R mutam o GUARD (no lugar, com backup + restauração verificada por
+# checksum no trap EXIT) e exigem a suíte unitária VERMELHA.
+#
 #   1 — guard CEGO (alguma mutação passou) OU controle falso-positivo ❌
 # =============================================================================
 
@@ -114,6 +159,11 @@ METADES=(
   'K|o ESCOPO do --staged: com o recorte lendo a ÁRVORE, o commit partido PASSA'
   'L|o arquivo que o ÍNDICE não carrega perde a violação NOMEADA (a causa sai do veredito)'
   'M|o FAIL-CLOSED do master ilegível: mutado devolve "nada a julgar" VERDE'
+  'N|a matriz ganha um sub-test e o ATO não o versiona: o guard FALHA nomeando-o (e, com a ligação desligada, PASSA)'
+  'O|o registro do ATO ILEGÍVEL: mutado deixa de ser exit 2 e vira "nada a julgar" VERDE'
+  'P|o registro do ATO AUSENTE não é violação — e a ligação NÃO julgada fica DITA no veredito'
+  'Q|a COLUNA de metades herdada do ato: a unidade entrou na suíte depois da medição e o guard FALHA nomeando a forma (e, sem a derivação passada, PASSA)'
+  'R|o TOTAL da família que não fecha com a coluna do MESMO registro → o guard FALHA'
 )
 GUARD="node $SCRIPT_DIR/scripts/check-mutation-count.mjs --root"
 REQUIRED_GUARD="node $SCRIPT_DIR/scripts/check-required-checks.mjs --root"
@@ -261,12 +311,19 @@ make_fixture() {
   done
 
   # docs/GUARDS.md: a doc cita a suíte sub-1 e declara o total dela. A MUTAÇÃO
-  # `doc_stale` escreve um total que NÃO bate com o bloco (a contagem à mão).
+  # `doc_stale` escreve um total que NÃO bate com o bloco (a contagem à mão) e
+  # `doc_stale_bold` escreve o MESMO total em NEGRITO — a forma que saía do
+  # alcance do parser e deixava a prosa velha em silêncio (o caso MEDIDO no
+  # repositório). `doc_bold` é o CONTROLE: o total CERTO em negrito passa.
   {
     echo '# Guards (fixture)'
     echo ''
     if [ "${6:-}" = "doc_stale" ]; then
       echo 'A suíte `scripts/test-mutation-sub-1.sh` declara 5 metades no bloco.'
+    elif [ "${6:-}" = "doc_stale_bold" ]; then
+      echo 'A suíte `scripts/test-mutation-sub-1.sh` declara **5 metades** no bloco.'
+    elif [ "${6:-}" = "doc_bold" ]; then
+      echo 'A suíte `scripts/test-mutation-sub-1.sh` declara **2 metades** no bloco.'
     else
       echo 'A suíte `scripts/test-mutation-sub-1.sh` declara 2 metades no bloco.'
     fi
@@ -692,6 +749,44 @@ if ! grep -Fq "≠ 2" <<<"$OUTPUT" || ! grep -Fq "test-mutation-sub-1.sh" <<<"$O
 fi
 pass "Mutação I DETECTADA: a contagem da doc divergindo do bloco falha com o delta (exit $EXIT)"
 
+# ── STEP 21b/21c — a MESMA contagem em NEGRITO (a forma invisível) ─────────
+# A ênfase do markdown não é cosmética aqui: com o `**` entre o verbo e o número,
+# a contagem escrita na doc saía do alcance do parser e a prosa envelhecia em
+# SILÊNCIO — o laço MEDIDO no repositório: a doc dizia "a suíte declara
+# **8 metades**" com a suíte declarando dez, e o guard passava verde. O par
+# abaixo prova as DUAS direções: a errada em negrito FALHA, a certa em negrito
+# PASSA (a régua não recusa o negrito em bloco).
+info "STEP 21b: a contagem ERRADA em NEGRITO (a forma que o parser não lia)..."
+make_fixture 13 "" 13 13 "" "doc_stale_bold"
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -eq 0 ]; then
+  fail "GUARD CEGO (negrito): a doc declarando **5 metades** contra um bloco de 2 passou (exit 0)."
+  fail "É o silêncio exato que a ênfase reintroduz: a contagem existe no documento e a régua não a lê."
+  exit 1
+fi
+if ! grep -Fq "≠ 2" <<<"$OUTPUT" || ! grep -Fq "declara 5 metades" <<<"$OUTPUT"; then
+  fail "O guard falhou (exit $EXIT) mas NÃO leu a contagem em negrito (nem o delta)."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+pass "Mutação I (negrito) DETECTADA: **5 metades** contra um bloco de 2 falha com o delta (exit $EXIT)"
+
+info "STEP 21c: CONTROLE — a contagem CERTA em negrito passa..."
+make_fixture 13 "" 13 13 "" "doc_bold"
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -ne 0 ]; then
+  fail "CONTROLE FALHOU (negrito, exit $EXIT): a doc com **2 metades** (o total CERTO) foi rejeitada."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+pass "CONTROLE OK: **2 metades** em negrito, com o bloco de 2, passa (a régua lê a forma, não a recusa)"
+
 # ═════════════════════════════════════════════════════════════════════════
 # STEP 22+23 — MUTAÇÃO J: a entrada do bloco em ASPAS DUPLAS (a suíte MORRE)
 # ═════════════════════════════════════════════════════════════════════════
@@ -900,8 +995,356 @@ else
   pass "CONTROLE FINAL: o recorte restaurado volta a reprovar o commit partido (exit $EXIT)"
 fi
 
+# ═════════════════════════════════════════════════════════════════════
+# STEP 31..34 — A MATRIZ × O ATO QUE A VERSIONA
+# ═════════════════════════════════════════════════════════════════════
+# A ligação que o count sozinho não vê: o registro versionado do bench
+# (docs/benchmarks/guard-timing-baseline.json, família `mutations`) tem de
+# versionar TODOS os sub-tests da matriz. A defasagem é real e medida (22/09/2026):
+# a matriz ganhou o `doc-hashes` e o `stack-per-commit` e o registro seguiu com as
+# 37 formas do ato anterior — o número declarado do job (e o PISO do job
+# `guards`, que dele se soma) passou a descrever uma matriz que já não existia, e
+# nada no repositório olhava isso.
+
+# ── bench_ato: o REGISTRO versionado do ato, com as formas pedidas ────────
+# $1 = quantas formas a família `mutations` versiona (os ids sub-1..sub-N, que é
+#      a forma do `make_fixture`) | $2 = (opcional) "ilegivel" (o arquivo lá,
+#      sem ser JSON)
+bench_ato() {
+  local destino="$TMP_DIR/docs/benchmarks/guard-timing-baseline.json"
+  mkdir -p "$TMP_DIR/docs/benchmarks"
+  if [ "${2:-}" = "ilegivel" ]; then
+    echo '{ isto nao e JSON' > "$destino"
+    return
+  fi
+  # $3 = "coluna" — a COLUNA que a rodada de MEDIÇÃO gravou, e não a que a matriz
+  # declara hoje: a `sub-1` sai com 1 metade (a suíte declara 2) e o total fecha
+  # com as formas. É a defasagem real de 23/09/2026 (a unidade entrou na suíte
+  # depois de a medição ter gravado a coluna), e nada aqui é inconsistente por
+  # dentro — o único defeito é a coluna contra a matriz.
+  local metade1=2
+  local total=$(( $1 * 2 ))
+  if [ "${3:-}" = "coluna" ]; then
+    metade1=1
+    total=$(( $1 * 2 - 1 ))
+  fi
+  {
+    echo '{'
+    echo '  "meta": {"tool": "bench-guard-timing", "version": 6},'
+    echo '  "mutations": {'
+    echo '    "measured": true,'
+    echo "    \"subtests\": $1,"
+    echo "    \"metades\": $total,"
+    echo '    "forms": ['
+    local i
+    for i in $(seq 1 "$1"); do
+      local m=2
+      if [ "$i" = "1" ]; then m="$metade1"; fi
+      if [ "$i" = "$1" ]; then
+        printf '      {"role": "sub-%s", "ms": %s, "metades": %s, "exit": 0}\n' "$i" "$(( 99 + i ))" "$m"
+      else
+        printf '      {"role": "sub-%s", "ms": %s, "metades": %s, "exit": 0},\n' "$i" "$(( 99 + i ))" "$m"
+      fi
+    done
+    echo '    ]'
+    echo '  }'
+    echo '}'
+  } > "$destino"
+
+  # O ato NÃO termina no registro: ele REESCREVE as duas prosas (é o
+  # `escreverDocs` do `--baseline`). Um fixture que só carregasse o registro
+  # mediaria uma árvore que o ato nunca produz — e a regra 6 acusaria as duas
+  # prosas em TODA metade desta seção, mascarando o defeito sob teste (medido:
+  # o CONTROLE N saía "FALSO POSITIVO" com a doc sintética sem os blocos).
+  bench_blocos
+}
+
+# ── bench_blocos: o ato reescreve as DUAS prosas a partir do registro ────────
+# A FOLHA é a do REPOSITÓRIO (`scripts/bench-table.mjs`, pelo mesmo caminho do
+# ato): um renderizador reescrito aqui mediria o fixture em vez do guard. O
+# marcador é o da folha — a doc do fixture nasce sem ele (o operador o posiciona
+# uma vez) e a inserção usa a MESMA constante que o guard lê.
+bench_blocos() {
+  node --input-type=module -e '
+    import { existsSync, readFileSync, writeFileSync } from "node:fs"
+    import { join } from "node:path"
+    const [tmp, repo] = process.argv.slice(1)
+    const folha = await import(`file://${repo}/scripts/bench-table.mjs`)
+    const registro = JSON.parse(
+      readFileSync(join(tmp, "docs/benchmarks/guard-timing-baseline.json"), "utf8"),
+    )
+    for (const { arquivo, bloco } of folha.DOCS) {
+      const p = join(tmp, arquivo)
+      if (!existsSync(p)) {
+        console.error(`fixture sem ${arquivo}`)
+        process.exit(1)
+      }
+      const texto = readFileSync(p, "utf8")
+      if (folha.blocoDoTexto(texto, bloco) === null) {
+        writeFileSync(p, `${texto}\n${bloco.abre}\n\n${bloco.fecha}\n`)
+      }
+    }
+    const notas = folha.escreverDocs({ cwd: tmp, registro })
+    const ruins = notas.filter((n) => n.status !== "reescrito" && n.status !== "jaEstava")
+    if (ruins.length) {
+      console.error(`fixture: ${JSON.stringify(ruins)}`)
+      process.exit(1)
+    }
+  ' "$TMP_DIR" "$SCRIPT_DIR"
+}
+
+# ── CONTROLE N: o ato versionou a MATRIZ INTEIRA ─────────────────────────
+info "STEP 31: CONTROLE N — matriz 13 e o registro do ato com as 13 formas..."
+make_fixture 13 "" 13 13
+bench_ato 13
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -ne 0 ]; then
+  fail "FALSO POSITIVO: a matriz versionada INTEIRA pelo ato foi rejeitada (exit $EXIT)."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+# O veredito VERDE também DIZ o ato: "as refs batem" não diz que a matriz está
+# versionada — é a diferença entre os dois que esta metade veio fechar.
+if ! grep -Fq "O ATO versionou a matriz: 13 forma(s)" <<<"$OUTPUT"; then
+  fail "O guard passou (exit 0) mas NÃO publicou o que o ato versionou —"
+  fail "um verde mudo deixaria a ligação sem leitura no relatório."
+  echo "$OUTPUT" | tail -3
+  exit 1
+fi
+pass "Controle N OK — matriz inteira versionada passa E o veredito diz o ato (exit 0)"
+
+# ── MUTAÇÃO N (A DEFASAGEM): a matriz ganha um sub-test e o ato fica atrás ─
+info "STEP 32: MUTAÇÃO N — matriz 14 com o registro do ato ainda em 13 formas..."
+make_fixture 14 "" 14 14
+bench_ato 13
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+echo "$OUTPUT" | grep -E '^   - ' | head -3
+
+if [ "$EXIT" -eq 0 ]; then
+  fail "GUARD CEGO (ato): a matriz ganhou o sub-14 e o registro do ato seguiu com 13"
+  fail "formas — a defasagem que o count na prosa não vê passou (exit 0)."
+  exit 1
+fi
+if ! grep -Fq "não versionou" <<<"$OUTPUT" || ! grep -Fq "sub-14" <<<"$OUTPUT"; then
+  fail "O guard falhou (exit $EXIT) mas NÃO nomeou o sub-test que o ato não versionou."
+  exit 1
+fi
+if ! grep -Fq "bench-guard-timing.mjs --only mutations" <<<"$OUTPUT"; then
+  fail "O guard falhou (exit $EXIT) mas NÃO deu o comando do ato como remédio."
+  exit 1
+fi
+pass "Mutação N DETECTADA: a defasagem falha nomeando 'sub-14' e o ato (exit $EXIT)"
+
+# ── MUTAÇÃO N (A LIGAÇÃO): o run deixa de julgar o ato ──────────────────
+# Sem esta metade, "o guard acusa a defasagem" poderia ser só o fixture — a
+# ligação (o `run()` chamando a régua com os ids do master) tem de ser o que
+# sustenta o vermelho.
+mutar_guard \
+  '  const bench = julgaOAto(root, N, idsDoMaster(masterSrc), metades.metades)' \
+  '  const bench = { present: false, ok: true, versionados: [], faltando: [], sobrando: [], gravado: null, motivo: "MUTACAO M-N: a ligacao matriz <-> ato nao e julgada", violations: [] }'
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -ne 0 ]; then
+  fail "N: com a ligação DESLIGADA a defasagem ainda reprovou (exit $EXIT)."
+  fail "Se outra coisa já bastasse, a régua do ato não sustentava o vermelho."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+pass "N: com a ligação desligada a defasagem PASSA (exit 0) — a ligação é load-bearing"
+exigir_suite_vermelha "N"
+restaurar_guard
+
+# ── CONTROLE P: o registro AUSENTE não é violação (e não é silêncio) ─────
+info "STEP 33: CONTROLE P — o registro do ato FORA da árvore..."
+make_fixture 13 "" 13 13
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -ne 0 ]; then
+  fail "FALSO POSITIVO: sem o registro do ato na árvore o guard reprovou (exit $EXIT)."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+if ! grep -Fq "NÃO foi julgada" <<<"$OUTPUT" || ! grep -Fq "guard-timing-baseline.json" <<<"$OUTPUT"; then
+  fail "O guard passou (exit 0) mas NÃO declarou que a ligação matriz ↔ ato não foi"
+  fail "julgada: o silêncio de uma metade que não rodou é indistinguível de um verde."
+  echo "$OUTPUT" | tail -3
+  exit 1
+fi
+pass "Controle P OK — a ausência do registro passa E é DITA no veredito (exit 0)"
+
+# ── MUTAÇÃO O (O FAIL-CLOSED): o registro ILEGÍVEL ──────────────────────
+# Um registro PRESENTE e corrompido não pode virar "nenhuma ligação a julgar": a
+# ausência é declarada, a corrupção é INFRA (exit 2) — a mesma distinção do
+# `readOrDie`.
+info "STEP 34: MUTAÇÃO O — o registro do ato presente e ILEGÍVEL..."
+make_fixture 14 "" 14 14
+bench_ato 13 "ilegivel"
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -ne 2 ]; then
+  fail "INFRA: o registro do ato ilegível devia sair 2 (não julgável) e saiu $EXIT."
+  echo "$OUTPUT" | tail -3
+  exit 1
+fi
+if ! grep -Fq "guard-timing-baseline.json ilegível" <<<"$OUTPUT"; then
+  fail "O guard saiu 2 mas NÃO nomeou o registro que não conseguiu ler."
+  exit 1
+fi
+pass "O (CONTROLE): o registro ilegível é exit 2 — nunca um verde por não saber"
+
+mutar_guard \
+  '    const err = new Error(`${BENCH_PATH} ilegível: ${e.message}`)' \
+  '    /* MUTACAO M-O: o registro corrompido virou "nada a julgar" */
+    return comparaComOAto(null, ids)
+    // eslint-disable-next-line no-unreachable
+    void e'
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -eq 2 ]; then
+  fail "O: a mutação não desligou o fail-closed (ainda exit 2)."
+  exit 1
+fi
+if [ "$EXIT" -ne 0 ]; then
+  fail "O: com o fail-closed trocado pela ausência o guard saiu $EXIT (esperado 0 = CEGO),"
+  fail "mas o fixture era uma defasagem REAL (matriz 14 × ato 13) — ele tinha de passar."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+pass "O: mutado, o registro corrompido vira 'nada a julgar' VERDE (exit 0) — o fail-closed é load-bearing"
+exigir_suite_vermelha "O"
+restaurar_guard
+
+# ── CONTROLE Q (a coluna da MATRIZ) e MUTAÇÃO Q (a coluna herdada) ──────
+# A COLUNA de metades do registro é DERIVADA da matriz. O caso real é o que esta
+# metade mede: a suíte GANHA uma metade depois de a medição ter gravado a coluna,
+# e o registro segue descrevendo a unidade anterior. Aqui a `sub-1` grava 1 onde
+# a suíte declara 2 — nada mais diverge (as 13 formas estão versionadas, o count
+# bate, o total fecha com as formas).
+info "STEP 35: CONTROLE Q — o registro com a coluna que a MATRIZ declara..."
+make_fixture 13 "" 13 13
+bench_ato 13
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -ne 0 ]; then
+  fail "FALSO POSITIVO: a coluna derivada da matriz foi rejeitada (exit $EXIT)."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+pass "Controle Q OK — a coluna que a matriz declara passa (exit 0)"
+
+info "STEP 36: MUTAÇÃO Q — a sub-1 GRAVOU 1 metade e a suíte declara 2..."
+bench_ato 13 "" coluna
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+echo "$OUTPUT" | grep -E '^   - ' | head -2
+
+if [ "$EXIT" -eq 0 ]; then
+  fail "GUARD CEGO (coluna): a sub-1 herdou a unidade de antes da medição e o"
+  fail "registro passou (exit 0) — a unidade que entrou depois não é julgada."
+  exit 1
+fi
+if ! grep -Fq "'sub-1' GRAVOU 1 metade(s)" <<<"$OUTPUT" || ! grep -Fq "declara 2" <<<"$OUTPUT"; then
+  fail "O guard falhou (exit $EXIT) mas NÃO nomeou a forma e o delta da coluna."
+  exit 1
+fi
+if ! grep -Fq "bench-guard-timing.mjs --only mutations" <<<"$OUTPUT"; then
+  fail "O guard falhou (exit $EXIT) mas NÃO deu o ato como remédio da coluna."
+  exit 1
+fi
+if grep -Fq "não versionou" <<<"$OUTPUT"; then
+  fail "O vermelho veio das FORMAS que faltam, não da coluna: as 13 estão lá —"
+  fail "senão esta metade estaria medindo a defasagem da N, não a coluna."
+  exit 1
+fi
+pass "Mutação Q DETECTADA: a coluna herdada falha nomeando 'sub-1' e o delta (exit $EXIT)"
+
+# ── MUTAÇÃO Q (A DERIVAÇÃO): o run deixa de entregar a matriz à régua ────
+# Sem esta metade, "o guard acusa a coluna" poderia ser só o fixture: é a
+# DERIVAÇÃO (o `run()` passando as metades da matriz) que sustenta o vermelho.
+mutar_guard \
+  '  const bench = julgaOAto(root, N, idsDoMaster(masterSrc), metades.metades)' \
+  '  const bench = julgaOAto(root, N, idsDoMaster(masterSrc)) /* MUTACAO M-Q: sem a derivacao da matriz */'
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -ne 0 ]; then
+  fail "Q: sem a derivação passada à régua a coluna herdada ainda reprovou (exit $EXIT)."
+  fail "Se outra coisa já bastasse, a derivação não sustentava o vermelho."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+pass "Q: sem a derivação a coluna herdada PASSA (exit 0) — a matriz é load-bearing"
+exigir_suite_vermelha "Q"
+restaurar_guard
+
+# ── MUTAÇÃO R (O TOTAL): a família não fecha com a coluna do MESMO registro ──
+# O total e as formas são as DUAS leituras da mesma medição: um total que não soma
+# a coluna é o registro dizendo duas coisas diferentes sobre si próprio.
+info "STEP 37: MUTAÇÃO R — o total da família não soma a coluna..."
+make_fixture 13 "" 13 13
+bench_ato 13
+python3 - "$TMP_DIR/docs/benchmarks/guard-timing-baseline.json" <<'PY'
+import json, sys
+p = sys.argv[1]
+b = json.load(open(p))
+b["mutations"]["metades"] -= 1
+json.dump(b, open(p, "w"), indent=2)
+PY
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -eq 0 ]; then
+  fail "GUARD CEGO (total): a família GRAVOU um total que não soma a própria coluna"
+  fail "e o guard passou (exit 0)."
+  exit 1
+fi
+if ! grep -Fq "GRAVOU 25 metade(s)" <<<"$OUTPUT" || ! grep -Fq "somam 26" <<<"$OUTPUT"; then
+  fail "O guard falhou (exit $EXIT) mas NÃO nomeou o total e a soma da coluna."
+  exit 1
+fi
+pass "Mutação R DETECTADA: o total que não fecha com a coluna falha com os dois números (exit $EXIT)"
+
+# ── MUTAÇÃO R (A RÉGUA): o guard deixa de conferir o total ──────────────
+# O mesmo fixture com o MESMO defeito: se o total não sustentasse o vermelho, a
+# acusação acima seria do fixture e não da régua.
+mutar_guard \
+  '    if (totalFamilia !== null && totalFamilia !== totalFormas) {' \
+  '    if (false /* MUTACAO M-R: o total nao e conferido contra a coluna */) {'
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -ne 0 ]; then
+  fail "R: com o total fora da régua o fixture ainda reprovou (exit $EXIT) — outra"
+  fail "coisa estava sustentando o vermelho, não a conferência do total."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+pass "R: sem a régua do total o MESMO fixture PASSA (exit 0) — a conferência é load-bearing"
+exigir_suite_vermelha "R"
+restaurar_guard
+
 echo ""
-pass "MUTATION TEST PASSED — check-mutation-count pega o count de volta no NAME"
 pass "do job (o contexto do required check não pode depender da matriz), no"
 pass "summary e no README; check-required-checks recusa a CONTAGEM no name de"
 pass "um required check (job direto E reusable); a suíte que não DECLARA as"
@@ -911,5 +1354,14 @@ pass "contagem da doc que envelheceu contra o bloco acende com o delta — sem"
 pass "falso-positivo numa fixture coerente. O RECORTE --staged tem as suas três:"
 pass "o ESCOPO é o ÍNDICE (mutado para ler a árvore, o commit partido passa), o"
 pass "arquivo que o commit não carrega perde a causa nomeada, e o master"
-pass "ilegível deixa de ser exit 2 quando o fail-closed é desligado."
+pass "ilegível deixa de ser exit 2 quando o fail-closed é desligado. E A MATRIZ ×"
+pass "O ATO que a versiona: a defasagem (o sub-test que o registro do ato não"
+pass "versionou) FALHA nomeando-o e o comando do ato, a ligação DESLIGADA deixa a"
+pass "mesma defasagem PASSAR, o registro ausente não é violação mas é DITO, e o"
+pass "corrompido é exit 2 — mutado para 'nada a julgar', ele volta a passar."
+pass "E A COLUNA de metades, que é DERIVADA da matriz e não herdada do ato: a"
+pass "unidade que entrou na suíte DEPOIS da medição FALHA nomeando a forma e o"
+pass "delta (e o ato como remédio), sem a derivação passada à régua ela PASSA, e o"
+pass "TOTAL que não soma a própria coluna FALHA com os dois números — fora da"
+pass "régua, o mesmo fixture passa."
 exit 0

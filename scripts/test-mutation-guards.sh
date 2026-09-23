@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 38 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 41 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -147,6 +147,7 @@ SUBTESTS=(
   "mutation-count|scripts/test-mutation-mutation-count.sh"
   "no-setup-bun|scripts/test-mutation-no-setup-bun.sh"
   "runner-base|scripts/test-mutation-runner-base.sh"
+  "runner-labels|scripts/test-mutation-runner-labels.sh"
   "no-leaked-imports|scripts/test-mutation-no-leaked-imports.sh"
   "reconciliation|scripts/test-mutation-reconciliation.sh"
   "nested-guard|scripts/test-mutation-nested-guard.sh"
@@ -163,12 +164,14 @@ SUBTESTS=(
   "required-applied|scripts/test-mutation-required-checks-applied.sh"
   "gate-registration|scripts/test-mutation-gate-registration.sh"
   "archived-pipeline|scripts/test-mutation-archived-pipeline.sh"
+  "doc-hashes|scripts/test-mutation-doc-hashes.sh"
   "github-deps|scripts/test-mutation-github-dependencies.sh"
   "cut-stages|scripts/test-mutation-cut-stages.sh"
   "mirror-coverage|scripts/test-mutation-mirror-coverage.sh"
   "pre-commit-proof|scripts/test-mutation-pre-commit-proof.sh"
   "bench-freshness|scripts/test-mutation-bench-freshness.sh"
   "stack-per-commit|scripts/test-mutation-stack-per-commit.sh"
+  "lint-scope|scripts/test-mutation-lint-scope.sh"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────

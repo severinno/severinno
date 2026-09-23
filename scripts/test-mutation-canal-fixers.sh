@@ -468,8 +468,17 @@ exigir_suite_verde "CONTROLE C"
 # ── M1 — o registro volta a ser uma LISTA ────────────────────────────────
 # O `idsDoCanal` (a varredura do diretório) é trocado por ids literais — o
 # registro à mão, com o custo de sempre: o fixer novo da bancada DESAPARECE.
+#
+# A LISTA LITERAL É A DOS FIXERS REAIS DE HOJE (e é isto que mantém a mutação
+# CIRÚRGICA): os literais têm de casar com o que a descoberta mediria no
+# repositório — senão a mutação também apaga um fixer real, a COBERTURA da
+# paridade e a consistência com o leitor folha ficam vermelhas junto, e a metade
+# deixa de medir a bancada (medido: com `doc-hashes` de fora, a M1 acusou
+# "a mutação derrubou TAMBÉM as outras metades"). Um fixer REAL novo entra aqui
+# no mesmo commit em que entra no registro — e a suíte falha em voz alta quando
+# alguém esquece, que é o que se quer.
 header "M1 — o registro volta a ser uma LISTA (ids literais)"
-mutar "$GUARD" 'ids = idsDoCanal({ dir: canalDir })' 'ids = ["run-syntax", "pipefail-sigpipe"] // MUTACAO M1'
+mutar "$GUARD" 'ids = idsDoCanal({ dir: canalDir })' 'ids = ["run-syntax", "pipefail-sigpipe", "doc-hashes"] // MUTACAO M1'
 pass "Mutação M1 aplicada (sintaxe válida)"
 montar_bancada normal
 rodar_driver 1 || { fail "M1: o driver não mediu a bancada"; exit 1; }
