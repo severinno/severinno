@@ -78,12 +78,12 @@ BASE_URL=https://staging.severinno.com.br k6 run loadtest/k6-load-test.js
 
 Expected performance for health endpoint (50 connections, 30s):
 
-| Metric         | Target      | Description                        |
-| -------------- | ----------- | ---------------------------------- |
-| Throughput     | > 1000 req/s | Requests per second                |
-| Latency P50    | < 50ms      | Median response time               |
-| Latency P99    | < 200ms     | 99th percentile response time      |
-| Errors         | 0           | All responses should be 200        |
+| Metric      | Target       | Description                   |
+| ----------- | ------------ | ----------------------------- |
+| Throughput  | > 1000 req/s | Requests per second           |
+| Latency P50 | < 50ms       | Median response time          |
+| Latency P99 | < 200ms      | 99th percentile response time |
+| Errors      | 0            | All responses should be 200   |
 
 ### Interpreting Results
 

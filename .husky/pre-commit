@@ -91,12 +91,35 @@ fase_a() {
   node scripts/check-mutation-count.mjs --staged &
   PID_COUNT=$!
 
-  # Aguarda os SEIS e agrega os status deles (wait_all — topo).
+  # O ESCOPO DO LINT — RECORTE --staged, declarado em HOOK_DECLARED do
+  # check-hook-ci-parity. O hook julga TODO arquivo estagiado (a perna do
+  # prettier do proprio hook) e o `bun run lint` julhava uma LISTA A MAO de
+  # globs: 13 diretorios com arquivo que o prettier julga ficavam fora dela
+  # (`.gitea/` — as workflows da forja dona do merge —, `ci/`, `deploy/`, `e2e/`,
+  # `monitoring/`, `loadtest/`, `agent-ctx/`, `types/`, `config/`, `examples/`,
+  # `k6/`, `mini-services/`, `public/`, `secrets/`) mais as extensoes de raiz
+  # `*.cjs`/`*.js` e o `.prettierrc`. O caso que expoe a classe: o
+  # `ci/unproven.json` fora do padrao passou o lint verde e quem o recusou foi
+  # ESTE hook — o mesmo commit julgado por duas reguas diferentes.
+  #
+  # POR QUE O RECORTE E O DOS ARQUIVOS DO INDICE, e nao o da arvore: o que o
+  # commit abre e o DIRETORIO NOVO (arquivo estagiado que nenhum globo cobre) —
+  # e isso aparece no indice. Quando o commit mexe na DECLARACAO do escopo (o
+  # `package.json` do comando, o `.prettierignore`), o guard muda de escopo
+  # sozinho e julga a ARVORE: um globo REMOVIDO nao esta em arquivo estagiado
+  # nenhum (o que saiu foi a linha do comando), e sem isso o commit que apaga um
+  # globo passaria aqui. Custo MEDIDO nesta arvore: ~0,14s no caminho comum
+  # (o oraculo do prettier so e consultado quando ha arquivo fora dos globs) e
+  # ~0,2s quando a declaracao esta no commit, em paralelo com o resto da fase.
+  node scripts/check-lint-scope.mjs --staged &
+  PID_LINTSCOPE=$!
+
+  # Aguarda os SETE e agrega os status deles (wait_all — topo).
   #
   # O `||` NAO existe mais nesta linha, e nao por descuido: dentro da funcao o
   # status de `wait_all` e o RETORNO dela, e o `set -e` esta desligado na chamada
   # (`fase_a || FASE_A=$?`) — quem registra o veredito e o call site.
-  wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS $PID_COUNT
+  wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS $PID_COUNT $PID_LINTSCOPE
 }
 
 # Sintaxe dos corpos `run:` — RECORTE --staged, declarado em HOOK_DECLARED do
@@ -263,6 +286,22 @@ fase_b() {
   node scripts/check-tla-closure.mjs &
   PID_TLA=$!
 
+  # Toda citação de commit na prosa pertence à HISTÓRIA do HEAD: a rewrite
+  # (rebase/amend/dobra) troca o NOME do commit preservando o assunto — o objeto
+  # antigo continua no repositório (o reflog o segura) — e a citação velha passa
+  # a descrever um ato que ninguém consegue abrir.
+  #
+  # POR QUE ELE ENTRA NO HOOK: a outra metade da classe nasce AQUI — um hash
+  # citado que não existe como commit (typo, cópia truncada de outro
+  # identificador) é escrito no commit, e o remendo é do próprio autor. Custo
+  # MEDIDO neste host: ~0,7s (`git cat-file`/`merge-base` por citação; 76
+  # citações em 405 arquivos do escopo), em paralelo com o resto da fase. O
+  # comando é o MESMO do CI (as duas pipelines), sem recorte: o veredito é da
+  # árvore contra a história, e um recorte `--staged` não o pegaria (a citação
+  # pode estar num arquivo que o commit nem menciona).
+  node scripts/check-doc-hashes.mjs &
+  PID_DOCHASH=$!
+
   # Prettier check STAGED — feedback de formatação ANTES do lint-staged
   (
     STAGED_FORMAT=$(git diff --cached --name-only --diff-filter=ACMR | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
@@ -272,7 +311,7 @@ fase_b() {
   ) &
   PID_PRETTIER=$!
 
-  wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY $PID_HOOKCMD $PID_PIPEFAIL $PID_ARQUIVO $PID_TLA
+  wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY $PID_HOOKCMD $PID_PIPEFAIL $PID_ARQUIVO $PID_TLA $PID_DOCHASH
 }
 
 FASE_B=0

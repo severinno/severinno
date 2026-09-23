@@ -49,9 +49,18 @@ async function getCurrentQuoteStep(page: Page): Promise<number> {
     .filter({ hasText: /Prestador|Serviço|Detalhes|Endereço|Revisão/i })
   const count = await stepBtns.count().catch(() => 0)
   for (let i = 0; i < count; i++) {
-    const cls = (await stepBtns.nth(i).getAttribute("class").catch(() => "")) ?? ""
+    const cls =
+      (await stepBtns
+        .nth(i)
+        .getAttribute("class")
+        .catch(() => "")) ?? ""
     if (cls.includes("font-semibold") && cls.includes("text-emerald-700")) {
-      const text = ((await stepBtns.nth(i).textContent().catch(() => "")) ?? "").toLowerCase()
+      const text = (
+        (await stepBtns
+          .nth(i)
+          .textContent()
+          .catch(() => "")) ?? ""
+      ).toLowerCase()
       if (text.includes("prestador")) return 1
       if (text.includes("serviço")) return 2
       if (text.includes("detalhes")) return 3

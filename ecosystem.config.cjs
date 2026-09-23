@@ -62,4 +62,4 @@ module.exports = {
       node_args: "--max-old-space-size=512",
     },
   ],
-};
+}

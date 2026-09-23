@@ -63,22 +63,22 @@ docker stack deploy -c docker-compose.prod.yml severinno
 
 ### Serviços que usam o entrypoint
 
-| Serviço | Secrets montados |
-|---------|-----------------|
-| app | postgres_password, rabbitmq_pass, s3_secret_key, session_secret, vapid_private_key, smtp_pass, cron_secret, lytex_client_secret |
-| email-worker | postgres_password, rabbitmq_pass, smtp_pass |
-| notification-worker | postgres_password, rabbitmq_pass, vapid_private_key |
-| search-index-worker | postgres_password |
+| Serviço             | Secrets montados                                                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| app                 | postgres_password, rabbitmq_pass, s3_secret_key, session_secret, vapid_private_key, smtp_pass, cron_secret, lytex_client_secret |
+| email-worker        | postgres_password, rabbitmq_pass, smtp_pass                                                                                     |
+| notification-worker | postgres_password, rabbitmq_pass, vapid_private_key                                                                             |
+| search-index-worker | postgres_password                                                                                                               |
 
 ### Serviços com suporte nativo a `_FILE`
 
-| Serviço | Secret | Variável |
-|---------|--------|----------|
-| postgres | postgres_password | `POSTGRES_PASSWORD_FILE` |
-| rabbitmq | rabbitmq_pass | `RABBITMQ_DEFAULT_PASS_FILE` |
-| minio | s3_secret_key | `MINIO_ROOT_PASSWORD_FILE` |
-| glitchtip-db | glitchtip_db_password | `POSTGRES_PASSWORD_FILE` |
-| glitchtip-minio | glitchtip_s3_secret_key | `MINIO_ROOT_PASSWORD_FILE` |
+| Serviço         | Secret                  | Variável                     |
+| --------------- | ----------------------- | ---------------------------- |
+| postgres        | postgres_password       | `POSTGRES_PASSWORD_FILE`     |
+| rabbitmq        | rabbitmq_pass           | `RABBITMQ_DEFAULT_PASS_FILE` |
+| minio           | s3_secret_key           | `MINIO_ROOT_PASSWORD_FILE`   |
+| glitchtip-db    | glitchtip_db_password   | `POSTGRES_PASSWORD_FILE`     |
+| glitchtip-minio | glitchtip_s3_secret_key | `MINIO_ROOT_PASSWORD_FILE`   |
 
 ### ⚠️ Limitação: GlitchTip (imagens third-party)
 
@@ -92,26 +92,27 @@ GLITCHTIP_SECRET_KEY=...
 ```
 
 Isso é uma limitação conhecida. A longo prazo, podemos:
+
 - Fazer fork da imagem e adicionar suporte a `_FILE` ou entrypoint
 - Usar Docker Swarm configs + env_file gerado dinamicamente
 - Migrar para Sentry SaaS (sem self-hosting)
 
 ## Lista completa de secrets
 
-| Secret | Serviços que usam | Template |
-|--------|-------------------|----------|
-| `postgres_password` | postgres, app, workers | `postgres_password.secret.example` |
-| `session_secret` | app | `session_secret.secret.example` |
-| `s3_secret_key` | minio, app | `s3_secret_key.secret.example` |
-| `vapid_private_key` | app, notification-worker | `vapid_private_key.secret.example` |
-| `smtp_pass` | app, email-worker | `smtp_pass.secret.example` |
-| `lytex_client_secret` | app | `lytex_client_secret.secret.example` |
-| `cron_secret` | app | `cron_secret.secret.example` |
-| `rabbitmq_pass` | rabbitmq, app, workers | `rabbitmq_pass.secret.example` |
-| `evolution_api_key` | notification-worker | `evolution_api_key.secret.example` |
-| `glitchtip_db_password` | glitchtip-db | `glitchtip_db_password.secret.example` |
-| `glitchtip_s3_secret_key` | glitchtip-minio | `glitchtip_s3_secret_key.secret.example` |
-| `glitchtip_secret_key` | ⚠️ NÃO montado como secret (imagem third-party — use .env.glitchtip) | `glitchtip_secret_key.secret.example` |
+| Secret                    | Serviços que usam                                                    | Template                                 |
+| ------------------------- | -------------------------------------------------------------------- | ---------------------------------------- |
+| `postgres_password`       | postgres, app, workers                                               | `postgres_password.secret.example`       |
+| `session_secret`          | app                                                                  | `session_secret.secret.example`          |
+| `s3_secret_key`           | minio, app                                                           | `s3_secret_key.secret.example`           |
+| `vapid_private_key`       | app, notification-worker                                             | `vapid_private_key.secret.example`       |
+| `smtp_pass`               | app, email-worker                                                    | `smtp_pass.secret.example`               |
+| `lytex_client_secret`     | app                                                                  | `lytex_client_secret.secret.example`     |
+| `cron_secret`             | app                                                                  | `cron_secret.secret.example`             |
+| `rabbitmq_pass`           | rabbitmq, app, workers                                               | `rabbitmq_pass.secret.example`           |
+| `evolution_api_key`       | notification-worker                                                  | `evolution_api_key.secret.example`       |
+| `glitchtip_db_password`   | glitchtip-db                                                         | `glitchtip_db_password.secret.example`   |
+| `glitchtip_s3_secret_key` | glitchtip-minio                                                      | `glitchtip_s3_secret_key.secret.example` |
+| `glitchtip_secret_key`    | ⚠️ NÃO montado como secret (imagem third-party — use .env.glitchtip) | `glitchtip_secret_key.secret.example`    |
 
 ## Boas práticas
 
@@ -138,6 +139,7 @@ S3_SECRET_KEY=resolved-via-secret
 ### Container não sobe — "secret not found"
 
 Verifique se:
+
 1. O arquivo `.secret` existe no caminho correto
 2. O arquivo não é `.example` (que é ignorado)
 3. O nome do secret no `secrets:` do compose corresponde ao nome do arquivo
@@ -145,6 +147,7 @@ Verifique se:
 ### Secret montado, mas app não reconhece
 
 Verifique se:
+
 1. O entrypoint está configurado: `entrypoint: ["./scripts/docker-entrypoint.sh"]`
 2. O volume do entrypoint está montado: `- ./scripts/docker-entrypoint.sh:/app/scripts/docker-entrypoint.sh:ro`
 3. O secret está listado em `secrets:` para aquele serviço

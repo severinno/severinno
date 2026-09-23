@@ -16,17 +16,21 @@
 10. **`provider-profile.tsx`** — Cover+avatar preview + SinglePhoto uploader + form (name/bio/whatsapp/phone/address/radiusKm) + read-only (email, cpfCnpj, verified) + GPS button. PATCH /api/users/me.
 
 ### Orquestrador
+
 - **`provider-panel.tsx`** — Lê `useViewStore.view`, mapeia para a view correspondente, monta `DashboardShell` com nav items (10 itens, badges dinâmicos para quotes/bookings pendentes) + breadcrumbs. Header "Painel do Prestador".
 
 ### Rotas API (`src/app/api/`)
+
 - **`availability/route.ts`** — GET (own) + POST (upsert array, replace strategy via $transaction, valida startTime < endTime, availabilitySchema).
 - **`availability/[id]/route.ts`** — DELETE (owner check).
 - **`users/me/route.ts`** — GET (USER_PUBLIC_SELECT) + PATCH (providerProfileSchema, only owner). Criada porque não existia.
 
 ### Shared components (`src/components/shared/`)
+
 - **`messages-view.tsx`** — Chat 2-pane reutilizável. Left: lista de conversas com unread badge. Right: thread + composer. Realtime via useRealtime hook (subscribes `message:new`). Invalida TanStack Query em tempo real. Refetch interval 10-15s como fallback.
 
 ## Decisões chave
+
 - DashboardShell: minha versão inicial foi sobrescrita pelo Task 6 (Client Panel). Adaptei ao contrato final deles: `panelLabel` + `panelIcon` (REQUIRED), `breadcrumbs: {label, onClick?}[]`, `onNavigate: (view) => void`.
 - Availability POST usa replace strategy (deleteMany + create all em $transaction). IDs mudam a cada save.
 - Dashboard deriva KPIs de 3 chamadas separadas (bookings/quotes/reviews, limit=200). Sem endpoint agregado dedicado (MVP).
@@ -36,6 +40,7 @@
 - SinglePhoto (profile) usa fetch direto (não apiPost) porque apiPost sempre seta Content-Type JSON.
 
 ## Como rodar
+
 ```bash
 # Login provider (seed)
 # carlos@severinno.com / provider123  (ou qualquer [profession]@severinno.com)
@@ -43,11 +48,13 @@
 ```
 
 ## Verificações
+
 - `bunx tsc --noEmit` → 0 erros nos meus arquivos.
 - `bunx eslint src/components/provider src/components/shared/messages-view.tsx src/app/api/availability src/app/api/users/me` → 0 erros, 0 warnings.
 - `bun run lint` → só 2 erros pre-existing em use-realtime.ts (Task 2, fora de escopo).
 
 ## Caveats
+
 1. DashboardShell API: ver header do arquivo para contrato atual (Task 6 dono).
 2. users/me: criado por mim (Task 7). Se Task 6 também criou, minha versão prevaleceu (escrita depois).
 3. Availability: IDs mudam a cada save (replace strategy). Frontend nunca reusa IDs localmente.
