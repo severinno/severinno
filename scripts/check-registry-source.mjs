@@ -63,6 +63,14 @@
 //      FORA dele que referencie imagem NOSSA exige DECISAO ESCRITA
 //      (OUT_OF_SCOPE_ALLOWLIST, um arquivo por entrada, com o motivo); nao
 //      decidir e violacao, e decisao velha tambem — ver "INVARIANTE 8".
+//
+//      As CLASSES cujo texto NAO e site de resolucao (prosa, fixture de teste e
+//      o PAYLOAD das provas por mutacao) ficam fora da varredura por REGRA
+//      DECLARADA, com a razao escrita (SWEEP_RULES). O fixture das provas por
+//      mutacao e a MESMA constante consultada pela varredura de VALOR (uma
+//      constante, duas varreduras): excluir num lugar so deixaria a outra
+//      metade cega. A exclusao e ESTREITA e NOMEADA — o relatorio diz quantos
+//      arquivos cada regra deixou de fora.
 //   9. Tudo o que a invariante 7 cobre vive em ARQUIVO comitado. Mas a
 //      referencia da imagem tambem vive em tres lugares que o repositorio NAO
 //      contem — repository variables (`vars.*`), o env do HOST da aplicacao
@@ -482,6 +490,25 @@ export const SWEEP_IGNORED_DIRS = [
 ]
 
 /**
+ * A classe dos arquivos cujo TEXTO e FIXTURE das provas por mutacao: o literal
+ * da imagem ali e o PAYLOAD que a prova entrega ao guard — nao um site de
+ * resolucao.
+ *
+ * A classe e declarada UMA vez e consultada pelas DUAS varreduras deste guard
+ * (os defaults da imagem e as referencias FORA do escopo): a razao e a mesma, e
+ * um matcher escrito em dois lugares divergiria no dia em que a convencao do
+ * nome mudasse — deixando metade da classe invisivel sem que nada acusasse.
+ *
+ * A exclusao e ESTREITA de proposito: `scripts/test-mutation/sub/x.sh` (um
+ * subdiretorio) e `scripts/test-mutation-x.mjs` (outra extensao) continuam
+ * sendo julgados.
+ *
+ * @param {string} rel
+ * @returns {boolean}
+ */
+export const isMutationProofFixture = (rel) => /^scripts\/test-mutation-[^/]+\.sh$/.test(rel)
+
+/**
  * Classes de arquivo excluidas da decisao POR REGRA — cada uma com a razao
  * escrita. O criterio: a string da imagem ali nao RESOLVE imagem nenhuma.
  */
@@ -501,6 +528,12 @@ export const SWEEP_RULES = [
       /^tests\//.test(rel),
     reason:
       "fixture de teste: a string da imagem e o SUJEITO da assercao (o teste existe para afirmar sobre ela), nao um site de resolucao",
+  },
+  {
+    id: "mutation-proof",
+    matches: isMutationProofFixture,
+    reason:
+      "prova por mutacao: a referencia cravada ali e o PAYLOAD que a prova entrega ao guard (e o SUJEITO da assercao dela) — julga-la seria o guard acusando o teste que o exercita, e a saida obvia seria mutar o fixture para escapar da regua",
   },
 ]
 
@@ -667,7 +700,7 @@ function walkRepo(root) {
  *
  * @param {string} root
  * @param {{allowlist?: {path: string, reason: string, addedAt?: string}[], now?: number, reviewDays?: number}} [options]
- * @returns {{found: Map<string, string>, undecided: string[], stale: string[], invalid: {path: string, why: string}[], aged: {path: string, addedAt: string, days: number, limit: number}[]}}
+ * @returns {{found: Map<string, string>, undecided: string[], stale: string[], invalid: {path: string, why: string}[], aged: {path: string, addedAt: string, days: number, limit: number}[], excluded: {total: number, byRule: {id: string, count: number, example: string, reason: string}[]}}}
  */
 // A data e a janela sao do modulo compartilhado: esta funcao so diz QUAL campo
 // identifica a entrada aqui (`path`) e reescreve o resultado na forma que os
@@ -682,10 +715,26 @@ export function sweepOutOfScope(
 ) {
   const decided = new Map(allowlist.map((e) => [e.path, e.reason]))
   const found = new Map()
+  // O que as REGRAS deixam fora da varredura, contado POR REGRA. Uma exclusao
+  // por classe e declarada — mas uma classe que ninguem ve e indistinguivel de
+  // um alvo invisivel, que e o defeito que esta varredura existe para fechar.
+  // Por isso o relatorio a NOMEIA (mesma regua dos `IMAGE_DEFAULT_FIXTURE_RULES`).
+  const foraPorRegra = new Map()
 
   for (const rel of walkRepo(root)) {
     if (matchesScanTarget(rel, root)) continue
-    if (SWEEP_RULES.some((rule) => rule.matches(rel))) continue
+    const regra = SWEEP_RULES.find((rule) => rule.matches(rel))
+    if (regra) {
+      const atual = foraPorRegra.get(regra.id) ?? {
+        id: regra.id,
+        count: 0,
+        example: rel,
+        reason: regra.reason,
+      }
+      atual.count += 1
+      foraPorRegra.set(regra.id, atual)
+      continue
+    }
     let content
     try {
       content = readFileSync(join(root, rel), "utf8")
@@ -738,6 +787,14 @@ export function sweepOutOfScope(
       .sort(),
     invalid,
     aged,
+    // A conta das exclusoes por classe (e o EXEMPLO de cada uma): e o que o
+    // relatorio usa para dizer, em voz alta, o que a varredura NAO julgou.
+    excluded: {
+      total: [...foraPorRegra.values()].reduce((n, r) => n + r.count, 0),
+      byRule: [...foraPorRegra.values()].sort(
+        (a, b) => b.count - a.count || a.id.localeCompare(b.id),
+      ),
+    },
   }
 }
 
@@ -2281,7 +2338,7 @@ export const IMAGE_DEFAULT_SCRIPT_RE = /^(?:scripts|deploy)\/[^/]+\.(?:sh|mjs)$/
 export const IMAGE_DEFAULT_FIXTURE_RULES = [
   {
     id: "mutation-proof",
-    matches: (rel) => /^scripts\/test-mutation-[^/]+\.sh$/.test(rel),
+    matches: isMutationProofFixture,
     reason: "prova por mutação: as linhas `${NOME:-valor}` ali são o PAYLOAD que alimenta o guard",
   },
 ]
@@ -2923,6 +2980,17 @@ if (isMain) {
           ? ` — ${imageDefaults.indeterminate.length} INDETERMINADO(s), nomeado(s) nos avisos`
           : ""),
     )
+    // O que as REGRAS deixaram fora da varredura das referências. Mesma régua da
+    // exclusão por fixture acima: uma exclusão por CLASSE que não se nomeia é um
+    // alvo invisível com outro nome — e é justamente o que esta varredura fecha.
+    if (scopeSweep.excluded.total > 0) {
+      console.log(
+        `check-registry-source: · referencias fora da varredura por REGRA: ${scopeSweep.excluded.total} arquivo(s) — ` +
+          scopeSweep.excluded.byRule
+            .map((r) => `${r.count} \`${r.id}\` (ex.: ${r.example})`)
+            .join(", "),
+      )
+    }
     if (interpolation.state === "proven") {
       console.log(
         `check-registry-source: ✅ ${COMPOSE_RENDER_PROVEN_MARK} — ${interpolation.detail}`,
