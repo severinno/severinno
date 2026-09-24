@@ -25,7 +25,14 @@ RUNNER_HOME="/home/${RUNNER_USER}/actions-runner"
 RUNNER_NAME="hostinger-runner"
 RUNNER_LABELS="self-hosted,linux,x64,docker"
 REPO_URL="https://github.com/severinno/severinno"
-RUNNER_VERSION="2.320.0"
+# A versao TEM de ser uma que o servico aceite. MEDIDO em 22/09/2026: com
+# 2.320.0 o runner registrou, pegou o primeiro job e se AUTO-ATUALIZOU para
+# 2.337.0 no meio dele — o update derruba o worker, e o job fica PRESO em
+# `in_progress` segurando o unico runner (o cancel do run e o remove do runner
+# respondem 422 "is currently running a job"): so `force-cancel` + DELETE do run
+# limpam a atribuicao. O `version` do registro e legivel na API
+# (`GET /repos/<o>/<r>/actions/runners`), e e o valor que este pin tem de casar.
+RUNNER_VERSION="2.337.0"
 RUNNER_ARCH="linux-x64"
 RUNNER_ARCHIVE="actions-runner-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz"
 RUNNER_URL="https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${RUNNER_ARCHIVE}"

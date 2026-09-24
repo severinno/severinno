@@ -44,6 +44,18 @@
 // é a IMAGEM de cada um: um label com o nome certo apontando para a imagem
 // velha é exatamente o caso invisível.
 //
+// A TERCEIRA PERGUNTA AO MESMO CONTAINER — a VERSÃO do binário × a TAG que o
+// compose declara (o irmão do pin do runner do GitHub). O container do
+// act_runner NÃO se auto-atualiza: quem decide a versão do binário é a IMAGEM
+// declarada, e uma tag que não declara versão (`latest`) deixa a stack subir
+// qualquer build que o `docker pull` do dia tiver servido — sem uma linha do
+// repositório mudar e sem sintoma nenhum na forja. MEDIDO em 22/09/2026: a tag
+// `latest` reporta `v0.6.1` e a `0.2.11` reporta `v0.2.11`, com as duas imagens
+// no disco e o compose sem dizer qual delas a stack sobe. Ver a seção 3b: a tag
+// que não pina versão sai `floating` (declaração pendente, nunca verde) e a que
+// pina outra que a que roda sai `drift` (exit 1, com o remédio de alinhar a tag
+// ou trazer o container para ela).
+//
 // POR QUE O ARQUIVO DE REGISTRO (e não a API do Gitea)
 //   O Gitea guarda os labels que o runner DECLARA; quem executa o job é o
 //   runner, a partir do estado dele. Duas fontes: o arquivo é a que MANDA, e é
@@ -397,14 +409,34 @@ export function parseRunnerState(content) {
 }
 
 /**
- * O nome do container do runner. Fonte primária: o `container_name` do render
- * (declarado no compose). Sem ele, o container é procurado pelo service label
- * que o próprio compose põe — nunca por um nome cravado aqui.
+ * A FORMA DECLARADA de apontar o container do runner — a variável que os DOIS
+ * consumidores leem (este guard e o `forge-doctor`, que o chama por dentro).
  *
- * @param {{cwd: string, run: Function, rendered: object|null}} args
+ * O nome do container saía só do `container_name` do compose, e isso amarra a
+ * medição à STACK: o container tem de ser o dela, com o nome que ela usa. Uma
+ * SONDA (o ensaio da metade da VERSÃO contra um container de teste — a imagem
+ * pinada, o binário de outra build — ou um runner de outra stack) não tinha como
+ * se declarar sem TOMAR o nome da stack.
+ *
+ * `--container` (a CLI) continua ganhando dela, e ela ganha do compose:
+ * DECLARADO vence derivado, e a FONTE sai dita no veredito.
+ */
+export const RUNNER_CONTAINER_ENV = "GITEA_RUNNER_CONTAINER"
+
+/**
+ * O nome do container do runner, na ordem: DECLARADO (`--container`/a variável) →
+ * o `container_name` do render (declarado no compose) → o service label que o
+ * próprio compose põe. Nunca um nome cravado aqui.
+ *
+ * @param {{cwd: string, run: Function, rendered: object|null, declarado?: string|null}} args
  * @returns {{ok: boolean, container?: string, detail: string}}
  */
-export function resolveRunnerContainer({ cwd, run, rendered }) {
+export function resolveRunnerContainer({ cwd, run, rendered, declarado = null }) {
+  const nomeDeclarado = typeof declarado === "string" ? declarado.trim() : ""
+  if (nomeDeclarado !== "") {
+    return { ok: true, container: nomeDeclarado, detail: `declarado por ${RUNNER_CONTAINER_ENV}` }
+  }
+
   const declared = rendered?.services?.[RUNNER_SERVICE]?.container_name
   if (typeof declared === "string" && declared.trim() !== "") {
     return { ok: true, container: declared.trim(), detail: `container_name do compose` }
@@ -482,6 +514,266 @@ export function readRegisteredLabels({ cwd, run, container, stateFile }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 3b. A VERSÃO do binário × a TAG que o compose declara
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// POR QUE ESTA METADE EXISTE (o outro lado do pin do GitHub): o container do
+// act_runner NÃO se auto-atualiza — quem decide a versão do binário é a IMAGEM
+// que o compose declara. E é aí que mora a classe: o compose da forja declarava
+// `gitea/act_runner:latest`, e `latest` NÃO é uma versão — é o nome de uma
+// PROMESSA. O `docker compose pull` de um dia qualquer troca a versão que roda
+// sem uma linha do repositório mudar, e nada no relatório dizia QUAL versão o
+// runner usa hoje. MEDIDO em 22/09/2026 neste host: `gitea/act_runner:latest`
+// reportava `v0.6.1`, e a tag `0.2.11` (que já foi puxada aqui) reporta
+// `v0.2.11` — as duas imagens conviviam no disco, e era o compose que não dizia
+// qual delas a stack sobe. O REMÉDIO foi aplicado no mesmo dia: a tag virou
+// `gitea/act_runner:0.6.1`, que é o MESMO digest que o `latest` do dia servia
+// (medido: sha256:b5c35d6d…; e `v0.6.1` NÃO existe no registry — `not found`,
+// ou seja, o `v` seria um pin quebrado). Com a imagem pinada, a leitura do
+// binário mede `0.6.1 = tag 0.6.1 (proven)`, e o que muda no veredito é o
+// estado quando NÃO há container para ler: deixa de ser `floating` (declaração
+// pendente, o remédio era o pin) e passa a ser `unread` (o que RODA não foi
+// julgado — a leitura é da stack).
+//
+// A comparação é por VALOR (`v0.6.1` e `0.6.1` são a mesma versão — o `v` de
+// uma tag de release e espaço em volta não são drift), e ela tem SEIS estados
+// porque as causas têm remédios diferentes:
+//   - `proven`   — a tag declara uma VERSÃO e o binário do container reporta ela;
+//   - `drift`    — a tag declara uma versão e o binário reporta OUTRA: o que roda
+//                  não é o que o repositório declara (a imagem não foi puxada de
+//                  novo, ou o volume/container é de outro dia). É a mesma classe
+//                  do pin recusado do GitHub, e BLOQUEIA;
+//   - `floating` — a tag NÃO é uma versão (`latest`, `stable`, ...): não há pin
+//                  com que comparar. Não é verde nem divergência — é uma
+//                  declaração que o repositório ainda não fez, e ela sai no
+//                  veredito com o remédio (pin a tag à versão que roda hoje);
+//   - `digest`   — a imagem é pinada por DIGEST (`repo@sha256:…`): o que roda é
+//                  IMUTÁVEL (o digest é o conteúdo), mas um digest não declara
+//                  VERSÃO — esta comparação não se aplica. Ele existe porque
+//                  jogá-lo em `floating` faria o relatório AFIRMAR que "a versão
+//                  que roda é a que o docker pull do dia tiver servido", o que é
+//                  falso para um digest: mentira de régua, não de dado;
+//   - `no-image` — o render não declara imagem nenhuma para o serviço do runner;
+//   - `unread`   — o binário não reportou a versão (o `docker exec` falhou, ou a
+//                  saída não tem versão nenhuma).
+//
+// `floating`, `digest`, `no-image` e `unread` NUNCA viram `proven`: "não deu para
+// julgar" não é "está certo" (a invariante do INDETERMINADO do doctor, dentro do
+// guard).
+
+/**
+ * A versão que o BINÁRIO reporta, lida da saída do `act_runner --version`.
+ *
+ * O formato é do próprio binário (`act_runner version v0.6.1`, medido nas duas
+ * imagens deste host) e a leitura é tolerante de propósito: rótulo, `v` de
+ * prefixo, build info depois, quebras de linha. O que ela NÃO faz é inventar —
+ * sem um token com dígitos e pontos a leitura é `null`, e o estado vira
+ * `unread` ("não deu para julgar"), nunca uma versão chutada.
+ *
+ * @param {unknown} stdout o stdout do `act_runner --version`
+ * @returns {string|null} a versão normalizada, ou null
+ */
+export function parseRunnerBinaryVersion(stdout) {
+  const texto = String(stdout ?? "")
+  const casado = /\bv?(\d+(?:\.\d+)+)\b/.exec(texto)
+  return casado ? normalizeRunnerVersion(casado[1]) : null
+}
+
+/**
+ * Lê a versão do binário DENTRO do container em execução.
+ *
+ * O caminho do binário é `/usr/local/bin/act_runner` (medido na imagem), e o
+ * `docker exec` NÃO usa shell: o nome é resolvido pelo PATH do container, então
+ * não há quoting para errar — a mesma decisão do `cat` do registro. "Não
+ * consegui olhar" (docker fora, container parado) é `unavailable`; uma saída sem
+ * versão é `unread`; as duas são ausência de prova, nunca "em sincronia".
+ *
+ * @param {{cwd: string, run: Function, container: string}} args
+ * @returns {{ok: boolean, version?: string|null, state?: string, detail: string}}
+ */
+export function readRunnerBinaryVersion({ cwd, run, container }) {
+  const res = run("docker", ["exec", container, "act_runner", "--version"], {
+    cwd,
+    encoding: "utf8",
+    timeout: 30_000,
+  })
+  if (res.error) return { ok: false, state: "unavailable", detail: res.error.message }
+  if (res.status !== 0) {
+    const err = String(res.stderr ?? "").trim()
+    return {
+      ok: false,
+      state: "unavailable",
+      detail: `docker exec ${container} act_runner --version falhou: ${err.split(/\r?\n/)[0] || `exit ${res.status}`}`,
+    }
+  }
+  const version = parseRunnerBinaryVersion(res.stdout)
+  if (version === null) {
+    return {
+      ok: false,
+      state: "unread",
+      detail: `o binario do container '${container}' nao reportou versao nenhuma em \`act_runner --version\` (saida: ${
+        String(res.stdout ?? "")
+          .trim()
+          .split(/\r?\n/)[0] || "<vazia>"
+      })`,
+    }
+  }
+  return { ok: true, version, detail: `o binario reporta ${version}` }
+}
+
+/**
+ * A TAG de uma referência de imagem (`repo:tag`), ou `null` quando ela não tem
+ * uma.
+ *
+ * A distinção importa: um registry com PORTA (`git.exemplo.cloud:5000/x/y`) tem
+ * `:` que NÃO separa tag — a tag é o que vem depois do último `:` que aparece
+ * DEPOIS da última barra. Sem tag, o docker assume `latest`, e é isso que o
+ * guard diz (o `null` vira `floating` no comparador, pela mesma regra).
+ *
+ * @param {unknown} ref
+ * @returns {string|null}
+ */
+export function imageTag(ref) {
+  const texto = String(ref ?? "").trim()
+  if (texto === "") return null
+  // Um DIGEST não é uma tag (`repo@sha256:abc…` tem `:` e não tem tag): a régua
+  // daqui é `repo:tag`, e quem trata o digest é o `compareActRunnerVersion`,
+  // ANTES desta função — devolver o hash como "tag" faria a comparação acusar
+  // uma tag que não existe.
+  if (imageDigest(texto) !== null) return null
+  const barra = texto.lastIndexOf("/")
+  const doisPontos = texto.lastIndexOf(":")
+  if (doisPontos <= barra) return null
+  const tag = texto.slice(doisPontos + 1).trim()
+  return tag === "" ? null : tag
+}
+
+/**
+ * O DIGEST de uma referência de imagem (`repo@sha256:…`), ou `null`.
+ *
+ * O `@` é o separador do digest no formato OCI — uma referência pode ter os dois
+ * (`repo:1.2.3@sha256:…`), e aí ela declara uma tag E um conteúdo; o digest é o
+ * que está depois do `@`. É ele que decide o estado `digest` da comparação.
+ *
+ * @param {unknown} ref
+ * @returns {string|null} o algoritmo+hash (`sha256:…`), ou `null`
+ */
+export function imageDigest(ref) {
+  const texto = String(ref ?? "").trim()
+  const arroba = texto.lastIndexOf("@")
+  if (arroba < 0) return null
+  const digest = texto.slice(arroba + 1).trim()
+  return /^[a-z0-9]+:[0-9a-f]{16,}$/i.test(digest) ? digest : null
+}
+
+/**
+ * A tag DECLARA uma versão? (`0.6.1`, `v0.6.1` — e não `latest`/`stable`.)
+ *
+ * A régua é a FORMA, não uma lista de nomes flutuantes: uma tag que não é
+ * número-pontuado não pina versão nenhuma, e uma lista à mão deixaria passar a
+ * próxima tag de fantasia que alguém inventar. O `latest` implícito (imagem sem
+ * tag) cai aqui pela mesma porta.
+ *
+ * @param {unknown} tag
+ * @returns {boolean}
+ */
+export function isVersionTag(tag) {
+  return /^v?\d+(?:\.\d+)*$/.test(String(tag ?? "").trim())
+}
+
+/**
+ * A VERSÃO do binário × a TAG DECLARADA no compose — pura, e é o núcleo desta
+ * metade (o irmão do `compareRunnerVersion`, e com um estado a mais).
+ *
+ * O estado `floating` é o que a forja mediu: sem ele, ou o guard diria verde
+ * ("a declaração está cumprida") sobre uma tag que não declara nada, ou acusaria
+ * um drift que ninguém pode consertar sem decidir QUAL versão a stack sobe. Ele é
+ * uma DECLARAÇÃO PENDENTE, e é assim que o doctor o publica.
+ *
+ * `digest` é o par do `floating` num mundo pinado por conteúdo: uma imagem
+ * `repo@sha256:…` não deixa dúvida sobre o que roda, mas o digest NÃO diz versão
+ * — a comparação de versão simplesmente não se aplica, e o estado o declara em
+ * vez de forçar um "floating" cuja prosa ("a versão que roda é a que o docker
+ * pull do dia tiver servido") seria falsa.
+ *
+ * @param {{declaredImage?: unknown, reported?: unknown, container?: string|null}} args
+ * @returns {{state: string, declared: string|null, tag: string|null, reported: string|null, detail: string}}
+ */
+export function compareActRunnerVersion({
+  declaredImage = null,
+  reported = null,
+  container = null,
+  fonte = null,
+}) {
+  const imagem = String(declaredImage ?? "").trim()
+  // A FONTE do container é dita ao lado do nome: uma SONDA declarada não é o
+  // container da stack, e o veredito da versão não pode se confundir com ela.
+  const onde = container ? ` no container '${container}'${fonte ? ` (${fonte})` : ""}` : ""
+  const tag = imageTag(imagem)
+  const reportada = normalizeRunnerVersion(reported)
+  if (imagem === "") {
+    return {
+      state: "no-image",
+      declared: null,
+      tag: null,
+      reported: reportada,
+      detail: `o render de ${GITEA_COMPOSE} nao declara a imagem do servico '${RUNNER_SERVICE}' — sem ela nao ha versao declarada para comparar com a que o binario reporta`,
+    }
+  }
+  const digest = imageDigest(imagem)
+  if (digest !== null) {
+    return {
+      state: "digest",
+      declared: imagem,
+      // Uma referência pode declarar os DOIS (`repo:1.2.3@sha256:…`): a tag
+      // continua sendo informação (é ela que um humano lê), mas quem pina o
+      // conteúdo é o digest — por isso o estado não é `proven` nem `drift`.
+      tag: imageTag(imagem.slice(0, imagem.lastIndexOf("@"))) ?? null,
+      reported: reportada,
+      detail: `a imagem declarada do runner e '${imagem}' — pinada por DIGEST (${digest}): o que roda e IMUTAVEL, e por isso nao ha "o que o docker pull do dia serviu"; mas um digest NAO declara VERSAO nenhuma${reportada ? ` (o binario reporta ${reportada} hoje)` : ""}, entao o repositorio declara o CONTEUDO e nao a versao que a stack sobe — alinhe a tag (ou mova o pin para uma tag que declare versao) para que a versao que roda seja comparavel`,
+    }
+  }
+  if (!isVersionTag(tag)) {
+    return {
+      state: "floating",
+      declared: imagem,
+      // A tag como ela está declarada (`latest`, ou `null` quando a imagem não
+      // tem tag nenhuma): o ESTADO é que diz que ela não pina versão — apagá-la
+      // aqui faria o relatório dizer "tag não declarada" sobre uma imagem que
+      // declara exatamente `latest`.
+      tag: tag ?? null,
+      reported: reportada,
+      detail: `a imagem declarada do runner e '${imagem}' e a tag '${tag ?? "(nenhuma — o docker assume latest)"}' NAO declara versao nenhuma: a versao que roda e a que o docker pull do dia tiver servido${reportada ? ` (o binario reporta ${reportada} hoje)` : ""} — nada no repositorio diz QUAL delas a stack sobe`,
+    }
+  }
+  if (reportada === null) {
+    return {
+      state: "unread",
+      declared: imagem,
+      tag,
+      reported: null,
+      detail: `a tag declarada pina ${tag}, e a versao do binario${onde} NAO foi lida — o que roda NAO foi julgado contra o que o repositorio declara`,
+    }
+  }
+  if (normalizeRunnerVersion(tag) === reportada) {
+    return {
+      state: "proven",
+      declared: imagem,
+      tag,
+      reported: reportada,
+      detail: `versao ${reportada} = a tag declarada em ${GITEA_COMPOSE}`,
+    }
+  }
+  return {
+    state: "drift",
+    declared: imagem,
+    tag,
+    reported: reportada,
+    detail: `o binario do runner${onde} reporta '${reportada}' e ${GITEA_COMPOSE} declara a tag '${tag}': o que RODA nao e o que o repositorio declara`,
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 4. A OUTRA FORJA — o runner auto-hospedado do GitHub
 // ═══════════════════════════════════════════════════════════════════════════
 //
@@ -515,8 +807,36 @@ export function readRegisteredLabels({ cwd, run, container, stateFile }) {
 // fine-grained com 'Self-hosted runners: read'). O `GITHUB_TOKEN` de um run NÃO
 // tem esse escopo — e por isso, sem token, o guard diz INDETERMINADO (exit 3,
 // "não olhei"), nunca "em sincronia". As variáveis são as MESMAS do
-// `apply-required-checks.mjs` (GITHUB_TOKEN/GH_TOKEN, GITHUB_API_URL,
-// GITHUB_REPOSITORY): uma credencial, um vocabulário.
+// `apply-required-checks.mjs` (GITHUB_TOKEN/GH_TOKEN, GITHUB_API_URL) — uma
+// credencial, um vocabulário.
+//
+// O REPO, e por que ele NÃO sai do `GITHUB_REPOSITORY`: o canal do GitHub é
+// `GH_REPOSITORY` (o mesmo do `githubReadConfig`, do board e do doctor). O runner
+// da forja EMULA o contexto do GitHub — lá `GITHUB_REPOSITORY` é o repositório DO
+// GITEA, e lê-lo aqui consultaria o registro de OUTRO repositório (a resposta
+// seria o registro vazio de um repo que não é o nosso, publicada como se fosse o
+// nosso). O `apply-required-checks` aceita `--repo` pelo mesmo motivo; aqui a
+// precedência é `--gh-repo` > o `REPO_URL` do script (fonte comitada) >
+// `GH_REPOSITORY` — e a ausência dos três é `env-missing` NOMEANDO o canal.
+//
+// A TERCEIRA PERGUNTA AO MESMO REGISTRO — a VERSÃO registrada × o PIN do
+// script. O payload da API traz, por runner, o campo `version`: é a versão que o
+// SERVIÇO aceitou (o runner se atualiza sozinho para ela). O `RUNNER_VERSION` de
+// `deploy/setup-github-runner.sh` é o pin que o repositório declara, e os dois
+// TÊM de casar. MEDIDO em 22/09/2026: com o pin em 2.320.0 o runner registrou,
+// pegou o primeiro job e se AUTO-ATUALIZOU para 2.337.0 no MEIO dele — o update
+// derruba o worker, o job fica PRESO em `in_progress` segurando o único runner
+// (o cancel do run e o remove do runner respondem 422 "is currently running a
+// job"), e nada no repositório percebia: a forja ficou parada, não vermelha.
+//
+// Um pin recusado é a pior classe de defeito — ele só aparece no meio de um job,
+// longe de quem o declarou. A comparação aqui o nomeia ANTES, e ela é por VALOR
+// (o `v` de `v2.337.0` e espaço em volta não são drift). As TRÊS respostas são
+// separadas de propósito (labels e versão, em listas distintas) porque os
+// remédios são diferentes: re-registrar resolve o REGISTRO, e alinhar o PIN é o
+// que resolve a versão. "Não deu para julgar" (script sem o pin, ou API sem o
+// campo `version`) NUNCA vira "em sincronia": sai com o estado próprio (`no-pin`
+// / `unread`), que o doctor publica como não-provado.
 
 /** O script que DECLARA o runner do GitHub: fonte única dos labels, do nome e do repo. */
 export const GITHUB_RUNNER_SCRIPT = "deploy/setup-github-runner.sh"
@@ -559,8 +879,12 @@ export function repoFromUrl(url) {
 /**
  * O lado DECLARADO do GitHub, lido do script de setup — nada é cravado aqui.
  *
+ * O `version` é o PIN da versão do runner (`RUNNER_VERSION`), a segunda
+ * declaração que o serviço tem de aceitar: ela é lida do MESMO texto, pelo mesmo
+ * `shellAssignment` (linha inteira, sem casar comentário) e não é cravada aqui.
+ *
  * @param {string} text
- * @returns {{labels: string|null, entries: ReturnType<typeof parseLabelEntries>, name: string|null, repoUrl: string|null, repo: string|null}}
+ * @returns {{labels: string|null, entries: ReturnType<typeof parseLabelEntries>, name: string|null, repoUrl: string|null, repo: string|null, version: string|null}}
  */
 export function parseGithubRunnerSetup(text) {
   const labels = shellAssignment(text, "RUNNER_LABELS")
@@ -571,6 +895,7 @@ export function parseGithubRunnerSetup(text) {
     name: shellAssignment(text, "RUNNER_NAME"),
     repoUrl,
     repo: repoFromUrl(repoUrl),
+    version: shellAssignment(text, "RUNNER_VERSION"),
   }
 }
 
@@ -604,10 +929,17 @@ export function normalizeLabelEntries(entries) {
  * @property {string} name
  * @property {string} status   online | offline | unknown
  * @property {string[]} labels os NOMES dos labels (a API os devolve como objetos)
+ * @property {string} version  a versão que o SERVIÇO aceitou (a que o runner usa)
  */
 
 /**
  * A lista de runners do payload da API, na forma que a decisão usa.
+ *
+ * O `version` é lido aqui porque é ele que o SERVIÇO aceitou: é o valor que o
+ * pin do script tem de casar (a classe medida em 22/09/2026 — o runner se
+ * auto-atualiza no meio do primeiro job quando o pin é recusado). Ausente no
+ * payload vira string vazia, e a comparação trata isso como "não julgado" —
+ * nunca como "em sincronia".
  *
  * @param {unknown} payload
  * @returns {{ok: boolean, runners?: GithubRunner[], detail: string}}
@@ -624,10 +956,83 @@ export function parseGithubRunners(payload) {
       id: r?.id ?? null,
       name: String(r?.name ?? ""),
       status: String(r?.status ?? "unknown"),
+      version: String(r?.version ?? ""),
       labels: (Array.isArray(r?.labels) ? r.labels : [])
         .map((l) => String(l?.name ?? ""))
         .filter(Boolean),
     })),
+  }
+}
+
+/**
+ * Uma versão de runner comparável: tira espaço e um `v` de prefixo.
+ *
+ * A comparação é por VALOR (o `v2.337.0` de uma tag e o `2.337.0` que a API
+ * devolve são a MESMA versão) — comparar o texto cru faria alarme falso e o
+ * operador aprenderia a ignorar o guard.
+ *
+ * @param {unknown} value
+ * @returns {string|null} a versão normalizada, ou null sem valor
+ */
+export function normalizeRunnerVersion(value) {
+  const texto = String(value ?? "").trim()
+  if (texto === "") return null
+  return texto.replace(/^v/i, "")
+}
+
+/**
+ * A VERSÃO REGISTRADA × O PIN DO SCRIPT — pura, e é o núcleo desta metade.
+ *
+ * Os quatro estados existem porque as três causas são diferentes, e cada uma tem
+ * um remédio (e um leitor) diferente:
+ *   - `proven`  — o registro responde a versão que o script pina;
+ *   - `drift`   — o serviço RECUSOU o pin (o registro está em outra versão). É o
+ *                 defeito medido: o runner se auto-atualiza no meio do primeiro
+ *                 job, derruba o worker e o job fica preso segurando o runner;
+ *   - `no-pin`  — o script não declara `RUNNER_VERSION`: não há pin com que
+ *                 comparar (a declaração é legível sem rede, e é daqui que o
+ *                 remédio sai);
+ *   - `unread`  — a API não devolveu o campo `version` deste runner.
+ *
+ * `no-pin` e `unread` NÃO são `proven`: "não deu para julgar" nunca vira "está
+ * certo" (a invariante do INDETERMINADO do doctor, dentro do guard).
+ *
+ * @param {{pin: unknown, registered: unknown, runnerName?: string|null}} args
+ * @returns {{state: string, pin: string|null, registered: string|null, detail: string}}
+ */
+export function compareRunnerVersion({ pin, registered, runnerName = null }) {
+  const pino = normalizeRunnerVersion(pin)
+  const registrada = normalizeRunnerVersion(registered)
+  const onde = runnerName ? ` do runner '${runnerName}'` : ""
+  if (pino === null) {
+    return {
+      state: "no-pin",
+      pin: null,
+      registered: registrada,
+      detail: `${GITHUB_RUNNER_SCRIPT} NAO declara RUNNER_VERSION — sem o pin nao ha com que comparar a versao registrada${onde}`,
+    }
+  }
+  if (registrada === null) {
+    return {
+      state: "unread",
+      pin: pino,
+      registered: null,
+      detail: `a API nao devolveu o campo 'version'${onde} — a versao registrada NAO foi julgada (o pin declara ${pino})`,
+    }
+  }
+  if (pino === registrada) {
+    return {
+      state: "proven",
+      pin: pino,
+      registered: registrada,
+      detail: `versao ${registrada} = o pin de ${GITHUB_RUNNER_SCRIPT}`,
+    }
+  }
+  return {
+    state: "drift",
+    pin: pino,
+    registered: registrada,
+    detail: `o servico RECUSOU o pin:${onde} o registro responde '${registrada}' e ${GITHUB_RUNNER_SCRIPT} pina '${pino}'`,
   }
 }
 
@@ -742,6 +1147,13 @@ export async function fetchGithubRunners({
  * @property {string} detail
  * @property {string[]} declared    os labels que o script declara
  * @property {string[]} registered  os que a API devolveu (vazio se não houve seleção)
+ * @property {string[]} versionViolations as divergências da VERSÃO registrada × o PIN
+ *                                   do script (lista PRÓPRIA: `violations` é dos
+ *                                   labels, e `violations.length` significa
+ *                                   "quantos problemas de label existem")
+ * @property {{state: string, pin: string|null, registered: string|null, detail: string}|null} version
+ *                                   a comparação da versão (null quando nenhum
+ *                                   runner chegou a ser selecionado)
  * @property {string|null} runner    o runner comparado (null se nenhum foi selecionado)
  * @property {string|null} status    online/offline do runner comparado
  * @property {string|null} repo      owner/nome consultado
@@ -772,6 +1184,13 @@ export async function checkGithubRunnerLabels({
   const base = {
     forge: "github",
     violations: [],
+    // As violações da VERSÃO ficam numa lista PRÓPRIA: `violations` é a lista
+    // que as mensagens do registro (labels) consomem, e `violations.length`
+    // significa "quantos problemas de LABEL existem". Somar as duas faria o
+    // número deixar de significar o que ele diz — a mesma armadilha já corrigida
+    // no `check:registry-source` e no remédio da forja.
+    versionViolations: [],
+    version: null,
     remedies: [],
     declared: [],
     registered: [],
@@ -793,8 +1212,10 @@ export async function checkGithubRunnerLabels({
   const setup = parseGithubRunnerSetup(readFileSync(scriptPath, "utf8"))
   const declaredEntries = setup.entries
   const declaredRaw = declaredEntries.map((e) => e.raw)
-  const resolvedRepo = repo ?? setup.repo ?? env.GITHUB_REPOSITORY ?? null
-  const resolvedApiUrl = apiUrl ?? env.GITHUB_API_URL ?? DEFAULT_GITHUB_API_URL
+  // O CANAL do GitHub, e não o `GITHUB_REPOSITORY` do contexto compartilhado
+  // (que no runner da forja aponta para o repositório do Gitea): ver o cabeçalho.
+  const resolvedRepo = repo ?? setup.repo ?? env.GH_REPOSITORY ?? null
+  const resolvedApiUrl = apiUrl ?? env.GH_API_URL ?? env.GITHUB_API_URL ?? DEFAULT_GITHUB_API_URL
   const resolvedToken = token ?? env.GH_TOKEN ?? env.GITHUB_TOKEN ?? null
 
   const reRegister =
@@ -832,7 +1253,7 @@ export async function checkGithubRunnerLabels({
       state: "env-missing",
       apiUrl: resolvedApiUrl,
       declared: declaredRaw,
-      detail: `não sei qual repositório consultar: ${GITHUB_RUNNER_SCRIPT} não declara REPO_URL e GITHUB_REPOSITORY não está no ambiente (ou use --gh-repo owner/name)`,
+      detail: `não sei qual repositório consultar: ${GITHUB_RUNNER_SCRIPT} não declara REPO_URL e GH_REPOSITORY (o canal do GitHub) não está no ambiente (ou use --gh-repo owner/name) — o \`GITHUB_REPOSITORY\` do contexto compartilhado NÃO é lido: no runner da forja ele aponta para o repositório do Gitea`,
     }
   }
 
@@ -912,6 +1333,7 @@ export async function checkGithubRunnerLabels({
   ])
   const named = (name) => orig.get(String(name).toLowerCase()) ?? name
   const violations = []
+  const versionViolations = []
 
   // Registrado mas OFFLINE é o "runner órfão" desta forja: existe no painel,
   // não pega job. Tem remédio próprio (e é a causa do "no runner available").
@@ -945,20 +1367,48 @@ export async function checkGithubRunnerLabels({
     )
   }
 
+  // ── A VERSÃO registrada × o PIN do script ────────────────────────────────
+  //
+  // A terceira pergunta ao MESMO registro, e a única cujo sintoma aparece LONGE
+  // daqui: um pin recusado não deixa a forja vermelha — o runner se auto-atualiza
+  // no meio do primeiro job, derruba o worker e o job fica PRESO segurando o
+  // único runner (medido: 2.320.0 → 2.337.0, e o cancel/remove respondem 422
+  // "is currently running a job"). Só o pin alinhado à versão que o serviço
+  // aceita evita isso, e é o que esta comparação vigia.
+  const version = compareRunnerVersion({
+    pin: setup.version,
+    registered: runner.version,
+    runnerName: runner.name,
+  })
+  if (version.state === "drift") {
+    versionViolations.push(
+      `${version.detail} — o pin que o servico recusa se AUTO-ATUALIZA no meio do primeiro job: o update derruba o worker e o job fica PRESO em in_progress segurando o runner (o cancel do run e o remove do runner respondem 422 'is currently running a job')`,
+    )
+  }
+
+  const versionRemedies = versionViolations.length
+    ? [
+        `Remédio: alinhe \`RUNNER_VERSION\` em ${GITHUB_RUNNER_SCRIPT} à versão que o serviço aceita (o \`version\` do registro é legível na própria API) e SÓ ENTÃO re-registre — o pin é o que o config.sh baixa.`,
+      ]
+    : []
   const remedies =
-    violations.length === 0
+    violations.length === 0 && versionViolations.length === 0
       ? []
-      : runner.status !== "online"
+      : runner.status !== "online" && violations.length > 0
         ? [
             `Remédio: no host do runner, \`sudo systemctl restart actions.runner.*\` e \`journalctl -u actions.runner.*\` para ver por que ele não conectou — ver deploy/GITHUB_RUNNER.md § Troubleshooting.`,
             reRegister,
+            ...versionRemedies,
           ]
-        : [reRegister]
+        : [reRegister, ...versionRemedies]
 
+  const problemas = violations.length + versionViolations.length
   return {
     ...base,
-    state: violations.length > 0 ? "violated" : "proven",
+    state: problemas > 0 ? "violated" : "proven",
     violations,
+    versionViolations,
+    version,
     remedies,
     declared: declaredRaw,
     registered: registeredEntries.map((e) => e.raw),
@@ -967,8 +1417,10 @@ export async function checkGithubRunnerLabels({
     repo: resolvedRepo,
     apiUrl: resolvedApiUrl,
     detail:
-      violations.length > 0
-        ? `${violations.length} problema(s) entre o registro do GitHub e o que ${GITHUB_RUNNER_SCRIPT} declara`
+      problemas > 0
+        ? violations.length > 0
+          ? `${problemas} problema(s) entre o registro do GitHub e o que ${GITHUB_RUNNER_SCRIPT} declara`
+          : `${version.detail} — a forja fica PARADA, nao vermelha`
         : `${registeredEntries.length} label(s) registrado(s) idênticos ao setup, em '${runner.name}' (${runner.status})`,
   }
 }
@@ -981,6 +1433,8 @@ export async function checkGithubRunnerLabels({
  * @typedef {object} RunnerLabelsResult
  * @property {string} state      proven | violated | unavailable | env-missing
  * @property {string[]} violations
+ * @property {string[]} versionViolations  o drift da VERSÃO do binário (remédio PRÓPRIO: a TAG)
+ * @property {{state: string, tag: string|null, reported: string|null, detail: string}|null} version  a versão do binário × a tag do compose
  * @property {string[]} remedies
  * @property {string} detail
  * @property {string[]} declared
@@ -992,7 +1446,8 @@ export async function checkGithubRunnerLabels({
 /**
  * Compara o registro do act_runner com o que o compose da forja declara.
  *
- * @param {{cwd?: string, run?: Function, envFile?: string|null, container?: string|null, stateFile?: string|null}} [options]
+ * @param {{cwd?: string, run?: Function, envFile?: string|null, container?: string|null,
+ *   stateFile?: string|null, env?: Record<string, string | undefined>}} [options]
  * @returns {RunnerLabelsResult}
  */
 export function checkRunnerLabels({
@@ -1001,9 +1456,12 @@ export function checkRunnerLabels({
   envFile = null,
   container = null,
   stateFile = null,
+  env = process.env,
 } = {}) {
   const base = {
     violations: [],
+    versionViolations: [],
+    version: null,
     remedies: [],
     declared: [],
     registered: [],
@@ -1036,9 +1494,20 @@ export function checkRunnerLabels({
   const declaredEntries = parseLabelEntries(declared.labels)
   const declaredRaw = declaredEntries.map((e) => e.raw)
 
+  // O container do runner: `--container` (a CLI) → a variável DECLARADA
+  // (`RUNNER_CONTAINER_ENV`, a mesma forma nos dois consumidores) → o compose. A
+  // `fonte` viaja até o veredito da VERSÃO: quem mediu uma sonda contra a tag
+  // pinada precisa de saber que o container NÃO é o da stack.
+  const doAmbiente =
+    typeof env?.[RUNNER_CONTAINER_ENV] === "string" ? env[RUNNER_CONTAINER_ENV] : null
   const resolvedContainer = container
     ? { ok: true, container, detail: "--container" }
-    : resolveRunnerContainer({ cwd, run, rendered: declared.rendered })
+    : resolveRunnerContainer({ cwd, run, rendered: declared.rendered, declarado: doAmbiente })
+  const fonteDoContainer = container
+    ? "--container"
+    : resolvedContainer.ok
+      ? resolvedContainer.detail
+      : null
   if (!resolvedContainer.ok) {
     return {
       ...base,
@@ -1047,6 +1516,37 @@ export function checkRunnerLabels({
       detail: `não sei qual container ler — ${resolvedContainer.detail}`,
     }
   }
+
+  // ── A VERSÃO do binário × a TAG do compose ────────────────────────────────
+  //
+  // Lida AQUI (com o container já resolvido e ANTES do registro): a versão é um
+  // fato do CONTAINER, não do arquivo de registro — e assim ela existe em TODOS
+  // os caminhos que chegaram a resolver um container, inclusive o do runner que
+  // subiu sem registro nenhum. `floating` (a tag não pina versão) não bloqueia:
+  // é uma DECLARAÇÃO PENDENTE, e o veredito a publica como não-provado — o que
+  // bloqueia é o `drift` (a tag declara uma versão e o que RODA é outra).
+  const reported = readRunnerBinaryVersion({
+    cwd,
+    run,
+    container: resolvedContainer.container,
+  })
+  const version = compareActRunnerVersion({
+    declaredImage: declared.rendered?.services?.[RUNNER_SERVICE]?.image ?? null,
+    reported: reported.ok ? reported.version : null,
+    container: resolvedContainer.container,
+    fonte: fonteDoContainer,
+  })
+  const versionViolations = []
+  if (version.state === "drift") {
+    versionViolations.push(
+      `${version.detail} — a versao do act_runner e a do BINARIO dentro da imagem: com a tag declarada apontando para outra build, os labels podem ate casar e o runner roda outra versao (foi a classe medida no pin do GitHub: 2.320.0 -> 2.337.0, o job fica preso segurando o unico runner)`,
+    )
+  }
+  const versionRemedies = versionViolations.length
+    ? [
+        `Remédio: alinhe a tag da imagem do runner em ${GITEA_COMPOSE} (ou traga o container para a versao declarada com \`docker compose pull runner && docker compose up -d runner\`) — a versao do binario vem da IMAGEM, e o container nao se auto-atualiza.`,
+      ]
+    : []
 
   let path = stateFile
   if (!path) {
@@ -1057,6 +1557,8 @@ export function checkRunnerLabels({
         state: "unavailable",
         declared: declaredRaw,
         container: resolvedContainer.container,
+        version,
+        versionViolations,
         detail: mount.detail,
       }
     }
@@ -1077,6 +1579,8 @@ export function checkRunnerLabels({
         declared: declaredRaw,
         container: resolvedContainer.container,
         stateFile: path,
+        version,
+        versionViolations,
         detail: registered.detail,
         violations: [registered.detail],
         remedies: [
@@ -1090,6 +1594,8 @@ export function checkRunnerLabels({
       declared: declaredRaw,
       container: resolvedContainer.container,
       stateFile: path,
+      version,
+      versionViolations,
       detail: registered.detail,
     }
   }
@@ -1160,22 +1666,32 @@ export function checkRunnerLabels({
             `Se o compose do host for outro arquivo, confirme COMPOSE_FILE: a comparação é contra ${GITEA_COMPOSE} deste checkout.`,
           ]
 
+  const problemas = violations.length + versionViolations.length
   return {
     ...base,
-    state: violations.length > 0 ? "violated" : "proven",
+    state: problemas > 0 ? "violated" : "proven",
     violations,
-    remedies,
+    versionViolations,
+    version,
+    remedies:
+      problemas === 0
+        ? []
+        : violations.length > 0
+          ? [...remedies, ...versionRemedies]
+          : versionRemedies,
     declared: declaredRaw,
     registered: registeredRaw,
     container: resolvedContainer.container,
     stateFile: path,
     detail:
-      violations.length > 0
-        ? declaredEntries.length === 0
-          ? `o compose não tem labels a comparar (${declared.detail})`
-          : registeredEntries.length === 0
-            ? `o registro do runner está VAZIO e o compose declara ${declaredEntries.length} label(s)`
-            : `${violations.length} divergência(s) entre o registro e o compose`
+      problemas > 0
+        ? violations.length > 0
+          ? declaredEntries.length === 0
+            ? `o compose não tem labels a comparar (${declared.detail})`
+            : registeredEntries.length === 0
+              ? `o registro do runner está VAZIO e o compose declara ${declaredEntries.length} label(s)`
+              : `${problemas} divergência(s) entre o registro e o compose`
+          : `${version.detail} — a forja roda outra versao do que o repositorio declara`
         : `${registeredRaw.length} label(s) registrado(s) idênticos ao compose (${declared.detail})`,
   }
 }
@@ -1204,6 +1720,10 @@ export function renderReport(result) {
       ? `${result.runner} (${result.status})`
       : "nenhum runner selecionado"
     const registry = `repos/${result.repo}/actions/runners`
+    const versao =
+      result.version === null || result.version === undefined
+        ? null
+        : `  versao        : ${result.version.registered ?? "<nao lida>"} ${result.version.state === "proven" ? "=" : "!="} pin ${result.version.pin ?? "<nao declarado>"} (${result.version.state})`
     if (result.state === "proven") {
       lines.push(
         `check-runner-labels[github]: ✅ o runner auto-hospedado está registrado com os labels do setup — ${result.detail}.`,
@@ -1211,15 +1731,20 @@ export function renderReport(result) {
       lines.push(`  runner        : ${where} · api: ${registry}`)
       lines.push(`  declarado     : ${result.declared.join(" , ") || "<nenhum>"}`)
       lines.push(`  registrado    : ${result.registered.join(" , ") || "<nenhum>"}`)
+      if (versao) lines.push(versao)
       return lines.join("\n")
     }
     if (result.state === "violated") {
       lines.push(`check-runner-labels[github]: ❌ ${result.detail}:`)
       for (const v of result.violations) lines.push(`  - ${v}`)
+      for (const v of result.versionViolations ?? []) lines.push(`  - ${v}`)
       for (const r of result.remedies) lines.push(`  → ${r}`)
       lines.push(`  declarado pelo setup    : ${result.declared.join(" , ") || "<nenhum>"}`)
       lines.push(`  registrado no GitHub    : ${result.registered.join(" , ") || "<nenhum>"}`)
       if (result.runner) lines.push(`  runner                  : ${where}`)
+      // A versão ao lado do registro TAMBÉM no estado vermelho: é ela que diz se
+      // o defeito é o registro (labels) ou o PIN que o serviço recusou.
+      if (versao) lines.push(versao)
       return lines.join("\n")
     }
     lines.push(
@@ -1229,26 +1754,39 @@ export function renderReport(result) {
     return lines.join("\n")
   }
 
+  // A VERSÃO do binário × a TAG do compose: a segunda pergunta ao MESMO
+  // container, e a que diz se o defeito é o REGISTRO (labels) ou a IMAGEM
+  // (versão que roda). Sai nos TRÊS desfechos — é ela que explica um vermelho
+  // sem nenhuma violação de label.
+  const versao =
+    result.version === null || result.version === undefined
+      ? null
+      : `  versao        : ${result.version.reported ?? "<nao lida>"} ${result.version.state === "proven" ? "=" : "!="} tag ${result.version.tag ?? "<nao declarada>"} (${result.version.state})`
+
   if (result.state === "proven") {
     lines.push(
       `check-runner-labels: ✅ o registro do act_runner é o do compose — ${result.detail}.`,
     )
     lines.push(`  container     : ${result.container} · registro: ${result.stateFile}`)
     for (const label of result.declared) lines.push(`  registrado    : ${label}`)
+    if (versao) lines.push(versao)
     return lines.join("\n")
   }
   if (result.state === "violated") {
     lines.push(`check-runner-labels: ❌ ${result.detail}:`)
     for (const v of result.violations) lines.push(`  - ${v}`)
+    for (const v of result.versionViolations ?? []) lines.push(`  - ${v}`)
     for (const r of result.remedies) lines.push(`  → ${r}`)
     lines.push(`  declarado pelo compose : ${result.declared.join(" , ") || "<nenhum>"}`)
     lines.push(`  registrado no runner   : ${result.registered.join(" , ") || "<nenhum>"}`)
+    if (versao) lines.push(versao)
     return lines.join("\n")
   }
   lines.push(
     `check-runner-labels: ⚠️ NÃO PROVADO (${result.state}) — o registro NÃO foi comparado com o compose.`,
   )
   lines.push(`  ${result.detail}`)
+  if (versao) lines.push(versao)
   return lines.join("\n")
 }
 
@@ -1258,15 +1796,27 @@ const USAGE = `Uso: node scripts/check-runner-labels.mjs [opções]
 
   forja (act_runner, lê o registro DENTRO do container):
   --gitea-env <path>   env da forja a usar como baseline (default: o do host, se existir, senão o template)
-  --container <nome>   container do runner (default: o container_name do compose)
+  --container <nome>   container do runner (default: a variável GITEA_RUNNER_CONTAINER,
+                       e depois o container_name do compose)
+    a variável GITEA_RUNNER_CONTAINER é a forma DECLARADA de apontar o container
+    nos DOIS consumidores (aqui e no forge-doctor): é o que deixa uma SONDA (um
+    container de teste com a imagem pinada) medir a metade da VERSÃO sem tomar o
+    nome que a stack usa. O declarado VENCE o derivado (--container > variável >
+    compose), e a fonte sai dita no veredito.
   --state-file <path>  caminho do registro DENTRO do container (default: <volume nomeado>/.runner)
+    a VERSÃO sai do comando act_runner --version (docker exec) e é comparada com
+    a TAG da imagem que o RENDER do compose declara: uma tag que NAO declara
+    versao (latest) sai 'floating' — nunca verde, nunca divergencia —, e uma tag
+    que declara versao e nao é a que o binario reporta sai 'drift' (exit 1)
 
   github (runner auto-hospedado; o registro vive no SERVIDOR, não em arquivo):
   --gh-repo <owner/nome>  repositório a consultar (default: o REPO_URL do script de setup)
   --runner-name <nome>    runner a comparar (default: o RUNNER_NAME do script de setup)
-    credenciais do ambiente: GITHUB_TOKEN | GH_TOKEN, GITHUB_API_URL, GITHUB_REPOSITORY
+    credenciais do ambiente: GITHUB_TOKEN | GH_TOKEN, GH_API_URL, GH_REPOSITORY
     (as MESMAS do apply-required-checks; a lista de runners exige permissão de
-     self-hosted runners no repo — o GITHUB_TOKEN de um run não a tem)
+     self-hosted runners no repo — o GITHUB_TOKEN de um run não a tem; e o REPO
+     vem do canal GH_REPOSITORY, nunca do GITHUB_REPOSITORY compartilhado,
+     que no runner da forja aponta para o repositório do Gitea)
 
   --json               saída estruturada
   -h, --help           esta ajuda
