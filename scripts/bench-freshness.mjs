@@ -25,6 +25,15 @@
 // declarando custo para o merge é uma afirmação que ninguém re-mediu enquanto a
 // árvore andou, e é exatamente aí que os 28% couberam.
 //
+// A TERCEIRA PERGUNTA mede o relógio do OBJETO medido: quantos COMMITS A MATRIZ
+// andou depois do ato que a mediu. As duas réguas que ligam a matriz ao registro
+// são de CONTEÚDO (o `check-mutation-count` compara ids, count e metades; o fato
+// das formas pergunta se o arquivo da forma existe no commit de origem), e um
+// sub-test cujo ALVO muda ou um corpo de suíte que muda de CUSTO deixam o número
+// declarado descrevendo outra matriz sem mexer em contagem NENHUMA. O teto dessa
+// pergunta é o ritmo DA MATRIZ (o master e as suítes que ele cita), não o do
+// repositório — ver `POLITICA_DA_MATRIZ`.
+//
 // AS OUTRAS DECLARAÇÕES QUE ENVELHECEM entram no MESMO fato (ver a seção abaixo):
 // cada `ms` declarado do modelo de latência (`ci/merge-latency.json`) e cada
 // tabela do README que declara duração. O que se cobra delas é o que se cobra da
@@ -112,7 +121,14 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 // declara medidas não pode passar a exigir um `package.json` para carregar —
 // medido: o doctor sobre uma cópia do repositório sem ele morria no import.
 // A régua é UMA só: o dono a importa e reexporta de lá.
-import { BASELINE_FILE, FAMILY_MEASURED, measuredFamilies } from "./bench-families.mjs"
+import {
+  BASELINE_FILE,
+  FORM_SECTION,
+  MASTER_DOS_SUBTESTS,
+  fonteDaForma,
+  mapaDoMaster,
+  measuredFamilies,
+} from "./bench-families.mjs"
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(SCRIPT_DIR, "..")
@@ -230,11 +246,22 @@ export function medirRitmoDeCommits({
  * permite recomputar o teto do lado de fora (`piso` × `ciclos` contra
  * `commits` ÷ `janelaDias` × `ciclos`) sem uma segunda cópia da regra.
  *
- * @param {{state: string, commitsPorCiclo?: number|null, reason?: string|null, desde?: string}} ritmo
+ * O `reserva` é o único ponto que muda entre os RELÓGIOS (o do repositório tem a
+ * reserva de 150; o da MATRIZ não tem um "ritmo de quando a régua foi escrita"
+ * para citar e usa a política aplicada ao piso): a ARITMÉTICA é uma só, e é por
+ * isso que desligá-la muta os dois relógios — duas cópias divergiriam no dia em
+ * que uma fosse ajustada, e o teto de um deles passaria a ser outro número.
+ *
+ * @param {{state: string, commitsPorCiclo?: number|null, reason?: string|null, desde?: string, paths?: number}} ritmo
  * @param {typeof POLITICA_DO_TETO} [politica]
+ * @param {{reserva?: number}} [options]
  * @returns {TetoDeIdade}
  */
-export function tetoDoRitmo(ritmo, politica = POLITICA_DO_TETO) {
+export function tetoDoRitmo(
+  ritmo,
+  politica = POLITICA_DO_TETO,
+  { reserva = FRESHNESS_MAX_COMMITS_BEHIND } = {},
+) {
   const base = {
     ciclos: politica.ciclos,
     cicloDias: politica.cicloDias,
@@ -242,11 +269,14 @@ export function tetoDoRitmo(ritmo, politica = POLITICA_DO_TETO) {
     pisoDeCiclo: politica.pisoDeCiclo,
     desde: ritmo?.desde ?? null,
     commits: ritmo?.commits ?? null,
+    // O RECORTE do ritmo só é publicado por quem o MEDE num recorte (a matriz):
+    // um campo `null` aqui faria a régua da idade carregar um número que não é dela.
+    ...(ritmo?.paths === undefined ? {} : { paths: ritmo.paths }),
   }
   if (ritmo?.state !== "medido" || typeof ritmo.commitsPorCiclo !== "number") {
     return {
       ...base,
-      teto: FRESHNESS_MAX_COMMITS_BEHIND,
+      teto: reserva,
       origem: "reserva declarada",
       motivo: ritmo?.reason ?? "o ritmo de commits não foi medido",
       commitsPorCiclo: null,
@@ -522,6 +552,754 @@ export function familyFreshness(
   return assembleFact(families, { head, maxBehind })
 }
 
+// ---------------------------------------------------------------------------
+// AS FORMAS MEDIDAS × O COMMIT DE ORIGEM — o que a origem CONTÉM
+// ---------------------------------------------------------------------------
+//
+// A IDADE responde "de QUANDO é o número"; ela não responde "o que aquele
+// commit tem". São perguntas diferentes, e foi a segunda que ficou em silêncio
+// em 22/09/2026: a baseline gravava `commit: 8e76c9a6` e uma das 39 formas
+// medidas — a `doc-hashes` — NÃO existia naquele commit (a suíte estava no
+// ÍNDICE quando o ato rodou). O número declarado descrevia uma matriz que o
+// commit de origem não carrega, e nenhuma régua olhava isso: a idade mede
+// distância em commits, não conteúdo.
+//
+// A RÉGUA DE "de qual arquivo veio esta forma?" É UMA SÓ e mora na folha
+// (`fonteDaForma`/`FORM_SECTION`, `bench-families.mjs`) — o ATO a aplica contra a
+// árvore que ele mediu, esta régua a aplica contra o commit de ORIGEM. Duas
+// derivações divergiriam no dia em que uma delas mudasse, e a divergência
+// apareceria como "o ato diz que está no commit e a régua diz que não".
+
+/** Lê um arquivo NA ÁRVORE de um commit (`git show <commit>:<path>`). */
+function lerDoCommit(commit, path, { cwd = REPO_ROOT, run = spawnSync } = {}) {
+  try {
+    const res = run("git", ["show", `${commit}:${path}`], {
+      cwd,
+      encoding: "utf8",
+      timeout: 30_000,
+      maxBuffer: 16 * 1024 * 1024,
+    })
+    if (res?.status === 0) return { ok: true, conteudo: String(res.stdout ?? "") }
+    return { ok: false, motivo: `git show ${commit}:${path} saiu ${res?.status ?? "?"}` }
+  } catch (error) {
+    return { ok: false, motivo: error.message }
+  }
+}
+
+/** A árvore do commit tem este caminho? (`git cat-file -e`) */
+function existeNoCommit(commit, path, { cwd = REPO_ROOT, run = spawnSync } = {}) {
+  try {
+    const res = run("git", ["cat-file", "-e", `${commit}:${path}`], {
+      cwd,
+      encoding: "utf8",
+      timeout: 10_000,
+    })
+    return res?.status === 0
+  } catch {
+    return false
+  }
+}
+
+/**
+ * AS FORMAS MEDIDAS × O COMMIT DE ORIGEM — o fato.
+ *
+ * FAIL-CLOSED em cada passo, e o motivo DITO: sem git, sem commit resolvido ou
+ * sem o master daquele commit, a pergunta sai como NÃO respondida (`semResposta`)
+ * — nunca como "tudo no commit de origem", que é o verde que este fato existe
+ * para não dar. A família cujas formas medem COMANDOS (o hook, o lint, o tsc, a
+ * suíte unitária) não nomeia fonte própria: as formas dela contam em `notJudged`,
+ * que é o LIMITE declarado da régua.
+ *
+ * @param {object|null} bench  o relatório do bench (baseline ou rodada)
+ * @param {{cwd?: string, deps?: {run?: Function, ler?: Function, existe?: Function}}} [options]
+ * @returns {{state: string, families: {family: string, commit: string|null, judged: number, missing: object[]}[], judged: number, notJudged: number, semResposta: number, missing: {family: string, form: string, path: string|null, id?: string, commit: string|null, via: string}[], detail: string, reason: string|null}}
+ */
+export function formOriginFact(bench, { cwd = REPO_ROOT, deps = {} } = {}) {
+  const run = deps.run ?? spawnSync
+  const ler = deps.ler ?? ((commit, path) => lerDoCommit(commit, path, { cwd, run }))
+  const existe = deps.existe ?? ((commit, path) => existeNoCommit(commit, path, { cwd, run }))
+
+  const familiasMedidas = bench ? measuredFamilies(bench) : []
+  if (familiasMedidas.length === 0) {
+    const reason =
+      "o arquivo do bench não declara família medida — sem elas não há forma para perguntar ao commit de origem"
+    return {
+      state: "unavailable",
+      families: [],
+      judged: 0,
+      notJudged: 0,
+      semResposta: 0,
+      missing: [],
+      detail: reason,
+      reason,
+    }
+  }
+
+  const meta = bench?.meta ?? {}
+  const procedencia = meta?.families ?? {}
+  const masters = new Map()
+  const mapaDe = (commit) => {
+    if (masters.has(commit)) return masters.get(commit)
+    const lido = commit ? ler(commit, MASTER_DOS_SUBTESTS) : { ok: false, motivo: "sem commit" }
+    const mapa = lido.ok ? mapaDoMaster(lido.conteudo) : null
+    masters.set(commit, mapa)
+    return mapa
+  }
+
+  const families = []
+  const missing = []
+  let judged = 0
+  let notJudged = 0
+  let semResposta = 0
+
+  for (const family of familiasMedidas) {
+    const commit = procedencia?.[family]?.commit ?? meta?.commit ?? null
+    const formas = FORM_SECTION[family]?.(bench) ?? []
+    if (formas.length === 0) continue
+    const faltam = []
+    for (const form of formas) {
+      const nome = String(form?.role ?? form?.id ?? "?")
+      // O master DAQUELE commit é a fonte do id→script: um commit que nem tem o
+      // master responde "não sei" — e "não sei" nunca fecha dívida.
+      const scripts = mapaDe(commit)
+      const fonte = fonteDaForma(family, form, { scripts })
+      if (fonte === null) {
+        notJudged += 1
+        continue
+      }
+      if (fonte.via === "sem-master") {
+        // A pergunta não PÔDE ser feita (aquele commit não tem o mapa id→script)
+        // — e isso é diferente do limite da família que não nomeia fonte: sai
+        // contado em `semResposta`, que também não deixa o item fechar.
+        semResposta += 1
+        continue
+      }
+      if (fonte.path === null) {
+        // A forma declara um id que o master DAQUELE commit não tem: ela foi
+        // medida numa árvore que a origem não carrega (o caso da `doc-hashes`).
+        const achado = {
+          family,
+          form: nome,
+          path: null,
+          id: fonte.id ?? nome,
+          commit,
+          via: fonte.via,
+        }
+        faltam.push(achado)
+        missing.push(achado)
+        judged += 1
+        continue
+      }
+      if (commit === null) {
+        semResposta += 1
+        continue
+      }
+      judged += 1
+      if (!existe(commit, fonte.path)) {
+        const achado = { family, form: nome, path: fonte.path, commit, via: fonte.via }
+        faltam.push(achado)
+        missing.push(achado)
+      }
+    }
+    families.push({ family, commit, judged: formas.length - faltam.length, missing: faltam })
+  }
+
+  const detail =
+    missing.length > 0
+      ? `${missing.length} forma(s) medida(s) NÃO existem no commit de origem: ` +
+        missing
+          .map((m) => `${m.family}/${m.form} @ ${String(m.commit ?? "?").slice(0, 12)}`)
+          .join(", ") +
+        ` (${judged} forma(s) com fonte declarada julgada(s), ${notJudged} sem fonte própria)`
+      : semResposta > 0
+        ? `${judged} forma(s) julgada(s) e nenhuma fora do commit de origem, mas ${semResposta} NÃO puderam ser perguntadas (sem commit resolvido) — não julgadas, nunca "no commit"`
+        : `${judged} forma(s) com fonte declarada são as do commit de origem (${notJudged} sem fonte própria: o limite declarado da régua)`
+
+  return {
+    state: "measured",
+    families,
+    judged,
+    notJudged,
+    semResposta,
+    missing,
+    detail,
+    reason: null,
+  }
+}
+
+/**
+ * A frase do fato das FORMAS — uma só, para o relatório, o doctor e a issue.
+ *
+ * @param {object} forms
+ * @returns {string}
+ */
+export function formOriginLine(forms) {
+  if (!forms || forms.state !== "measured") {
+    return `as formas × o commit de origem NÃO foram julgadas: ${forms?.reason ?? "sem motivo declarado"}`
+  }
+  return forms.detail
+}
+
+// ---------------------------------------------------------------------------
+// O REGISTRO DO ATO × A MATRIZ — o relógio DA MATRIZ
+// ---------------------------------------------------------------------------
+//
+// A IDADE responde "de QUANDO é o número" contra `HEAD`; as FORMAS respondem "o
+// que aquela origem CONTÉM". Falta a TERCEIRA pergunta, e é a única que mede o
+// relógio do OBJETO medido: **quantos commits a MATRIZ andou depois do ato que a
+// mediu**.
+//
+// POR QUE ISSO PRECISA EXISTIR (a fenda, medida): as duas réguas que ligam a
+// matriz ao ato são de CONTEÚDO — o `check-mutation-count` compara os ids, o
+// count e as metades, e o fato das formas pergunta se o arquivo da forma existe
+// no commit de origem. Um sub-test cujo ALVO muda (`id|scripts/outro.sh`) ou um
+// corpo de suíte que muda de CUSTO deixam o número declarado descrevendo uma
+// matriz que já não existe **sem mexer em contagem nenhuma**, e a única régua que
+// olha o TEMPO é a da idade, contra `HEAD` (150 commits ≈ meses de repositório).
+// Em 22/09/2026 foi assim que o registro versionado seguiu com as 37 formas do
+// ato anterior enquanto a matriz já tinha 39: o count na prosa batia consigo
+// mesmo, e nada acendia.
+//
+// O RELÓGIO É O DA MATRIZ, e é isso que o separa das duas outras perguntas: o
+// teto NÃO é comparado com o ritmo do repositório (que faz ~80 commits por
+// ciclo) nem com o de uma família qualquer — ele é `ciclos × commits por ciclo`
+// medido nos COMMITS QUE TOCAM A MATRIZ (o master e as suítes que ele cita, na
+// origem e agora), com o PISO por ciclo declarado (a matriz não anda no ritmo do
+// repositório: o piso do repositório daria um teto que nunca acende).
+//
+// FAIL-CLOSED em cada passo, e a causa DITA: sem a família `mutations` medida,
+// sem commit de origem, com o commit fora do checkout (clone raso) ou com o git
+// incapaz de responder, o fato sai `unavailable` — nunca "na matriz" —, e o canal
+// SUSPENDE o fechamento em vez de fechar por uma medição que não aconteceu.
+
+/**
+ * A POLÍTICA do relógio da matriz: o mesmo ciclo e a mesma janela do teto de
+ * idade (o cron que re-mede é o mesmo) e o PISO próprio.
+ *
+ * O PISO é o único número declarado, e ele existe pelo mesmo motivo do piso do
+ * repositório: a matriz pode ficar N ciclos sem andar, e um teto 0 acusaria a
+ * matriz parada. Para o repositório o piso é 20 commits por ciclo; para a matriz
+ * ele é **1** — a matriz muda quando um sub-test entra ou quando uma suíte muda
+ * de forma, e nenhum dos dois é um evento por ciclo.
+ */
+export const POLITICA_DA_MATRIZ = { ...POLITICA_DO_TETO, pisoDeCiclo: 1 }
+
+/**
+ * O teto de RESERVA da matriz — a política aplicada ao próprio PISO
+ * (`ciclos × pisoDeCiclo` = 2), porque aqui não existe um "ritmo de quando a
+ * régua foi escrita" para citar: o número sai da política declarada, nunca de um
+ * literal solto.
+ */
+export const TETO_DA_MATRIZ_DE_RESERVA = POLITICA_DA_MATRIZ.ciclos * POLITICA_DA_MATRIZ.pisoDeCiclo
+
+/** O NOME da declaração no fato, na issue e no relatório (o `kind` diz o relógio). */
+export const MATRIX_DECLARATION = "bench:ato-na-matriz"
+
+/** O `kind` da declaração da matriz — é ele que nomeia o relógio na tabela. */
+export const MATRIX_KIND = "ato-da-matriz"
+
+/**
+ * O ID do ITEM DATADO do relógio da matriz — o nome com que a DÍVIDA entra no
+ * registro (`ci/unproven.json`) e o que o relatório, o doctor e o canal repetem.
+ *
+ * Note que ele NÃO é o `MATRIX_DECLARATION`: aquele é o nome da UNIDADE julgada
+ * (o alvo da data no relatório), este é o nome do ITEM — a dívida que o doctor
+ * abre quando o relógio passa o teto. Um item que o doctor abre tem de ser
+ * declarável como qualquer outra dívida datada, senão ele volta a ser o "não
+ * provado" anônimo e eterno que o registro existe para não haver.
+ */
+export const MATRIX_ITEM_ID = "bench-ato-na-matriz"
+
+/**
+ * O NOME do predicado que FECHA o item da matriz — implementado em
+ * `doctor-unproven.mjs` (`CLOSED_BY`), e publicado AQUI para que a declaração
+ * pronta que o relatório imprime seja colável no registro sem uma segunda
+ * consulta (um nome escrito à mão num lado e implementado no outro divergiria no
+ * primeiro rename).
+ */
+export const MATRIX_CLOSED_BY = "ato-na-matriz"
+
+/**
+ * A ÂNCORA do item nas linhas do relatório: o trecho que o `matches` do registro
+ * cita para achar A linha do item (é ele que recebe a data e a janela em
+ * `datarLinhas`).
+ *
+ * Ela é uma CONSTANTE porque a prosa do relatório e a declaração colável têm de
+ * apontar para o MESMO texto: uma âncora digitada de novo no registro envelhece
+ * calada no dia em que a linha mudar de forma.
+ */
+export const MATRIX_ITEM_ANCHOR = "o ITEM DATADO"
+
+/**
+ * O ESCOPO da matriz: o master e as suítes que ele CITA.
+ *
+ * As suítes entram porque é nelas que o CUSTO mora: um commit que muda o corpo de
+ * uma suíte move o número declarado do job tanto quanto um sub-test novo. O que
+ * a régua pergunta ao git é `-- <master> <suítes…>`, então o escopo é também o
+ * que LIMITA a medição — e é ele que o fato publica em vez de o leitor supor.
+ *
+ * Leitor MÍNIMO de propósito: quem responde "de qual script é esta forma" é a
+ * régua da FOLHA (`mapaDoMaster`), a mesma que o ato e o fato das formas usam.
+ *
+ * @param {string|null} masterSrc o texto do master (de QUALQUER commit)
+ * @returns {{master: string, suites: string[]}}
+ */
+export function escopoDaMatriz(masterSrc) {
+  const mapa = mapaDoMaster(masterSrc ?? "")
+  return { master: MASTER_DOS_SUBTESTS, suites: [...new Set([...mapa.values()])].sort() }
+}
+
+/**
+ * O LAG: os commits que a MATRIZ ganhou DEPOIS do commit de origem do ato.
+ *
+ * UMA chamada de git responde as três coisas que o fato precisa — a contagem (o
+ * número de linhas), o PRIMEIRO commit depois da origem (`since`: a data em que o
+ * registro começou a ficar atrás, que é o que DATA o item) e o último (`tip`).
+ * Uma segunda chamada para recontar seria a segunda régua do mesmo número.
+ *
+ * `matriz` é o commit que a matriz tem AGORA (o último que a tocou): com lag 0
+ * ela responde se o ato É o commit da matriz ou se a matriz é anterior a ele.
+ *
+ * @param {{origin?: string|null, paths?: string[], head?: string, cwd?: string}} alvo
+ * @param {{run?: Function}} [deps]
+ * @returns {{state: "measured"|"unavailable", lag: number|null, since: {commit: string, date: string|null}|null, tip: {commit: string, date: string|null}|null, matriz: {commit: string, date: string|null}|null, reason: string|null}}
+ */
+export function matrixLag(
+  { origin = null, paths = [], head = "HEAD", cwd = REPO_ROOT } = {},
+  { run = spawnSync } = {},
+) {
+  const git = (args) =>
+    run("git", args, { cwd, encoding: "utf8", timeout: 30_000, maxBuffer: 16 * 1024 * 1024 })
+  const parar = (reason) => ({
+    state: "unavailable",
+    lag: null,
+    since: null,
+    tip: null,
+    matriz: null,
+    reason,
+  })
+  const parse = (linha) => {
+    const [commit, date] = String(linha).split("\t")
+    return { commit, date: date ? date.slice(0, 10) : null }
+  }
+  // O `--` entra SEMPRE: sem ele um caminho que não existe vira "o que mudou?" e
+  // o git responde com o repositório inteiro — a medição mediria outra coisa.
+  const alvo = paths.length > 0 ? ["--", ...paths] : ["--", MASTER_DOS_SUBTESTS]
+
+  if (!origin)
+    return parar(
+      "o registro do ato não declara commit de origem — sem ele não há relógio da matriz",
+    )
+
+  const existe = git(["cat-file", "-e", `${origin}^{commit}`])
+  if (existe?.error) return parar(`git não pôde ser executado (${existe.error.message})`)
+  if (existe?.status !== 0) {
+    return parar(`o commit de origem ${origin} não está neste checkout (clone raso/sem a história)`)
+  }
+
+  const agora = git(["log", "-1", "--format=%H%x09%cI", head, ...alvo])
+  if (agora?.error) return parar(`git não pôde ser executado (${agora.error.message})`)
+  if (agora?.status !== 0) {
+    return parar(`o git não respondeu o commit da matriz (exit ${agora?.status ?? "?"})`)
+  }
+  const matriz = String(agora.stdout ?? "").trim() ? parse(String(agora.stdout).trim()) : null
+
+  const log = git(["log", "--format=%H%x09%cI", `${origin}..${head}`, ...alvo])
+  if (log?.error) return parar(`git não pôde ser executado (${log.error.message})`)
+  if (log?.status !== 0) {
+    return parar(
+      `o git não respondeu os commits da matriz desde ${origin} (exit ${log?.status ?? "?"})`,
+    )
+  }
+  // A saída é do MAIS NOVO para o mais antigo: a primeira linha é o último commit
+  // e a ÚLTIMA é aquele em que a matriz começou a andar depois do ato.
+  const linhas = String(log.stdout ?? "")
+    .split("\n")
+    .filter((l) => l.trim() !== "")
+  return {
+    state: "measured",
+    lag: linhas.length,
+    since: linhas.length > 0 ? parse(linhas[linhas.length - 1]) : null,
+    tip: linhas.length > 0 ? parse(linhas[0]) : null,
+    matriz,
+    reason: null,
+  }
+}
+
+/**
+ * MEDE o ritmo de commits DA MATRIZ — a MESMA pergunta de `medirRitmoDeCommits`
+ * com o outro recorte (`-- <master> <suítes…>`).
+ *
+ * O recorte é o que muda a régua inteira: contar o repositório daria o teto do
+ * repositório (dezenas por ciclo), e a matriz anda alguns commits por mês.
+ *
+ * @param {{cwd?: string, run?: Function, agora?: Date, politica?: typeof POLITICA_DA_MATRIZ, paths?: string[]}} [options]
+ * @returns {{state: "medido"|"unknown", desde: string, janelaDias: number, paths: number, commits: number|null, commitsPorCiclo: number|null, reason: string|null}}
+ */
+export function medirRitmoDaMatriz({
+  cwd = REPO_ROOT,
+  run = spawnSync,
+  agora = new Date(),
+  politica = POLITICA_DA_MATRIZ,
+  paths = [MASTER_DOS_SUBTESTS],
+} = {}) {
+  const desde = new Date(agora.getTime() - politica.janelaDias * 86400000).toISOString()
+  const base = {
+    desde,
+    janelaDias: politica.janelaDias,
+    paths: paths.length,
+    commits: null,
+    commitsPorCiclo: null,
+  }
+  const r = run("git", ["rev-list", "--count", `--since=${desde}`, "HEAD", "--", ...paths], {
+    cwd,
+    encoding: "utf8",
+    timeout: 30_000,
+  })
+  if (r?.error || r?.status !== 0) {
+    const causa = r?.error?.message ?? `exit ${r?.status ?? "?"}`
+    return {
+      ...base,
+      state: "unknown",
+      reason: `o git não respondeu a contagem de commits da matriz desde ${desde.slice(0, 10)} (${String(causa).split("\n")[0]})`,
+    }
+  }
+  const commits = Number(String(r.stdout ?? "").trim())
+  if (!Number.isInteger(commits) || commits < 0) {
+    const saida = String(r.stdout ?? "")
+      .trim()
+      .slice(0, 40)
+    return {
+      ...base,
+      state: "unknown",
+      reason: `o git respondeu algo que não é uma contagem de commits da matriz (${saida || "saída vazia"})`,
+    }
+  }
+  const ciclosNaJanela = politica.janelaDias / politica.cicloDias
+  return {
+    ...base,
+    state: "medido",
+    commits,
+    // Uma matriz que NÃO andou na janela é uma MEDIÇÃO (0 commits por ciclo), não
+    // um desconhecido: é o piso declarado que impede o teto de ir a zero.
+    commitsPorCiclo: commits / ciclosNaJanela,
+    reason: null,
+  }
+}
+
+/**
+ * Deriva o TETO do relógio da matriz: a MESMA `tetoDoRitmo` (a aritmética vive
+ * num lugar só) com a POLÍTICA da matriz e a reserva dela (a política aplicada ao
+ * piso, já que aqui não existe um "ritmo de quando a régua foi escrita" para
+ * citar). A procedência sai DITA (`origem`), como a do teto de idade.
+ *
+ * @param {{state?: string, commitsPorCiclo?: number|null, reason?: string|null, desde?: string, janelaDias?: number, paths?: number}} ritmo
+ * @param {typeof POLITICA_DA_MATRIZ} [politica]
+ * @returns {{teto: number, origem: "medido"|"reserva declarada", ciclos: number, cicloDias: number, janelaDias: number, pisoDeCiclo: number, desde: string|null, commits: number|null, commitsPorCiclo: number|null, paths: number|null, motivo: string|null}}
+ */
+export function tetoDaMatriz(ritmo, politica = POLITICA_DA_MATRIZ) {
+  return tetoDoRitmo(ritmo, politica, { reserva: TETO_DA_MATRIZ_DE_RESERVA })
+}
+
+/**
+ * O FATO do relógio da matriz: onde o ato ancorou, quanto a matriz andou desde
+ * ele e qual é o teto do ritmo DELA.
+ *
+ * `aged` é a única decisão, e ela é a MESMA fronteira das famílias (`>` e não
+ * `>=`): um registro exatamente no teto da matriz ainda é fresco.
+ *
+ * @param {object|null} bench o arquivo do bench (baseline ou rodada)
+ * @param {{cwd?: string, head?: string, politica?: object, deps?: {run?: Function, ler?: Function, agora?: Date}}} [options]
+ * @returns {{state: string, origin: object|null, since: object|null, tip: object|null, matriz: object|null, lag: number|null, aged: boolean, teto: object|null, escopo: object|null, detail: string, reason: string|null, remedies: string[]}}
+ */
+export function matrixLagFact(
+  bench,
+  { cwd = REPO_ROOT, head = "HEAD", politica = POLITICA_DA_MATRIZ, deps = {} } = {},
+) {
+  const run = deps.run ?? spawnSync
+  const ler = deps.ler ?? ((commit, path) => lerDoCommit(commit, path, { cwd, run }))
+  const agora = deps.agora ?? new Date()
+
+  const indisponivel = (reason) => ({
+    state: "unavailable",
+    origin: null,
+    since: null,
+    tip: null,
+    matriz: null,
+    lag: null,
+    aged: false,
+    teto: null,
+    escopo: null,
+    detail: reason,
+    reason,
+    remedies: [
+      `confira que a baseline declara a família \`mutations\` medida, que o checkout tem a história (um clone raso não tem o commit de origem) e que o master existe no commit de origem`,
+    ],
+  })
+
+  // O CONJUNTO vem da régua do DONO: quem mede a matriz é a família `mutations`
+  // (a única com `FONTE_DAS_FORMAS`), e sem ela não há ato para ancorar.
+  const familias = bench ? measuredFamilies(bench) : []
+  if (!familias.includes("mutations")) {
+    return indisponivel(
+      "o registro do ato não declara a família `mutations` MEDIDA — não há ato para ancorar no relógio da matriz",
+    )
+  }
+  const prov = bench?.meta?.families?.mutations ?? null
+  const commit = prov?.commit ?? bench?.meta?.commit ?? null
+  const origin = {
+    commit,
+    date: prov?.commitDate ?? bench?.meta?.commitDate ?? null,
+    act: prov?.act ?? bench?.meta?.act ?? null,
+    source: prov?.source ?? null,
+    via: prov?.commit ? "family" : bench?.meta?.commit ? "meta.commit" : "ausente",
+  }
+  if (!commit) {
+    return indisponivel(
+      "a família `mutations` não declara commit de origem (nem na procedência, nem no meta do arquivo) — o relógio da matriz não tem de onde contar",
+    )
+  }
+
+  // O ESCOPO é o master + as suítes que ele cita NA ORIGEM e NO HEAD (a união):
+  // uma suíte que só existe agora também é matriz, e uma que só existia lá também
+  // era. Ler as duas pontas custa dois `git show` e evita o escopo que muda de
+  // forma conforme o lado que se olha.
+  const naOrigem = ler(commit, MASTER_DOS_SUBTESTS)
+  const noHead = ler(head, MASTER_DOS_SUBTESTS)
+  const escopoDaOrigem = escopoDaMatriz(naOrigem.ok ? naOrigem.conteudo : "")
+  const escopoDoHead = escopoDaMatriz(noHead.ok ? noHead.conteudo : "")
+  const paths = [
+    ...new Set([MASTER_DOS_SUBTESTS, ...escopoDaOrigem.suites, ...escopoDoHead.suites]),
+  ].sort()
+  const escopo = {
+    master: MASTER_DOS_SUBTESTS,
+    naOrigem: escopoDaOrigem.suites.length,
+    noHead: escopoDoHead.suites.length,
+    paths,
+    state: naOrigem.ok ? "lido" : "sem-master",
+    reason: naOrigem.ok
+      ? null
+      : `o master do commit de origem não pôde ser lido (${naOrigem.motivo ?? "motivo não declarado"}) — o escopo cai no master sozinho`,
+  }
+
+  const lag = matrixLag({ origin: commit, paths, head, cwd }, { run })
+  if (lag.state !== "measured") return indisponivel(`o lag da matriz não foi medido: ${lag.reason}`)
+
+  const teto = tetoDaMatriz(medirRitmoDaMatriz({ cwd, run, agora, politica, paths }), politica)
+  const aged = lag.lag > teto.teto
+  const curto = (alvo) =>
+    alvo ? `${alvo.commit.slice(0, 12)}${alvo.date ? ` (${alvo.date})` : ""}` : "?"
+  const tetoDito =
+    `${teto.teto} commit(s) da MATRIZ — ` +
+    (teto.origem === "medido"
+      ? `derivado do ritmo DELA (${teto.commits} commit(s) em ${teto.janelaDias} dias = ` +
+        `${Math.round((teto.commitsPorCiclo ?? 0) * 10) / 10}/ciclo × ${teto.ciclos} ciclos de ${teto.cicloDias}d, sobre ${paths.length} caminho(s))`
+      : `RESERVA declarada (${teto.motivo})`)
+
+  const detail =
+    lag.lag === 0
+      ? `o registro do ato (${curto(origin)}) NÃO está atrás da matriz: nenhum commit tocou os ${paths.length} caminho(s) dela depois dele` +
+        (lag.matriz?.commit === commit
+          ? " — o ato É o commit da matriz"
+          : ` (a matriz desta árvore é ${curto(lag.matriz)})`) +
+        ` · teto ${tetoDito}`
+      : `o registro do ato está ${lag.lag} commit(s) atrás da matriz: ela andou desde ${curto(lag.since)}, e o último que a tocou é ${curto(lag.tip)}` +
+        ` (origem do ato ${curto(origin)}) · teto ${tetoDito}`
+
+  return {
+    state: "measured",
+    origin,
+    since: lag.since,
+    tip: lag.tip,
+    matriz: lag.matriz,
+    lag: lag.lag,
+    aged,
+    teto,
+    escopo,
+    detail,
+    reason: null,
+    remedies: [
+      aged
+        ? `${REMEDY_COMMAND} — o ato re-ancora o registro na matriz DESTA árvore (o commit de origem que ele grava é o que esta régua lê), com a árvore JÁ COMMITADA`
+        : `nenhum: a matriz não ganhou commit depois do ato (o remédio continua sendo o mesmo ato, quando ela andar)`,
+    ],
+  }
+}
+
+/**
+ * A frase do fato da matriz — uma só, para o relatório, o doctor e a issue.
+ *
+ * @param {object} matrix
+ * @returns {string}
+ */
+export function matrixLagLine(matrix) {
+  if (!matrix || matrix.state !== "measured") {
+    return `o REGISTRO DO ATO × a MATRIZ NÃO foi medido: ${matrix?.reason ?? "sem motivo declarado"}`
+  }
+  return matrix.detail
+}
+
+/**
+ * O ITEM DATADO do relógio da matriz — o que o doctor ABRE quando o registro do
+ * ato fica atrás da matriz além do teto DELA.
+ *
+ * POR QUE A DATA É DERIVADA (e não "hoje"): um item datado com o relógio da run
+ * não envelhece — cada run o rejuvenesce e a dívida nunca chega à janela de
+ * revisão. A data que este item publica é a do PRIMEIRO COMMIT QUE A MATRIZ
+ * GANHOU depois da origem do ato (`since.date`): é ali que o registro passou a
+ * descrever uma matriz que esta árvore não tem mais, e ela é a MESMA em qualquer
+ * run enquanto o registro não for re-ancorado (o ato a move para frente).
+ *
+ * O formato é o do REGISTRO (`ci/unproven.json`), de propósito: `id` + `kind` +
+ * `declaredAt` + `closedBy` + `proveWith` + `matches` são os campos que fazem do
+ * item uma dívida que ENVELHECE e FECHA por medição em vez de um 'não provado'
+ * sem data.
+ *
+ * `null` quando não há item a abrir, e cada ausência tem um motivo diferente:
+ * dentro do teto (o registro descreve a matriz de agora — não há dívida) ou sem
+ * medição (aí o que falta é a MEDIÇÃO, que o fato publica como `unavailable`
+ * pela linha do relógio; abrir item sobre o que não se mediu seria inventar
+ * dívida).
+ *
+ * @param {object|null} matrix o fato de `matrixLagFact`
+ * @returns {{id: string, kind: string, clock: string, declaredAt: string|null, behind: number|null, commit: string|null, since: string|null, sinceDate: string|null, tip: string|null, ceiling: number|null, ceilingOrigem: string|null, closedBy: string, proveWith: string, remedy: string, matches: string[]}|null}
+ */
+export function matrixItem(matrix) {
+  if (!matrix || matrix.state !== "measured" || !matrix.aged) return null
+  const declaradoEm = matrix.since?.date ?? null
+  return {
+    id: MATRIX_ITEM_ID,
+    kind: "lacuna",
+    clock: "matriz",
+    declaredAt: declaradoEm,
+    behind: matrix.lag,
+    commit: matrix.origin?.commit ?? null,
+    since: matrix.since?.commit ?? null,
+    sinceDate: declaradoEm,
+    tip: matrix.tip?.commit ?? null,
+    ceiling: matrix.teto?.teto ?? null,
+    ceilingOrigem: matrix.teto?.origem ?? null,
+    closedBy: MATRIX_CLOSED_BY,
+    proveWith: `${REMEDY_COMMAND}, com a árvore JÁ COMMITADA (o ato re-ancora a origem que esta régua lê) · node scripts/bench-freshness.mjs fecha o item por medição`,
+    remedy:
+      matrix.remedies?.[0] ??
+      `${REMEDY_COMMAND} — o ato re-ancora o registro na matriz DESTA árvore`,
+    matches: [MATRIX_ITEM_ANCHOR],
+  }
+}
+
+/**
+ * A FRASE do item datado — uma só, para o relatório, o doctor e a issue.
+ *
+ * Ela carrega as QUATRO coisas que fazem de um item uma dívida, e não um
+ * relatório: desde QUANDO ele existe (a data derivada da história), QUANTO ele
+ * pesa (o delta contra o teto DELA), qual é o TETO e de onde ele veio, e as duas
+ * saídas — re-rodar o ato, ou DECLARAR o item no registro (com o `closedBy` que
+ * já está implementado, para a declaração fechar por medição em vez de virar
+ * lacuna eterna).
+ *
+ * @param {object} item o retorno de `matrixItem`
+ * @returns {string}
+ */
+export function matrixItemLine(item) {
+  const curto = (c) => (c ? `\`${String(c).slice(0, 12)}\`` : "?")
+  const desde = item.declaredAt
+    ? `desde ${item.declaredAt}`
+    : "sem data de origem (a matriz andou, mas o git não deu a data do commit)"
+  const teto =
+    item.ceiling === null
+      ? "teto não medido"
+      : `${item.ceiling} commit(s) da matriz${
+          item.ceilingOrigem === "medido" ? "" : " (RESERVA declarada: o ritmo dela não foi medido)"
+        }`
+  return (
+    `${MATRIX_ITEM_ANCHOR} \`${item.id}\` está ABERTO ${desde}: o registro do ato (${curto(item.commit)}) ` +
+    `está ${item.behind} commit(s) atrás da matriz — ela andou a partir de ${curto(item.since)}${
+      item.tip ? `, e o último que a tocou é ${curto(item.tip)}` : ""
+    } —, acima do teto DELA (${teto}). ` +
+    `Duas saídas: re-rodar o ato (\`${REMEDY_COMMAND}\`, com a árvore JÁ COMMITADA) ou DECLARAR o item ` +
+    `em \`ci/unproven.json\` (\`id: ${item.id}\`, \`kind: lacuna\`, \`declaredAt: ${item.declaredAt ?? "a data do primeiro commit que a matriz ganhou depois do ato"}\`, ` +
+    `\`closedBy: ${item.closedBy}\`, \`matches: ["${MATRIX_ITEM_ANCHOR}"]\`) — o predicado fecha por MEDIÇÃO: ` +
+    "quando o relógio voltar ao teto, o próprio relatório prova o item."
+  )
+}
+
+/**
+ * A DECLARAÇÃO da matriz no MESMO shape das outras — o que permite ao veredito,
+ * à tabela e à assinatura tratarem os DOIS relógios sem uma segunda régua.
+ *
+ * O `behind` de uma declaração de idade conta commits até `HEAD`; o desta conta
+ * commits DA MATRIZ — e é o `clock` que o diz, em vez de o leitor supor que os
+ * dois números são comparáveis.
+ *
+ * `null` só quando o fato não existe (o doctor sem o fato, um chamador antigo):
+ * uma medição que não aconteceu entra como `unknown`, nunca como ausência.
+ *
+ * @param {object|null} matrix
+ * @returns {object|null}
+ */
+export function matrixDeclaration(matrix) {
+  if (!matrix) return null
+  const base = {
+    family: MATRIX_DECLARATION,
+    kind: MATRIX_KIND,
+    clock: "matriz",
+    act: matrix.origin?.act ?? null,
+    source: matrix.origin?.source ?? null,
+    commit: matrix.origin?.commit ?? null,
+    commitDate: matrix.origin?.date ?? null,
+    origin: matrix.origin?.via ?? "ausente",
+    target: matrix.matriz ?? null,
+    date: null,
+  }
+  if (matrix.state !== "measured") {
+    return {
+      ...base,
+      state: "unknown",
+      behind: null,
+      ceiling: null,
+      reason: matrix.reason ?? "a matriz não foi medida",
+    }
+  }
+  return {
+    ...base,
+    state: matrix.aged ? "aged" : "fresh",
+    behind: matrix.lag,
+    ceiling: matrix.teto?.teto ?? null,
+    reason: matrix.reason ?? matrix.detail,
+  }
+}
+
+/**
+ * A RÉGUA ÚNICA do que está VENCIDO: as famílias vencidas + a declaração da
+ * matriz (quando ela venceu o teto DELA).
+ *
+ * Existe para que o doctor, o publicador e o `crossCheck` da dívida declarada não
+ * tenham TRÊS noções de "o que está fora do teto": duas réguas divergiriam no dia
+ * em que uma delas esquecesse o relógio da matriz — e a issue seria fechada com o
+ * registro do ato atrás da matriz.
+ */
+export function agedDeclarations(fact) {
+  const daMatriz = matrixDeclaration(fact?.matrix)
+  return [
+    ...(fact?.families ?? []).filter((f) => f.state === "aged"),
+    ...(daMatriz?.state === "aged" ? [daMatriz] : []),
+  ]
+}
+
+/**
+ * A RÉGUA ÚNICA do que ficou SEM MEDIÇÃO: as famílias sem idade + a declaração
+ * da matriz sem lag. É a lista que SUSPENDE um fechamento — "não medi" nunca é
+ * "está fresco".
+ */
+export function unknownDeclarations(fact) {
+  const daMatriz = matrixDeclaration(fact?.matrix)
+  return [
+    ...(fact?.families ?? []).filter((f) => f.state === "unknown"),
+    ...(daMatriz?.state === "unknown" ? [daMatriz] : []),
+  ]
+}
+
 /**
  * A MONTAGEM do fato — a parte pura que as DUAS leituras compartilham (as
  * famílias do bench e as declarações datadas do modelo/README). Os estados vêm
@@ -672,6 +1450,59 @@ function remediesFor({ aged, diverged, unknown, maxBehind, families }) {
 }
 
 /**
+ * O BENCH lido do disco — UM leitor para DUAS perguntas.
+ *
+ * POR QUE ELE EXISTE: a idade das famílias (`readBenchFreshness`) e o TETO de
+ * execução de um gate (`forge-doctor`, que deriva o limite do custo versionado)
+ * leem o MESMO arquivo. Duas leituras tolerantes divergiriam no dia em que uma
+ * tratasse um JSON truncado como "sem famílias" — e o teto derivado de um bench
+ * truncado seria um número inventado.
+ *
+ * Fail-closed: ausente, ilegível ou não-objeto devolvem `erro` NOMEADO (nunca um
+ * objeto vazio, que o consumidor leria como "o bench não conhece este gate").
+ *
+ * @param {{cwd?: string, file?: string, deps?: {exists?: Function, read?: Function}}} [options]
+ * @returns {{bench: object|null, erro: string|null, rotulo: string}}
+ */
+export function readBench({ cwd = REPO_ROOT, file = BASELINE_PATH, deps = {} } = {}) {
+  const exists = deps.exists ?? existsSync
+  const read = deps.read ?? ((path) => readFileSync(path, "utf8"))
+  const caminho = isAbsolute(file) ? file : resolve(cwd, file)
+  const rotulo = isAbsolute(file) ? file : file
+
+  if (!exists(caminho))
+    return { bench: null, erro: `o arquivo do bench não existe: ${rotulo}`, rotulo }
+  let bruto
+  try {
+    bruto = read(caminho)
+  } catch (error) {
+    return {
+      bench: null,
+      erro: `o arquivo do bench não pôde ser lido (${rotulo}): ${error.message}`,
+      rotulo,
+    }
+  }
+  let bench
+  try {
+    bench = JSON.parse(bruto)
+  } catch (error) {
+    return {
+      bench: null,
+      erro: `o arquivo do bench não é JSON válido (${rotulo}): ${error.message}`,
+      rotulo,
+    }
+  }
+  if (bench === null || typeof bench !== "object" || Array.isArray(bench)) {
+    return {
+      bench: null,
+      erro: `o arquivo do bench não é um objeto (${rotulo}) — uma leitura truncada não pode virar "sem família velha"`,
+      rotulo,
+    }
+  }
+  return { bench, erro: null, rotulo }
+}
+
+/**
  * O LEITOR: lê o arquivo do bench do disco e mede a idade das famílias dele.
  *
  * Fail-closed em CADA passo: arquivo ausente ou ilegível vira `unavailable` com a
@@ -693,42 +1524,14 @@ export function readBenchFreshness({
   const read = deps.read ?? ((path) => readFileSync(path, "utf8"))
   const run = deps.run ?? spawnSync
   const probe = deps.probe ?? ((commit) => commitAge({ commit, head, cwd }, { run }))
-  const caminho = isAbsolute(file) ? file : resolve(cwd, file)
-  const rotulo = isAbsolute(file) ? file : file
 
-  if (!exists(caminho)) {
-    return {
-      ...unavailable(`o arquivo do bench não existe: ${rotulo}`, { head, maxBehind }),
-      file: rotulo,
-    }
-  }
+  const lido = readBench({ cwd, file, deps: { exists, read } })
+  if (lido.erro) return { ...unavailable(lido.erro, { head, maxBehind }), file: lido.rotulo }
 
-  let bench = null
-  try {
-    bench = JSON.parse(read(caminho))
-  } catch (error) {
-    return {
-      ...unavailable(`o arquivo do bench não é JSON válido (${rotulo}): ${error.message}`, {
-        head,
-        maxBehind,
-      }),
-      file: rotulo,
-    }
+  return {
+    ...familyFreshness(lido.bench, { maxBehind, head, probe }),
+    file: lido.rotulo,
   }
-  if (bench === null || typeof bench !== "object" || Array.isArray(bench)) {
-    return {
-      ...unavailable(
-        `o arquivo do bench não é um objeto (${rotulo}) — uma leitura truncada não pode virar "sem família velha"`,
-        {
-          head,
-          maxBehind,
-        },
-      ),
-      file: rotulo,
-    }
-  }
-
-  return { ...familyFreshness(bench, { maxBehind, head, probe }), file: rotulo }
 }
 
 /**
@@ -1210,7 +2013,32 @@ export function readFreshness({
           motivo: null,
         }
   const efetivo = teto.teto
-  const bench = readBenchFreshness({ cwd, file, head, maxBehind: efetivo, deps })
+  // UMA leitura do arquivo para as DUAS perguntas (a idade das famílias e o que a
+  // origem CONTÉM): são o mesmo fato sobre o mesmo arquivo, e duas leituras
+  // divergiriam se ele mudasse no meio.
+  const cache = new Map()
+  const readBase = deps.read ?? ((path) => readFileSync(path, "utf8"))
+  const read = (path) => {
+    if (!cache.has(path)) cache.set(path, readBase(path))
+    return cache.get(path)
+  }
+  const depsComCache = { ...deps, read }
+  const bench = readBenchFreshness({ cwd, file, head, maxBehind: efetivo, deps: depsComCache })
+  // O MESMO arquivo, UMA leitura (o cache acima), para as TRÊS perguntas: a idade,
+  // o que a origem CONTÉM e o que a matriz ANDOU desde ela — duas leituras
+  // divergiriam se o arquivo mudasse no meio.
+  const benchBruto = readBench({
+    cwd,
+    file,
+    deps: { exists: deps.exists ?? existsSync, read },
+  }).bench
+  const forms = formOriginFact(benchBruto, { cwd, deps })
+  const matrix = matrixLagFact(benchBruto, {
+    cwd,
+    head,
+    politica: POLITICA_DA_MATRIZ,
+    deps,
+  })
   const doBench =
     bench.state === "measured"
       ? bench.families.map((f) => ({ ...f, kind: f.kind ?? "bench-family" }))
@@ -1244,7 +2072,7 @@ export function readFreshness({
     emptyReason:
       "nenhuma declaração datada foi lida (bench, modelo de latência e README) — não há número para envelhecer",
   })
-  return { ...fato, file: bench.file ?? file, benchHead: bench.head ?? head }
+  return { ...fato, file: bench.file ?? file, benchHead: bench.head ?? head, forms, matrix }
 }
 
 // ---------------------------------------------------------------------------
@@ -1289,7 +2117,10 @@ function main() {
       "\n  Mede a IDADE de cada declaração datada: o commit de origem de cada família\n" +
         "  MEDIDA do bench, a data própria de cada número declarado do modelo de\n" +
         "  latência (ci/merge-latency.json) e a âncora datada de cada tabela de custo\n" +
-        "  do README — quantos commits de HEAD cada uma deixou para trás.\n" +
+        "  do README — quantos commits de HEAD cada uma deixou para trás. Mede também\n" +
+        "  o RELÓGIO DA MATRIZ: quantos commits o master e as suítes que ele cita\n" +
+        "  andaram DEPOIS do commit de origem do ato (o teto dessa pergunta é o ritmo\n" +
+        "  DELAS, não o do repositório).\n" +
         `  O teto é DERIVADO do ritmo do repositório: ${POLITICA_DO_TETO.ciclos} ciclos de ` +
         `${POLITICA_DO_TETO.cicloDias}d × os commits por ciclo medidos na janela de ` +
         `${POLITICA_DO_TETO.janelaDias} dias (piso: ${POLITICA_DO_TETO.pisoDeCiclo}/ciclo), e o ` +
@@ -1307,6 +2138,9 @@ function main() {
   } else {
     console.log(`📏 Régua do bench — ${freshnessLine(fact)}`)
     console.log(`📐 Teto de idade: ${tetoLine(fact)}`)
+    console.log(`📦 Formas × commit de origem: ${formOriginLine(fact.forms)}`)
+    console.log(`🔁 Registro do ato × matriz: ${matrixLagLine(fact.matrix)}`)
+    for (const r of fact.matrix?.remedies ?? []) console.log(`   → ${r}`)
     for (const f of fact.families) {
       const marca = f.state === "fresh" ? "✅" : f.state === "aged" ? "❌" : "⚠️"
       const idade = f.behind === null ? f.state : `${f.behind} commit(s) atrás`
@@ -1331,7 +2165,11 @@ function main() {
   }
 
   if (fact.state !== "measured") return 2
-  return fact.aged.length + fact.diverged.length > 0 ? 1 : 0
+  // A FORMA fora do commit de origem é dívida como a idade vencida: o número
+  // declarado descreve uma árvore que aquele commit não tem. E o REGISTRO DO ATO
+  // atrás da matriz é a terceira: o número descreve uma matriz que já andou.
+  const fora = fact.forms?.missing?.length ?? 0
+  return fact.aged.length + fact.diverged.length + fora + (fact.matrix?.aged ? 1 : 0) > 0 ? 1 : 0
 }
 
 const IS_DIRECT_RUN =

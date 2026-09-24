@@ -7,7 +7,7 @@
 #   ./scripts/test-mutation-bench-freshness.sh
 #
 # Exit codes:
-#   0 — as OITO mutações DETECTADAS (por EXECUÇÃO e/ou pela suíte) e os controles
+#   0 — as ONZE mutações DETECTADAS (por EXECUÇÃO e/ou pela suíte) e os controles
 #       mordendo ✅
 #   1 — régua CEGA a alguma mutação (não viu / não acusou) / mutação não-cirúrgica
 #       / infra ❌
@@ -95,11 +95,45 @@ METADES=(
   'M6|o fail-closed da DECLARAÇÃO: sem a data própria, o número some do veredito'
   'M7|o TETO DERIVADO do ritmo: com o literal, o teto deixa de seguir o repositório'
   'M8|a PROCEDÊNCIA do teto: com a reserva se dizendo "medido", a dúvida vira veredito'
+  'M9|a FONTE da forma no commit de origem: assumindo "a origem é o HEAD", a doc-hashes volta a passar'
+  'M10|o fail-closed da PERGUNTA: sem o master daquele commit, "não perguntei" vira "está no commit"'
+  'M11|o ESCOPO da matriz: com o master sozinho, as SUÍTES que ele cita saem do relógio'
+  'M12|a DATA do item datado: com o relógio da run, o item se re-data a cada execução e nunca envelhece'
 )
 cd "$SCRIPT_DIR"
 
 GUARD="scripts/bench-freshness.mjs"
 SUITE="src/lib/__tests__/bench-freshness.test.ts"
+# A RÉGUA DAS FORMAS (o outro lado da idade: o CONTEÚDO do commit de origem) tem a
+# suíte DELA, e as metades M9/M10 são dela. As duas rodam na mesma chamada — uma
+# testemunha por arquivo seria uma segunda execução do mesmo vitest.
+SUITE_FORMAS="src/lib/__tests__/bench-form-origin.test.ts"
+
+# O MASTER da matriz vem da RÉGUA (não de um caminho escrito à mão): é a mesma
+# constante com que a régua monta o escopo do relógio da matriz.
+MASTER="$(node -e 'import("./scripts/bench-families.mjs").then((m) => console.log(m.MASTER_DOS_SUBTESTS))')"
+
+# As SUÍTES que o master CITA — derivadas do PRÓPRIO arquivo (a mesma leitura que
+# a régua faz), para o controle e a M11 compararem com o que o master declara.
+# Uma lista à mão aqui divergiria no dia em que um sub-test novo entrasse.
+suites_do_master() {
+  python3 - "$MASTER" <<'PY'
+import re, sys
+txt = open(sys.argv[1], encoding="utf-8").read()
+ini = txt.index("SUBTESTS=(")
+fim = txt.index("\n)", ini)
+caminhos = set()
+for linha in txt[ini:fim].splitlines():
+    velho = re.match(r'\s*"([^"|]+)\|(.+)\|([^"|]+)"\s*$', linha)
+    if velho:
+        caminhos.add(velho.group(3).strip())
+        continue
+    m = re.match(r'\s*"([^"|]+)\|([^"]+)"\s*$', linha)
+    if m:
+        caminhos.add(m.group(2).strip())
+print(",".join(sorted(caminhos)))
+PY
+}
 
 TMP_DIR="$(mktemp -d)"
 BACKUP="$TMP_DIR/bench-freshness.mjs.backup"
@@ -160,11 +194,47 @@ elif campo.startswith("behind:"):
 elif campo.startswith("aged:"):
     k = campo.split(":", 1)[1]
     print(",".join(x["family"] for x in fam if x.get("state") == "aged" and x.get("kind") == k))
+elif campo == "bench:origem":
+    # AS ORIGENS das famílias do bench (família@commit): a idade delas pode ser
+    # ZERO — é o estado SANO logo depois do ato que as mediu —, então o sinal que
+    # não pode sumir é a própria origem lida, não o número de commits atrás.
+    print(",".join(f'{x["family"]}@{x["commit"]}' for x in fam if x.get("kind") == "bench-family" and x.get("commit")))
 elif campo == "ancora:month":
     idades = [x["behind"] for x in fam if x.get("anchorKind") == "month" and isinstance(x.get("behind"), int)]
     print(max(idades) if idades else "-")
 elif campo == "fonte-ilegivel":
     print(",".join(x["family"] for x in fam if x.get("kind") == "fonte-ilegivel"))
+elif campo == "forms:state":
+    print((f.get("forms") or {}).get("state"))
+elif campo == "forms:fora":
+    print(len((f.get("forms") or {}).get("missing") or []))
+elif campo == "forms:ids":
+    print(",".join(f'{m.get("family")}/{m.get("form")}' for m in ((f.get("forms") or {}).get("missing") or [])))
+elif campo == "forms:sem-resposta":
+    print((f.get("forms") or {}).get("semResposta"))
+elif campo.startswith("matriz:"):
+    # O RELÓGIO DA MATRIZ: o estado, o lag, o escopo (a LISTA de caminhos) e o
+    # teto DELA (o número e a procedência).
+    m = f.get("matrix") or {}
+    esc = m.get("escopo") or {}
+    teto = m.get("teto") or {}
+    k = campo.split(":", 1)[1]
+    if k == "state":
+        print(m.get("state"))
+    elif k == "lag":
+        print(m.get("lag"))
+    elif k == "aged":
+        print("sim" if m.get("aged") else "nao")
+    elif k == "paths":
+        print(",".join(esc.get("paths") or []))
+    elif k == "escopo-state":
+        print(esc.get("state"))
+    elif k == "teto":
+        print(teto.get("teto"))
+    elif k == "teto-origem":
+        print(teto.get("origem"))
+    elif k == "teto-paths":
+        print(teto.get("paths"))
 elif campo == "teto":
     print((f.get("teto") or {}).get("teto"))
 elif campo.startswith("teto:"):
@@ -182,7 +252,7 @@ run_suite() {
   # `|| code=$?` em vez de `set +e`: a função roda sob `set -e`, e um `set +e`
   # interno DESLIGARIA o errexit no chamador (o escopo do shell é global).
   bun x vitest run --config vitest.config.unit.ts --reporter=json \
-    --outputFile="$RESULTS" "$SUITE" 2>&1 | tail -3 || code=$?
+    --outputFile="$RESULTS" "$SUITE" "$SUITE_FORMAS" 2>&1 | tail -3 || code=$?
   return "$code"
 }
 
@@ -219,16 +289,57 @@ pass "Backup da régua (restauração por checksum no fim)"
 # controle, então o controle precisa ser ele mesmo não-trivial.
 header "CONTROLE — a régua mede as três fontes no repositório real"
 cli
-if [ "$CLI_EXIT" -ne 0 ]; then
-  fail "CONTROLE FALHOU: o CLI saiu $CLI_EXIT (esperado 0 = medido e nada vencido)."
+# O CLI sai 1 também por uma FORMA medida que o commit de origem não tem — a
+# classe que a régua ganhou (`forms.missing`): ela é uma DÍVIDA do ato anterior
+# (a árvore foi medida antes de a suíte entrar no commit), e o repositório fica
+# nesse estado até o próximo ato. Exigir exit 0 aqui faria o controle depender do
+# estado do repositório (verde com a dívida fechada, vermelho com ela aberta), e
+# um controle que só passa num dos dois não é controle: o que se exige é que o
+# vermelho venha DESSA classe, nomeada.
+CTRL_FORA="$(fato forms:fora)"
+if [ "$CLI_EXIT" -ne 0 ] && [ -z "$CTRL_FORA" ]; then
+  fail "CONTROLE FALHOU: o CLI saiu $CLI_EXIT e NENHUMA forma medida está fora do commit de origem — o vermelho não é da classe declarada."
   cat "$CLI_JSON"
   exit 1
+fi
+if [ -n "$CTRL_FORA" ]; then
+  info "CONTROLE: o repositório REAL tem ${CTRL_FORA} forma(s) medida(s) fora do commit de origem ($(fato forms:ids)) — a régua a NOMEIA (o vermelho é dela), e o remédio é o ato com a árvore commitada"
 fi
 CTRL_STATE="$(fato state)"
 CTRL_BEHIND="$(fato behindMax)"
 CTRL_TABELAS="$(fato behind:declared-table)"
 CTRL_MES="$(fato ancora:month)"
 CTRL_BENCH="$(fato behind:bench-family)"
+CTRL_ORIGENS="$(fato bench:origem)"
+# O RELÓGIO DA MATRIZ no controle: o ESCOPO publicado tem de conter TODAS as
+# suítes que o master cita (derivadas do próprio master). Sem esta asserção a
+# M11 mediria a mutação contra o vazio — e um escopo que já nascesse só com o
+# master faria a mutação passar despercebida.
+CTRL_MATRIZ_STATE="$(fato matriz:state)"
+CTRL_MATRIZ_PATHS="$(fato matriz:paths)"
+CTRL_CITADAS="$(suites_do_master)"
+if [ -z "$CTRL_CITADAS" ]; then
+  fail "CONTROLE FALHOU: o master ($MASTER) não declara NENHUMA suíte — sem suítes não há o que o escopo da matriz julgue."
+  exit 1
+fi
+if [ "$CTRL_MATRIZ_STATE" != "measured" ]; then
+  fail "CONTROLE FALHOU: o relógio da MATRIZ não foi medido no repositório real ('$CTRL_MATRIZ_STATE') — a régua não pode julgar o que não mediu."
+  exit 1
+fi
+CTRL_FORA_ESCOPO="$(python3 - "$CTRL_CITADAS" "$CTRL_MATRIZ_PATHS" <<'PY'
+import sys
+citadas = [c for c in sys.argv[1].split(",") if c]
+dentro = set(c for c in sys.argv[2].split(",") if c)
+print(" ".join(c for c in citadas if c not in dentro))
+PY
+)"
+if [ -n "$CTRL_FORA_ESCOPO" ]; then
+  fail "CONTROLE FALHOU: as suítes citadas pelo master NÃO estão no escopo do relógio da matriz (${CTRL_FORA_ESCOPO}) — o escopo é o master + as suítes que ele cita."
+  exit 1
+fi
+CTRL_ESCOPO_N="$(echo "$CTRL_MATRIZ_PATHS" | tr ',' '\n' | grep -c .)"
+ctrl_citadas_n="$(echo "$CTRL_CITADAS" | tr ',' '\n' | grep -c .)"
+pass "Controle OK — o relógio da matriz mede ${CTRL_ESCOPO_N} caminho(s), com as ${ctrl_citadas_n} suíte(s) que o master cita DENTRO do escopo"
 CTRL_AGED="$(fato aged)"
 if [ "$CTRL_STATE" != "measured" ]; then
   fail "CONTROLE FALHOU: o fato não está medido ($CTRL_STATE)."
@@ -242,7 +353,7 @@ else
 fi
 # O controle tem de ter IDADE: uma régua que devolvesse `null` em tudo (ou um
 # repositório de um commit) faria todas as asserções passarem por vacuidade.
-for par in "behindMax:$CTRL_BEHIND" "tabelas:$CTRL_TABELAS" "mes:$CTRL_MES" "bench:$CTRL_BENCH"; do
+for par in "behindMax:$CTRL_BEHIND" "tabelas:$CTRL_TABELAS" "mes:$CTRL_MES"; do
   nome="${par%%:*}"
   valor="${par#*:}"
   if ! [[ "$valor" =~ ^[0-9]+$ ]] || [ "$valor" -le 0 ]; then
@@ -250,7 +361,17 @@ for par in "behindMax:$CTRL_BEHIND" "tabelas:$CTRL_TABELAS" "mes:$CTRL_MES" "ben
     exit 1
   fi
 done
-pass "Controle OK — as idades de hoje: a mais antiga ${CTRL_BEHIND} commit(s), a tabela do README ${CTRL_TABELAS}, a âncora de MÊS ${CTRL_MES}, a família do bench ${CTRL_BENCH}"
+# A idade das FAMÍLIAS do bench pode ser ZERO — é o estado SANO logo depois do
+# ato que as mediu (o remédio da própria régua), e exigi-la positiva faria o
+# controle depender do estado do repositório: verde com a régua velha, vermelho
+# logo depois de movê-la. O que não pode faltar é a ORIGEM lida (o commit de onde
+# a idade é derivada) — sem ela a régua devolveria `null` em tudo e as asserções
+# passariam por vacuidade.
+if [ -z "$CTRL_ORIGENS" ]; then
+  fail "CONTROLE FALHOU: nenhuma família do bench tem origem lida (a régua devolveria 'sem idade' em tudo) — a mutação mediria outra coisa."
+  exit 1
+fi
+pass "Controle OK — as idades de hoje: a mais antiga ${CTRL_BEHIND} commit(s), a tabela do README ${CTRL_TABELAS}, a âncora de MÊS ${CTRL_MES}, as ${CTRL_BENCH} de atraso do bench (0 = recém-medida, o estado são) sobre ${CTRL_ORIGENS}"
 
 if run_suite; then
   pass "Controle OK — suíte unitária verde com a régua intacta"
@@ -276,6 +397,7 @@ cli
 # uma data — e a mutação não pode mexer nela (é o segundo lado da asserção).
 M1_DECL="$(fato behind:declared-table)"
 M1_BENCH="$(fato behind:bench-family)"
+M1_ORIGENS="$(fato bench:origem)"
 if [ "$M1_DECL" != "0" ]; then
   fail "M1 NÃO DETECTADA: com a origem datada por HEAD as declarações datadas ainda medem $M1_DECL commit(s) atrás."
   exit 1
@@ -284,7 +406,11 @@ if [ "$M1_BENCH" != "$CTRL_BENCH" ]; then
   fail "M1 DETECTADA fora de escopo: a idade das FAMÍLIAS do bench (que vem do commit da baseline, não de uma data) passou de $CTRL_BENCH para $M1_BENCH."
   exit 1
 fi
-pass "M1 DETECTADA pela RÉGUA por execução: a tabela do README caiu de ${CTRL_TABELAS} para 0 commit(s) atrás (a idade foi colapsada) e a família do bench seguiu em ${M1_BENCH} — a mutação atinge só a origem DATADA"
+if [ "$M1_ORIGENS" != "$CTRL_ORIGENS" ]; then
+  fail "M1 DETECTADA fora de escopo: a ORIGEM das famílias do bench (o commit gravado na baseline, não uma data) mudou de '$CTRL_ORIGENS' para '$M1_ORIGENS'."
+  exit 1
+fi
+pass "M1 DETECTADA pela RÉGUA por execução: a tabela do README caiu de ${CTRL_TABELAS} para 0 commit(s) atrás (a idade foi colapsada) e as origens do bench seguiram intactas (${M1_BENCH} de atraso, ${M1_ORIGENS}) — a mutação atinge só a origem DATADA"
 
 SUITE_EXIT=0
 run_suite || SUITE_EXIT=$?
@@ -565,9 +691,9 @@ pass "Régua restaurada — base íntegra para a mutação M8"
 # reserva, onde a origem passa a mentir.
 header "MUTAÇÃO M8 — a procedência do teto (a reserva se dizendo medido)"
 info "Fazendo o caminho da reserva se declarar medido..."
-mutar '      teto: FRESHNESS_MAX_COMMITS_BEHIND,
+mutar '      teto: reserva,
       origem: "reserva declarada",' \
-  '      teto: FRESHNESS_MAX_COMMITS_BEHIND,
+  '      teto: reserva,
       origem: "medido", // MUTACAO M8: a reserva vira medicao'
 pass "Mutação M8 aplicada (sintaxe válida)"
 
@@ -580,6 +706,169 @@ fi
 pass "M8 DETECTADA pela suíte unitária (exit $SUITE_EXIT) — a reserva sai nomeada, e o teto de emergência não se confunde com uma medição"
 
 cp "$BACKUP" "$GUARD"
+pass "Régua restaurada — base íntegra para a mutação M9"
+
+# ── MUTAÇÃO M9 — a FONTE da forma no commit de origem ─────────────────────
+# A pergunta é "o que a origem CONTÉM?", e ela não se responde com o commit: o
+# commit é só um hash até alguém perguntar-lhe pelos arquivos. Assumindo "a
+# origem é o HEAD, então o que eu medi está lá", a fresta real volta a passar —
+# foi por ela que a `doc-hashes` ficou invisível (medida com a suíte no ÍNDICE,
+# num ato cujo commit de origem não a tem).
+#
+# TESTEMUNHA: a SUÍTE (o fixture da `doc-hashes`) E o CLI — no repositório de
+# hoje a forma fora do commit existe (`forms.missing` do controle), e a mutação
+# tem de ZERAR a classe. Se o ato seguinte já tiver fechado a dívida, a suíte
+# continua sendo a testemunha: o fixture dela não depende do estado do repo.
+header "MUTAÇÃO M9 — a fonte da forma no commit de origem (a origem é o HEAD)"
+info "Assumindo que a família medida no commit de origem está, por isso, no commit..."
+mutar '    const formas = FORM_SECTION[family]?.(bench) ?? []
+    if (formas.length === 0) continue' \
+  '    const formas = FORM_SECTION[family]?.(bench) ?? []
+    if (formas.length === 0) continue
+    // MUTACAO M9: a origem e o HEAD, entao o que eu medi esta la
+    if (commit === (meta?.commit ?? null)) continue'
+pass "Mutação M9 aplicada (sintaxe válida)"
+
+cli
+M9_FORA="$(fato forms:fora)"
+M9_STATE="$(fato forms:state)"
+if [ "${M9_FORA:-1}" -gt 0 ]; then
+  fail "M9 NÃO DETECTADA: com a fonte assumida pelo commit de origem a régua AINDA acha $M9_FORA forma(s) fora."
+  exit 1
+fi
+if [ "$M9_STATE" != "measured" ]; then
+  fail "M9 DETECTADA fora de escopo: o fato das formas saiu '$M9_STATE' em vez de medido."
+  exit 1
+fi
+pass "M9 DETECTADA pela RÉGUA por execução: a classe some ($M9_STATE, 0 forma(s) fora) — assumir a origem pelo HEAD cega a régua${CTRL_FORA:+, contra as ${CTRL_FORA} do controle}"
+
+SUITE_EXIT=0
+run_suite || SUITE_EXIT=$?
+if [ "$SUITE_EXIT" -eq 0 ]; then
+  fail "M9 NÃO DETECTADA pela suíte: assumir a origem pelo HEAD passou em silêncio."
+  exit 1
+fi
+pass "M9 DETECTADA também pela suíte unitária (exit $SUITE_EXIT) — o fixture da doc-hashes fica vermelho sem o master DAQUELE commit"
+
+cp "$BACKUP" "$GUARD"
+pass "Régua restaurada — base íntegra para a mutação M10"
+
+# ── MUTAÇÃO M10 — o fail-closed da PERGUNTA (sem o master daquele commit) ─
+# Um commit pode não ter o master dos sub-tests (a matriz ainda não existia ali,
+# o caminho mudou). Nesse caso a pergunta "de qual arquivo veio esta forma?" NÃO
+# PÔDE ser feita — e uma pergunta que não foi feita não é "está no commit": ela
+# entra em `semResposta` e impede o item datado de fechar. Sem ela, o silêncio de
+# uma pergunta impossível passa a valer como prova.
+#
+# TESTEMUNHA: só a SUÍTE, e isso é declarado — no repositório de hoje o master do
+# commit de origem É legível (o CLI mostra o caminho feliz: `semResposta` zero),
+# e é o fixture que mede o caminho em que a pergunta não pode ser feita.
+header "MUTAÇÃO M10 — o fail-closed da pergunta (sem o master daquele commit)"
+info "Fazendo a pergunta que não pôde ser feita sumir em silêncio..."
+mutar '      if (fonte.via === "sem-master") {
+        // A pergunta não PÔDE ser feita (aquele commit não tem o mapa id→script)
+        // — e isso é diferente do limite da família que não nomeia fonte: sai
+        // contado em `semResposta`, que também não deixa o item fechar.
+        semResposta += 1
+        continue
+      }' \
+  '      if (fonte.via === "sem-master") {
+        continue // MUTACAO M10: a pergunta impossivel vira "esta no commit"
+      }'
+pass "Mutação M10 aplicada (sintaxe válida)"
+
+SUITE_EXIT=0
+run_suite || SUITE_EXIT=$?
+if [ "$SUITE_EXIT" -eq 0 ]; then
+  fail "M10 NÃO DETECTADA: a suíte passou com a pergunta impossível sumindo em silêncio."
+  fail "No repositório real o master da origem é legível (o CLI mostra o caminho feliz): sem a suíte, a regra ficaria sem testemunha nenhuma."
+  exit 1
+fi
+pass "M10 DETECTADA pela suíte unitária (exit $SUITE_EXIT) — sem o mapa daquele commit a forma sai como NÃO perguntada, e nunca como \"está no commit\""
+
+cp "$BACKUP" "$GUARD"
+pass "Régua restaurada — base íntegra para a mutação M11"
+
+# ── MUTAÇÃO M11 — o ESCOPO da matriz (só o master, sem as SUÍTES) ───────
+# A matriz é o master E AS SUÍTES QUE ELE CITA, e é nelas que o CUSTO mora: um
+# corpo de suíte que muda move o número declarado do job (e o PISO do job
+# `guards`, que dele se soma) tanto quanto um sub-test novo. Com o relógio
+# contando só os commits do master, a classe que a régua existe para pegar — a
+# suíte que mudou depois do ato, SEM mexer em contagem nenhuma — volta a passar em
+# silêncio; e o teto, que é o ritmo do MESMO recorte, passa a medir outra coisa.
+#
+# TESTEMUNHA: as DUAS — o CLI (o escopo publicado tem de conter TODAS as suítes
+# que o master cita, derivadas do próprio master) e a suíte unitária (o escopo
+# esperado do fixture, que mede a união origem × HEAD).
+header "MUTAÇÃO M11 — o escopo da matriz (só o master, sem as suítes)"
+info "Tirando as suítes que o master cita do relógio da matriz..."
+mutar '  const paths = [
+    ...new Set([MASTER_DOS_SUBTESTS, ...escopoDaOrigem.suites, ...escopoDoHead.suites]),
+  ].sort()' \
+  '  // MUTACAO M11: o escopo da matriz vira so o master
+  const paths = [MASTER_DOS_SUBTESTS]'
+pass "Mutação M11 aplicada (sintaxe válida)"
+
+cli
+M11_PATHS="$(fato matriz:paths)"
+M11_ESCOPO_N="$(echo "$M11_PATHS" | tr ',' '\n' | grep -c .)"
+M11_FALTANDO="$(python3 - "$CTRL_CITADAS" "$M11_PATHS" <<'PY'
+import sys
+citadas = [c for c in sys.argv[1].split(",") if c]
+dentro = set(c for c in sys.argv[2].split(",") if c)
+print(" ".join(c for c in citadas if c not in dentro))
+PY
+)"
+if [ -z "$M11_FALTANDO" ]; then
+  fail "M11 NÃO DETECTADA: o escopo seguiu com as suítes do master (${M11_PATHS})."
+  exit 1
+fi
+pass "M11 DETECTADA pela RÉGUA por execução: o escopo caiu de ${CTRL_ESCOPO_N} para ${M11_ESCOPO_N} caminho(s) e as suítes citadas SAÍRAM dele (${M11_FALTANDO})"
+# O RECORTE do TETO anda junto do escopo: um teto medido noutro recorte seria a
+# segunda régua do mesmo número (o ritmo da matriz é o ritmo DESTES caminhos).
+M11_TETO_PATHS="$(fato matriz:teto-paths)"
+if [ "$M11_TETO_PATHS" != "$M11_ESCOPO_N" ]; then
+  fail "M11 DETECTADA fora de escopo: o recorte do teto ($M11_TETO_PATHS) divergiu do escopo ($M11_ESCOPO_N)."
+  exit 1
+fi
+pass "M11 também confere o RECORTE do teto: ele mede os MESMOS ${M11_TETO_PATHS} caminho(s) do escopo — a mutação moveu os dois juntos"
+
+SUITE_EXIT=0
+run_suite || SUITE_EXIT=$?
+if [ "$SUITE_EXIT" -eq 0 ]; then
+  fail "M11 NÃO DETECTADA pela suíte: o escopo sem as suítes citadas passou em silêncio."
+  exit 1
+fi
+pass "M11 DETECTADA também pela suíte unitária (exit $SUITE_EXIT) — o escopo do fixture perde as suítes que o master cita"
+
+# ── MUTAÇÃO M12 — a DATA DO ITEM DATADO (`matrixItem.declaredAt`) ─────────
+# O item que o doctor ABRE quando o registro do ato fica atrás da matriz leva a
+# data do PRIMEIRO COMMIT que a matriz ganhou depois do ato (`since.date`), e não
+# o relógio da run — de propósito: um item que se re-datasse a cada execução
+# nunca envelheceria, e a dívida ficaria eternamente "de hoje" (é o mesmo defeito
+# que o registro datado (`ci/unproven.json`) existe para não ter: uma lacuna sem
+# data não vence e nunca é reafirmada).
+#
+# TESTEMUNHA: só a SUÍTE — no repositório de hoje o relógio da matriz está dentro
+# do teto (`lag` 0), então NENHUM item está aberto e não há onde o CLI ver a data;
+# o fixture da matriz vencida é quem mede o item, a data dele e a procedência.
+header "MUTAÇÃO M12 — a data do ITEM DATADO (da história, não do relógio da run)"
+info "Trocando a data do item pelo relógio da run..."
+mutar '  const declaradoEm = matrix.since?.date ?? null' \
+  '  // MUTACAO M12: a data do item sai do relogio da RUN, nao da historia
+  const declaradoEm = new Date().toISOString().slice(0, 10)'
+pass "Mutação M12 aplicada (sintaxe válida)"
+
+SUITE_EXIT=0
+run_suite || SUITE_EXIT=$?
+if [ "$SUITE_EXIT" -eq 0 ]; then
+  fail "M12 NÃO DETECTADA: a suíte passou com o item datado pelo relógio da run."
+  fail "No repositório real isso não aparece (nenhum item aberto: o relógio da matriz está dentro do teto): sem a suíte, o item datado ficaria sem testemunha nenhuma."
+  exit 1
+fi
+pass "M12 DETECTADA pela suíte unitária (exit $SUITE_EXIT) — a data do item sai da HISTÓRIA e não se renova a cada run"
+
+cp "$BACKUP" "$GUARD"
 pass "Régua RESTAURADA (checksum conferido abaixo)"
 
 # ── CONTROLE FINAL — a árvore voltou ao comportamento original ────────────
@@ -589,16 +878,39 @@ if ! cmp -s "$BACKUP" "$GUARD"; then
   exit 1
 fi
 cli
-if [ "$CLI_EXIT" -ne 0 ] || [ "$(fato behindMax)" != "$CTRL_BEHIND" ]; then
+# O exit 1 de uma FORMA fora do commit de origem é a mesma classe tolerada no
+# controle inicial (a dívida do ato anterior): o que o controle final exige é que
+# a régua RESTAURADA meça o MESMO fato de antes das mutações — a idade e a
+# classe, iguais às do controle.
+if { [ "$CLI_EXIT" -ne 0 ] && [ "$(fato forms:fora)" = "0" ]; } || [ "$(fato behindMax)" != "$CTRL_BEHIND" ]; then
   fail "CONTROLE FINAL FALHOU: a régua restaurada mede $(fato behindMax) commit(s) (esperado $CTRL_BEHIND) e saiu $CLI_EXIT."
   exit 1
 fi
-pass "Controle final OK — a régua restaurada mede de novo ${CTRL_BEHIND} commit(s) e sai 0"
+if [ "$(fato forms:fora)" != "$CTRL_FORA" ]; then
+  fail "CONTROLE FINAL FALHOU: a régua restaurada acha $(fato forms:fora) forma(s) fora do commit de origem (esperado $CTRL_FORA)."
+  exit 1
+fi
+# O ESCOPO da matriz volta com as suítes: a M11 mutou justamente ele, e uma
+# restauração que perdesse a união deixaria a régua cega sem que o checksum
+# pegasse (o alvo da mutação é uma LINHA, e o backup é do arquivo inteiro — este
+# é o controle que prova que a linha voltou ao que era).
+CTRL_FINAL_ESCOPO_DE_FORA="$(python3 - "$CTRL_CITADAS" "$(fato matriz:paths)" <<'PY'
+import sys
+citadas = [c for c in sys.argv[1].split(",") if c]
+dentro = set(c for c in sys.argv[2].split(",") if c)
+print(" ".join(c for c in citadas if c not in dentro))
+PY
+)"
+if [ -n "$CTRL_FINAL_ESCOPO_DE_FORA" ]; then
+  fail "CONTROLE FINAL FALHOU: a régua restaurada perdeu suítes do escopo da matriz (${CTRL_FINAL_ESCOPO_DE_FORA})."
+  exit 1
+fi
+pass "Controle final OK — a régua restaurada mede de novo ${CTRL_BEHIND} commit(s), as ${CTRL_FORA} forma(s) fora do commit de origem E as suítes do escopo da matriz saem do MESMO estado"
 
 # ── Veredito ──────────────────────────────────────────────────────────────
 echo ""
 echo "  ═════════════════════════════════════════════════════════════════"
-echo -e "   ${GREEN}✅ MUTATION TEST PASSOU${NC} — as OITO regras são LOAD-BEARING:"
+echo -e "   ${GREEN}✅ MUTATION TEST PASSOU${NC} — as ONZE regras são LOAD-BEARING:"
 echo "      • a DERIVAÇÃO da origem pela DATA → datada por HEAD, a régua"
 echo "        declara frescor sem ter medido nada"
 echo "      • a ÂNCORA de MÊS no último commit → no primeiro dia, a idade"
@@ -614,6 +926,12 @@ echo "      • o TETO DERIVADO do ritmo → com o literal, o teto deixa de segu
 echo "        o repositório (apertado num que acelerou, frouxo num que parou)"
 echo "      • a PROCEDÊNCIA do teto → com a reserva se dizendo medido, a dúvida"
 echo "        (o git não respondeu o ritmo) sai com cara de veredito"
+echo "      • a FONTE da forma no commit de origem → assumindo que a origem É o"
+echo "        HEAD, a doc-hashes (medida com a suíte no índice) volta a passar"
+echo "      • o fail-closed da PERGUNTA → sem o master daquele commit, uma"
+echo "        pergunta que não pôde ser feita vale como 'está no commit'"
+echo "      • o ESCOPO da matriz → com o master sozinho, a suíte que mudou"
+echo "        depois do ato deixa de mover o relógio da matriz"
 echo "      Cada metade é CIRÚRGICA (o alvo tem de aparecer UMA vez, o arquivo"
 echo "      segue com sintaxe válida) e é restaurada entre as medições, com a"
 echo "      régua medindo o mesmo fato de novo no controle final."
