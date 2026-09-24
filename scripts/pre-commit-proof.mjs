@@ -36,6 +36,8 @@
 import { spawnSync } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
+
+import { DOCS, escreverDocs } from "./bench-table.mjs"
 // O CAMINHO do registro versionado e a RÉGUA da matriz saem do próprio guard
 // (`check-mutation-count.mjs`): o fixture e o veredito falam do MESMO arquivo e
 // do MESMO parser — uma segunda cópia do caminho divergiria no dia do primeiro
@@ -1795,6 +1797,24 @@ export function versionaOAto(copia, { nNovo, ler = readFileSync }) {
   )
   bench.mutations = corrigida.metades === total ? corrigida : { ...corrigida, metades: total }
   writeFileSync(caminhoBench, `${JSON.stringify(bench, null, 2)}\n`)
+  // O ATO não é o registro sozinho: ele REESCREVE as duas prosas derivadas (é o
+  // `escreverDocs` do `--baseline`, a MESMA folha que este fixture importa).
+  // Versionar só o registro deixaria o índice com a prosa do ato ANTERIOR — o
+  // guard o recusaria pela prosa (a regra 6), e não pela defasagem que esta
+  // metade mede (medido: o CONTROLE do bump era recusado com o resto verde).
+  const notas = escreverDocs({
+    cwd: copia,
+    registro: bench,
+    ler: (p) => String(ler(p, "utf8")),
+  })
+  const ruins = notas.filter((n) => n.status !== "reescrito" && n.status !== "jaEstava")
+  if (ruins.length) {
+    return {
+      ok: false,
+      motivo: `o ato não pôde reescrever as prosas: ${JSON.stringify(ruins)}`,
+      formas: corrigida.forms.length,
+    }
+  }
   return { ok: true, motivo: null, formas: corrigida.forms.length }
 }
 
@@ -2470,7 +2490,12 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
         remedies,
       }
     }
-    runGit(copia, ["add", "--", BENCH_PATH])
+    // O índice do CONTROLE recebe TUDO o que o ato escreveu: o registro E as duas
+    // prosas que ele reescreve (a lista sai da folha do ato, não de uma segunda
+    // lista à mão). Deixar as prosas de fora fazia o commit ser recusado pela
+    // PROSA no recorte do índice (a regra 6), e não pela defasagem que esta
+    // metade mede — medido: o CONTROLE saía `exit 1` com o registro já versionado.
+    runGit(copia, ["add", "--", BENCH_PATH, ...DOCS.map((d) => d.arquivo)])
     const controleBump = runGit(copia, [
       "commit",
       "-m",
