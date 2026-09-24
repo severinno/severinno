@@ -117,6 +117,8 @@ METADES=(
   'M5|O LITERAL DE RESERVA do RESOLVEDOR reintroduzido'
   'M6|O FALLBACK LITERAL DO WORKFLOW: tratá-lo como dinâmico (não comparação)'
   'M7|A GRAFIA DO FALLBACK: aceitar só as aspas SIMPLES'
+  'M8|A CLASSE DO FIXTURE (mutation-proof) ESTREITA DEMAIS: o payload da prova vira alvo'
+  'M9|A MESMA CLASSE LARGA DEMAIS: qualquer arquivo com o nome escapa da varredura'
 )
 GUARD="$SCRIPT_DIR/scripts/check-registry-source.mjs"
 RESOLVER="$SCRIPT_DIR/scripts/registry-source.mjs"
@@ -134,6 +136,8 @@ FX_VAZIO="$TMP_DIR/fx-vazio"
 FX_TIPO="$TMP_DIR/fx-tipo"
 FX_TIPO_OK="$TMP_DIR/fx-tipo-ok"
 FX_TIPO_SIMPLES="$TMP_DIR/fx-tipo-simples"
+FX_PROVA="$TMP_DIR/fx-prova"
+FX_ALVO="$TMP_DIR/fx-alvo"
 
 # ── Colors ────────────────────────────────────────────────────────────────
 
@@ -428,6 +432,28 @@ printf 'jobs:\n  x:\n    steps:\n      - run: echo ${{ vars.IMAGE_TAG || "1.4.0"
 printf 'jobs:\n  x:\n    steps:\n      - run: echo ${{ vars.IMAGE_TAG || '"'"'1.3.14'"'"' }}\n' \
   > "$FX_TIPO_SIMPLES/.gitea/workflows/ficticio.yml"
 
+# Os dois fixtures da CLASSE do fixture da prova por mutação (M8/M9) — as duas
+# direções da cegueira, cada uma com o seu controle:
+#  · `$FX_PROVA` tem o que uma prova por mutação tem (o literal da imagem
+#    cravado num `scripts/test-mutation-*.sh`): ele é o PAYLOAD que a prova
+#    entrega ao guard, e por isso o fixture tem de ser VERDE na árvore íntegra —
+#    quem o mantém fora da varredura é a CLASSE, não uma decisão por arquivo;
+#  · `$FX_ALVO` é um ALVO VERDADEIRO fora do escopo (um Dockerfile numa pasta
+#    que ninguém varre): ele tem de ser ACUSADO. É ele que mede a classe larga
+#    demais — onde o alvo verdadeiro escaparia junto com os fixtures.
+#
+# O VALOR é uma referência à NOSSA namespace (`ghcr.io/severinno/`) — é ela que a
+# varredura julga — mas com o nome do repo FORA do Bun e a tag em sentinela: um
+# `ubuntu-bun:<semver>` seria acusado pelo guard da fonte única do Bun MESMO numa
+# fixture (a escada da sentinela não cobre a forma prefixada pelo nome do Bun), e
+# a fixture passaria a medir o guard errado.
+mkfixture "$FX_PROVA"
+printf 'IMG="ghcr.io/severinno/runner-sonda:9.9.9-sentinel"\n' > "$FX_PROVA/scripts/test-mutation-exemplo.sh"
+
+mkfixture "$FX_ALVO"
+mkdir -p "$FX_ALVO/ci-tools"
+printf 'FROM ghcr.io/severinno/runner-sonda:9.9.9-sentinel\n' > "$FX_ALVO/ci-tools/Dockerfile.build"
+
 echo -e "${CYAN}═══ Mutation test: defaults do registry/namespace (invariante 9) ═══${NC}"
 echo "  guard:     $GUARD"
 echo "  resolvedor: $RESOLVER"
@@ -607,7 +633,48 @@ pass "M7 CIRÚRGICA: a forma já vista segue reprovada — morreu só a outra gr
 exigir_suite_vermelha "M7" "$SUITE_VARREDURA" "$FILTRO_VARREDURA"
 restaurar_original
 
-# ── 12. CONTROLE FINAL: a árvore ficou como estava ────────────────────────
+# ── 12. MUTAÇÃO M8: a CLASSE do fixture ESTREITA DEMAIS ───────────────────
+# A classe (`isMutationProofFixture`) é o que mantém o PAYLOAD das provas fora
+# das DUAS varreduras deste guard (os defaults da imagem e as referências fora
+# do escopo) — ela é declarada uma vez e consultada pelas duas. Estreitada a
+# nada, o fixture que era verde vira alvo ACUSADO; e o repositório REAL nasce
+# vermelho, porque o literal da suíte de mutação nova (o payload que ela entrega
+# ao guard) passa a ser julgado como site de resolução.
+header "MUTAÇÃO M8: a classe do fixture (mutation-proof) some da varredura"
+exigir_aprovado "CONTROLE (o payload de uma prova NÃO é alvo)" "$FX_PROVA"
+pass "CONTROLE: o fixture da prova é VERDE na árvore íntegra — quem o protege é a CLASSE, não uma decisão por arquivo"
+mutar "$GUARD" \
+  'export const isMutationProofFixture = (rel) => /^scripts\/test-mutation-[^/]+\.sh$/.test(rel)' \
+  'export const isMutationProofFixture = (rel) => false /* MUTACAO M8: a classe deixa de existir */'
+exigir_acusado "M8" "$FX_PROVA"
+pass "M8: o fixture da prova passa a ser ACUSADO — a classe é load-bearing"
+exigir_suite_vermelha "M8" "$SUITE_VARREDURA" "$FILTRO_VARREDURA"
+rodar_guard_real
+if [ "$GUARD_EXIT" -eq 0 ]; then
+  fail "M8: o repositório real seguiu VERDE com a classe mutada — a suíte nova não é julgada por classe nenhuma"
+  mostrar
+  exit 1
+fi
+pass "M8: o repositório REAL fica VERMELHO (a suíte nova vira alvo sem decisão escrita) — era a classe que o sustenta"
+restaurar_original
+
+# ── 13. MUTAÇÃO M9: a MESMA CLASSE LARGA DEMAIS ──────────────────────────
+# A outra direção: uma classe que casa tudo não é classe nenhuma — é a varredura
+# desligada. O alvo VERDADEIRO fora do escopo escapa e o gate fica verde onde
+# tem de acusar. É o controle cirúrgico da M8: as duas metades medem a mesma
+# linha, e uma sem a outra aceitaria "classe" como "nome bonito para nada".
+header "MUTAÇÃO M9: a classe larga demais (qualquer arquivo com o nome)"
+exigir_reprovado "CONTROLE (o alvo verdadeiro fora do escopo é ACUSADO)" "$FX_ALVO"
+  pass "CONTROLE: o Dockerfile fora do escopo é VIOLAÇÃO na árvore íntegra"
+mutar "$GUARD" \
+  'export const isMutationProofFixture = (rel) => /^scripts\/test-mutation-[^/]+\.sh$/.test(rel)' \
+  'export const isMutationProofFixture = () => true /* MUTACAO M9: a classe larga demais */'
+exigir_cego "M9" "$FX_ALVO"
+pass "M9: o alvo VERDADEIRO escapa (CEGO) — a classe larga demais é a varredura desligada"
+exigir_suite_vermelha "M9" "$SUITE_VARREDURA" "$FILTRO_VARREDURA"
+restaurar_original
+
+# ── 14. CONTROLE FINAL: a árvore ficou como estava ────────────────────────
 header "CONTROLE FINAL: restauração verificada por checksum"
 exigir_reprovado "CONTROLE FINAL (compose divergente)" "$FX_COMPOSE"
 pass "CONTROLE FINAL: o gate restaurado volta a reprovar o compose divergente"
@@ -620,4 +687,6 @@ fi
 pass "CONTROLE FINAL: o repositório real volta a passar (árvore idêntica à de antes)"
 
 echo
-echo -e "${GREEN}═══ MUTATION TEST PASSED — as 7 mutações foram detectadas (gate e/ou suíte) ═══${NC}"
+# A contagem é DERIVADA do bloco de metades (a mesma fonte que o master e a doc
+# leem): escrever o número à mão aqui envelheceria na primeira mutação nova.
+echo -e "${GREEN}═══ MUTATION TEST PASSED — as ${#METADES[@]} mutações foram detectadas (gate e/ou suíte) ═══${NC}"
