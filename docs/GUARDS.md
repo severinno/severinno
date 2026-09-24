@@ -3858,6 +3858,55 @@ que ninguém declarou, este exige a DECLARAÇÃO de onde o `node_modules` vem.
 - **isenção SEM OBJETO** (o job passou a não exigir nada) também é violação: a
   declaração que sobrou mente sobre o presente.
 
+**O SEGUNDO CONTRATO DO MESMO JOB — o CAMINHO (desde 24/09/2026):** o
+`node_modules` é uma metade; a outra é **onde o veredito RODA**. Um gate de
+**LEITURA DE YAML** não usa docker, não sobe serviço e não fala com a rede — ele
+só LÊ o repositório. Preso ao runner da forja, ele passa a depender da
+infraestrutura dela: **medido** em 24/09/2026, com o runner `hostinger-runner`
+**offline**, os 50 jobs do `pr-check` ficaram ~35 min em `queued` e os gates de
+leitura não cunharam veredito nenhum (a forja não erra: ela ESPERA, e nada fica
+vermelho — o vermelho que apareceu foi o de um job que roda _sem_ instalar, e a
+mensagem é "NÃO JULGÁVEL").
+
+A classe é **DERIVADA, não enumerada**, e são dois fatos do próprio job:
+
+- **ele LÊ YAML**: algum passo roda um leitor (`node scripts/<X>.mjs`) cujo fecho
+  de imports RELATIVOS alcança a leitura compartilhada (`forge-workflows.mjs`, a
+  fonte única do YAML validado) ou importa `js-yaml` direto. A detecção é por
+  **SPECIFIER** — um comentário que cita o arquivo não faz um job ler YAML;
+- **ele não tem NENHUM fato que exija a imagem da forja**: nada de `services:`,
+  nada de docker (comando ou `uses: docker/*`), nada de suíte de mutação, nada de
+  `bun x <pacote>` e nenhum shell além do plumbing do Bun
+  (`scripts/setup-bun-ci.sh`). Um shell QUALQUER tira o job da classe — o que o
+  corpo dele executa este contrato não prova, e presumir "só leitura" ali seria a
+  aposta que este repositório não faz.
+
+**O veredito:** classe verdadeira + `runs-on` que pede a forja (`self-hosted`) =
+VIOLAÇÃO. O remédio é o caminho hospedado (`ubuntu-latest`) **mais** o par
+canônico de install (o hospedado chega sem `node_modules` nenhum — e sem o par,
+o leitor de YAML sai 2), ou a exceção declarada em `RUNNER_PATH_ALLOWLIST` com
+`addedAt` e motivo, que segue a MESMA janela de revisão do outro contrato. Uma
+exceção **sem objeto** (o job já roda no caminho hospedado, ou saiu da classe) é
+violação: a declaração que sobra mente sobre o presente.
+
+**Onde o contrato NÃO se aplica, declarado:** o escopo são os workflows do
+ESPELHO (`.github/workflows/*`) com gatilho de `pull_request` — os gates do
+MERGE. Do lado da forja dona do merge o `runs-on: ubuntu-latest` **É** o
+`act_runner` dela (o label mapeia para a imagem `ubuntu-bun`), então a regra não
+tem o que decidir lá; e um cron não bloqueia merge (a decisão dele é a dívida
+declarada, noutro canal). Um job sem `runs-on` lido sai NOMEADO em
+`foraDoEscopo`.
+
+**O que a classe MEDIU nesta árvore** (o número sai do `--json`): **10 jobs**
+leem YAML no espelho — **8** no caminho hospedado e **2** com exceção declarada
+(o `check`, que EXECUTA a stack: o `check-mirror-coverage` spawna os guards do
+recorte em worktrees; e o `pre-commit-in-runner-proof`, cujo `docker run` vive no
+corpo do script — fora do scan de passo — porque o que ele mede É a imagem da
+forja). A derivação achou **4 gates que a varredura manual tinha deixado para
+trás** (`secrets-guard`, `workflow-refs-guard`, `mutation-jobs-staged-guard` e o
+próprio `check`): é o que uma classe derivada compra — um gate novo entra no
+julgamento por FATO, não por alguém lembrar de movê-lo.
+
 **O GRAU é um FATO, não um detalhe:** `binario` (o binário do `node_modules`:
 `vitest`, `tsc`), `estatico` (`import` de topo — carrega sempre, o desfecho sem
 deps é o CRASH `ERR_MODULE_NOT_FOUND`) e `tardio` (specifier alcançado só

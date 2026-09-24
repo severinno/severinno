@@ -2192,7 +2192,19 @@ MESMA classe de alvo do `check-hook-commands` (`alvoDoLancador` → `classeDoFla
 por interpretador): o `node --version` (que não lê arquivo nenhum) e o
 `bash -u x.sh` (cujo alvo É o arquivo) deixaram de ser o mesmo rótulo — e o
 comando com um flag na frente do ARQUIVO passou a ser JULGADO, porque o flag não
-é o alvo. Ver docs/GUARDS.md §12.1.
+é o alvo.
+
+O guard tem um **SEGUNDO CONTRATO** (desde 24/09/2026): a de onde vem o
+`node_modules` é uma metade; a outra é **onde o veredito RODA** — um gate de
+LEITURA DE YAML não pode estar preso à infraestrutura da forja. A classe é
+DERIVADA do próprio job (ele lê YAML pela leitura compartilhada, por SPECIFIER, e
+não tem serviço, docker, suíte de mutação nem shell fora do plumbing do Bun), e um
+`runs-on: self-hosted` a viola: o remédio é o caminho hospedado (`ubuntu-latest`)
+com o par de install — o hospedado chega sem `node_modules` — ou a exceção
+declarada com data e motivo (`RUNNER_PATH_ALLOWLIST`). Medido em 24/09/2026: com
+o runner auto-hospedado `hostinger-runner` offline, os 50 jobs do `pr-check`
+ficaram ~35 min em `queued` e os gates de leitura não cunharam veredito nenhum —
+a forja não erra, ela espera. Ver docs/GUARDS.md §12.1.
 
 ### Typecheck — gate de tipo do PR
 

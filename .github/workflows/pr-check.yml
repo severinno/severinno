@@ -121,9 +121,30 @@ jobs:
   # adicionado de volta ao tracking sem o PR ser bloqueado.
   secrets-guard:
     name: Secrets Guard (no .env tracked)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
+      # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
+      # da leitura de YAML continua saindo.
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install deps
+        run: bun install --frozen-lockfile
 
       - name: Check no .env tracked in git
         run: node scripts/rotate-secrets.mjs --check
@@ -143,9 +164,13 @@ jobs:
   # deploy precisa bloquear isso antes de tocar o servidor.
   seed-hooks-guard:
     name: Seed Test Hooks Guard (no prod leak)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
+      # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
+      # da leitura de YAML continua saindo.
 
       # O guard lê os workflows com `js-yaml` (dependência do repositório, via
       # `scripts/forge-workflows.mjs`) — sem `node_modules` ele cai no fail-closed
@@ -197,9 +222,30 @@ jobs:
   # hook local no runtime sem este modo.
   workflow-refs-guard:
     name: Workflow References Guard (no dangling refs)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
+      # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
+      # da leitura de YAML continua saindo.
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install deps
+        run: bun install --frozen-lockfile
 
       - name: Check workflow → script/package.json/uses references
         run: node scripts/check-workflow-refs.mjs --pkg-internal
@@ -622,9 +668,30 @@ jobs:
   # tabela de simetria do README é de encoding guards). Node puro, sem deps.
   sentinel-producer-guard:
     name: Sentinel Producer Guard (grep -Fq ↔ produtor)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
+      # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
+      # da leitura de YAML continua saindo.
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install deps
+        run: bun install --frozen-lockfile
 
       - name: Check every grep -Fq sentinel has a matching producer
         run: node scripts/check-sentinel-producer.mjs
@@ -641,9 +708,30 @@ jobs:
   # cache).
   no-setup-bun-guard:
     name: No setup-bun Guard (script local)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
+      # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
+      # da leitura de YAML continua saindo.
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install deps
+        run: bun install --frozen-lockfile
 
       - name: Check no workflow uses oven-sh/setup-bun
         run: node scripts/check-no-setup-bun.mjs
@@ -670,9 +758,30 @@ jobs:
   # início com a violação exata (arquivo:linha).
   bun-mirror-guard:
     name: Bun Mirror Guard (fonte única vars.BUN_VERSION)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
+      # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
+      # da leitura de YAML continua saindo.
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install deps
+        run: bun install --frozen-lockfile
 
       - name: Check bun single-source + GHCR mirror consistency
         run: node scripts/check-bun-mirror.mjs
@@ -706,9 +815,30 @@ jobs:
   # comparar contra um FALLBACK, que é intenção declarada, nunca valor.
   doctor-mirrors-guard:
     name: Doctor Guard (valor das repository variables nos espelhos)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
+      # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
+      # da leitura de YAML continua saindo.
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install deps
+        run: bun install --frozen-lockfile
 
       - name: Doctor Ci (o VALOR das repository variables nos espelhos)
         env:
@@ -739,11 +869,32 @@ jobs:
   # scripts/check-mutation-jobs.mjs --staged usa git diff --cached.
   mutation-jobs-staged-guard:
     name: Mutation Jobs Guard (staged diff)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
+        # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
+        # da leitura de YAML continua saindo.
+
         with:
           fetch-depth: 0 # needed for origin/main...HEAD diff
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install deps
+        run: bun install --frozen-lockfile
 
       - name: Check mutation test coverage on the PR diff
         run: node scripts/check-mutation-jobs.mjs --staged --base origin/main
@@ -971,9 +1122,30 @@ jobs:
   # (mutation test) no mesmo workflow.
   hooks-symmetry-guard:
     name: Hooks Symmetry Guard (README ↔ hooks)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
+      # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
+      # da leitura de YAML continua saindo.
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install deps
+        run: bun install --frozen-lockfile
 
       - name: Check README Git Hooks table ↔ real hooks (bidirectional)
         run: node scripts/check-hooks-symmetry.mjs
@@ -1001,9 +1173,30 @@ jobs:
   # merge (e o mesmo guard roda no reusable utf8-check.yml + hooks locais).
   mutation-jobs-guard:
     name: Mutation Jobs Guard (test-mutation-*.sh ↔ CI jobs)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
+      # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
+      # da leitura de YAML continua saindo.
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install deps
+        run: bun install --frozen-lockfile
 
       - name: Check every test-mutation-*.sh has a CI job (transitive)
         run: node scripts/check-mutation-jobs.mjs
@@ -1220,9 +1413,13 @@ jobs:
   # impresso (📊 Resultados) bate com a própria constante (exit 1 se divergir).
   e2e-counts-guard:
     name: E2E Counts Guard (comentários = derivação)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
+      # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
+      # da leitura de YAML continua saindo.
 
       - name: Restore Bun cache
         uses: actions/cache@v4
@@ -1232,6 +1429,15 @@ jobs:
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
       - name: Check documented E2E check counts match the derivation
         run: node scripts/check-e2e-counts.mjs
 
@@ -1260,9 +1466,13 @@ jobs:
   # são flags.
   seed-count-literals-guard:
     name: Seed Count Literals Guard (scripts/docs/.github = derivação)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
+      # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
+      # da leitura de YAML continua saindo.
 
       - name: Restore Bun cache
         uses: actions/cache@v4
@@ -1272,6 +1482,15 @@ jobs:
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
       - name: Check seed count literals across scripts/, docs/, .github/
         run: node scripts/check-seed-count-literals.mjs
 

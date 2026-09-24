@@ -1235,7 +1235,7 @@ export async function checkGithubRunnerLabels({
       apiUrl: resolvedApiUrl,
       declared: [],
       violations: [
-        `${side}: um runner sem label nenhum não recebe job algum — nem o \`runs-on: self-hosted\` que TODO workflow deste repositório pede. Sem a declaração não há o que comparar com o registro.`,
+        `${side}: um runner sem label nenhum não recebe job algum — nem os \`runs-on: self-hosted\` que a forja pede (os gates que EXECUTAM a stack; desde 24/09/2026 os de LEITURA DE YAML do \`pr-check\` rodam no caminho hospedado, e é o \`check:job-deps\` quem lê essa classe). Sem a declaração não há o que comparar com o registro.`,
       ],
       remedies: [
         `Remédio: declare RUNNER_LABELS em ${GITHUB_RUNNER_SCRIPT} e SÓ ENTÃO re-registre — o registro só pega os labels no config.sh.`,
@@ -1348,7 +1348,7 @@ export async function checkGithubRunnerLabels({
   // significar "quantos problemas existem".
   if (registeredEntries.length === 0) {
     violations.push(
-      `o runner '${runner.name}' está registrado com NENHUM label (runner órfão) e o setup declara ${declaredEntries.length} (${declaredEntries.map((e) => e.raw).join(" , ")}): existe no painel e nenhum job é atribuído a ele — nem o \`runs-on: self-hosted\` que todo workflow deste repositório pede`,
+      `o runner '${runner.name}' está registrado com NENHUM label (runner órfão) e o setup declara ${declaredEntries.length} (${declaredEntries.map((e) => e.raw).join(" , ")}): existe no painel e nenhum job é atribuído a ele — nem os \`runs-on: self-hosted\` que a forja pede (os gates que EXECUTAM a stack)`,
     )
   }
   for (const miss of registeredEntries.length === 0 ? [] : diff.missing) {
