@@ -24,6 +24,13 @@
 // apareceria como "a baseline diz que mediu e o veredito diz que não" — sem teste
 // vermelho.
 //
+// AQUI TAMBÉM AS DUAS RÉGUAS PURAS DO REGISTRO: `comMetadesDaMatriz` (a coluna de
+// metades de cada forma é DERIVADA da matriz, nunca herdada do ato que mediu o
+// custo) e `mutationWhatItAdded` (a frase da família). Elas moram na folha pelo
+// mesmo motivo de todo o resto: são puras, e quem as consome sem ser o ato — o
+// fixture da prova do pre-commit, que precisa aplicar o MESMO remédio que o ato
+// aplicaria — não pode arrastar o módulo que lê o repositório inteiro.
+//
 // Usage:
 //   node scripts/bench-families.mjs            # as famílias e o que cada arquivo declara
 //   node scripts/bench-families.mjs --json     # o mesmo, como dados
@@ -36,6 +43,8 @@
 
 import process from "node:process"
 import { pathToFileURL } from "node:url"
+
+import { metadesDeclaradas } from "./metades.mjs"
 
 /**
  * Os DOIS arquivos do bench (versionados em `docs/benchmarks/`).
@@ -88,6 +97,310 @@ export function measuredFamilies(report) {
 }
 
 // ---------------------------------------------------------------------------
+// A FONTE de cada FORMA medida — "de qual arquivo esta forma veio?"
+// ---------------------------------------------------------------------------
+//
+// POR QUE ISTO EXISTE (o defeito real, medido em 22/09/2026): o ato grava o
+// commit de ORIGEM da medição (`meta.commit`/`meta.families`), mas uma FORMA
+// pode ter sido medida numa árvore que aquele commit NÃO tem — foi o que
+// aconteceu com a `doc-hashes`: a suíte existia (no ÍNDICE) quando o ato rodou e
+// o commit gravado como origem não a tem. O número, então, descreve uma matriz
+// que o commit não carrega, e nada no repositório olhava isso: a régua da idade
+// mede quantos commits de HEAD separam a origem, não o que a origem CONTÉM.
+//
+// A RÉGUA É UMA SÓ e mora aqui (pura, sem I/O) porque DUAS partes fazem a mesma
+// pergunta em momentos diferentes: o ATO (contra a árvore que ele acabou de
+// medir) e a RÉGUA DA IDADE (contra o commit de origem). Duas derivações da
+// mesma fonte divergiriam no dia em que uma delas fosse ajustada, e a divergência
+// apareceria como "o ato diz que está no commit e a régua diz que não".
+
+/** O master dos sub-tests: o arquivo que DECLARA id→script de cada forma da matriz. */
+export const MASTER_DOS_SUBTESTS = "scripts/test-mutation-guards.sh"
+
+/**
+ * A seção de FORMAS de cada família, num relatório do bench.
+ *
+ * A tabela existe para as duas pontas que perguntam "as formas estão no commit
+ * de origem?" — o ATO (a rodada que ele acabou de medir) e a RÉGUA da idade (o
+ * arquivo versionado) — caminharem sobre as MESMAS formas. Uma segunda lista
+ * divergiria no dia em que uma família nova entrasse, e a divergência apareceria
+ * como uma família que o ato julga e a régua não vê.
+ *
+ * @type {Record<string, (report: any) => any[]>}
+ */
+export const FORM_SECTION = {
+  battery: (r) => r?.guards ?? [],
+  lint: (r) => r?.lint?.forms ?? [],
+  typecheck: (r) => r?.rulers?.typecheck?.forms ?? [],
+  tests: (r) => r?.rulers?.tests?.forms ?? [],
+  hook: (r) => r?.hook?.forms ?? [],
+  mutations: (r) => r?.mutations?.forms ?? [],
+}
+
+/**
+ * Como cada FAMÍLIA nomeia a fonte das suas formas.
+ *
+ * `null` NÃO é "sem problema": é **não julgada** — a família mede COMANDOS (o
+ * hook, o lint, o tsc, a suíte unitária) e as formas dela não nomeiam arquivo
+ * próprio, então não há o que perguntar ao commit de origem. O limite é
+ * DECLARADO em vez de virar um verde silencioso (ver `fonteDaForma`).
+ *
+ * @type {Record<string, {via: string, master?: string}|null>}
+ */
+export const FONTE_DAS_FORMAS = {
+  mutations: { via: "subtest-do-master", master: MASTER_DOS_SUBTESTS },
+  battery: null,
+  lint: null,
+  typecheck: null,
+  tests: null,
+  hook: null,
+}
+
+/**
+ * O mapa `id → script` do `SUBTESTS=(...)` de um master (o texto do arquivo, de
+ * QUALQUER commit — a régua lê o do commit de origem, o ato lê o da árvore).
+ *
+ * Leitor MÍNIMO de propósito: o que ele responde é só "de qual script é esta
+ * forma". O `check-mutation-count` lê o MESMO array para um trabalho DIFERENTE —
+ * a violação da descrição escrita à mão no formato antigo (`id|descrição|script`)
+ * e o count da matriz —, e por isso ele tem o parser dele, com as regras dele.
+ *
+ * @param {string} masterSrc
+ * @returns {Map<string, string>} id → script (vazio quando o array não está lá)
+ */
+export function mapaDoMaster(masterSrc) {
+  const mapa = new Map()
+  const texto = String(masterSrc ?? "")
+  const inicio = texto.indexOf("SUBTESTS=(")
+  if (inicio === -1) return mapa
+  const bloco = texto.slice(inicio)
+  const fim = bloco.indexOf("\n)")
+  const corpo = bloco.slice("SUBTESTS=(".length, fim === -1 ? undefined : fim)
+  for (const linha of corpo.split("\n")) {
+    // A forma antiga (`id|descrição|script`) vem PRIMEIRO: no formato de dois
+    // campos ela casaria a descrição como se fosse o caminho. O meio é GREEDY e o
+    // caminho sai do ÚLTIMO separador: uma descrição que cite um pipe (o caso real
+    // — as descrições citam `echo $OUT | grep -Fq`) senão empurraria o começo do
+    // caminho para dentro dela e a forma mediria um arquivo que não existe.
+    const velho = linha.match(/^\s*"([^"|]+)\|(.+)\|([^"|]+)"\s*$/)
+    if (velho) {
+      mapa.set(velho[1].trim(), velho[3].trim())
+      continue
+    }
+    const m = linha.match(/^\s*"([^"|]+)\|([^"]+)"\s*$/)
+    if (m) mapa.set(m[1].trim(), m[2].trim())
+  }
+  return mapa
+}
+
+/**
+ * A COLUNA DE METADES de cada sub-test da MATRIZ — derivada, nunca herdada.
+ *
+ * POR QUE ELA MORA AQUI (o defeito medido em 23/09/2026): a coluna de metades do
+ * registro versionado saía da rodada que mediu o custo, e uma unidade
+ * acrescentada à suíte DEPOIS daquela medição ficava invisível — o registro dizia
+ * `8 metades` para uma suíte que já declarava dez, e o número sobrevivia porque
+ * ninguém o comparava com a matriz. A régua da contagem já existia
+ * (`scripts/metades.mjs`, lida pelo master e pela doc); o que faltava era o
+ * caminho DA MATRIZ até a coluna: esta função lê o `SUBTESTS` do master
+ * (`mapaDoMaster`) e, para cada suíte citada, a contagem declarada no bloco
+ * `METADES=(...)` DELA — a mesma leitura da tabela por sub-test e da doc.
+ *
+ * O ato usa esta função para GRAVAR a coluna, e o `check-mutation-count` para
+ * JULGÁ-LA: uma segunda derivação divergiria no dia em que uma das duas fosse
+ * ajustada, e a divergência apareceria como "o registro está certo para o ato e
+ * errado para o guard" — sem teste vermelho.
+ *
+ * @param {{masterSrc: string, lerSuite?: (script: string) => string|null}} opts
+ *   `lerSuite` devolve o TEXTO da suíte, ou `null` quando ela não está lá (a
+ *   suíte citada e ausente é resposta, não exceção: o chamador diz o que fazer).
+ * @returns {Map<string, {script: string, count: number, motivo: string|null}>} id → derivação
+ */
+export function metadesDaMatriz({ masterSrc, lerSuite = () => null } = /** @type {any} */ ({})) {
+  const derivadas = new Map()
+  const mapa = mapaDoMaster(masterSrc)
+  for (const [id, script] of mapa) {
+    const texto = lerSuite(script)
+    if (texto === null || texto === undefined) {
+      // Suíte citada pelo master e AUSENTE: a contagem não é zero, é NÃO MEDIDA —
+      // e quem julga é quem sabe o que fazer com isso (o guard nomeia o arquivo
+      // que o commit aponta e não carrega; o ato grava sem coluna nova).
+      derivadas.set(id, { script, count: 0, motivo: `\`${script}\` não está nesta árvore` })
+      continue
+    }
+    const declaradas = metadesDeclaradas(String(texto))
+    // O bloco ilegível (sem bloco, aspas duplas, id repetido) NÃO é zero: é
+    // "não medida" — a mesma resposta da suíte ausente, e pelo mesmo motivo (o
+    // guard é quem transforma isso em violação nomeada; o ato não inventa número).
+    derivadas.set(id, {
+      script,
+      count: declaradas.ok ? declaradas.metades.length : 0,
+      motivo: declaradas.ok ? null : declaradas.motivo,
+    })
+  }
+  return derivadas
+}
+
+/**
+ * A FONTE de UMA forma — o arquivo que ela mede, ou o motivo de não haver o que
+ * julgar.
+ *
+ * A ORDEM É DELIBERADA: a forma que declara o PRÓPRIO `script` (o campo que o
+ * ato passou a gravar) responde por si — é o dado mais próximo; sem ele, a
+ * família que tem um mapa (`mutations`) nomeia pelo `id`; e o id que NÃO está no
+ * mapa daquele master é uma resposta, não uma ausência: a forma foi medida numa
+ * árvore cuja matriz aquele commit não tem (o caso da `doc-hashes`).
+ *
+ * @param {string} family
+ * @param {{role?: string, id?: string, script?: string}} form
+ * @param {{scripts?: Map<string, string>|null}} [opts]  o mapa do master DAQUELE commit
+ * @returns {{path: string|null, via: string, id?: string}|null}  `null` = família sem fonte própria (não julgada)
+ */
+export function fonteDaForma(family, form, { scripts = null } = {}) {
+  const declarado = typeof form?.script === "string" ? form.script.trim() : ""
+  if (declarado !== "") return { path: declarado, via: "form.script" }
+
+  const regra = FONTE_DAS_FORMAS[family] ?? null
+  if (regra === null) return null
+
+  if (regra.via === "subtest-do-master") {
+    const id = String(form?.role ?? form?.id ?? "").trim()
+    if (id === "") return null
+    // SEM o master daquele commit a pergunta não é respondida — e isso é
+    // DIFERENTE da família que não nomeia fonte nenhuma: uma é a pergunta que
+    // não deu para fazer (o commit não tem o mapa), a outra é o limite por
+    // desenho. O chamador conta as duas separado; misturá-las faria o limite da
+    // régua engolir uma pergunta que ficou sem resposta.
+    if (!(scripts instanceof Map)) return { path: null, via: "sem-master", id }
+    const path = scripts.get(id) ?? null
+    if (path !== null) return { path, via: "subtest-do-master", id }
+    return { path: null, via: "ausente-do-master", id }
+  }
+
+  return null
+}
+
+/**
+ * A frase da família: os extremos, a mediana e o que o PRÓXIMO sub-test
+ * acrescenta.
+ *
+ * A primeira linha é MEDIDA (cada sub-test, um a um); a última é PROJEÇÃO —
+ * derivada dos dois lados medidos (a média dos scripts que existem e o harness por
+ * sub-test), e dita como projeção. Chamar a projeção de medição seria a mesma
+ * classe de erro que o `measured: false` existe para evitar: um número que não foi
+ * medido passando por medido.
+ *
+ * @param {{forms?: object[], deltas?: {subtestsMs?: number, harnessMs?: number, totalMs?: number, proximoSubtestProjetadoMs?: number, maisCaro?: string|null, maisCaroMs?: number|null, medianaMs?: number|null}, subtests?: number, metades?: number}} [opts]
+ * @returns {string[]}
+ */
+export function mutationWhatItAdded({ forms = [], deltas = {}, subtests = 0, metades = 0 } = {}) {
+  if (forms.length === 0) return ["NÃO MEDIDO: nenhum sub-test"]
+  const seg = (ms) => `${((ms ?? 0) / 1000).toFixed(1)}s`
+  return [
+    `MEDIDO, sub-test a sub-test: ${subtests} sub-test(s) · ${metades} metade(s) · ${seg(deltas.subtestsMs)} de sub-tests + ${seg(deltas.harnessMs)} de harness = ${seg(deltas.totalMs)}`,
+    `o mais caro: ${deltas.maisCaro} (${seg(deltas.maisCaroMs)}) · a mediana: ${seg(deltas.medianaMs)}`,
+    `o PRÓXIMO sub-test acrescenta ~${seg(deltas.proximoSubtestProjetadoMs)} (PROJEÇÃO: a média dos scripts medidos + o harness por sub-test) — e entra MEDIDO na primeira rodada que o tiver, sem conta à mão`,
+  ]
+}
+
+/**
+ * A COLUNA DE METADES do registro: DERIVADA da MATRIZ, na hora de gravar.
+ *
+ * O DEFEITO (medido em 23/09/2026): a coluna saía da rodada que mediu o CUSTO.
+ * Numa rodada completa isso coincide, porque o master conta as metades da mesma
+ * árvore; mas numa gravação que HERDA a família (`--merge`/`--only`) a coluna
+ * viajava junto com o custo — e uma unidade acrescentada à suíte DEPOIS daquela
+ * medição ficava escrita como a unidade anterior (o registro dizia `8 metades`
+ * para uma suíte que já declarava dez). O custo é herdar; a UNIDADE não é: ela
+ * descreve a suíte, e a suíte está nesta árvore.
+ *
+ * O QUE É DERIVADO AQUI, e o que NÃO é:
+ *   - a coluna `metades` de cada forma (casada pelo `role`, que é o id do
+ *     sub-test no master) e o TOTAL da família são reescritos pela matriz;
+ *   - o CUSTO (`ms`, `forms[].ms`, `deltas`) não é tocado; a procedência da
+ *     família (`meta.reused`) descreve o custo, e continua verdadeira — é o
+ *     custo que veio daquela rodada, não a contagem;
+ *   - a forma cujo id a derivação NÃO conhece (um sub-test que saiu da matriz e
+ *     continua no registro) fica INTOCADA e é DITA em `metadesDaMatriz.semDerivacao`:
+ *     inventar um número seria pior que declarar o que não foi derivado;
+ *   - a forma cujo id a matriz conhece e NÃO conseguiu medir (a suíte citada e
+ *     ausente, um bloco `METADES` ilegível) fica INTOCADA e é DITA em
+ *     `metadesDaMatriz.naoMedidas`: zero alí apagaria o número que o registro já
+ *     tinha, e "não medido" não é "zero metades".
+ *
+ * A frase da família (`whatItAdded`) é REGERADA com os números derivados — ela
+ * narra o resultado, e uma frase que diz `231 metade(s)` ao lado de uma coluna
+ * que soma 236 é a mesma classe de incoerência que o `measured: false` existe
+ * para evitar.
+ *
+ * SEM derivação não há reescrita NEM procedência: a família sai pela MESMA
+ * referência, e o CLI DIZ em voz alta que a coluna não foi derivada (derivar
+ * "nada" viraria um zero silencioso).
+ *
+ * COM a derivação, a família devolvida é sempre OUTRA — mesmo quando nada
+ * precisava ser corrigido. Isso é deliberado: a marca `metadesDaMatriz` (quantas
+ * formas a matriz corrigiu) é o dado que sustenta "a coluna é derivada", e uma
+ * rodada que não corrigiu nada tem `atualizadas: 0` — um fato, não a ausência de
+ * fato. Sem essa marca, "nada mudou" e "a derivação não rodou" ficariam com a
+ * mesma cara no arquivo versionado.
+ *
+ * PURA: recebe a família e a derivação (o CLI lê as duas).
+ *
+ * @param {object|null} mutations a família `mutations` do resultado
+ * @param {Map<string, {count: number}>|null} derivadas id → o que a matriz declara
+ * @returns {object|null} a mesma família com a coluna derivada e a procedência
+ *   (`null`/`Map` vazia = "não medida", nunca "vazia" de verdade)
+ */
+export function comMetadesDaMatriz(mutations, derivadas) {
+  if (!mutations || !Array.isArray(mutations.forms)) return mutations
+  if (!(derivadas instanceof Map) || derivadas.size === 0) return mutations
+
+  const semDerivacao = []
+  const naoMedidas = []
+  let atualizadas = 0
+  const forms = mutations.forms.map((f) => {
+    const id = typeof f?.role === "string" ? f.role.trim() : ""
+    const derivada = derivadas.get(id)
+    if (derivada === undefined) {
+      semDerivacao.push(id === "" ? "(forma sem role)" : id)
+      return f
+    }
+    // A unidade que a matriz NÃO conseguiu medir (suíte citada e ausente, bloco
+    // `METADES` ilegível) não é zero: `count: 0` aqui significa "não medida", e
+    // gravar 0 apagaria o número que o registro já tinha. A forma fica como
+    // está e o motivo é DITO — quem transforma isso em violação é o guard.
+    if (!(derivada.count > 0)) {
+      naoMedidas.push({ id, motivo: derivada.motivo ?? "a matriz não declara a unidade" })
+      return f
+    }
+    const anotada = Number.isFinite(f?.metades) ? Number(f.metades) : null
+    if (anotada === derivada.count) return f
+    atualizadas += 1
+    return { ...f, metades: derivada.count }
+  })
+  const metades = forms.reduce(
+    (s, f) => s + (Number.isFinite(f?.metades) ? Number(f.metades) : 0),
+    0,
+  )
+
+  return {
+    ...mutations,
+    forms,
+    metades,
+    // A PROCEDÊNCIA DA COLUNA (não do custo): quem a escreveu foi a matriz desta
+    // árvore, e quantas formas ela corrigiu fica DITO no próprio registro — "a
+    // coluna é derivada" deixa de ser uma promessa da prosa e passa a ser dado.
+    metadesDaMatriz: { total: metades, atualizadas, semDerivacao, naoMedidas },
+    whatItAdded: mutationWhatItAdded({
+      forms,
+      deltas: mutations.deltas ?? {},
+      subtests: mutations.subtests ?? forms.length,
+      metades,
+    }),
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main (uma CONSULTA: não lê repositório nenhum, não tem veredito)
 // ---------------------------------------------------------------------------
 
@@ -117,15 +430,31 @@ function main() {
   const familias = Object.keys(FAMILY_MEASURED).map((family) => ({
     family,
     criterio: String(FAMILY_MEASURED[family]),
+    fonteDasFormas: FONTE_DAS_FORMAS[family] ?? null,
   }))
   if (argv.includes("--json")) {
     console.log(
-      JSON.stringify({ families: familias, latest: LATEST_FILE, baseline: BASELINE_FILE }, null, 2),
+      JSON.stringify(
+        {
+          families: familias,
+          latest: LATEST_FILE,
+          baseline: BASELINE_FILE,
+          masterDosSubtests: MASTER_DOS_SUBTESTS,
+        },
+        null,
+        2,
+      ),
     )
     return 0
   }
   console.log("📐 Régua das famílias do bench:")
-  for (const f of familias) console.log(`   · ${f.family}: ${f.criterio}`)
+  for (const f of familias) {
+    const fonte = f.fonteDasFormas
+      ? `formas nomeadas por \`${f.fonteDasFormas.via}\` (${f.fonteDasFormas.master})`
+      : "formas SEM fonte própria (não julgadas contra o commit de origem)"
+    console.log(`   · ${f.family}: ${f.criterio}`)
+    console.log(`       ${fonte}`)
+  }
   console.log(`   arquivos: ${LATEST_FILE} (run) · ${BASELINE_FILE} (a régua)`)
   return 0
 }

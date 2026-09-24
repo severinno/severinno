@@ -40,13 +40,12 @@ import {
   OFERTA_FIM,
   OFERTA_INICIO,
   REUSED_FAMILY_LABELS,
-  WAIT_AGREGADO,
-  WAIT_SEPARADO,
   compareTimings,
   hookCostViolations,
   hookSemOferta,
   hookWaitAgregada,
   hookWhatItAdded,
+  linhaDaEsperaA,
   measureHookCost,
   reuseFamilies,
   vereditoDaDeteccao,
@@ -145,49 +144,41 @@ describe("bench-guard-timing — os contrafactuais do hook", () => {
       texto.split("\n").find((l) => l.trimStart().startsWith("wait_all $PID_")) as string
 
     expect(agr).not.toBeNull()
-    expect(linhaDoWait(hook)).toBe(WAIT_SEPARADO)
-    expect(linhaDoWait(agr)).toBe(WAIT_AGREGADO)
+    // A linha da espera da fase A sai do PRÓPRIO hook (`linhaDaEsperaA`), e não de
+    // uma lista à mão: a lista envelheceu no dia em que a fase A ganhou um guard
+    // (o `$PID_LINTSCOPE`), e a medição passou a se declarar NÃO MEDIDA em vez de
+    // medir a espera errada. O que a agregação faz é DERIVADO daqui: a mesma linha
+    // mais o PID do gate de sintaxe.
+    const esperaA = linhaDaEsperaA(hook) as string
+    expect(esperaA).not.toBeNull()
+    expect(linhaDoWait(hook)).toBe(esperaA)
+    expect(linhaDoWait(agr)).toBe(`${esperaA} $PID_RUNSYNTAX`)
     // A espera separada foi SUBSTITUÍDA: o gate de sintaxe passou a ser aguardado
     // pelo mesmo `wait_all` da fase A.
     expect(agr).not.toContain(ESPERA_SINTAXE)
     expect(agr).toContain(ESPERA_AGREGADA)
-    // O conjunto aguardado é o MESMO: os cinco da fase A mais o de sintaxe (que
-    // antes era aguardado na linha de baixo). É isso que faz o delta medir a
-    // ESTRUTURA da espera, e não outro trabalho.
+    // O conjunto aguardado é o MESMO + o gate de sintaxe (que antes era aguardado
+    // na linha de baixo): nenhum PID da fase A é reescrito ou perdido. É isso que
+    // faz o delta medir a ESTRUTURA da espera, e não outro trabalho.
     expect(
       linhaDoWait(agr)
         .match(/\$PID_[A-Z]+/g)
         ?.sort(),
-    ).toEqual(
-      [
-        "$PID_BUN",
-        "$PID_COUNT",
-        "$PID_DEPS",
-        "$PID_MUT",
-        "$PID_REQCHECKS",
-        "$PID_RUNSYNTAX",
-        "$PID_TIMING",
-      ].sort(),
-    )
-    expect(
-      linhaDoWait(hook)
-        .match(/\$PID_[A-Z]+/g)
-        ?.sort(),
-    ).toEqual(
-      ["$PID_BUN", "$PID_COUNT", "$PID_DEPS", "$PID_MUT", "$PID_REQCHECKS", "$PID_TIMING"].sort(),
-    )
+    ).toEqual([...(esperaA.match(/\$PID_[A-Z]+/g) ?? []), "$PID_RUNSYNTAX"].sort())
     // Fora das duas âncoras, as duas formas são byte a byte o mesmo hook: uma
     // causa por delta.
     // A ordem importa: a linha AGREGADA CONTÉM a separada (o PID do gate entra no
     // MESMO `wait_all`), então a âncora maior tem de sair primeiro — ao contrário,
     // a menor substituiria o prefixo dela e sobraria o ` $PID_RUNSYNTAX` de fora,
     // como se as duas formas diferissem em mais do que a estrutura da espera.
+    // Cada forma é normalizada pela SUA PRIMEIRA linha de espera — a da fase A
+    // (uma âncora fixa para as duas tropeçaria no fato de a agregada CONTER a
+    // separada como prefixo, e derivá-la forma a forma pararia de funcionar na
+    // agregada, que já não carrega o bloco separado do gate). A espera da fase B
+    // continua no texto: a comparação não esconde uma diferença lá.
     const normalizado = (texto: string) =>
       texto
-        .split(WAIT_AGREGADO)
-        .join("@")
-        .split(WAIT_SEPARADO)
-        .join("@")
+        .replace(/^[ \t]*wait_all \$(?:PID_[A-Z]+)(?: \$(?:PID_[A-Z]+))*[ \t]*$/m, "@")
         .split(ESPERA_SINTAXE)
         .join("@")
         .split(ESPERA_AGREGADA)

@@ -153,6 +153,60 @@ describe("readOpenDebt — a leitura do board", () => {
     )
   })
 
+  it("o repo de cada forja vai EXPLÍCITO no canal dela, e o env sem o contexto compartilhado", async () => {
+    // A leitura do board também resolve um REPOSITÓRIO — e o do GitHub caía no
+    // `gh`, que o resolve pelo REMOTO do checkout: no runner da forja, o remoto
+    // do Gitea, lido como se fosse o board do GitHub. Com o canal injetado
+    // (`repo`), quem fala com `gh`/a API é o repo CERTO, e o `env` que sai daqui
+    // não carrega o contexto emulado (`GITHUB_REPOSITORY`/`_API_URL` = a Gitea).
+    const decoy = "forja-emulada/decoy"
+    const chamadas: {
+      forge: string
+      repo?: string | null
+      env: Record<string, string | undefined>
+    }[] = []
+    const list = async (args: {
+      forge: string
+      repo?: string | null
+      env: Record<string, string | undefined>
+    }) => {
+      chamadas.push({ forge: args.forge, repo: args.repo, env: args.env })
+      return []
+    }
+    const githubChannel = (args: {
+      repo?: string | null
+      env: Record<string, string | undefined>
+    }) => {
+      chamadas.push({ forge: "github:canal", repo: args.repo, env: args.env })
+      return { via: "api", token: "t", repo: args.repo ?? null, baseUrl: "https://api.github.com" }
+    }
+    const debt = await readOpenDebt({
+      env: {
+        GH_REPOSITORY: "org/do-github",
+        GITEA_REPOSITORY: "org/da-gitea",
+        GH_TOKEN: "t",
+        GITHUB_REPOSITORY: decoy,
+        GITHUB_API_URL: "https://git.exemplo/api/v1",
+      },
+      deps: { list, githubChannel, now: () => NOW },
+    })
+    expect(debt.state).toBe("clear")
+    // Cada forja leva o SEU canal — o do GitHub e o da Gitea são slugs distintos
+    // de propósito: um único `repo` para as duas passaria despercebido aqui.
+    const porForja = Object.fromEntries(chamadas.map((c) => [c.forge, c.repo]))
+    expect(porForja).toMatchObject({
+      github: "org/do-github",
+      gitea: "org/da-gitea",
+      "github:canal": "org/do-github",
+    })
+    for (const chamada of chamadas) {
+      expect(chamada.env.GITHUB_REPOSITORY).toBeUndefined()
+      expect(chamada.env.GITHUB_API_URL).toBeUndefined()
+      expect(chamada.env.GH_TOKEN).toBe("t")
+    }
+    expect(JSON.stringify({ chamadas, debt })).not.toContain(decoy)
+  })
+
   it("issue ABERTA com o marcador → open, com número e IDADE em dias", async () => {
     const stub = listStub({
       "readme-drift": [issue(12, "<!-- readme-drift:file:slug -->", "2026-08-01T00:00:00Z")],
@@ -524,6 +578,23 @@ function baseFacts() {
       detail: "1 tipo(s) varrido(s) — woodpecker (1) — e nenhum CI fora dos tipos declarados",
       error: null,
       remedies: [],
+    },
+    // O REGISTRO do que o veredito NÃO cobre (`ci/unproven.json`): presente e
+    // VAZIO. Ausente, o fato vira dúvida ("não está declarado no relatório") — a
+    // mesma disciplina dos fatos acima, e a razão de a fixture "o mínimo que o
+    // summarize lê" carregar tudo o que ele lê. O próprio fato (e os seus cinco
+    // estados) tem testes em `forge-doctor.test.ts`.
+    unprovenDebt: {
+      state: "sem-itens",
+      items: [],
+      aged: [],
+      invalid: [],
+      proven: [],
+      open: [],
+      declarado: [],
+      total: 0,
+      reviewAfterDays: 90,
+      detail: "ci/unproven.json: nenhum item declarado",
     },
     // A IDADE da régua do bench (o commit de origem das famílias medidas):
     // presente e LIMPA. Ausente, o fato vira dúvida ("não está declarada no

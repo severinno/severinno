@@ -301,7 +301,7 @@ exigir_suite_vermelha() {
 }
 
 # ── As âncoras (títulos como o vitest os reporta) ─────────────────────────
-ANCORA_GATE_E_CONTROLE="o GATE recusa o corpo quebrado, os cinco irmãos aprovam e o controle ENTRA"
+ANCORA_GATE_E_CONTROLE="o GATE recusa o corpo quebrado, os seis irmãos aprovam e o controle ENTRA"
 ANCORA_CONTROLE_FASEAA="um hook que recusa TAMBÉM o commit do CONTROLE"
 ANCORA_ENCODING="o defeito de ENCODING é recusado e a recusa é atribuída ao guard NOMEADO"
 ANCORA_LINK="o defeito de LINK é recusado e a recusa é atribuída ao guard NOMEADO"

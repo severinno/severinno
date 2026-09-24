@@ -98,15 +98,31 @@ import {
   novoRepo as novoRepoHook,
 } from "./pre-commit-proof.mjs"
 import { NO_PROMPT_ENV } from "./pre-commit-remedy.mjs"
+import { escreverDocs } from "./bench-table.mjs"
 // A parte PURA da régua (a tabela de "foi medida?" e os nomes dos dois arquivos)
 // vem do módulo-FOLHA: o doctor e a idade da régua (`bench-freshness.mjs`) a
 // leem sem arrastar o trabalho que ESTE módulo faz ao carregar (resolver o
 // comando do lint a partir do `package.json`, varrer os workflows). O contrato
 // daqui não muda — os três nomes são REEXPORTADOS (o critério de cada família
 // está documentado em `bench-families.mjs`).
-import { BASELINE_FILE, FAMILY_MEASURED, LATEST_FILE } from "./bench-families.mjs"
+import {
+  BASELINE_FILE,
+  FAMILY_MEASURED,
+  FORM_SECTION,
+  LATEST_FILE,
+  MASTER_DOS_SUBTESTS,
+  comMetadesDaMatriz,
+  fonteDaForma,
+  mapaDoMaster,
+  metadesDaMatriz,
+  mutationWhatItAdded,
+} from "./bench-families.mjs"
 
-export { BASELINE_FILE, FAMILY_MEASURED, LATEST_FILE }
+// `comMetadesDaMatriz` e `mutationWhatItAdded` são REPASSADOS: as duas são a régua
+// PURA da coluna e da frase (vivem na folha, junto das outras réguas), e quem as
+// consome — o fixture da prova do pre-commit, por exemplo — importa daqui sem
+// trazer a folha para dentro de si.
+export { BASELINE_FILE, FAMILY_MEASURED, LATEST_FILE, comMetadesDaMatriz, mutationWhatItAdded }
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(SCRIPT_DIR, "..")
@@ -179,7 +195,7 @@ if (!LINT_INVARIANT) {
 export const LINT_CANONICAL_CMD = canonicalCommandOf(LINT_INVARIANT)
 
 /**
- * A REGUA ANTERIOR dos call sites que pagaram a unificacao: ate 586b7c07 o script
+ * A REGUA ANTERIOR dos call sites que pagaram a unificacao: ate eefc6408 o script
  * `lint` do package.json era `eslint .` — sem prettier e sem o teto de warnings.
  * `bunx` e o binario local, que e o que o `bun run` resolvia.
  */
@@ -241,7 +257,7 @@ export function lintCallSites(root = REPO_ROOT) {
  * Os call sites que PAGARAM o custo novo da unificacao.
  *
  * O `lint-guard` do pr-check.yml NAO entra: ele JA rodava o par completo inline
- * antes de 586b7c07 (era a unica fonte da regua) — a unificacao levou a MESMA
+ * antes de eefc6408 (era a unica fonte da regua) — a unificacao levou a MESMA
  * regua aos outros, e o custo novo e so desses. Declarar de menos inflaria a
  * conta; de mais, esconderia um call site que continua laxo.
  *
@@ -311,6 +327,42 @@ export function legacyCallSites(root = REPO_ROOT) {
  * @param {{before?: () => void}} [options]
  * @returns {{ms: number, minMs: number, maxMs: number, runs: {ms: number, exit: number}[], exit: number, ok: boolean}}
  */
+/**
+ * Escreve um JSON do bench na forma que o `bun run lint` EXIGE do arquivo
+ * versionado — formatado pelo MESMO prettier que o julga.
+ *
+ * O `JSON.stringify(…, 2)` expande TODO array; o prettier colapsa o que cabe na
+ * largura. Medido: um `treeState.staged` de dois caminhos saía em quatro linhas
+ * onde o lint exige uma, e o arquivo versionado nascia REPROVANDO o lint de quem
+ * o commitasse (o hook o recusou). A regra de estabilidade desta família já
+ * valia para as amostras (array de OBJETOS, ver `measureRepeats`); esta função a
+ * fecha para qualquer forma que a rodada venha a gravar — formatar com o binário
+ * do repositório é o que faz o escrito sair estável POR CONSTRUÇÃO, em vez de
+ * depender de quem escreve adivinhar a largura.
+ *
+ * O binário vem do `node_modules` do repositório (o mesmo do `lint`): sem ele o
+ * arquivo sai cru e o ato DIZ isso — quem julga o JSON é o gate, não este aviso.
+ *
+ * @param {string} caminho
+ * @param {unknown} dados
+ */
+function escreveJson(caminho, dados) {
+  writeFileSync(caminho, JSON.stringify(dados, null, 2) + "\n")
+  const bin = join(REPO_ROOT, "node_modules", ".bin", "prettier")
+  if (!existsSync(bin)) {
+    console.error(
+      `  ⚠️  ${caminho}: prettier não encontrado em node_modules — o JSON saiu CRU (pode reprovar o lint)`,
+    )
+    return
+  }
+  const r = spawnSync(bin, ["--write", caminho], { cwd: REPO_ROOT, encoding: "utf8" })
+  if (r.status !== 0) {
+    console.error(
+      `  ⚠️  ${caminho}: o prettier do repositório não formatou (exit ${r.status}) — o JSON saiu CRU`,
+    )
+  }
+}
+
 function measureRepeats(cmd, samples, { before } = {}) {
   const raw = []
   for (let i = 0; i < samples; i++) {
@@ -1047,16 +1099,41 @@ export const OFERTA_INICIO =
 export const OFERTA_FIM = "# ── Phase C: Sequential checks"
 
 /**
- * As âncoras da espera do gate de sintaxe: SEPARADA (hoje) × agregada.
- *
- * A linha do `wait_all` vive DENTRO da função `fase_a` (a fase é função para
- * poder ser re-executada depois de um remédio verde) — a âncora leva a indentação
- * dela, porque a transformação é textual.
+ * O PID do gate de sintaxe — o único que a agregação acrescenta à espera da fase A.
  */
-export const WAIT_SEPARADO =
-  "  wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS $PID_COUNT"
-export const WAIT_AGREGADO =
-  "  wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS $PID_COUNT $PID_RUNSYNTAX"
+export const PID_DA_SINTAXE = "$PID_RUNSYNTAX"
+
+/**
+ * A linha do `wait_all` da fase A de um texto — a âncora sai DELE, e não de uma
+ * lista à mão.
+ *
+ * A lista escrita à mão envelheceu no dia em que a fase A ganhou um guard (o
+ * `$PID_LINTSCOPE`): a âncora deixou de casar com o hook e o contrafactual passou
+ * a se declarar NÃO MEDIDO — a constante desatualizada transformava uma medição
+ * em ausência de medição.
+ *
+ * A discriminação é estrutural: a espera da fase A é a única que precede o bloco
+ * do gate de sintaxe (`ESPERA_SINTAXE`, que vem logo depois dela) — o `wait_all`
+ * da fase B vive no fim do hook e não entra. Sem essa âncora o retorno é `null`:
+ * a família inteira se declara NÃO MEDIDA, e não mede o hook contra ele mesmo.
+ *
+ * @param {string} fonte
+ * @returns {string|null} a linha, com a indentação dela
+ */
+export function linhaDaEsperaA(fonte) {
+  const fim = fonte.indexOf(ESPERA_SINTAXE)
+  if (fim < 0) return null
+  const linhas = fonte
+    .slice(0, fim)
+    .split("\n")
+    .filter((l) => /^[ \t]*wait_all \$(?:PID_[A-Z]+)(?: \$(?:PID_[A-Z]+))*[ \t]*$/.test(l))
+  return linhas.length === 1 ? linhas[0] : null
+}
+
+/**
+ * A âncora da ESPERA separada (hoje): a linha do gate de sintaxe aguardada fora do
+ * `wait_all` — substituída pelo veredito agregado.
+ */
 export const ESPERA_SINTAXE =
   'SINTAXE=0\nif [ -n "$PID_RUNSYNTAX" ]; then\n  wait "$PID_RUNSYNTAX" || SINTAXE=$?\nfi'
 export const ESPERA_AGREGADA = "SINTAXE=$FASE_A"
@@ -1104,9 +1181,12 @@ export function hookSemOferta(fonte) {
  * @returns {string|null}
  */
 export function hookWaitAgregada(fonte) {
-  if (fonte.split(WAIT_SEPARADO).length !== 2) return null
+  const separado = linhaDaEsperaA(fonte)
+  if (separado === null) return null
+  if (fonte.split(separado).length !== 2) return null
   if (fonte.split(ESPERA_SINTAXE).length !== 2) return null
-  return fonte.split(WAIT_SEPARADO).join(WAIT_AGREGADO).split(ESPERA_SINTAXE).join(ESPERA_AGREGADA)
+  const agregado = `${separado} ${PID_DA_SINTAXE}`
+  return fonte.split(separado).join(agregado).split(ESPERA_SINTAXE).join(ESPERA_AGREGADA)
 }
 
 /** As amostras por forma do hook: ele roda em ~0,3s — 3 tira o ruído por pouco. */
@@ -1190,6 +1270,171 @@ export const HOOK_FORMS = [
 
 /** O comando da detecção contra a ÁRVORE REAL: o mesmo que o hook executa. */
 export const HOOK_DETECTION_CMD = `node scripts/${REMEDY}`
+
+// ── O ESTADO DA ÁRVORE no ato, e o que ele deixa fora do COMMIT DE ORIGEM ──
+//
+// POR QUE ISTO EXISTE (o defeito real, medido em 22/09/2026): o ato mede a
+// ÁRVORE que está na frente dele — e ela quase nunca está commitada (é o fluxo
+// normal: mede-se, depois se commita). O que ele grava como origem é o `HEAD`,
+// então uma FORMA medida na árvore pode não existir naquele commit: foi o que
+// aconteceu com a `doc-hashes` — a suíte estava no ÍNDICE quando o ato rodou, o
+// commit de origem não a tem, e o número declarado passou a descrever uma matriz
+// que o commit não carrega. Aqui isso deixa de ser silêncio: o ato grava o estado
+// da árvore (staged/unstaged) e, por forma, se ela existe no commit de origem.
+
+/**
+ * O `git status --porcelain` da árvore real, como DADO.
+ *
+ * Os dois conjuntos são separados de propósito: `staged` é o que o PRÓXIMO
+ * commit vai carregar (o índice já difere do HEAD) e `unstaged` é o que nem
+ * isso — um número medido sobre eles não descreve o commit que a baseline grava
+ * como origem.
+ *
+ * @returns {{state: string, clean: boolean|null, staged: string[], unstaged: string[], reason: string|null}}
+ */
+export function treeState({ cwd = REPO_ROOT, run = spawnSync } = {}) {
+  let res
+  try {
+    res = run("git", ["status", "--porcelain"], { cwd, encoding: "utf8", timeout: 30_000 })
+  } catch (error) {
+    return {
+      state: "unavailable",
+      clean: null,
+      staged: [],
+      unstaged: [],
+      reason: `git status não rodou: ${error.message}`,
+    }
+  }
+  if (res?.status !== 0) {
+    return {
+      state: "unavailable",
+      clean: null,
+      staged: [],
+      unstaged: [],
+      reason: `git status não respondeu (exit ${res?.status ?? "?"})`,
+    }
+  }
+  const linhas = String(res.stdout ?? "")
+    .split("\n")
+    .filter((l) => l.trim() !== "")
+  const staged = []
+  const unstaged = []
+  for (const linha of linhas) {
+    const codigo = linha.slice(0, 2)
+    const caminho = linha.slice(3).trim()
+    if (codigo === "??") {
+      unstaged.push(caminho)
+      continue
+    }
+    if (codigo[0] !== " ") staged.push(caminho)
+    if (codigo[1] !== " ") unstaged.push(caminho)
+  }
+  return {
+    state: "measured",
+    clean: linhas.length === 0,
+    staged: [...new Set(staged)].sort(),
+    unstaged: [...new Set(unstaged)].sort(),
+    reason: null,
+  }
+}
+
+/**
+ * A árvore do COMMIT tem este caminho?
+ *
+ * `null` quando não há como julgar (sem caminho, sem commit, ou `git` que não
+ * rodou): "não consegui perguntar" nunca vira "não está lá" — a diferença é a
+ * mesma que separa uma dívida de uma dúvida.
+ *
+ * @param {string} path
+ * @param {string} commit
+ * @returns {boolean|null}
+ */
+export function pathInCommit(path, commit, { cwd = REPO_ROOT, run = spawnSync } = {}) {
+  if (!path || !commit || commit === "unknown") return null
+  try {
+    const res = run("git", ["cat-file", "-e", `${commit}:${path}`], {
+      cwd,
+      encoding: "utf8",
+      timeout: 10_000,
+    })
+    return res?.status === 0
+  } catch {
+    return null
+  }
+}
+
+/**
+ * AS FORMAS MEDIDAS × O COMMIT DE ORIGEM — a pergunta que a procedência sozinha
+ * não responde (ela diz DE QUANDO é o número, não o que a origem CONTÉM).
+ *
+ * A régua de "de qual arquivo veio esta forma?" é UMA SÓ e mora na folha
+ * (`fonteDaForma`, `bench-families.mjs`): aqui ela é aplicada à rodada, e a mesma
+ * função é aplicada pela régua da idade contra o commit de origem — duas
+ * derivações divergiriam no dia em que uma delas mudasse.
+ *
+ * O QUE NÃO É JULGADO fica DITO (`notJudged`): as famílias cujas formas medem
+ * COMANDOS (o hook, o lint, o tsc, a suíte unitária) não nomeiam arquivo próprio,
+ * e um `0` silencioso ali seria lido como "tudo no commit".
+ *
+ * @param {{result: object, commit: string|null, scripts?: Map<string,string>|null, deps?: {inCommit?: Function}}} args
+ * @returns {{state: string, judged: number, notJudged: number, semResposta: number, missing: {family: string, form: string, path: string|null, id?: string, via: string}[], families: Record<string, object[]>, reason: string|null}}
+ */
+export function formOrigin({ result, commit, scripts = null, deps = {} } = {}) {
+  const inCommit = deps.inCommit ?? ((path) => pathInCommit(path, commit))
+  const missing = []
+  const families = {}
+  let judged = 0
+  let notJudged = 0
+  let semResposta = 0
+
+  for (const [family, secao] of Object.entries(FORM_SECTION)) {
+    const formas = secao(result)
+    if (!Array.isArray(formas) || formas.length === 0) continue
+    const faltam = []
+    for (const form of formas) {
+      const fonte = fonteDaForma(family, form, { scripts })
+      if (fonte === null) {
+        notJudged += 1
+        continue
+      }
+      judged += 1
+      const nome = String(form?.role ?? form?.id ?? "?")
+      if (fonte.via === "sem-master") {
+        // Sem o master daquele commit a pergunta não foi feita — e "não
+        // perguntei" sai CONTADO, nunca como "está no commit".
+        semResposta += 1
+        continue
+      }
+      if (fonte.path === null) {
+        // O id NÃO está no master daquele commit: a forma foi medida numa árvore
+        // cuja matriz o commit não tem (o caso da `doc-hashes`).
+        const achado = { family, form: nome, path: null, id: fonte.id ?? nome, via: fonte.via }
+        faltam.push(achado)
+        continue
+      }
+      const existe = inCommit(fonte.path)
+      if (existe === null) {
+        semResposta += 1
+        continue
+      }
+      if (existe === false) faltam.push({ family, form: nome, path: fonte.path, via: fonte.via })
+    }
+    families[family] = faltam
+    missing.push(...faltam)
+  }
+
+  return {
+    state: "measured",
+    judged,
+    notJudged,
+    // O que não pôde ser perguntado também é dito: sem isso, um `git` que não
+    // respondeu sairia com a mesma cara de "tudo no commit de origem".
+    semResposta,
+    missing,
+    families,
+    reason: null,
+  }
+}
 
 /** O `git status --porcelain` da árvore real (null quando o git não respondeu). */
 function hookGitStatus() {
@@ -1528,6 +1773,10 @@ export function measureMutationCost({ cmd = MUTATION_CMD, timeoutMs = 30 * 60_00
     exit: s.exit,
     metades: s.metades,
     ok: s.exit === 0,
+    // O SCRIPT que esta forma mede — o `--json` do master já o publica, e é ele
+    // que responde "de qual arquivo veio esta forma?" sem depender de convenção
+    // de nome (o id `readme` mede `test-mutation-readme-guards.sh`).
+    script: s.script ?? null,
     runs: [{ ms: s.ms, ok: s.exit === 0 }],
   }))
   const subtestsMs = subtests.reduce((acc, s) => acc + s.ms, 0)
@@ -1602,30 +1851,41 @@ export function mutationCostViolations({ forms = [], summary = {}, harnessMs = 0
   return violations
 }
 
-/**
- * A frase da família: os extremos, a mediana e o que o PRÓXIMO sub-test
- * acrescenta.
- *
- * A primeira linha é MEDIDA (cada sub-test, um a um); a última é PROJEÇÃO —
- * derivada dos dois lados medidos (a média dos scripts que existem e o harness por
- * sub-test), e dita como projeção. Chamar a projeção de medição seria a mesma
- * classe de erro que o `measured: false` existe para evitar: um número que não foi
- * medido passando por medido.
- *
- * @param {{forms?: object[], deltas?: {subtestsMs?: number, harnessMs?: number, totalMs?: number, proximoSubtestProjetadoMs?: number, maisCaro?: string|null, maisCaroMs?: number|null, medianaMs?: number|null}, subtests?: number, metades?: number}} [opts]
- * @returns {string[]}
- */
-export function mutationWhatItAdded({ forms = [], deltas = {}, subtests = 0, metades = 0 } = {}) {
-  if (forms.length === 0) return ["NÃO MEDIDO: nenhum sub-test"]
-  const seg = (ms) => `${((ms ?? 0) / 1000).toFixed(1)}s`
-  return [
-    `MEDIDO, sub-test a sub-test: ${subtests} sub-test(s) · ${metades} metade(s) · ${seg(deltas.subtestsMs)} de sub-tests + ${seg(deltas.harnessMs)} de harness = ${seg(deltas.totalMs)}`,
-    `o mais caro: ${deltas.maisCaro} (${seg(deltas.maisCaroMs)}) · a mediana: ${seg(deltas.medianaMs)}`,
-    `o PRÓXIMO sub-test acrescenta ~${seg(deltas.proximoSubtestProjetadoMs)} (PROJEÇÃO: a média dos scripts medidos + o harness por sub-test) — e entra MEDIDO na primeira rodada que o tiver, sem conta à mão`,
-  ]
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────
+
+/**
+ * A derivação das metades da ÁRVORE de agora: o que a matriz declara hoje.
+ *
+ * É I/O, e por isso mora no CLI e não em `comMetadesDaMatriz`: a régua da
+ * contagem (`scripts/metades.mjs`, via `metadesDaMatriz`) é a MESMA que o master
+ * e a doc leem — uma segunda leitura aqui é como as duas divergiriam.
+ *
+ * O master ilegível devolve `null` ("não derivado"), nunca um mapa vazio: mapa
+ * vazio e "o master não declara sub-test" seriam indistinguíveis para o chamador,
+ * e o primeiro é um defeito da árvore que o CLI tem de dizer em voz alta.
+ *
+ * @param {string} [root]
+ * @returns {Map<string, {count: number}>|null}
+ */
+function derivacaoDaMatriz(root = REPO_ROOT) {
+  try {
+    const masterSrc = readFileSync(join(root, MASTER_DOS_SUBTESTS), "utf8")
+    return metadesDaMatriz({
+      masterSrc,
+      lerSuite: (rel) => {
+        try {
+          return readFileSync(join(root, rel), "utf8")
+        } catch {
+          // A suíte citada e ausente é resposta (`metadesDaMatriz` a marca com o
+          // motivo), não exceção — e o `null` daqui é o mesmo do caso acima.
+          return null
+        }
+      },
+    })
+  } catch {
+    return null
+  }
+}
 
 function getCommitHash() {
   try {
@@ -1845,6 +2105,20 @@ function runBenchmark({
     mutations: mutationCost,
   }
 
+  // O ESTADO DA ÁRVORE no ato e o que ele deixa FORA do commit de origem (ver
+  // `treeState`/`formOrigin`): o número medido descreve a árvore da frente, a
+  // origem gravada é o `HEAD`, e a diferença entre as duas é DADO — não silêncio.
+  result.meta.treeState = treeState()
+  let scriptsDoMaster = null
+  try {
+    scriptsDoMaster = mapaDoMaster(readFileSync(join(REPO_ROOT, MASTER_DOS_SUBTESTS), "utf8"))
+  } catch {
+    // Sem o master não há o mapa id→script — quem responde, então, é o `script`
+    // que cada forma carrega (e o que não responder sai como NÃO julgado).
+    scriptsDoMaster = null
+  }
+  result.meta.formOrigin = formOrigin({ result, commit, scripts: scriptsDoMaster })
+
   // O ATO e a ORIGEM de cada familia (ver `familyProvenance`): nesta rodada, a
   // procedencia e sempre "medida" ou "nao medida" — o `reused` so nasce com o
   // `--merge`, que reescreve a tabela com o arquivo anterior.
@@ -1988,6 +2262,10 @@ export function reuseFamilies(result, sources = []) {
         commit: report?.meta?.commit ?? null,
         commitDate: report?.meta?.commitDate ?? null,
         timestamp: report?.meta?.timestamp ?? null,
+        // O estado de árvore do ato que mediu esta família viaja com ela: uma
+        // família herdada cuja origem não contém as formas dela continua sendo
+        // um fato, e a procedência é o único lugar onde ele cabe.
+        missingInOrigin: report?.meta?.families?.[family]?.missingInOrigin ?? null,
       }
       return valor
     }
@@ -2027,6 +2305,7 @@ export function reuseFamilies(result, sources = []) {
       commit: fonteDaBateria.report?.meta?.commit ?? null,
       commitDate: fonteDaBateria.report?.meta?.commitDate ?? null,
       timestamp: fonteDaBateria.report?.meta?.timestamp ?? null,
+      missingInOrigin: fonteDaBateria.report?.meta?.families?.battery?.missingInOrigin ?? null,
     }
   }
   const guardsTotalMs = (guards ?? []).reduce((acc, g) => acc + (g.ms ?? 0), 0)
@@ -2178,7 +2457,57 @@ function printReport(result) {
     for (const [family, p] of Object.entries(procedencias)) {
       const nome = REUSED_FAMILY_LABELS[family] ?? family
       const origem = p.commit ? `${String(p.commit).slice(0, 12)} (${p.timestamp ?? "?"})` : "—"
-      console.log(`    ${ACT_LABELS[p.act] ?? p.act} ${nome.padEnd(26)} ${origem}`)
+      // AS FORMAS fora do commit de origem vão NESTA linha: é a diferença entre
+      // "medi no commit X" e "medi numa árvore que o X não tem".
+      const fora =
+        Array.isArray(p.missingInOrigin) && p.missingInOrigin.length > 0
+          ? ` · ${p.missingInOrigin.length} forma(s) FORA do commit de origem`
+          : ""
+      console.log(`    ${ACT_LABELS[p.act] ?? p.act} ${nome.padEnd(26)} ${origem}${fora}`)
+    }
+    console.log()
+  }
+
+  // O ESTADO DA ÁRVORE no ato × o COMMIT DE ORIGEM: o número medido descreve a
+  // árvore da frente e a origem gravada é o `HEAD` — o que fica no meio é dado,
+  // e o item da régua da idade se abre por causa dele.
+  const arvore = meta.treeState ?? null
+  const origem = meta.formOrigin ?? null
+  if (arvore || origem) {
+    console.log("  Estado da arvore no ato × o commit de origem:")
+    console.log("  ─────────────────────────────────────────────────────")
+    if (!arvore || arvore.state !== "measured") {
+      console.log(`    ⚠️  NÃO MEDIDO: ${arvore?.reason ?? "o estado da árvore não foi lido"}`)
+    } else if (arvore.clean) {
+      console.log(
+        "    ✅ a árvore estava LIMPA no ato — tudo o que ele mediu está no commit de origem",
+      )
+    } else {
+      console.log(
+        `    ⚠️  a árvore NÃO estava limpa no ato: ${arvore.staged.length} caminho(s) no ÍNDICE (staged) e ${arvore.unstaged.length} só na árvore (unstaged)`,
+      )
+    }
+    if (origem) {
+      const fora = origem.missing ?? []
+      if (fora.length === 0) {
+        console.log(
+          `    ✅ as ${origem.judged} forma(s) com fonte declarada estão no commit de origem (${origem.notJudged} sem fonte própria: o limite declarado da régua)`,
+        )
+      } else {
+        console.log(
+          `    ❌ ${fora.length} forma(s) medida(s) NÃO existem no commit de origem (${meta.commit}): o número declarado descreve uma árvore que aquele commit não tem`,
+        )
+        for (const m of fora) {
+          console.log(
+            `       · ${m.family}/${m.form}: ${m.path ?? `o id '${m.id}' não está no master de ${MASTER_DOS_SUBTESTS} daquele commit`}`,
+          )
+        }
+      }
+      if (origem.semResposta > 0) {
+        console.log(
+          `    ⚠️  ${origem.semResposta} forma(s) não puderam ser perguntadas ao commit (git que não respondeu): NÃO julgadas, nunca "no commit"`,
+        )
+      }
     }
     console.log()
   }
@@ -2356,6 +2685,13 @@ export function familyProvenance({ result, reused = {} } = {}) {
       commitDate: daRodada ? (result?.meta?.commitDate ?? null) : (fonte?.commitDate ?? null),
       timestamp: daRodada ? (result?.meta?.timestamp ?? null) : (fonte?.timestamp ?? null),
       source: fonte?.source ?? null,
+      // AS FORMAS desta família que NÃO estão no commit de origem — medida
+      // nesta rodada, vai com o `commit` dela; herdada, vai com o commit (e o
+      // estado de árvore) da rodada que a mediu. Uma origem que a árvore não
+      // contém é um fato do NÚMERO, e ele viaja junto do número.
+      missingInOrigin: daRodada
+        ? (result?.meta?.formOrigin?.families?.[family] ?? null)
+        : (fonte?.missingInOrigin ?? null),
     }
   }
   return out
@@ -2888,6 +3224,22 @@ Exit codes: 0 sucesso · 1 falha/regressão · 2 argumento inválido`)
     })
     result = reuseFamilies(result, sources)
   }
+  // ── A COLUNA DE METADES, derivada da MATRIZ (ver `comMetadesDaMatriz`) ─────
+  // A heranca e do CUSTO; a unidade descreve a SUITE, e a suite esta nesta
+  // arvore — entao a coluna e reescrita AQUI, depois da heranca, e o arquivo
+  // gravado (e o relatorio) publicam a unidade de agora, nao a da rodada que
+  // mediu o custo. Sem a derivacao (o master ilegivel, uma arvore sem ele) a
+  // coluna fica como veio e o CLI DIZ: derivar "nada" viraria zero silencioso.
+  const derivadas = derivacaoDaMatriz()
+  if (result.mutations) {
+    if (derivadas === null) {
+      console.error(
+        `⚠️  ${MASTER_DOS_SUBTESTS} não foi lido: a coluna de metades NÃO foi derivada da matriz nesta rodada — ela sai como está e o \`check:mutation-count\` a acusa contra a matriz.`,
+      )
+    } else {
+      result = { ...result, mutations: comMetadesDaMatriz(result.mutations, derivadas) }
+    }
+  }
   printReport(result)
 
   // Salvar
@@ -2897,7 +3249,7 @@ Exit codes: 0 sucesso · 1 falha/regressão · 2 argumento inválido`)
 
   if (opts.baseline) {
     const p = join(BENCH_DIR, BASELINE_FILE)
-    writeFileSync(p, JSON.stringify(result, null, 2) + "\n")
+    escreveJson(p, result)
     console.log(`  📁 Baseline salvo: ${p}`)
     // `--baseline --json`: a rodada que MOVE a baseline também é a última
     // medição (o publicador da issue lê o `latest`). Sem isto, mover a baseline
@@ -2905,19 +3257,36 @@ Exit codes: 0 sucesso · 1 falha/regressão · 2 argumento inválido`)
     // sairia de um arquivo que ninguém acabou de medir.
     if (opts.json) {
       const l = join(BENCH_DIR, LATEST_FILE)
-      writeFileSync(l, JSON.stringify(result, null, 2) + "\n")
+      escreveJson(l, result)
       console.log(`  📁 Resultado salvo: ${l}`)
+    }
+    // ── A PROSA DERIVADA (a tabela do GUARDS e o parágrafo do README) ──────
+    // O ato que MOVE a baseline é quem reescreve os dois blocos: eles descrevem
+    // o registro VERSIONADO, e uma rodada que só grava o `latest` (uma medição)
+    // não muda o que a doc declara. O status sai em voz alta POR ARQUIVO — um
+    // bloco com o marcador apagado é dito (`semMarcador`), em vez de o ato
+    // afirmar que reescreveu os dois.
+    for (const d of escreverDocs({ registro: result })) {
+      const como =
+        {
+          reescrito: "reescrito do registro",
+          jaEstava: "já descrevia o registro",
+          semMarcador: "SEM o marcador do bloco (o operador o posiciona uma vez)",
+          ausente: "arquivo ausente",
+          naoMedida: "a família `mutations` não foi medida: nada a renderizar",
+        }[d.status] ?? d.status
+      console.log(`  📝 ${d.arquivo} — ${d.nome}: ${como}`)
     }
   } else if (opts.json) {
     const p = join(BENCH_DIR, LATEST_FILE)
-    writeFileSync(p, JSON.stringify(result, null, 2) + "\n")
+    escreveJson(p, result)
     console.log(`  📁 Resultado salvo: ${p}`)
   }
 
   if (opts.save && !opts.baseline) {
     const date = new Date().toISOString().slice(0, 10)
     const p = join(BENCH_DIR, `guard-timing-${date}.json`)
-    writeFileSync(p, JSON.stringify(result, null, 2) + "\n")
+    escreveJson(p, result)
     console.log(`  📁 Resultado salvo: ${p}`)
   }
 

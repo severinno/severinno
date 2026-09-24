@@ -602,6 +602,53 @@ describe("checkOutOfScopeTargets — nenhum alvo novo fica invisível", () => {
     expect(v[0]).toContain("/severinno/ubuntu-bun:1.3.14")
   })
 
+  it("FIXTURE de prova por mutação com a imagem cravada: a classe declarada não é alvo (e o guard a NOMEIA)", () => {
+    // O literal de uma prova por mutação é o PAYLOAD que ela entrega ao guard —
+    // julga-lo seria o guard acusando o teste que o exercita, e a saída óbvia
+    // seria mutar o fixture para escapar da régua (cegando o guard exatamente
+    // onde ele é exercitado). A classe já valia para os defaults da imagem;
+    // aqui se prova que ela cobre TAMBÉM a varredura das referências — e que a
+    // exclusão é NOMEADA (uma classe que ninguém vê é um alvo invisível).
+    const root = treeOf({
+      "scripts/test-mutation-exemplo.sh": `IMG="${IMAGE}"\n`,
+      "ci-tools/Dockerfile.build": IMAGE,
+    })
+    expect(
+      checkOutOfScopeTargets(root, {
+        allowlist: [
+          { path: "ci-tools/Dockerfile.build", reason: "build da imagem de teste", addedAt: TODAY },
+        ],
+        now: NOW,
+      }),
+      "o fixture da prova não entra na varredura — e o alvo verdadeiro segue julgado",
+    ).toEqual([])
+
+    const sweep = sweepOutOfScope(root, { allowlist: [], now: NOW })
+    expect([...sweep.found.keys()]).toEqual(["ci-tools/Dockerfile.build"])
+    const regra = sweep.excluded.byRule.find((r) => r.id === "mutation-proof")
+    expect(regra).toMatchObject({ count: 1, example: "scripts/test-mutation-exemplo.sh" })
+    expect(regra?.reason).toContain("PAYLOAD")
+  })
+
+  it("a classe é ESTREITA: o que só PARECE fixture segue sendo julgado (subdiretório, outra extensão, outro diretório)", () => {
+    const root = treeOf({
+      "scripts/test-mutation/sub/x.sh": IMAGE,
+      "scripts/test-mutation-x.mjs": IMAGE,
+      "tools/test-mutation-x.sh": IMAGE,
+    })
+    const v = checkOutOfScopeTargets(root, { allowlist: [], now: NOW })
+    // A ordem é a do `sort()` (código UTF-16): `-x.mjs` vem antes de `/sub`.
+    expect(v.map((s) => s.slice(0, s.indexOf(":"))).sort()).toEqual([
+      "scripts/test-mutation-x.mjs",
+      "scripts/test-mutation/sub/x.sh",
+      "tools/test-mutation-x.sh",
+    ])
+    expect(
+      sweepOutOfScope(root, { allowlist: [], now: NOW }).excluded.total,
+      "nada foi excluído",
+    ).toBe(0)
+  })
+
   it("com a decisão escrita (motivo + data), passa", () => {
     const root = treeOf({ "ci-tools/Dockerfile.build": IMAGE })
     expect(
@@ -687,6 +734,19 @@ describe("checkOutOfScopeTargets — nenhum alvo novo fica invisível", () => {
       expect(entry.reason.length, `motivo escrito para ${entry.path}`).toBeGreaterThan(40)
     }
     expect(checkOutOfScopeTargets(REPO_ROOT)).toEqual([])
+  })
+
+  it("no REPO REAL: a suíte de mutação nova é coberta pela CLASSE — não por uma decisão por arquivo", () => {
+    // A diferença importa: uma entrada em OUT_OF_SCOPE_ALLOWLIST venceria e
+    // precisaria ser reafirmada; a classe acompanha a convenção do nome. E a
+    // prova de que é a classe que a cobre (e não uma isenção escrita) é a
+    // suíte NÃO estar na allowlist.
+    const sweep = sweepOutOfScope(REPO_ROOT)
+    const regra = sweep.excluded.byRule.find((r) => r.id === "mutation-proof")
+    expect(regra?.count, "a classe mutation-proof cobre as provas do repo").toBeGreaterThan(0)
+    expect(OUT_OF_SCOPE_ALLOWLIST.map((e) => e.path)).not.toContain(
+      "scripts/test-mutation-runner-labels.sh",
+    )
   })
 })
 

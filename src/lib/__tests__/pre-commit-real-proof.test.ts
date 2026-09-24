@@ -8,7 +8,7 @@
  *   1. ela COPIA o checkout, roda o commit do defeito e o do controle, e mede o
  *      HEAD (não a contagem de objetos — na cópia a fase C roda de verdade e o
  *      `lint-staged` cria objetos por conta própria);
- *   2. ela ATRIBUI a recusa: um refutador só, e é o do gate, com os cinco guards
+ *   2. ela ATRIBUI a recusa: um refutador só, e é o do gate, com os seis guards
  *      de fase A aprovando o MESMO índice. Um irmão vermelho NÃO deixa a prova
  *      verde — ela sai INDETERMINADA nomeando o irmão;
  *   3. as condições de medição (o arquivo do defeito tem de ser NOVO, o hook tem
@@ -24,12 +24,14 @@
  *   npx vitest run --config vitest.config.unit.ts src/lib/__tests__/pre-commit-real-proof.test.ts
  */
 
-import { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { dirname, join, relative, resolve } from "node:path"
 import { afterAll, describe, expect, it } from "vitest"
 
 import { REPO_ROOT, cleanupFixtures, tempDir } from "@/lib/__tests__/helpers/hook-simulator"
 import {
+  BUMP_SUBTEST,
+  DONO_DO_COUNT,
   FASE_A_GUARDS,
   FASE_A_RECORTE,
   FASE_B_DEFEITOS,
@@ -161,7 +163,11 @@ function hookStubBase(blocoB: string[], { controleRecusado = false } = {}): stri
     '  return "$_s"',
     "}",
     "PIDS=",
-    "for _g in check-bun-mirror check-mutation-jobs check-unused-deps check-mutation-timing-contract check-required-checks; do",
+    // A lista de fase A é DERIVADA (`FASE_A_GUARDS`), não digitada: o stub tinha
+    // cinco nomes à mão e ficou para trás no dia em que o guard da contagem entrou
+    // no hook — o commit do defeito da metade 6 passava pela fase A do stub sem
+    // ninguém julgá-lo, e a metade media um hook que nunca o chamou.
+    `for _g in ${FASE_A_GUARDS.map((g) => g.replace(/\.mjs$/, "")).join(" ")}; do`,
     '  node "scripts/$_g.mjs" --staged &',
     '  PIDS="$PIDS $!"',
     "done",
@@ -273,6 +279,88 @@ function runnerStub({ semComandos = false } = {}): string {
 }
 
 /** Um checkout sintético: os guards das duas fases (stubs), o hook e o layout. */
+/**
+ * Os módulos que um script do repositório IMPORTA — transitivo, e só os
+ * RELATIVOS.
+ *
+ * O guard da contagem não é um arquivo só: ele importa folhas
+ * (`scripts/bench-table.mjs`, e o que ela importa). Uma lista à mão aqui
+ * envelheceria no primeiro import novo e a fixture passaria a medir um
+ * `ERR_MODULE_NOT_FOUND` — foi exatamente o que aconteceu quando a régua das
+ * prosas entrou (medido: os dez casos da suíte sem dublê saíram `unavailable`
+ * com `check-mutation-count.mjs=1`, sem que nenhum guard estivesse errado). Um
+ * pacote do `node_modules` NÃO entra: a cópia o resolve pelo link do repo.
+ *
+ * @returns caminhos RELATIVOS à raiz do repositório (as folhas primeiro)
+ */
+function modulosImportados(rel: string, visitados = new Set<string>()): string[] {
+  if (visitados.has(rel)) return []
+  visitados.add(rel)
+  const caminho = join(REPO_ROOT, rel)
+  if (!existsSync(caminho)) return []
+  const descobertos: string[] = []
+  for (const m of readFileSync(caminho, "utf8").matchAll(/from\s+"(\.[^"]*)"/g)) {
+    const alvo = relative(REPO_ROOT, resolve(dirname(caminho), m[1]))
+    descobertos.push(...modulosImportados(alvo, visitados), alvo)
+  }
+  return descobertos
+}
+
+/**
+ * O MATERIAL da metade 6 (o bump de matriz sem o ato) dentro da fixture.
+ *
+ * A metade 6 mede a recusa de um bump COERENTE — e "coerente" quer dizer o master,
+ * as suítes que ele cita, o `pr-check.yml`, o README, a doc das metades, a régua
+ * das metades (`scripts/metades.mjs`, importada pelo guard) e o registro
+ * versionado do bench. Um fixture só com stubs faria a metade sair INDETERMINADA
+ * em TODA execução da suíte: ela estaria declarando cobrir o bump sem nunca
+ * medi-lo.
+ *
+ * O material vem do REPOSITÓRIO (não é digitado aqui): uma segunda cópia do
+ * master, do README ou do registro envelheceria no primeiro bump de matriz — e a
+ * prova passaria a medir a fixture em vez do guard.
+ *
+ * `countGuardCego` troca o guard da contagem por um STUB verde: é a MUTAÇÃO que
+ * torna load-bearing a metade 6 — sem ele o defeito tem de ENTRAR no commit.
+ *
+ * @returns os nomes de guard já escritos (os que NÃO recebem stub de fase A)
+ */
+function copiaMaterialDoCount(root: string, { countGuardCego = false } = {}): Set<string> {
+  const master = readFileSync(join(REPO_ROOT, "scripts", "test-mutation-guards.sh"), "utf8")
+  // As suítes que o master cita, DERIVADAS dele: uma lista à mão envelheceria no
+  // dia em que um sub-test novo entrasse, e o guard recusaria o material por uma
+  // suíte que a fixture não copiou (a recusa mediria a fixture).
+  const suites = [...master.matchAll(/\|(scripts\/test-mutation-[a-z0-9-]+\.sh)"/g)].map(
+    (m) => m[1],
+  )
+  for (const rel of [
+    "scripts/test-mutation-guards.sh",
+    "scripts/metades.mjs",
+    ".github/workflows/pr-check.yml",
+    "README.md",
+    "docs/GUARDS.md",
+    "docs/benchmarks/guard-timing-baseline.json",
+    // As FOLHAS do guard, DERIVADAS dos imports dele: a cópia carrega o guard
+    // inteiro, e o guard inteiro é ele mais o que ele importa.
+    ...modulosImportados(`scripts/${DONO_DO_COUNT}`),
+    ...suites,
+  ]) {
+    const origem = join(REPO_ROOT, rel)
+    if (!existsSync(origem)) continue
+    mkdirSync(dirname(join(root, rel)), { recursive: true })
+    copyFileSync(origem, join(root, rel))
+  }
+  const nome = DONO_DO_COUNT
+  writeFileSync(
+    join(root, "scripts", nome),
+    countGuardCego
+      ? guardStub(nome, false)
+      : readFileSync(join(REPO_ROOT, "scripts", nome), "utf8"),
+    "utf8",
+  )
+  return new Set([nome])
+}
+
 function checkoutSintetico({
   irmaoVermelho = null,
   hookExecutavel = true,
@@ -284,6 +372,7 @@ function checkoutSintetico({
   runnerSemComandos = false,
   faseBCega = false,
   controleRecusado = false,
+  countGuardCego = false,
 }: {
   irmaoVermelho?: string | null
   hookExecutavel?: boolean
@@ -295,6 +384,7 @@ function checkoutSintetico({
   runnerSemComandos?: boolean
   faseBCega?: boolean
   controleRecusado?: boolean
+  countGuardCego?: boolean
 } = {}): string {
   const root = tempDir("checkout-sintetico-")
   mkdirSync(join(root, "scripts"), { recursive: true })
@@ -314,7 +404,9 @@ function checkoutSintetico({
     const origem = join(REPO_ROOT, cfg)
     if (existsSync(origem)) copyFileSync(origem, join(root, cfg))
   }
+  const jaEscritos = copiaMaterialDoCount(root, { countGuardCego })
   for (const g of FASE_A_GUARDS) {
+    if (jaEscritos.has(g)) continue
     writeFileSync(join(root, "scripts", g), guardStub(g, g === irmaoVermelho), "utf8")
   }
   writeFileSync(
@@ -374,7 +466,7 @@ function checkoutSintetico({
 }
 
 describe("a prova sem dublê — as três metades no mesmo checkout", () => {
-  it("o GATE recusa o corpo quebrado, os cinco irmãos aprovam e o controle ENTRA", () => {
+  it("o GATE recusa o corpo quebrado, os seis irmãos aprovam e o controle ENTRA", () => {
     const r = proveRealHookBlocks({ root: checkoutSintetico() })
 
     expect(r.state).toBe("proven")
@@ -392,7 +484,7 @@ describe("a prova sem dublê — as três metades no mesmo checkout", () => {
     expect(defeito.headDepois).toBe(defeito.headAntes)
     expect(defeito.status).not.toBe(0)
 
-    // A ATRIBUIÇÃO por EXIT CODE: os CINCO irmãos, rodados de verdade sobre o
+    // A ATRIBUIÇÃO por EXIT CODE: os SEIS irmãos, rodados de verdade sobre o
     // MESMO índice, saem 0 — e o gate, medido do mesmo jeito, sai não-zero.
     const irmaos = (r.evidence as any).irmaos
     expect(irmaos.map((i: any) => i.guard)).toEqual(FASE_A_GUARDS)
@@ -469,6 +561,52 @@ describe("a prova sem dublê — as três metades no mesmo checkout", () => {
     expect(r.state).toBe("unavailable")
     expect(r.detail).toContain("JÁ EXISTE")
     expect(r.detail).toContain("refutador ser único")
+  })
+
+  it("o BUMP DE MATRIZ sem o ato é recusado pelo guard dono, e o CONTROLE (com o ato) ENTRA", () => {
+    // A metade 6: o defeito que só o COMMIT LOCAL produz — a matriz num commit e
+    // o registro versionado do custo no seguinte. O índice do bump é COERENTE em
+    // todo o resto (o master, as refs do count, as refs vivas do README e o
+    // arquivo da suíte nova), e é justamente por isso que a recusa pode ser
+    // atribuída à DEFASAGEM: um bump incoerente seria recusado por outra regra.
+    const r = proveRealHookBlocks({ root: checkoutSintetico() })
+    expect(r.state, r.detail).toBe("proven")
+
+    const bump = (r.evidence as any).bump
+    expect(bump.subTest).toBe(BUMP_SUBTEST)
+    expect(bump.nNovo).toBe((bump.n ?? 0) + 1)
+    expect(bump.defeito.status).not.toBe(0)
+    expect(bump.defeito.headDepois).toBe(bump.defeito.headAntes)
+
+    // A ATRIBUIÇÃO: o guard DONO vermelho, nomeando a defasagem E o sub-test
+    // novo, com os irmãos de fase A, os membros de fase B e o gate verdes no
+    // MESMO índice — sem isso, "recusou" não diz QUEM recusou.
+    expect(bump.atribuicao.guard).toBe(DONO_DO_COUNT)
+    expect(bump.atribuicao.status).not.toBe(0)
+    expect(bump.atribuicao.citouMarcador).toBe(true)
+    expect(bump.atribuicao.citouSubTest).toBe(true)
+    expect(bump.irmaos.every((i: any) => i.status === 0)).toBe(true)
+    expect(bump.membros.every((m: any) => m.status === 0)).toBe(true)
+    expect(bump.gate.status).toBe(0)
+
+    // O CONTROLE: o MESMO índice com o ato versionado ENTRA, e o que está em HEAD
+    // é o registro com a forma nova — não "algum commit passou".
+    expect(bump.controle.status).toBe(0)
+    expect(bump.controle.headDepois).not.toBe(bump.controle.headAntes)
+    expect(bump.controle.formasEmHead).toBe(1)
+  })
+
+  it("um guard da contagem CEGO para o bump: o defeito ENTRA e a prova fica VERMELHA", () => {
+    // A contraprova da metade 6 — a mutação que a torna load-bearing: com o guard
+    // dono aprovando o índice (o stub verde), o commit da matriz SEM o ato entra,
+    // e é isso que prova que a recusa medida era DELE. Se este caso saísse
+    // `unavailable`, a prova estaria dizendo que o ambiente não sabe commitar.
+    const r = proveRealHookBlocks({ root: checkoutSintetico({ countGuardCego: true }) })
+
+    expect(r.state).toBe("violated")
+    expect(r.detail).toContain("bump da matriz SEM o ato")
+    const bump = (r.evidence as any).bump
+    expect(bump.defeito.headDepois).not.toBe(bump.defeito.headAntes)
   })
 
   it("sem um dos guards de fase A: INDETERMINADO nomeando o que faltou", () => {
@@ -644,25 +782,46 @@ describe("a ATRIBUIÇÃO da recusa — a régua pura", () => {
   })
 })
 
+/**
+ * O guard e o recorte da fase A são DERIVADOS do PRÓPRIO hook (`.husky/pre-commit`):
+ * o primeiro `node scripts/X.mjs --flag &` que ele executa. Cravar o nome do guard e
+ * a flag no teste fazia a expectativa envelhecer a cada commit em que a fase A mudava
+ * — a lista e o recorte são do hook, e é dele que a prova os lê.
+ */
+function guardDeFaseADoHook(): { guard: string; recorte: string } {
+  const hook = join(REPO_ROOT, ".husky", "pre-commit")
+  for (const linha of readFileSync(hook, "utf8").split("\n")) {
+    const m = linha.match(/^\s*node\s+scripts\/([a-z0-9-]+\.mjs)\s+(--[a-z-]+)\s*&\s*$/)
+    if (m) return { guard: m[1] as string, recorte: m[2] as string }
+  }
+  throw new Error(
+    "o hook não tem linha de fase A (`node scripts/X.mjs --staged &`) — a prova depende dela",
+  )
+}
+
 describe("o guard de fase A é rodado com o RECORTE do índice", () => {
-  it("o argv leva `--staged` e o node que executa a prova", () => {
+  it("o argv leva o recorte que o HOOK declara e o node que executa a prova", () => {
+    const { guard, recorte } = guardDeFaseADoHook()
     const vistos: any[] = []
     const run = ((cmd: string, args: string[], opts: any) => {
       vistos.push({ cmd, args, opts })
       return { status: 0, stdout: "✅ ok\n", stderr: "" }
     }) as any
 
-    const r = rodaGuardDeFaseA("/tmp/qualquer", "check-unused-deps.mjs", { run })
+    const r = rodaGuardDeFaseA("/tmp/qualquer", guard, { run })
 
-    expect(r).toEqual({ guard: "check-unused-deps.mjs", status: 0, linha: "✅ ok" })
+    // O CONTRATO do helper é o que a prova USA (o guard, o exit e a última linha);
+    // o `output` ao lado é detalhe do relatório — um campo NOVO do relatório não
+    // pode quebrar quem consome o contrato.
+    expect(r).toMatchObject({ guard, status: 0, linha: "✅ ok" })
     expect(vistos[0].cmd).toBe(process.execPath)
-    expect(vistos[0].args).toEqual([join("scripts", "check-unused-deps.mjs"), FASE_A_RECORTE])
+    expect(vistos[0].args).toEqual([join("scripts", guard), recorte])
     expect(vistos[0].opts.cwd).toBe("/tmp/qualquer")
   })
 
   it("um guard que não termina sai como `null` (nunca como 0)", () => {
     const run = (() => ({ status: null, stdout: "", stderr: "" })) as any
-    expect(rodaGuardDeFaseA("/tmp/x", "check-bun-mirror.mjs", { run }).status).toBeNull()
+    expect(rodaGuardDeFaseA("/tmp/x", guardDeFaseADoHook().guard, { run }).status).toBeNull()
   })
 })
 

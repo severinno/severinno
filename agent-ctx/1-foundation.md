@@ -6,6 +6,7 @@ demais agentes possam construir UI/API/features em paralelo.
 ## Entregáveis
 
 ### 1. Prisma schema — `prisma/schema.prisma`
+
 Modelos marketplace completos (SQLite-safe, sem `enum` nativo):
 
 - `User` (role String "CLIENT"|"PROVIDER"|"ADMIN", lat/lng, radiusKm, endereço BR completo, verified/active)
@@ -31,6 +32,7 @@ permitidos. Validação runtime via Zod em `src/lib/validators.ts`.
 Schema pushed e Prisma Client gerado com sucesso.
 
 ### 2. Seed — `prisma/seed.ts` (+ script `db:seed` no package.json)
+
 - **1 Admin**: admin@severinno.com / admin123
 - **2 Clients**: cliente@severinno.com / cliente123, maria@severinno.com / cliente123
 - **6 Providers** (encanador, eletricista, pintor, diarista, jardineiro, pedreiro):
@@ -49,6 +51,7 @@ Senha hash via `crypto.scryptSync` (`src/lib/crypto.ts`) — N=16384, salt 16 by
 formato `saltHex:hashHex`, compare timing-safe.
 
 ### 3. Design System — `src/app/globals.css`
+
 - Primary = **emerald** `oklch(0.55 0.15 160)` (light), `oklch(0.7 0.16 160)` (dark)
 - `--ring`, `--sidebar-primary`, `--accent`, `--chart-1` alinhados ao emerald
 - Resto da paleta neutral mantido
@@ -56,6 +59,7 @@ formato `saltHex:hashHex`, compare timing-safe.
 - Estilos `.map-popup` (MapLibre) para próximos agentes (mínimo)
 
 ### 4. Layout + Providers — `src/app/layout.tsx` + `src/components/providers.tsx`
+
 - Metadata pt-BR: título "Severinno Marketplace", descrição de serviços com geolocalização, locale pt_BR
 - `<html lang="pt-BR" suppressHydrationWarning>`
 - Wrapper `Providers` combinando: `next-themes` (ThemeProvider attribute="class",
@@ -64,6 +68,7 @@ formato `saltHex:hashHex`, compare timing-safe.
 - `useEffect`/`useState` pattern para instanciar QueryClient sem SSR rehydrate bug
 
 ### 5. Lib utilities — `src/lib/`
+
 - **`crypto.ts`** — `hashPassword(pw)`, `verifyPassword(pw, hash)` (scrypt)
 - **`auth.ts`** (server-only) — `createSession(userId, role)`, `getSession()`,
   `destroySession()`, `requireUser()`, `requireRole(role)`, `getOptionalSession()`.
@@ -87,6 +92,7 @@ formato `saltHex:hashHex`, compare timing-safe.
   availabilitySchema.
 
 ### 6. Zustand stores — `src/store/`
+
 - **`auth.ts`** — `useAuthStore`: user/status/error/initialized, `login`,
   `register`, `logout`, `fetchMe`, `setUser`, `clearError`. Persistido em
   localStorage (`severinno:auth`), partializa só user/status/initialized.
@@ -120,6 +126,7 @@ bun run db:seed
 ```
 
 ## Verificações executadas
+
 - `bunx prisma db push --accept-data-loss` → ✅ "database is now in sync"
 - `bun run db:generate` → ✅ Generated Prisma Client v6.19.2
 - `bun run db:seed` → ✅ 9 users / 27 categorias / 13 services / 36 avail /
@@ -129,6 +136,7 @@ bun run db:seed
   → ✅ zero erros/warnings
 
 ## Caveats / notas para próximos agentes
+
 1. **SQLite sem `enum`**: todos os campos de status são `String`. Sempre validar
    com os Zod schemas em `src/lib/validators.ts` antes de gravar, e usar os
    labels/cores de `src/lib/constants.ts` na UI.

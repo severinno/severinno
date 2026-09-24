@@ -73,6 +73,9 @@ O guard compara as duas pontas e é o mesmo comando da forja, com `--forge`:
 # o DECLARADO sai de deploy/setup-github-runner.sh (RUNNER_LABELS/RUNNER_NAME/REPO_URL)
 # o REGISTRADO sai da API: recomenda-se um PAT com scope `repo` (ou fine-grained com
 # 'Self-hosted runners: read' NO REPOSITÓRIO) — o GITHUB_TOKEN de um run não serve
+# o REPO sai do REPO_URL do script (ou de --gh-repo); com o script sem REPO_URL, o
+# canal é GH_REPOSITORY — o GITHUB_REPOSITORY do ambiente NÃO é lido (num runner da
+# Gitea ele aponta para o repositório da forja, e a consulta seria do repo errado)
 export GITHUB_TOKEN="<pat>"
 bun run runner-labels:check:github
 # 0 provado · 1 registro velho/vazio/runner ausente ou offline · 2 env/uso · 3 não provado
@@ -93,6 +96,32 @@ O rótulo `self-hosted` e os read-only (`Linux`, `X64`) são normalizados em cai
 pelo próprio GitHub: o guard compara **case-insensitive**, porque um alarme falso
 é o que ensina a ignorar o guard. O `doctor` carrega este mesmo fato no veredito
 de prontidão (e `--no-runner-labels` pula os registros das duas forjas).
+
+### A versão do runner: o `version` do registro × o `RUNNER_VERSION` do script
+
+O mesmo comando compara a **terceira ponta** do registro. O payload da API
+devolve, por runner, o campo `version`: é a versão que o **serviço aceitou** (o
+runner se atualiza sozinho para ela). O `RUNNER_VERSION` de
+`deploy/setup-github-runner.sh` é o **pin** que este repositório declara, e os dois
+têm de casar.
+
+**MEDIDO em 22/09/2026:** com o pin em `2.320.0` o runner **registrou, pegou o
+primeiro job e se auto-atualizou para `2.337.0` no MEIO dele**. O update derruba o
+worker, o job fica **preso** em `in_progress` segurando o único runner — e o cancel
+do run e o remove do runner respondem `422 "is currently running a job"`, então só
+`force-cancel` + DELETE do run limpam a atribuição. A forja fica **parada**, não
+vermelha. O `version` do registro é legível na própria API, e é ele que o pin tem
+de casar:
+
+```bash
+gh api repos/<owner>/<repo>/actions/runners --jq '.runners[] | {name,status,version}'
+```
+
+| Desfecho                  | O que significa                                                                                           | Remédio                                                                       |
+| :------------------------ | :-------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------- |
+| **0** versão = pin        | o registro responde a mesma versão que o script pina                                                      | —                                                                             |
+| **1** versão ≠ pin        | o serviço **recusou o pin**: o runner se auto-atualiza no meio do primeiro job e o job fica **preso**     | alinhe `RUNNER_VERSION` à versão que o serviço aceita e **então** re-registre |
+| **3** `no-pin` / `unread` | o script não declara o pin, ou a API não devolveu o campo `version` (nenhum dos dois vira "em sincronia") | declare o `RUNNER_VERSION`, ou rode onde a API devolve o registro completo    |
 
 ---
 

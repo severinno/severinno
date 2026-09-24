@@ -31,7 +31,12 @@ import {
   BRING_UP_GATE_JOB,
   CI_PROFILE_SKIPS,
   DEFAULT_GATE_CONCURRENCY,
+  DEFAULT_TIMEOUT_S,
   FORGE_GUARDS_JOB,
+  MARGEM_DO_TETO,
+  indiceDoBench,
+  tetoDoGate,
+  tetoDoGateLine,
   MERGE_OWNER_PIPELINE,
   REQUIRED_CHECKS_MANIFEST,
   VERDICT,
@@ -51,7 +56,15 @@ import {
   runGateAsync,
   runGatesConcurrent,
   githubRunnerLabelBlockers,
+  githubRunnerVersionBlocker,
+  runnerLabelBlockers,
+  runnerVersionBlocker,
   protectionBlockers,
+  // A RÉGUA DO CANAL DE REPO — a mesma que o `diagnose` aplica a TODAS as
+  // leituras: o teste a chama direto (a unidade) e o fluxo completo a mede pelo
+  // lado de fora (nenhuma consulta carrega o contexto compartilhado).
+  channelEnv,
+  forgeRepo,
   readComposeInterpolation,
   readGithubRunnerLabels,
   readImageContract,
@@ -73,6 +86,8 @@ import {
   declaredDebtBlockers,
   declaredDebtUnknowns,
   readDeclaredDebt,
+  unprovenDebtBlockers,
+  unprovenDebtUnknowns,
   deriveBringUpEnv,
   readShellInheritance,
   shellInheritanceBlockers,
@@ -90,11 +105,21 @@ import {
   readPrePushBlock,
   LOCAL_LINKS,
 } from "../../../scripts/forge-doctor.mjs"
+import {
+  collectUnproven,
+  datarLinhas,
+  readUnprovenRegistry,
+  UNPROVEN_REGISTRY_PATH,
+} from "../../../scripts/doctor-unproven.mjs"
 
 // A prova EXECUTADA pelo doctor e as constantes do hook que ela usa: o teste mede
 // a MESMA função que o relatório chama (e é por isso que a mutação do hook aqui
 // embaixo muda o veredito do fato).
 import { CORE_INVARIANTS } from "../../../scripts/check-forge-parity.mjs"
+// O ÍNDICE do bench que o doctor usa para derivar o TETO de cada gate: o teste
+// monta o mesmo índice a partir de um bench de fixture (e a última unidade o
+// confronta com a baseline DE VERDADE do repositório).
+import { benchIndex } from "../../../scripts/merge-latency.mjs"
 import { GUARD_COMMAND, hookSource, proveCommitBlocks } from "../../../scripts/pre-commit-proof.mjs"
 // A RÉGUA DOS COMANDOS DOS HOOKS: o teste compara o que o FATO do contrato
 // local declara com o que o GATE julga — as duas leituras têm de ser a mesma.
@@ -108,6 +133,10 @@ import {
 } from "../../../scripts/pre-push-proof.mjs"
 
 import { GITEA_BRING_UP, GITEA_COMPOSE } from "../../../scripts/check-bun-mirror.mjs"
+// O ITEM DATADO do relógio da matriz: o doctor o ABRE nomeando o MESMO id que o
+// registro usa e o `closedBy` que já está implementado — os nomes vêm do dono da
+// régua (a declaração colável e o fato não podem divergir no primeiro rename).
+import { MATRIX_CLOSED_BY, MATRIX_ITEM_ID } from "../../../scripts/bench-freshness.mjs"
 import { GITEA_ENV_MIRROR } from "../../../scripts/check-actrc-sync.mjs"
 import { scanRoot } from "../../../scripts/check-pipefail-sigpipe.mjs"
 // O VALOR DECLARADO dos espelhos: o CLI do doctor não tem flag de raiz (ele lê o
@@ -406,6 +435,10 @@ function facts(overrides: Record<string, unknown> = {}) {
     // o veredito não ganha nem bloqueio nem dúvida (cada teste estraga o que quer
     // medir). Ausente, ele passa a INDETERMINADA — como o guard de recursão.
     declaredDebt: declaredDebtFacts(),
+    // O REGISTRO do que o veredito NÃO cobre (`ci/unproven.json`), medido e sem
+    // item declarado: presente e limpo, como a dívida declarada — cada teste
+    // passa o fato no estado que quer medir, e o AUSENTE vira dúvida.
+    unprovenDebt: UNPROVEN_VAZIO,
     // A herança de shell dos workflows (de onde vem o shell de CADA passo):
     // presente e limpa. Cada teste estraga o que quer medir.
     shellInheritance: SHELL_INHERITANCE_LIMPA,
@@ -426,14 +459,98 @@ function facts(overrides: Record<string, unknown> = {}) {
     skippedRunnerLabels: false,
     skippedImageContract: false,
     skippedBenchFreshness: false,
+    skippedUnprovenDebt: false,
     ...overrides,
   }
+}
+
+/**
+ * O REGISTRO do que o veredito não cobre, LIMPO: nenhum item declarado.
+ *
+ * É o default do fixture porque nenhum item é o único estado que não muda o
+ * veredito — os outros (aberto, VENCIDO, provado, inválido, ilegível) são o que
+ * os testes exercitam, um a um.
+ */
+const UNPROVEN_VAZIO = {
+  state: "sem-itens",
+  items: [],
+  aged: [],
+  invalid: [],
+  proven: [],
+  open: [],
+  declarado: [],
+  total: 0,
+  reviewAfterDays: 90,
+  detail: "ci/unproven.json: nenhum item declarado",
 }
 
 /**
  * A IDADE da régua do bench, LIMPA: as famílias medidas dentro do teto. É o
  * default do fixture — os testes que medem a régua velha passam o fato estragado.
  */
+/**
+ * O RELÓGIO DA MATRIZ, limpo: o registro do ato ancorado na matriz de agora
+ * (`lag` 0 — o ato É o commit que a tocou por último). É o TERCEIRO par de
+ * estados do mesmo ativo: a idade responde "de QUANDO é o número", as formas "o
+ * que a origem CONTÉM" e este "a matriz ANDOU?".
+ *
+ * O teto DELE é o ritmo dela (2 ciclos de 1 commit por ciclo, o piso declarado),
+ * e não os 150 do repositório — é a diferença que o veredito tem de publicar.
+ */
+const MATRIZ_LIMPA = {
+  state: "measured",
+  origin: {
+    commit: "abc1234",
+    date: "2026-09-21 10:27:18 -0300",
+    act: "measured",
+    source: null,
+    via: "family",
+  },
+  since: null as { commit: string; date: string | null } | null,
+  tip: null as { commit: string; date: string | null } | null,
+  matriz: { commit: "abc1234", date: "2026-09-21" },
+  lag: 0,
+  aged: false,
+  teto: {
+    ciclos: 2,
+    cicloDias: 7,
+    janelaDias: 28,
+    pisoDeCiclo: 1,
+    desde: "2026-08-24T00:00:00.000Z",
+    commits: 8,
+    commitsPorCiclo: 2,
+    paths: 40,
+    teto: 4,
+    origem: "medido",
+    motivo: null as string | null,
+  },
+  escopo: {
+    master: "scripts/test-mutation-guards.sh",
+    naOrigem: 39,
+    noHead: 39,
+    paths: ["scripts/test-mutation-a.sh", "scripts/test-mutation-guards.sh"],
+    state: "lido",
+    reason: null as string | null,
+  },
+  detail:
+    "o registro do ato (abc1234) NÃO está atrás da matriz: nenhum commit tocou os 40 caminho(s) dela depois dele — o ato É o commit da matriz",
+  reason: null as string | null,
+  remedies: ["nenhum: a matriz não ganhou commit depois do ato"],
+}
+
+/** O registro do ato ATRÁS da matriz: a dúvida que o veredito tem de nomear. */
+const matrizVencida = (over: Record<string, unknown> = {}) => ({
+  ...MATRIZ_LIMPA,
+  lag: 9,
+  aged: true,
+  since: { commit: "m5aaaaaa1111", date: "2026-09-14" },
+  tip: { commit: "m9aaaaaa1111", date: "2026-09-22" },
+  detail:
+    "o registro do ato está 9 commit(s) atrás da matriz: ela andou desde m5aaaaaa1111 (2026-09-14), e o último que a tocou é m9aaaaaa1111 (2026-09-22) (origem do ato abc1234) · teto 4 commit(s) da MATRIZ — derivado do ritmo DELA",
+  remedies: ["bun run bench:guard-timing:baseline — o ato re-ancora o registro na matriz"],
+  ...over,
+})
+
 const BENCH_FRESHNESS_LIMPA = {
   state: "measured",
   file: "docs/benchmarks/guard-timing-baseline.json",
@@ -471,10 +588,43 @@ const BENCH_FRESHNESS_LIMPA = {
   diverged: [],
   unknown: [],
   behindMax: 3,
+  // O fato REAL sempre carrega o relógio da matriz (`readFreshness` o mede): um
+  // fixture sem ele mediria um veredito que não existe.
+  matrix: MATRIZ_LIMPA,
   detail:
     "1 família(s) medida(s), a mais antiga 3 commit(s) atrás de HEAD (teto 150) — nenhuma vencida",
   reason: null,
   remedies: [],
+}
+
+/**
+ * O fato das FORMAS × o COMMIT DE ORIGEM: o par de estados que o veredito
+ * publica. `FORA_DO_COMMIT` é o caso MEDIDO (a `doc-hashes` medida numa árvore
+ * que o commit de origem não carrega); `FORMS_VAZIO` é o caso em que a régua
+ * julgou o que tinha e não achou nada fora (com o limite das famílias que não
+ * nomeiam fonte contado, não silenciado).
+ */
+const FORA_DO_COMMIT = [
+  {
+    family: "mutations",
+    form: "doc-hashes",
+    path: null as string | null,
+    id: "doc-hashes",
+    commit: "8e76c9a6",
+    via: "ausente-do-master",
+  },
+]
+
+const FORMS_VAZIO = {
+  state: "measured",
+  families: [{ family: "mutations", commit: "abc1234", judged: 1, missing: [] }],
+  judged: 39,
+  notJudged: 32,
+  semResposta: 0,
+  missing: [] as typeof FORA_DO_COMMIT,
+  detail:
+    "39 forma(s) com fonte declarada são as do commit de origem (32 sem fonte própria: o limite declarado da régua)",
+  reason: null as string | null,
 }
 
 /**
@@ -526,6 +676,17 @@ function runnerLabelFacts(over: Record<string, unknown> = {}) {
   return {
     state: "proven",
     violations: [],
+    // A VERSÃO do BINÁRIO × a TAG do compose: o fato REAL sempre a carrega
+    // quando um container chegou a ser resolvido (o `checkRunnerLabels` a
+    // devolve), e `proven` aqui é silencioso no veredito — cada teste estraga o
+    // que quer medir, como no fato do runner do GitHub.
+    versionViolations: [],
+    version: {
+      state: "proven",
+      tag: "0.6.1",
+      reported: "0.6.1",
+      detail: "versao 0.6.1 = a tag declarada em deploy/docker-compose.gitea.yml",
+    },
     remedies: [],
     detail: "2 label(s) registrado(s) idênticos ao compose (declarado em deploy/env.gitea.example)",
     declared: ["ubuntu-latest:docker://ghcr.io/severinno/ubuntu-bun:1.3.14"],
@@ -562,6 +723,17 @@ function githubRunnerLabelFacts(over: Record<string, unknown> = {}) {
   return {
     state: "proven",
     violations: [],
+    versionViolations: [],
+    // A VERSÃO registrada × o PIN do script: o fato REAL sempre a carrega quando
+    // leu o registro (o `checkGithubRunnerLabels` a devolve), e `proven` aqui é o
+    // estado medido em 22/09/2026 (2.337.0 = pin). Cada teste estraga o que quer
+    // medir — e "provada" é SILENCIOSA no veredito, como o registro provado.
+    version: {
+      state: "proven",
+      pin: "2.337.0",
+      registered: "2.337.0",
+      detail: "versao 2.337.0 = o pin de deploy/setup-github-runner.sh",
+    },
     remedies: [],
     detail: "4 label(s) registrado(s) idênticos ao setup, em 'hostinger-runner' (online)",
     declared: ["self-hosted", "linux", "x64", "docker"],
@@ -1325,6 +1497,410 @@ describe("summarize — a IDADE da dívida declarada", () => {
   })
 })
 
+// ── O REGISTRO DATADO do que o veredito NÃO cobre ────────────────────────
+
+/**
+ * Um item do registro, com os defaults de um item ABERTO e datado de hoje.
+ *
+ * O `declaredAt` é a data em que a lacuna foi declarada — o eixo do tempo que
+ * este registro existe para dar às duas listas do veredito.
+ */
+function unprovenItem(over: Record<string, unknown> = {}) {
+  return {
+    id: "gitea-token",
+    kind: "lacuna",
+    subject: "a forja dona do merge não é lida sem token",
+    proveWith: "GITEA_TOKEN=<token> bun run doctor --gitea-env deploy/.env.gitea",
+    remedy: "rode o doctor com o token",
+    closedBy: "gitea-forja-lida",
+    // O TREGHO estável da linha que o veredito publica sobre esta lacuna: é por
+    // ele que a data chega à linha. Um item de LIMITE não tem linha própria
+    // (a data dele vive no registro), e os testes passam `matches: null`.
+    matches: "a branch protection REGISTRADA nao foi lida",
+    declaredAt: "2026-09-22",
+    state: "open",
+    days: 0,
+    limit: 90,
+    ...over,
+  }
+}
+
+/** O fato do registro, com os agregados derivados da lista de itens. */
+function unprovenFacts(over: Record<string, unknown> = {}) {
+  const items = (over.items as Record<string, unknown>[]) ?? []
+  const por = (estado: string) => items.filter((i) => i.state === estado)
+  return {
+    state: items.length === 0 ? "sem-itens" : (over.state ?? "open"),
+    items,
+    aged: por("aged"),
+    invalid: por("invalid"),
+    proven: por("proven"),
+    open: por("open"),
+    declarado: por("declarado"),
+    total: items.length,
+    reviewAfterDays: 90,
+    detail: `ci/unproven.json: ${items.length} item(ns)`,
+    ...over,
+  }
+}
+
+describe("summarize — o REGISTRO do que o veredito NÃO cobre", () => {
+  it("declaração VENCIDA → INDETERMINADA com a data, a janela e o remédio (zero bloqueios)", () => {
+    const vencida = unprovenFacts({
+      state: "aged",
+      items: [unprovenItem({ state: "aged", days: 120, limit: 90, id: "host-env" })],
+    })
+    const v = summarize(facts({ unprovenDebt: vencida }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.blockers).toEqual([])
+    const texto = v.unknowns.join(" ")
+    expect(texto).toContain("host-env")
+    expect(texto).toContain("VENCEU")
+    expect(texto).toContain("2026-09-22")
+    expect(texto).toContain("vencida há 30 dia(s)")
+  })
+
+  it("declaração PROVADA → INDETERMINADA mandando REMOVER a entrada (letra morta)", () => {
+    const provada = unprovenFacts({
+      state: "proven",
+      items: [unprovenItem({ state: "proven", id: "github-repo-identity" })],
+    })
+    const v = summarize(facts({ unprovenDebt: provada }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.blockers).toEqual([])
+    const texto = v.unknowns.join(" ")
+    expect(texto).toContain("github-repo-identity")
+    expect(texto).toContain("LETRA MORTA")
+    expect(texto).toContain("remova a entrada")
+  })
+
+  it("declaração ABERTA dentro da janela NÃO vira dúvida: o que ela acrescenta é a DATA", () => {
+    const aberta = unprovenFacts({ items: [unprovenItem()] })
+    const v = summarize(facts({ unprovenDebt: aberta }))
+    expect(v.verdict).toBe(VERDICT.READY)
+    expect(v.blockers).toEqual([])
+    expect(v.unknowns).toEqual([])
+  })
+
+  it("registro SEM REGISTRO VÁLIDO → BLOQUEIA (uma declaração que o dado não julga não envelhece)", () => {
+    const invalido = unprovenFacts({
+      state: "invalid",
+      items: [unprovenItem({ state: "invalid", declaredAt: null, why: "sem `declaredAt` válido" })],
+    })
+    const v = summarize(facts({ unprovenDebt: invalido }))
+    expect(v.verdict).toBe(VERDICT.BLOCKED)
+    expect(v.blockers.join(" ")).toContain("SEM REGISTRO VÁLIDO")
+    expect(v.blockers.join(" ")).toContain("sem `declaredAt` válido")
+  })
+
+  it("registro ILEGÍVEL → BLOQUEIA: 'não li' nunca é 'nada fora de alcance'", () => {
+    const ilegivel = unprovenFacts({
+      state: "unread",
+      items: [],
+      detail: "ci/unproven.json: o registro não é JSON válido",
+    })
+    const v = summarize(facts({ unprovenDebt: ilegivel }))
+    expect(v.verdict).toBe(VERDICT.BLOCKED)
+    expect(v.blockers.join(" ")).toContain("não pôde ser lido")
+    expect(v.blockers.join(" ")).toContain("não ler não é o mesmo que não haver")
+  })
+
+  it("pular por --no-unproven-registry fica NOMEADO (o veredito não pode afirmar que as lacunas têm data)", () => {
+    const v = summarize(facts({ skippedUnprovenDebt: true, unprovenDebt: undefined }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.unknowns.join(" ")).toContain("--no-unproven-registry")
+  })
+
+  it("o fato AUSENTE do relatório é falta de prova (mesma disciplina do resto)", () => {
+    const v = summarize(facts({ unprovenDebt: undefined }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.unknowns.join(" ")).toContain("não está declarado no relatório")
+  })
+
+  it("as duas funções do veredito são PURAS: só `invalid`/`unread` bloqueiam, só `aged`/`proven` viram dúvida", () => {
+    expect(unprovenDebtBlockers(unprovenFacts({ items: [unprovenItem()] }))).toEqual([])
+    expect(
+      unprovenDebtUnknowns(
+        unprovenFacts({
+          items: [unprovenItem(), unprovenItem({ id: "x", state: "aged", days: 200 })],
+        }),
+      ),
+    ).toHaveLength(1)
+    expect(unprovenDebtUnknowns(undefined)).toEqual([])
+    expect(unprovenDebtUnknowns({ state: "skipped" })).toEqual([])
+  })
+
+  /**
+   * Os fatos no estado em que CADA linha que o registro declara EXISTE.
+   *
+   * O `matches` de um item é um TRECHO da linha que o veredito publica — e a
+   * linha só existe quando o fato correspondente está no estado que a produz
+   * (a proteção não lida, o env do host ausente, o contrato da imagem sem
+   * medição, os dois registros de runner sem leitura). Sem isto, a cobertura
+   * abaixo mediria contra um relatório que nunca publica as linhas.
+   */
+  function factsComAsLinhas(over: Record<string, unknown> = {}) {
+    return facts({
+      // O estado MEDIDO do perfil completo em 22/09/2026, e não um inventado: o
+      // espelho NÃO SUPORTA branch protection (privado num plano sem a feature) e
+      // a forja dona do merge está `unavailable` (sem GITEA_TOKEN). É esse par que
+      // publica as duas linhas que as duas declarações de forja declaram.
+      protection: protectionFacts({
+        state: "unsupported",
+        detail: "github: HTTP 403 'Upgrade to GitHub Pro or make this repository public'",
+        forges: [
+          { forge: "github", state: "unsupported", detail: "HTTP 403 (plano/visibilidade)" },
+          { forge: "gitea", state: "unavailable", detail: "defina GITEA_TOKEN" },
+        ],
+      }),
+      // `no-env` é o código do env ausente: é ele que publica "imagem do runner
+      // não checada" em vez de uma imagem confirmada.
+      image: { code: 2, state: "no-env", lines: [] },
+      // Os espelhos vêm do leitor REAL (é ele que monta a linha do VALOR
+      // comparado): aqui só o valor declarado entra, sem os `--expected-var`.
+      mirrors: readMirrors(ROOT, { expected: "1.3.14", expectedVars: {} }),
+      imageContract: imageContractFacts({ state: "unavailable", detail: "sem o env do runner" }),
+      // O estado ESTAGIADO aqui é o `floating` — a tag que NÃO pina versão, que
+      // era o par medido de 22/09/2026 neste host (a stack da forja fora do ar e
+      // o compose declarando `gitea/act_runner:latest`; o compose passou a pinar
+      // `0.6.1` no MESMO dia, e aí o estado sem container vira `unread`). É este
+      // `floating` que mantém a declaração datada `act-runner-version` VIVA neste
+      // teste (com `proven` ela viraria letra morta: o mecanismo funcionando, não
+      // o que ele mede) — o mesmo cuidado do `version: null` do runner do GitHub
+      // logo abaixo.
+      runnerLabels: runnerLabelFacts({
+        state: "unavailable",
+        detail: "a stack não está de pé",
+        version: {
+          state: "floating",
+          tag: "latest",
+          reported: null,
+          detail:
+            "a imagem declarada do runner e 'gitea/act_runner:latest' e a tag 'latest' NAO declara versao nenhuma",
+        },
+      }),
+      // O runner do GitHub está VIOLADO no host de verdade (o setup declara 4
+      // labels e o repositório não tem nenhum): a linha da declaração passa a
+      // ser a do BLOQUEIO — é o caso que a lista de trechos existe para cobrir.
+      githubRunnerLabels: githubRunnerLabelFacts({
+        state: "violated",
+        detail: "o setup declara 4 label(s) e o repositório não tem o runner declarado",
+        violations: ["nenhum runner auto-hospedado registrado no repositório"],
+        remedies: ["registre o runner no host que o hospeda"],
+        runner: "hostinger-runner",
+        status: "offline",
+        repo: "severinno/severinno",
+        // E a VERSÃO fica NÃO julgada pelo mesmo motivo do estado acima: sem
+        // runner registrado não houve runner a selecionar, e sem seleção não há
+        // versão a comparar com o pin. É ESTE o `version: null` que o `check` real
+        // devolve nesse caso — e é ele que mantém a declaração datada
+        // `github-runner-version` VIVA aqui (com `proven` ela viraria letra
+        // morta: o mecanismo funcionando, não o que este teste mede).
+        version: null,
+        versionViolations: [],
+      }),
+      // O COMMIT DE ORIGEM × as FORMAS MEDIDAS: o estado MEDIDO daquele dia — a
+      // baseline grava `8e76c9a6` e a forma `doc-hashes` (a 39.ª entrada da
+      // matriz, medida naquela rodada com a suíte no ÍNDICE) NÃO existe naquele
+      // commit. É este estado que publica a linha que a declaração datada
+      // `bench-forma-fora-do-commit` cobre — e ele é do dia, não inventado: a
+      // idade sozinha dizia "fresco" (0 commit atrás), e era o CONTEÚDO daquele
+      // commit que faltava.
+      benchFreshness: {
+        ...BENCH_FRESHNESS_LIMPA,
+        forms: {
+          state: "measured",
+          families: [
+            { family: "mutations", commit: "8e76c9a6", judged: 38, missing: [...FORA_DO_COMMIT] },
+          ],
+          judged: 39,
+          notJudged: 32,
+          semResposta: 0,
+          missing: [...FORA_DO_COMMIT],
+          detail:
+            "1 forma(s) medida(s) NÃO existem no commit de origem: mutations/doc-hashes @ 8e76c9a6 (39 forma(s) com fonte declarada julgada(s), 32 sem fonte própria)",
+          reason: null,
+        },
+      },
+      ...over,
+    })
+  }
+
+  /**
+   * O relatório do perfil completo MEDIDO em 22/09/2026, com todos os fatos no
+   * estado que aquela medição produziu — incluindo os GATES CORE (que os dublês
+   * dos fluxos acima substituem) no par de causas daquele dia: o espelho sem o
+   * recurso e a forja dona do merge sem token. É o estado em que a promessa
+   * "nenhuma linha de 'não provado' sem data" tem de valer.
+   */
+  function factsDoPerfilCompleto() {
+    const protection = protectionFacts({
+      state: "unsupported",
+      detail:
+        "github: HTTP 403 'Upgrade to GitHub Pro or make this repository public' · gitea: Gitea: defina GITEA_TOKEN no ambiente",
+      forges: [
+        {
+          forge: "github",
+          state: "unsupported",
+          detail: "HTTP 403 (plano/visibilidade)",
+          desired: 0,
+          branches: [],
+          missing: null,
+          extra: null,
+        },
+        {
+          forge: "gitea",
+          state: "unavailable",
+          detail: "Gitea: defina GITEA_TOKEN no ambiente",
+          desired: 0,
+          branches: [],
+          missing: null,
+          extra: null,
+        },
+      ],
+    })
+    // Os gates saem do LEITOR REAL sobre o REPOSITÓRIO — não sobre a fixture das
+    // duas forjas: o perfil completo mede o contrato de merge DESTE repositório,
+    // e a fixture planta violações nas pipelines dela (`gate CORE nao esta
+    // cobrado no merge`) que nenhuma declaração datada cobre porque NÃO são
+    // lacunas de prova: são defeitos plantados de propósito, para outros testes.
+    // Aqui os gates do repositório batem com a régua, e o que sobra deles é a
+    // única coisa que a medição real deixou: as DUAS causas de proteção.
+    return factsComAsLinhas({
+      protection,
+      gateContracts: readAllGateContracts({
+        cwd: ROOT,
+        contract: readContract(ROOT),
+        protection,
+      }),
+      // As referências NÃO VERSIONADAS no estado daquele dia — `unavailable`, com
+      // as 4 que não foram provadas (a fixture do fluxo as tem `proven`, e com
+      // elas a declaração DATADA viraria letra morta: é o próprio mecanismo
+      // funcionando, e não o que este teste mede).
+      imageRefs: refsFacts({
+        state: "unavailable",
+        detail:
+          "4 referencia(s) NAO PROVADA(S) — nenhuma foi presumida (3 nao aplicavel(is) neste checkout)",
+        items: [
+          { source: "repository variable IMAGE_REGISTRY", state: "indeterminate", detail: "" },
+          { source: "repository variable IMAGE_NAMESPACE", state: "indeterminate", detail: "" },
+          { source: "repository variable BUN_VERSION", state: "indeterminate", detail: "" },
+          {
+            source: "registry (o que git.severinno.cloud/severinno/ubuntu-bun:1.3.14 serve hoje)",
+            state: "indeterminate",
+            detail: "",
+          },
+        ],
+      }),
+    })
+  }
+
+  it("COBERTURA TOTAL: no estado MEDIDO do perfil completo, TODA linha do veredito sai DATADA", () => {
+    // A promessa do registro é sobre LINHAS, não sobre itens: nenhuma linha das
+    // três listas pode ficar sem saber desde quando existe. O outro lado (cada
+    // declaração viva casando com exatamente uma linha) é o teste acima; este é
+    // o que pega a linha NOVA — uma causa que passa a ser publicada sem
+    // declaração datada que a cubra.
+    const base = factsDoPerfilCompleto()
+    const ud = collectUnproven({ facts: base, root: ROOT })
+    const v = summarize({ ...base, unprovenDebt: ud })
+    expect(ud.state).not.toBe("unread")
+    // O par de causas MEDIDO: a forja sem o recurso e a forja não lida, as duas
+    // publicadas (a agregação dos gates sai uma linha por causa, e não uma por
+    // gate).
+    expect(v.unknowns.some((u) => u.includes("NÃO SUPORTA branch protection"))).toBe(true)
+    expect(v.unknowns.some((u) => u.includes("a branch protection de gitea não foi lida"))).toBe(
+      true,
+    )
+    expect(v.unknowns.filter((u) => u.startsWith("gate '")).length).toBe(0)
+    const datado = datarLinhas(
+      { verdict: { blockers: v.blockers, unproven: v.unproven, unknowns: v.unknowns } },
+      ud,
+    )
+    const linhas = [...datado.blockers, ...datado.unknowns, ...datado.unproven]
+    expect(linhas.length).toBeGreaterThan(0)
+    const semData = linhas.filter((l) => !/\[(declarado|PROVADO)/.test(l))
+    expect(semData, `linhas SEM data:\n${semData.join("\n")}`).toEqual([])
+  })
+
+  it("COBERTURA: cada declaração VIVA do registro casa com EXATAMENTE uma linha do veredito", () => {
+    const linhas = (() => {
+      const base = factsComAsLinhas()
+      const ud = collectUnproven({ facts: base, root: ROOT })
+      const v = summarize({ ...base, unprovenDebt: ud })
+      // As TRÊS listas: a linha de um assunto pode ser um BLOQUEIO (o runner
+      // do GitHub, medido violado) em vez de um 'não provado'.
+      return { ud, v, texto: [...v.blockers, ...v.unproven, ...v.unknowns] }
+    })()
+    // O registro do repositório FOI lido (um `unread` aqui tornaria a cobertura
+    // abaixo vazia — e uma lista vazia "passa" em qualquer asserção de laço).
+    expect(linhas.ud.state).not.toBe("unread")
+    expect(linhas.ud.state).not.toBe("invalid")
+    expect(linhas.ud.total).toBeGreaterThan(0)
+    const vivas = linhas.ud.items.filter(
+      (i: { state: string }) => i.state === "open" || i.state === "aged",
+    )
+    expect(vivas.length).toBeGreaterThan(0)
+    for (const i of vivas) {
+      // O `matches` pode ser uma LISTA de alternativas (o mesmo assunto muda de
+      // linha conforme o estado medido): pelo menos um trecho tem de casar com
+      // EXATAMENTE uma linha — e nenhum pode casar com mais de uma.
+      const trechos = typeof i.matches === "string" ? [i.matches] : i.matches
+      const houveram = trechos
+        .map((t: string) => linhas.texto.filter((l) => l.includes(t)))
+        .filter((h: string[]) => h.length > 0)
+      expect(houveram.length, `${i.id} → ${JSON.stringify(i.matches)} não casou`).toBeGreaterThan(0)
+      for (const h of houveram)
+        expect(h.length, `${i.id} → trecho ambíguo (${h.length} linhas)`).toBe(1)
+    }
+    // E o outro lado: cada uma dessas linhas é DATADA na hora de imprimir.
+    const datado = datarLinhas(
+      {
+        verdict: {
+          blockers: linhas.v.blockers,
+          unproven: linhas.v.unproven,
+          unknowns: linhas.v.unknowns,
+        },
+      },
+      linhas.ud,
+    )
+    for (const i of vivas) expect(datado.usados, i.id).toContain(i.id)
+  })
+
+  it("SENSIBILIDADE: as linhas REESCRITAS deixam a declaração ÓRFÃ (é isso que a cobertura acusa)", () => {
+    const base = factsComAsLinhas()
+    const ud = collectUnproven({ facts: base, root: ROOT })
+    // As linhas que o registro declara saem do relatório (o cenário de alguém
+    // reescrever a prosa do veredito sem tocar no registro). O item declara mais
+    // de uma linha — o MESMO assunto aparece no `unproven` e nos `unknowns` —, e
+    // é o CONJUNTO que tem de sair para a declaração ficar órfã: apagar uma só
+    // deixaria as outras datando em nome dela.
+    const v = summarize({ ...base, unprovenDebt: ud })
+    const item = ud.items.find((i: { id: string }) => i.id === "github-branch-protection") as {
+      matches: string | string[]
+    }
+    const declarados = typeof item.matches === "string" ? [item.matches] : item.matches
+    const semEla = [...v.blockers, ...v.unproven, ...v.unknowns].filter(
+      (l) => !declarados.some((t) => l.includes(t)),
+    )
+    const vivas = ud.items.filter(
+      (i: { state: string }) => i.state === "open" || i.state === "aged",
+    )
+    const orfas = vivas.filter((i: { matches: string | string[]; id: string }) => {
+      const trechos = typeof i.matches === "string" ? [i.matches] : i.matches
+      return !trechos.some((t) => semEla.some((l) => l.includes(t)))
+    })
+    expect(orfas.map((i: { id: string }) => i.id)).toContain("github-branch-protection")
+  })
+
+  it("o registro do REPOSITÓRIO é lido e julgado (o dado de verdade, não um fixture)", () => {
+    const lido = readUnprovenRegistry({ root: ROOT })
+    expect(lido.erro).toBeNull()
+    expect(lido.items.length).toBeGreaterThan(0)
+    expect(lido.reviewAfterDays).toBeGreaterThan(0)
+  })
+})
+
 // ── readMirrors: gravidade diferente por espelho ──────────────────────────
 
 describe("readMirrors — os espelhos, contra o valor DECLARADO (fonte única do guard)", () => {
@@ -1625,6 +2201,77 @@ describe("renderReport — a seção dos espelhos diz CONTRA O QUE comparou", ()
     )
     expect(text).toContain("o MESMO texto que o job semanal publica")
     expect(text).toContain("mas a repository variable do GitHub é vars.BUN_VERSION='1.3.14'")
+  })
+})
+
+describe("renderReport — o registro DATADO do que o veredito não cobre", () => {
+  const render = (f: ReturnType<typeof facts>) => {
+    const lines: string[] = []
+    renderReport({ facts: f, verdict: summarize(f) }, { emit: (s = "") => lines.push(s) })
+    return lines.join("\n")
+  }
+
+  it("publica cada item com o estado, a data e a JANELA — e o remédio dos vencidos", () => {
+    const text = render(
+      facts({
+        unprovenDebt: unprovenFacts({
+          state: "aged",
+          items: [
+            unprovenItem({ id: "host-env", state: "aged", days: 120, limit: 90 }),
+            unprovenItem({
+              id: "forge-history",
+              kind: "limite",
+              state: "declarado",
+              limit: null,
+              matches: null,
+            }),
+          ],
+        }),
+      }),
+    )
+    expect(text).toContain("Registro DATADO do que o veredito NÃO cobre")
+    expect(text).toContain("host-env")
+    expect(text).toContain("declarada em 2026-09-22")
+    expect(text).toContain("janela 90d VENCIDA há 30d")
+    expect(text).toContain("prova que fecha:")
+    expect(text).toContain("remédio:")
+    // O LIMITE por desenho é outra coisa: datado, sem janela, e dito como tal.
+    expect(text).toContain("forge-history")
+    expect(text).toContain("limite por desenho")
+  })
+
+  it("a linha do veredito sai DATADA — a lacuna deixa de ser anônima onde o operador lê", () => {
+    const f = facts({
+      protection: protectionFacts({
+        state: "unread",
+        detail: "gitea: sem token",
+        forges: [{ forge: "gitea", state: "unavailable", detail: "sem token" }],
+      }),
+      unprovenDebt: unprovenFacts({
+        items: [unprovenItem()],
+      }),
+    })
+    const text = render(f)
+    expect(text).toContain("[declarado em 2026-09-22, revisão até +90d]")
+    // E o dado do veredito continua LIMPO (a assinatura da issue é derivada dele).
+    expect(summarize(f).unknowns.join(" ")).not.toContain("[declarado em")
+  })
+
+  it("a declaração PROVADA pede a remoção no relatório (o registro não conta lacuna que já não existe)", () => {
+    const text = render(
+      facts({
+        unprovenDebt: unprovenFacts({
+          state: "proven",
+          items: [unprovenItem({ state: "proven" })],
+        }),
+      }),
+    )
+    expect(text).toContain("remova-a do registro")
+  })
+
+  it("o registro PULADO por flag é dito no relatório (as duas listas ficam sem data por escolha)", () => {
+    const text = render(facts({ skippedUnprovenDebt: true, unprovenDebt: undefined }))
+    expect(text).toContain("pulado por --no-unproven-registry")
   })
 })
 
@@ -2354,6 +3001,11 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
     // acima EXECUTA o bloco documentado), porque a régua do doctor recusa
     // `prove-*` como comando de gate.
     ["tla-closure", "node scripts/check-tla-closure.mjs"],
+    // A RÉGUA DAS CITAÇÕES EM PROSA (o hash citado tem de existir na história):
+    // ela entrou no job `guards` das duas forjas pelo MESMO comando, e sem esta
+    // linha a fixture mediria um mundo em que a invariante existe na declaração
+    // (`CORE_INVARIANTS`) e não na pipeline — o oposto do que o fato julga.
+    ["doc-hashes", "node scripts/check-doc-hashes.mjs"],
     // A PROVA POR MUTAÇÃO deixou de ser isenta do dono do merge: a matriz (que
     // mede se um guard MORDE) e a prova das três regras de classificação rodam
     // nas DUAS pipelines, e na forja é DENTRO deste job — pelo mesmo comando.
@@ -2704,9 +3356,187 @@ describe("readAllGateContracts — o job EXIGIDO roda a régua da INVARIANTE, a 
 
 // ── branch protection REGISTRADA: o outro lado do contrato de merge ────────
 
+describe("o CANAL de repo da forja (a régua que todas as leituras compartilham)", () => {
+  it("`forgeRepo` lê o canal DAQUELA forja — e diz QUAL variável é o canal", () => {
+    const env = {
+      GH_REPOSITORY: "org/do-github",
+      GITEA_REPOSITORY: "org/da-gitea",
+      GITHUB_REPOSITORY: "forja-emulada/decoy",
+    }
+    expect(forgeRepo("github", env)).toEqual({ name: "GH_REPOSITORY", value: "org/do-github" })
+    expect(forgeRepo("gitea", env)).toEqual({ name: "GITEA_REPOSITORY", value: "org/da-gitea" })
+    // O NOME viaja junto do valor: quem não achou o canal tem de nomear a
+    // variável que falta, e não dizer "sem repositório".
+    expect(forgeRepo("github", {})).toEqual({ name: "GH_REPOSITORY", value: null })
+    // Vazio/espacos NÃO é um repo: `" "` viraria uma consulta a um slug em branco.
+    expect(forgeRepo("github", { GH_REPOSITORY: "   " }).value).toBeNull()
+    expect(forgeRepo("github", { GH_REPOSITORY: " org/x " }).value).toBe("org/x")
+  })
+
+  it("`channelEnv` tira SÓ o contexto compartilhado — a credencial continua", () => {
+    const env = {
+      GITHUB_REPOSITORY: "forja-emulada/decoy",
+      GITHUB_API_URL: "https://git.exemplo/api/v1",
+      GH_REPOSITORY: "org/do-github",
+      GITEA_REPOSITORY: "org/da-gitea",
+      GH_TOKEN: "t",
+      GITHUB_TOKEN: "token-do-runner",
+      GITHUB_ACTOR: "runner",
+      GHCR_TOKEN: "ghcr",
+      PATH: "/bin",
+    }
+    const out = channelEnv(env)
+    expect(out.GITHUB_REPOSITORY).toBeUndefined()
+    expect(out.GITHUB_API_URL).toBeUndefined()
+    // O resto vai INTACTO: o token é credencial de quem chamou (o
+    // `credentialsFromEnv` do contrato da imagem depende dele), e os DOIS canais
+    // de repo continuam no ambiente para quem os usa por dentro.
+    expect(out).toMatchObject({
+      GH_REPOSITORY: "org/do-github",
+      GITEA_REPOSITORY: "org/da-gitea",
+      GH_TOKEN: "t",
+      GITHUB_TOKEN: "token-do-runner",
+      GITHUB_ACTOR: "runner",
+      GHCR_TOKEN: "ghcr",
+      PATH: "/bin",
+    })
+    // E é uma CÓPIA: a régua não pode alterar o ambiente do processo.
+    expect(env.GITHUB_REPOSITORY).toBe("forja-emulada/decoy")
+    expect(out).not.toBe(env)
+  })
+})
+
 describe("readProtection — o que a forja REGISTRA (e não o que o repo declara)", () => {
   const stub = (res: Record<string, unknown>) => () =>
     ({ status: 0, stdout: "", stderr: "", signal: null, error: undefined, ...res }) as never
+
+  it("o repo de cada forja sai do CANAL DELA (`--repo`), nunca do ambiente compartilhado", () => {
+    // O `env` é INJETADO (e não mexido no `process.env`): a régua do canal tem
+    // de ser a MESMA que o doctor monta, e um teste que dependa do ambiente do
+    // processo passa a medir a máquina de quem roda.
+    const decoy = "forja-emulada/gitea-do-runner"
+    const visto: { env: Record<string, string | undefined>; args: string[] }[] = []
+    const run = (
+      _node: string,
+      args: string[],
+      opts: { env: Record<string, string | undefined> },
+    ) => {
+      visto.push({ env: opts.env, args })
+      return stub({
+        status: 0,
+        stdout: JSON.stringify({
+          forges: {
+            [forgeOf(args)]: {
+              desired: ["gate"],
+              branches: [{ branch: "main", configured: true, missing: [], extra: [] }],
+            },
+          },
+        }),
+      }) as never
+    }
+    readProtection({
+      forges: ["github", "gitea"],
+      env: {
+        GH_REPOSITORY: "org/do-github",
+        GITEA_REPOSITORY: "org/da-gitea",
+        // O CONTEXTO COMPARTILHADO do runner da forja: os dois apontam para a
+        // Gitea (o contexto emulado), e nenhum pode resolver consulta alguma.
+        GITHUB_REPOSITORY: decoy,
+        GITHUB_API_URL: "https://git.exemplo/api/v1",
+        GH_TOKEN: "token-do-github",
+      },
+      run: run as never,
+    })
+    expect(visto.map((c) => c.args[c.args.indexOf("--repo") + 1])).toEqual([
+      "org/do-github",
+      "org/da-gitea",
+    ])
+    // O ambiente NÃO carrega o contexto compartilhado: sem o canal, o aplicador
+    // não tem por onde resolver o repo do repositório ERRADO (e falha alto).
+    for (const chamada of visto) {
+      expect(chamada.env.GITHUB_REPOSITORY).toBeUndefined()
+      expect(chamada.env.GITHUB_API_URL).toBeUndefined()
+      // A credencial NÃO é contexto: ela continua indo (o token do GitHub é o
+      // canal de leitura, e negá-lo trocaria um repo errado por nenhum).
+      expect(chamada.env.GH_TOKEN).toBe("token-do-github")
+      expect(JSON.stringify(chamada)).not.toContain(decoy)
+    }
+  })
+
+  it("só o compartilhado no ambiente (sem o canal) → o repo NÃO viaja e o detalhe NOMEIA o canal", () => {
+    // O defeito de origem: o aplicador, sem `--repo`, resolve por
+    // `GITHUB_REPOSITORY` — e no runner da forja essa variável é o repositório DO
+    // GITEA. O doctor não a entrega, então a falha dele é a resposta honesta...
+    // desde que ela DIGA qual variável falta: "defina GITHUB_REPOSITORY" mandava
+    // o operador para a variável que o doctor recusa ler.
+    const decoy = "forja-emulada/decoy"
+    const chamadas: { args: string[]; env: Record<string, string | undefined> }[] = []
+    const run = (
+      _node: string,
+      args: string[],
+      opts: { env: Record<string, string | undefined> },
+    ) => {
+      chamadas.push({ args, env: opts.env })
+      return {
+        status: 1,
+        stdout: applierJson({
+          forge: forgeOf(args),
+          errors: [
+            {
+              forge: "github",
+              message: "GitHub: defina --repo owner/name ou GITHUB_REPOSITORY",
+            },
+          ],
+        }),
+        stderr: "",
+        signal: null,
+      } as never
+    }
+    const r = readProtection({
+      forges: ["github"],
+      env: {
+        GITHUB_REPOSITORY: decoy,
+        GITHUB_API_URL: "https://git.exemplo/api/v1",
+        GH_TOKEN: "t",
+      },
+      run: run as never,
+    })
+    expect(r.state).toBe("unavailable")
+    expect(chamadas[0].args).not.toContain("--repo")
+    expect(chamadas[0].env.GITHUB_REPOSITORY).toBeUndefined()
+    // O veredito nomeia o CANAL (e o relatório não carrega o slug da forja
+    // emulada em lugar nenhum — nem na mensagem herdada do aplicador).
+    expect(r.detail).toContain("GH_REPOSITORY")
+    expect(r.detail).not.toContain(decoy)
+  })
+
+  it("sem o canal da forja, nenhum `--repo` é inventado — e o ambiente vai SEM o compartilhado", () => {
+    const chamadas: { args: string[]; env: Record<string, string | undefined> }[] = []
+    const run = (
+      _node: string,
+      args: string[],
+      opts: { env: Record<string, string | undefined> },
+    ) => {
+      chamadas.push({ args, env: opts.env })
+      return stub({ status: 0 }) as never
+    }
+    readProtection({
+      forges: ["github"],
+      env: { GITHUB_REPOSITORY: "forja-emulada/decoy", GITHUB_API_URL: "https://git.exemplo" },
+      run: run as never,
+    })
+    expect(chamadas[0].args).toEqual([
+      "scripts/apply-required-checks.mjs",
+      "--check",
+      "--forge",
+      "github",
+      "--json",
+    ])
+    // O caminho sem canal é onde a sanitização mais importa: é ele que, sem ela,
+    // entregaria o repo da forja emulada ao aplicador como se fosse o do GitHub.
+    expect(chamadas[0].env.GITHUB_REPOSITORY).toBeUndefined()
+    expect(chamadas[0].env.GITHUB_API_URL).toBeUndefined()
+  })
 
   it("em sincronia → 'in-sync', com a contagem do manifesto", () => {
     const r = readProtection({ forges: ["gitea"], run: protectionInSync.run as never })
@@ -3016,6 +3846,108 @@ describe("summarize — o REGISTRO do act_runner", () => {
     expect(v.blockers.join(" ")).toContain("runner órfão")
   })
 
+  it("a VERSÃO do binário fora da TAG bloqueia num bloqueio PRÓPRIO (o remédio é o da IMAGEM)", () => {
+    // O drift da versão é o irmão do pin recusado do GitHub, do lado da forja: o
+    // container roda outra versão do que o repositório declara. O remédio NÃO é
+    // re-registrar — é alinhar a tag —, e por isso a linha é separada.
+    const v = summarize(
+      facts({
+        runnerLabels: runnerLabelFacts({
+          state: "violated",
+          versionViolations: [
+            "o binario do runner no container 'gitea-runner' reporta '0.2.11' e deploy/docker-compose.gitea.yml declara a tag '0.6.1': o que RODA nao e o que o repositorio declara",
+          ],
+          version: {
+            state: "drift",
+            tag: "0.6.1",
+            reported: "0.2.11",
+            detail: "o que RODA nao e o que o repositorio declara",
+          },
+          remedies: [
+            "Remédio: alinhe a tag da imagem do runner em deploy/docker-compose.gitea.yml",
+          ],
+        }),
+      }),
+    )
+    expect(v.verdict).toBe(VERDICT.BLOCKED)
+    const blocker = v.blockers.find((b) => b.includes("a VERSAO do act_runner"))!
+    expect(blocker).toContain("'0.2.11'")
+    expect(blocker).toContain("'0.6.1'")
+    expect(blocker).toContain("gitea-runner · /data/.runner")
+    expect(blocker).toContain("alinhe a tag da imagem do runner")
+    // E o bloqueio do REGISTRO não é inventado junto: sem violação de label, a
+    // linha do registro estaría acusando o defeito errado.
+    expect(v.blockers.filter((b) => b.includes("NAO é o do compose"))).toEqual([])
+  })
+
+  it("a versão NÃO julgada (tag flutuante, binário mudo, render sem imagem) rebaixa nomeando o estado", () => {
+    for (const state of ["floating", "unread", "no-image", "digest"]) {
+      const v = summarize(
+        facts({
+          runnerLabels: runnerLabelFacts({ version: { state, detail: `detalhe de ${state}` } }),
+        }),
+      )
+      expect(v.verdict, state).toBe(VERDICT.UNKNOWN)
+      const unknown = v.unknowns.find((u) => u.includes("VERSAO do act_runner"))!
+      expect(unknown).toContain(state)
+      expect(unknown).toContain(`detalhe de ${state}`)
+      expect(v.blockers).toEqual([])
+    }
+  })
+
+  it("sem container resolvido (`version: null`) a versão não vira linha nova — e não é 'versão em dia'", () => {
+    // O caminho em que nenhum container chegou a ser resolvido (sem compose, sem
+    // docker, sem labels no render): a linha do FATO já declara tudo o que ficou
+    // sem comparação, e a versão não existe para ser julgada.
+    const v = summarize(
+      facts({
+        runnerLabels: runnerLabelFacts({
+          state: "unavailable",
+          version: null,
+          detail: "sem compose da forja neste checkout",
+        }),
+      }),
+    )
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.unknowns.join(" ")).not.toContain("VERSAO do act_runner")
+    expect(v.unknowns.join(" ")).toContain("nao foi comparado")
+  })
+
+  it("com o fato PULADO a versão não é julgada por fora (`--no-runner-labels`)", () => {
+    const v = summarize(
+      facts({
+        skippedRunnerLabels: true,
+        runnerLabels: runnerLabelFacts({ state: "skipped", version: null, detail: "pulada" }),
+      }),
+    )
+    expect(v.unknowns.join(" ")).toContain("--no-runner-labels")
+    expect(v.unknowns.join(" ")).not.toContain("VERSAO do act_runner")
+  })
+
+  it("o bloqueio da VERSÃO: a linha própria, os dois lados e o remédio — e os outros estados não a produzem", () => {
+    const b = runnerVersionBlocker(
+      runnerLabelFacts({
+        state: "violated",
+        version: { state: "drift", tag: "0.6.1", reported: "0.2.11", detail: "d" },
+        remedies: ["Remédio: alinhe a tag da imagem do runner"],
+      }),
+    )
+    expect(b).toHaveLength(1)
+    expect(b[0]).toContain("a VERSAO do act_runner nao e a da tag declarada")
+    expect(b[0]).toContain("'0.2.11'")
+    expect(b[0]).toContain("'0.6.1'")
+    expect(b[0]).toContain("IMAGEM")
+    expect(b[0]).toContain("alinhe a tag da imagem do runner")
+    for (const state of ["proven", "floating", "unread", "no-image", "digest"]) {
+      expect(runnerVersionBlocker(runnerLabelFacts({ version: { state } }))).toEqual([])
+    }
+    expect(runnerVersionBlocker(runnerLabelFacts({ version: null }))).toEqual([])
+  })
+
+  it("SEM violação de label o bloqueio do registro NÃO é inventado (a linha mentiria)", () => {
+    expect(runnerLabelBlockers(runnerLabelFacts({ violations: [] }))).toEqual([])
+  })
+
   it("INDISPONÍVEL (sem docker/container/registro ilegível) rebaixa e diz POR QUÊ", () => {
     const v = summarize(
       facts({
@@ -3091,6 +4023,37 @@ describe("summarize — o REGISTRO do act_runner", () => {
     expect(seen).toEqual([null])
     expect(r.state).toBe("proven")
   })
+
+  it("readRunnerLabels repassa a SONDA do container: `--container` entra pelo mesmo parâmetro do guard", () => {
+    // O doctor NÃO reimplementa a resolução: ele entrega o declarado ao guard, e
+    // a metade da VERSÃO é medida contra a sonda sem exigir o `container_name` do
+    // compose (o default é a resolução de sempre, dentro do guard).
+    const visto: Array<{ container: string | null; env: unknown }> = []
+    const r = readRunnerLabels({
+      cwd: makeDir(),
+      container: "sonda-do-ensaio",
+      env: { GITEA_RUNNER_CONTAINER: "a-do-ambiente" },
+      deps: {
+        check: (opts: { container: string | null; env: unknown }) => {
+          visto.push({ container: opts.container, env: opts.env })
+          return {
+            state: "proven",
+            violations: [],
+            remedies: [],
+            detail: "ok",
+            declared: ["a"],
+            registered: ["a"],
+            container: opts.container,
+            stateFile: "/s",
+          }
+        },
+      },
+    })
+    expect(visto).toEqual([
+      { container: "sonda-do-ensaio", env: { GITEA_RUNNER_CONTAINER: "a-do-ambiente" } },
+    ])
+    expect(r.container).toBe("sonda-do-ensaio")
+  })
 })
 
 describe("renderReport — o registro do act_runner", () => {
@@ -3127,6 +4090,22 @@ describe("renderReport — o registro do act_runner", () => {
     })
     renderReport({ facts: f, verdict: summarize(f) }, { emit: (s = "") => lines.push(s) })
     expect(lines.join("\n")).toContain("registro do act_runner: pulada por --no-runner-labels")
+  })
+
+  it("dita a VERSÃO do binário ao lado do registro — e a mostra mesmo com o registro não lido", () => {
+    // A leitura da versão não depende do arquivo de registro (ela é do
+    // CONTAINER): num host onde a stack está fora do ar ela ainda sai, e é isso
+    // que diz ao leitor QUAL pergunta ficou sem resposta.
+    const lines: string[] = []
+    const f = facts({
+      runnerLabels: runnerLabelFacts({
+        state: "unavailable",
+        detail: "docker exec gitea-runner cat /data/.runner falhou: No such container",
+        version: { state: "floating", tag: "latest", reported: null, detail: "tag nao pinada" },
+      }),
+    })
+    renderReport({ facts: f, verdict: summarize(f) }, { emit: (s = "") => lines.push(s) })
+    expect(lines.join("\n")).toContain("versao do binario: <nao lida> != tag latest (floating)")
   })
 })
 
@@ -3203,6 +4182,143 @@ describe("summarize — o REGISTRO do runner do GitHub (a outra forja)", () => {
     expect(b[0]).not.toContain("null")
   })
 
+  it("SEM violação de label o bloqueio do registro NÃO é inventado (a linha mentiria)", () => {
+    // O guard agora julga também a VERSÃO: um drift de versão tem linha própria, e
+    // esta aqui acusaria "o registro não é o do setup" sobre zero violações — prosa
+    // que não corresponde ao defeito.
+    expect(githubRunnerLabelBlockers(githubRunnerLabelFacts({ violations: [] }))).toEqual([])
+  })
+
+  it("a VERSÃO fora do pin: a linha própria nomeia os PAIS lados e o remédio do pin", () => {
+    const drift = githubRunnerLabelFacts({
+      state: "violated",
+      versionViolations: ["o servico RECUSOU o pin: o registro responde '2.337.0'"],
+      version: {
+        state: "drift",
+        pin: "2.320.0",
+        registered: "2.337.0",
+        detail: "o servico RECUSOU o pin: o registro responde '2.337.0' e pina '2.320.0'",
+      },
+      remedies: ["Remédio: alinhe RUNNER_VERSION"],
+    })
+    const b = githubRunnerVersionBlocker(drift)
+    expect(b).toHaveLength(1)
+    expect(b[0]).toContain("a VERSAO do runner do GITHUB nao é a do pin")
+    expect(b[0]).toContain("'2.337.0'")
+    expect(b[0]).toContain("'2.320.0'")
+    expect(b[0]).toContain("PRESO")
+    expect(b[0]).toContain("alinhe RUNNER_VERSION")
+    // Os OUTROS estados do mesmo fato não produzem esta linha: ela acusa, não
+    // comenta (o "não julgado" é uma dúvida, com o seu próprio texto).
+    for (const state of ["proven", "unread", "no-pin"]) {
+      expect(githubRunnerVersionBlocker(githubRunnerLabelFacts({ version: { state } }))).toEqual([])
+    }
+  })
+
+  it("o drift da VERSÃO BLOQUEIA mesmo com TODO o resto verde (a forja fica parada, não vermelha)", () => {
+    // O comando `check:runner-labels:github` devolve as DUAS respostas do MESMO
+    // registro: os labels (aqui íntegros) e a versão (aqui RECUSADA pelo serviço).
+    const f = facts({
+      githubRunnerLabels: githubRunnerLabelFacts({
+        state: "violated",
+        detail: "o servico RECUSOU o pin — a forja fica PARADA, nao vermelha",
+        violations: [],
+        versionViolations: [`RECUSOU o pin`],
+        version: {
+          state: "drift",
+          pin: "2.320.0",
+          registered: "2.337.0",
+          detail: "o servico RECUSOU o pin: o registro responde '2.337.0' e pina '2.320.0'",
+        },
+        remedies: ["Remédio: alinhe RUNNER_VERSION em deploy/setup-github-runner.sh"],
+      }),
+    })
+    const v = summarize(f)
+    expect(v.verdict).toBe(VERDICT.BLOCKED)
+    // A linha do REGISTRO não é inventada (zero violações de label): o bloqueio que
+    // sai é o da VERSÃO, e ele traz o pin, o registro e o remédio do pin.
+    expect(v.blockers.join(" ")).not.toContain("NAO é o que o setup declara")
+    expect(v.blockers.join(" ")).toContain("a VERSAO do runner do GITHUB nao é a do pin")
+    expect(v.blockers.join(" ")).toContain("alinhe RUNNER_VERSION")
+  })
+
+  it("a versão NÃO julgada rebaixa o veredito e nomeia o pin (nunca 'em sincronia')", () => {
+    // Os LABELS estão provados — e é exatamente por isso que a dúvida precisa
+    // sair: "o registro é o do setup" não diz nada sobre a versão que o serviço
+    // aceitou (a classe que prende o job no meio da execução).
+    const f = facts({
+      githubRunnerLabels: githubRunnerLabelFacts({
+        state: "proven",
+        violations: [],
+        versionViolations: [],
+        version: {
+          state: "unread",
+          pin: "2.337.0",
+          registered: null,
+          detail: "a API nao devolveu o campo 'version' — a versao registrada NAO foi julgada",
+        },
+      }),
+    })
+    const v = summarize(f)
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    const texto = v.unknowns.join(" ")
+    expect(texto).toContain("a VERSAO do runner do GitHub nao foi comparada com o pin")
+    expect(texto).toContain("deploy/setup-github-runner.sh")
+    expect(texto).toContain("NAO foi julgada")
+    // E "não lida" (o fato leu o registro mas nenhum runner foi selecionado) cai na
+    // MESMA linha, com o motivo próprio: sem seleção não há versão a comparar de
+    // um lado nem do outro.
+    const semSelecao = summarize(
+      facts({ githubRunnerLabels: githubRunnerLabelFacts({ state: "violated", version: null }) }),
+    )
+    expect(semSelecao.verdict).toBe(VERDICT.UNKNOWN)
+    expect(semSelecao.unknowns.join(" ")).toContain("(nao lida)")
+    expect(semSelecao.unknowns.join(" ")).toContain("nao chegou a selecionar um runner")
+  })
+
+  it("a linha da versão sai DATADA pelo item do registro (o ciclo de reconciliação a alcança)", () => {
+    // A outra metade da promessa: não basta a linha existir — ela tem de vir do
+    // registro DATADO, senão o operador lê a acusação sem saber desde quando.
+    const f = facts({
+      githubRunnerLabels: githubRunnerLabelFacts({
+        state: "violated",
+        version: {
+          state: "drift",
+          pin: "2.320.0",
+          registered: "2.337.0",
+          detail: "o servico RECUSOU o pin: o registro responde '2.337.0' e pina '2.320.0'",
+        },
+        versionViolations: ["RECUSOU o pin"],
+        remedies: ["Remédio: alinhe RUNNER_VERSION"],
+      }),
+    })
+    const ud = collectUnproven({ facts: f, root: ROOT })
+    const item = ud.items.find((i) => i.id === "github-runner-version")
+    expect(item?.state).toBe("open")
+    expect(item?.declaredAt).toBe("2026-09-22")
+    const v = summarize({ ...f, unprovenDebt: ud })
+    const datado = datarLinhas(
+      { verdict: { blockers: v.blockers, unproven: v.unproven, unknowns: v.unknowns } },
+      ud,
+    )
+    const linha = datado.blockers.find((b) => b.includes("a VERSAO do runner do GITHUB"))
+    expect(linha).toBeTruthy()
+    expect(linha).toContain("[declarado em 2026-09-22")
+    expect(datado.usados).toContain("github-runner-version")
+    // E o predicado fecha por MEDIÇÃO: com o pin casado, a declaração é letra
+    // morta (o registro não pode contar lacuna que já não existe).
+    const fechado = collectUnproven({
+      facts: {
+        ...f,
+        githubRunnerLabels: githubRunnerLabelFacts({
+          version: { state: "proven", pin: "2.337.0", registered: "2.337.0", detail: "=" },
+        }),
+      },
+      root: ROOT,
+    })
+    expect(fechado.items.find((i) => i.id === "github-runner-version")?.state).toBe("proven")
+  })
+
   it("sem token / API fora → INDETERMINADA, nunca 'em sincronia'", () => {
     for (const state of ["unavailable", "env-missing"]) {
       const f = facts({
@@ -3264,6 +4380,56 @@ describe("readGithubRunnerLabels — o fato, sem tocar na API", () => {
     expect(res.detail).toContain("boom")
     expect(res.violations).toEqual([])
     expect(summarize(facts({ githubRunnerLabels: res })).verdict).toBe(VERDICT.UNKNOWN)
+  })
+
+  it("o repo vai por PARÂMETRO (o canal) e o env vai SEM o contexto compartilhado", async () => {
+    // As duas metades do mesmo contrato: o REPO chega resolvido (o guard não o
+    // procura no ambiente) e o ambiente NÃO carrega `GITHUB_REPOSITORY`/`_API_URL`
+    // — no runner da forja os dois são a Gitea, e o guard do GitHub consultaria o
+    // registro de OUTRO repositório sem nada dizer.
+    const decoy = "forja-emulada/decoy"
+    const chamadas: { repo?: string | null; env: Record<string, string | undefined> }[] = []
+    await readGithubRunnerLabels({
+      cwd: makeDir(),
+      env: {
+        GH_REPOSITORY: "severinno/severinno",
+        GH_TOKEN: "segredo",
+        GITHUB_REPOSITORY: decoy,
+        GITHUB_API_URL: "https://git.exemplo/api/v1",
+      },
+      deps: {
+        check: async (args: { repo?: string | null; env: Record<string, string | undefined> }) => {
+          chamadas.push(args)
+          return { state: "proven", violations: [], remedies: [], detail: "ok" }
+        },
+      },
+    })
+    expect(chamadas[0].repo).toBe("severinno/severinno")
+    expect(chamadas[0].env.GITHUB_REPOSITORY).toBeUndefined()
+    expect(chamadas[0].env.GITHUB_API_URL).toBeUndefined()
+    expect(chamadas[0].env.GH_TOKEN).toBe("segredo")
+    expect(JSON.stringify(chamadas[0])).not.toContain(decoy)
+  })
+
+  it("só o contexto compartilhado no ambiente → `repo` vai NULO (nunca o slug da forja emulada)", async () => {
+    const decoy = "forja-emulada/decoy"
+    const chamadas: { repo?: string | null; env: Record<string, string | undefined> }[] = []
+    await readGithubRunnerLabels({
+      cwd: makeDir(),
+      env: {
+        GITHUB_REPOSITORY: decoy,
+        GITHUB_API_URL: "https://git.exemplo/api/v1",
+        GH_TOKEN: "t",
+      },
+      deps: {
+        check: async (args: { repo?: string | null; env: Record<string, string | undefined> }) => {
+          chamadas.push(args)
+          return { state: "env-missing", violations: [], remedies: [], detail: "sem o canal" }
+        },
+      },
+    })
+    expect(chamadas[0].repo).toBeNull()
+    expect(JSON.stringify(chamadas[0])).not.toContain(decoy)
   })
 
   it("repassa o ENV (o token vem do ambiente, nunca do arquivo)", async () => {
@@ -3362,6 +4528,21 @@ describe("summarize — a branch protection REGISTRADA", () => {
         protection: protectionFacts({
           state: "unavailable",
           detail: "gitea: token sem permissao de administracao",
+          // A leitura POR FORJA é quem diz quem não foi lida: o veredito nomeia
+          // a forja na linha (e não só o fato inteiro) — sem o estado por forja,
+          // a fixture descreveria um estado que `summarizeProtection` nunca
+          // produz (ele deriva o resumo DAS leituras).
+          forges: [
+            {
+              forge: "gitea",
+              state: "unavailable",
+              desired: 0,
+              branches: [],
+              missing: null,
+              extra: null,
+              detail: "token sem permissao de administracao",
+            },
+          ],
         }),
       }),
     )
@@ -3416,6 +4597,30 @@ function forgeFixture(opts: { pipelineContent?: string } = {}): string {
   mkdirSync(join(dir, ".gitea", "workflows"), { recursive: true })
   mkdirSync(join(dir, "ci"), { recursive: true })
   mkdirSync(join(dir, "deploy"), { recursive: true })
+
+  // O REGISTRO DATADO do que o veredito não cobre é um arquivo DO CHECKOUT (como
+  // o manifesto e o `.actrc` acima), e a leitura real dele entra no fluxo: sem o
+  // arquivo, o fato sai `unread` — BLOQUEIO — e todo fluxo desta fixture
+  // falaria de uma leitura que a fixture não tem. Aqui ele é o MÍNIMO honesto:
+  // um LIMITE por desenho (a fronteira da medição), que não vence e não publica
+  // linha nenhuma no veredito. As lacunas DATADAS (vencida, provada, inválida)
+  // têm os próprios testes, com o registro injetado por caso.
+  writeFileSync(
+    join(dir, UNPROVEN_REGISTRY_PATH),
+    JSON.stringify({
+      version: 1,
+      reviewAfterDays: 180,
+      items: [
+        {
+          id: "fixture-limite",
+          kind: "limite",
+          declaredAt: "2026-01-15",
+          subject: "o histórico de execuções da forja não existe numa fixture",
+          proveWith: "a forja de verdade (o resultado de uma execução só vive lá)",
+        },
+      ],
+    }),
+  )
 
   writeFileSync(join(dir, MERGE_OWNER_PIPELINE), opts.pipelineContent ?? pipeline())
   writeFileSync(
@@ -3506,6 +4711,17 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       detail: "4 label(s) registrado(s) idênticos ao setup, em 'hostinger-runner' (online)",
       declared: ["self-hosted", "linux", "x64", "docker"],
       registered: ["self-hosted", "Linux", "X64", "docker"],
+      // A VERSÃO registrada × o PIN: "provado" aqui, como no registro medido em
+      // 22/09/2026 (o registro responde 2.337.0 e o script pina 2.337.0). Sem
+      // ela, o dublê representaria uma leitura que NÃO comparou a versão — e a
+      // linha do "não julgada" apareceria em todo teste de caminho verde.
+      version: {
+        state: "proven",
+        pin: "2.337.0",
+        registered: "2.337.0",
+        detail: "versao 2.337.0 = o pin de deploy/setup-github-runner.sh",
+      },
+      versionViolations: [],
       runner: "hostinger-runner",
       status: "online",
       repo: "severinno/severinno",
@@ -3534,9 +4750,36 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
     exists: () => true,
     // A família `hook` DECLARADA medida: é o mínimo para o fato ser `measured`
     // (sem nenhuma família medida ele é `unavailable`, e o veredito fica
-    // INDETERMINADA — o que é o comportamento certo e tem teste próprio).
-    read: () => JSON.stringify({ meta: { commit: "abc1234" }, hook: { measured: true } }),
+    // INDETERMINADA — o que é o comportamento certo e tem teste próprio). A
+    // família `mutations` entra junto porque é ELA que mede a MATRIZ: é dela que
+    // sai o commit de origem do relógio da matriz (a real sempre a declara — o
+    // `check-mutation-count` exige).
+    read: () =>
+      JSON.stringify({
+        meta: {
+          commit: "abc1234",
+          families: { mutations: { act: "measured", commit: "abc1234" } },
+        },
+        hook: { measured: true },
+        mutations: { measured: true },
+      }),
     probe: () => ({ state: "ancestor", behind: 3, reason: "3 commit(s) de abc1234 até HEAD" }),
+    // O RELÓGIO DA MATRIZ fala por git (`cat-file`/`log`/`rev-list`), e o `cwd`
+    // deste fluxo é uma fixture que NÃO é um repositório: sem o dublê o fato sairia
+    // `unavailable` e o veredito INDETERMINADA por um relógio que este teste não
+    // testa (o fato real tem os testes dele em `bench-freshness.test.ts`).
+    run: (cmd: string, args: string[]) => {
+      const ok = (stdout: string) => ({ status: 0, stdout, stderr: "", error: null })
+      if (cmd !== "git") return { status: 1, stdout: "", stderr: "", error: null }
+      if (args[0] === "cat-file") return ok("")
+      // A matriz NÃO andou depois da origem do ato: o intervalo sai vazio, e o
+      // commit da matriz é o próprio ato.
+      if (args[0] === "log") {
+        return ok(args.some((a: string) => a.includes("..")) ? "" : "abc1234\t2026-09-01\n")
+      }
+      if (args[0] === "rev-list") return ok("3\n")
+      return { status: 1, stdout: "", stderr: "", error: null }
+    },
   }
 
   it("forja completa e registry 200 → PRONTA", async () => {
@@ -3571,6 +4814,131 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
     // de montá-lo faria a dívida aberta sumir do veredito em silêncio.
     expect(facts.openDebt.state).toBe("clear")
     expect(summarize(facts).verdict, JSON.stringify(summarize(facts).blockers)).toBe(VERDICT.READY)
+  })
+
+  it("NENHUMA consulta resolve o repositório pelo contexto compartilhado (e a do registry recebe a credencial)", async () => {
+    // O fluxo INTEIRO, com o ambiente de um runner da forja: o contexto emulado
+    // (`GITHUB_REPOSITORY`/`GITHUB_API_URL` = a Gitea) ao lado dos canais de
+    // verdade. Cada leitura que consulta um repositório é capturada com o que
+    // recebeu — o env e o repo —, e o que o teste exige é do lado de FORA: o slug
+    // da forja emulada não aparece em NENHUM argumento, e o canal aparece.
+    const decoy = "forja-emulada/decoy"
+    const canal = "severinno/severinno"
+    type Recebido = {
+      leitura: string
+      env?: Record<string, string | undefined>
+      repo?: string | null
+    }
+    const visto: Recebido[] = []
+    const credenciais: (object | null)[] = []
+
+    const protectionRun = (
+      _bin: string,
+      args: string[],
+      opts: { env: Record<string, string | undefined> },
+    ) => {
+      const i = args.indexOf("--repo")
+      visto.push({
+        leitura: `protection:${forgeOf(args)}`,
+        env: opts.env,
+        repo: i === -1 ? null : args[i + 1],
+      })
+      return { status: 0, stdout: applierJson({ forge: forgeOf(args) }), stderr: "", signal: null }
+    }
+    const list = async (args: {
+      forge: string
+      env: Record<string, string | undefined>
+      repo?: string | null
+    }) => {
+      visto.push({ leitura: `board:${args.forge}`, env: args.env, repo: args.repo })
+      return []
+    }
+    const githubChannel = (
+      args: { env: Record<string, string | undefined>; repo?: string | null } = { env: {} },
+    ) => {
+      visto.push({ leitura: "board:canal", env: args.env, repo: args.repo })
+      return { via: "api", token: "t", repo: args.repo ?? null, baseUrl: "https://api.github.com" }
+    }
+
+    // SEM `digest` injetado: é ele que o contrato viria a resolver, e com ele
+    // dado o `resolveIdentity` nem é chamado (o ponto aqui é medir o que a
+    // consulta RECEBE, não o que ela responde).
+    const { digest: _resolvidoPeloDuble, ...contractDepsSemDigest } = imageContractProven
+    const { facts } = await diagnose({
+      gateContractsDeps: allGatesProven,
+      cwd: forgeFixture(),
+      envFile: "deploy/.env.gitea",
+      expected: "1.3.14",
+      expectedVars: { IMAGE_REGISTRY: "ghcr.io", IMAGE_NAMESPACE: "severinno" },
+      env: {
+        GH_REPOSITORY: canal,
+        GH_TOKEN: "token-do-canal",
+        GITEA_REPOSITORY: canal,
+        // O CONTEXTO COMPARTILHADO do runner da forja — as duas apontam para a
+        // Gitea, e é isto que nenhuma consulta pode usar como origem.
+        GITHUB_REPOSITORY: decoy,
+        GITHUB_API_URL: "https://git.exemplo/api/v1",
+        GITHUB_TOKEN: "token-do-runner",
+        GHCR_TOKEN: "ghcr",
+      },
+      run: passRun,
+      imageDeps: { fetchImpl: async () => oci(200) },
+      imageRefsDeps: refsProven,
+      runnerLabelsDeps: labelsProven,
+      githubRunnerLabelsDeps: {
+        check: async (args: { repo?: string | null; env: Record<string, string | undefined> }) => {
+          visto.push({ leitura: "githubRunnerLabels", env: args.env, repo: args.repo })
+          return githubLabelsProven.check()
+        },
+      },
+      proofDeps: proofHolds,
+      imageContractDeps: {
+        ...contractDepsSemDigest,
+        resolveIdentity: async (_ref: string, opts: { credentials?: object | null }) => {
+          credenciais.push(opts?.credentials ?? null)
+          return { state: "proven", digest: "sha256:abc", version: "1.3.14", detail: "dublê" }
+        },
+      },
+      protectionDeps: { run: protectionRun as never },
+      openDebtDeps: { list, githubChannel, now: () => Date.now() },
+      benchFreshnessDeps: benchProven,
+      ...localProofsProven,
+    })
+    expect(facts.openDebt.state).toBe("clear")
+
+    // AS TRÊS LEITURAS QUE CONSULTAM UM REPOSITÓRIO, todas com o canal e nenhuma
+    // com o decoy — inclusive no `env` que elas entregam a quem fala com a API.
+    const consultas = visto.filter(
+      (v) => v.leitura.startsWith("protection:") || v.repo !== undefined,
+    )
+    // Cada leitura que consulta um repositório aparece — e as do board aparecem
+    // TANTAS vezes quantos assuntos são perguntados (uma consulta por label): o
+    // que a asserção fixa é o CONJUNTO de leituras distintas, não a contagem de
+    // labels, que muda quando um publicador novo entra no registro.
+    expect([...new Set(consultas.map((c) => c.leitura))].sort()).toEqual([
+      "board:canal",
+      "board:gitea",
+      "board:github",
+      "githubRunnerLabels",
+      "protection:gitea",
+      "protection:github",
+    ])
+    for (const c of consultas) {
+      expect(c.repo, `${c.leitura} resolveu o repo por fora do canal`).toBe(canal)
+      expect(
+        c.env?.GITHUB_REPOSITORY,
+        `${c.leitura} carrega o contexto compartilhado`,
+      ).toBeUndefined()
+      expect(c.env?.GITHUB_API_URL, `${c.leitura} carrega a API compartilhada`).toBeUndefined()
+    }
+    // E o decoy não aparece em LUGAR NENHUM: nem no que as leituras receberam,
+    // nem no veredito que saiu delas.
+    expect(JSON.stringify({ visto, facts })).not.toContain(decoy)
+
+    // A OUTRA PONTA: a sanitização não pode custar a credencial do registry (o
+    // pacote é privado, e sem ela o contrato da imagem viraria "não provei").
+    expect(credenciais.length).toBeGreaterThan(0)
+    expect(credenciais.every((c) => c !== null)).toBe(true)
   })
 
   it("os DOIS fatos que perguntam a identidade custam UMA ida ao registry", async () => {
@@ -4354,6 +5722,154 @@ describe("renderReport — o contrato da imagem PUBLICADA", () => {
 // ver: por isso o que se prova aqui NÃO é "ficou rápido", é que a ORDEM da
 // bateria, o LIMITE, o ISOLAMENTO de falha e o caminho do dublê continuam
 // valendo — o paralelismo não pode alterar o SIGNIFICADO de um gate.
+
+// ── O TETO DE TEMPO DERIVADO DO CUSTO VERSIONADO ───────────────────────────
+//
+// O defeito medido que esta régua fecha: o `--timeout` default (120s) é MENOR
+// que o custo que a baseline versiona de dois gates da forja — o master de
+// mutação (~395s) e a suíte de unidade (~159s). O doctor nunca conseguia
+// verificar o gate mais caro do repositório, e o veredito carregava um "não
+// terminou em 120s (timeout)" que parece do AMBIENTE e é do TETO.
+
+describe("tetoDoGate — o teto de um gate vem do CUSTO versionado, não de um número à mão", () => {
+  // Um bench de mentira com a MESMA forma do versionado (a do `benchIndex`).
+  const benchFixture = (mutationsMs: number) => ({
+    meta: { commit: "cafe1234", families: { mutations: { commit: "cafe1234" } } },
+    guards: [{ cmd: "bun run check:required-checks", ms: 43, exit: 0, ok: true }],
+    mutations: {
+      measured: true,
+      cmd: "bash scripts/test-mutation-guards.sh --json",
+      deltas: { totalMs: mutationsMs },
+      forms: [],
+    },
+  })
+
+  it("o gate do master de mutação casa pela RÉGUA DO INSTRUMENTO (rótulo e `--json` são o mesmo gate)", () => {
+    const index = benchIndex(benchFixture(394_959))
+    // O rótulo do gate na bateria é o script; o `cmd` do bench tem o `--json` da
+    // medição. Sem o `instrumentKey` o casamento falharia e o teto cairia no piso.
+    const r = tetoDoGate({ label: "scripts/test-mutation-guards.sh", index })
+    expect(r.origem).toBe("bench")
+    expect(r.custoMs).toBe(394_959)
+    expect(r.alvo).toBe("test-mutation-guards")
+    expect(r.tetoS).toBe(Math.ceil((394_959 / 1000) * MARGEM_DO_TETO))
+    expect(r.tetoS).toBeGreaterThan(DEFAULT_TIMEOUT_S)
+  })
+
+  it("o `run:` do gate é a RESERVA quando o rótulo não cita o script", () => {
+    const index = benchIndex(benchFixture(394_959))
+    const r = tetoDoGate({
+      label: "master",
+      command: "bash scripts/test-mutation-guards.sh",
+      index,
+    })
+    expect(r.origem).toBe("bench")
+    expect(r.tetoS).toBe(593)
+  })
+
+  it("custo MENOR que o piso: o teto é o PISO (e a procedência é dita)", () => {
+    const index = benchIndex(benchFixture(394_959))
+    expect(tetoDoGate({ label: "bun run check:required-checks", index })).toEqual({
+      tetoS: DEFAULT_TIMEOUT_S,
+      origem: "piso",
+      custoMs: 43,
+      alvo: "check-required-checks",
+    })
+  })
+
+  it("gate SEM custo versionado, bench ilegível ou índice ausente: piso, nunca um teto inventado", () => {
+    const index = benchIndex(benchFixture(394_959))
+    expect(tetoDoGate({ label: "bun run check:mutation-count", index })).toEqual({
+      tetoS: DEFAULT_TIMEOUT_S,
+      origem: "piso",
+      custoMs: null,
+      alvo: null,
+    })
+    expect(tetoDoGate({ label: "scripts/test-mutation-guards.sh", index: null }).tetoS).toBe(
+      DEFAULT_TIMEOUT_S,
+    )
+    // O PISO vem do `--timeout`: um número inválido não pode virar um teto de 0s
+    // (todo gate sairia "estourado" e o veredito acusaria o ambiente).
+    expect(tetoDoGate({ index, pisoS: 0 }).tetoS).toBe(DEFAULT_TIMEOUT_S)
+    expect(tetoDoGate({ index, pisoS: Number.NaN }).tetoS).toBe(DEFAULT_TIMEOUT_S)
+    expect(tetoDoGate({ index, pisoS: 900 }).tetoS).toBe(900)
+  })
+
+  it("a FRASE do teto separa DERIVADO de PISO — os dois levam a remédios opostos", () => {
+    const index = benchIndex(benchFixture(394_959))
+    const derivado = tetoDoGateLine(tetoDoGate({ label: "scripts/test-mutation-guards.sh", index }))
+    expect(derivado).toContain("593s DERIVADO do custo versionado")
+    expect(derivado).toContain("test-mutation-guards: 395s × 1.5")
+    const piso = tetoDoGateLine(tetoDoGate({ label: "bun run check:mutation-count", index }))
+    expect(piso).toContain("--timeout: o bench não versiona custo para este gate")
+    expect(piso).not.toContain("DERIVADO")
+  })
+
+  it("a baseline DO REPOSITÓRIO versiona o custo do master acima do piso — a leitura falsa não pode voltar", () => {
+    // A régua contra o número REAL: se a baseline deixar de versionar o custo (ou
+    // o custo cair abaixo do piso), este caso cai e a mudança é visível no PR —
+    // em vez de o doctor voltar a dizer "não verificado" em silêncio.
+    const index = indiceDoBench()
+    expect(index).not.toBeNull()
+    const r = tetoDoGate({ label: "scripts/test-mutation-guards.sh", index })
+    expect(r.origem).toBe("bench")
+    expect(r.custoMs).toBeGreaterThan(DEFAULT_TIMEOUT_S * 1000)
+    expect(r.tetoS).toBeGreaterThan(DEFAULT_TIMEOUT_S)
+  })
+
+  it("bench AUSENTE: o índice é nulo e o teto cai no piso (fail-closed, sem crash)", () => {
+    const lido = indiceDoBench({
+      cwd: "/tmp/nao-existe-" + Date.now(),
+      deps: { exists: () => false },
+    })
+    expect(lido).toBeNull()
+    const res = runGate(
+      { label: "x", command: "bun run check:x" },
+      { timeoutS: 30, run: () => ({ status: null, signal: "SIGTERM", stdout: "", stderr: "" }) },
+    )
+    expect(res.tetoS).toBe(30)
+    expect(res.tetoOrigem).toBe("piso")
+    expect(res.error).toContain("não terminou em 30s (--timeout")
+  })
+
+  it("um gate ESTOURADO no teto derivado NOMEIA o teto e a origem (não parece ambiente)", () => {
+    const index = benchIndex(benchFixture(394_959))
+    const gate = {
+      label: "scripts/test-mutation-guards.sh",
+      command: "bash scripts/test-mutation-guards.sh",
+    }
+    const teto = tetoDoGate({ label: gate.label, command: gate.command, index })
+    const res = runGate(gate, {
+      teto,
+      run: () => ({ status: null, signal: "SIGTERM", stdout: "", stderr: "" }),
+    })
+    expect(res.code).toBeNull()
+    expect(res.tetoS).toBe(593)
+    expect(res.tetoOrigem).toBe("bench")
+    expect(res.error).toContain("não terminou em 593s DERIVADO do custo versionado")
+    expect(res.error).toContain("trate como NÃO verificado")
+  })
+
+  it("a bateria passa o teto POR GATE (o caro não herda o número do barato)", async () => {
+    const index = benchIndex(benchFixture(394_959))
+    const vistos: Record<string, number> = {}
+    const gates = [
+      { label: "bun run check:required-checks", command: "bun run check:required-checks" },
+      { label: "scripts/test-mutation-guards.sh", command: "bash scripts/test-mutation-guards.sh" },
+    ]
+    const res = await runGatesConcurrent(gates, {
+      resolverTeto: (gate: { label: string; command: string | null }) =>
+        tetoDoGate({ label: gate.label, command: gate.command, index }),
+      gateAsync: async (g: { label: string }, { teto }: { teto: { tetoS: number } }) => {
+        vistos[g.label] = teto.tetoS
+        return { gate: g.label, code: 0, seconds: 0, tetoS: teto.tetoS, tetoOrigem: "bench" }
+      },
+    })
+    expect(vistos["bun run check:required-checks"]).toBe(DEFAULT_TIMEOUT_S)
+    expect(vistos["scripts/test-mutation-guards.sh"]).toBe(593)
+    expect(res).toHaveLength(2)
+  })
+})
 
 describe("runGatesConcurrent — o paralelismo não muda o significado da bateria", () => {
   const gate = (label: string, command: string | null = "bun run check:x") => ({ label, command })
@@ -5209,6 +6725,155 @@ describe("a idade da régua do bench como FATO do relatório", () => {
       }),
     )
     expect(pulado.unknowns.join(" ")).toContain("--no-bench-freshness")
+  })
+
+  /** O fato da idade com o fato das FORMAS no estado pedido (o resto, limpo). */
+  const comFormas = (forms: unknown) => ({ ...BENCH_FRESHNESS_LIMPA, forms })
+
+  it("a forma medida que o COMMIT DE ORIGEM não tem é dúvida NOMEADA, com o remédio do ato", () => {
+    // A idade estava FRESCA (0 commit atrás) e mesmo assim o número declarado
+    // descrevia uma matriz que aquele commit não carrega: é a segunda pergunta,
+    // e ela não pode ser mascarada pela primeira (por isso ela NÃO é um `else if`
+    // da cadeia da idade).
+    const v = summarize(
+      facts({
+        benchFreshness: comFormas({ ...FORMS_VAZIO, missing: [...FORA_DO_COMMIT] }),
+      }),
+    )
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    const linha = v.unknowns.find((u) => u.includes("COMMIT DE ORIGEM não contém"))
+    expect(linha).toBeDefined()
+    expect(linha).toContain("mutations/doc-hashes @ 8e76c9a6")
+    expect(linha).toContain("commite a árvore e rode o ato de novo")
+    expect(linha).toContain("bun run bench:guard-timing:baseline")
+  })
+
+  it("as FORMAS no commit de origem (e o limite das sem fonte) não viram dúvida", () => {
+    const v = summarize(facts({ benchFreshness: comFormas({ ...FORMS_VAZIO }) }))
+    expect(v.verdict).toBe(VERDICT.READY)
+    expect(v.unknowns.join(" ")).not.toContain("COMMIT DE ORIGEM")
+  })
+
+  it("a pergunta que NÃO pôde ser feita é dúvida própria — nunca 'está no commit'", () => {
+    const v = summarize(facts({ benchFreshness: comFormas({ ...FORMS_VAZIO, semResposta: 2 }) }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.unknowns.join(" ")).toContain("não pôde ser perguntado para 2 forma(s)")
+    expect(v.unknowns.join(" ")).toContain('NÃO julgadas (nunca "no commit")')
+  })
+
+  it("as formas NÃO julgadas (o fato `unavailable`) são dúvida nomeada", () => {
+    const v = summarize(
+      facts({
+        benchFreshness: comFormas({
+          ...FORMS_VAZIO,
+          state: "unavailable",
+          reason: "o bench não declara família medida",
+        }),
+      }),
+    )
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.unknowns.join(" ")).toContain("não foi julgado")
+    expect(v.unknowns.join(" ")).toContain("o bench não declara família medida")
+  })
+
+  it("a régua PULADA não publica a dúvida das formas duas vezes (uma linha por causa)", () => {
+    const v = summarize(
+      facts({
+        skippedBenchFreshness: true,
+        benchFreshness: {
+          state: "skipped",
+          families: [],
+          aged: [],
+          diverged: [],
+          unknown: [],
+          forms: {
+            ...FORMS_VAZIO,
+            state: "unavailable",
+            reason: "pulada por --no-bench-freshness",
+          },
+          remedies: [],
+        },
+      }),
+    )
+    const daIdade = v.unknowns.filter((u) =>
+      u.includes("a IDADE das declarações datadas foi pulada"),
+    )
+    const dasFormas = v.unknowns.filter((u) => u.includes("COMMIT DE ORIGEM"))
+    expect(daIdade).toHaveLength(1)
+    expect(dasFormas).toHaveLength(0)
+  })
+
+  it("o REGISTRO DO ATO atrás da MATRIZ é dúvida NOMEADA, com a data do primeiro commit e o remédio do ato", () => {
+    // A terceira pergunta do mesmo ativo: a idade pode estar FRESCA (e aqui está:
+    // 3 commits) e a matriz ter andado 9 — é o caso que só o relógio DELA pega
+    // (um sub-test cujo ALVO muda, um corpo de suíte que muda de custo).
+    const v = summarize(
+      facts({ benchFreshness: { ...BENCH_FRESHNESS_LIMPA, matrix: matrizVencida() } }),
+    )
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.blockers).toEqual([])
+    const linha = v.unknowns.find((u) => u.includes("REGISTRO DO ATO está"))
+    expect(linha).toBeDefined()
+    expect(linha).toContain("o REGISTRO DO ATO está 9 commit(s) atrás da MATRIZ")
+    // A DATA do item: o primeiro commit que a matriz ganhou depois do ato.
+    expect(linha).toContain("m5aaaaaa1111 (2026-09-14)")
+    expect(linha).toContain("o último commit que a tocou é m9aaaaaa1111")
+    // O teto é o DELA, e a procedência vai junto: 4 commits da matriz × 150 do
+    // repositório são réguas diferentes para perguntas diferentes.
+    expect(linha).toContain("o teto do ritmo DELA é 4 commit(s)")
+    expect(linha).toContain("bun run bench:guard-timing:baseline")
+    // E a dúvida vem ABERTA como ITEM DATADO, não como linha anônima: o doctor
+    // diz QUAL item ele abriu (o mesmo id que o registro usa), DESDE QUANDO ele
+    // existe (a data derivada da história) e a saída alternativa à re-medição —
+    // declarar o item no registro, com o `closedBy` que fecha por medição.
+    expect(linha).toContain(`o ITEM DATADO \`${MATRIX_ITEM_ID}\` está ABERTO desde 2026-09-14`)
+    expect(linha).toContain("DECLARE o item em")
+    expect(linha).toContain(`closedBy: ${MATRIX_CLOSED_BY}`)
+    expect(linha).toContain("fecha por MEDIÇÃO")
+  })
+
+  it("a MATRIZ dentro do teto (e o ato Ancorado nela) não pesa no veredito", () => {
+    const v = summarize(facts({ benchFreshness: BENCH_FRESHNESS_LIMPA }))
+    expect(v.verdict).toBe(VERDICT.READY)
+    expect(v.unknowns.join(" ")).not.toContain("MATRIZ")
+  })
+
+  it('a matriz NÃO MEDIDA é dúvida própria — nunca "está na matriz"', () => {
+    const cega = {
+      ...MATRIZ_LIMPA,
+      state: "unavailable",
+      lag: null,
+      aged: false,
+      teto: null,
+      escopo: null,
+      reason: "o commit de origem abc1234 não está neste checkout (clone raso/sem a história)",
+    }
+    const v = summarize(facts({ benchFreshness: { ...BENCH_FRESHNESS_LIMPA, matrix: cega } }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.unknowns.join(" ")).toContain("o REGISTRO DO ATO × a MATRIZ não foi medido")
+    expect(v.unknowns.join(" ")).toContain("clone raso")
+  })
+
+  it("a seção 9/9 publica o ITEM DATADO do relógio da matriz quando ele está aberto (e só então)", () => {
+    // O relógio da matriz vencido sai na seção com o ITEM — data, delta, teto DELA
+    // e as duas saídas —, que é o que o operador precisa para decidir entre
+    // re-medir e declarar. A frase é a MESMA da issue (uma régua só).
+    const comItem: string[] = []
+    const f = facts({ benchFreshness: { ...BENCH_FRESHNESS_LIMPA, matrix: matrizVencida() } })
+    renderReport({ facts: f, verdict: summarize(f) }, { emit: (s = "") => comItem.push(s) })
+    const texto = comItem.join("\n")
+    expect(texto).toContain("9/9  Idade das DECLARAÇÕES datadas")
+    expect(texto).toContain("o registro do ato está 9 commit(s) atrás da matriz")
+    expect(texto).toContain(`o ITEM DATADO \`${MATRIX_ITEM_ID}\` está ABERTO desde 2026-09-14`)
+    expect(texto).toContain("acima do teto DELA (4 commit(s) da matriz")
+    expect(texto).toContain(`closedBy: ${MATRIX_CLOSED_BY}`)
+
+    // E o CONTROLE: com a matriz dentro do teto (o default da fixture) a seção
+    // não abre item nenhum — um item que aparece sempre não teria data que valha.
+    const semItem: string[] = []
+    const limpo = facts({ benchFreshness: BENCH_FRESHNESS_LIMPA })
+    renderReport({ facts: limpo, verdict: summarize(limpo) }, { emit: (s = "") => semItem.push(s) })
+    expect(semItem.join("\n")).not.toContain("o ITEM DATADO")
   })
 
   it("a seção 9/9 imprime o teto, a família e a origem — e a PULADA sai dita", () => {

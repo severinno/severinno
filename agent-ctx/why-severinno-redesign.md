@@ -1,9 +1,11 @@
 # WhySeverinno Redesign — Work Record
 
 ## Task
+
 Redesign the WhySeverinno component to merge StatsCounter functionality, applying Jakob Nielsen's 10 Usability Heuristics.
 
 ## What was done
+
 1. Read and analyzed existing `why-severinno.tsx`, `stats-counter.tsx`, `hero.tsx`, `use-animation.ts`, `api.ts`, `stats/public/route.ts`, and UI components
 2. Designed and wrote the complete redesigned component with 3 zones:
    - **TOP**: Full-width emerald gradient stats bar with live API metrics from `/api/stats/public` using `useQuery` + `apiGet`, animated counters via `useCountUp`, loading skeletons, and decorative mesh blobs (matching hero stat bar style)
@@ -16,6 +18,7 @@ Redesign the WhySeverinno component to merge StatsCounter functionality, applyin
 7. Page loads 200 OK, stats API returns real data (6 providers, 13 services, 4.8 avg rating)
 
 ## Key decisions
+
 - Stats are fetched via `useQuery` with 5-minute stale time (same as StatsCounter had)
 - `AnimatedNumber` component uses `useCountUp` with 2000ms duration and decimal support for avg rating
 - `LiveStatItem` shows Skeleton placeholder during loading (H1 heuristic)
@@ -24,4 +27,5 @@ Redesign the WhySeverinno component to merge StatsCounter functionality, applyin
 - `STAT_ITEMS` config uses getter functions to cleanly map API response to display values
 
 ## Files modified
+
 - `/home/z/my-project/src/components/vitrine/why-severinno.tsx` — complete rewrite

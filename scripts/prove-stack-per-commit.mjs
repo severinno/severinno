@@ -3,7 +3,7 @@
  * scripts/prove-stack-per-commit.mjs — cada commit da pilha passa SOZINHO?
  *
  * A classe que ele fecha, medida: um commit pode nascer VERMELHO e ninguém ver
- * até o topo. O `eee4f65e` pôs o `check-mutation-count` na bateria local e
+ * até o topo. O `2757e3a5` pôs o `check-mutation-count` na bateria local e
  * invalidou a expectativa do teste da descida (`check-hook-ci-parity-subguards`)
  * — o vermelho viajou 12 commits acima, e o único lugar que o via era o topo da
  * pilha. O PR mede o TOPO; a pilha tem commits no meio.
@@ -11,7 +11,9 @@
  * O que ele faz, por commit (do mais antigo ao mais novo):
  *
  *   1. materializa o commit num WORKTREE próprio (`git worktree add --detach`),
- *      com o `node_modules` do repo medido ligado por symlink;
+ *      com o `node_modules` do repo medido ligado por symlink, e DECLARA O DONO
+ *      dele ao lado (`dono.json`: ferramenta, pid, host, sha) — o que permite
+ *      varrer o resíduo sem ADIVINHAR de quem ele é;
  *   2. mede o que o commit sozinho quebra:
  *      a. os TESTES AFETADOS pelo diff do próprio commit — derivados por duas
  *         réguas (uma nomeada, uma medida): o GRAFO DE IMPORTS (um teste que
@@ -24,6 +26,14 @@
  *         versão. Rodar a bateria inteira (48 guards) por commit custaria horas;
  *         o que fica de fora está nomeado no limite 3 abaixo.
  *   3. remove o worktree e guarda o veredito.
+ *   4. ANTES de qualquer medição, VARE o resíduo das execuções MORTAS (o
+ *      `rmSync` do fim nunca roda num SIGKILL): cada `pilha-*` é julgado pelo
+ *      MARCADOR do dono — pid VIVO no mesmo host fica (é outra medição em
+ *      curso), `--keep` fica declarado, marcador ilegível ou de outra
+ *      ferramenta NÃO É TOCADO, e o resto é varrido (worktree + diretório +
+ *      metadado órfão do git). A varredura sai no relatório quando acontece —
+ *      nada silencioso. E o worktree da medição EM CURSO é removido no SINAL
+ *      (SIGINT/SIGTERM/SIGHUP): a execução interrompida não deixa o dela.
  *
  * O veredito é por commit e agregado:
  *   verde        — o commit passa sozinho (os testes afetados e o sempre, todos 0)
@@ -101,10 +111,10 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
-  statSync,
   symlinkSync,
+  writeFileSync,
 } from "node:fs"
-import { tmpdir } from "node:os"
+import { hostname, tmpdir } from "node:os"
 import { basename, dirname, extname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -446,6 +456,220 @@ function roda(cmd, { cwd, timeout = TIMEOUT_GATE_MS }) {
 }
 
 /**
+ * ── O WORKTREE, O DONO e a VARREDURA DO RESÍDUO ──────────────────────────
+ *
+ * O defeito medido: uma execução MORTA (timeout, SIGTERM, `kill -9`, sessão que
+ * cai) nunca chega ao `rmSync` do fim — e o resíduo se ACUMULA em silêncio.
+ * Medido neste repositório: **151 worktrees** e ~11 GB em `/tmp/pilha-*`. O nome
+ * do diretório não diz de quem ele é nem se o dono ainda vive, então um
+ * `rm -rf /tmp/pilha-*` mataria a medição de OUTRO processo (o pre-push de outra
+ * thread) — e não varrer nada é o que produziu o acúmulo.
+ *
+ * Por isso o dono é DECLARADO ao lado do worktree (`<tmp>/pilha-XXXX/dono.json`):
+ * quem criou (ferramenta, pid, host), para que (sha, repo, início) e se a
+ * execução pediu `--keep`. O julgamento da varredura é esse arquivo:
+ *
+ *   - pid VIVO no MESMO host       → fica (é outra execução medindo agora);
+ *   - `keep: true`                 → fica, e é DITO (o `--keep` deixa de ser letra morta);
+ *   - marcador de outra ferramenta → NÃO É MEU, não é tocado (dito no relatório);
+ *   - marcador ilegível            → idem (fail-closed: sem dono, sem varredura);
+ *   - o resto                      → varrido: `git worktree remove --force` + o diretório.
+ *
+ * Ninguém apaga um caminho LIDO DO ARQUIVO: o que sai é o diretório que a própria
+ * enumeração de `tmpdir()` entregou (e o `w` dentro dele). O `dono.dir` serve ao
+ * relatório, nunca a uma remoção.
+ */
+export const WORKTREE_PREFIXO = "pilha-"
+export const MARCADOR_DO_DONO = "dono.json"
+export const FERRAMENTA = "prove-stack-per-commit"
+
+/** O host desta execução — um pid só é comparável dentro do mesmo host. */
+export function hostAtual() {
+  try {
+    return hostname()
+  } catch {
+    return "?"
+  }
+}
+
+/**
+ * O pid está VIVO?
+ *
+ * `EPERM` conta como VIVO: o processo existe e é de outro usuário (não posso
+ * sinalizá-lo) — chamá-lo de morto varreria a medição de alguém. Só `ESRCH`
+ * (não existe) libera a varredura.
+ *
+ * @returns {boolean}
+ */
+export function pidVivo(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    return Boolean(e && e.code === "EPERM")
+  }
+}
+
+/**
+ * Cria o worktree do commit e DECLARA o dono. O marcador é escrito DEPOIS de o
+ * `worktree add` dar certo: um add que falha não deixa marcador de nada.
+ *
+ * @returns {{base: string, dir: string, dono: object} | {erro: string}}
+ */
+export function criarWorktree({ root, sha, keep = false, tmp = tmpdir() }) {
+  const base = mkdtempSync(join(tmp, WORKTREE_PREFIXO))
+  const dir = join(base, "w")
+  const add = spawnSync("git", ["-C", root, "worktree", "add", "--detach", "--quiet", dir, sha], {
+    encoding: "utf8",
+  })
+  if (add.status !== 0) {
+    rmSync(base, { recursive: true, force: true })
+    return { erro: (add.stderr || "").trim().split("\n")[0] }
+  }
+  const dono = {
+    ferramenta: FERRAMENTA,
+    pid: process.pid,
+    host: hostAtual(),
+    sha,
+    repo: root,
+    base,
+    dir,
+    iniciadoEm: new Date().toISOString(),
+    keep: Boolean(keep),
+  }
+  writeFileSync(join(base, MARCADOR_DO_DONO), `${JSON.stringify(dono, null, 2)}\n`)
+  return { base, dir, dono }
+}
+
+/**
+ * Remove o worktree: o metadado do git, o diretório e o marcador.
+ *
+ * O `rmSync` é protegido: um host que NEGA a remoção (permissão, diretório em uso)
+ * não pode derrubar a medição com uma exceção — a varredura confere no disco e
+ * declara o que NÃO pôde sair (é `limparResiduos` que julga e reporta).
+ */
+export function removerWorktree({ root, base, dir }) {
+  if (dir)
+    spawnSync("git", ["-C", root, "worktree", "remove", "--force", dir], { encoding: "utf8" })
+  if (!base) return
+  try {
+    rmSync(base, { recursive: true, force: true })
+  } catch {
+    // Silêncio AQUI é o certo: quem lê o disco e reporta é a varredura.
+  }
+}
+
+/**
+ * Varre o resíduo que as execuções MORTAS deixaram. O dono decide, nunca o nome:
+ * é o que permite limpar sem matar a medição de outro processo.
+ *
+ * A remoção é CONFERIDA no disco: um host que nega a remoção (ou um diretório em
+ * uso) não pode sair como "varrido" — seria a mesma leitura falsa do resíduo
+ * silencioso, com o relatório dizendo limpo.
+ *
+ * @returns {{varridos: Array, naoRemovidos: Array, preservados: Array, emUso: Array, naoMeus: Array, podados: number|null}}
+ */
+export function limparResiduos({
+  root,
+  tmp = tmpdir(),
+  pidVivoAqui = pidVivo,
+  host = hostAtual(),
+}) {
+  const varridos = []
+  const naoRemovidos = []
+  const preservados = []
+  const emUso = []
+  const naoMeus = []
+  let nomes = []
+  try {
+    nomes = readdirSync(tmp).filter((n) => n.startsWith(WORKTREE_PREFIXO))
+  } catch {
+    return { varridos, naoRemovidos, preservados, emUso, naoMeus, podados: null }
+  }
+  for (const nome of nomes) {
+    const base = join(tmp, nome)
+    let dono = null
+    try {
+      dono = JSON.parse(readFileSync(join(base, MARCADOR_DO_DONO), "utf8"))
+    } catch {
+      dono = null
+    }
+    if (!dono || typeof dono !== "object" || dono.ferramenta !== FERRAMENTA) {
+      naoMeus.push({
+        nome,
+        motivo: dono
+          ? `marcador de outra ferramenta (${dono.ferramenta ?? "?"})`
+          : "sem marcador legível",
+      })
+      continue
+    }
+    if (dono.keep) {
+      preservados.push({ nome, sha: dono.sha ?? null, pid: dono.pid ?? null })
+      continue
+    }
+    if (dono.host === host && pidVivoAqui(dono.pid)) {
+      emUso.push({ nome, sha: dono.sha ?? null, pid: dono.pid ?? null })
+      continue
+    }
+    // O `dir` vem da ENUMERAÇÃO, nunca do arquivo.
+    removerWorktree({ root, base, dir: join(base, "w") })
+    if (existsSync(base)) {
+      naoRemovidos.push({ nome, sha: dono.sha ?? null, motivo: "o host não deixou remover" })
+      continue
+    }
+    varridos.push({ nome, sha: dono.sha ?? null, pid: dono.pid ?? null, host: dono.host ?? "?" })
+  }
+  // O diretório pode ter morrido por fora (kill -9 levou o `rmSync`): aí o que
+  // sobra é o METADADO do git, e é ele que o `prune` recolhe.
+  const podados = spawnSync("git", ["-C", root, "worktree", "prune", "--expire", "now"], {
+    encoding: "utf8",
+  })
+  return { varridos, naoRemovidos, preservados, emUso, naoMeus, podados: podados.status ?? null }
+}
+
+/** O worktree da medição EM CURSO — o que a limpeza por sinal remove. */
+let worktreeAtual = null
+
+/** Registra (ou desregistra, com `null`) o worktree da medição em curso. */
+export function registrarWorktreeAtual(w) {
+  worktreeAtual = w
+}
+
+/** O worktree registrado agora (os testes leem para provar o ciclo cria→remove). */
+export function worktreeEmCurso() {
+  return worktreeAtual
+}
+
+/** Remove o worktree da medição em curso. Idempotente. */
+export function limparWorktreeAtual({ root = REPO_ROOT } = {}) {
+  const w = worktreeAtual
+  worktreeAtual = null
+  if (w) removerWorktree({ root, base: w.base, dir: w.dir })
+}
+
+/**
+ * A limpeza que roda no SINAL: SIGTERM do timeout, ^C do operador, SIGHUP da
+ * sessão que cai. É o que impede o resíduo de NASCER. Um `kill -9` não dá para
+ * tratar — para ele existe a varredura do início da execução seguinte.
+ *
+ * @returns {() => void} desinstala (os testes usam para não vazar handler)
+ */
+export function instalarLimpezaNoSinal({
+  root = REPO_ROOT,
+  sinais = ["SIGINT", "SIGTERM", "SIGHUP"],
+} = {}) {
+  const handler = (sinal) => {
+    limparWorktreeAtual({ root })
+    process.exit(sinal === "SIGINT" ? 130 : 143)
+  }
+  for (const s of sinais) process.on(s, handler)
+  return () => {
+    for (const s of sinais) process.off(s, handler)
+  }
+}
+
+/**
  * Mede UM commit sozinho, no worktree dele.
  *
  * @returns {{sha: string, assunto: string, veredito: string, escopo: string, sempre: Array, testes: object, motivo: string, ms: number}}
@@ -460,28 +684,28 @@ export function medirCommit({
   lerArquivo,
   timeout = TIMEOUT_GATE_MS,
   dirsDeTeste = DIRS_DE_TESTE,
+  keep = false,
 }) {
   const inicio = Date.now()
   const assunto = git(["log", "-1", "--format=%s", sha]).split("\n")[0] || ""
   const arquivos = arquivosDoCommit({ git, sha })
 
-  const base = mkdtempSync(join(tmpdir(), "pilha-"))
-  const dir = join(base, "w")
-  const add = spawnSync("git", ["-C", root, "worktree", "add", "--detach", "--quiet", dir, sha], {
-    encoding: "utf8",
-  })
-  if (add.status !== 0) {
-    rmSync(base, { recursive: true, force: true })
+  const wt = criarWorktree({ root, sha, keep })
+  if (wt.erro) {
     return {
       sha,
       assunto,
       veredito: "indeterminado",
       sempre: [],
       testes: { testes: [], porNome: [], porGrafo: [] },
-      motivo: `não consegui criar o worktree: ${(add.stderr || "").trim().split("\n")[0]}`,
+      motivo: `não consegui criar o worktree: ${wt.erro}`,
       ms: Date.now() - inicio,
     }
   }
+  const { base, dir } = wt
+  // O worktree EM CURSO fica registrado: é esse que a limpeza por sinal remove
+  // quando a execução é interrompida no meio.
+  registrarWorktreeAtual(wt)
 
   // A RÉGUA DOS TESTES É A ÁRVORE DO PRÓPRIO COMMIT — não a do HEAD.
   // Medido: com os candidatos lidos da árvore do HEAD, um commit ANTERIOR à
@@ -571,8 +795,8 @@ export function medirCommit({
     motivo = `a árvore do commit não tem os diretórios de teste declarados (${dirsDeTeste.join(", ")})`
   }
 
-  spawnSync("git", ["-C", root, "worktree", "remove", "--force", dir], { encoding: "utf8" })
-  rmSync(base, { recursive: true, force: true })
+  removerWorktree({ root, base, dir })
+  registrarWorktreeAtual(null)
 
   return {
     sha,
@@ -621,6 +845,7 @@ export function renderRelatorio(r) {
     )
   }
   L.push(`  sempre: ${r.sempre.map((s) => s.id).join(", ")}`)
+  L.push(...renderLimpeza(r.limpeza))
   L.push("")
   for (const c of r.resultados) {
     const marca = c.veredito === "verde" ? "✅" : c.veredito === "vermelho" ? "❌" : "◐"
@@ -678,6 +903,7 @@ export function json(r) {
       sempre: r.sempre.map((s) => s.id),
       commits: r.commits.length,
       recorte: r.recorte ?? null,
+      limpeza: r.limpeza ?? null,
       veredito: r.veredito,
       vermelhos: r.vermelhos,
       indeterminados: r.indeterminados,
@@ -744,7 +970,50 @@ export function recorteVazio(recorte, base, head) {
 }
 
 /** O relatório do recorte VAZIO — o caminho comum: um push sem MEIO a julgar. */
-export function renderRecorteVazio({ recorte }) {
+/**
+ * A VARREDURA do resíduo, DITA — e nos DOIS relatórios, porque o caminho COMUM
+ * (um push de um commit não tem MEIO) é justamente onde ela mais acontece. Uma
+ * execução morta limpa em silêncio seria o mesmo defeito de antes, mais discreto.
+ *
+ * @returns {string[]} linhas (vazio quando não há o que dizer)
+ */
+export function renderLimpeza(limpeza) {
+  const L = []
+  if (!limpeza) return L
+  const { varridos = [], naoRemovidos = [], preservados = [], emUso = [], naoMeus = [] } = limpeza
+  if (varridos.length || preservados.length || naoMeus.length) {
+    L.push(
+      `  resíduo de execuções MORTAS: ${varridos.length} varrido(s)${
+        varridos.length
+          ? ` (${varridos
+              .map((v) => v.nome)
+              .slice(0, 4)
+              .join(" ")}${varridos.length > 4 ? " …" : ""})`
+          : ""
+      }${preservados.length ? ` · ${preservados.length} preservado(s) por --keep` : ""}${
+        naoMeus.length
+          ? ` · ${naoMeus.length} fora do MEU escopo (NÃO TOCADO: ${[
+              ...new Set(naoMeus.map((n) => n.motivo)),
+            ].join("; ")})`
+          : ""
+      }`,
+    )
+  }
+  // Uma varredura que FALHA também é dita: o resíduo fica no disco, e "não deu
+  // para limpar" só pode ser lido se estiver escrito.
+  if (naoRemovidos.length)
+    L.push(
+      `  ⚠️  resíduo que NÃO pôde ser varrido: ${naoRemovidos.length} (${naoRemovidos
+        .map((v) => v.nome)
+        .slice(0, 4)
+        .join(" ")}) — o host negou a remoção, limpe à mão`,
+    )
+  if (emUso.length)
+    L.push(`  em uso por outra execução VIVA: ${emUso.length} worktree(s) — preservado(s)`)
+  return L
+}
+
+export function renderRecorteVazio({ recorte, limpeza = null }) {
   const L = []
   L.push("")
   L.push("  Recorte do push — os commits do MEIO (o vermelho que o topo esconde)")
@@ -756,6 +1025,7 @@ export function renderRecorteVazio({ recorte }) {
   L.push(
     "  ✅ NADA A MEDIR: não há MEIO neste push — o recorte está vazio, e isso é MEDIDO, não presumido",
   )
+  L.push(...renderLimpeza(limpeza))
   L.push("")
   return L.join("\n")
 }
@@ -870,6 +1140,12 @@ function main(argv) {
     : CONJUNTO_SEMPRE
   const teto = opcoes.teto || MAX_COMMITS_PADRAO
 
+  // A limpeza nos SINAIS (para a execução interrompida não deixar o worktree
+  // dela) e a VARREDURA do resíduo das mortas, com o dono lido do marcador.
+  // As duas são DITAS no relatório — varredura silenciosa seria outro defeito.
+  instalarLimpezaNoSinal({ root })
+  const limpeza = limparResiduos({ root })
+
   if (opcoes.pushed && opcoes.only) {
     console.error(
       `❌ --pushed e --only são modos diferentes (um lê o protocolo, o outro mede um sha)\n${USO}`,
@@ -923,8 +1199,8 @@ function main(argv) {
     if (locais.length) headDoRelatorio = locais[0]
     if (commits.length === 0) {
       if (opcoes.json)
-        console.log(json({ ...recorteVazio(recorte, relatorioBase, headDoRelatorio) }))
-      else console.log(renderRecorteVazio({ recorte }))
+        console.log(json({ ...recorteVazio(recorte, relatorioBase, headDoRelatorio), limpeza }))
+      else console.log(renderRecorteVazio({ recorte, limpeza }))
       process.exit(EXIT.OK)
     }
   } else if (opcoes.only) {
@@ -974,6 +1250,7 @@ function main(argv) {
       semSempre: opcoes.semSempre,
       semAfetados: opcoes.semAfetados,
       lerArquivo: lerArquivoPadrao,
+      keep: opcoes.keep,
     })
     resultados.push(r)
     if (!opcoes.json)
@@ -991,6 +1268,7 @@ function main(argv) {
     sempre,
     commits,
     recorte,
+    limpeza,
     resultados,
     custoMs: Date.now() - inicio,
     ...ag,

@@ -17,7 +17,7 @@
 # O QUE ISTO PROVA (e por que o gate passar hoje não basta)
 #
 # O `prove-stack-per-commit` existe porque um commit pode NASCER vermelho no meio
-# da pilha e só o TOPO ser olhado (medido: o vermelho do `eee4f65e` viajou 12
+# da pilha e só o TOPO ser olhado (medido: o vermelho do `2757e3a5` viajou 12
 # commits até o topo). Ele julga cada commit num worktree próprio, e o veredito
 # depende de TRÊS regras que, desligadas, deixariam o gate verde sobre uma pilha
 # quebrada — e um gate de CI verde sobre um commit vermelho é PIOR que não ter

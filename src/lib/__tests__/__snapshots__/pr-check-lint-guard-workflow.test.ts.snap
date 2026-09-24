@@ -39,6 +39,10 @@ exports[`pr-check.yml — job lint-guard (sintaxe YAML + snapshot) > parseia com
       "run": "bun run lint",
     },
     {
+      "name": "Lint scope (o lint cobre o que o hook julga)",
+      "run": "node scripts/check-lint-scope.mjs",
+    },
+    {
       "name": "Summary",
       "run": "echo "✅ All files formatted (prettier) and zero eslint warnings/errors."",
     },
