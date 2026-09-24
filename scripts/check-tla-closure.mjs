@@ -183,6 +183,13 @@ export const ALCANCE_DECLARADO = [
       "mesma cadeia pelo dono da classe de sintaxe (`check-workflow-run-syntax.mjs`): o TLA do `runner-shells` é de entrada e não fecha ciclo",
     data: "2026-09-21",
   },
+  {
+    de: "scripts/remedy-classes/doc-hashes.mjs",
+    para: "scripts/check-doc-hashes.mjs",
+    motivo:
+      "a classe IMPORTA o `fixAll` do guard dono (a régua do remendo é uma só) e o TLA do guard é de ENTRADA (`if (IS_DIRECT_RUN) { … await confirma() }`, uma única ocorrência classificada `entrada-cli`): a carga da declaração NÃO executa o CLI — medido rc=0 ao carregar a descoberta — e nenhuma aresta de volta ao loader existe hoje; a régua recusa o caso conservador de propósito",
+    data: "2026-09-22",
+  },
 ]
 
 /** As extensões que o node CARREGA de fato e que a resolução tenta, em ordem. */
