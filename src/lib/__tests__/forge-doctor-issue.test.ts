@@ -59,6 +59,9 @@ import yaml from "js-yaml"
 import { resolveBash } from "@/lib/__tests__/helpers/bash-resolver"
 
 import { VERDICT } from "../../../scripts/forge-doctor.mjs"
+// O ITEM DATADO do relógio da matriz: o id e o `closedBy` vêm do dono da régua,
+// os mesmos que o relatório publica — a declaração colável não pode divergir.
+import { MATRIX_CLOSED_BY, MATRIX_ITEM_ID } from "../../../scripts/bench-freshness.mjs"
 import { decidePublication, markerOf } from "../../../scripts/issue-publish.mjs"
 import {
   ISSUE_LABEL,
@@ -75,6 +78,7 @@ import {
   nestedGuardOf,
   parseArgs,
   verdictOf,
+  verdictResolutionComment,
   verdictSignatureOf,
 } from "../../../scripts/forge-doctor-issue.mjs"
 import {
@@ -94,9 +98,15 @@ const REPO = "org/repo"
 
 // ── relatório do doctor (mesma FORMA do `--json`) ───────────────────────────
 
-function doctorReport(verdict: Record<string, unknown> = {}) {
+function doctorReport(
+  verdict: Record<string, unknown> = {},
+  /** Fatos EXTRA do relatório (o registro datado, por exemplo): o corpo é
+   * composto a partir DELES, então um teste que fala da data precisa do fato no
+   * relatório — como no `--json` de verdade. */
+  facts: Record<string, unknown> = {},
+) {
   return {
-    facts: { skippedGuards: true },
+    facts: { skippedGuards: true, ...facts },
     verdict: {
       verdict: VERDICT.BLOCKED,
       blockers: ["gate 'check:registry-source' FALHOU (exit 1)"],
@@ -354,6 +364,131 @@ describe("forge-doctor-issue — o corpo da issue", () => {
     expect(body).toContain("INDETERMINADA não é violação")
     const blocked = doctorIssueBody(doctorReport({ verdict: VERDICT.BLOCKED }))
     expect(blocked).not.toContain("INDETERMINADA não é violação")
+  })
+
+  it("a dívida DATADA do registro viaja no corpo — o vencimento E a letra morta", () => {
+    // As duas linhas que o doctor publica sobre `ci/unproven.json`, verbatim: o
+    // canal da reconciliação é ESTE corpo, e uma declaração que vencesse sem
+    // aparecer aqui seria cobrada por ninguém.
+    const body = doctorIssueBody(
+      doctorReport({
+        verdict: VERDICT.UNKNOWN,
+        blockers: [],
+        unknowns: [
+          "a declaração 'host-env' VENCEU a janela de revisão: o env do HOST da stack não existe neste checkout (declarada em 2026-06-01, janela de 90d, vencida há 23 dia(s)) — o remédio é reafirmar a data em ci/unproven.json ou fechar a lacuna",
+          "a declaração 'github-repo-identity' ficou LETRA MORTA: o próprio relatório de agora MEDE o que ela declarava fora de alcance — remova a entrada de ci/unproven.json",
+        ],
+      }),
+    )
+    expect(body).toContain("host-env")
+    expect(body).toContain("VENCEU a janela")
+    expect(body).toContain("declarada em 2026-06-01")
+    expect(body).toContain("LETRA MORTA")
+    expect(body).toContain("remova a entrada")
+  })
+
+  it("o ITEM DATADO do relógio da matriz vira bloco PRÓPRIO — com a data, o teto DELA e as duas saídas", () => {
+    // O doctor ABRE a dívida quando o registro do ato fica atrás da matriz além
+    // do teto DELA, e o canal dela é ESTE corpo: sem o bloco, o operador receberia
+    // mais uma linha de "não provado" sem saber desde quando a dívida existe nem
+    // como ela fecha. O item sai da MESMA função do relatório (`matrixItem`, do
+    // dono da régua), então o relatório e a issue não contam o mesmo item com
+    // dois textos.
+    const body = doctorIssueBody(
+      doctorReport(
+        { verdict: VERDICT.UNKNOWN, blockers: [], unknowns: ["o ITEM DATADO aberto"] },
+        {
+          benchFreshness: {
+            state: "measured",
+            matrix: {
+              state: "measured",
+              lag: 9,
+              aged: true,
+              origin: { commit: "abc1234", date: "2026-09-21", act: "measured", via: "family" },
+              since: { commit: "m5aaaaaa1111", date: "2026-09-14" },
+              tip: { commit: "m9aaaaaa1111", date: "2026-09-22" },
+              matriz: { commit: "m9aaaaaa1111", date: "2026-09-22" },
+              teto: { teto: 4, origem: "medido" },
+              detail: "o registro do ato está 9 commit(s) atrás da matriz",
+              reason: null,
+              remedies: ["bun run bench:guard-timing:baseline — o ato re-ancora o registro"],
+            },
+          },
+        },
+      ),
+    )
+    expect(body).toContain("### O ITEM DATADO do registro do ato × a matriz (o relógio dela)")
+    expect(body).toContain(MATRIX_ITEM_ID)
+    expect(body).toContain("ABERTO desde 2026-09-14")
+    expect(body).toContain("9 commit(s) atrás da matriz")
+    expect(body).toContain("acima do teto DELA (4 commit(s) da matriz")
+    expect(body).toContain(`closedBy: ${MATRIX_CLOSED_BY}`)
+    expect(body).toContain("fecha por MEDIÇÃO")
+
+    // O CONTROLE: sem a matriz vencida (ou sem o fato) não há bloco — o item não
+    // pode aparecer em toda issue do doctor, senão a data dele não vale nada.
+    const semItem = doctorIssueBody(doctorReport({ verdict: VERDICT.UNKNOWN, blockers: [] }))
+    expect(semItem).not.toContain("### O ITEM DATADO")
+  })
+
+  it("a linha do 'não provado' sai DATADA no corpo (o canal vê desde quando, sem mexer no dedup)", () => {
+    // O corpo passa pela MESMA régua do relatório (`datarLinhas`), com o fato que
+    // viaja no próprio relatório (`facts.unprovenDebt`) — nunca com uma segunda
+    // leitura de `ci/unproven.json`, que poderia divergir da que o veredito
+    // acabou de medir. Sem a data aqui, a issue é o canal de reconciliação que
+    // não diz se a lacuna nasceu ontem ou se venceu a janela.
+    const report = doctorReport(
+      {
+        verdict: VERDICT.UNKNOWN,
+        blockers: [],
+        unknowns: ["a branch protection REGISTRADA nao foi lida (sem token): nao lida"],
+      },
+      {
+        unprovenDebt: {
+          state: "open",
+          items: [
+            {
+              id: "gitea-token",
+              kind: "lacuna",
+              declaredAt: "2026-09-22",
+              state: "open",
+              limit: 90,
+              matches: "a branch protection REGISTRADA nao foi lida",
+            },
+          ],
+        },
+      },
+    )
+    const body = doctorIssueBody(report)
+    expect(body).toContain("a branch protection REGISTRADA nao foi lida")
+    expect(body).toContain("[declarado em 2026-09-22, revisão até +90d]")
+    // A ASSINATURA continua saindo do veredito CRU: a data não entra nela, senão
+    // a mesma dívida comentaria de novo na MESMA issue a cada dia que passa.
+    expect(verdictSignatureOf(report)).not.toContain("2026-09-22")
+    expect(verdictSignatureOf(report)).toBe(
+      verdictSignatureOf(
+        doctorReport({
+          verdict: VERDICT.UNKNOWN,
+          blockers: [],
+          unknowns: ["a branch protection REGISTRADA nao foi lida (sem token): nao lida"],
+        }),
+      ),
+    )
+  })
+
+  it("o FECHAMENTO nomeia o estado do registro (a prova do ciclo que fecha por medição)", () => {
+    const comment = verdictResolutionComment({
+      facts: { protection: { state: "in-sync" }, unprovenDebt: { state: "sem-itens" } },
+      verdict: { verdict: "pronta", unproven: [] },
+    })
+    expect(comment).toContain("registro do que o veredito NÃO cobre: `sem-itens`")
+    // Um relatório SEM o fato não inventa a linha (a prova não mede o que não
+    // foi medido — a mesma disciplina do resto do publicador).
+    const semFato = verdictResolutionComment({
+      facts: {},
+      verdict: { verdict: "pronta", unproven: [] },
+    })
+    expect(semFato).not.toContain("registro do que o veredito NÃO cobre")
   })
 
   it("carrega o marcador com a assinatura (sem ele o dedup não existe)", () => {
