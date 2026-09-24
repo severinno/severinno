@@ -120,7 +120,7 @@ fi
 #
 # O que este hook media até aqui era a ÁRVORE do topo (typecheck + os testes
 # afetados pelo diff da faixa inteira), e o PR mede o topo. O MEIO vivia sem
-# medição — e foi exatamente lá que o vermelho viajou 12 commits (o `eee4f65e`
+# medição — e foi exatamente lá que o vermelho viajou 12 commits (o `2757e3a5`
 # invalidou a expectativa de outro teste, e só o topo o via).
 #
 # O RECORTE, para caber no caminho do push:

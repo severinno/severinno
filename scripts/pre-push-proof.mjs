@@ -752,7 +752,7 @@ export function provePushBlocks({ root = REPO_ROOT, hookSourceTexto = null } = {
 // segunda prova necessária: a de cima mede a ÁRVORE do topo (a árvore vermelha
 // não sai desta máquina); esta mede o que a de cima NÃO via — uma pilha em que o
 // commit do MEIO nasce vermelho e o TOPO é verde. É a classe medida no
-// repositório (o `eee4f65e` invalidou a expectativa de outro teste e o vermelho
+// repositório (o `2757e3a5` invalidou a expectativa de outro teste e o vermelho
 // viajou 12 commits: o topo estava verde, o PR estava verde, e o commit que
 // quebrou o invariante nunca foi julgado).
 //

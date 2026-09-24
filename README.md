@@ -920,9 +920,33 @@ blobs/.ts/.sh inteiros. O `check-readme-toc` (README de 54 headings) custa
 single-grep). Os testes entram apenas quando arquivos-fonte mudaram
 (docs/config pulam via smart-skip).
 
+**A doc não pode mentir sobre o NOME de um commit.** `check:doc-hashes` julga cada
+citação de commit da prosa versionada contra a HISTÓRIA do HEAD: a rewrite
+(rebase, `--amend`, a dobra de um conserto no commit que ele conserta) troca o nome
+do commit preservando o assunto, e a citação velha fica órfã — o objeto continua no
+repositório (o reflog o segura), então um `git cat-file -e` diz "existe" e a doc
+passa a descrever um ato que ninguém consegue abrir (medido em 22/09/2026: a dobra
+da proveniência deixou **21 citações órfãs** em 12 arquivos, e nenhuma falhava
+nada). No órfão o guard NOMEIA o commit de MESMO assunto na história — o nome que a
+rewrite deixou —, e o que não existe como commit (typo, cópia truncada) sai como
+outro defeito, porque o remédio é outro. Número puro (`31536000`), digest de
+artefato (`sha256:`), o `src/` e os fixtures `.ts` ficam fora da régua por DECISÃO
+declarada no guard; fail-closed (exit 2) quando o git não responde. O comando é o
+MESMO nas duas pipelines (invariante do CORE) e na bateria do `pre-commit`
+(~0,7s), e a suíte de mutação declara oito metades — as duas últimas medem o
+REMÉDIO e não a régua (o preview do `--fix` que GRAVA, e a confirmação explícita
+que deixa de barrar).
+
+E ele tem **remédio mecânico**: o `--fix` troca a citação órfã pelo commit de MESMO
+assunto que a história deixou (o candidato que o próprio veredito nomeia), com
+confirmação explícita no terminal — `--fix --dry-run` imprime o PATCH exato sem
+gravar, e é esse mesmo patch que o job do PR publica como comentário, para o autor
+aplicar com um clique. O que não tem remendo (órfão sem commit de mesmo assunto,
+hash que não existe) sai NOMEADO: o remédio não inventa um nome.
+
 **Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
 rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
-**38 sub-tests node-puro** via `scripts/test-mutation-guards.sh` — e, desde que a
+**39 sub-tests node-puro** via `scripts/test-mutation-guards.sh` — e, desde que a
 isenção `GITHUB_ONLY` da classe caiu, o **mesmo comando** roda também no job
 `guards` da **forja dona do merge** (o `check-forge-parity` exige a matriz e a
 prova das três regras de classificação nas duas pipelines): quem mergeia na forja
@@ -1186,31 +1210,38 @@ sai verde e **uma** no fail-closed), e a detecção da oferta contra a árvore r
 depois: `escreveu: true` é violação da família, não um detalhe do log.
 
 **O custo do job mais caro do PR deixou de ser uma conta à mão** (família
-`mutations` do `bench-guard-timing`). O job `mutation-guards` roda 38 sub-tests, e
+`mutations` do `bench-guard-timing`). O job `mutation-guards` roda 39 sub-tests, e
 agora o que CADA um custa é medido pelo próprio master (`--json`) e versionado
 sub-test a sub-test na baseline: o ato VERSIONADO — o MESMO comando, com a árvore já COMMITADA: é o que a baseline
-passou a guardar (esquema v6, commit de origem `fa75f732`) — mediu **390.8s** de
-sub-tests + **4.2s** de harness = **395.0s**, com `workflow-run-syntax` (69.7s,
-18%), `hook-commands` (60.3s, 15%), `job-deps` (42.7s, 11%) e `pre-commit-proof`
-(38.5s, 10%) no topo — antes disso ninguém sabia QUAL sub-test pagava a conta. O
-delta contra o ato ANTERIOR (a medição de 36 sub-tests, **381.0s**, commit `eee4f65e`) é a régua
-da idade, que entrou como a 37.ª com **17.3s** sozinha e 6 metades, MEDIDA como as
-demais, sem ninguém recontar a soma. Quem entra com um sub-test novo não compõe nada: ele entra
+passou a guardar (esquema v6, commit de origem `8e76c9a6`) — mediu **407.9s** de
+sub-tests + **4.5s** de harness = **412.4s**, com `workflow-run-syntax` (70.8s,
+17%), `hook-commands` (60.4s, 15%), `job-deps` (44.2s, 11%) e `pre-commit-proof`
+(39.0s, 10%) no topo — antes disso ninguém sabia QUAL sub-test pagava a conta. O
+delta contra o ato ANTERIOR (a medição de 37 sub-tests, **395.0s**, commit `6125c9da`)
+são as DUAS entradas novas da matriz — o `doc-hashes` (**1.2s** sozinho, 8 metades,
+a régua do hash citado na prosa) e o `stack-per-commit` (**3.4s** sozinho, 5 metades,
+a prova de cada commit da pilha passar sozinho) —, e a `bench-freshness`, que passou
+de 6 para 8 metades naquele ato (**23.7s** sozinha) e HOJE declara dez (a régua do
+CONTEÚDO da origem entrou depois: **36.9s** medidos nesta árvore, valor que entra na
+coluna no próximo ato), MEDIDAS como as demais, sem ninguém recontar
+a soma. Quem entra com um sub-test novo não compõe nada: ele entra
 **MEDIDO** na rodada seguinte (forma nova, `➕`, com o ms dele no relatório), e o
 modelo de latência passou a **derivar** o passo do master da medição VERSIONADA — o
 confronto com o declarado do espelho dá **0%**, porque o declarado passou a ser a
-própria medição (**394959ms**). A projeção de quanto o PRÓXIMO sub-test acrescenta (~10.7s) é dita como
+própria medição (**412394ms**). A projeção de quanto o PRÓXIMO sub-test acrescenta (~10.6s) é dita como
 **projeção**, não como medição: é a média dos scripts já medidos mais o harness por
 sub-test. **LIMITE DECLARADO:** a baseline é reescrita pelo ato do
-`bench-guard-timing`, que grava o commit de ORIGEM do que mediu — as 37 formas
-entraram no ato de 21/09/2026, com a árvore COMMITADA (`fa75f732`), e o ato é o
-que re-declara o número: o declarado do espelho passa a ser a medição (**394959ms**)
-e o PISO do job `guards` da forja dona do merge passa a **428880ms** (a bateria
+`bench-guard-timing`, que grava o commit de ORIGEM do que mediu — as 39 formas
+entraram no ato de 22/09/2026, com a árvore COMMITADA (`8e76c9a6`), e o ato é o
+que re-declara o número: o declarado do espelho passa a ser a medição (**412394ms**)
+e o PISO do job `guards` da forja dona do merge passa a **446315ms** (a bateria
 re-medida + o gate de sintaxe + a matriz + a paridade das regras de classificação).
 O ato é feito em DUAS rodadas, e isso é deliberado: `--no-mutations` mede a
 bateria, o lint, o typecheck, a suíte e o hook, e `--only mutations --baseline
 --merge` mede o master e MOVE a baseline herdando o resto, com o ato e o commit de
-origem de cada família gravados no arquivo (`meta.families`).
+origem de cada família gravados no arquivo (`meta.families`), ao lado do ESTADO DA
+ÁRVORE que o ato encontrou (`meta.treeState`) e do que cada forma mediu
+(`meta.formOrigin`).
 
 **E a IDADE dessa régua deixou de ser invisível** (`scripts/bench-freshness.mjs`,
 seção **9/9** do doctor). O número da baseline é consumido **fora** do bench — o
@@ -1399,7 +1430,7 @@ medida no simulador (a suíte e o ensaio do pty). Ela custa **≈0,61s** (median
 > veredito é por commit: `vermelho` nomeia o commit e o gate, `indeterminado` (worktree que
 > não abriu, comando ausente, timeout) nunca vale verde, e acima do teto de commits a pilha
 > sai INDETERMINADA. Medido na cadeia do `#25` (16 commits): **três commits NÃO passavam
-> sozinhos** — `7335cd1a`, `48e14651` e `4c0851b7` (nomes daquela série; hoje `4962399e`,
+> sozinhos** — `4962399e`, `5cb3abf2` e `a318c9c2` (nomes daquela série; hoje `4962399e`,
 > `5cb3abf2` e `a318c9c2`), todos porque a origem gravada na baseline fica órfã quando uma
 > reescrita troca o hash do commit do ato; o topo é verde, e é ele que esconde o commit do
 > meio que nasceu vermelho. **A dobra que o gate pediu foi feita e medida: os 20 commits que
@@ -1513,7 +1544,7 @@ warm):
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (38 sub-tests)³  |    **395.0s** (1 run)³     |     **step ≈ 9.1s**²      |
+| master `mutation-guards` (39 sub-tests)³  |    **412.4s** (1 run)³     |     **step ≈ 9.1s**²      |
 | checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
 | Summary                                   |             —              |           0.34s           |
 
@@ -1553,15 +1584,24 @@ a soma por tabela e a recusa do pulo sem motivo) e a 36.ª **37.9s**
 ato de AGORA — as três suítes acima mais as QUATRO metades novas (a CLASSE do alvo
 no `job-deps` e as K/L/M do recorte do count), com a árvore COMMITADA — mediu
 **381.0s** (376.7s de sub-tests + 4.3s de harness) numa rodada da matriz COMPLETA,
-36/36 verdes (ato anterior, baseline ancorada em `eee4f65e`); e o ato de AGORA
-MESMO — a **37.ª**, a régua da idade (`bench-freshness`), MEDIDA pelo mesmo caminho
-do job (**17.3s** sozinha, 6 metades) — mediu **395.0s** (390.8s de sub-tests +
-4.2s de harness) numa rodada da matriz COMPLETA, **37/37 verdes**, com a árvore
-COMMITADA (`fa75f732`). É esse ato que a baseline passa a guardar e que
-`ci/merge-latency.json` passa a declarar para o espelho (**394959ms** medidos, 0% de
-delta contra o derivado), e ele fecha a defasagem que o ato de 36 sustentava: o PISO
-do job `guards` da forja dona do merge foi re-declarado em **428880ms** (a bateria + o
-gate de sintaxe + a matriz de 395.0s + a paridade das regras de classificação). Os
+36/36 verdes (ato anterior, baseline ancorada em `2757e3a5`); e o ato de AGORA
+MESMO — as **39** entradas da matriz, com as DUAS novas MEDIDAS (`doc-hashes`,
+**1.2s** sozinho; `stack-per-commit`, **3.4s** sozinho) e a `bench-freshness` com as
+oito metades (**23.7s**) — mediu **412.4s** (407.9s de sub-tests + 4.5s de harness)
+numa rodada da matriz COMPLETA, **39/39 verdes**, com a árvore COMMITADA
+(`8e76c9a6` — e o `doc-hashes` no ÍNDICE: ele é a ÚNICA das 39 que aquele commit
+ainda não tem, e é o limite declarado do ato). É esse ato que a baseline passa a
+guardar e que
+`ci/merge-latency.json` passa a declarar para o espelho (**412394ms** medidos, 0% de
+delta contra o derivado), e ele fecha a defasagem que o ato de 37 sustentava: o PISO
+do job `guards` da forja dona do merge foi re-declarado em **446315ms** (a bateria + o
+gate de sintaxe + a matriz de 412.4s + a paridade das regras de classificação). O ato
+ANTERIOR (a medição de 37 sub-tests, commit `6125c9da`), mantido como história do
+instrumento: a
+**37.ª**, a régua da idade (`bench-freshness`), MEDIDA pelo mesmo caminho do job
+(**17.3s** sozinha, 6 metades) — mediu **395.0s** (390.8s de sub-tests + 4.2s de
+harness) numa rodada da matriz COMPLETA, **37/37 verdes**, e o PISO do job `guards`
+ficou em **428880ms**. Os
 **28% de divergência**
 que a baseline ancorada em outro commit sustentava ficaram em zero. A
 32ª custa **11.0s** sozinha pelo caminho do master (`--scenario github-deps`:
@@ -1760,7 +1800,7 @@ runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 | 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |                      — (n/a)                       |         <2s         |
 | `utf8-check` (837 arquivos, `--ci src/`)          |        ≈ **0.92s**         |                     **7.46s**                      |    ~2-5s (est.)     |
 | `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |                     **3.61s**                      |    ~1-2s (est.)     |
-| `mutation-guards` (38 sub-tests node-puro)³       |        **395.0s**³         |                     **9.1s**²                      |   ~15-25s (est.)    |
+| `mutation-guards` (39 sub-tests node-puro)³       |        **412.4s**³         |                     **9.1s**²                      |   ~15-25s (est.)    |
 | `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |                    **4m37.6s**                     |   ~35-45s (est.)³   |
 | `unused-deps-guard` (mutation test + guard real)  |        ≈ **0.5s**⁴         |          **26.8s** cold / **20.9s** warm⁴          |   ~10-15s (est.)    |
 | `lint-guard` (prettier --check + eslint zero)     |     ~**4min** (local)⁵     | **7m22s** 1ª run / **6m23s** 2ª run (lint total)⁴  |   ~4-7 min (est.)   |
@@ -1838,7 +1878,7 @@ o primeiro job do repositório declarado por **PASSOS** (`steps`): o `setup-bun`
 (17.175s), o `install` (62ms), o `check-mutation-count` (93ms) e o `Summary`
 (98ms, um bloco) são MEDIDOS ali, e o passo da suíte —
 `bash scripts/test-mutation-mutation-count.sh` — **LÊ** a forma `mutation-count`
-da baseline versionada (3.897s, com o commit `eee4f65e` ao lado) em vez de repetir
+da baseline versionada (3.897s, com o commit `2757e3a5` ao lado) em vez de repetir
 o número. Antes, os dois números do MESMO passo viviam separados: 3870ms no modelo
 contra 3897ms na baseline (e, na versão anterior da suíte, 155ms contra 447ms —
 **3x**), e nenhum dos dois era derivado do outro, então a divergência era
@@ -1975,7 +2015,7 @@ pre-commit, mesma semântica). O contrato do job é travado por
 NÃO mantém o step serial).
 
 **O comando é UM só (`bun run typecheck`), e o preço dele está medido** desde
-`f8d4ce7d`, que levou o comando INTEIRO — inclusive o heap de 4GB — para dentro
+`2f85d803`, que levou o comando INTEIRO — inclusive o heap de 4GB — para dentro
 do script do package.json: 4 workflows pagavam o heap num `env: NODE_OPTIONS`
 inline e o hook de push rodava o `tsc` **sem** heap. O benchmark
 (`bun run bench:guard-timing`, ver `docs/GUARDS.md` §10 e
@@ -1989,7 +2029,7 @@ COLD (o `tsconfig.tsbuildinfo` é removido antes de cada amostra):
   default (aqui: 4144MB) e o exit da régua sem heap, e diz **INDETERMINADO**
   sobre o SIGABRT 134 do runner em vez de afirmá-lo.
 
-A mesma unificação (`f8d4ce7d`) fez as duas forjas rodarem a régua **mais
+A mesma unificação (`2f85d803`) fez as duas forjas rodarem a régua **mais
 ampla** da suíte (`bun run test:run`, que INCLUI `src/components/**`) — o check
 exigido do GitHub rodava a mais estreita (`test:unit`, que a EXCLUI). O custo do
 job que upgrade, medido em 16/09/2026 numa máquina Linux de 16 cpus / 32GB (o
@@ -2450,7 +2490,7 @@ git push origin <branch>
 # 5. Cleanup pós-medição
 #    - remover o trigger `push:` do bench-setup-bun.yml (deixar só workflow_dispatch)
 #    - deletar a branch remota de medição
-#    (feito no fluxo original: commit a271e5c + git push origin --delete <branch>)
+#    (feito no fluxo original: commit 457b9abe + git push origin --delete <branch>)
 ```
 
 **Exit codes:** `0` runs executados e timings extraídos · `1` algum run falhou
@@ -2485,7 +2525,7 @@ local é o gargalo, não a migração do setup-bun.
 #### Evidência empírica (log real do act — bug do setup-bun)
 
 Log **real** capturado rodando `scripts/act-repro-setup-bun.sh` contra o estado
-PRÉ-migração (`oven-sh/setup-bun@v2` no `pr-check.yml` do commit `867b520`) —
+PRÉ-migração (`oven-sh/setup-bun@v2` no `pr-check.yml` do commit `a59b3601`) —
 mesmo com o cache do action já presente localmente no act
 (`docker cp src=...oven-sh-setup-bun@v2/`), as DUAS execuções consecutivas
 re-baixam o Bun do GitHub e reportam `cache-hit=false`:
@@ -2528,7 +2568,7 @@ para legibilidade; a linha `| Downloading a new version of Bun:` + o
 > execução, sem cache de layers nem de release). As durações variam por
 > máquina/rede e NÃO fazem parte da caracterização do bug.
 
-Para reproduzir: num checkout anterior ao commit de migração (`fd5381a`), rode
+Para reproduzir: num checkout anterior ao commit de migração (`5f5d8a88`), rode
 `bun run repro:setup-bun` (`--expect cache-miss`). No `main` atual o job usa o
 composite local `.github/actions/setup-bun` e a 2ª run reporta `cache-hit=true`
 (fix).

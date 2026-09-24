@@ -3,7 +3,7 @@
  * scripts/prove-stack-per-commit.mjs — cada commit da pilha passa SOZINHO?
  *
  * A classe que ele fecha, medida: um commit pode nascer VERMELHO e ninguém ver
- * até o topo. O `eee4f65e` pôs o `check-mutation-count` na bateria local e
+ * até o topo. O `2757e3a5` pôs o `check-mutation-count` na bateria local e
  * invalidou a expectativa do teste da descida (`check-hook-ci-parity-subguards`)
  * — o vermelho viajou 12 commits acima, e o único lugar que o via era o topo da
  * pilha. O PR mede o TOPO; a pilha tem commits no meio.
