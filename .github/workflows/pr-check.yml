@@ -261,6 +261,19 @@ jobs:
       - name: Probe docs contract
         run: node scripts/check-prove-docs.mjs
 
+      # Toda citação de commit na prosa pertence à HISTÓRIA do HEAD. A rewrite
+      # (rebase/amend/dobra) troca o NOME do commit preservando o assunto — o
+      # objeto antigo continua no repositório (o reflog o segura), então um
+      # `git cat-file -e` diz "existe" e a citação órfã passa.
+      #
+      # Por que é BLOQUEANTE aqui: a doc que cita o nome pré-dobra descreve um
+      # ato que ninguém consegue abrir, e mente com aparência de precisão — que
+      # é pior que a ausência da citação. O guard julga a prosa contra a
+      # história viva (o hash certo muda a cada rewrite; a régua não) e, no
+      # órfão, nomeia o commit de MESMO assunto: o nome que a rewrite deixou.
+      - name: Doc commit citations (história do HEAD)
+        run: node scripts/check-doc-hashes.mjs
+
       # A classe SIGPIPE (o mesmo gate do CORE na forja dona do merge): sob
       # `set -o pipefail`, `algo | grep -q PADRAO` pode terminar 141 MESMO com o
       # padrão encontrado — `grep -q` fecha o stdin no primeiro casamento e o
@@ -501,7 +514,16 @@ jobs:
       contents: read
       packages: read
     steps:
+      # `fetch-depth: 0` é CONDIÇÃO da forma `--sem-duble`, e não conveniência: o
+      # hook tem um membro de fase B que pergunta pela HISTÓRIA
+      # (`check-doc-hashes.mjs` exige que todo commit citado na prosa exista em
+      # HEAD), e a cópia da prova vê o passado pelo `alternates` do store do
+      # checkout. Num checkout RASO o membro recusa todo arquivo citado, a
+      # atribuição passa a falar do fixture e a prova sai INDETERMINADA (exit 2)
+      # em vez de medir — medido: é o que o `repoRaso` nomeia na premissa.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Restore Bun cache
         uses: actions/cache@v4
@@ -529,9 +551,15 @@ jobs:
         run: node scripts/prove-pre-commit-in-runner.mjs
 
       # A MESMA prova SEM o dublê dos guards irmãos: o hook REAL sobre uma cópia
-      # do checkout, com os CINCO guards de fase A rodando de verdade. É o que
+      # do checkout, com os SEIS guards de fase A rodando de verdade. É o que
       # fecha o limite que o passo acima declara ("os irmãos rodam no dublê") e o
       # que atribui a recusa: um refutador só, e é o GATE.
+      #
+      # E ela mede TAMBÉM o defeito que só o commit local produz: o BUMP DE
+      # MATRIZ sem o ato que a versiona (a matriz num commit, o registro do custo
+      # no seguinte). O `check-mutation-count --staged` recusa o MESMO índice com
+      # os seis irmãos, os dez membros da fase B e o GATE verdes ali — e o
+      # CONTROLE (o mesmo índice com o ato versionado) ENTRA.
       - name: A prova SEM o dublê (a fase A real recusa o corpo quebrado)
         env:
           IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
@@ -545,7 +573,7 @@ jobs:
       # provado na saída do commit, e o fixer do dono fechando o ciclo (o
       # `--staged` volta a 0 e o commit de CONTROLE entra).
       - name: Summary
-        run: echo "✅ Um 'git commit' de verdade DENTRO do runtime do CI invocou o hook REAL do checkout — o corpo 'run:' quebrado no índice foi RECUSADO (zero objetos de commit) e o mesmo commit com o corpo fechado ENTROU (o CONTROLE). A MESMA medição exercita o REMÉDIO da declaração de espelho apagada — o guard dono recusa o commit que remove o arg `BUN_VERSION`, a OFERTA nomeia a classe `bun-mirror-removal` (e o hook a publica no próprio commit), e o fixer do dono devolve a declaração ao índice — o `--staged` volta a 0 e o commit de CONTROLE entra. E a forma sem o dublê dos irmãos — a fase A REAL (os cinco guards do índice, rodados de verdade) aprova o índice e o GATE é o ÚNICO refutador do corpo quebrado."
+        run: echo "✅ Um 'git commit' de verdade DENTRO do runtime do CI invocou o hook REAL do checkout — o corpo 'run:' quebrado no índice foi RECUSADO (zero objetos de commit) e o mesmo commit com o corpo fechado ENTROU (o CONTROLE). A MESMA medição exercita o REMÉDIO da declaração de espelho apagada — o guard dono recusa o commit que remove o arg `BUN_VERSION`, a OFERTA nomeia a classe `bun-mirror-removal` (e o hook a publica no próprio commit), e o fixer do dono devolve a declaração ao índice — o `--staged` volta a 0 e o commit de CONTROLE entra. E a forma sem o dublê dos irmãos — a fase A REAL (os SEIS guards do índice, rodados de verdade) aprova o índice e o GATE é o ÚNICO refutador do corpo quebrado — mede TAMBÉM o bump de matriz sem o ato que a versiona (o `check-mutation-count --staged` recusa aquele índice (nomeando a defasagem e o sub-test novo) com os irmãos, os dez membros da fase B e o GATE verdes no MESMO índice, e o CONTROLE, o mesmo índice com o ato versionado, ENTRA)."
 
   # ── Sentinel Producer Guard ────────────────────────────────────────────
   # Fast gate (node puro, <1s): GENERALIZA a consistência produtor↔job de
@@ -699,7 +727,7 @@ jobs:
         run: echo "✅ No orphan test-mutation-*.sh and no broken workflow ref introduced by this PR diff."
 
   # ── Mutation Guards MASTER (consolidado) ────────────────────────────
-  # Roda os 39 mutation tests node-puro dos guards de CI num JOB SÓ via
+  # Roda os 40 mutation tests node-puro dos guards de CI num JOB SÓ via
   # scripts/test-mutation-guards.sh — matriz de sub-tests que orquestra os
   # scripts granulares (que continuam sendo a fonte única de
   # fixtures/mutações/asserções de cada guard):
@@ -874,7 +902,7 @@ jobs:
         run: bash scripts/test-mutation-guards.sh
 
       - name: Summary
-        run: echo "✅ All 39 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard, mutation-count, no-leaked-imports, pipefail-sigpipe, paridade hook↔CI, comandos dos hooks, defaults de shell, sintaxe dos corpos `run:`, latência de merge, defaults do registry/namespace, dependências dos jobs, resposta do remédio no TTY, o REGISTRO do CANAL do remédio — a descoberta das declarações e as duas direções do par com a classe, contrato dos required checks APLICADOS — o rename sem a reaplicação declarada, o REGISTRO da proteção da forja — o contexto a menos, a mais e contagem no nome, as CONDIÇÕES do retrato arquivado — cada passo contra a forja, e a CATRACA do inventário do GitHub — a comparação de conjuntos e de contador, a nomeação e os três fail-closed do dado, e as ETAPAS DO CORTE — o gate da dona do merge, o required check dela e o gate que o espelho perde sem declaração, a COBERTURA DO RECORTE — o CONTROLE (o comando que falha por ambiente sai da medição), a soma por tabela e a recusa do pulo sem motivo, e a PROVA SEM DUBLÊ do pre-commit — a declaração dos recusadores, a descida do runner e o CONTROLE, e a RÉGUA DA IDADE — a derivação da origem pela DATA, a âncora de mês, o teto por tipo e o fail-closed das duas fontes, e a PILHA COMMIT A COMMIT — as duas réguas dos testes afetados, o veredito por commit e o da série e o teto que se recusa a medir acima dele, e a RÉGUA DAS CITAÇÕES DE COMMIT na prosa — a regra da HISTÓRIA (o órfão de rewrite), o NÚMERO PURO, o DIGEST de artefato, o fail-closed sem git, o auditor que não se conta e a extensão fora do escopo, e a MATRIZ × O ATO que a versiona — a defasagem que nomeia o sub-test que ninguém versionou, o count GRAVADO divergente e o fail-closed do registro ilegível)."
+        run: echo "✅ All 40 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard, mutation-count, no-leaked-imports, pipefail-sigpipe, paridade hook↔CI, comandos dos hooks, defaults de shell, sintaxe dos corpos `run:`, latência de merge, defaults do registry/namespace, dependências dos jobs, resposta do remédio no TTY, o REGISTRO do CANAL do remédio — a descoberta das declarações e as duas direções do par com a classe, contrato dos required checks APLICADOS — o rename sem a reaplicação declarada, o REGISTRO da proteção da forja — o contexto a menos, a mais e contagem no nome, as CONDIÇÕES do retrato arquivado — cada passo contra a forja, e a CATRACA do inventário do GitHub — a comparação de conjuntos e de contador, a nomeação e os três fail-closed do dado, e as ETAPAS DO CORTE — o gate da dona do merge, o required check dela e o gate que o espelho perde sem declaração, a COBERTURA DO RECORTE — o CONTROLE (o comando que falha por ambiente sai da medição), a soma por tabela e a recusa do pulo sem motivo, e a PROVA SEM DUBLÊ do pre-commit — a declaração dos recusadores, a descida do runner e o CONTROLE, e a RÉGUA DA IDADE — a derivação da origem pela DATA, a âncora de mês, o teto por tipo e o fail-closed das duas fontes, e a PILHA COMMIT A COMMIT — as duas réguas dos testes afetados, o veredito por commit e o da série e o teto que se recusa a medir acima dele, e a RÉGUA DAS CITAÇÕES DE COMMIT na prosa — a regra da HISTÓRIA (o órfão de rewrite), o NÚMERO PURO, o DIGEST de artefato, o fail-closed sem git, o auditor que não se conta e a extensão fora do escopo, e a MATRIZ × O ATO que a versiona — a defasagem que nomeia o sub-test que ninguém versionou, o count GRAVADO divergente e o fail-closed do registro ilegível, e o ESCOPO DO LINT — o oráculo do prettier, a cobertura do globo, a declaração de ignorados ilegível, o recorte read do índice, a isenção órfã e a declaração do escopo que o commit move)."
 
   # ── Forge Parity Mutation (job DEDICADO, fora do master) ────────────────
   # A prova por mutação das TRÊS regras de classificação do
@@ -1297,6 +1325,18 @@ jobs:
       # dos lados.
       - name: Check lint (prettier + eslint zero)
         run: bun run lint
+
+      # O ESCOPO do lint — o MESMO comando do job `lint` da Gitea (invariante
+      # `lint-scope` do CORE). O hook julga TODO arquivo estagiado; o `lint`
+      # julhava uma LISTA A MAO de globs, e 13 diretórios com arquivo que o
+      # prettier julga ficavam fora dela (`.gitea/` incluso — as workflows da forja
+      # dona do merge), mais as extensões de raiz `*.cjs`/`*.js` e o
+      # `.prettierrc`. O `ci/unproven.json` fora do padrao passou este job verde e
+      # quem o recusou foi o hook. O guard DERIVA os globs do proprio script
+      # `lint`, a lista de arquivos do git e a pergunta "o prettier julga isto?"
+      # do proprio prettier: nenhuma lista a mao para envelhecer.
+      - name: Lint scope (o lint cobre o que o hook julga)
+        run: node scripts/check-lint-scope.mjs
 
       # CONTRATO REPO-WIDE (não PR-scope): o `eslint . --max-warnings 0` do
       # script cobre TODO o repo — um warning introduzido em QUALQUER arquivo
@@ -1877,7 +1917,7 @@ jobs:
   #     banco efêmero em dev que o CI de produção não exercita (a produção roda
   #     NODE_ENV=production sem override);
   #   • MUTATION TESTS que precisam do vitest REAL (node_modules) — o seed dev
-  #     E2E, o contrato coordenado, os três fios do doctor, o perfil --ci e as
+  #     E2E, o contrato coordenado, os quatro fios do doctor, o perfil --ci e as
   #     quatro defesas do check-env-mirror. Cada um introduz a regressão
   #     conhecida e exige que a suíte fique VERMELHA pela âncora certa (guarda
   #     cego → job falha).

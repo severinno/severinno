@@ -613,10 +613,86 @@ mesmos exit codes da forja. Duas decisões próprias: um runner registrado mas
 **OFFLINE** é DIVERGENTE com remédio PRÓPRIO (`systemctl restart`, o sintoma é o
 "no runner available" do `deploy/GITHUB_RUNNER.md`), e registro VAZIO é UMA
 violação (runner órfão), não N labels faltando. A credencial é a MESMA do
-`apply-required-checks` (`GITHUB_TOKEN`/`GH_TOKEN`, `GITHUB_API_URL`,
-`GITHUB_REPOSITORY`) e exige permissão de self-hosted runners no repositório —
-o `GITHUB_TOKEN` de um run NÃO a tem: sem token é **exit 3** ("não olhei"),
-nunca "em sincronia".
+`apply-required-checks` (`GITHUB_TOKEN`/`GH_TOKEN`, `GH_API_URL`) e exige
+permissão de self-hosted runners no repositório — o `GITHUB_TOKEN` de um run NÃO
+a tem: sem token é **exit 3** ("não olhei"), nunca "em sincronia". E o REPO vem
+do CANAL (`GH_REPOSITORY`, com `--gh-repo` à frente e o `REPO_URL` do script de
+setup como fonte comitada), **nunca** do `GITHUB_REPOSITORY` compartilhado: no
+runner da forja essa variável aponta para o repositório DO GITEA (o contexto
+emulado), e lê-la consultaria o registro de outro repositório — a resposta seria
+o registro vazio de um repo que não é o nosso, publicada como se fosse o nosso.
+
+**E a VERSÃO registrada × o PIN do script — a terceira pergunta ao MESMO
+registro, e a única cujo sintoma aparece LONGE daqui.** O payload da API traz, por
+runner, o `version` que o SERVIÇO aceitou (o runner se atualiza sozinho para ela),
+e o `RUNNER_VERSION` de `deploy/setup-github-runner.sh` é o pin que o repositório
+declara: os dois têm de casar — por **VALOR**, porque o `v` de uma tag de release e
+o espaço em volta não são drift, e um alarme falso é o que ensina a ignorar o
+guard. MEDIDO em 22/09/2026: com o pin em `2.320.0` o runner **registrou, pegou o
+primeiro job e se AUTO-ATUALIZOU para 2.337.0 no MEIO dele** — o update derruba o
+worker, o job fica **PRESO** em `in_progress` segurando o único runner (o cancel do
+run e o remove do runner respondem 422 "is currently running a job") e a forja fica
+**PARADA em vez de vermelha**: ninguém percebe, e nenhum check acusa. Por isso o
+drift entra numa lista PRÓPRIA (`versionViolations`, **exit 1**) com o remédio do
+PIN — **alinhar o pin** à versão que o serviço aceita e só então re-registrar;
+re-registrar com o mesmo pin recusado reproduz o defeito —, enquanto `violations`
+segue significando "problemas de LABEL" (somar as duas faria `violations.length`
+deixar de significar o que ele diz). E "não deu para julgar" tem estado próprio
+(`no-pin` quando o script não declara o pin, `unread` quando a API não devolveu o
+campo, `null` quando nenhum runner chegou a ser selecionado): **nunca** "em
+sincronia" — é o que o doctor publica como não-provado, com a declaração datada
+`github-runner-version`.
+
+**E a VERSÃO do BINÁRIO do act_runner × a TAG que o compose declara — o irmão
+da pergunta acima, do lado da forja, e com um mecanismo oposto.** O container do
+act_runner **não se auto-atualiza**: quem decide a versão do binário é a
+**IMAGEM**, e é por isso que uma tag que não declara versão é o furo. O compose
+da forja declarava `gitea/act_runner:latest`, e `latest` não é uma versão — é o
+nome de uma promessa: o `docker compose pull` de um dia qualquer troca a versão
+que roda **sem uma linha do repositório mudar** e sem sintoma nenhum na forja.
+MEDIDO em 22/09/2026 neste host: a imagem `latest` reportava `v0.6.1` e a tag
+`0.2.11` reporta `v0.2.11` — as duas convivem no disco, e era o compose que não
+dizia qual delas a stack sobe. **O REMÉDIO foi APLICADO no mesmo dia:** a tag
+passou a `gitea/act_runner:0.6.1` — o MESMO digest que o `latest` do dia servia
+(`sha256:b5c35d6d…`), então a stack segue rodando exatamente o binário que
+rodava, agora DECLARADO (e `v0.6.1` NÃO existe no registry, medido: `not found` —
+o `v` seria um pin quebrado). Com a imagem pinada a medição do guard dá
+`versao do binario: 0.6.1 = tag 0.6.1 (proven)`, e o que a lacuna datada passa a
+cobrir é a LEITURA: com a tag pinada e sem container o estado deixa de ser
+`floating` (a declaração pendente que o pin resolveu) e passa a ser `unread` ("o
+que RODA não foi julgado") — a leitura é da stack. O guard lê o
+`act_runner --version` **dentro do container em execução** (o mesmo `docker exec`,
+sem shell, do `cat` do registro) e compara com
+a tag do **render** do compose, por **valor** (`v0.6.1` = `0.6.1`; o `v` e o
+espaço em volta não são drift). São SEIS estados: `proven` (a tag pina a versão
+que o binário reporta), `drift` (**exit 1**, em `versionViolations` — o remédio é
+alinhar a **tag**, e re-registrar não muda a versão de um milímetro), `floating`
+(a tag não piná versão: **declaração pendente**, nem verde nem divergência),
+`digest` (a imagem é pinada por CONTEÚDO — imutável, mas um digest não declara
+versão: jogá-lo em `floating` faria o relatório afirmar que "a versão que roda é a
+que o pull do dia tiver servido", o que é falso num pin imutável), `no-image` (o
+render não declara imagem do runner) e `unread` (o binário não respondeu).
+A versão é lida **antes** do registro — ela é um fato do CONTAINER, não do
+arquivo —, então um registro ilegível não esconde um drift. E o estado conta para
+o veredito do doctor: o drift é **BLOQUEIO** (linha própria, com o remédio da
+tag), os outros quatro **rebaixam** nomeando o estado, e a lacuna vive datada
+como `act-runner-version` (`ci/unproven.json`) — ela fecha **por medição**, só
+quando o binário reporta a versão da tag declarada.
+
+**Qual container — e a SONDA.** O nome do container do runner era derivado do
+`container_name` do compose (e, sem ele, do service label que o próprio compose
+põe). Isso amarra a medição à STACK: o container tem de ser o dela, com o nome que
+ela usa, e uma **sonda** — o ensaio da metade da VERSÃO contra um container de
+teste com a imagem pinada, ou um runner de outra stack — não tinha como se
+declarar sem TOMAR esse nome. Agora a ordem é **declarado vence derivado**:
+`--container` (a CLI) → a variável **`GITEA_RUNNER_CONTAINER`** → o
+`container_name` do compose → o service label. A variável é a forma declarada dos
+DOIS consumidores: o mesmo guard rodado direto e o `forge-doctor`, que ganhou o
+`--container` e entrega o valor ao guard pelo mesmo parâmetro (ele não
+reimplementa a resolução). A **fonte** viaja até o veredito da versão —
+`no container 'x' (declarado por GITEA_RUNNER_CONTAINER)` —, porque medir uma
+sonda NÃO é medir a stack: a metade da versão contra uma sonda diz o que a IMAGEM
+pinada roda, não o que a forja está rodando.
 
 A entrada se chama `runner-labels:check`, e NÃO `check:runner-labels`: um comando
 sob `check:` é lido como gate PORTÁTIL (roda na bateria de qualquer checkout), e
@@ -849,7 +925,7 @@ propósito — cobrar toda ocorrência daria falso positivo em texto correto.
 sem o bloco falha nomeando a falta; H: bloco ilegível; I: a doc declarando um
 total que não bate, com o delta na mensagem; J: a entrada em **aspas duplas** — a
 forma que o shell expandiria e que mataria a suíte — é recusada nomeando a
-expansão e o remédio) e `check-mutation-count.test.ts` (31 testes, cada regra com
+expansão e o remédio) e `check-mutation-count.test.ts` (42 testes, cada regra com
 o seu CONTROLE na direção oposta).
 
 #### O count não pode ser PARTIDO entre dois commits locais — o recorte `--staged`
@@ -895,10 +971,100 @@ fica **verde**). As três mutam o guard no lugar (backup + restauração conferi
 checksum) e exigem a suíte `check-mutation-count.test.ts` **vermelha**, que é a
 segunda testemunha de que a regressão não passaria no PR em silêncio.
 
+#### A matriz × o ATO que a versiona — a prosa certa sobre a matriz errada
+
+O N da matriz e a prosa dele são **um número em seis arquivos**, e o guard acima
+compara todos com o derivado — mas havia um **terceiro lugar** onde a matriz é
+declarada e que nenhum deles via: o **registro versionado do ato**
+(`docs/benchmarks/guard-timing-baseline.json`, família `mutations`, uma FORMA por
+sub-test com o custo medido). A prosa pode estar toda certa enquanto o registro
+segue com as formas do ato ANTERIOR — e foi exatamente o que aconteceu em
+22/09/2026: a matriz ganhou o `doc-hashes` e o `stack-per-commit`, o registro
+ficou com as 37 formas do ato anterior, e o número declarado do job (e o **PISO**
+do job `guards` da forja dona do merge, que dele se soma) passou a descrever uma
+matriz que já não existia. Nada acendia: o count na prosa batia consigo mesmo.
+
+Agora o `run()` entrega a **matriz** (os ids do `SUBTESTS`, derivados como
+todo o resto) e o **registro** à mesma régua, e a defasagem é violação nomeada:
+`a matriz tem N sub-test(s) que o ATO não versionou (<ids>)`, com o comando do ato
+como remédio (`node scripts/bench-guard-timing.mjs --only mutations --json
+--baseline --merge`, com a árvore **JÁ COMMITADA** — o registro é uma medição, e
+uma medição sobre o working tree grava um commit de origem que não tem o que ela
+mediu). O count GRAVADO da família tem de ser o da matriz, e as formas e o count
+têm de descrever a MESMA matriz.
+
+**A COLUNA DE METADES É DERIVADA DA MATRIZ.** Até 23/09/2026 ela era “a do ATO” —
+saía da rodada que mediu o CUSTO, e isso valia como limite declarado enquanto a
+_única_ leitura da unidade fosse o bloco `METADES=(...)` da própria suíte. O
+problema é que o custo **herda** e a unidade **não**: numa gravação que herda a
+família (`--merge`, `--only`) a coluna viajava junto com o custo, e uma unidade
+acrescentada à suíte DEPOIS daquela medição ficava escrita como a anterior — o
+registro dizia **oito** metades para uma suíte que já declarava **dez**. Agora o
+ato **reescreve** a coluna (e o total da família) a partir da matriz, depois da
+herança: o custo continua o da rodada que o mediu (é o que `meta.reused`
+descreve), a unidade passa a ser a da suíte **desta árvore**, e o próprio registro
+diz o que fez (`metadesDaMatriz: {total, atualizadas, semDerivacao, naoMedidas}`).
+A régua é uma só — `scripts/metades.mjs`, via `metadesDaMatriz` em
+`bench-families.mjs`, lida pelo ato e pelo guard: duas derivações divergiriam no
+dia em que uma das duas fosse ajustada. E é isso que dá ao guard o que julgar: a
+coluna divergente é violação nomeada (`a forma '<id>' GRAVOU N metade(s) e a
+matriz declara M`), com o ato como remédio.
+
+**LIMITES DECLARADOS (e de propósito).** A derivação não inventa número: a forma
+cujo id a matriz **não conhece** fica intocada e é dita em `semDerivacao`, e a
+unidade que a matriz **não conseguiu medir** (suíte citada e ausente, bloco
+`METADES` ilegível) fica intocada e é dita em `naoMedidas` — zero ali apagaria o
+número que o registro já tinha, e “não medido” não é “zero metades”. O que a
+coluna **não** carrega é a COBERTURA (quais ids cada forma protege): o registro
+guarda a contagem, a lista é do bloco da suíte, e quem a confere é a doc. Uma forma
+que **SOBRA**
+(um sub-test que saiu da matriz e continua no registro) existe até o próximo ato, e
+o resultado a lista em `sobrando` para o relatório poder dizê-lo, sem virar
+violação. A coluna cuja unidade a derivação **não conseguiu medir** (suíte citada
+e ausente, bloco ilegível) não é acusada de divergir: ali a leitura é que falhou, e
+a lista `metadesNaoMedidas` a DIZ — o guard já nomeia essa falta na metade das
+METADES, e acusar a coluna seria acusar a leitura. O total da família é conferido
+contra a **coluna do próprio registro** (as duas leituras da mesma medição) — não
+contra a soma da derivação, que incluiria a forma que **sobra** e que é tolerada
+até o próximo ato. O registro **fora da árvore** não é violação — mas o veredito DIZ que a
+ligação não foi julgada (`present: false`, com o caminho nomeado), porque o
+silêncio de uma metade que não rodou é indistinguível de um verde. Um registro
+**presente e corrompido** é **exit 2** (INFRA), nunca “nada a julgar”: a ausência é
+declarada, a corrupção não — a mesma distinção do `readOrDie`. No recorte
+`--staged` o caminho entra na materialização do índice: se o COMMIT carrega o
+registro, é o conteúdo DELE que é julgado (e, ausente do índice, vale a ausência
+declarada da árvore).
+
+**Como é provado:** `bench-guard-timing-mutations.test.ts` (a derivação do ato, em
+fixture: a unidade que entrou depois da medição é corrigida com o TOTAL e a frase; o
+CUSTO não é tocado; a forma que a matriz não conhece e a que ela não conseguiu
+medir ficam intocadas e são DITAS; sem derivação a família sai pela MESMA
+referência e COM derivação sai OUTRA, com a marca `metadesDaMatriz` (nada mudou ≠
+não rodou); e, contra o registro real, o único vermelho é a coluna — a derivação do
+ato é o que faz o veredito do guard **passar**, sem reescrever número à mão),
+`check-mutation-count.test.ts` (a régua pura — o ausente dito,
+o `measured: false`, o count gravado divergente, a família que não existe, o que
+sobra sem virar violação, e a COLUNA: o delta nomeado, o CONTROLE derivado, a forma
+sem número de metades, o total que não fecha e a ausência da derivação (que passa e
+é DITA como não julgada) —, o ato no ÍNDICE contra a árvore coerente, o registro
+ilegível como INFRA e o veredito VERDE publicando o ato) e
+`test-mutation-mutation-count.sh` (metades **N**, **O**, **Q** e **R**): o CONTROLE com a matriz
+inteira versionada passa E o verde diz o que o ato versionou; a **defasagem**
+(matriz 14 × registro com 13 formas) FALHA nomeando `sub-14` e o comando do ato; a
+**ligação DESLIGADA** (o `run()` deixando de entregar a matriz ao registro) faz a
+mesma defasagem **passar** — a ligação é load-bearing, não o fixture; o
+**fail-closed** do registro corrompido (exit 2) mutado para devolver a ausência
+torna a defasagem **verde**; a **COLUNA herdada** (a `sub-1` grava 1 metade onde a
+suíte declara 2, com as 13 formas versionadas e o count certo) FALHA nomeando a
+forma e o delta, e sem a derivação passada à régua ela **passa**; e o **TOTAL** que
+não soma a própria coluna FALHA com os dois números — fora da régua, o mesmo
+fixture passa. As quatro mutam o guard no lugar (backup + restauração
+conferida por checksum) e exigem a suíte **vermelha**.
+
 Roda na **fase A do pre-commit** (`node scripts/check-mutation-count.mjs
 --staged`, recorte declarado em `HOOK_DECLARED` do `check-hook-ci-parity`), custo
 medido de **~0,2s** (um `git show` por arquivo do veredito, em paralelo com os
-outros cinco guards da fase); o comando **inteiro** continua sendo o do CI, nos
+outros guards da fase); o comando **inteiro** continua sendo o do CI, nos
 dois jobs de mutation.
 
 #### O OUTRO LADO da mesma lei: a reaplicação da proteção é DECLARADA
@@ -1041,7 +1207,7 @@ rodam o **vitest REAL** e por isso vivem em jobs próprios do
   si mas estão os dois velhos passam por "em sincronia" e o fast path de 0s do
   tier-1 desliga sem sintoma;
 - `scripts/test-mutation-doctor-facts.sh` (job `mutation-doctor-facts`) —
-  corta os **três fios do veredito**, um por vez, com uma mutação cada:
+  corta os **quatro fios do veredito**, um por vez, com uma mutação cada:
   **(A) violação→bloqueio** — troca o coletor `const blockers = []` DENTRO de
   `summarize` por um objeto com `push` no-op, o que neutraliza TODO
   `blockers.push(...)` de uma vez (é o mesmo fio: as seções só diferem no que
@@ -1063,16 +1229,29 @@ rodam o **vitest REAL** e por isso vivem em jobs próprios do
   `summarize` passa a devolver `unproven: []`: o veredito fica **intacto** de
   propósito (PRONTA segue PRONTA, BLOQUEADA segue BLOQUEADA) e só some a
   declaração do limite (a permissão do token, o smoke, o env de outro host, o
-  socket do job, o recorte do `--ci` e cada seção pulada por flag).
+  socket do job, o recorte do `--ci` e cada seção pulada por flag). **(D) o CANAL
+  de repo** — a lista de variáveis do contexto compartilhado vira vazia em
+  `channelEnv`, e o ambiente que cada leitura recebe volta a carregar
+  `GITHUB_REPOSITORY`/`GITHUB_API_URL`: a branch protection, o board, os labels
+  do runner e a consulta ao registry passam a poder resolver o repositório pela
+  **forja emulada** (num runner da Gitea, o repositório da Gitea). É a mutação
+  mais silenciosa da família: nada bloqueia, nada fica INDETERMINADO e o
+  veredito sai **idêntico** — só a ORIGEM da consulta muda, e ela só divergiria
+  no dia em que os dois slugs deixassem de coincidir.
 
   Para CADA fio a suíte tem de ficar **VERMELHA** com o âncora de CADA FATO
-  falhando — os mesmos fatos, vistos dos dois lados: **13** violações
+  falhando — os mesmos fatos, vistos dos dois lados: **15** violações
   (contrato de merge, guards, imagem ausente, prova do bloqueio, o gate do
   bring-up no contrato de merge, espelhos, referências não versionadas,
   contrato da imagem publicada, registro do act_runner, registro do runner do
-  GitHub, interpolação do compose, branch protection registrada e o
-  pré-requisito 0 do bring-up), **13** não-provados
-  (o caminho honesto de cada uma dessas seções) e **10** limites declarados —,
+  GitHub, a VERSÃO do runner fora do pin do setup, interpolação do compose,
+  branch protection registrada, o
+  pré-requisito 0 do bring-up e os dois elos locais no recorte do merge),
+  **14** não-provados
+  (o caminho honesto de cada uma dessas seções, incluindo a versão do runner
+  que a leitura não julgou), **10** limites declarados e **6** consultas do
+  canal (a régua sozinha, a origem de cada consulta no fluxo completo, as duas
+  proteções, os labels do runner do GitHub e o board) —,
   e as âncoras **CIRÚRGICAS** seguindo verdes: o caminho **SAUDÁVEL**
   (`forja completa e registry 200 → PRONTA`) e o da **VIOLAÇÃO**
   (`check:required-checks` vermelho BLOQUEIA pelo contrato). Sem as intactas, o
@@ -1690,7 +1869,7 @@ diz "alguma mutação falhou"; como job próprio ela diz **qual** regra de class
 quebrou, e vira check **com nome** no contrato de merge. Custo medido: ≈**0.33s**
 (node-puro, sem docker, sem `node_modules`).
 
-**NAS DUAS FORJAS (a isenção que caiu).** Ela — e a matriz de 37 sub-tests — eram
+**NAS DUAS FORJAS (a isenção que caiu).** Ela — e a matriz de 39 sub-tests — eram
 `GITHUB_ONLY` com a razão _"os jobs de mutation test existem apenas no pipeline do
 GitHub (custo/duração)"_, que é a razão de **conveniência** que a classe
 `GITHUB_ONLY` proíbe por escrito. O furo era concreto: quem mergeia na forja podia
@@ -1715,7 +1894,7 @@ não um ato de fé.
 não por serem específicos da plataforma): auditoria de dependências, baseline de
 segredos, hooks de seed, sentinel producer, fonte única do Bun, proibição do
 `oven-sh/setup-bun`, simetria de hooks e — a maior delas — a **prova por mutação**:
-a matriz de 37 sub-tests e a prova das três regras de classificação, que rodavam
+a matriz de 39 sub-tests e a prova das três regras de classificação, que rodavam
 só no espelho e deixavam o PR da forja mergear com um guard cego. O custo entrou
 no modelo (`ci/merge-latency.json`, job `guards`), e o **runtime** da imagem
 foi re-medido antes de a mudança valer: o MESMO comando dentro do container da
@@ -2127,11 +2306,12 @@ chega ao fixer NO MOMENTO em que a cicatriz aparece: sem ele, o hook reprovava o
 commit e a correção era reescrever à mão exatamente a linha que a máquina remenda
 — com a chance de introduzir um erro NOVO na mesma linha.
 
-Ele cobre as **sete classes mecânicas** que o repositório já sabe consertar por
+Ele cobre as **oito classes mecânicas** que o repositório já sabe consertar por
 máquina, e nenhuma régua é reimplementada: a detecção e o remendo são SEMPRE o
 guard DONO — rodado como o hook o roda, ou IMPORTADO quando o dono é um módulo
-(`fixAll` da sintaxe, `fixAll` do SIGPIPE, `planoDeRemendo`/`aplicarRemendo` dos
-comandos do hook, `fixRemovedMirrors` da declaração de espelho): um remendo que
+(`fixAll` da sintaxe, `fixAll` do SIGPIPE, `fixAll` das citações de commit,
+`planoDeRemendo`/`aplicarRemendo` dos comandos do hook, `fixRemovedMirrors` da
+declaração de espelho): um remendo que
 re-derivasse o alvo de um defeito divergiria da diagnose que o gate acusa.
 
 **O que faz uma classe ser OFERECÍVEL é o guard dono RODAR no hook.** O `--fix`
@@ -2141,7 +2321,7 @@ só no CI, onde ninguém tem terminal para confirmar. Foi por isso que a sexta c
 (`pipefail-sigpipe`, o `PRODUTOR | grep -q` sob pipefail) entrou junto com o guard
 dela na **fase B** do `.husky/pre-commit` (o MESMO comando do CI, medido em ~0,14s);
 e a sétima (`bun-mirror-removal`) é o outro lado da mesma regra: o guard dono JÁ
-rodava na **fase A** (o `check-bun-mirror.mjs --staged`, um dos cinco dela) e o que
+rodava na **fase A** (o `check-bun-mirror.mjs --staged`, um dos seis dela) e o que
 lhe faltava era o `--fix`, declarado no mesmo commit em que a classe nasceu — a
 detecção e o remendo, portanto, no MESMO lugar onde o índice é recusado (medido:
 com o arg `BUN_VERSION` apagado de um build site, a fase A recusa, o remendo volta
@@ -2194,8 +2374,8 @@ A prova é `src/lib/__tests__/remedy-classes-discovery.test.ts`: ele escreve uma
 declaração nova — com o guard dono dela — no FIXTURE e mede a CLI do remédio
 EXECUTANDO a classe nova, sem que ninguém edite o remédio; e mede cada caso de
 declaração inválida, e a recusa (exit 2) que impede o veredito. Como o par
-"declaração + guard dono" ANDA JUNTO, o fecho dos fixtures traz as seis
-declarações e os guards donos: um fixture com as declarações e sem os donos é uma
+"declaração + guard dono" ANDA JUNTO, o fecho dos fixtures traz as declarações
+e os guards donos: um fixture com as declarações e sem os donos é uma
 árvore inconsistente, e o não-zero viria da oferta, não do defeito.
 
 | classe               | o defeito                                                                                  | o fixer (guard dono)                                | estágio do remendo                          |
@@ -2207,15 +2387,33 @@ declarações e os guards donos: um fixture com as declarações e sem os donos 
 | `hook-commands`      | caminho TIPADO num comando de hook (vizinho inequívoco)                                    | `check-hook-commands.mjs --fix`                     | `git add` — e **RELANÇAMENTO** (ver abaixo) |
 | `pipefail-sigpipe`   | `PRODUTOR                                                                                  | grep -q`sob`set -o pipefail` (SIGPIPE intermitente) | `check-pipefail-sigpipe.mjs --fix`          | `git add` |
 | `bun-mirror-removal` | arg `BUN_VERSION` de um build site do compose / `"packageManager"` **APAGADO** pelo commit | `check-bun-mirror.mjs --fix`                        | `git add`                                   |
+| `doc-hashes`         | citação de commit ÓRFÃ na prosa (a dobra trocou o NOME do commit)                          | `check-doc-hashes.mjs --fix`                        | `git add`                                   |
 
-Seis vivem na **fase B** do hook (as de encoding pelo `run-encoding-guards.sh`; as
-duas últimas por serem guardas globais daquela fase); a sétima vive na **fase A**,
+Sete vivem na **fase B** do hook (as de encoding pelo `run-encoding-guards.sh`; as
+demais por serem guardas globais daquela fase); a oitava vive na **fase A**,
 onde o guard dono recusa o índice — e é por isso que a extensão da oferta vale:
 quem abre um commit com CRLF, com o byte corrompido, com um caminho tipado num hook,
-com a cicatriz de SIGPIPE ou com a declaração de espelho apagada não tinha caminho
+com a cicatriz de SIGPIPE, com a declaração de espelho apagada ou com a prosa
+citando um nome que a dobra matou não tinha caminho
 nenhum além do `--fix` à mão. As três classes de encoding se SOBREPÕEM por construção (o CR do
 working tree suja também o blob), e o remédio leva o arquivo ao índice **uma vez**,
 sem acusar de retido o que uma classe anterior já estagiou.
+
+**A oitava classe (`doc-hashes`) tem uma regra que as outras não têm: a régua dela
+é o GRAFO do repositório.** O remendo é a troca do IDENTIFICADOR — o token hex
+antigo vira o commit de MESMO assunto que está na história (o nome que a dobra
+deixou), e nada mais da linha é tocado: um remendo que reescrevesse a prosa em
+volta do hash estaria inventando texto. O que NÃO tem remendo sai nomeado, nunca
+sumindo: a citação órfã sem commit de mesmo assunto na história (o remédio não
+adivinha o nome) e o hash que não existe como commit nenhum. E por ser a HISTÓRIA
+a régua, uma árvore sem commit em `HEAD` faz a classe se declarar **INAPLICÁVEL**
+— não UNMEASURED: ali o guard dono já dá o veredito dele (fail-closed, exit 2) e
+“não consegui medir” não pode ser o nome de “não há o que medir” (medido: sem esta
+declaração, uma rodada do remédio numa árvore assim saía `infra`, exit 2, com o
+guard respondendo). No repositório real a classe é OFFERECIDA como as outras,
+porque o guard dono roda na **fase B** do hook desde que nasceu (o par declaração
+
+- guard rodando é o que torna o remendo oferecível — seção 30).
 
 **A classe `bun-mirror-removal` mede dois limites, e os dois são da mesma
 natureza** (um remendo que adivinha é o defeito, não o remédio): a **chave-pai** — o
@@ -2396,8 +2594,9 @@ O canal é **UM módulo com um REGISTRO de fixers** (`FIXERS`, em
 de job, o seu comando de `--fix` e a SUA medição (`--fixer <id>`, default
 declarado). Um script por remédio divergiria na primeira correção que um
 recebesse — e a reconciliação, a decisão e o tratamento de canal são justamente
-onde isso dói. O segundo fixer é o **`pipefail-sigpipe`** (seção 20): o mesmo
-mecanismo, o mesmo `--dry-run`, o mesmo ciclo.
+onde isso dói. Depois do fixer do `bash -n` vieram o **`pipefail-sigpipe`**
+(seção 20) e o **`doc-hashes`** (seção 30): o mesmo mecanismo, o mesmo `--dry-run`,
+o mesmo ciclo.
 
 **O REGISTRO É DESCOBERTO, não escrito à mão** (`scripts/pr-fixers.mjs`).
 Enquanto o `FIXERS` morava dentro do publicador, um gate que já sabia consertar
@@ -3119,71 +3318,112 @@ uma a uma) **escritas à mão na prosa** do modelo. Agora o próprio master mede
 esquema v6, em `docs/benchmarks/guard-timing-baseline.json`). Uma rodada só, com
 TODOS os sub-tests — medir um a um custaria uma subida de harness POR sub-test, e o
 harness é exatamente o que a conta à mão esquece. A tabela é o ato VIVO **E** o
-VERSIONADO — o mesmo comando, com a árvore COMMITADA: medido em 21/09/2026 nesta
-máquina (**37/37 verdes**), o commit de origem gravado é `6125c9da` e a baseline
-guarda 37 sub-tests com 216 metades e 395.0s — e é este total que o modelo de
-latência deriva. **A coluna de metades é a do ATO** (216, medido em `6125c9da`) e
-não a da árvore de agora (o `check:mutation-count` publica **223**: as duas
-metades do teto derivado — M7 e M8 — entraram depois daquele ato, e as CINCO da
-pilha commit a commit — M1–M5, a 38.ª entrada da matriz — também; o custo do
-sub-test `bench-freshness` com as suas foi medido por execução em 22/09/2026
-(`time bash scripts/test-mutation-bench-freshness.sh`, três corridas: 22.8 · 22.8
-· 22.7s): **22.8s** contra os 17.3s do ato, e a suíte nova mede **3.3s** (o
-fixture dela é node-puro, sem `node_modules`) — nenhuma das duas entrou no ato:
-o ato seguinte as versiona junto):
+VERSIONADO — o mesmo comando, com a árvore COMMITADA: o ato de **23/09/2026**
+re-ancorou a família nesta máquina (**39/39 verdes**), com o commit de origem na
+`0eed6e7f` e **238 metades** — e é este total que o modelo de latência
+deriva. **A coluna de metades é DERIVADA da MATRIZ** (§ anterior): o ato reescreve
+a coluna (e o total) a partir de `scripts/metades.mjs` depois da herança e DIZ o
+que fez no próprio registro (`metadesDaMatriz: {total, atualizadas, ...}` — nesta
+rodada `atualizadas: 0`, porque a coluna MEDIDA já era a da matriz), e o
+`check:mutation-count` julga forma a forma: a unidade que entra na suíte depois da
+medição deixa de ficar escondida atrás do número antigo. É esse mesmo mecanismo
+que fechou a defasagem que esta prosa declarava à mão até aqui (o ato de
+`8e76c9a6` guardava 231 metades contra as 236 da árvore): a coluna deixou de
+precisar de nota. O ato de 37,
+por comparação, deixava SETE metades fora dele — as CINCO da pilha commit a commit (M1–M5, a 38.ª entrada da matriz,
+cujo custo havia sido medido por execução em 22/09/2026: **3.3s**) e as DUAS do
+teto derivado da régua da idade (M7 e M8, com a suíte a **22.8s** contra os 17.3s
+daquele ato) —, e
+todas as sete entraram MEDIDAS no ato de 39. O LIMITE do ato é declarado: o
+`doc-hashes` estava no ÍNDICE (não em `8e76c9a6`), então o commit de origem NOMEIA
+a árvore de onde o master foi lido e essa foi a única das 39 que não existia
+naquele commit — e é por isso que o ato passou a gravar, além da procedência, o
+ESTADO DA ÁRVORE e as formas medidas que a origem não contém (`forms:fora`, o
+mesmo fato que a régua da idade lê no doctor):
 
-| sub-test                                                                           |  wall time | fatia | metades |
-| ---------------------------------------------------------------------------------- | ---------: | ----: | ------: |
-| `workflow-run-syntax`                                                              |      69.7s |   18% |      15 |
-| `hook-commands`                                                                    |      60.3s |   15% |      27 |
-| `job-deps`                                                                         |      42.7s |   11% |       8 |
-| `pre-commit-proof` (a 36.ª — a declaração dos recusadores, a descida e o CONTROLE) |      38.5s |   10% |       3 |
-| `remedy-tty`                                                                       |      29.8s |    8% |       2 |
-| `registry-defaults`                                                                |      21.2s |    5% |       7 |
-| `required-applied`                                                                 |      18.0s |    5% |      10 |
-| `bench-freshness` (a 37.ª — a régua da idade, as OITO metades)                     |      17.3s |    4% |       8 |
-| `cut-stages` (a 34.ª — as três invariantes duras do corte do GitHub)               |      17.3s |    4% |       3 |
-| `github-deps` (a 32.ª — a catraca do inventário do GitHub)                         |      12.8s |    3% |       9 |
-| `mirror-coverage` (a 35.ª — o CONTROLE, a soma por tabela e o pulo sem motivo)     |      11.0s |    3% |       3 |
-| … (os 37, do mais caro ao mais barato, sempre na tabela do relatório)              |            |       |         |
-| **soma dos 37 sub-tests**                                                          | **390.8s** |  100% | **216** |
-| harness (parse das metades, tabelas, subida do master)                             |       4.2s |       |         |
-| **total do master**                                                                | **395.0s** |       |         |
+<!-- bench:mutations:tabela — DERIVADA do registro (`mutations` da baseline); não edite à mão: o ato a reescreve -->
 
-**Nove** sub-tests pagam **80%** da conta e a mediana é **2.1s**: a cauda é barata, e
-o harness é a parte que a conta à mão esquecia (ele sai da DIFERENÇA, não de uma
-constante). O sub-test novo entra na rodada seguinte **MEDIDO** — a 37.ª entrou
-medida (17.3s) **sem ninguém recompor a soma**, que é o contrato desta família. A
-coluna de metades da tabela é a do PRÓPRIO ato (**216**): desde que o bench passou a
-medir a matriz inteira no mesmo ato do commit de origem, o count do ato e o count
-vivo deixaram de poder divergir — o `check:mutation-count` continua comparando as
-refs vivas entre si.
+Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 23/09/2026 (`acf30b7f`): **40/40 verdes**, **246 metades**.
+
+| sub-test                                                                  |  wall time | fatia | metades |
+| ------------------------------------------------------------------------- | ---------: | ----: | ------: |
+| `pre-commit-proof` (a declaração dos recusadores, a descida e o CONTROLE) |     135.2s |   24% |       3 |
+| `workflow-run-syntax`                                                     |      72.8s |   13% |      15 |
+| `hook-commands`                                                           |      61.9s |   11% |      27 |
+| `job-deps`                                                                |      46.2s |    8% |       8 |
+| `bench-freshness` (a régua da idade e o CONTEÚDO da origem)               |      46.2s |    8% |      12 |
+| `remedy-tty`                                                              |      30.5s |    6% |       2 |
+| `registry-defaults`                                                       |      22.5s |    4% |       7 |
+| `cut-stages` (as três invariantes duras do corte do GitHub)               |      18.9s |    3% |       3 |
+| `required-applied`                                                        |      18.4s |    3% |      10 |
+| `github-deps` (a catraca do inventário do GitHub)                         |      13.3s |    2% |       9 |
+| `mirror-coverage` (o CONTROLE, a soma por tabela e o pulo sem motivo)     |      11.3s |    2% |       3 |
+| `lint-scope` (o escopo do lint derivado do próprio comando)               |      11.0s |    2% |       6 |
+| `canal-fixers`                                                            |       9.6s |    2% |       6 |
+| `mutation-count`                                                          |       9.3s |    2% |      18 |
+| `reconciliation`                                                          |       9.2s |    2% |       3 |
+| `gate-registration`                                                       |       8.1s |    1% |       5 |
+| `nested-guard`                                                            |       5.8s |    1% |       2 |
+| `merge-latency`                                                           |       4.6s |    1% |       5 |
+| `stack-per-commit` (a prova de cada commit da pilha passar sozinho)       |       3.7s |    1% |       5 |
+| `hook-ci-parity`                                                          |       3.5s |    1% |       9 |
+| `pipefail-sigpipe`                                                        |       2.2s |    0% |      22 |
+| `bun-literal`                                                             |       1.9s |    0% |       5 |
+| `doc-hashes` (a régua do hash citado na prosa)                            |       1.2s |    0% |       8 |
+| `workflow-defaults`                                                       |       1.0s |    0% |       7 |
+| `lint-guard`                                                              |       0.9s |    0% |       3 |
+| `archived-pipeline`                                                       |       0.8s |    0% |       6 |
+| `timing-budget`                                                           |       0.7s |    0% |       5 |
+| `readme-reverse`                                                          |       0.6s |    0% |       3 |
+| `workflow-refs`                                                           |       0.5s |    0% |       4 |
+| `mutation-jobs`                                                           |       0.4s |    0% |       4 |
+| `readme`                                                                  |       0.4s |    0% |       3 |
+| `no-setup-bun`                                                            |       0.2s |    0% |       2 |
+| `runner-base`                                                             |       0.2s |    0% |       4 |
+| `no-leaked-imports`                                                       |       0.1s |    0% |       3 |
+| `bun-removal`                                                             |       0.1s |    0% |       1 |
+| `utf8-scope`                                                              |       0.1s |    0% |       2 |
+| `producer-sent`                                                           |       0.1s |    0% |       1 |
+| `hooks-symmetry`                                                          |       0.1s |    0% |       2 |
+| `docs-anchor`                                                             |       0.1s |    0% |       1 |
+| `e2e-cache-budget`                                                        |       0.0s |    0% |       2 |
+| **soma dos 40 sub-tests**                                                 | **553.9s** |  100% | **246** |
+| harness (parse das metades, tabelas, subida do master)                    |       4.7s |       |         |
+| **total do master**                                                       | **558.6s** |       |         |
+
+**Dez** sub-tests pagam **84%** da conta e a mediana é **2.9s**: a cauda é barata, e o harness sai da DIFERENÇA entre o total e a soma dos sub-tests, não de uma constante. O sub-test NOVO entra na rodada seguinte **MEDIDO**, e o PRÓXIMO acrescenta **~14.0s** (PROJEÇÃO: a média dos scripts medidos mais o harness por sub-test). A coluna de metades é DERIVADA da matriz (§ acima) — o ato a reescreve depois da herança e diz o que fez (`metadesDaMatriz`). Esta TABELA (e esta leitura) é **DERIVADA do registro**: quem a reescreve é o ATO, e o `check:mutation-count` recusa o commit em que ela divirja dele — a prosa não tem número próprio.
+<!-- /bench:mutations:tabela -->
 
 **E a derivação desceu ao PASSO.** O mesmo mecanismo, um nível abaixo: o job
 `mutation-count-guard` do espelho passou a declarar os seus **PASSOS**, e o passo
 da suíte não tem número próprio — ele **LÊ** a forma `mutation-count` desta mesma
-tabela (3.812s, com o commit `6125c9da` ao lado), como o `benchIndex` já fazia com
+tabela (**9.083s** na rodada de 23/09/2026, com o commit `0eed6e7f` ao lado),
+como o `benchIndex` já fazia com
 o total do master. O defeito que a ligação elimina é o de dois números do MESMO
-passo: o declarado dizia 3870ms contra os 3897ms da forma, e nenhum dos dois era
-derivado do outro — 27ms de diferença de contexto que ninguém veria até alguém
-comparar dois arquivos.
+passo: até 22/09/2026 o declarado dizia 3870ms contra os 3897ms da forma, e nenhum
+dos dois era derivado do outro — 27ms de diferença de contexto que ninguém veria
+até alguém comparar dois arquivos (e o número de hoje só muda porque a MEDIÇÃO
+mudou: o mesmo campo é lido, não reescrito à mão).
 
 **O que isso muda no veredito.** O sub-test NOVO não precisa de conta nenhuma:
 ele entra na rodada seguinte **MEDIDO**, e a comparação o publica como forma nova
 (`➕`) com o ms dele ao lado da baseline — o número do job deixa de vir de uma soma
 que alguém montou à mão. O modelo de latência passou a **DERIVAR** o passo do
 master desta medição (`benchIndex` lê o total da família), o que já confronta o
-declarado do espelho: **0%** — o ato de 21/09/2026 (`--only mutations --json
---baseline --merge`, com a árvore commitada em `6125c9da`, a régua da idade como a
-37.ª) re-declarou o job em **394959ms**, que é a própria medição; antes dele o ato
-de 36 sub-tests (`2757e3a5`) declarava 380950ms e o primeiro ato desta série
-guardava a medição de OUTRO commit (**271.8s** com 33 sub-tests contra um derivado
-de 380.9s), onde a comparação NOMEAVA os **28% de divergência** em vez de
-escondê-los. O mesmo ato
-re-declarou o PISO do job `guards` da forja dona do merge (**428880ms**: a bateria
-re-medida de 30.9s + o gate de sintaxe + a matriz de 395.0s + a paridade das regras
-de classificação). A projeção do
-PRÓXIMO sub-test (~10.7s) é dita como **PROJEÇÃO**, não medição: ela é a média dos
+declarado do espelho: **0%** — o ato de 22/09/2026 (`--only mutations --json
+--baseline --merge`, com a árvore commitada em `8e76c9a6`, as duas entradas novas
+da matriz e as sete metades que faltavam medidas juntas) re-declarou o job em
+**412394ms**, que é a própria medição; antes dele o ato de 37 (`6125c9da`)
+declarava 394959ms, o de 36 sub-tests (`2757e3a5`) declarava 380950ms e o primeiro
+ato desta série guardava a medição de OUTRO commit (**271.8s** com 33 sub-tests
+contra um derivado de 380.9s), onde a comparação NOMEAVA os **28% de divergência**
+em vez de escondê-los. O mesmo ato
+re-declarou o PISO do job `guards` da forja dona do merge (**446315ms**: a bateria
+re-medida de 30.9s + o gate de sintaxe + a matriz de 412.4s + a paridade das regras
+de classificação), e o ato de **23/09/2026** o moveu para **562423ms** (a bateria de
+30.9s + o gate de sintaxe + a matriz de 528.5s + a paridade de 0.524s), com a matriz
+em **39/39 verdes** e **238 metades**. A projeção do
+PRÓXIMO sub-test (**13.6s**) é dita como **PROJEÇÃO**, não medição: ela é a média dos
 scripts já medidos mais o harness por sub-test, e os dois lados saem de medição.
 A família segue a **mesma régua de cobertura** das outras: sem ela nesta rodada (ou
 com o master sem produzir o JSON) a comparação fica `measured: false` e **nomeia**
@@ -3935,6 +4175,36 @@ lá —, com o CONTROLE que remove o comando e exige a violação: o fixture ant
 escrevia os jobs do GitHub com os comandos da Gitea, e era por isso que este fato
 podia acusar o repositório real sem que a suíte visse nada.
 
+**E o "NÃO CONFERIDO" de CLASSE sai UMA vez: uma causa, uma linha.** Quando a
+branch protection de uma forja não pôde ser lida (ou o recurso não existe),
+TODOS os gates que ela declara saem pelo MESMO motivo. MEDIDO no perfil completo
+em 22/09/2026 (com `GITHUB_REPOSITORY` resolvida e a Gitea sem token): **71
+linhas de "não provado", 64 delas repetindo duas causas** — a mesma frase 64
+vezes. Uma causa repetida N vezes não são N problemas: é UM, e o muro escondia o
+resto do veredito (que tem onze assuntos). O veredito passou a publicar **uma
+linha por (causa, forja)** — as 64 caíram para **2** (os **30** gates da forja
+sem o recurso e os **36** da forja não lida) —, com a CONTAGEM e as invariantes
+alcançadas, e o gate que tem DUAS causas aparece nas duas linhas — são duas
+lacunas, com remédios diferentes (dar o token × tornar o repositório
+público/Pro). O detalhe por gate continua no FATO (`gateContracts.results[]`,
+com a `detail` própria): o que mudou é o que o veredito PUBLICA, não o que ele
+MEDE — e é por isso que a agregação vive numa função do dono do veredito
+(`gateContractUnknowns`), alimentada por um campo DECLARADO (`causes[]`), nunca
+por casamento de prosa.
+
+O par de causas da PROTEÇÃO saiu do mesmo conserto: elas eram um `else if`, e
+com o espelho sem o recurso (403) e a Gitea sem token o veredito publicava só a
+primeira — a leitura que FALTAVA (a que fecha com `GITEA_TOKEN`) desaparecia das
+linhas dele. Agora cada causa tem a sua linha, nomeando as forjas de cada uma.
+
+**E a promessa do registro passou a ser medida pelo lado das LINHAS:** no estado
+medido do perfil completo, **nenhuma** das três listas (bloqueios, não-provados e
+"o veredito não cobre") sai sem data — e é isso que o teste `COBERTURA TOTAL`
+exige, com os fatos daquele dia (as duas causas de proteção, o env ausente, os
+espelhos sem valor, o contrato da imagem e os dois registros de runner sem
+leitura). Uma causa NOVA que passe a ser publicada sem declaração datada que a
+cubra falha o PR aqui, e não depois, num relatório que ninguém lê.
+
 **E o PRÉ-REQUISITO 0 (família `env-mirror`):** três casos rodam com o env do host
 DIVERGENTE e a imagem PRESENTE — a subida normal, o `--check-only` e o SEGREDO com
 o mesmo valor do placeholder do template (a assimetria da regra: num segredo,
@@ -4605,42 +4875,149 @@ faria o publicador PERDER a issue aberta (a assinatura é o contrato do ciclo
 abrir/fechar). O que a chave lista hoje são todas as declarações vencidas, e o
 `kind` de cada linha da tabela diz de que tipo ela é.
 
+**A SEGUNDA PERGUNTA: a idade diz de QUANDO é o número, não o que aquela origem
+CONTÉM.** A idade conta COMMITS, e distância em commits não é conteúdo — a
+fenda MEDIDA: em 22/09/2026 a baseline gravava `commit: 8e76c9a6` e uma das 39
+formas medidas, a `doc-hashes`, **não existia naquele commit** (a suíte estava no
+ÍNDICE quando o ato rodou). O número declarado descrevia uma matriz que o commit
+de origem não carrega, e nenhuma régua olhava isso: o frescor da origem é
+PASSADO, não conteúdo. O ATO passou a gravar **o estado da árvore**
+(`meta.treeState`: `git status --porcelain` como DADO — `clean`, e os caminhos
+separados em `staged` (o que o PRÓXIMO commit carrega) e `unstaged` (o que nem
+isso), porque um número medido sobre eles não descreve o commit que a origem
+grava — fail-closed: `git` que não respondeu sai `unavailable`, nunca "limpa") e,
+**por forma**, se ela existe no commit de origem (`meta.formOrigin`, com o
+`script` de cada forma entrando no registro em vez de a fonte ser adivinhada por
+convenção de nome: o id `readme` mede `test-mutation-readme-guards.sh`).
+
+**A régua de "de qual arquivo veio esta forma?" é UMA SÓ, e as duas pontas a
+usam.** Ela mora na FOLHA (`fonteDaForma`/`FORM_SECTION` em
+`scripts/bench-families.mjs`): o ATO a aplica à árvore que acabou de medir e a
+régua da idade (`scripts/bench-freshness.mjs`) a aplica ao COMMIT de origem —
+duas derivações divergiriam no dia em que uma fosse ajustada, e a divergência
+apareceria como "o ato diz que está no commit e a régua diz que não". A ORDEM da
+régua é deliberada: o `script` que a forma declara responde por si (é o dado mais
+próximo); sem ele, a família que tem um mapa (`mutations`) nomeia pelo `id` lido do
+master DAQUELE commit; e o id que **não está** naquele master é uma RESPOSTA, não
+uma ausência (`ausente-do-master` — a forma foi medida numa árvore que aquela
+origem não carrega). O que não é resposta é o master que **não pôde ser lido**
+(`sem-master`, contado em `semResposta`): a pergunta que não deu para fazer NÃO
+vale como "está no commit", e é o que impede um commit sem o mapa de fechar
+dívida. As famílias cujas formas medem COMANDOS (o hook, o lint, o tsc, a suíte
+unitária) não nomeiam arquivo próprio: elas contam em `notJudged` — o LIMITE
+DECLARADO da régua, dito na mesma linha onde as outras saem julgadas.
+
+**A classe abre item datado e entra como dúvida, com o remédio junto.** O item
+`bench-forma-fora-do-commit` (`ci/unproven.json`) fecha pelo predicado
+`forma-no-commit-de-origem` — e ele exige `state: measured`, `missing` ZERO **e**
+`semResposta` ZERO: "não perguntei" não fecha. O doctor publica a linha ao lado da
+idade (a idade vencida não pode MASCARAR uma forma que a origem não tem — foi
+assim que a `doc-hashes` viveu) e o remédio que ele nomeia é o do ato: **commite a
+árvore e rode o ato de novo** — a medição descreve a árvore da frente, e uma
+medição sobre o working tree grava um commit de origem que não tem o que ela mediu.
+A régua não é código novo para esta pergunta: ela REUSA `git show`/`git cat-file`
+sobre o commit de origem, e a linha sai também no relatório do próprio ATO
+("Estado da árvore no ato × o commit de origem"), para o operador ver a diferença
+onde ele a produziu.
+
+**LIMITES DECLARADOS, e são dois.** (1) O `meta.treeState` e o `formOrigin`
+entram no registro versionado no PRÓXIMO ato: a baseline de hoje (`8e76c9a6`) é
+anterior a estes campos, e o que abre o item é derivado das FORMAS (o
+`missing`/`semResposta` do fato), não do estado gravado — um registro sem o campo
+não é lido como "árvore limpa" por régua nenhuma. O estado da árvore é o que o
+próprio ATO publica ao medir, medido nesta árvore:
+`⚠️ a árvore NÃO estava limpa no ato: 3 caminho(s) no ÍNDICE (staged) e 80 só na
+árvore (unstaged)`. (2) A pergunta é sobre a EXISTÊNCIA do arquivo no commit, não
+sobre o CONTEÚDO: uma forma cujo arquivo existe na origem mas foi medido com uma
+versão modificada no índice sai como "no commit" — o `staged` do
+`meta.treeState` é quem denuncia isso, e é por isso que ele é gravado em vez de a
+régua confiar só no `cat-file`.
+
+**A TERCEIRA PERGUNTA: a matriz ANDOU? — e ela abre ITEM DATADO, não uma linha
+anônima.** As duas réguas acima são de CONTEÚDO: o `check:mutation-count` compara
+ids, contagem e metades (ele acusa quando um sub-test **ENTRA** na matriz) e o item
+das formas pergunta se o commit de origem **CARREGA** as suítes medidas. Nenhuma
+das duas olha o TEMPO: um sub-test cujo ALVO muda (`id|scripts/outro.sh`) ou um
+corpo de suíte que muda de CUSTO deixam o número declarado — e o PISO do job que
+dele se soma — descrevendo uma matriz que esta árvore não tem mais, **sem mexer em
+contagem nenhuma**; e a única idade que existia media contra `HEAD` (o teto de 150
+commits do repositório, meses de calendário). O relógio da matriz é o dela: o
+escopo é o master **e as suítes que ele cita** (na origem e agora — é nelas que o
+custo mora), o ritmo é contado nos commits DAQUELES caminhos e o teto sai da MESMA
+aritmética do teto de idade com a política DELA (piso de **1** commit por ciclo: a
+matriz muda quando um sub-test entra ou quando uma suíte muda de forma, nenhum dos
+dois é um evento por ciclo).
+
+**O que o doctor abre é o ITEM `bench-ato-na-matriz` — e a data dele é DERIVADA da
+história.** O item sai no relatório (seção 9/9), no veredito (como dúvida, com o
+remédio) e no corpo da issue do doctor; a frase é a MESMA nos três
+(`matrixItemLine`, do dono da régua), porque o relatório e o canal não podem contar
+o mesmo item com dois textos. A decisão de desenho é a DATA: ela é o primeiro
+commit que a matriz ganhou depois da origem do ato (`since.date`), **nunca o
+relógio da run** — um item que se re-datasse a cada execução nunca envelheceria, que
+é exatamente o defeito que o registro datado existe para não ter. E ele é
+**declarável como qualquer outra dívida datada**: com `kind: lacuna`, o
+`declaredAt` da data derivada e `closedBy: ato-na-matriz`, o predicado que já está
+implementado (`scripts/doctor-unproven.mjs`) fecha por **MEDIÇÃO** — o relatório
+que mede o relógio dentro do teto prova o item, em vez de uma janela de calendário
+correr sozinha. As duas saídas vão nomeadas no item: re-rodar o ato
+(`bun run bench:guard-timing:baseline`, com a árvore JÁ COMMITADA) ou declarar a
+lacuna no registro e deixar o fechamento por medição. FAIL-CLOSED em cada passo:
+sem a família `mutations` medida, sem commit de origem ou com o commit fora do
+checkout, o fato sai `unavailable` — nunca "está na matriz" —, e o canal suspende o
+fechamento; `aged: false` só fecha o item declarado com `state: measured`, porque
+uma medição que não aconteceu não prova que o registro descreve a matriz de agora.
+
 **Prova por mutação das regras do veredito**
-(`scripts/test-mutation-bench-freshness.sh` — a suíte declara **8 metades**). Esta
+(`scripts/test-mutation-bench-freshness.sh` — a suíte declara **12 metades**). Esta
 suíte existe porque o sujeito é
 o único em que o verde CEGO é indistinguível do verde honesto: uma régua de idade
 que ficasse cega não acusaria nada, e o repositório seguiria publicando o mesmo
 verde sobre um número que ninguém re-mediu. Cada REGRA que o veredito consome é
-desligada no lugar, e o vermelho é exigido — são **em OITO direções** (M1–M8):
+desligada no lugar, e o vermelho é exigido — são **em DOZE direções** (M1–M12):
 
-| metade | a regra que ela desliga                           | o vermelho que ela exige (medido)                                                                                                 |
-| :----- | :------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------- |
-| **M1** | a DERIVAÇÃO da origem pela data (`commitOfDate`)  | datando tudo por HEAD, toda declaração fica a ZERO commits atrás — a régua declara frescor sem ter medido nada                    |
-| **M2** | a ÂNCORA de mês (`anchorBefore`)                  | com `mm/aaaa` resolvendo no PRIMEIRO dia, a origem cai um mês atrás do que o dono declarou e a idade sai MAIOR do que é           |
-| **M3** | o TETO POR TIPO (`FRESHNESS_CEILINGS`)            | com o teto das famílias na prosa do README, a mesma âncora de 412 commits passa a vencer e o canal abre dívida para sempre        |
-| **M4** | a FRONTEIRA do teto (`isAged`)                    | com `>=`, a declaração exatamente NO teto vira dívida (no teto é fresca; no teto + 1, vencida)                                    |
-| **M5** | o fail-closed da FONTE (`readFreshness`)          | sem a unidade `fonte-ilegivel`, "não consegui ler" vira "nada a julgar" e o estado sai MEDIDO sobre um arquivo que ninguém leu    |
-| **M6** | o fail-closed da DECLARAÇÃO (`modelDeclarations`) | sem a unidade, o `ms` sem a própria `date` some do veredito em silêncio                                                           |
-| **M7** | o TETO DERIVADO do ritmo (`tetoDoRitmo`)          | com o literal, o teto deixa de seguir o repositório: com 314 commits na janela o CLI saiu **150** onde o produto medido é **157** |
-| **M8** | a PROCEDÊNCIA do teto (`teto.origem`)             | com a reserva se dizendo "medido", o teto de fail-closed (o git não respondeu o ritmo) sai com a cara de uma medição de agora     |
+| metade  | a regra que ela desliga                                 | o vermelho que ela exige (medido)                                                                                                                           |
+| :------ | :------------------------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **M1**  | a DERIVAÇÃO da origem pela data (`commitOfDate`)        | datando tudo por HEAD, toda declaração fica a ZERO commits atrás — a régua declara frescor sem ter medido nada                                              |
+| **M2**  | a ÂNCORA de mês (`anchorBefore`)                        | com `mm/aaaa` resolvendo no PRIMEIRO dia, a origem cai um mês atrás do que o dono declarou e a idade sai MAIOR do que é                                     |
+| **M3**  | o TETO POR TIPO (`FRESHNESS_CEILINGS`)                  | com o teto das famílias na prosa do README, a mesma âncora de 412 commits passa a vencer e o canal abre dívida para sempre                                  |
+| **M4**  | a FRONTEIRA do teto (`isAged`)                          | com `>=`, a declaração exatamente NO teto vira dívida (no teto é fresca; no teto + 1, vencida)                                                              |
+| **M5**  | o fail-closed da FONTE (`readFreshness`)                | sem a unidade `fonte-ilegivel`, "não consegui ler" vira "nada a julgar" e o estado sai MEDIDO sobre um arquivo que ninguém leu                              |
+| **M6**  | o fail-closed da DECLARAÇÃO (`modelDeclarations`)       | sem a unidade, o `ms` sem a própria `date` some do veredito em silêncio                                                                                     |
+| **M7**  | o TETO DERIVADO do ritmo (`tetoDoRitmo`)                | com o literal, o teto deixa de seguir o repositório: com 314 commits na janela o CLI saiu **150** onde o produto medido é **157**                           |
+| **M8**  | a PROCEDÊNCIA do teto (`teto.origem`)                   | com a reserva se dizendo "medido", o teto de fail-closed (o git não respondeu o ritmo) sai com a cara de uma medição de agora                               |
+| **M9**  | a FONTE da forma no commit de origem                    | assumindo "a origem é o HEAD", a `doc-hashes` (medida com a suíte no ÍNDICE) volta a passar: a classe sai **0 forma(s) fora** contra as 1 do controle       |
+| **M10** | o fail-closed da PERGUNTA (sem o master daquele commit) | sem o mapa id→script daquela origem, uma pergunta que NÃO pôde ser feita passa a valer como "está no commit"                                                |
+| **M11** | o ESCOPO da matriz (`paths`)                            | com o master sozinho, as 39 suítes que ele cita saem do relógio (o escopo caiu de 40 para **1** caminho) e a suíte que mudou de custo passa sem ninguém ver |
+| **M12** | a DATA do item datado (`matrixItem.declaredAt`)         | com o relógio da RUN no lugar do primeiro commit que a matriz ganhou depois do ato, o item se re-data a cada execução e a dívida nunca envelhece            |
 
 **Duas testemunhas, e o teste exige a que a mutação atinge.** A régua por
 EXECUÇÃO — o CLI (`node scripts/bench-freshness.mjs --json`) sobre o repositório
 REAL, que é o fato que o doctor e o publicador consomem: para o fail-closed da
 FONTE ele recebe `--file` apontando para um arquivo que não existe, e o caminho
 "não consegui ler" é medido de ponta a ponta. E a suíte unitária
-(`src/lib/__tests__/bench-freshness.test.ts`), a única testemunha das QUATRO
-metades que o repositório de hoje NÃO consegue mostrar sozinho — nenhuma
+(`src/lib/__tests__/bench-freshness.test.ts` e
+`src/lib/__tests__/bench-form-origin.test.ts`), a única testemunha das metades que
+o repositório de hoje NÃO consegue mostrar sozinho (são CINCO das doze — M4,
+M6, M8, M10 e a M12: nenhum item está aberto enquanto o relógio da matriz está
+dentro do teto, e é o fixture da matriz vencida que mede a data do item; as outras
+sete são vistas também pela régua por execução) — nenhuma
 declaração está exatamente num teto fixo, todos os números do modelo já carregam
 a data deles (que é, em si, a prova de que a regra é seguida), o ritmo de hoje dá
 **um** número (o produto e a coincidência ficariam indistinguíveis sem os dois
-lados — ritmo alto × piso) e o caminho da RESERVA só aparece quando o git não
-responde. Cada mutação é CIRÚRGICA (o alvo tem de
+lados — ritmo alto × piso), o caminho da RESERVA só aparece quando o git não
+responde e o master da origem de uma forma **ilegível** só existe num fixture —
+nos dois lados da pergunta nova (o M10) o repositório de hoje mostra o caminho
+FELIZ (o master daquela origem é legível: `semResposta` zero). Cada mutação é CIRÚRGICA (o alvo tem de
 aparecer UMA vez, e o arquivo mutado tem de seguir com sintaxe válida) e a régua é
 RESTAURADA entre as medições, com o CONTROLE final medindo o mesmo fato (412
-commits) de novo. A suíte é a **37.ª** da matriz do master e custa **17.3s**
-sozinha (6 metades) no ato versionado — a MESMA ordem de grandeza que os **17.7s**
-medidos pelo `--scenario` isolado antes de ela entrar na matriz.
+commits, e a mesma forma fora da origem) de novo. A suíte é a **37.ª** da matriz do master:
+custava **23.7s** sozinha (as oito metades) no ato versionado — a MESMA ordem de grandeza que os **17.7s**
+medidos pelo `--scenario` isolado antes de ela entrar na matriz — e com as DEZ metades
+custa **36.9s** medidos nesta árvore (uma execução, `real 0m36,905s`); esse número
+entra na coluna de custo no PRÓXIMO ato, e até lá ele é dito com a procedência
+DELE — medição à parte, não a do registro versionado (que ainda carrega os 23.7s
+das oito).
 
 **LIMITE DECLARADO:** a régua mede **frescor**, não exatidão. Um commit a mais
 pode não mudar nada do que a família mede, e o teto é um contrato de RITMO, não
@@ -4650,6 +5027,149 @@ silêncio em que os 28% viveram. O teto é o das famílias e dos números declar
 as tabelas do README não o têm de propósito, e é por isso que a idade delas sai
 publicada sem acender dívida. Quem acusa a divergência de tempo é o `--compare`;
 quem acusa a **idade** da declaração é este fato.
+
+**O REGISTRO DATADO DO QUE O VEREDITO NÃO COBRE (`ci/unproven.json` + a régua
+`scripts/doctor-unproven.mjs`).** O doctor termina com duas listas honestas e
+**anônimas no tempo**: `unproven` (o que ele não promete) e `unknowns` (o que não
+conseguiu medir). Sem data, uma lacuna nunca é reafirmada, nunca vence e nunca
+fecha — o ciclo de reconciliação das outras dívidas (issue aberta, fechada por
+MEDIÇÃO) não a alcança, e o cron repete a mesma lista para sempre. O registro
+transforma cada uma delas em uma **declaração datada**, e o estado de cada
+item sai dos PRÓPRIOS fatos do relatório (o `closedBy`, um predicado nomeado —
+`gitea-forja-lida`, `github-protection-suportada`, `host-env-presente`,
+`act-runner-lido`, `github-runner-registrado`, `github-runner-na-versao-do-pin`,
+`imagem-publicada-prova`, `espelhos-com-valor`, `referencias-versionadas`): o
+doctor não consulta a forja uma segunda vez para julgar o registro.
+
+**Duas CLASSES, e a diferença é o que se pode esperar de cada uma.** `lacuna`
+(o estado que a prova exige não está ao alcance deste checkout: falta
+credencial, o env do host, a stack de pé — **envelhece**, e o remédio é
+reafirmar a data ou fechar a lacuna) e `limite` (por DESENHO o veredito não
+cobre aquilo a partir de um checkout: o histórico da forja, o smoke em runtime,
+o docker do job, o `--no-verify` do gate local — datado e **sem janela**, porque
+uma fronteira da medição não é uma dívida).
+
+**Cinco estados, com a disciplina de sempre:** `proven` (o fato que o item
+declarava fora de alcance FOI medido: a entrada virou **letra morta** e o
+remédio é removê-la), `open` (dentro da janela: o que ele acrescenta ao veredito
+é a DATA), `aged` (**INDETERMINADA**, com a data, a janela e o que fecha),
+`invalid` (**BLOQUEIA**: data ausente/impossível/no futuro, `kind` ou `closedBy`
+desconhecido — fail-closed: uma declaração que o dado não julga nunca vence nem
+fecha) e `unread` (**BLOQUEIA**: o registro não pôde ser lido — ausência de prova,
+JAMAIS "nada fora de alcance"). A janela (`reviewAfterDays`) e a régua da data
+são as compartilhadas de `allowlist-review.mjs`: uma segunda cópia divergiria no
+dia em que alguém ajustasse uma delas.
+
+**A data chega à linha onde o operador lê, e por TRECHO.** Cada item declara o
+`matches`: o trecho estável da linha que o veredito publica sobre ele — uma
+string, ou uma **lista de alternativas** quando o mesmo assunto muda de linha
+conforme o estado medido (`github-self-hosted-runner`: `unknown` quando não deu
+para ler, **BLOQUEIO** quando deu). A data é aplicada na hora de IMPRIMIR (nas
+TRÊS listas: bloqueios, não-provados e dúvidas) e **não** no dado do veredito —
+a assinatura da issue é derivada dele, e uma assinatura que mudasse com o
+calendário comentaria toda semana na MESMA issue. O teste da suíte exige que cada
+declaração VIVA case com **exatamente uma** linha do relatório de verdade: prosa
+reescrita sem a data falha o PR em vez de envelhecer calada.
+
+**E a data viaja também para o CORPO DA ISSUE — pela MESMA régua.** O canal da
+reconciliação é a issue do veredito, e uma linha de "não provado" publicada ali
+sem data deixaria o operador exatamente onde ele estava: sem saber se a lacuna
+nasceu ontem ou se venceu a janela e ninguém a reafirmou. O publicador
+(`forge-doctor-issue.mjs`) aplica o `datarLinhas` com o fato que viaja **no
+próprio relatório** (`facts.unprovenDebt`) — nunca com uma segunda leitura de
+`ci/unproven.json`, que poderia divergir da que o veredito acabou de medir. A
+assinatura do dedup continua saindo do veredito CRU (`verdictSignatureOf`), e é
+por isso que datar a prosa não comenta de novo na mesma issue a cada dia que
+passa.
+
+**O ciclo de reconciliação é o mesmo das outras dívidas, e já existia:** uma
+declaração vencida vira linha de dúvida, a linha viaja no corpo da issue do
+veredito (`forge-doctor-issue.mjs`, cron da forja), e a issue se **FECHA** quando
+o veredito volta a PRONTA — o comentário de resolução passa a nomear o estado do
+registro (`facts.unprovenDebt.state`) como prova de que nenhuma lacuna venceu ou
+ficou morta no caminho. Ele entra ATÉ no perfil `--ci` (é leitura de checkout,
+um JSON), e é ali que ele mais serve: no PR a lista de não-provados é a única
+coisa que o veredito publica, e sem o registro ela sai sem data.
+
+**E o que a primeira medição de verdade ENCONTROU (22/09/2026, perfil completo,
+com `GH_TOKEN` + `GH_REPOSITORY`): as duas forjas, hoje, NÃO têm portão de
+merge confirmado.** _(A medição é anterior à régua de canal: hoje o doctor não lê
+mais o `GITHUB_REPOSITORY` do ambiente, e o comando que a repete passa
+`GH_REPOSITORY`.)_ A Gitea (a dona do merge) porque a leitura da branch
+protection exige `GITEA_TOKEN`; e o GitHub porque o repositório é **PRIVADO num
+plano sem branch protection** — medido: `gh api
+repos/severinno/severinno/branches/main/protection/required_status_checks`
+responde **HTTP 403** ("Upgrade to GitHub Pro or make this repository public"), o
+que é o **mesmo estado** que o applier já declarava em
+`ci/required-checks-applied.json` (`unsupported: {reason, readAt}`) desde 20/09.
+Nenhuma credencial resolve o segundo: é decisão de plano × visibilidade. As duas
+lacunas estão datadas no registro, com a prova e o remédio de cada uma.
+
+**E a RE-MEDIÇÃO do mesmo dia, já com a régua fechada (o perfil completo, com
+`GH_TOKEN` + `GH_REPOSITORY` + `--expected 1.3.14`): veredito `BLOQUEADA`,
+um bloqueio — o runner auto-hospedado do GitHub não está registrado (o setup
+declara 4 labels e `repos/severinno/severinno/actions/runners` devolve
+`total_count: 0`, medido com `gh api`) —, e as **19 linhas** das três listas
+(1 bloqueio + 11 não-provados + 7 "o veredito não cobre") saem **todas
+datadas**: os 14 itens de `ci/unproven.json` foram consumidos, nenhum ficou órfão.
+As duas causas de proteção aparecem as duas (a forja sem o recurso e a forja não
+lida), os 66 gates viram 2 linhas, e a `image-mirror-values` segue **aberta e
+medida no mesmo dia** (`gh variable list` continua devolvendo só `BUN_VERSION` e
+`HOSTINGER_VM_ID`). O limite do exercício continua declarado: nenhuma das
+duas lacunas de forja fecha com o que existe NESTE checkout — uma pede o plano, a
+outra o token do VPS.
+
+**E a medição do dia seguinte mostra o mecanismo FECHANDO (o ciclo inteiro).**
+Com o runner auto-hospedado JÁ registrado e a versão registrada igual ao pin do
+script, o registro passou a **16 itens** — 8 abertos, 6 limites e **2 provados**
+(`github-self-hosted-runner` e `github-runner-version`): os dois saem no veredito
+como **letra morta**, instruindo a remoção da entrada, porque a lacuna que eles
+declaravam foi MEDIDA — é a reconciliação das outras dívidas operando sobre o
+registro, e não um alerta que ninguém fecha. A LINHA da letra morta também sai
+datada: o `matches` de um item pode nomear o **próprio id** (é ele que a linha
+publica), então nem o fechamento de uma declaração a tira do tempo. E a classe
+volta a ser declarada se o serviço voltar a recusar o pin — o guard continua
+comparando e BLOQUEANDO o drift, com item ou sem ele.
+
+**E a medição achou um furo de CANAL na própria leitura da proteção.** O
+aplicador resolve o repo por `GITHUB_REPOSITORY` (github) e `GITEA_REPOSITORY`
+(gitea) — e `GITHUB_REPOSITORY`, **num runner da Gitea**, aponta para o
+repositório DA GITEA (o contexto emulado é o da forja). O doctor que rodasse ali
+com o token do GitHub iria ler o repositório errado, e só continuaria correto
+enquanto os dois slugs coincidissem (aqui coincidem — o que é exatamente o tipo
+de defeito que passa despercebido até o dia em que não coincidirem). A leitura
+passou a mandar o repo de cada forja pelo CANAL DELA (`GH_REPOSITORY` /
+`GITEA_REPOSITORY`, os mesmos que o board e o publicador de issue usam) via
+`--repo`, que vence o ambiente no aplicador — com teste que exige os dois canais
+e que **nenhum `--repo` é inventado** quando o canal não está declarado.
+
+**E o canal deixou de ser de UMA leitura: ele é a régua de TODAS.** A proteção
+foi o primeiro fato a precisar dele, mas o defeito era da classe inteira — o
+mesmo runner da Gitea responde `GITHUB_REPOSITORY`/`GITHUB_API_URL` com os valores
+da FORJA, e **qualquer** consulta que os usasse como origem acertaria só enquanto
+os dois slugs coincidissem. Hoje o doctor resolve o canal uma vez
+(`forgeRepo(forge, env)`, com o NOME da variável viajando junto do valor) e o
+leva a cada leitura que consulta um repositório: a **proteção** (`--repo`), o
+**board** (`repo` explícito, que também impede o `gh` de resolver o repo pelo
+REMOTO do checkout — no runner da forja, o remoto do Gitea), os **labels do
+runner** (o guard passou a ler `GH_REPOSITORY`; `GITHUB_REPOSITORY` deixou de ser
+lido, e a ausência do canal é `env-missing` NOMEANDO a variável que falta) e as
+leituras de **registry/imagem** (que recebem o ambiente sem o contexto
+compartilhado, e cuja credencial — `GHCR_TOKEN`/`GITHUB_TOKEN`/`GHCR_USER` — é
+preservada de propósito: credencial não é localizador de repositório). O
+ambiente que sai para elas é uma CÓPIA sem `GITHUB_REPOSITORY`/`GITHUB_API_URL`
+(`channelEnv`), feita UMA vez no `diagnose`: com oito fatos montando a própria
+cópia, o nono divergiria. E o relatório não pode carregar o slug da forja
+emulada em lugar nenhum — **nem na mensagem herdada do aplicador**, que dizia
+"defina `GITHUB_REPOSITORY`" justamente sobre a variável que o doctor recusa ler.
+
+A prova disso é de fora para dentro, no fluxo COMPLETO: com o decoy
+(`GITHUB_REPOSITORY: forja-emulada/decoy`) e o canal (`GH_REPOSITORY`) no mesmo
+ambiente, cada consulta (as duas proteções, as duas leituras do board, o canal do
+board e os labels do runner) recebe **o canal** e um `env` sem o contexto
+compartilhado — e o decoy não aparece no que elas receberam **nem no veredito que
+saiu delas**. O lado oposto tem teste próprio: sem canal e **com** o decoy, o repo
+vai NULO (a consulta não acontece) em vez de virar o repositório da forja.
 
 ---
 
@@ -5646,7 +6166,7 @@ matriz node-pura do master (`workflow-defaults`, o 23º sub-test).
 verdade** — a única diferença entre o verde e o vermelho é a linha proibida e a
 mutação. Os **dois controles**: (1) a declaração LEGAL em bloco (arquivo e job)
 → exit 0, senão adotar `defaults: run: shell:` seria impossível; (2) a declaração
-escalar no escopo do JOB → nenhum dos cinco guards a vê como passo, gate, ref ou
+escalar no escopo do JOB → nenhum dos seis guards a vê como passo, gate, ref ou
 comando, e o comando do PASSO segue visível. As **seis mutações**, cada uma
 red pela asserção da própria regra:
 
@@ -6248,8 +6768,8 @@ UNIÃO com a atribuição do filho, o `source` sem `export` e o `export VAR` soz
 de linha, `$( )`, `case`, função, continuação). E o repositório REAL é julgado com
 um **PISO de cobertura** (`comandos >= 200`, os três hooks e os scripts descidos nomeados): se a extração
 ou a descida pararem de funcionar, a contagem cai e o guard "passa" — o piso é o
-que impede o verde por vazio. Em produção: **270 comandos** (125 nos 3 hooks +
-145 dentro dos 5 scripts chamados), **264 resolvidos** e **6 indeterminados
+que impede o verde por vazio. Em produção: **272 comandos** (127 nos 3 hooks +
+145 dentro dos 5 scripts chamados), **266 resolvidos** e **6 indeterminados
 DECLARADOS** (as quatro decisões de caminho viraram prova; sobraram os payloads de
 `-c`).
 
@@ -6438,7 +6958,7 @@ fase C real, `lint-staged`/`typecheck`, não caberia nele).
 
 Com `--sem-duble`, o hook é o **REAL** sobre uma **CÓPIA do checkout**
 (`proveRealHookBlocks`): sem wrapper e sem dublê, as **DUAS fases** rodam de
-VERDADE — os cinco guards de fase A, o gate e os **dez membros da fase B**
+VERDADE — os seis guards de fase A, o gate e os **dez membros da fase B**
 (inclusive o runner de encoding, que a fase A nem toca) —, e a fase C
 (lint-staged, typecheck) roda real, porque a cópia tem o `package.json` e o
 `node_modules` (LINKADO, não copiado).
@@ -6490,8 +7010,8 @@ feliz não distingue "a oferta existe" de "a oferta aconteceu por acaso".
    atribuível) — é RECUSADO: exit não-zero e o **HEAD intacto**. A contagem de
    objetos de commit NÃO mede isso aqui: na cópia a fase C roda de verdade e o
    `lint-staged` cria objetos por conta própria (o stash interno dele);
-2. os **cinco** guards de fase A e o **gate**, rodados DIRETAMENTE com o mesmo
-   `--staged` sobre o MESMO índice, têm de sair **0,0,0,0,0** e **não-zero** —
+2. os **seis** guards de fase A e o **gate**, rodados DIRETAMENTE com o mesmo
+   `--staged` sobre o MESMO índice, têm de sair **0,0,0,0,0,0** e **não-zero** —
    respectivamente. É a metade que responde "quem recusa": sem ela, um irmão que
    também reprovasse (ou que nem rodasse) ficaria invisível;
 3. o **CONTROLE** (o mesmo arquivo com o corpo fechado) ENTRA — sem ele,
@@ -6512,7 +7032,23 @@ feliz não distingue "a oferta existe" de "a oferta aconteceu por acaso".
    vermelho não declarado derrubam a prova com o nome do guard (fail-closed contra
    surpresa). A fase A e o gate têm de estar verdes nesse índice — a recusa é da
    fase B, não de um irmão —, e o CONTROLE de cada defeito (o arquivo REMENDADO)
-   ENTRA.
+   ENTRA;
+6. o **BUMP DE MATRIZ sem o ato que a versiona** — o defeito que só o COMMIT local
+   produz: a matriz (o `SUBTESTS` do master, o summary e o comentário do job no
+   `pr-check.yml` e as **refs vivas** do README, mais o ARQUIVO da suíte nova,
+   tudo derivado do PRÓPRIO guard) num commit e o registro versionado do custo no
+   seguinte. O índice do bump tem de ser RECUSADO, e a recusa tem de ser do
+   `check-mutation-count.mjs --staged`: exit não-zero e a saída dele trazendo o
+   **marcador da defasagem** e o **sub-test novo nomeado** (o vermelho de outra
+   regra do mesmo guard não serve — `citouMarcador`/`citouSubTest` são medidos).
+   A atribuição aqui é mais larga que nas outras metades, e por medição: com a
+   suíte nova sem cabeçalho (`Usage:`/`Exit code:`) o `barrel-lint` da fase B
+   reprovava o MESMO índice, e como a fase A recusa ANTES de a fase B rodar, a
+   recusa teria ficado atribuída ao guard da contagem sem ser dele — então os
+   **cinco irmãos** (os de fase A SEM o dono), os **dez membros de fase B** e o
+   **gate** entram todos verdes no MESMO índice, além do guard dono vermelho; e o CONTROLE — o
+   MESMO índice com o **ato versionado** (a forma nova na família `mutations` do
+   `guard-timing-baseline.json`) — ENTRA, com a forma conferida em HEAD.
 
 O TEXTO do hook (os `✅`/`❌` dele) entra como **evidência** e como rigor EXTRA
 (um refutador que não seja o do gate derruba a prova), nunca como requisito: a
@@ -6525,9 +7061,14 @@ container) imprime linhas `PROVA-<CHAVE>=<valor>` — modo, estado, marcadores, 
 runtime MEDIDO (`/opt/acttoolcache/node/<versão>/x64/bin/node`, o `git` da
 imagem, o `bash` do harness), o defeito e o controle. Na forma sem dublê saem
 também a **forma** (`PROVA-VARIANTE`), a **atribuição** (`PROVA-REFUTADORES`, o
-número de refutadores no relatório do hook; `PROVA-IRMAOS`, quantos dos cinco
+número de refutadores no relatório do hook; `PROVA-IRMAOS`, quantos dos seis
 saíram 0) e o **HEAD** de cada metade (`PROVA-HEAD=defeito:intacto
-controle:avancou`) — o número de objetos fica na evidência como o que ele é
+controle:avancou`). O **bump de matriz** sai em chave própria
+(`PROVA-MATRIZ=sub-test:… exit:… head:… refutador:… marcador:… irmas:5/5
+membros:10/10 gate:0` e `PROVA-MATRIZ-CONTROLE=exit:… formas-no-ato:…
+formas-em-head:…`): a metade só existe na forma sem dublê, e um leitor do
+container não deve deduzir do estado composto o que ninguém mediu — chave
+ausente é "esta forma não mede isso", chave presente é proveniência — o número de objetos fica na evidência como o que ele é
 (objetos do repositório), não como veredito de "o commit entrou". Da metade do
 remédio saem chaves PRÓPRIAS (`PROVA-REMEDEIO`, `PROVA-OFERTA` com os ids das
 classes, `PROVA-OFERTA-FIXER` e `PROVA-OFERTA-CONTROLE=fixer:… guarda:… exit:…
@@ -6565,7 +7106,7 @@ envelheceria em silêncio depois de um bump, e foi o PRÓPRIO guard que o aponto
 
 **O que NÃO cobre (declarado no relatório, não escondido).** A forma PADRÃO
 declara que os guards IRMÃOS rodam no dublê do simulador — e o limite diz ONDE
-ele é fechado: **o `--sem-duble`, que roda os cinco de verdade**. Quem é a forma
+ele é fechado: **o `--sem-duble`, que roda os seis de verdade**. Quem é a forma
 padrão é o fixture do simulador, não o checkout do PR; a ref é a DECLARADA (o
 digest sai como proveniência medida, mas quem prova qual imagem o runner
 registrou é o `check-runner-labels`/o smoke); e no modo `docker run` a imagem tem
@@ -6574,7 +7115,10 @@ credencial.
 
 A forma SEM DUBLÊ declara o escopo DELA (não herda os de cima): os defeitos são
 arquivos NOVOS — o workflow da fase A e o `.ts`/o `.md` da fase B (o mesmo motivo
-da atribuição única); a árvore é uma CÓPIA do
+da atribuição única), e o bump da matriz escreve a forma do ato **pelo mesmo
+caminho** que o ato escreveria sem EXECUTAR o ato (o custo do sub-test é do
+`bench-guard-timing`, e quem cobra a existência dele é o `check:mutation-count`
+sobre a árvore); a árvore é uma CÓPIA do
 checkout com commit base sintético (quem mede o commit do PR são as pipelines do
 merge); o REMÉDIO fica sem operador (`NO_PROMPT_ENV` do simulador — a prova mede
 o caminho NÃO interativo, e quem mede o interativo é o ensaio do pty); e o teto de
@@ -6766,9 +7310,47 @@ medido — a primeira execução da prova morreu com `ERR_MODULE_NOT_FOUND` e o 
 não-zero como "um commit do meio é vermelho", isto é, uma prova que mede o ambiente virando
 uma ACUSAÇÃO ao commit.
 
+**O RESÍDUO — o defeito que o próprio instrumento criou, e a varredura que o fecha.** O
+`rmSync` do fim nunca roda numa execução MORTA (o teto de 180s do `check:prove-docs`, um
+`kill -9`, a sessão que cai), e o resíduo se acumulou em silêncio: medido neste repositório,
+**151 worktrees** e ~**11 GB** em `/tmp/pilha-*`. O nome do diretório não diz de quem ele é
+nem se o dono ainda vive — varrer por padrão de nome mataria a medição de OUTRO processo (o
+pre-push de outra thread), e não varrer nada é exatamente o que produziu o acúmulo.
+
+Agora o worktree nasce com o **DONO DECLARADO** ao lado (`<tmp>/pilha-XXXX/dono.json`:
+ferramenta, pid, host, sha, repo, início e `keep`), e a execução **varre o resíduo ANTES de
+medir**, julgando pelo marcador — nunca pelo nome: pid **VIVO no MESMO host** fica (é outra
+execução medindo agora); `keep: true` fica e é DITO (o `--keep` deixa de ser letra morta);
+marcador de outra ferramenta ou ilegível **NÃO é tocado**; e o resto é varrido — o
+diretório, o `git worktree remove --force` e o metadado órfão que o `prune` recolhe. A
+varredura sai no relatório e no `--json` (campo `limpeza`) nos DOIS caminhos, inclusive no
+recorte vazio — que é justamente o caminho comum. Custo medido neste host: o caminho comum
+(recorte vazio, 4 entradas em `/tmp`) segue em **0,04–0,05s**, sem ordem de grandeza nova.
+
+E o resíduo deixou de NASCER: a medição em curso é removida no SINAL
+(SIGINT/SIGTERM/SIGHUP). **Provado por execução** (o 4.º grupo de
+`prove-stack-per-commit.test.ts`): um filho DE VERDADE cria o worktree pelo módulo e fica
+vivo — sob **SIGTERM** ele morre com 143 e não deixa nada em disco; sob **`kill -9`**o resíduo NASCE (o diretório fica, o git continua listando o worktree) e a varredura seguinte
+o recolhe, NOMEANDO-o. E uma remoção que o HOST nega não sai como "varrido": ela é conferida
+no disco e DITA (`⚠️ resíduo que NÃO pôde ser varrido`) — o `rmSync` que falhava em silêncio
+com o relatório dizendo limpo era a mesma leitura falsa do resíduo silencioso.
+
+**Prova por mutação (em NOVE direções, medido):** o dono vivo, o dono morto, o host, o
+`--keep`, o marcador alheio, a limpeza no sinal, o relatório do recorte vazio, a conferência
+da remoção negada e a linha do não-varrido — cada uma põe a suíte VERMELHA no teste que a
+nomeia (a remoção negada derruba as duas últimas), e o arquivo restaurado volta a verde.
+
+**A suíte limpa o que ela CRIOU — inclusive num vermelho.** Os casos de execução registram
+worktrees no git do repositório REAL (é ele que a prova mede), e o `rmSync` do fim de um caso
+não roda quando o caso FALHA: medido nos runs vermelhos das mutações, isso deixou **77
+`tmp` (1,5 GB)** e **18 metadados** de worktree órfão. O `afterAll` da suíte remove os
+worktrees que ela criou (pelo caminho, não pela lista), restaura o bit de escrita do caso da
+remoção negada e roda o `prune` — medido num run VERMELHO: 0 `tmp` e 0 metadado a mais. Sem
+isso, a suíte que prova a varredura seria ela mesma uma fonte de resíduo.
+
 **O que o recorte mediu na primeira subida** (na própria série desta thread, os 12 commits
-acima da dobra): **dois commits do MEIO vermelhos** — `5cb3abf2` e `7c10eb29` (hoje
-`5cb3abf2` e `7c10eb29`) — ambos pela causa já nomeada acima (a origem gravada na baseline
+acima da dobra): **dois commits do MEIO vermelhos** — `5cb3abf2` e `7c10eb29` (os mesmos
+dois, sob os nomes que a dobra deixou) — ambos pela causa já nomeada acima (a origem gravada na baseline
 que a dobra tornou órfã), e nenhum dos dois é visível no topo. A consequência foi a promessa
 do gate EM ATO: o push daquela série saiu RECUSADO até o conserto nascer no commit que
 quebrou o invariante — a re-dating da proveniência tinha de viajar DENTRO dos commits que a
@@ -7234,11 +7816,15 @@ NOMEIA qual dos dois é o caso (`CICLO · cadeia` ou `sem volta · cadeia`),
 porque um vermelho que não distingue os dois ensina o operador a contornar o
 guard.
 
-**A dívida do repositório, datada e declarada.** Dois pares já alcançam TLA
+**A dívida do repositório, datada e declarada.** Três pares já alcançam TLA
 hoje — as declarações `hook-commands` e `run-syntax` chegam ao
 `scripts/runner-shells.mjs` pelo guard dono (`check-hook-commands.mjs` →
 `check-workflow-run-syntax.mjs`), cujo `await` é de ENTRADA (`if (IS_DIRECT_RUN)`)
-e **não volta** ao loader. Eles estão em `ALCANCE_DECLARADO` com motivo e data,
+e **não volta** ao loader —, e a classe `doc-hashes` alcança o **próprio guard
+dono** (`check-doc-hashes.mjs`), que ela IMPORTA para o remédio ser o mesmo do
+veredito: o `await` dele também é de entrada (`await confirma()`, atrás do
+`IS_DIRECT_RUN`) e a carga da declaração não executa o CLI. Os três estão em
+`ALCANCE_DECLARADO` com motivo e data,
 e o guard confere os DOIS sentidos: um par declarado que deixou de existir é
 violação ("dívida paga não fica no papel") e uma aresta nova de OUTRA declaração
 é caso novo.
@@ -7246,7 +7832,7 @@ violação ("dívida paga não fica no papel") e uma aresta nova de OUTRA declar
 **A CATRACA (a segunda metade, e a que impede a régua de cegar em silêncio).**
 Se nenhuma declaração alcançar TLA, a primeira metade tem ZERO achados — e uma
 régua sem achado não prova que ela ainda VÊ. Por isso o conjunto de módulos com
-TLA sob `scripts/` é DERIVADO a cada rodada (27 hoje: 23 `entrada-cli`, 2
+TLA sob `scripts/` é DERIVADO a cada rodada (29 hoje: 25 `entrada-cli`, 2
 `descoberta`, 2 `carga`) e classificado contra `TLA_CLASSES` nos dois sentidos:
 um módulo TLA em forma NÃO declarada é violação, e um `declarados` que a régua
 deixou de ver (a detecção cegou) também. Um TLA nasce de um `if (IS_DIRECT_RUN)
@@ -7294,6 +7880,224 @@ por commit é o ALCANCE, e esse o hook julga.
 "nome": "ciclo-canal"
 "estado": "provado"
 ```
+
+---
+
+## 30. A citação de commit na prosa pertence à HISTÓRIA — `check:doc-hashes` (`scripts/check-doc-hashes.mjs`)
+
+**A classe, medida em 22/09/2026.** A DOBRA da proveniência (levar o registro do
+ato para dentro do commit que o carrega) reescreveu **12 commits** citados em
+**12 arquivos** versionados. O assunto de cada commit ficou igual; o NOME mudou. E
+nenhuma das **21 citações órfãs** falhava nada: um `git cat-file -e` continua
+dizendo "existe" — o objeto antigo segue no repositório, segurado pelo reflog e
+pelos branches antigos —, e o link quebrado só aparecia para quem tentasse abrir o
+commit citado, um a um. A doc descrevia um ato que ninguém conseguia ler, com a
+aparência de precisão de um hash.
+
+**A régua (a prosa contra a história VIVA, não um catálogo de hashes).** Um token
+`[0-9a-f]{7,40}` no escopo é CITAÇÃO DE COMMIT — salvo três casos, os três
+DECLARADOS no guard:
+
+1. **NÚMERO PURO.** Um commit não tem 7+ dígitos e zero letras; `pareceCommit`
+   exige uma letra `a-f`. Sem isso, `86400000` (ms de um dia), `31536000` (um ano
+   de cache) e `1581578731548` (timestamp) viram citação — são **78 falsos
+   positivos** medidos no corpus em 22/09/2026;
+2. **DIGEST de ARTEFATO** (`sha256:`/`sha512:`/`sha1:`/`md5:`): o
+   `sha256:fd027ee7…` da imagem servida pelo registry descreve o ARTEFATO, não
+   uma revisão;
+3. as **NÃO-CITAÇÕES declaradas** (`abc1234`, `a1b2c3d`, `ed25519`): exemplos de
+   FORMATO. Um literal novo aqui é DECISÃO com motivo — a lista não é uma
+   allowlist de arquivo.
+
+**Os dois defeitos são separados, porque o remédio difere.** `git cat-file` diz se
+o token existe como commit; `merge-base --is-ancestor` diz se ele pertence à
+história do HEAD. EXISTE e fora da história → **ÓRFÃO de rewrite**, e o guard
+NOMEIA o commit de MESMO assunto que está na história — é o nome que a rewrite
+deixou, e é o remédio exato para quem está editando a prosa. NÃO existe → hash
+sem commit nenhum (typo, cópia truncada de outro identificador, prosa inventada).
+
+**O escopo** são os diretórios que carregam prosa versionada: `README.md`,
+`docs/`, `ci/`, `scripts/`, `.husky/` e os dois diretórios de workflow. Ficam FORA,
+por construção: o `src/` (o TEXTO de um defeito é dado de prova — a mesma régua do
+`check-github-dependencies`) e os arquivos de CÓDIGO/FIXTURE do `scripts/` (`.ts`:
+id de seed em formato ObjectId, exemplo sintético de 24 hex). Duas EXCLUSÕES de
+arquivo, com o motivo: a baseline de vazamento de segredo (o sha1 ali é
+fingerprint de CONTEÚDO) e o cache do instrumento de medição (o `commitHash` é a
+origem do ato e o arquivo é reescrito a cada medição). O **próprio auditor** não se
+conta: o cabeçalho dele cita os nomes órfãos para DESCREVER a classe, e contá-lo
+faría o guard reprovar a si mesmo pelo exemplo que explica a regra.
+
+**Fail-closed.** git sem resposta, `HEAD` ilegível, arquivo do escopo que não abre
+ou uma entrada declarada SEM motivo valem **exit 2** — "não consegui julgar"
+nunca vira "está tudo na história". A CLI tem `--json` (o dado), `--all`
+(as não-citações e os digests lidos) e `--root` (o fixture dos testes).
+
+**O REMÉDIO MECÂNICO (`--fix`), porque o candidato não é palpite.** O guard já
+NOMEIA o commit de MESMO assunto na história — o nome que a rewrite deixou —, e o
+`--fix` faz exatamente essa troca: o token hex vira o nome vivo, na linha onde ele
+está (duas citações do mesmo ato na mesma linha viram UMA troca; nada mais da linha
+é tocado). É a mesma régua do resto do repositório em três pontos: (a) ele **pede
+CONFIRMAÇÃO EXPLÍCITA** — a pergunta vai ao terminal de controle quando o stdin não
+é um terminal (o `git commit` entrega o fd 0 em `/dev/null`), e sem terminal nenhum
+NADA é autorizado: caminho à mão, commit bloqueado; (b) `--fix --dry-run` é a
+PREVISÃO, o **PATCH exato** em STDOUT limpo (`… --fix --dry-run | git apply` aplica)
+com o relatório em STDERR, e NADA é gravado — o mesmo patch que o publicador do PR
+consome do módulo (`remedyPatch`), para o comentário não prometer um remendo que a
+gravação recusaria; (c) o que ele **RECUSA** sai nomeado, nunca omitido: o órfão SEM
+commit de mesmo assunto na história (o remédio não inventa um nome), o hash que não
+existe como commit e o arquivo que a varredura não conseguiu ler — este último é
+recusa, não "nada a remendar". O remédio vai à oferta do `pre-commit` (classe
+`doc-hashes`), que é onde há operador para confirmar, e ao canal do PR (o fixer
+`doc-hashes` do registro DESCOBERTO), que é onde o autor da mudança está.
+
+**A prova do remédio** é `src/lib/__tests__/check-doc-hashes-remedy.test.ts`, sobre
+o fixture compartilhado (`helpers/doc-hashes-fixture.ts`, um repo git de verdade
+com a citação órfã): o patch APLICA com `git apply` e a prosa fica byte a byte igual
+à do `--fix`; o preview não grava e o STDOUT carrega só o patch; o módulo publica o
+MESMO patch que a CLI imprime; sem `--yes` e sem terminal a árvore fica intacta
+(exit 1, com o caminho à mão na mensagem) e com `--yes` o remédio grava,
+reestagia e REVALIDA com a mesma régua; o órfão sem candidato não é remendado e
+não desaparece; e as duas pontas do mesmo remédio — a oferta (com antes/depois,
+e o `semRemendo` quando não há candidato) e o comentário do PR (marcador, gate,
+comando e o patch que aplica de verdade).
+
+**Onde ele roda, e por quê.** O comando canônico (`node
+scripts/check-doc-hashes.mjs`) é uma invariante do CORE nas **duas** pipelines
+(job `guards` na forja dona do merge e `workflow-refs-guard` no espelho) e entra na
+**bateria do `pre-commit`**: a outra metade da classe nasce no commit — um hash
+que não existe (typo, cópia truncada) é escrito ali, e o remédio é do autor.
+Custo MEDIDO da invocação no hook: **~0,7s** (76 citações em 405 arquivos do
+escopo, no ato de 22/09/2026), em paralelo com o resto da fase.
+
+**A prova por mutação** (`scripts/test-mutation-doc-hashes.sh`, o 39º sub-test do
+master) mede **as OITO metades** — cada uma com o CONTROLE antes (o fixture são
+sai 0 e o defeito sai 1/2) e a direção do veredito depois:
+
+- **M1** a regra da HISTÓRIA (o commit que existe e está fora dela);
+- **M2** o NÚMERO PURO (o TTL volta a virar citação);
+- **M3** o DIGEST de artefato;
+- **M4** o fail-closed sem git (árvore que não é repositório);
+- **M5** o auditor que não se conta (a prosa que descreve a classe cita órfãos);
+- **M6** a extensão fora do escopo (o `.ts` de fixture);
+- **M7** o PREVIEW do `--fix` (sem o `dry`, o `--dry-run` GRAVA e o patch que o
+  comentário do PR publica passa a mentir sobre o que ele faria);
+- **M8** a CONFIRMAÇÃO explícita (com ela inócua, o remédio se aplica sozinho: sem
+  `--yes` e sem terminal a árvore muda — que é o que ela barra).
+
+M7 e M8 medem uma direção diferente das seis primeiras: o veredito do guard NÃO
+muda (o defeito continua acusado), o que muda é o **remendo** — e a régua do caso é
+o CONTEÚDO da árvore (o `cksum` do arquivo antes/depois), não o exit code. O
+fixture do remédio precisa do **par** (o commit citado e o de MESMO assunto que a
+dobra deixou), que é o que a M1 não precisa: por isso a suíte tem os dois
+construtores, e ambos garantem um hash cuja forma é uma CITAÇÃO (sem letra `a-f`
+um hash de 7 dígitos não é citação, e o defeito do fixture desapareceria em ~2%
+das execuções — medido: 2 falhas em 10 rodadas da suíte do remédio, com o guard
+julgando `citacoes: 0` sobre um README.md que citava `2415416`).
+
+Cada mutação é FAIL-CLOSED sobre si mesma: o marcador tem de existir UMA vez no
+guard, o arquivo tem de MUDAR e o resultado tem de continuar parseável — uma
+mutação que não muta é pior que nenhuma. O fixture é um repositório git de VERDADE
+num `mktemp` (a régua é do git), e **nenhum arquivo do repositório real é tocado** —
+e o guard COPIADO para lá leva o fecho de imports dele junto (`confirm-prompt.mjs`
+e `unified-patch.mjs`, que o `--fix` trouxe): sem os vizinhos, a cópia morre com
+`ERR_MODULE_NOT_FOUND` e o exit 1 do NODE passaria por veredito do guard.
+
+**O guard pegou a própria suíte de mutação** — que citava o id de seed (12 hex)
+no cabeçalho e no fixture da M6 —, e o desfecho NÃO foi declará-lo: uma declaração
+imunizaria justamente a metade que a M6 muta (o filtro por EXTENSÃO deixaria de ser
+load-bearing, e a mutação ficaria verde por um motivo que não é o dela). A suíte
+monta o id em DUAS metades de 6 hex, e o fixture o recebe inteiro em tempo de
+execução: o defeito continua medido e a suíte deixa de ser, ela mesma, uma citação.
+
+---
+
+## 31. O ESCOPO do lint cobre o que o HOOK julga — `check:lint-scope` (`scripts/check-lint-scope.mjs`)
+
+**A classe, medida em 23/09/2026.** O hook julga **todo arquivo estagiado** (a
+perna do `prettier --check` do `pre-commit`, antes do `lint-staged`) e o `bun run
+lint` — o comando que as DUAS forjas rodam — julhava uma **lista à mão de 10
+globs**. A consequência não é estética: um arquivo pode ser recusado pelo hook e
+ACEITO no merge, porque as duas réguas veem escopos diferentes. O caso que expôs a
+classe: o `ci/unproven.json` fora do padrão — `ci/` não estava na lista — saiu do
+`bun run lint` VERDE, e quem o recusou foi o hook. Medido nesta árvore (2048
+arquivos versionados): **13 diretórios** com arquivo que o prettier julga ficavam
+fora da lista — `.gitea/` (as workflows da forja DONA DO MERGE), `ci/`, `deploy/`,
+`e2e/`, `monitoring/`, `loadtest/`, `agent-ctx/`, `types/`, `config/`,
+`examples/`, `k6/`, `mini-services/`, `public/`, `secrets/` — mais as extensões de
+raiz `*.cjs`/`*.js` e o `.prettierrc` (que só o ORÁCULO do prettier encontra: o
+nome dele não termina numa extensão que uma lista a mão adivinharia).
+
+**O remédio não é acrescentar o diretório que faltou hoje** — é derivar a
+pergunta, para o próximo diretório também a responder. O escopo do `lint` passou a
+cobrir tudo o que o hook julga, e o guard DERIVA as três fontes, nenhuma à mão:
+
+1. **os globs** do próprio script `lint` do `package.json` (o comando lido, não
+   uma cópia — mover a régua para outro lugar não deixa o guard medindo um
+   fantasma);
+2. **os arquivos**: `git ls-files` na varredura global e
+   `git diff --cached --name-only --diff-filter=ACMR` no recorte `--staged`;
+3. **o que o prettier julga**: o ORÁCULO é o próprio prettier
+   (`getFileInfo` → `inferredParser`, com o `ignored` do `.prettierignore`), e ele
+   é consultado **só para os arquivos que nenhum glob cobre** — no estado são não
+   há candidato, então o caminho comum custa um `git ls-files` (**0,14s** medido).
+
+**A isenção é DECLARADA.** Um diretório que o prettier julga e que fica fora do
+lint de propósito entra em `EXEMPT` com o motivo escrito (o desenho do
+`check-forge-workflow-scope`), e a tabela é conferida nas DUAS direções: diretório
+fora da lista sem isenção é violação, e isenção que não casa com arquivo nenhum é
+**stale** — a declaração que ninguém revisa. A tabela está vazia de propósito:
+hoje o lint cobre tudo o que o hook julga.
+
+**A declaração de IGNORADOS é a outra metade do escopo — e é conferida.** O
+`.prettierignore` estava em **UTF-16LE** (BOM `ff fe` + NUL entre os bytes): o
+prettier o lê como UTF-8, todo padrão vira lixo binário e **nenhum dos três
+ignores valia**. Um guard de escopo medindo contra uma declaração que não declara
+nada mediria nada, então a forma ilegível é violação — e o arquivo foi reparado
+(o artefato GERADO, `public/openapi.json`, passou a ser o ignore de verdade: quem
+manda no formato dele é o `scripts/generate-openapi.ts`, com
+`JSON.stringify(…, 2)` — 830 linhas diferentes do formato do prettier —, e
+reformatá-lo sai do lint e volta vermelho na geração seguinte).
+
+**O recorte `--staged` e o das duas metades.** O hook julga o **índice** (a árvore
+pode carregar WIP que não é o commit): o diretório NOVO aparece em arquivo
+estagiado. E a **declaração** que o commit move é lida **do índice**
+(`git show :package.json`, `git show :.prettierignore`) — o conteúdo do commit —,
+com o **recorte por RELEVÂNCIA**: mexer no escopo não abre buraco num arquivo do
+commit, abre em TODO o repositório (um globo removido não está em arquivo
+estagiado nenhum), então nesse caso o guard julga a **árvore**. É o mesmo desenho
+do `check-required-checks --staged`.
+
+**Os números que a extensão custou.** A perna do prettier passou de 26,1s para
+27,7s (**+1,6s**, medidos na mesma máquina, mesma árvore) para cobrir 91 arquivos
+em 13 diretórios e 2 extensões de raiz. Doze arquivos que a lista antiga escondia
+ficaram em conformidade (formatação apenas: 7 `.md` do `agent-ctx/`, 2 `.spec.ts`
+do `e2e/`, 2 `README.md`, 1 `.cjs`).
+
+**A prova por mutação** (`scripts/test-mutation-lint-scope.sh`, o 40º e último
+sub-test do master) mede **as SEIS metades**, cada uma com o CONTROLE antes (a
+bancada sã sai 0 e o buraco sai 1) e a direção do veredito depois:
+
+- **M1** o ORÁCULO (sem perguntar ao prettier, o PNG da bancada vira "julgado":
+  falso positivo no são);
+- **M2** a COBERTURA (com todo caminho coberto, o diretório novo desaparece do
+  veredito — a cegueira exata do defeito);
+- **M3** a DECLARAÇÃO de escopo (o `.prettierignore` ilegível passa em silêncio);
+- **M4** o RECORTE `--staged` (lendo a árvore, um commit que não abre o buraco é
+  bloqueado por ele);
+- **M5** a ISENÇÃO ÓRFÃ (a tabela stale passa sem ninguém decidir);
+- **M6** o RECORTE POR RELEVÂNCIA (mexer na declaração deixa de julgar a árvore e
+  o globo removido no commit passa).
+
+A bancada é um repositório git de FIXTURE num `mktemp` (o oráculo é o prettier
+REAL, resolvido do `node_modules` do repo porque o import é do lugar do guard), e
+nenhum arquivo do repositório é mutado: o que se injeta é a **régua** do guard, e a
+restauração é conferida por `cksum` no `trap EXIT`.
+
+**No hook e no CI.** O invariante `lint-scope` do CORE exige o comando nas DUAS
+pipelines — ele roda no job do LINT (`lint` na Gitea, `lint-guard` no GitHub),
+que é o único lugar onde a pergunta é sobre ESTE comando e onde o `bun install` já
+aconteceu. No hook ele é o **7º** guard da fase A, com o recorte `--staged`
+declarado no `check-hook-ci-parity`.
 
 ---
 

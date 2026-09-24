@@ -640,7 +640,7 @@ describe("`--check` — o gate do PR (o dono do merge)", () => {
  * esta forma publicava 3897ms, e nenhum dos dois era derivado do outro — dois
  * números do MESMO passo, 27ms de diferença de contexto que ninguém via.
  */
-function benchComForma({ ms = 3897, commit = "eee4f65e" } = {}): Record<string, unknown> {
+function benchComForma({ ms = 3897, commit = "2757e3a5" } = {}): Record<string, unknown> {
   return {
     meta: {
       tool: "bench-guard-timing",
@@ -723,7 +723,7 @@ describe("o job declarado por PASSOS — o passo LIGADO ao benchmark", () => {
     const ligado = d.steps!.find((p) => p.derived)!
     expect(ligado.label).toBe("mutations/mutation-count")
     // A PROCEDÊNCIA do derivado: o commit que a FAMÍLIA descreve.
-    expect(ligado.commit).toBe("eee4f65e")
+    expect(ligado.commit).toBe("2757e3a5")
   })
 
   it("a forma MUDA na baseline e o job move junto (o número não está no modelo)", () => {
@@ -737,7 +737,7 @@ describe("o job declarado por PASSOS — o passo LIGADO ao benchmark", () => {
 
   it("a forma AUSENTE do benchmark indetermina o job — e a causa nomeia a forma", () => {
     const semForma: Record<string, unknown> = {
-      meta: { commit: "eee4f65e", families: {} },
+      meta: { commit: "2757e3a5", families: {} },
       guards: [],
       mutations: { measured: false, forms: [] },
     }

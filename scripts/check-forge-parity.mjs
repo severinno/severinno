@@ -394,6 +394,23 @@ export const CORE_INVARIANTS = [
     jobIds: { gitea: "lint", github: "lint-guard" },
   },
   {
+    id: "lint-scope",
+    // O ESCOPO da perna do prettier. Ele e um invariante do CORE porque a
+    // pergunta e sobre o COMANDO `bun run lint` (o mesmo par nas duas forjas), e
+    // porque o defeito e ASSIMETRICO entre o hook e o CI: o hook julga todo
+    // arquivo estagiado e o `lint` julhava uma LISTA A MAO de globs — 13
+    // diretorios com arquivo que o prettier julga ficavam fora dela (`.gitea/`,
+    // as workflows da forja DONA DO MERGE, entre eles). O caso medido: o
+    // `ci/unproven.json` fora do padrao passou `bun run lint` verde e quem o
+    // recusou foi o recorte do hook. Roda no job do LINT (nas duas forjas)
+    // porque e o unico lugar onde a pergunta e sobre este comando e onde o
+    // `bun install` ja aconteceu — o oraculo do guard e o proprio prettier.
+    matches: /check[:-]lint[:-]scope/,
+    command: /^node scripts\/check-lint-scope\.mjs$/m,
+    why: "sem o guard, o escopo do lint volta a ser uma lista a mao: o diretorio novo (ou o globo removido) so aparece no merge depois que o hook ja o recusou",
+    jobIds: { gitea: "lint", github: "lint-guard" },
+  },
+  {
     id: "tests",
     matches: /^bun run test:(run|unit|ci)$/,
     command: /^bun run test:run$/m,
@@ -720,6 +737,13 @@ export const CORE_INVARIANTS = [
     matches: /check-script-headers/,
     command: /^node scripts\/check-script-headers\.mjs$/m,
     why: "script sem Usage/Exit code no cabecalho e operacao por adivinhacao: quem chama nao sabe o que ele devolve nem o que ele faz de efeito — e os gates que decidem o merge nao podem depender disso",
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
+  },
+  {
+    id: "doc-hashes",
+    matches: /check-doc-hashes/,
+    command: /^node scripts\/check-doc-hashes\.mjs$/m,
+    why: "citação de commit que não pertence à história do HEAD descreve um ato que ninguém consegue abrir: a doc mente com aparência de precisão, e a classe é de TODA rewrite — o rebase troca o nome do commit preservando o assunto, e o objeto antigo continua no repositório (o reflog o segura), então um `git cat-file -e` diz 'existe' e a citação órfã passa",
     jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {

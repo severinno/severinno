@@ -36,6 +36,8 @@ import { spawnSync } from "node:child_process"
 
 import { afterEach, describe, expect, it } from "vitest"
 
+import { criarParDeReescrita, garantirRepoComBase } from "./helpers/doc-hashes-fixture"
+
 import {
   ChannelDenied,
   DEFAULT_FIXER,
@@ -399,7 +401,7 @@ describe("a CLI", () => {
 
 describe("o registro de fixers", () => {
   it("cada fixer tem o SEU marcador, e o default é o do `bash -n`", () => {
-    expect(Object.keys(FIXERS).sort()).toEqual(["pipefail-sigpipe", "run-syntax"])
+    expect(Object.keys(FIXERS).sort()).toEqual(["doc-hashes", "pipefail-sigpipe", "run-syntax"])
     expect(DEFAULT_FIXER).toBe("run-syntax")
     expect(MARKER).toBe(FIXERS["run-syntax"].marker)
     const marcadores = Object.values(FIXERS).map((f) => f.marker)
@@ -569,9 +571,24 @@ describe("o canal publica o REGISTRO inteiro (--all)", () => {
     return { fetchImpl, comments, chamadas }
   }
 
-  /** Com os DOIS defeitos no mesmo diretório: cada fixer tem o que remendar. */
-  function fixtureComOsDoisDefeitos() {
-    return writeFixture(CICATRIZ, { arquivo: "caso.sh", corpo: SCRIPT_COM_PADRAO })
+  /**
+   * OS TRÊS defeitos no mesmo diretório: cada fixer do REGISTRO tem o que
+   * remendar. E o fixture é um repositório git DE VERDADE, com HISTÓRIA — a
+   * régua do `doc-hashes` é o GRAFO, então uma citação órfã só existe contra uma
+   * história: sem `HEAD` o fixer mais novo mede INDETERMINADO, o `--all` publica
+   * dois de três e a suíte passaria a testemunhar um canal menor do que o do CI.
+   */
+  function fixtureComOsTresDefeitos() {
+    const dir = writeFixture(CICATRIZ, { arquivo: "caso.sh", corpo: SCRIPT_COM_PADRAO })
+    // O BASE commitado e o PAR da rewrite vêm do helper COMPARTILHADO com as
+    // suítes do guard e do remédio: o hash citado sai comprovadamente uma citação
+    // (sem letra `a-f` um hash de 7 dígitos não é citação, e o fixer do `doc-hashes`
+    // mediria o vazio sem que nenhuma asserção visse).
+    garantirRepoComBase(dir)
+    const { orfao } = criarParDeReescrita(dir)
+    // A prosa cita o nome MORTO: o defeito que o canal do `doc-hashes` publica.
+    writeFileSync(join(dir, "README.md"), `o ato foi no \`${orfao}\`\n`, "utf8")
+    return dir
   }
 
   const ENV_GITHUB = { GH_TOKEN: "t", GH_REPOSITORY: "o/r" }
@@ -588,7 +605,7 @@ describe("o canal publica o REGISTRO inteiro (--all)", () => {
     const real = globalThis.fetch
     globalThis.fetch = api.fetchImpl as unknown as typeof fetch
     try {
-      const dir = fixtureComOsDoisDefeitos()
+      const dir = fixtureComOsTresDefeitos()
       const saidas = []
       for (const id of Object.keys(FIXERS)) {
         saidas.push(
@@ -628,7 +645,7 @@ describe("o canal publica o REGISTRO inteiro (--all)", () => {
     const real = globalThis.fetch
     globalThis.fetch = api.fetchImpl as unknown as typeof fetch
     try {
-      const dir = fixtureComOsDoisDefeitos()
+      const dir = fixtureComOsTresDefeitos()
       const saidas = []
       for (const id of Object.keys(FIXERS)) {
         saidas.push(
@@ -646,10 +663,13 @@ describe("o canal publica o REGISTRO inteiro (--all)", () => {
       const porFixer = Object.fromEntries(saidas.map((s) => [s.resumo.fixer, s]))
       expect(porFixer[ultimo].desfecho).toBe("quebrado")
       expect(porFixer[ultimo].exit).toBe(EXIT.UNPUBLISHED)
-      // O outro fixer PUBLICOU: o ciclo não abortou no primeiro erro.
-      const outro = saidas.find((s) => s.resumo.fixer !== ultimo)
-      expect(outro?.desfecho).toBe("publicado")
-      expect(api.comments).toHaveLength(1)
+      // Os OUTROS fixers PUBLICARAM (todos, não só um): o ciclo não abortou no
+      // primeiro erro — o número sai do REGISTRO, e não de uma contagem à mão que
+      // um fixer novo faça envelhecer.
+      for (const outroId of ids.filter((id) => id !== ultimo)) {
+        expect(porFixer[outroId].desfecho, `${outroId} não publicou`).toBe("publicado")
+      }
+      expect(api.comments).toHaveLength(ids.length - 1)
       // E o canal quebrou DEPOIS de tentar (o POST do último foi feito).
       expect(api.chamadas.some((c) => c.startsWith("POST"))).toBe(true)
     } finally {
@@ -662,7 +682,7 @@ describe("o canal publica o REGISTRO inteiro (--all)", () => {
     const real = globalThis.fetch
     globalThis.fetch = api.fetchImpl as unknown as typeof fetch
     try {
-      const dir = fixtureComOsDoisDefeitos()
+      const dir = fixtureComOsTresDefeitos()
       const saida = await publicarFixer({
         fixerId: "pipefail-sigpipe",
         root: dir,
@@ -680,7 +700,7 @@ describe("o canal publica o REGISTRO inteiro (--all)", () => {
   })
 
   it("o `--all` do CLI percorre o REGISTRO (dry-run: um corpo por fixer, na ordem do registro)", () => {
-    const dir = fixtureComOsDoisDefeitos()
+    const dir = fixtureComOsTresDefeitos()
     const out = runCli(["--all", "--dry-run", "--root", dir])
     expect(out.status).toBe(EXIT.OK)
     for (const fixer of Object.values(FIXERS)) expect(out.stdout).toContain(fixer.marker)
@@ -691,7 +711,7 @@ describe("o canal publica o REGISTRO inteiro (--all)", () => {
   })
 
   it("sem canal, o `--all` não falha e DIZ por fixer (o GATE é o veredito)", () => {
-    const dir = fixtureComOsDoisDefeitos()
+    const dir = fixtureComOsTresDefeitos()
     const out = runCli(["--all", "--root", dir])
     expect(out.status).toBe(EXIT.OK)
     const notices = out.stderr.split("::notice::").length - 1

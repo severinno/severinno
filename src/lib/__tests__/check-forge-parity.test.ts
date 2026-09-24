@@ -59,6 +59,7 @@ import {
 const REAL_LINES = [
   "      - run: bun run typecheck",
   "      - run: bun run lint",
+  "      - run: node scripts/check-lint-scope.mjs",
   "      - run: bun run test:run",
   "      - run: bun run check:ts-nocheck",
   "      - run: bun run check:pii-allowlist",
@@ -82,6 +83,7 @@ const REAL_LINES = [
   "      - run: node scripts/check-no-setup-bun.mjs",
   "      - run: node scripts/check-forge-parity.mjs",
   "      - run: node scripts/check-archived-pipeline.mjs",
+  "      - run: node scripts/check-doc-hashes.mjs",
   "      - run: node scripts/check-hooks-symmetry.mjs",
   "      - run: node scripts/check-hook-ci-parity.mjs",
   "      - run: node scripts/check-hook-commands.mjs",

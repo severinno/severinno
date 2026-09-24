@@ -192,11 +192,17 @@ describe("pr-check.yml — lint-guard (gate de lint/prettier)", () => {
     const lint = String(pkg.scripts?.lint ?? "")
     expect(lint).toContain("prettier --check --ignore-unknown")
     expect(lint).toContain("eslint . --max-warnings 0")
-    // Escopo explícito = o mesmo validado localmente na Fase 3 — um
-    // `prettier --check .` puro quebraria em globs *.prisma/*.sql na raiz.
-    expect(lint).toContain(
-      "'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'",
-    )
+    // A LISTA inteira de globs NÃO é pinada aqui: o escopo é DERIVADO e julgado
+    // pelo `check-lint-scope` (invariante `lint-scope` do CORE, com o comando
+    // exigido nas DUAS pipelines) — uma segunda cópia da lista seria mais um
+    // ponto para envelhecer em silêncio, que é exatamente a classe do defeito.
+    // O que este teste prende é o que a lista ANTIGA deixava de fora: os
+    // diretórios que o hook julga e o lint não cobria (`ci/` — o caso medido — e
+    // `.gitea/`, as workflows da forja DONA DO MERGE) e as extensões de raiz que
+    // o comando precisa declarar (o `--ignore-unknown` não abre diretório).
+    for (const glob of ["'ci/**'", "'.gitea/**'", "'*.cjs'", "'*.js'", "'.prettierrc'"]) {
+      expect(lint, `o escopo do prettier perdeu ${glob}`).toContain(glob)
+    }
   })
 
   it("instala deps antes dos checks (bun install --frozen-lockfile)", () => {

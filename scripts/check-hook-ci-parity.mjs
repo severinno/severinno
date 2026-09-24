@@ -157,6 +157,18 @@ export const HOOK_DECLARED = [
     why: "recorte --staged: julga o INDICE (com o CONTEUDO do commit, via `git show :path`), nao a arvore de trabalho — os workflows, os scripts de shell E o shell embutido (o `RUN` de um Dockerfile e o payload de um `sh -c`) que o commit carrega. O corpo quebrado nasce de uma reescrita mecanica em massa ANTES do commit e e o commit que o carrega; a arvore pode ter WIP que nao faz parte dele. O CI roda o comando inteiro sobre o conteudo mergeado (482 corpos, 124 scripts e 33 textos embutidos das duas forjas) — a diferenca e de ESCOPO, e o instrumento (o mesmo script) e o do CI.",
   },
   {
+    // O ESCOPO DO LINT: o mesmo script do CI (`check-lint-scope.mjs`), com o
+    // recorte do indice. O que muda e o ESCOPO — e o escopo do hook e o do
+    // COMMIT: o diretorio NOVO aparece em arquivo estagiado, e quando o commit
+    // mexe na DECLARACAO do escopo (o `package.json` do comando, o
+    // `.prettierignore` do ignore) o guard troca sozinho para a ARVORE, porque
+    // o globo removido nao esta em arquivo estagiado nenhum. O CI roda o
+    // comando inteiro (a arvore versionada) no job do lint das duas forjas.
+    match: /^node scripts\/check-lint-scope\.mjs --staged$/,
+    of: "lint-scope",
+    why: "recorte --staged: o diretorio que o COMMIT abre so existe no indice (a arvore pode carregar WIP que nao faz parte dele), e a declaracao que o commit move e lida DO INDICE (`git show :package.json`) — o conteudo do commit, nao o working tree. O CI roda o comando inteiro sobre a arvore versionada no job do lint, e a diferenca e de ESCOPO: o mesmo script, o mesmo instrumento.",
+  },
+  {
     match: /^node scripts\/check-mutation-count\.mjs --staged$/,
     of: null,
     ciMirror: "node scripts/check-mutation-count.mjs",

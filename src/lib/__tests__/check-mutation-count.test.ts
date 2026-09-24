@@ -1,9 +1,33 @@
 import { describe, expect, it } from "vitest"
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { caminhosDoVeredito, run, runStaged } from "../../../scripts/check-mutation-count.mjs"
+import {
+  BENCH_ACT,
+  BENCH_FAMILY,
+  BENCH_PATH,
+  caminhosDoVeredito,
+  comparaComOAto,
+  run,
+  runStaged,
+} from "../../../scripts/check-mutation-count.mjs"
+import {
+  BLOCO_GUARDS,
+  BLOCO_README,
+  conteudoDoBloco,
+  estadoDaMatriz,
+  paragrafoCusto,
+  tabelaSubTests,
+} from "../../../scripts/bench-table.mjs"
 
 const GUARD = join(process.cwd(), "scripts/check-mutation-count.mjs")
 
@@ -44,6 +68,39 @@ interface FixtureOpts {
   doc?: string | null
   /** volta a entrada do SUBTESTS para o formato antigo `id|descrição|script` */
   entradaComDescricao?: boolean
+  /**
+   * O REGISTRO versionado do ato (`docs/benchmarks/guard-timing-baseline.json`):
+   *   - `null` (default) — o arquivo não existe no fixture (a ligação matriz ↔ ato
+   *     NÃO é julgada, e o veredito tem de DIZER isso em vez de inventar);
+   *   - `"completo"` — a família `mutations` versiona todos os ids da matriz;
+   *   - `"ilegivel"` — o arquivo está lá e não é JSON (INFRA, exit 2);
+   *   - um objeto — o JSON que o teste quiser (as metades mutam a partir dele).
+   */
+  bench?: "completo" | "ilegivel" | Record<string, unknown> | null
+  /**
+   * Escreve `docs/GUARDS.md` com o BLOCO DERIVADO (os marcadores + a tabela
+   * renderizada do registro). Default `false`: a doc do fixture é a que o teste
+   * mandar (ou nenhuma), e a regra nova não julga a que não existe.
+   */
+  docDerivado?: boolean
+}
+
+/** O registro versionado COMPLETO para uma matriz de `count` sub-tests. */
+function benchCompleto(count: number): Record<string, unknown> {
+  return {
+    meta: { tool: "bench-guard-timing", version: 6, commit: "deadbee" },
+    [BENCH_FAMILY]: {
+      measured: true,
+      subtests: count,
+      metades: count * 2,
+      forms: Array.from({ length: count }, (_, i) => ({
+        role: `sub-${i}`,
+        ms: 100 + i,
+        metades: 2,
+        exit: 0,
+      })),
+    },
+  }
 }
 
 function makeFixture({
@@ -61,6 +118,8 @@ function makeFixture({
   suiteAspasDuplas = null,
   doc = null,
   entradaComDescricao = false,
+  bench = null,
+  docDerivado = false,
 }: FixtureOpts = {}) {
   const dir = mkdtempSync(join(tmpdir(), "mutation-count-"))
   mkdirSync(join(dir, "scripts"), { recursive: true })
@@ -116,12 +175,295 @@ ${entries.join("\n")}
     : `# Repo\n**${live} sub-tests node-puro** via \`scripts/test-mutation-guards.sh\`\n| master \`mutation-guards\` (${live} sub-tests) | x |\n${hist ? `era de ${hist} sub-tests e o timing-budget foi adicionado após a medição de ${hist}.` : ""}\n`
   writeFileSync(join(dir, "README.md"), readme)
 
+  if (bench !== null) {
+    mkdirSync(join(dir, "docs/benchmarks"), { recursive: true })
+    const texto =
+      bench === "ilegivel"
+        ? "{ isto nao e JSON"
+        : JSON.stringify(bench === "completo" ? benchCompleto(count) : bench)
+    writeFileSync(join(dir, BENCH_PATH), texto)
+    // O fixture com REGISTRO carrega a prosa DERIVADA dele (o bloco do README e,
+    // quando pedido, o da doc): é o estado SÃO, e o teste que muta o bloco parte
+    // dele — como no repositório.
+    const estado = bench === "ilegivel" ? null : estadoDaMatriz(JSON.parse(texto))
+    if (estado) {
+      appendFileSync(
+        join(dir, "README.md"),
+        `\n${BLOCO_README.abre}\n${conteudoDoBloco(paragrafoCusto(estado))}\n${BLOCO_README.fecha}\n`,
+      )
+      if (docDerivado) {
+        mkdirSync(join(dir, "docs"), { recursive: true })
+        writeFileSync(
+          join(dir, "docs/GUARDS.md"),
+          `${BLOCO_GUARDS.abre}\n${conteudoDoBloco(tabelaSubTests(estado))}\n${BLOCO_GUARDS.fecha}\n`,
+        )
+      }
+    }
+  }
   if (doc !== null) {
     mkdirSync(join(dir, "docs"), { recursive: true })
     writeFileSync(join(dir, "docs/GUARDS.md"), doc)
   }
   return dir
 }
+
+describe("comparaComOAto (a régua PURA: a matriz × o ato)", () => {
+  const ids = ["a", "b", "c"]
+  const familia = (over: Record<string, unknown> = {}) => ({
+    [BENCH_FAMILY]: {
+      measured: true,
+      subtests: 3,
+      forms: ids.map((role) => ({ role })),
+      ...over,
+    },
+  })
+
+  it("o registro AUSENTE não é violação — e o resultado DIZ que a ligação não foi julgada", () => {
+    const r = comparaComOAto(null, ids)
+    expect(r.present).toBe(false)
+    expect(r.ok).toBe(true)
+    expect(r.violations).toEqual([])
+    expect(r.motivo).toContain(BENCH_PATH)
+  })
+
+  it("a matriz inteira versionada é ok, e `sobrando` lista o que saiu (sem virar violação)", () => {
+    const r = comparaComOAto(
+      {
+        ...familia(),
+        [BENCH_FAMILY]: {
+          measured: true,
+          subtests: 3,
+          forms: [{ role: "a" }, { role: "b" }, { role: "c" }, { role: "saiu" }],
+        },
+      },
+      ids,
+    )
+    expect(r.faltando).toEqual([])
+    expect(r.sobrando).toEqual(["saiu"])
+    expect(r.ok).toBe(false) // o count GRAVADO (3) já não bate com as 4 formas
+  })
+
+  it("um sub-test da matriz que o ato não versionou é VIOLAÇÃO nomeando o id e o remédio", () => {
+    const r = comparaComOAto(
+      { [BENCH_FAMILY]: { measured: true, subtests: 1, forms: [{ role: "a" }] } },
+      ids,
+    )
+    expect(r.faltando).toEqual(["b", "c"])
+    expect(r.violations.some((v) => v.includes("b") && v.includes("c"))).toBe(true)
+    expect(r.violations.some((v) => v.includes(BENCH_ACT))).toBe(true)
+  })
+
+  it("`measured: false` acusa: não medido não é versionado", () => {
+    const r = comparaComOAto(
+      {
+        [BENCH_FAMILY]: {
+          measured: false,
+          subtests: 3,
+          forms: [{ role: "a" }, { role: "b" }, { role: "c" }],
+        },
+      },
+      ids,
+    )
+    expect(r.ok).toBe(false)
+    expect(r.violations.some((v) => v.includes("NÃO foi medida"))).toBe(true)
+  })
+
+  it("o count GRAVADO divergente acusa, mesmo com as formas certas", () => {
+    const r = comparaComOAto(
+      {
+        [BENCH_FAMILY]: {
+          measured: true,
+          subtests: 2,
+          forms: [{ role: "a" }, { role: "b" }, { role: "c" }],
+        },
+      },
+      ids,
+    )
+    expect(r.ok).toBe(false)
+    expect(r.violations.some((v) => v.includes("GRAVOU 2"))).toBe(true)
+  })
+
+  it("o registro sem a família do ato acusa (nenhum ato versionou a matriz)", () => {
+    const r = comparaComOAto({ meta: {} }, ids)
+    expect(r.ok).toBe(false)
+    expect(r.faltando).toEqual(ids)
+    expect(r.violations.some((v) => v.includes(BENCH_FAMILY))).toBe(true)
+  })
+
+  // ── A COLUNA DE METADES: derivada da MATRIZ, não herdada do ATO ───────────
+  //
+  // O caso medido (23/09/2026): a `bench-freshness` declarava 8 metades quando o
+  // ato mediu o custo dela e a suíte passou a declarar 10. A forma existe, o
+  // custo está medido, o count bate — e MESMO ASSIM o registro descreve a
+  // unidade anterior. É esta a defasagem que a coluna herdada escondia.
+  const coluna = (formas: { role: string; metades?: number }[], total: number) => ({
+    [BENCH_FAMILY]: { measured: true, subtests: 3, metades: total, forms: formas },
+  })
+  const derivadas = [
+    { id: "a", count: 2 },
+    { id: "b", count: 2 },
+    { id: "c", count: 3 },
+  ]
+
+  it("a unidade que entrou DEPOIS da medição é VIOLAÇÃO nomeando o id e o delta", () => {
+    const r = comparaComOAto(
+      coluna(
+        [
+          { role: "a", metades: 2 },
+          { role: "b", metades: 2 },
+          { role: "c", metades: 2 },
+        ],
+        6,
+      ),
+      ids,
+      { metades: derivadas },
+    )
+
+    expect(r.ok).toBe(false)
+    expect(r.metadesDivergentes).toEqual([{ id: "c", gravado: 2, derivado: 3 }])
+    expect(
+      r.violations.some(
+        (v) => v.includes("'c'") && v.includes("GRAVOU 2") && v.includes("declara 3"),
+      ),
+    ).toBe(true)
+    // O remédio é o ATO (ele reescreve a coluna a partir da matriz).
+    expect(r.violations.some((v) => v.includes(BENCH_ACT))).toBe(true)
+  })
+
+  it("o CONTROLE: a coluna que a MATRIZ declara passa (a régua não acusa o são)", () => {
+    const r = comparaComOAto(
+      coluna(
+        [
+          { role: "a", metades: 2 },
+          { role: "b", metades: 2 },
+          { role: "c", metades: 3 },
+        ],
+        7,
+      ),
+      ids,
+      { metades: derivadas },
+    )
+
+    expect(r.ok).toBe(true)
+    expect(r.metadesJulgadas).toBe(true)
+    expect(r.metadesDivergentes).toEqual([])
+  })
+
+  it("a forma SEM número de metades acusa: o custo entra sem o registro dizer o que protege", () => {
+    const r = comparaComOAto(
+      coluna([{ role: "a", metades: 2 }, { role: "b", metades: 2 }, { role: "c" }], 4),
+      ids,
+      {
+        metades: derivadas,
+      },
+    )
+
+    expect(r.ok).toBe(false)
+    expect(r.metadesDivergentes).toEqual([{ id: "c", gravado: null, derivado: 3 }])
+    expect(r.violations.some((v) => v.includes("NÃO declara metades"))).toBe(true)
+  })
+
+  it("o TOTAL da família que não fecha com a coluna acusa (as duas leituras da mesma medição)", () => {
+    const r = comparaComOAto(
+      coluna(
+        [
+          { role: "a", metades: 2 },
+          { role: "b", metades: 2 },
+          { role: "c", metades: 3 },
+        ],
+        5,
+      ),
+      ids,
+      { metades: derivadas },
+    )
+
+    expect(r.ok).toBe(false)
+    expect(
+      r.violations.some((v) => v.includes("GRAVOU 5 metade(s)") && v.includes("somam 7")),
+    ).toBe(true)
+  })
+
+  it("SEM a derivação da matriz a coluna NÃO é julgada — e o resultado DIZ que não foi", () => {
+    const r = comparaComOAto(
+      coluna(
+        [
+          { role: "a", metades: 2 },
+          { role: "b", metades: 2 },
+          { role: "c", metades: 2 },
+        ],
+        6,
+      ),
+      ids,
+    )
+
+    // A mesma coluna que a régua ACUSA com a derivação passa sem ela: é a
+    // derivação que sustenta o vermelho (e a ausência dela fica declarada —
+    // "não julguei" nunca pode ter a cara de "está certo").
+    expect(r.ok).toBe(true)
+    expect(r.metadesJulgadas).toBe(false)
+    expect(r.metadesDivergentes).toEqual([])
+  })
+})
+
+describe("check-mutation-count — a matriz × o ATO que a versiona (na árvore)", () => {
+  it("o ato versionando a matriz inteira: passa, e o resultado PUBLICA o que ele versionou", () => {
+    const dir = makeFixture({ count: 13, bench: "completo" })
+    const r = run(dir)
+    expect(r.ok).toBe(true)
+    expect(r.bench.present).toBe(true)
+    expect(r.bench.versionados).toHaveLength(13)
+    expect(r.bench.faltando).toEqual([])
+  })
+
+  it("a DEFASAGEM (a matriz ganhou um sub-test e o ato ficou para trás) FALHA nomeando-o", () => {
+    const dir = makeFixture({ count: 13, bench: benchCompleto(12) })
+    const r = run(dir)
+    expect(r.ok).toBe(false)
+    expect(r.bench.faltando).toEqual(["sub-12"])
+    expect(
+      r.violations.some(
+        (v) => v.startsWith(BENCH_PATH) && v.includes("sub-12") && v.includes("não versionou"),
+      ),
+    ).toBe(true)
+  })
+
+  it("a COLUNA herdada do ato (a unidade entrou depois) FALHA nomeando a forma", () => {
+    // A matriz versiona os 13 sub-tests e o CUSTO está medido — o único defeito é
+    // a coluna da `sub-3`, que o ato gravou com 1 metade e a suíte declara 2.
+    const registro = benchCompleto(13) as { [BENCH_FAMILY]: Record<string, unknown> }
+    const familia = registro[BENCH_FAMILY]
+    const forms = (familia.forms as { role: string; metades: number }[]).map((f) =>
+      f.role === "sub-3" ? { ...f, metades: 1 } : f,
+    )
+    const dir = makeFixture({
+      count: 13,
+      bench: { ...registro, [BENCH_FAMILY]: { ...familia, metades: 25, forms } },
+    })
+    const r = run(dir)
+
+    expect(r.ok).toBe(false)
+    expect(r.bench.faltando).toEqual([])
+    expect(r.bench.metadesDivergentes).toEqual([{ id: "sub-3", gravado: 1, derivado: 2 }])
+    // O vermelho é SÓ da coluna: nenhuma forma falta e o count gravado bate —
+    // senão este teste mediria outra coisa que não o assunto dele.
+    expect(r.bench.versionados).toHaveLength(13)
+    expect(r.violations.every((v) => !v.includes("não versionou"))).toBe(true)
+    expect(r.violations.some((v) => v.includes("sub-3") && v.includes("declara 2"))).toBe(true)
+  })
+
+  it("o registro do bench AUSENTE não é violação — e a ligação não julgada fica DITA", () => {
+    const dir = makeFixture({ count: 13 })
+    const r = run(dir)
+    expect(r.ok).toBe(true)
+    expect(r.bench.present).toBe(false)
+    expect(r.bench.motivo).toContain(BENCH_PATH)
+  })
+
+  it("o registro ILEGÍVEL é INFRA (exit 2), nunca 'nenhuma ligação a julgar'", () => {
+    const dir = makeFixture({ count: 13, bench: "ilegivel" })
+    expect(() => run(dir)).toThrow(new RegExp(`${BENCH_PATH.replace(/[/.]/g, "\\$&")} ilegível`))
+  })
+})
 
 describe("check-mutation-count", () => {
   it("passa com fixture consistente (todas as refs = derivado)", () => {
@@ -350,6 +692,31 @@ describe("check-mutation-count — as METADES de cada suíte (a descrição deri
     const r = run(dir)
     expect(r.ok).toBe(true)
   })
+
+  // A ÊNFASE DO MARKDOWN não é cosmética aqui: com o negrito entre o verbo e o
+  // número, a contagem escrita na doc saía do alcance do parser e a prosa ficava
+  // velha EM SILÊNCIO — o caso MEDIDO no repositório: a doc dizia
+  // "a suíte declara **8 metades**" com a suíte declarando dez, e o guard passava.
+  it("FALHA quando a contagem está em NEGRITO (a ênfase é retirada antes de ler)", () => {
+    const dir = makeFixture({
+      metadesPorSuite: 3,
+      doc: `# Guards\n\n**Prova por mutação:** \`scripts/test-mutation-sub-0.sh\` declara **4 metades** no bloco.\n`,
+    })
+    const r = run(dir)
+    expect(r.ok).toBe(false)
+    expect(r.violations.some((v) => v.includes("≠ 3") && v.includes("declara 4 metades"))).toBe(
+      true,
+    )
+  })
+
+  it("o CONTROLE: a contagem em negrito com o total CERTO passa (a régua não acusa o são)", () => {
+    const dir = makeFixture({
+      metadesPorSuite: 3,
+      doc: `# Guards\n\n**Prova por mutação:** \`scripts/test-mutation-sub-0.sh\` declara **3 metades** no bloco.\n`,
+    })
+    const r = run(dir)
+    expect(r.ok).toBe(true)
+  })
 })
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -462,10 +829,25 @@ describe("check-mutation-count --staged (a árvore do índice)", () => {
       ".github/workflows/pr-check.yml",
       "README.md",
       "docs/GUARDS.md",
+      BENCH_PATH,
       "scripts/test-mutation-sub-0.sh",
       "scripts/test-mutation-sub-1.sh",
       "scripts/test-mutation-sub-2.sh",
     ])
+  })
+
+  it("o ATO do ÍNDICE é o que o commit carrega: o sub-test novo que ele não versiona ACUSA", () => {
+    // O caso real do pre-commit: a matriz bumpada já estagiada e o registro do
+    // bench ainda com as formas do ato anterior. O veredito do ÍNDICE reprova
+    // (o commit não pode sair com a defasagem), e a árvore COERENTE passa — a
+    // diferença entre os dois continua sendo o ESCOPO.
+    const arvore = makeFixture({ count: 14, bench: "completo" })
+    expect(run(arvore).ok).toBe(true)
+
+    const indice = makeFixture({ count: 14, bench: benchCompleto(13) })
+    const r = runStaged(arvore, { ler: indiceDe(indice) })
+    expect(r.ok).toBe(false)
+    expect(r.violations.some((v) => v.startsWith(BENCH_PATH) && v.includes("sub-13"))).toBe(true)
   })
 
   it("o CLI julga o ÍNDICE de um repositório git DE VERDADE (git show :path)", () => {
@@ -514,5 +896,102 @@ describe("check-mutation-count --staged (a árvore do índice)", () => {
     expect(partido.rc).toBe(1)
     expect(partido.saida).toContain("no ÍNDICE")
     expect(partido.saida).toContain("14 sub-tests")
+  })
+})
+
+describe("a PROSA DERIVADA (a tabela do GUARDS e o parágrafo do README) × o registro", () => {
+  /** As violações da família nova — as que falam do bloco derivado. */
+  const daFamilia = (vs: string[]) =>
+    vs.filter((v) => v.includes("DIVERGE") || v.includes("marcadores"))
+
+  it("o fixture SÃO passa: o bloco vivo é o que o registro renderiza", () => {
+    const dir = makeFixture({ count: 3, bench: "completo", docDerivado: true })
+    try {
+      const r = run(dir)
+      expect(daFamilia(r.violations).map((v) => v.slice(0, 300))).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("um número trocado à mão no parágrafo do README é recusado, com a linha e o renderizado", () => {
+    const dir = makeFixture({ count: 3, bench: "completo" })
+    try {
+      const p = join(dir, "README.md")
+      const antes = readFileSync(p, "utf8")
+      // 3 formas × 2 metades = 6: o arquivo diz 7
+      writeFileSync(p, antes.replace("**6 metades**", "**7 metades**"))
+      expect(readFileSync(p, "utf8")).not.toBe(antes)
+
+      const v = run(dir).violations.find((x) => x.includes("DIVERGE"))
+      expect(v).toBeDefined()
+      expect(v).toContain("README.md:")
+      expect(v).toContain("o parágrafo de custo DIVERGE do registro versionado")
+      expect(v).toContain("**6 metades**") // o RENDERIZADO
+      expect(v).toContain("**7 metades**") // o vivo
+      expect(v).toContain(BENCH_ACT) // o remédio é o mesmo ato de sempre
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("a TABELA da doc também é recusada quando o número dela não é o do registro", () => {
+    const dir = makeFixture({ count: 3, bench: "completo", docDerivado: true })
+    try {
+      const p = join(dir, "docs/GUARDS.md")
+      const antes = readFileSync(p, "utf8")
+      writeFileSync(p, antes.replace("**soma dos 3 sub-tests**", "**soma dos 4 sub-tests**"))
+
+      const v = run(dir).violations.find((x) => x.includes("DIVERGE"))
+      expect(v).toBeDefined()
+      expect(v).toContain("docs/GUARDS.md:")
+      expect(v).toContain("a tabela por sub-test DIVERGE")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("o marcador apagado tira a prosa do julgamento — e isso é violação, não silêncio", () => {
+    const dir = makeFixture({ count: 3, bench: "completo" })
+    try {
+      const p = join(dir, "README.md")
+      writeFileSync(p, readFileSync(p, "utf8").replace(BLOCO_README.abre, ""))
+
+      const v = run(dir).violations.find((x) => x.includes("marcadores"))
+      expect(v).toBeDefined()
+      expect(v).toContain("README.md: o bloco de o parágrafo de custo não está entre os marcadores")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("um marcador DUPLICADO também é recusado (o bloco existe UMA vez)", () => {
+    const dir = makeFixture({ count: 3, bench: "completo" })
+    try {
+      const p = join(dir, "README.md")
+      writeFileSync(p, readFileSync(p, "utf8") + `\n${BLOCO_README.abre}\n`)
+      expect(daFamilia(run(dir).violations).length).toBeGreaterThan(0)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("sem o REGISTRO não há prosa derivada a julgar (a régua da ligação matriz ↔ ato)", () => {
+    const dir = makeFixture({ count: 3 })
+    try {
+      expect(daFamilia(run(dir).violations)).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("a doc das metades é o único opcional: sem ela, só o parágrafo do README é julgado", () => {
+    const dir = makeFixture({ count: 3, bench: "completo" })
+    try {
+      expect(existsSync(join(dir, "docs/GUARDS.md"))).toBe(false)
+      expect(daFamilia(run(dir).violations)).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
