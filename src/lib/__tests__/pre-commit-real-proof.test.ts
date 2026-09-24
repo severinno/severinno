@@ -800,19 +800,19 @@ function guardDeFaseADoHook(): { guard: string; recorte: string } {
 }
 
 describe("o guard de fase A é rodado com o RECORTE do índice", () => {
-  it("o argv leva `--staged` e o node que executa a prova", () => {
+  it("o argv leva o recorte que o HOOK declara e o node que executa a prova", () => {
+    const { guard, recorte } = guardDeFaseADoHook()
     const vistos: any[] = []
     const run = ((cmd: string, args: string[], opts: any) => {
       vistos.push({ cmd, args, opts })
       return { status: 0, stdout: "✅ ok\n", stderr: "" }
     }) as any
 
-    const { guard, recorte } = guardDeFaseADoHook()
     const r = rodaGuardDeFaseA("/tmp/qualquer", guard, { run })
 
-    // O `output` é a saída INTEIRA ao lado da última linha: quem ATRIBUI a recusa a
-    // uma regra do guard (o marcador da defasagem da matriz, na metade 6) não pode
-    // depender de a linha estar na última posição do relatório dele.
+    // O CONTRATO do helper é o que a prova USA (o guard, o exit e a última linha);
+    // o `output` ao lado é detalhe do relatório — um campo NOVO do relatório não
+    // pode quebrar quem consome o contrato.
     expect(r).toMatchObject({ guard, status: 0, linha: "✅ ok" })
     expect(vistos[0].cmd).toBe(process.execPath)
     expect(vistos[0].args).toEqual([join("scripts", guard), recorte])
