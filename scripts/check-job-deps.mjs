@@ -53,6 +53,19 @@
 //   - isencao SEM OBJETO (o job passou a nao exigir nada) tambem e violacao: a
 //     declaracao que sobrou mente sobre o presente.
 //
+// O SEGUNDO CONTRATO DO MESMO JOB — em que CAMINHO o veredito dele roda. Um gate
+// de LEITURA DE YAML nao usa docker, nao sobe servico e nao fala com a rede: ele
+// so LE o repositorio. Preso ao runner da forja, o veredito dele passa a
+// depender da infraestrutura dela (medido: com o runner auto-hospedado offline,
+// os 50 jobs do `pr-check` ficaram ~35min na fila e os gates de leitura nao
+// cunharam veredito nenhum — a forja ESPERA, e nada fica vermelho). A classe e
+// DERIVADA (o leitor alcanca a leitura compartilhada por SPECIFIER + o job nao
+// tem servico/docker/suite/shell) e o `runs-on: self-hosted` a viola: o remedio
+// e o caminho hospedado com o par canonico de install, ou a excecao declarada em
+// RUNNER_PATH_ALLOWLIST com data e motivo. O detalhamento — escopo, fatos que
+// tiram o job da classe e o que ela mede nesta arvore — esta na secao "O SEGUNDO
+// CONTRATO DO MESMO JOB", abaixo.
+//
 // O GRAU e um FATO, nao um detalhe: `binario` (o binario do node_modules:
 // vitest, tsc), `estatico` (`import` de topo: carrega sempre, o desfecho sem deps
 // e o CRASH `ERR_MODULE_NOT_FOUND`) e `tardio` (specifier alcancado so dentro de
@@ -97,15 +110,17 @@
 //   node scripts/check-job-deps.mjs --root X    # fixture (mutation test)
 //
 // Exit codes:
-//   0 — todo job que exige node_modules instala, ou declara a isencao verdadeira
+//   0 — todo job que exige node_modules instala, ou declara a isencao verdadeira,
+//       E nenhum gate de leitura de YAML roda preso ao caminho da forja
 //   1 — exige e nao instala sem isencao; isencao sem data, mentirosa, sem
-//       objeto, ou (--review) vencida
+//       objeto, ou (--review) vencida; leitura de YAML no caminho da forja, ou
+//       excecao de caminho sem objeto/sem data/vencida
 //   2 — infra: escopo NAO JULGAVEL (arquivo ilegivel, YAML invalido),
 //       `--root` sem valor ou inexistente (fail-closed)
 // =============================================================================
 
 import { existsSync, readFileSync, statSync } from "node:fs"
-import { dirname, isAbsolute, join, resolve } from "node:path"
+import { basename, dirname, isAbsolute, join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import {
@@ -129,9 +144,13 @@ import { extractBareSpecifiers, isBareSpecifier, stringRanges } from "./check-no
 import { workflowRunSteps } from "./check-pipefail-sigpipe.mjs"
 import {
   EXIT_UNJUDGEABLE,
+  GITHUB_WORKFLOW_DIR,
   exitOnUnjudgeable,
+  jobKeyName,
+  jobsLayout,
   readWorkflowScan,
   reportEmptyWorkflows,
+  yamlChildKey,
 } from "./forge-workflows.mjs"
 
 export const EXIT = { OK: 0, VIOLACAO: 1, NAOJULGAVEL: EXIT_UNJUDGEABLE }
@@ -237,81 +256,11 @@ export const JOB_DEPS_ALLOWLIST = [
       "os tres comandos julgam YAML (`check-registry-source`, `check-pipefail-sigpipe`, `declared-debt-issue`): sem `js-yaml` eles saem 2 e nenhuma decisao de escopo e publicada — o job depende do node_modules do runner",
   },
   {
-    job: ".github/workflows/deploy.yml::seed-hooks-guard",
-    addedAt: "2026-09-17",
-    semDeps: "falha-fechado",
-    reason:
-      "`check-seed-hooks.mjs` valida os workflows (YAML) antes de julgar o vazamento dos hooks; sem `js-yaml` ele sai 2 e o deploy roda sem o gate",
-  },
-  {
-    job: ".github/workflows/pr-check.yml::secrets-guard",
-    addedAt: "2026-09-17",
-    semDeps: "falha-fechado",
-    reason:
-      "`rotate-secrets.mjs --check` le o `.env`/template como YAML e carrega `web-push` no caminho de rotacao; sem os pacotes ele sai 2 e o guard de `.env` rastreado nao da veredito",
-  },
-  {
-    job: ".github/workflows/pr-check.yml::seed-hooks-guard",
-    addedAt: "2026-09-17",
-    semDeps: "falha-fechado",
-    reason:
-      "`check-seed-hooks.mjs` valida os workflows (YAML) antes de julgar o vazamento dos hooks; sem `js-yaml` ele sai 2 e o gate nao cunha veredito",
-  },
-  {
-    job: ".github/workflows/pr-check.yml::workflow-refs-guard",
-    addedAt: "2026-09-17",
-    semDeps: "falha-fechado",
-    reason:
-      "quatro dos guards deste job leem YAML (`check-workflow-refs`, `check-registry-source`, `check-pipefail-sigpipe`, `check-forge-workflow-scope`): sem `js-yaml` os tres primeiros saem 2 — e e justamente o job de required-checks e de fonte unica do registry",
-  },
-  {
     job: ".github/workflows/pr-check.yml::workflow-run-syntax",
     addedAt: "2026-09-17",
     semDeps: "falha-fechado",
     reason:
       "o gate de sintaxe e o publicador do remendo leem YAML, e o sub-test de mutacao roda `vitest` (binario do node_modules): sem as dependencias o job nao prova nem publica nada",
-  },
-  {
-    job: ".github/workflows/pr-check.yml::sentinel-producer-guard",
-    addedAt: "2026-09-17",
-    semDeps: "falha-fechado",
-    reason:
-      "`check-sentinel-producer.mjs` le os workflows (YAML) para casar produtor e job; sem `js-yaml` ele sai 2 e o par deixaria de ser verificado",
-  },
-  {
-    job: ".github/workflows/pr-check.yml::no-setup-bun-guard",
-    addedAt: "2026-09-17",
-    semDeps: "falha-fechado",
-    reason:
-      "`check-no-setup-bun.mjs` varre os workflows pela leitura compartilhada (YAML valido): sem `js-yaml` ele sai 2 em vez de julgar",
-  },
-  {
-    job: ".github/workflows/pr-check.yml::bun-mirror-guard",
-    addedAt: "2026-09-17",
-    semDeps: "falha-fechado",
-    reason:
-      "`check-bun-mirror.mjs` le workflows (YAML) para casar os espelhos do BUN_VERSION: sem `js-yaml` ele sai 2",
-  },
-  {
-    job: ".github/workflows/pr-check.yml::mutation-jobs-staged-guard",
-    addedAt: "2026-09-17",
-    semDeps: "falha-fechado",
-    reason:
-      "`check-mutation-jobs.mjs` le workflows (YAML) para provar que todo mutation test tem job: sem `js-yaml` ele sai 2 e o par script<->job fica sem veredito",
-  },
-  {
-    job: ".github/workflows/pr-check.yml::mutation-jobs-guard",
-    addedAt: "2026-09-17",
-    semDeps: "falha-fechado",
-    reason:
-      "mesmo guard do job `--staged` (a varredura global): sem `js-yaml` ele sai 2 e o mutation test orfao passa",
-  },
-  {
-    job: ".github/workflows/release-deploy.yml::seed-hooks-guard",
-    addedAt: "2026-09-17",
-    semDeps: "falha-fechado",
-    reason:
-      "`check-seed-hooks.mjs` valida os workflows (YAML) antes de julgar o vazamento; sem `js-yaml` ele sai 2 no caminho de RELEASE",
   },
   {
     job: ".github/workflows/utf8-check.yml::utf8-check",
@@ -324,6 +273,259 @@ export const JOB_DEPS_ALLOWLIST = [
 
 /** A janela de revisao das isencoes deste guard (o default do modulo compartilhado). */
 export const JOB_DEPS_REVIEW_DAYS = DEFAULT_REVIEW_DAYS
+
+// =============================================================================
+// O SEGUNDO CONTRATO DO MESMO JOB: em que CAMINHO o veredito dele roda
+// =============================================================================
+//
+// POR QUE ESTE CONTRATO EXISTE (medido em 24/09/2026). O primeiro contrato deste
+// guard diz de ONDE vem o `node_modules` do job. Ele nao diz ONDE o job roda — e
+// o caminho e o que decide se o veredito SAI. Um gate de LEITURA DE YAML nao usa
+// docker, nao sobe servico e nao fala com a rede: ele so LE o repositorio. Preso
+// ao runner da forja, o veredito dele passa a depender de a infraestrutura dela
+// estar de pe — medido: com o runner auto-hospedado OFFLINE, os 50 jobs do
+// `pr-check` ficaram na fila ~35min e os gates de leitura nao cunharam veredito
+// nenhum (a forja nao erra: ela ESPERA, e nada fica vermelho).
+//
+// A CLASSE e DERIVADA, nao enumerada — e sao DOIS fatos do proprio job:
+//   (1) ele LE YAML: algum passo roda um leitor (`node scripts/<X>.mjs`) cujo
+//       fecho de imports RELATIVOS alcanca a leitura compartilhada
+//       (`forge-workflows.mjs`, a fonte unica do YAML validado) ou importa
+//       `js-yaml` direto. A deteccao e por SPECIFIER, nunca por mencao em prosa:
+//       um comentario que cita o arquivo nao faz um job ler YAML;
+//   (2) ele nao tem NENHUM fato que exija a imagem da forja: nada de `services:`,
+//       nada de docker (comando ou `uses: docker/*`), nada de suite de mutacao,
+//       nada de `bun x <pacote>` e nenhum shell alem do plumbing do Bun
+//       (`scripts/setup-bun-ci.sh`). Um shell QUALQUER tira o job da classe: o
+//       que o corpo dele executa este contrato nao prova — e presumir "so
+//       leitura" ali seria a aposta que este repositorio nao faz. E o que a
+//       `RUNNER_PATH_ALLOWLIST` declara, com o motivo, para os jobs que
+//       EXECUTAM a stack (o `stack-per-commit` e o `check`).
+//
+// O VEREDITO: classe verdadeira + `runs-on:` que pede a forja (`self-hosted`) =
+// VIOLACAO. O gate de leitura de YAML tem de ter um caminho que nao dependa
+// dela; no espelho esse caminho e o hospedado (`ubuntu-latest`), que nao passa
+// pela fila da forja.
+//
+// O ESCOPO, declarado: os workflows do ESPELHO (`.github/workflows/*`) com
+// gatilho de `pull_request` — os gates do MERGE. Do lado da forja dona do merge
+// o `runs-on: ubuntu-latest` E o `act_runner` dela (o label mapeia para a imagem
+// `ubuntu-bun`), entao a regra nao tem o que decidir la; e um cron nao bloqueia
+// merge (a decisao dele e a divida declarada, noutro canal).
+
+/** O caminho que NAO depende do runner da forja (no espelho: o hospedado). */
+export const CAMINHO_HOSPEDADO = "ubuntu-latest"
+
+/** O que um `runs-on:` pede quando o job roda na infraestrutura da forja. */
+export const PEDE_A_FORJA = /(^|[\s,[{])self-hosted([\s,\]}]|$)/
+
+/** A leitura COMPARTILHADA dos workflows: quem a alcanca julga YAML. */
+export const LEITURA_COMPARTILHADA = "forge-workflows.mjs"
+
+/** O unico shell que NAO tira o job da classe (e plumbing, nao veredito). */
+export const SHELL_DE_PLUMBING = /setup-bun-ci\.sh$/
+
+/**
+ * O REMEDIO da classe: o caminho hospedado MAIS o par canonico de install (o
+ * hospedado chega sem `node_modules` nenhum — e sem ele o leitor de YAML sai 2).
+ */
+export const RUNNER_PATH_REMEDIO =
+  `rode o job no caminho que nao depende da forja (\`runs-on: ${CAMINHO_HOSPEDADO}\`) ` +
+  "com o par canonico de install, ou registre a excecao em RUNNER_PATH_ALLOWLIST com `addedAt` e motivo"
+
+/** A janela de revisao das excecoes deste contrato (a mesma do modulo compartilhado). */
+export const RUNNER_PATH_REVIEW_DAYS = DEFAULT_REVIEW_DAYS
+
+/**
+ * As EXCECOES declaradas do contrato do caminho: jobs que o scan de passo le como
+ * leitura pura mas que (provadamente) EXECUTAM a stack, com a data e o motivo.
+ *
+ * Cada motivo nomeia o FATO que o scan de passo nao ve — e e por isso que a
+ * classe precisa de duas saidas (mover OU declarar), e nao de uma regra mais
+ * esperta que adivinhe o que um script faz por dentro.
+ *
+ * @type {{job: string, addedAt: string, reason: string}[]}
+ */
+export const RUNNER_PATH_ALLOWLIST = [
+  {
+    job: ".github/workflows/pr-check.yml::check",
+    addedAt: "2026-09-24",
+    reason:
+      "o job EXECUTA a stack (o `check-mirror-coverage.mjs` SPAWNA os guards do recorte em worktrees, e `bun run lint`/`bunx prisma generate` rodam de verdade): ele le YAML de passagem, nao E um gate de leitura — a classe derivada e de LEITURA, e mover este job nao muda veredito nenhum, so o lugar onde a suite inteira roda",
+  },
+  {
+    job: ".github/workflows/pr-check.yml::pre-commit-in-runner-proof",
+    addedAt: "2026-09-24",
+    reason:
+      "a prova roda o hook DENTRO da imagem do runner `ubuntu-bun` (o `docker pull`/`docker run` vive no corpo de `prove-pre-commit-in-runner.mjs`, fora do scan de passo): o que ela MEDE e a IMAGEM da forja com o tier-1 engajado — no caminho hospedado nao ha imagem local e a medicao passaria a medir outra coisa",
+  },
+]
+
+/** A linha de uma CHAVE filha direta de um job (delega ao `forge-workflows`). */
+function valorDeChaveDoJob(lines, headerIdx, jobIndent, key) {
+  const idx = yamlChildKey(lines, headerIdx, jobIndent, key)
+  if (idx === null) return null
+  const m = /^\s*[A-Za-z_][A-Za-z0-9_.-]*:\s*(.*?)\s*$/.exec(lines[idx])
+  return m === null ? "" : m[1].replace(/^["']|["']$/g, "").trim()
+}
+
+/**
+ * O fecho dos imports RELATIVOS de um modulo alcanca a leitura de YAML?
+ *
+ * Verdadeiro quando algum arquivo do fecho importa `js-yaml` (bare specifier — a
+ * MESMA regua de `extractBareSpecifiers`/`isBareSpecifier`) ou a leitura
+ * compartilhada (`forge-workflows.mjs`). A resolucao relativa e a do repositorio
+ * (`resolveRelativo`), e o teto de profundidade e o mesmo do grafo de deps.
+ *
+ * @param {string} abs
+ * @param {{visto?: Set<string>, profundidade?: number}} [opts]
+ * @returns {boolean}
+ */
+export function leYaml(abs, { visto = new Set(), profundidade = 0 } = {}) {
+  if (profundidade > MAX_PROFUNDIDADE || visto.has(abs) || !existsSync(abs)) return false
+  visto.add(abs)
+  let texto
+  try {
+    texto = readFileSync(abs, "utf8")
+  } catch {
+    return false
+  }
+  if (extractBareSpecifiers(texto).some((s) => isBareSpecifier(s) && s === "js-yaml")) return true
+  const relRe = /(?:from\s*|require\s*\(\s*|import\s*\(\s*)["'](\.[^"']+)["']/g
+  for (const m of texto.matchAll(relRe)) {
+    const alvo = resolveRelativo(m[1], abs)
+    if (alvo === null) continue
+    if (basename(alvo) === LEITURA_COMPARTILHADA) return true
+    if (leYaml(alvo, { visto, profundidade: profundidade + 1 })) return true
+  }
+  return false
+}
+
+/** O workflow dispara em `pull_request` (o gate do merge)? */
+export function disparaEmPullRequest(lines) {
+  const i = lines.findIndex((l) => /^on:/.test(l))
+  if (i === -1) return false
+  const inline = lines[i].replace(/^on:\s*/, "")
+  if (inline !== "") return /pull_request/.test(inline)
+  for (let k = i + 1; k < lines.length; k++) {
+    const l = lines[k]
+    if (l.trim() === "" || l.trim().startsWith("#")) continue
+    if (!/^\s/.test(l)) return false
+    if (/^\s*pull_request:/.test(l)) return true
+  }
+  return false
+}
+
+/**
+ * A CLASSE derivada + os FATOS de cada job do espelho que dispara em PR.
+ *
+ * @param {{files: {path: string, text: string}[]}} scan
+ * @param {{root?: string}} [opts]
+ * @returns {{
+ *   jobs: {id: string, arquivo: string, job: string, caminho: string|null, servicos: boolean,
+ *          leitores: {linha: number, alvo: string, leYaml: boolean}[], fatos: string[],
+ *          classe: boolean, prende: boolean}[],
+ *   foraDoEscopo: {arquivo: string, job: string, motivo: string}[],
+ * }}
+ */
+export function auditaLeituraDeYaml(scan, { root = ROOT } = {}) {
+  const jobs = []
+  const foraDoEscopo = []
+  for (const w of scan.files) {
+    if (!w.path.startsWith(`${GITHUB_WORKFLOW_DIR}/`)) continue
+    if (!w.path.endsWith(".yml") && !w.path.endsWith(".yaml")) continue
+    const lines = w.text.split(/\r?\n/)
+    if (!disparaEmPullRequest(lines)) continue
+    const { jobsIdx, jobIndent } = jobsLayout(lines)
+    if (jobIndent === null) {
+      foraDoEscopo.push({
+        arquivo: w.path,
+        job: "(todos)",
+        motivo: "o `jobs:` do workflow nao pode ser lido (o recuo dos jobs nao foi medido)",
+      })
+      continue
+    }
+    const cabecalhos = []
+    for (let k = jobsIdx + 1; k < lines.length; k++) {
+      const l = lines[k]
+      if (l.trim() === "" || l.trim().startsWith("#")) continue
+      const ind = l.match(/^[ \t]*/)[0].length
+      if (ind < jobIndent) break
+      if (ind !== jobIndent) continue
+      const nome = jobKeyName(l, jobIndent)
+      if (nome !== null) cabecalhos.push({ nome, idx: k })
+    }
+    const passosPorJob = new Map()
+    for (const passo of workflowRunSteps(w.text)) {
+      const job = passo.job ?? "(sem job)"
+      if (!passosPorJob.has(job)) passosPorJob.set(job, [])
+      passosPorJob.get(job).push(passo)
+    }
+    for (let i = 0; i < cabecalhos.length; i++) {
+      const { nome, idx } = cabecalhos[i]
+      const fim = i + 1 < cabecalhos.length ? cabecalhos[i + 1].idx : lines.length
+      const corpo = lines.slice(idx, fim)
+      const caminho = valorDeChaveDoJob(lines, idx, jobIndent, "runs-on")
+      if (caminho === null || caminho === "") {
+        foraDoEscopo.push({
+          arquivo: w.path,
+          job: nome,
+          motivo: "o job nao declara `runs-on:` (o caminho nao e provado por leitura)",
+        })
+        continue
+      }
+      const servicos = yamlChildKey(lines, idx, jobIndent, "services") !== null
+      const usaDocker = corpo.some((l) => {
+        const t = l.trim()
+        return !t.startsWith("#") && /^-?\s*uses:\s*docker\//.test(t)
+      })
+      const leitores = []
+      const fatos = []
+      if (servicos) fatos.push("declara `services:` (servico da forja)")
+      if (usaDocker) fatos.push("usa uma action `docker/*`")
+      for (const passo of passosPorJob.get(nome) ?? []) {
+        for (const comando of shellCommands(passo.body, { startLine: passo.line })) {
+          const alvo = alvoDoLancador(comando)
+          const primeiro = alvo.ok ? alvo.alvo : null
+          if (
+            comando.programa === "node" &&
+            /^scripts\/[A-Za-z0-9_./-]+\.mjs$/.test(primeiro ?? "")
+          ) {
+            const abs = join(root, primeiro)
+            leitores.push({ linha: comando.linha, alvo: primeiro, leYaml: leYaml(abs) })
+            continue
+          }
+          if (comando.programa === "docker" || comando.programa === "docker-compose")
+            fatos.push(`roda \`${comando.programa}\` (L${comando.linha})`)
+          else if (
+            comando.programa === "bash" ||
+            comando.programa === "sh" ||
+            comando.programa === "."
+          ) {
+            const shell = (comando.tokens ?? []).find((t) => /\.(sh|bash)$/.test(t))
+            if (shell !== undefined && !SHELL_DE_PLUMBING.test(shell))
+              fatos.push(`roda o shell \`${shell}\` (L${comando.linha})`)
+          } else if (PACKAGE_MANAGERS.has(comando.programa) && PACOTE_SUBCOMMANDS.has(primeiro))
+            fatos.push(`executa um pacote (\`${comando.programa} ${primeiro}\`)`)
+          else if (comando.programa === "act") fatos.push("roda `act` (precisa de docker)")
+        }
+      }
+      const le = leitores.filter((l) => l.leYaml)
+      jobs.push({
+        id: `${w.path}::${nome}`,
+        arquivo: w.path,
+        job: nome,
+        caminho,
+        servicos,
+        leitores,
+        fatos: [...new Set(fatos)].sort(),
+        classe: le.length > 0 && fatos.length === 0,
+        prende: le.length > 0 && fatos.length === 0 && PEDE_A_FORJA.test(caminho),
+      })
+    }
+  }
+  return { jobs, foraDoEscopo }
+}
 
 const ROOT = process.cwd()
 
@@ -931,7 +1133,7 @@ export function comandosInternos(comando) {
  * direto, e um `object[]` transformaria cada leitura num cast.
  *
  * @param {string} root
- * @param {{isencoes?: object[], now?: number}} [opts]
+ * @param {{isencoes?: object[], excecoesDeCaminho?: object[], now?: number}} [opts]
  * @returns {{
  *   jobs: JobAuditado[],
  *   violacoes: {tipo: string, job: JobAuditado}[],
@@ -941,11 +1143,36 @@ export function comandosInternos(comando) {
  *     semObjeto: {entrada: object, motivo: string}[],
  *     mentirosas: {entrada: object, motivos: string[]}[],
  *   },
+ *   caminho: {
+ *     jobs: JobDeLeitura[],
+ *     foraDoEscopo: {arquivo: string, job: string, motivo: string}[],
+ *     violacoes: JobDeLeitura[],
+ *     excecoes: {
+ *       invalid: {id: string, why: string}[],
+ *       aged: {id: string, addedAt: string, days: number, limit: number}[],
+ *       semObjeto: {entrada: object, motivo: string}[],
+ *       semPrender: {entrada: object, motivo: string}[],
+ *     },
+ *   },
  *   unjudgeable: object[],
  *   vazios: object[],
  * }}
+ *
+ * `JobDeLeitura` é o veredito do SEGUNDO contrato (o caminho): a classe derivada
+ * e os fatos que a sustentam.
+ *
+ * @typedef {{id: string, arquivo: string, job: string, caminho: string|null,
+ *   servicos: boolean, leitores: {linha: number, alvo: string, leYaml: boolean}[],
+ *   fatos: string[], classe: boolean, prende: boolean}} JobDeLeitura
  */
-export function auditaForjas(root, { isencoes = JOB_DEPS_ALLOWLIST, now = Date.now() } = {}) {
+export function auditaForjas(
+  root,
+  {
+    isencoes = JOB_DEPS_ALLOWLIST,
+    excecoesDeCaminho = RUNNER_PATH_ALLOWLIST,
+    now = Date.now(),
+  } = {},
+) {
   const scan = readWorkflowScan(root)
   const jobs = []
   for (const w of scan.files) {
@@ -1025,10 +1252,53 @@ export function auditaForjas(root, { isencoes = JOB_DEPS_ALLOWLIST, now = Date.n
     }
   }
 
+  // ── O segundo contrato: o CAMINHO em que o veredito do gate de leitura roda ─
+  const leitura = auditaLeituraDeYaml(scan, { root })
+  const { invalid: caminhoInvalid, aged: caminhoAged } = reviewAddedAtEntries(excecoesDeCaminho, {
+    idOf: (e) => e.job,
+    now,
+    reviewDays: RUNNER_PATH_REVIEW_DAYS,
+  })
+  const declaradasNoCaminho = new Map(excecoesDeCaminho.map((e) => [e.job, e]))
+  const caminhoIds = new Set(leitura.jobs.map((j) => j.id))
+  const caminhoArquivos = new Set(leitura.jobs.map((j) => j.arquivo))
+  const caminho = {
+    jobs: leitura.jobs,
+    foraDoEscopo: leitura.foraDoEscopo,
+    violacoes: leitura.jobs.filter((j) => j.prende && !declaradasNoCaminho.has(j.id)),
+    excecoes: {
+      invalid: caminhoInvalid,
+      aged: caminhoAged,
+      semObjeto: excecoesDeCaminho
+        .filter((e) => caminhoArquivos.has(String(e.job).split("::")[0]) && !caminhoIds.has(e.job))
+        .map((entrada) => ({
+          entrada,
+          motivo:
+            "o job declarado nao esta no escopo deste contrato (ele nao existe, ou o workflow dele nao dispara em PR)",
+        })),
+      semPrender: excecoesDeCaminho
+        .filter((e) => {
+          const job = leitura.jobs.find((j) => j.id === e.job)
+          return job !== undefined && !job.prende
+        })
+        .map((entrada) => {
+          const job = leitura.jobs.find((j) => j.id === entrada.job)
+          return {
+            entrada,
+            motivo:
+              job.classe === false
+                ? `o job saiu da classe (o scan de passo nao o le como leitura pura: ${job.fatos.join("; ")})`
+                : `o job ja roda no caminho que nao depende da forja (\`${job.caminho}\`) — a excecao nao tem objeto`,
+          }
+        }),
+    },
+  }
+
   return {
     jobs,
     violacoes,
     isencoes: { invalid, aged, semObjeto, mentirosas },
+    caminho,
     unjudgeable: scan.unjudgeable,
     vazios: scan.vazios,
   }
@@ -1069,6 +1339,34 @@ function relatorio(auditoria, { review = false } = {}) {
     )
     for (const m of e.motivos) linhas.push(`       ${m}`)
   }
+  for (const e of auditoria.caminho.violacoes) {
+    linhas.push(
+      `   - ${e.id}: LEITURA DE YAML presa ao caminho da forja (\`runs-on: ${e.caminho}\`)`,
+    )
+    for (const l of e.leitores.filter((x) => x.leYaml).slice(0, 4))
+      linhas.push(`       L${l.linha} ${l.alvo} (le YAML pela leitura compartilhada)`)
+    linhas.push(`       Remedio: ${RUNNER_PATH_REMEDIO}`)
+  }
+  for (const inv of auditoria.caminho.excecoes.invalid)
+    linhas.push(
+      `   - ${inv.id}: ${invalidAddedAtViolation({ label: inv.id, listName: "RUNNER_PATH_ALLOWLIST", why: inv.why })}`,
+    )
+  for (const e of auditoria.caminho.excecoes.semObjeto)
+    linhas.push(`   - ${e.entrada.job}: excecao de CAMINHO SEM OBJETO — ${e.motivo}`)
+  for (const e of auditoria.caminho.excecoes.semPrender)
+    linhas.push(`   - ${e.entrada.job}: excecao de CAMINHO SEM OBJETO — ${e.motivo}`)
+  if (review)
+    for (const a of auditoria.caminho.excecoes.aged)
+      linhas.push(
+        `   - ${agedAddedAtViolation({
+          label: a.id,
+          listName: "RUNNER_PATH_ALLOWLIST",
+          addedAt: a.addedAt,
+          days: a.days,
+          limit: a.limit,
+          remedy: RUNNER_PATH_REMEDIO,
+        })}`,
+      )
   if (review)
     for (const a of auditoria.isencoes.aged)
       linhas.push(
@@ -1129,8 +1427,24 @@ function main() {
       job: e.entrada.job,
       why: e.motivos.join("; "),
     })),
+    ...auditoria.caminho.violacoes.map((j) => ({
+      tipo: "caminho-da-forja",
+      job: j.id,
+      caminho: j.caminho,
+      why: `leitura de YAML no caminho da forja (${RUNNER_PATH_REMEDIO})`,
+    })),
+    ...auditoria.caminho.excecoes.semObjeto.map((e) => ({
+      tipo: "excecao-caminho-sem-objeto",
+      job: e.entrada.job,
+      why: e.motivo,
+    })),
+    ...auditoria.caminho.excecoes.semPrender.map((e) => ({
+      tipo: "excecao-caminho-sem-objeto",
+      job: e.entrada.job,
+      why: e.motivo,
+    })),
     ...(review
-      ? auditoria.isencoes.aged.map((a) => ({
+      ? [...auditoria.isencoes.aged, ...auditoria.caminho.excecoes.aged].map((a) => ({
           tipo: "isencao-vencida",
           job: a.id,
           dias: a.days,
@@ -1162,7 +1476,22 @@ function main() {
             foraDoEscopo: foraDoEscopo.length,
             foraDoEscopoPorCategoria: Object.fromEntries([...porCategoria].sort()),
             vencidas: auditoria.isencoes.aged.length,
+            leituraDeYaml: auditoria.caminho.jobs.filter((j) => j.classe).length,
+            leituraPresa: auditoria.caminho.jobs.filter((j) => j.prende).length,
+            excecoesDeCaminho: RUNNER_PATH_ALLOWLIST.length,
+            caminhoForaDoEscopo: auditoria.caminho.foraDoEscopo.length,
             violacoes: violacoes.length,
+          },
+          caminho: {
+            jobs: auditoria.caminho.jobs.map((j) => ({
+              id: j.id,
+              caminho: j.caminho,
+              classe: j.classe,
+              prende: j.prende,
+              fatos: j.fatos,
+              leitores: j.leitores.map((l) => ({ linha: l.linha, alvo: l.alvo, leYaml: l.leYaml })),
+            })),
+            foraDoEscopo: auditoria.caminho.foraDoEscopo,
           },
           jobs: auditoria.jobs.map((j) => ({
             id: j.id,
@@ -1193,6 +1522,12 @@ function main() {
     )
   }
 
+  if (auditoria.caminho.excecoes.aged.length > 0 && !review) {
+    console.warn(
+      `::warning:: ${auditoria.caminho.excecoes.aged.length} excecao(oes) de RUNNER_PATH_ALLOWLIST passaram a janela de revisao de ${RUNNER_PATH_REVIEW_DAYS} dias — reafirme (atualizando \`addedAt\`) ou remova (o modo --review as escala a violacao no job semanal)`,
+    )
+  }
+
   if (violacoes.length > 0) {
     console.error(`❌ ${violacoes.length} violacao(oes) no contrato de dependencias dos jobs:\n`)
     for (const linha of relatorio(auditoria, { review })) console.error(linha)
@@ -1205,10 +1540,17 @@ function main() {
   }
 
   const venceram = auditoria.isencoes.aged.length
+  const classe = auditoria.caminho.jobs.filter((j) => j.classe)
   console.log(
     `✅ Nenhum job roda comando dependente de node_modules sem install nem isencao declarada ` +
       `(${auditoria.jobs.length} jobs: ${comExigencia.length} exigem dependencias — ` +
       `${comExigencia.length - isentos} instalam, ${isentos} com isencao declarada${venceram > 0 ? `, ${venceram} com a janela vencida (aviso)` : ""}).`,
+  )
+  console.log(
+    `✅ Nenhum gate de LEITURA DE YAML roda preso ao caminho da forja ` +
+      `(${classe.length} job(s) da classe derivada, ${classe.filter((j) => j.caminho === CAMINHO_HOSPEDADO).length} no caminho hospedado, ` +
+      `${auditoria.caminho.excecoes.semPrender.length} com excecao declarada e ` +
+      `${auditoria.caminho.foraDoEscopo.length} fora do escopo — os dois NOMEADOS em \`--json\`).`,
   )
   if (foraDoEscopo.length > 0) {
     const detalhe = [...porCategoria]

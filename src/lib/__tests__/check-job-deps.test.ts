@@ -21,6 +21,15 @@
  * que diz `passa` sobre um `import` de TOPO ou um BINARIO de dependencia e
  * provadamente falsa — os dois carregam no START, sem caminho alternativo.
  *
+ * O SEGUNDO CONTRATO (o CAMINHO) tem a prova aqui do mesmo jeito: um gate de
+ * LEITURA DE YAML no `runs-on` da forja (`self-hosted`) e VIOLACAO — o veredito
+ * dele nao pode depender de a infraestrutura dela estar de pe. A CLASSE e
+ * DERIVADA (o leitor alcanca a leitura compartilhada por SPECIFIER, e o job nao
+ * tem servico/docker/suite/shell), e por isso cada FATO que tira o job da
+ * classe tem um caso, junto com o CONTROLE na direcao oposta: o mesmo job no
+ * caminho hospedado passa, e um leitor que NAO le YAML segue verde em
+ * `self-hosted` (a classe nao e presumida).
+ *
  * Usage:
  *   bunx vitest run --config vitest.config.unit.ts src/lib/__tests__/check-job-deps.test.ts
  */
@@ -31,16 +40,22 @@ import { dirname, join } from "node:path"
 import { spawnSync } from "node:child_process"
 import { afterAll, describe, expect, it } from "vitest"
 import {
+  CAMINHO_HOSPEDADO,
   EXIT,
   JOB_DEPS_ALLOWLIST,
   JOB_DEPS_REVIEW_DAYS,
   MAX_PROFUNDIDADE,
+  RUNNER_PATH_ALLOWLIST,
+  RUNNER_PATH_REVIEW_DAYS,
   auditaForjas,
+  auditaLeituraDeYaml,
   comandosDeTexto,
+  disparaEmPullRequest,
   ehShell,
   exigeDeps,
   grafoDoModulo,
   importsEstaticos,
+  leYaml,
   resolveRelativo,
 } from "../../../scripts/check-job-deps.mjs"
 
@@ -662,5 +677,252 @@ describe("as constantes do contrato", () => {
     expect(auditoria.isencoes.mentirosas).toEqual([])
     expect(auditoria.isencoes.semObjeto).toEqual([])
     expect(auditoria.isencoes.invalid).toEqual([])
+  })
+})
+
+// ── o CAMINHO do gate de leitura de YAML ────────────────────────────────
+
+const WORKFLOW_DO_CAMINHO = (
+  caminho: string,
+  passos: string[],
+  gatilho = "pull_request",
+  extra = "",
+) => `name: fixture
+on: ${gatilho}
+jobs:
+  leitor:
+    runs-on: ${caminho}
+${extra}    steps:
+      - uses: actions/checkout@v4
+      - run: bun install --frozen-lockfile
+${passos.map((p) => `      - run: ${p}`).join("\n")}
+`
+
+const LEITOR_YAML = {
+  "scripts/le-yaml.mjs":
+    'import { valida } from "./forge-workflows.mjs"\nexport function le(t) {\n  return valida(t)\n}\n',
+  "scripts/forge-workflows.mjs":
+    'export function valida(t) {\n  return require("js-yaml").load(t)\n}\n',
+}
+
+/** Um leitor que NÃO alcança YAML: a menção está num TEXTO, não num import. */
+const LEITOR_DOC = {
+  "scripts/le-doc.mjs":
+    'export const NOTA = "a leitura compartilhada vive em scripts/forge-workflows.mjs"\nexport const ok = 1\n',
+}
+
+const fixtureDeCaminho = (
+  caminho: string,
+  arquivos: Record<string, string>,
+  opts: { gatilho?: string; passos?: string[]; extra?: string } = {},
+) =>
+  fixture({
+    workflows: {
+      ".github/workflows/pr.yml": WORKFLOW_DO_CAMINHO(
+        caminho,
+        opts.passos ?? ["node scripts/le-yaml.mjs"],
+        opts.gatilho ?? "pull_request",
+        opts.extra ?? "",
+      ),
+    },
+    arquivos,
+  })
+
+describe("o caminho do gate de leitura de YAML", () => {
+  it("PROVA: leitor de YAML em `self-hosted` é VIOLAÇÃO (exit 1), com o caminho e o remédio nomeados", () => {
+    const root = fixtureDeCaminho("self-hosted", LEITOR_YAML)
+
+    const auditoria = auditaForjas(root, { isencoes: [] })
+    expect(auditoria.caminho.violacoes.map((j) => j.id)).toEqual([
+      ".github/workflows/pr.yml::leitor",
+    ])
+    // O primeiro contrato (o install) está satisfeito: a violação é SÓ do caminho.
+    expect(auditoria.violacoes).toEqual([])
+
+    const { status, saida } = rodaCli(root)
+    expect(status).toBe(EXIT.VIOLACAO)
+    expect(saida).toContain(".github/workflows/pr.yml::leitor")
+    expect(saida).toContain("LEITURA DE YAML presa")
+    expect(saida).toContain("scripts/le-yaml.mjs")
+    expect(saida).toContain(CAMINHO_HOSPEDADO) // o REMEDIO nomeado
+  })
+
+  it("o CONTROLE: o MESMO job no caminho hospedado passa — o vermelho é do CAMINHO, não do comando", () => {
+    const root = fixtureDeCaminho(CAMINHO_HOSPEDADO, LEITOR_YAML)
+    expect(auditaForjas(root, { isencoes: [] }).caminho.violacoes).toEqual([])
+    expect(rodaCli(root).status).toBe(EXIT.OK)
+  })
+
+  it("o CONTROLE da classe: um leitor que NÃO alcança YAML segue verde em `self-hosted`", () => {
+    const root = fixtureDeCaminho("self-hosted", LEITOR_DOC, {
+      passos: ["node scripts/le-doc.mjs"],
+    })
+    expect(auditaForjas(root, { isencoes: [] }).caminho.violacoes).toEqual([])
+    expect(rodaCli(root).status).toBe(EXIT.OK)
+  })
+
+  it("PROVA: a leitura é detectada por SPECIFIER — a menção ao módulo num TEXTO não conta", () => {
+    const dir = fixture({ workflows: {}, arquivos: { ...LEITOR_YAML, ...LEITOR_DOC } })
+    expect(leYaml(join(dir, "scripts/le-yaml.mjs"))).toBe(true)
+    expect(leYaml(join(dir, "scripts/le-doc.mjs"))).toBe(false)
+  })
+
+  it("os FATOS que tiram o job da classe: `services:`, docker, suíte de mutação e shell fora do plumbing", () => {
+    const casos: Record<string, string> = {
+      servicos: WORKFLOW_DO_CAMINHO(
+        "self-hosted",
+        ["node scripts/le-yaml.mjs"],
+        undefined,
+        "    services:\n      pg:\n        image: postgres:16\n",
+      ),
+      docker: WORKFLOW_DO_CAMINHO("self-hosted", ["docker build ."]),
+      dockerAction: WORKFLOW_DO_CAMINHO("self-hosted", ["node scripts/le-yaml.mjs"]).replace(
+        "      - run: bun install --frozen-lockfile",
+        "      - run: bun install --frozen-lockfile\n      - uses: docker/build-push-action@v6",
+      ),
+      suite: WORKFLOW_DO_CAMINHO("self-hosted", [
+        "bash scripts/test-mutation-le-yaml.sh",
+        "node scripts/le-yaml.mjs",
+      ]),
+      shell: WORKFLOW_DO_CAMINHO("self-hosted", [
+        "bash scripts/valida-tudo.sh",
+        "node scripts/le-yaml.mjs",
+      ]),
+      pacote: WORKFLOW_DO_CAMINHO("self-hosted", ["bun x vitest run", "node scripts/le-yaml.mjs"]),
+    }
+
+    for (const [nome, conteudo] of Object.entries(casos)) {
+      const root = fixture({
+        workflows: { ".github/workflows/pr.yml": conteudo },
+        arquivos: { ...LEITOR_YAML, "scripts/valida-tudo.sh": "set -eu\n" },
+      })
+      const auditoria = auditaForjas(root, { isencoes: [] })
+      const job = auditoria.caminho.jobs[0]
+      expect(job.classe, nome).toBe(false)
+      expect(job.fatos.length, nome).toBeGreaterThan(0)
+      expect(auditoria.caminho.violacoes, nome).toEqual([])
+      expect(rodaCli(root).status, nome).toBe(EXIT.OK)
+    }
+  })
+
+  it("o plumbing NÃO tira o job da classe (o `setup-bun-ci.sh` é o mesmo em todos)", () => {
+    const root = fixtureDeCaminho("self-hosted", LEITOR_YAML, {
+      passos: ["bash scripts/setup-bun-ci.sh 1.3.14", "node scripts/le-yaml.mjs"],
+    })
+    expect(auditaForjas(root, { isencoes: [] }).caminho.violacoes).toHaveLength(1)
+  })
+
+  it("o ESCOPO: workflow sem `pull_request` não é julgado (um cron não bloqueia merge)", () => {
+    const semPr = fixtureDeCaminho("self-hosted", LEITOR_YAML, { gatilho: "workflow_dispatch" })
+    expect(disparaEmPullRequest(["on: workflow_dispatch"])).toBe(false)
+    expect(disparaEmPullRequest(["on: pull_request"])).toBe(true)
+    const auditoria = auditaForjas(semPr, { isencoes: [] })
+    expect(auditoria.caminho.jobs).toEqual([])
+    expect(rodaCli(semPr).status).toBe(EXIT.OK)
+
+    // E o CONTROLE na direção oposta: o MESMO fixture com o gatilho de PR é
+    // julgado (senão o verde acima diria só que o guard não leu nada).
+    const comPr = fixtureDeCaminho(CAMINHO_HOSPEDADO, LEITOR_YAML)
+    expect(auditaForjas(comPr, { isencoes: [] }).caminho.jobs).toHaveLength(1)
+  })
+
+  it("o job sem `runs-on` sai NOMEADO em `foraDoEscopo` (não vira verde silencioso)", () => {
+    const root = fixture({
+      workflows: {
+        ".github/workflows/pr.yml": [
+          "name: fixture",
+          "on: pull_request",
+          "jobs:",
+          "  reusa:",
+          "    uses: ./.github/workflows/outro.yml",
+          "  leitor:",
+          "    runs-on: self-hosted",
+          "    steps:",
+          "      - run: bun install --frozen-lockfile",
+          "      - run: node scripts/le-yaml.mjs",
+          "",
+        ].join("\n"),
+      },
+      arquivos: LEITOR_YAML,
+    })
+
+    const auditoria = auditaForjas(root, { isencoes: [] })
+    expect(auditoria.caminho.foraDoEscopo.map((f) => f.job)).toEqual(["reusa"])
+    expect(auditoria.caminho.violacoes.map((j) => j.job)).toEqual(["leitor"])
+  })
+
+  it("a EXCEÇÃO declarada faz passar; sem objeto (o job já no caminho hospedado) ela é violação", () => {
+    const forja = fixtureDeCaminho("self-hosted", LEITOR_YAML)
+    const declarada = {
+      job: ".github/workflows/pr.yml::leitor",
+      addedAt: "2026-09-24",
+      reason: "fixture: excecao declarada para o leitor",
+    }
+
+    const comExcecao = auditaForjas(forja, { isencoes: [], excecoesDeCaminho: [declarada] })
+    expect(comExcecao.caminho.violacoes).toEqual([])
+    expect(comExcecao.caminho.excecoes.semPrender).toEqual([])
+
+    const hospedado = fixtureDeCaminho(CAMINHO_HOSPEDADO, LEITOR_YAML)
+    const semObjeto = auditaForjas(hospedado, { isencoes: [], excecoesDeCaminho: [declarada] })
+    expect(semObjeto.caminho.excecoes.semPrender).toHaveLength(1)
+    expect(semObjeto.caminho.excecoes.semPrender[0].motivo).toContain("ja roda no caminho")
+
+    // A janela e o registro da data são os MESMOS do outro contrato.
+    const vencida = auditaForjas(forja, {
+      isencoes: [],
+      excecoesDeCaminho: [{ ...declarada, addedAt: "2020-01-01" }],
+    })
+    expect(vencida.caminho.excecoes.aged).toHaveLength(1)
+    expect(vencida.caminho.excecoes.aged[0].days).toBeGreaterThan(RUNNER_PATH_REVIEW_DAYS)
+
+    const semData = auditaForjas(forja, {
+      isencoes: [],
+      excecoesDeCaminho: [{ job: declarada.job, reason: "fixture sem data" } as never],
+    })
+    expect(semData.caminho.excecoes.invalid).toHaveLength(1)
+  })
+
+  it("a allowlist REAL do caminho tem data e motivo, e a árvore real não acusa exceção sem objeto", () => {
+    for (const entrada of RUNNER_PATH_ALLOWLIST) {
+      expect(entrada.job).toMatch(/^(\.github|\.gitea)\/workflows\/.+\.[a-z]+::.+$/)
+      expect(entrada.addedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      expect(String(entrada.reason ?? "").length).toBeGreaterThan(20)
+    }
+
+    const auditoria = auditaForjas(process.cwd())
+    expect(auditoria.caminho.violacoes).toEqual([])
+    expect(auditoria.caminho.excecoes.semPrender).toEqual([])
+    expect(auditoria.caminho.excecoes.semObjeto).toEqual([])
+    expect(auditoria.caminho.excecoes.invalid).toEqual([])
+    // O FATO que a prosa do repositório declara: os leitores de YAML do espelho
+    // rodam no caminho que não depende da forja.
+    const classe = auditoria.caminho.jobs.filter((j) => j.classe)
+    expect(classe.length).toBeGreaterThan(0)
+    expect(
+      classe
+        .filter((j) => j.caminho !== CAMINHO_HOSPEDADO)
+        .map((j) => j.id)
+        .sort(),
+    ).toEqual(RUNNER_PATH_ALLOWLIST.map((e) => e.job).sort())
+  })
+
+  it("o `pull_request` é lido do gatilho, não da prosa", () => {
+    const dir = fixture({
+      workflows: {
+        ".github/workflows/comentado.yml":
+          "name: x\non:\n  # pull_request explicado na prosa\n  workflow_dispatch:\n",
+      },
+    })
+    const scan = {
+      files: [
+        {
+          path: ".github/workflows/comentado.yml",
+          text: "name: x\non:\n  # pull_request na prosa\n  workflow_dispatch:\n",
+        },
+      ],
+    }
+    expect(disparaEmPullRequest(scan.files[0].text.split("\n"))).toBe(false)
+    expect(auditaLeituraDeYaml(scan, { root: dir }).jobs).toEqual([])
   })
 })

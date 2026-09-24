@@ -7,7 +7,7 @@
 #   ./scripts/test-mutation-job-deps.sh
 #
 # Exit codes:
-#   0 — as OITO mutações foram DETECTADAS (pelo gate e/ou pela suíte) e os
+#   0 — as ONZE mutações foram DETECTADAS (pelo gate e/ou pela suíte) e os
 #       controles passaram ✅
 #   1 — guard INDIFERENTE a alguma mutação (não cegou / não acusou) OU controle
 #       falso ❌
@@ -51,6 +51,19 @@
 #        job saía do escopo sem ninguém decidir. A mutação devolve essa leitura e
 #        o defeito PASSA — a classe (a mesma régua do `check-hook-commands`,
 #        `alvoDoLancador` → `classeDoFlag`) é o que sustenta o vermelho.
+#   M9 — A LEITURA DO CAMINHO (`runs-on`). O SEGUNDO contrato do guard: um gate
+#        de LEITURA DE YAML não pode estar preso à infraestrutura da forja. Sem
+#        a leitura do caminho, o mesmo leitor em `self-hosted` volta a passar —
+#        e o veredito dele volta a depender de o runner da forja estar de pé.
+#   M10 — A CLASSE DERIVADA (`le.length > 0`). A mutação vai na direção
+#        OPOSTA: sem o fato de que o job LÊ YAML, todo job de leitura no
+#        caminho da forja passa a ser ACUSADO (violação falsa) — o que trava
+#        merge legítimo. O `le.length > 0` é o que sustenta o verde do job que
+#        não lê YAML.
+#   M11 — A EXCEÇÃO DECLARADA E SEM OBJETO. Uma exceção declarada faz o leitor
+#        de YAML no caminho da forja passar (a decisão é declarada, não
+#        presumida) — e a MESMA exceção sobre um job que já roda no caminho
+#        hospedado é declaração que sobrou: sem a regra, ela fica para sempre.
 #
 # AS DUAS TESTEMUNHAS. Onde a regra muda o veredito do CLI, a prova é o EXIT CODE
 # sobre fixtures (comportamento, não leitura do código). Onde o veredito só
@@ -100,6 +113,9 @@ METADES=(
   'M6|O REGISTRO DA DATA (fail-closed)'
   'M7|A JANELA DE REVISÃO (--review)'
   'M8|A CLASSE DO ALVO: um flag na frente do arquivo não é o alvo'
+  'M9|A LEITURA DO CAMINHO: o gate de leitura de YAML preso ao runner da forja'
+  'M10|A CLASSE DERIVADA: um leitor que não lê YAML não é gate de leitura'
+  'M11|A EXCEÇÃO DECLARADA do caminho, e a que não tem mais objeto'
 )
 GUARD="$SCRIPT_DIR/scripts/check-job-deps.mjs"
 SUITE_ARQUIVO="src/lib/__tests__/check-job-deps.test.ts"
@@ -123,6 +139,9 @@ FX_SEM_INSTALL="$TMP_DIR/fx-sem-install"
 FX_LIMPO="$TMP_DIR/fx-limpo"
 FX_FLAG="$TMP_DIR/fx-flag"
 FX_FLAG_LIMPO="$TMP_DIR/fx-flag-limpo"
+FX_CAMINHO_FORJA="$TMP_DIR/fx-caminho-forja"
+FX_CAMINHO_HOSPEDADO="$TMP_DIR/fx-caminho-hospedado"
+FX_CAMINHO_SEM_YAML="$TMP_DIR/fx-caminho-sem-yaml"
 
 # ── Colors ────────────────────────────────────────────────────────────────
 
@@ -232,6 +251,53 @@ node scripts/topo.mjs
 SH
 }
 
+# ── mkfixture_caminho: o MESMO job, num caminho dado, lendo (ou não) YAML ──
+# O contrato do caminho julga dois FATOS derivados do próprio job: se ele LÊ
+# YAML (o fecho de imports RELATIVOS alcança a leitura compartilhada) e em que
+# `runs-on` ele roda. A fixture separa os dois: o mesmo job em `self-hosted` e
+# em `ubuntu-latest`, e um leitor que NÃO alcança YAML (só cita o nome num
+# texto) — o CONTROLE que desmente um vermelho vindo da fixture.
+mkfixture_caminho() {
+  local raiz="$1" caminho="$2" le="$3"
+  mkdir -p "$raiz/.github/workflows" "$raiz/scripts"
+  {
+    echo "name: fixture"
+    echo "on: pull_request"
+    echo "jobs:"
+    echo "  leitor:"
+    echo "    runs-on: $caminho"
+    echo "    steps:"
+    echo "      - uses: actions/checkout@v4"
+    echo "      - run: bun install --frozen-lockfile"
+    if [ "$le" = "1" ]; then
+      echo "      - run: node scripts/le-yaml.mjs"
+    else
+      echo "      - run: node scripts/le-doc.mjs"
+    fi
+  } > "$raiz/.github/workflows/pr.yml"
+  cat > "$raiz/package.json" <<'JSON'
+{ "name": "fixture-de-caminho", "private": true, "scripts": {}, "dependencies": {}, "devDependencies": {} }
+JSON
+  # O leitor de YAML: o import RELATIVO alcanca a leitura compartilhada.
+  cat > "$raiz/scripts/le-yaml.mjs" <<'JS'
+import { valida } from "./forge-workflows.mjs"
+export function le(texto) {
+  return valida(texto)
+}
+JS
+  cat > "$raiz/scripts/forge-workflows.mjs" <<'JS'
+export function valida(texto) {
+  return require("js-yaml").load(texto)
+}
+JS
+  # O CONTROLE da classe: um leitor que NÃO alcança YAML — a menção ao módulo
+  # está num TEXTO, e é por SPECIFIER que a leitura é detectada.
+  cat > "$raiz/scripts/le-doc.mjs" <<'JS'
+export const NOTA = "a leitura compartilhada vive em scripts/forge-workflows.mjs"
+export const ok = 1
+JS
+}
+
 # ── rodar_guard / rodar_guard_real / rodar_guard_json ─────────────────────
 rodar_guard() {
   set +e
@@ -321,6 +387,12 @@ mkfixture "$FX_LIMPO" "pr.yml" "guard" 1 "le-yaml.mjs"
 # `corpo.sh` — e para ler o corpo é preciso primeiro PROVAR qual é o alvo.
 mkfixture "$FX_FLAG" "pr-flag.yml" "guard" 0 "corpo.sh" "bash -u scripts/corpo.sh"
 mkfixture "$FX_FLAG_LIMPO" "pr-flag.yml" "guard" 1 "corpo.sh" "bash -u scripts/corpo.sh"
+# O contrato do CAMINHO: o leitor de YAML no caminho da forja (o defeito), o
+# MESMO job no caminho hospedado (o controle que isola a causa) e um leitor que
+# não alcança YAML (o controle da CLASSE).
+mkfixture_caminho "$FX_CAMINHO_FORJA" "self-hosted" 1
+mkfixture_caminho "$FX_CAMINHO_HOSPEDADO" "ubuntu-latest" 1
+mkfixture_caminho "$FX_CAMINHO_SEM_YAML" "self-hosted" 0
 
 echo -e "${CYAN}═══ Mutation test: dependências dos jobs (check-job-deps) ═══${NC}"
 echo "  guard: $GUARD"
@@ -549,7 +621,85 @@ pass "M8 CIRÚRGICA: o job sem install e sem flag segue reprovado — morreu só
 exigir_suite_vermelha "M8"
 restaurar_original
 
-# ── 11. CONTROLE FINAL: a árvore ficou como estava ────────────────────────
+# ── 11. CONTROLES do CAMINHO: a classe derivada, e o que ela NÃO acusa ───
+header "CONTROLE C: o gate de LEITURA DE YAML não pode estar preso à forja"
+exigir_reprovado "CONTROLE C1 (leitor de YAML em self-hosted)" "$FX_CAMINHO_FORJA"
+pass "CONTROLE C1: o leitor de YAML no caminho da forja é VIOLAÇÃO — o veredito dele não pode depender do runner"
+exigir_aprovado "CONTROLE C2 (o MESMO job no caminho hospedado)" "$FX_CAMINHO_HOSPEDADO"
+pass "CONTROLE C2: o MESMO job no caminho hospedado passa — o vermelho da C1 é do CAMINHO, não do comando"
+exigir_aprovado "CONTROLE C3 (o leitor que NÃO lê YAML)" "$FX_CAMINHO_SEM_YAML"
+pass "CONTROLE C3: um leitor que não alcança YAML segue verde em self-hosted — a classe é DERIVADA (por specifier, não por prosa)"
+rodar_guard_json "$FX_CAMINHO_FORJA"
+if ! grep -q '"caminho-da-forja"' <<< "$JSON_OUT"; then
+  fail "CONTROLE C4: a violação do caminho não sai nomeada no --json (o operador não a vê)"
+  echo "$JSON_OUT" | head -6 | sed 's/^/      /'
+  exit 1
+fi
+if ! grep -q '"classe": true' <<< "$JSON_OUT"; then
+  fail "CONTROLE C4: o --json não publica o FATO da classe (quem lê não sabe por que o job foi julgado)"
+  echo "$JSON_OUT" | head -6 | sed 's/^/      /'
+  exit 1
+fi
+pass "CONTROLE C4: o --json publica a violação e o fato da classe (derivação visível, não implícita)"
+
+# ── 12. MUTAÇÃO M9: a LEITURA DO CAMINHO (o gate volta a ficar preso) ────
+header "MUTAÇÃO M9: o caminho do gate de leitura de YAML (runs-on)"
+mutar_guard \
+  '        prende: le.length > 0 && fatos.length === 0 && PEDE_A_FORJA.test(caminho),' \
+  '        prende: /* MUTACAO M9 */ false,'
+exigir_cego "M9" "$FX_CAMINHO_FORJA"
+pass "M9: o leitor de YAML em self-hosted PASSA com o guard mutado (CEGO) — a leitura do caminho é load-bearing"
+exigir_reprovado "M9 cirúrgica (o defeito de dependências segue reprovado)" "$FX_SEM_INSTALL"
+pass "M9 CIRÚRGICA: o job sem install segue reprovado — morreu só a leitura do caminho"
+exigir_suite_vermelha "M9"
+restaurar_original
+
+# ── 13. MUTAÇÃO M10: a CLASSE DERIVADA (acusar o são) ────────────────────
+header "MUTAÇÃO M10: a classe derivada (quem LÊ YAML)"
+mutar_guard \
+  '        prende: le.length > 0 && fatos.length === 0 && PEDE_A_FORJA.test(caminho),' \
+  '        prende: /* MUTACAO M10 */ fatos.length === 0 && PEDE_A_FORJA.test(caminho),'
+exigir_reprovado "M10 (o job que NÃO lê YAML passou a ser acusado)" "$FX_CAMINHO_SEM_YAML"
+pass "M10: sem o fato de que o job LÊ YAML, o job são passa a ser ACUSADO (violação falsa) — a derivação sustenta o verde da C3"
+exigir_aprovado "M10 cirúrgica (o leitor no caminho hospedado segue verde)" "$FX_CAMINHO_HOSPEDADO"
+exigir_suite_vermelha "M10"
+restaurar_original
+
+# ── 14. MUTAÇÃO M11: a EXCEÇÃO declarada, e a que não tem objeto ─────────
+header "MUTAÇÃO M11: a exceção declarada do caminho"
+# O SETUP: uma exceção declarada para o leitor do fixture. A lista é a do
+# repositório (o CLI não recebe lista por parâmetro) — o caminho honesto de
+# medir a regra por EXECUÇÃO, restaurado no fim do bloco.
+mutar_guard \
+  'export const RUNNER_PATH_ALLOWLIST = [' \
+  'export const RUNNER_PATH_ALLOWLIST = /* MUTACAO M11-SETUP */ [
+  {
+    job: ".github/workflows/pr.yml::leitor",
+    addedAt: "2026-09-24",
+    reason: "fixture: excecao declarada para o leitor de YAML do fixture",
+  },'
+exigir_aprovado "M11 setup (a exceção declarada)" "$FX_CAMINHO_FORJA"
+pass "M11 SETUP: a exceção declarada faz o leitor de YAML no caminho da forja PASSAR — a decisão é DECLARADA, não presumida"
+exigir_reprovado "M11 (a MESMA exceção sobre o job no caminho hospedado)" "$FX_CAMINHO_HOSPEDADO"
+pass "M11: a exceção sobre um job que JÁ roda no caminho hospedado é VIOLAÇÃO (sem objeto) — a declaração velha não fica para sempre"
+# A mutação é a REGRA (o filtro), não a emissão: `...(false ? [] : lista)` ainda
+# percorre a lista — medido: o guard seguia acusando e o sub-test morria por
+# INFRA ("a mutação não cegou"), não porque o mecanismo fosse load-bearing.
+mutar_guard \
+  '          return job !== undefined && !job.prende' \
+  '          return /* MUTACAO M11 */ false'
+exigir_cego "M11" "$FX_CAMINHO_HOSPEDADO"
+pass "M11: a exceção sem objeto PASSA com o guard mutado (CEGO) — quem cobra a declaração velha é a regra do sem-objeto"
+# A CIRÚRGICA mede OUTRO defeito: o fixture do caminho está DECLARADO (a
+# exceção do setup segue na lista), então ele passa por declaração — quem mostra
+# que só a regra do sem-objeto morreu é o defeito de dependências, que a mutação
+# e a exceção não tocam.
+exigir_reprovado "M11 cirúrgica (o defeito de dependências segue reprovado)" "$FX_SEM_INSTALL"
+pass "M11 CIRÚRGICA: o defeito de OUTRO contrato segue reprovado — morreu só a regra do sem-objeto"
+exigir_suite_vermelha "M11"
+restaurar_original
+
+# ── 15. CONTROLE FINAL: a árvore ficou como estava ────────────────────────
 header "CONTROLE FINAL: restauração verificada por checksum"
 exigir_reprovado "CONTROLE FINAL (job sem install)" "$FX_SEM_INSTALL"
 pass "CONTROLE FINAL: o guard restaurado volta a reprovar o job sem install"
@@ -557,6 +707,10 @@ exigir_aprovado "CONTROLE FINAL (job que instala)" "$FX_LIMPO"
 pass "CONTROLE FINAL: o job que instala segue verde"
 exigir_reprovado "CONTROLE FINAL (flag antes do alvo)" "$FX_FLAG"
 pass "CONTROLE FINAL: o alvo atras do flag volta a ser julgado depois da restauração"
+exigir_reprovado "CONTROLE FINAL (leitor de YAML em self-hosted)" "$FX_CAMINHO_FORJA"
+pass "CONTROLE FINAL: o leitor de YAML volta a ser reprovado no caminho da forja"
+exigir_aprovado "CONTROLE FINAL (o mesmo leitor no caminho hospedado)" "$FX_CAMINHO_HOSPEDADO"
+pass "CONTROLE FINAL: o leitor de YAML segue verde no caminho hospedado"
 
 echo
-echo -e "${GREEN}═══ MUTATION TEST PASSED — as 8 mutações foram detectadas (gate e/ou suíte) ═══${NC}"
+echo -e "${GREEN}═══ MUTATION TEST PASSED — as 11 mutações foram detectadas (gate e/ou suíte) ═══${NC}"
