@@ -119,6 +119,8 @@ import { tmpdir } from "node:os"
 import { pathToFileURL } from "node:url"
 
 import { metadesDeclaradas } from "./metades.mjs"
+/** O REGISTRO VERSIONADO do custo da matriz — a família `mutations` do bench. */
+export const BENCH_PATH = "docs/benchmarks/guard-timing-baseline.json"
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
