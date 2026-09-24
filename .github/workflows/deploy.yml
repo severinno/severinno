@@ -38,6 +38,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # O guard lê os workflows com `js-yaml` (dependência do repositório, via
+      # `scripts/forge-workflows.mjs`): sem `node_modules` ele cai no fail-closed e
+      # reprova todos os arquivos, barrando o deploy por um defeito do PRÓPRIO job.
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
       - name: Check no seed test hooks in non-test workflows
         run: node scripts/check-seed-hooks.mjs
 
