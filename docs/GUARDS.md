@@ -3370,33 +3370,34 @@ mesmo fato que a régua da idade lê no doctor):
 
 <!-- bench:mutations:tabela — DERIVADA do registro (`mutations` da baseline); não edite à mão: o ato a reescreve -->
 
-Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 23/09/2026 (`790118cf`): **38/41 verdes**, **249 metades**. **3 sub-test(s) NÃO passaram** (`doc-hashes`, `pre-commit-proof`, `bench-freshness`): o custo deles não julga nada.
+Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 23/09/2026 (`61035d4f`): **41/41 verdes**, **249 metades**.
 
 | sub-test                                                                  |  wall time | fatia | metades |
 | ------------------------------------------------------------------------- | ---------: | ----: | ------: |
-| `workflow-run-syntax`                                                     |      73.6s |   19% |      15 |
-| `hook-commands`                                                           |      62.2s |   16% |      27 |
-| `job-deps`                                                                |      46.5s |   12% |       8 |
-| `remedy-tty`                                                              |      30.6s |    8% |       2 |
-| `registry-defaults`                                                       |      27.6s |    7% |       9 |
-| `cut-stages` (as três invariantes duras do corte do GitHub)               |      19.5s |    5% |       3 |
-| `required-applied`                                                        |      18.6s |    5% |      10 |
-| `github-deps` (a catraca do inventário do GitHub)                         |      13.4s |    3% |       9 |
-| `mirror-coverage` (o CONTROLE, a soma por tabela e o pulo sem motivo)     |      11.5s |    3% |       3 |
-| `lint-scope` (o escopo do lint derivado do próprio comando)               |      11.2s |    3% |       6 |
-| `canal-fixers`                                                            |       9.6s |    2% |       6 |
-| `mutation-count`                                                          |       9.4s |    2% |      18 |
-| `reconciliation`                                                          |       9.2s |    2% |       3 |
-| `gate-registration`                                                       |       8.1s |    2% |       5 |
-| `pre-commit-proof` (a declaração dos recusadores, a descida e o CONTROLE) |       7.8s |    2% |       3 |
+| `pre-commit-proof` (a declaração dos recusadores, a descida e o CONTROLE) |     141.8s |   25% |       3 |
+| `workflow-run-syntax`                                                     |      72.8s |   13% |      15 |
+| `hook-commands`                                                           |      61.4s |   11% |      27 |
+| `bench-freshness` (a régua da idade e o CONTEÚDO da origem)               |      47.2s |    8% |      12 |
+| `job-deps`                                                                |      46.1s |    8% |       8 |
+| `remedy-tty`                                                              |      30.3s |    5% |       2 |
+| `registry-defaults`                                                       |      27.1s |    5% |       9 |
+| `cut-stages` (as três invariantes duras do corte do GitHub)               |      18.6s |    3% |       3 |
+| `required-applied`                                                        |      18.3s |    3% |      10 |
+| `github-deps` (a catraca do inventário do GitHub)                         |      13.2s |    2% |       9 |
+| `mirror-coverage` (o CONTROLE, a soma por tabela e o pulo sem motivo)     |      12.1s |    2% |       3 |
+| `lint-scope` (o escopo do lint derivado do próprio comando)               |      11.3s |    2% |       6 |
+| `canal-fixers`                                                            |       9.5s |    2% |       6 |
+| `reconciliation`                                                          |       9.1s |    2% |       3 |
+| `mutation-count`                                                          |       9.1s |    2% |      18 |
+| `gate-registration`                                                       |       8.1s |    1% |       5 |
 | `nested-guard`                                                            |       5.9s |    1% |       2 |
-| `runner-labels`                                                           |       5.5s |    1% |       1 |
-| `merge-latency`                                                           |       4.6s |    1% |       5 |
+| `runner-labels`                                                           |       5.1s |    1% |       1 |
+| `merge-latency`                                                           |       4.5s |    1% |       5 |
 | `stack-per-commit` (a prova de cada commit da pilha passar sozinho)       |       3.8s |    1% |       5 |
 | `hook-ci-parity`                                                          |       3.5s |    1% |       9 |
-| `pipefail-sigpipe`                                                        |       2.2s |    1% |      22 |
+| `pipefail-sigpipe`                                                        |       2.1s |    0% |      22 |
 | `bun-literal`                                                             |       1.8s |    0% |       5 |
-| `bench-freshness` (a régua da idade e o CONTEÚDO da origem)               |       1.1s |    0% |      12 |
+| `doc-hashes` (a régua do hash citado na prosa)                            |       1.2s |    0% |       8 |
 | `workflow-defaults`                                                       |       1.0s |    0% |       7 |
 | `lint-guard`                                                              |       0.9s |    0% |       3 |
 | `archived-pipeline`                                                       |       0.8s |    0% |       6 |
@@ -3407,19 +3408,18 @@ Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 23/09/2026 (`790118cf`
 | `readme`                                                                  |       0.4s |    0% |       3 |
 | `no-setup-bun`                                                            |       0.2s |    0% |       2 |
 | `runner-base`                                                             |       0.2s |    0% |       4 |
-| `doc-hashes` (a régua do hash citado na prosa)                            |       0.2s |    0% |       8 |
 | `no-leaked-imports`                                                       |       0.1s |    0% |       3 |
+| `utf8-scope`                                                              |       0.1s |    0% |       2 |
 | `bun-removal`                                                             |       0.1s |    0% |       1 |
 | `producer-sent`                                                           |       0.1s |    0% |       1 |
-| `utf8-scope`                                                              |       0.1s |    0% |       2 |
 | `hooks-symmetry`                                                          |       0.1s |    0% |       2 |
 | `docs-anchor`                                                             |       0.1s |    0% |       1 |
 | `e2e-cache-budget`                                                        |       0.0s |    0% |       2 |
-| **soma dos 41 sub-tests**                                                 | **394.0s** |  100% | **249** |
-| harness (parse das metades, tabelas, subida do master)                    |       4.8s |       |         |
-| **total do master**                                                       | **398.8s** |       |         |
+| **soma dos 41 sub-tests**                                                 | **570.4s** |  100% | **249** |
+| harness (parse das metades, tabelas, subida do master)                    |       4.9s |       |         |
+| **total do master**                                                       | **575.2s** |       |         |
 
-**Dez** sub-tests pagam **80%** da conta e a mediana é **2.2s**: a cauda é barata, e o harness sai da DIFERENÇA entre o total e a soma dos sub-tests, não de uma constante. O sub-test NOVO entra na rodada seguinte **MEDIDO**, e o PRÓXIMO acrescenta **~9.7s** (PROJEÇÃO: a média dos scripts medidos mais o harness por sub-test). A coluna de metades é DERIVADA da matriz (§ acima) — o ato a reescreve depois da herança e diz o que fez (`metadesDaMatriz`). Esta TABELA (e esta leitura) é **DERIVADA do registro**: quem a reescreve é o ATO, e o `check:mutation-count` recusa o commit em que ela divirja dele — a prosa não tem número próprio.
+**Dez** sub-tests pagam **84%** da conta e a mediana é **3.5s**: a cauda é barata, e o harness sai da DIFERENÇA entre o total e a soma dos sub-tests, não de uma constante. O sub-test NOVO entra na rodada seguinte **MEDIDO**, e o PRÓXIMO acrescenta **~14.0s** (PROJEÇÃO: a média dos scripts medidos mais o harness por sub-test). A coluna de metades é DERIVADA da matriz (§ acima) — o ato a reescreve depois da herança e diz o que fez (`metadesDaMatriz`). Esta TABELA (e esta leitura) é **DERIVADA do registro**: quem a reescreve é o ATO, e o `check:mutation-count` recusa o commit em que ela divirja dele — a prosa não tem número próprio.
 <!-- /bench:mutations:tabela -->
 
 **E a derivação desceu ao PASSO.** O mesmo mecanismo, um nível abaixo: o job
