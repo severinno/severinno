@@ -207,6 +207,17 @@ import { GITHUB_RUNNER_SCRIPT, checkGithubRunnerLabels } from "./check-runner-la
 import { proveRunnerImageGate } from "./prove-runner-image-gate.mjs"
 import { checkComposeInterpolation, checkNonVersionedImageRefs } from "./check-registry-source.mjs"
 import { collectDeclaredDebt, textoFonteVencida } from "./declared-debt.mjs"
+// A FILA PARADA (o runner FORA DO AR com run esperando): a folha desta régua
+// mora em `runner-queue.mjs` e não reimplementa NADA do que já existe — a metade
+// "quem puxaria a fila" do GitHub vem do MESMO registro que o fato dos labels lê,
+// e a da Gitea vem do banco da forja (não há REST para a fila, ver o cabeçalho da
+// folha). O doctor só transporta o fato para o veredito.
+import {
+  GITEA_CONTAINER_ENV,
+  readRunnerQueue,
+  runnerQueueBlocker,
+  runnerQueueUnknown,
+} from "./runner-queue.mjs"
 import { checkRunnerLabels } from "./check-runner-labels.mjs"
 import {
   ENV_MIRROR_SCRIPT,
@@ -1468,6 +1479,33 @@ export function summarize(facts) {
         )
       }
     }
+  }
+
+  // A FILA PARADA: o runner FORA DO AR com run ESPERANDO — a pergunta que o
+  // relatório não fazia.
+  //
+  // NÃO é o registro (que pode estar perfeito num runner desligado): é "há quem
+  // PUXE o que está na fila?". BLOQUEIA porque o sintoma é MUDO e tem PRAZO: o
+  // job fica em `queued`, nada falha e nada fica vermelho — e a fila de um
+  // self-hosted não é infinita (o GitHub descarta o run sem runner por volta de
+  // 24h), então quem espera PERDE a execução em silêncio. Medido em 24/09/2026:
+  // 5 runs em `queued`, a mais antiga havia ~16h, e `hostinger-runner` offline.
+  //
+  // A fila VAZIA e a fila DRENANDO são medições e não geram linha (não há dívida
+  // a declarar — um runner fora do ar com a fila vazia não para nada). O que não
+  // deu para ler vira DÚVIDA, nunca "sem fila": a forja cujo banco/canal não
+  // respondeu não é uma forja com a fila vazia. E a fila com runner ONLINE e
+  // nenhum pegando job é publicada como o que é — pergunta em aberto (a janela do
+  // poll, ou os labels que não casam com os `runs-on` da fila).
+  for (const forge of facts.runnerQueue?.stalled ?? []) {
+    for (const b of runnerQueueBlocker(facts.runnerQueue.forges[forge])) blockers.push(b)
+  }
+  for (const forge of facts.runnerQueue?.unread ?? []) {
+    const metade = facts.runnerQueue.forges[forge]
+    unknowns.push(`a FILA do ${metade.label} nao foi medida: ${metade.detail}`)
+  }
+  for (const forge of facts.runnerQueue?.unsure ?? []) {
+    for (const u of runnerQueueUnknown(facts.runnerQueue.forges[forge])) unknowns.push(u)
   }
 
   for (const m of facts.mirrors.blockers) blockers.push(m)
@@ -3171,6 +3209,7 @@ export async function readGithubRunnerLabels({
     remedies: [],
     declared: [],
     registered: [],
+    runners: [],
     runner: null,
     status: null,
     repo: null,
@@ -3200,6 +3239,10 @@ export async function readGithubRunnerLabels({
       detail: res.detail,
       declared: res.declared ?? [],
       registered: res.registered ?? [],
+      // A LISTA inteira do registro (a leitura já a trouxe): é dela que a fila
+      // parada tira "há algum runner ONLINE para puxar estes runs?" — sem uma
+      // segunda consulta ao mesmo endpoint.
+      runners: res.runners ?? [],
       runner: res.runner ?? null,
       status: res.status ?? null,
       repo: res.repo ?? null,
@@ -5614,6 +5657,34 @@ export function renderReport(report, { emit = console.log } = {}) {
     for (const r of ghLabels.remedies ?? []) line(`           ${color(C.gray, `→ ${r}`)}`)
   }
 
+  // A FILA PARADA: as DUAS forjas na MESMA seção do registro — o registro diz
+  // QUEM está registrado (e o estado que ele reporta), a fila diz se alguém está
+  // PEGANDO o que espera. As duas metades são a mesma pergunta, e é por isso que
+  // elas saem juntas: um runner registrado e FORA DO AR é invisível no registro
+  // (os labels dele estão certos), e uma fila cheia com o runner no ar é a forja
+  // trabalhando. A idade do item mais antigo sai na própria `detail` — é ela que
+  // separa a fila parada da fila recém-formada.
+  const fila = facts.runnerQueue
+  if (fila) {
+    for (const metade of Object.values(fila.forges ?? {})) {
+      const filaMark =
+        metade.state === "parada"
+          ? MARK.fail()
+          : metade.state === "ociosa" || metade.state === "drenando"
+            ? MARK.ok()
+            : MARK.warn()
+      line(`       ${filaMark} fila do runner (${metade.forge}): ${metade.detail}`)
+      if (metade.runners?.length) {
+        const nomes = metade.runners
+          .map((r) => `${r.name}=${r.raw ?? r.status}${r.busy ? "+busy" : ""}`)
+          .join(" · ")
+        line(`           ${color(C.gray, `registro: ${nomes}`)}`)
+      }
+      if (metade.state === "parada" && metade.remedy)
+        line(`           ${color(C.gray, `→ ${metade.remedy}`)}`)
+    }
+  }
+
   // As referencias que NAO estao no repositorio: o que ficou indeterminado
   // aparece aqui, item por item — esconder isso num modo verboso seria o alerta
   // mudo que este repo persegue.
@@ -6631,6 +6702,10 @@ export function parseArgs(argv) {
  * runner (`check`/`run`) — o ponto de injeção do teste
  * @param {object} [options.githubRunnerLabelsDeps] dependências do fato do
  * registro do runner do GitHub (`check`/`fetchImpl`/`env`) — o ponto de injeção do teste
+ * @param {object} [options.runnerQueueDeps] dependências do TERCEIRO fato do
+ * runner — a FILA parada (`channel`/`api`/`run`/`readFile`/`resolveDb`/`readGitea`/
+ * `readGithubCli`) — o ponto de injeção do teste, e o que mantém a leitura da fila
+ * fora da rede e do docker
  * @param {object} [options.proofDeps] dependências repassadas à prova do bloqueio
  * @param {object} [options.imageContractDeps] dependências do fato do contrato publicado
  * (`resolveIdentity`/`run`/`credentials`/`cwd`) — o ponto de injeção do teste
@@ -6708,6 +6783,12 @@ export async function diagnose({
   /** Injeção do FATO do guard de recursão (`probe`) — o teste exercita os canais sem subprocesso. */
   nestedGuardDeps = {},
   githubRunnerLabelsDeps = {},
+  /**
+   * Injeção do FATO da fila parada (`channel`/`api`/`run`/`readFile`/`resolveDb`/
+   * `readGitea`) — o teste mede os cinco estados sem rede, sem docker e sem
+   * depende do relógio da forja.
+   */
+  runnerQueueDeps = {},
   proofDeps = {},
   composeDeps = {},
   protectionDeps = {},
@@ -6899,6 +6980,21 @@ export async function diagnose({
         excluded: DEBT_EXCLUDED,
       }
 
+  // O REGISTRO do runner do GitHub é lido UMA vez: ele responde DUAS perguntas
+  // (os labels/versão que o repositório declara × o que está registrado, e quem
+  // PUXARIA a fila). Uma segunda consulta ao mesmo endpoint seria a segunda
+  // verdade sobre o mesmo registro — e um registro que mudasse entre as duas
+  // faria o relatório se contradizer sozinho, no mesmo rodapé.
+  const githubRunnerLabels = runnerLabels
+    ? await readGithubRunnerLabels({ cwd, env: envLeituras, deps: githubRunnerLabelsDeps })
+    : {
+        state: "skipped",
+        detail: "pulada por --no-runner-labels",
+        violations: [],
+        remedies: [],
+        runners: [],
+      }
+
   const facts = {
     contract,
     bringUpGate,
@@ -6975,14 +7071,36 @@ export async function diagnose({
         },
     // A outra forja, com a MESMA flag: as duas são "o registro do runner", e
     // separá-las em duas flags faria a segunda ser esquecida.
-    githubRunnerLabels: runnerLabels
-      ? await readGithubRunnerLabels({ cwd, env: envLeituras, deps: githubRunnerLabelsDeps })
-      : {
-          state: "skipped",
-          detail: "pulada por --no-runner-labels",
-          violations: [],
-          remedies: [],
-        },
+    githubRunnerLabels,
+    // A FILA PARADA — o runner FORA DO AR com run esperando, nas DUAS forjas.
+    //
+    // POR QUE É UM FATO PRÓPRIO: o relatório tinha dois fatos sobre o runner (o
+    // registro que ele GRAVOU e a versão do binário × o pin) e nenhum sobre ele
+    // estar no AR. Medido em 24/09/2026: `hostinger-runner` com `status=offline`
+    // e 5 runs em `queued` (a mais antiga de 23/09 21:30) — o doctor dizia PRONTA
+    // com a forja parada, porque a pergunta que faltava era OUTRA: não "o
+    // registro está certo?", mas "há alguém para puxar o que está esperando?".
+    //
+    // A metade do GitHub vem do MESMO GET do registro (nada de uma segunda
+    // leitura) e a da Gitea do BANCO da forja (não há rota REST para a fila na
+    // Gitea 1.22 — medido no `swagger.v1.json` dela). Entra ATÉ no perfil `--ci`:
+    // é no PR que a fila parada importa, porque quem a espera é o check do PR.
+    runnerQueue: await readRunnerQueue({
+      cwd,
+      env: envLeituras,
+      repos: { gitea: forgeRepo("gitea", env).value, github: forgeRepo("github", env).value },
+      // `null` quando o registro NÃO FOI LIDO (sem token, sem canal, script
+      // ausente): uma lista VAZIA de runners é um fato (ninguém registrado — o
+      // "no runner available" da própria forja) e um registro ILEGÍVEL é outro. Os
+      // dois entram como `[]` no fato do registro, então a distinção é feita AQUI:
+      // passar `[]` no lugar de "não li" faria toda fila cheia parecer PARADA numa
+      // máquina sem credencial — o falso bloqueio que ensina a ignorar o veredito.
+      githubRunners: ["proven", "violated"].includes(githubRunnerLabels?.state)
+        ? githubRunnerLabels.runners
+        : null,
+      declarado: env?.[GITEA_CONTAINER_ENV] ?? null,
+      deps: runnerQueueDeps,
+    }),
     mirrors: mirrorsFacts,
     openDebt: openDebtFacts,
     // A IDADE da dívida DECLARADA: pura leitura de arquivo (sem rede, credencial

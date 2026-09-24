@@ -111,6 +111,11 @@ import {
   readUnprovenRegistry,
   UNPROVEN_REGISTRY_PATH,
 } from "../../../scripts/doctor-unproven.mjs"
+// A RÉGUA DA FILA PARADA: o teste do FATO monta as metades com o próprio módulo
+// (`readRunnerQueue` com a leitura dublada) em vez de um objeto escrito à mão —
+// assim o que o veredito julga é a mesma derivação que o doctor produz, e um
+// estado novo na folha não passa por aqui sem aparecer.
+import { deriveRunnerQueue, readRunnerQueue } from "../../../scripts/runner-queue.mjs"
 
 // A prova EXECUTADA pelo doctor e as constantes do hook que ela usa: o teste mede
 // a MESMA função que o relatório chama (e é por isso que a mutação do hook aqui
@@ -427,6 +432,11 @@ function facts(overrides: Record<string, unknown> = {}) {
     imageRefs: refsFacts(),
     runnerLabels: runnerLabelFacts(),
     githubRunnerLabels: githubRunnerLabelFacts(),
+    // A FILA PARADA das duas forjas (o runner FORA DO AR com run esperando):
+    // presente e MEDIDA sem dívida (as duas filas vazias) — assim ela não pesa
+    // no veredito, e cada teste estraga o que quer medir (parada, drenando,
+    // sem-puxador ou não lida).
+    runnerQueue: runnerQueueMedida(),
     imageContract: imageContractFacts(),
     // O guard de recursão ARMADO, como o `diagnose` o declara em todo relatório
     // (o disparo é que vira um relatório à parte, com `state: fired`).
@@ -743,6 +753,111 @@ function githubRunnerLabelFacts(over: Record<string, unknown> = {}) {
     repo: "severinno/severinno",
     ...over,
   }
+}
+
+/**
+ * O FATO DA FILA PARADA (o runner FORA DO AR com run esperando).
+ *
+ * O default é o estado MEDIDO num checkout comum — as duas metades `unread`,
+ * cada uma pela sua causa real (a Gitea porque a fila dela só existe no banco da
+ * stack, o GitHub porque num host sem o canal o repo não é conhecido). É esse
+ * default que mantém VIVAS as duas declarações datadas do registro
+ * (`runner-queue-gitea`/`runner-queue-github`): com as duas medidas, os itens
+ * fechariam e a cobertura passaria a testar letra morta em vez do mecanismo.
+ * Cada teste estraga o que quer medir.
+ */
+function runnerQueueFacts(over: Record<string, unknown> = {}) {
+  const metade = (
+    forge: string,
+    label: string,
+    detail: string,
+    extra: Record<string, unknown> = {},
+  ) => ({
+    forge,
+    label,
+    state: "unread",
+    waiting: 0,
+    oldestMs: null,
+    oldestFromSample: false,
+    online: 0,
+    picking: 0,
+    runners: [],
+    remedy: null,
+    detail,
+    ...extra,
+  })
+  return {
+    state: "unread",
+    forges: {
+      gitea: metade(
+        "gitea",
+        "Gitea",
+        "a fila não pôde ser lida: sem repositório no canal desta forja",
+      ),
+      github: metade(
+        "github",
+        "GitHub",
+        "a fila não pôde ser lida: sem o canal do GitHub (GH_TOKEN)",
+      ),
+    },
+    waiting: 0,
+    stalled: [],
+    draining: [],
+    idle: [],
+    unsure: [],
+    unread: ["gitea", "github"],
+    oldest: null,
+    remedies: [],
+    detail: "Gitea: a fila não pôde ser lida · GitHub: a fila não pôde ser lida",
+    erros: [],
+    ...over,
+  }
+}
+
+/**
+ * O mesmo fato MEDIDO e sem dívida — as duas filas vazias.
+ *
+ * É o default do `facts()`: um relatório em que a fila foi medida e está ociosa
+ * não ganha linha nenhuma no veredito, e é assim que cada teste parte do zero
+ * para estragar só o que quer medir (a mesma disciplina da dívida declarada, da
+ * herança de shell e da cobertura de terceiro — presentes e LIMPOS).
+ */
+function runnerQueueMedida(over: Record<string, unknown> = {}) {
+  return runnerQueueFacts({
+    state: "measured",
+    unread: [],
+    idle: ["gitea", "github"],
+    forges: {
+      gitea: {
+        forge: "gitea",
+        label: "Gitea",
+        state: "ociosa",
+        waiting: 0,
+        oldestMs: null,
+        oldestFromSample: false,
+        online: 1,
+        picking: 0,
+        runners: [{ name: "gitea-runner", status: "online", busy: false, raw: "idle" }],
+        remedy: "Remédio: `bash deploy/gitea-up.sh` no host da forja",
+        detail: "fila vazia (1 runner(s) registrado(s), 1 online)",
+      },
+      github: {
+        forge: "github",
+        label: "GitHub",
+        state: "ociosa",
+        waiting: 0,
+        oldestMs: null,
+        oldestFromSample: false,
+        online: 1,
+        picking: 0,
+        runners: [{ name: "hostinger-runner", status: "online", busy: false }],
+        remedy: "Remédio: no host do runner, `bash deploy/setup-github-runner.sh`",
+        detail: "fila vazia (1 runner(s) registrado(s), 1 online)",
+      },
+    },
+    detail: "Gitea: fila vazia · GitHub: fila vazia",
+    ...over,
+  })
 }
 
 function protectionFacts(over: Record<string, unknown> = {}) {
@@ -1641,6 +1756,12 @@ describe("summarize — o REGISTRO do que o veredito NÃO cobre", () => {
    */
   function factsComAsLinhas(over: Record<string, unknown> = {}) {
     return facts({
+      // A FILA PARADA como ela foi MEDIDA no perfil completo de 24/09/2026: as
+      // duas metades não lidas (a Gitea sem a stack de pé, o GitHub sem o canal
+      // do espelho). É este estado que mantém VIVAS as declarações datadas
+      // `runner-queue-gitea`/`runner-queue-github` — e é a linha que cada uma
+      // declara (`a FILA do <forja> nao foi medida`) que a cobertura confere.
+      runnerQueue: runnerQueueFacts(),
       // O estado MEDIDO do perfil completo em 22/09/2026, e não um inventado: o
       // espelho NÃO SUPORTA branch protection (privado num plano sem a feature) e
       // a forja dona do merge está `unavailable` (sem GITEA_TOKEN). É esse par que
@@ -4495,6 +4616,152 @@ describe("renderReport — o registro do runner (github)", () => {
   })
 })
 
+describe("a FILA PARADA (o runner fora do ar com run esperando)", () => {
+  /**
+   * O fato montado pelo PRÓPRIO módulo, com a leitura dublada.
+   *
+   * `queue` é o payload que a API do GitHub devolveria; `runners` é a lista do
+   * registro (o que o fato dos labels leu); `gitea` são as três respostas do
+   * banco da forja (o id do repo, a contagem da fila e os runners registrados).
+   */
+  async function fatoDaFila({
+    queue = { total_count: 0, workflow_runs: [] } as Record<string, unknown>,
+    runners = [] as Record<string, unknown>[] | null,
+    gitea = null as Record<string, unknown> | null,
+    repo = "severinno/severinno" as string | null,
+  } = {}) {
+    return readRunnerQueue({
+      cwd: ROOT,
+      env: { GH_REPOSITORY: repo ?? undefined, GH_TOKEN: "t" },
+      repos: { gitea: repo, github: repo },
+      githubRunners: runners,
+      nowMs: Date.UTC(2026, 8, 24, 12, 0, 0),
+      deps: {
+        api: async () => ({ status: 200, data: queue, text: "" }),
+        resolveDb:
+          gitea === null
+            ? () => ({ ok: false, detail: "a stack da forja não está de pé" })
+            : () => ({
+                ok: true,
+                container: "gitea",
+                dbPath: "/data/gitea/gitea.db",
+                dbType: "sqlite3",
+                service: "gitea",
+                detail: "container 'gitea' (container_name do compose)",
+              }),
+        readGitea: () =>
+          gitea ?? {
+            ok: false,
+            detail: "a stack da forja não está de pé",
+          },
+      },
+    })
+  }
+
+  /** A metade da Gitea medida com a fila que o teste pedir. */
+  function giteaMedida({ waiting = 0, runnersOnline = 1 } = {}) {
+    return {
+      ok: true,
+      queue: {
+        ok: true,
+        waiting,
+        oldestMs: waiting > 0 ? 3_600_000 : null,
+        oldestFromSample: false,
+        items: [],
+        detail: waiting > 0 ? `${waiting} tarefa(s) em espera` : "0 tarefa(s) em espera",
+      },
+      runners:
+        runnersOnline > 0
+          ? [{ name: "gitea-runner", status: "online", busy: false, raw: "idle" }]
+          : [],
+      detail: "gitea · repo_id 1",
+    }
+  }
+
+  it("a fila PARADA (runner fora do ar com run esperando) BLOQUEIA mesmo com TODO o resto verde", async () => {
+    const fato = await fatoDaFila({
+      queue: {
+        total_count: 5,
+        workflow_runs: [
+          { id: 1, name: "PR Check", head_branch: "main", created_at: "2026-09-23T21:30:20Z" },
+        ],
+      },
+      // O registro MEDIDO em 24/09/2026: um runner, offline.
+      runners: [{ name: "hostinger-runner", status: "offline", busy: false }],
+      gitea: giteaMedida(),
+    })
+    expect(fato.stalled).toEqual(["github"])
+    expect(fato.forges.github.waiting).toBe(5)
+    expect(fato.forges.github.online).toBe(0)
+    const v = summarize(facts({ runnerQueue: fato as unknown as Record<string, unknown> }))
+    expect(v.verdict).toBe(VERDICT.BLOCKED)
+    const linha = v.blockers.find((b: string) => b.includes("FORA DO AR com run na FILA"))
+    expect(linha, v.blockers.join("\n")).toBeTruthy()
+    // O remédio é o RE-REGISTRO, e ele sai na própria linha: quem lê o bloqueio
+    // tem o comando do lado, sem procurar em outro lugar.
+    expect(linha).toContain("deploy/setup-github-runner.sh")
+  })
+
+  it("ZERO runners registrados com a fila cheia é PARADA (o 'no runner available' da forja)", () => {
+    const metade = deriveRunnerQueue({
+      forge: "github",
+      queue: {
+        ok: true,
+        waiting: 3,
+        oldestMs: 7_200_000,
+        oldestFromSample: false,
+        items: [],
+        detail: "3 run(s) em `queued`",
+      },
+      // A leitura FOI feita e respondeu que não há runner nenhum — e isso é um
+      // fato sobre a forja, não a ausência de um (é a distinção que o `diagnose`
+      // faz ao passar `null` em vez de `[]` quando o registro não foi lido).
+      pullers: [],
+      nowMs: Date.UTC(2026, 8, 24, 12, 0, 0),
+    })
+    expect(metade.state).toBe("parada")
+    expect(metade.online).toBe(0)
+    expect(metade.detail).toContain("NENHUM dos 0 runner(s)")
+  })
+
+  it("a fila NÃO medida rebaixa o veredito e nomeia a forja (nunca 'sem fila')", async () => {
+    const vazio = await fatoDaFila({ runners: [] })
+    const v = summarize(facts({ runnerQueue: vazio as unknown as Record<string, unknown> }))
+    expect(v.verdict).not.toBe(VERDICT.READY)
+    expect(v.unknowns.some((u: string) => u.includes("a FILA do Gitea nao foi medida"))).toBe(true)
+    expect(v.blockers.some((b: string) => b.includes("FORA DO AR"))).toBe(false)
+  })
+
+  it("a fila CHEIA com runner no ar e sem ninguém pegando job é DÚVIDA (não bloqueio)", async () => {
+    const fato = await fatoDaFila({
+      queue: {
+        total_count: 2,
+        workflow_runs: [
+          { id: 1, name: "PR Check", head_branch: "main", created_at: "2026-09-24T11:55:00Z" },
+        ],
+      },
+      runners: [{ name: "hostinger-runner", status: "online", busy: false }],
+      gitea: giteaMedida(),
+    })
+    expect(fato.unsure).toEqual(["github"])
+    const v = summarize(facts({ runnerQueue: fato as unknown as Record<string, unknown> }))
+    expect(v.blockers.some((b: string) => b.includes("FORA DO AR"))).toBe(false)
+    expect(v.unknowns.some((u: string) => u.includes("fila parada?"))).toBe(true)
+  })
+
+  it("a fila OCIOSA não gera linha nenhuma (runner fora do ar com a fila vazia não para nada)", async () => {
+    const fato = await fatoDaFila({
+      queue: { total_count: 0, workflow_runs: [] },
+      runners: [{ name: "hostinger-runner", status: "offline", busy: false }],
+      gitea: giteaMedida(),
+    })
+    expect(fato.idle).toEqual(["gitea", "github"])
+    const v = summarize(facts({ runnerQueue: fato as unknown as Record<string, unknown> }))
+    expect(v.blockers.some((b: string) => b.includes("FORA DO AR"))).toBe(false)
+    expect(v.unknowns.some((u: string) => u.includes("FILA"))).toBe(false)
+  })
+})
+
 describe("summarize — a branch protection REGISTRADA", () => {
   it("em sincronia → não muda o veredito", () => {
     expect(summarize(facts()).verdict).toBe(VERDICT.READY)
@@ -4782,6 +5049,46 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
     },
   }
 
+  /**
+   * A FILA PARADA dubldada, MEDIDA e sem dívida — as duas forjas com a fila vazia.
+   *
+   * O `cwd` deste fluxo é uma fixture que não tem a stack da forja nem o canal do
+   * espelho: sem o dublê, as duas metades sairiam `unread` (o comportamento certo,
+   * e é o estado que o registro datado declara), e o teste que mede o caminho
+   * VERDE ficaria indeterminado por uma leitura que ele não testa — a leitura REAL
+   * tem testes próprios (`runner-queue.test.ts`).
+   */
+  const queueProven = {
+    channel: () => ({
+      via: "api",
+      token: "t",
+      repo: "severinno/severinno",
+      baseUrl: "https://api.github.com",
+    }),
+    api: async () => ({ status: 200, data: { total_count: 0, workflow_runs: [] }, text: "" }),
+    resolveDb: () => ({
+      ok: true,
+      container: "gitea",
+      dbPath: "/data/gitea/gitea.db",
+      dbType: "sqlite3",
+      service: "gitea",
+      detail: "container 'gitea' (container_name do compose)",
+    }),
+    readGitea: () => ({
+      ok: true,
+      queue: {
+        ok: true,
+        waiting: 0,
+        oldestMs: null,
+        oldestFromSample: false,
+        items: [],
+        detail: "0 tarefa(s) em espera",
+      },
+      runners: [{ name: "gitea-runner", status: "online", busy: false, raw: "idle" }],
+      detail: "gitea · repo_id 1 · 0 tarefa(s) em espera",
+    }),
+  }
+
   it("forja completa e registry 200 → PRONTA", async () => {
     const dir = forgeFixture()
     const { facts } = await diagnose({
@@ -4803,6 +5110,10 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       protectionDeps: protectionInSync,
       openDebtDeps: debtClear,
       benchFreshnessDeps: benchProven,
+      // A FILA PARADA: medida e vazia nas duas forjas (o dublê acima) — sem ele,
+      // as duas metades sairiam `unread` nesta fixture e o caminho VERDE ficaria
+      // indeterminado por uma leitura que não é o assunto deste teste.
+      runnerQueueDeps: queueProven,
       // O CONTRATO LOCAL inteiro: o `cwd` deste fluxo é uma fixture SEM `.husky/`,
       // onde as três partes da leitura real saem INDISPONÍVEIS (e com razão — não
       // há o que provar nem o que ler). O FLUXO aqui é o do veredito, então o

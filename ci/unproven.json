@@ -124,6 +124,26 @@
       "matches": "as referencias NAO VERSIONADAS da imagem nao foram provadas"
     },
     {
+      "id": "runner-queue-gitea",
+      "kind": "lacuna",
+      "declaredAt": "2026-09-24",
+      "subject": "a FILA da forja DONA DO MERGE não é medida daqui: a Gitea 1.22 não expõe a fila nem o estado do runner em REST (medido no `swagger.v1.json` dela: `/repos/{owner}/{repo}/actions/tasks` → HTTP 404, e a única rota de runner é a do token de registro), então as duas metades da pergunta — `action_task.status IN (5 waiting, 7 blocked)` e `action_runner.last_online` contra a régua da própria forja (1 minuto = offline) — só existem no BANCO da stack; sem a stack de pé o veredito diz 'não lida', nunca 'sem fila' (um repo ausente do banco devolveria zero itens, e zero itens é o verde FALSO desta pergunta)",
+      "proveWith": "no host da forja, `bash deploy/gitea-up.sh` (é ele que sobe a stack e RE-REGISTRA o act_runner) e então `GITEA_REPOSITORY=<owner>/<repo> bun run doctor` — a metade fecha quando o banco responde, e a fila aparece medida (parada/drenando/ociosa) em vez de 'não lida'",
+      "remedy": "subir/re-registrar a stack no host dela (`bash deploy/gitea-up.sh`) — o re-registro é o mesmo comando que o BLOQUEIO da fila parada publica: o registro é estado no volume, e subir o container sem ele devolve o runner velho",
+      "closedBy": "fila-gitea-medida",
+      "matches": "a FILA do Gitea nao foi medida"
+    },
+    {
+      "id": "runner-queue-github",
+      "kind": "lacuna",
+      "declaredAt": "2026-09-24",
+      "subject": "a FILA do ESPELHO (GitHub) não é medida sem o canal: a fila sai de `/repos/:repo/actions/runs?status=queued` (canal GH_TOKEN + GH_REPOSITORY, ou a CLI `gh`) e quem a PUXARIA sai de `/actions/runners` (que exige permissão de self-hosted runners) — sem qualquer uma das duas a metade é 'não lida', e a ausência das duas se disfarça de fila limpa. MEDIDO em 24/09/2026: 5 runs em `queued` (a mais antiga de 23/09 21:30) e `hostinger-runner` com `status=offline` — o defeito que este fato passou a publicar como BLOQUEIO",
+      "proveWith": "no host do runner, `bash deploy/setup-github-runner.sh` (o re-registro, com o `RUNNER_VERSION` pinado à versão que o serviço aceita) e então `GH_TOKEN=<pat> GH_REPOSITORY=<owner>/<repo> bun run doctor` — a metade fecha quando o canal E o registro respondem, e a fila aparece medida em vez de 'não lida'",
+      "remedy": "re-registrar o runner auto-hospedado (`bash deploy/setup-github-runner.sh`) e dar ao doctor o canal do espelho (GH_TOKEN + GH_REPOSITORY) — sem canal, um repo desconhecido devolveria o vazio de uma fila limpa",
+      "closedBy": "fila-github-medida",
+      "matches": "a FILA do GitHub nao foi medida"
+    },
+    {
       "id": "act-runner-registration",
       "kind": "lacuna",
       "declaredAt": "2026-09-22",

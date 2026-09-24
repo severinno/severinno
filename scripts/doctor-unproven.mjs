@@ -124,6 +124,36 @@ export const CLOSED_BY = {
    */
   "github-runner-na-versao-do-pin": (facts) =>
     facts?.githubRunnerLabels?.version?.state === "proven",
+  /**
+   * A FILA DA FORJA DONA DO MERGE (Gitea) foi MEDIDA — o banco da stack respondeu.
+   *
+   * A Gitea 1.22 não expõe a fila em REST (medido: `/repos/{owner}/{repo}/actions/
+   * tasks` → 404, e `/actions/runners` só tem a rota do token de registro): a fila
+   * (`action_task.status IN (5 waiting, 7 blocked)`) e o estado do runner
+   * (`action_runner.last_online` × a régua da própria forja) só existem no BANCO, e
+   * o banco só existe onde a stack está de pé. Num checkout qualquer o doctor diz
+   * "não lida" — NUNCA "sem fila": um repo que não existe no banco, um container
+   * fora do ar ou um banco que não é o sqlite do compose devolveriam zero itens, e
+   * zero itens é o verde FALSO desta pergunta.
+   */
+  "fila-gitea-medida": (facts) => {
+    const metade = facts?.runnerQueue?.forges?.gitea
+    return Boolean(metade) && metade.state !== "unread"
+  },
+  /**
+   * A FILA DO ESPELHO (GitHub) foi MEDIDA — o canal respondeu e o registro do
+   * runner foi lido.
+   *
+   * São DUAS leituras com canais diferentes: a fila em si (`/actions/runs?
+   * status=queued`, pela API com GH_TOKEN + GH_REPOSITORY ou pela CLI `gh`) e o
+   * registro de quem puxaria (`/actions/runners`, que exige o escopo de
+   * self-hosted runners). Sem qualquer uma das duas a metade é `unread`, e sem o
+   * registro uma fila cheia pareceria parada (ou vazia) por falta de testemunha.
+   */
+  "fila-github-medida": (facts) => {
+    const metade = facts?.runnerQueue?.forges?.github
+    return Boolean(metade) && metade.state !== "unread"
+  },
   /** O contrato da imagem publicada foi provado contra o registry. */
   "imagem-publicada-prova": (facts) => facts?.imageContract?.state === "proven",
   /** As duas variáveis da imagem têm VALOR para comparar. */

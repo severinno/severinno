@@ -6,13 +6,13 @@
 #   ./scripts/test-mutation-doctor-facts.sh
 #
 # Exit codes:
-#   0 — as QUATRO mutações DETECTADAS: cada fio cortado deixa a suíte VERMELHA
+#   0 — as CINCO mutações DETECTADAS: cada fio cortado deixa a suíte VERMELHA
 #       pelas âncoras de CADA fato ✅
 #   1 — suíte CEGA (verde com a mutação) / falhou por outro motivo / a mutação
 #       não aplicou / uma âncora sumiu ou virou ambígua / infra ❌
 #
 # POR QUE: o doctor não MEDE os fatos da forja — ele os TRANSPORTA para o
-# veredito. Essa travessia tem QUATRO fios, e cada um é uma regressão silenciosa
+# veredito. Essa travessia tem CINCO fios, e cada um é uma regressão silenciosa
 # de um tipo diferente:
 #
 #   A) o fio VIOLAÇÃO→BLOQUEIO. Cada seção (contrato de merge, o GATE do
@@ -53,8 +53,20 @@
 #      do repositório errado, com a assinatura de um veredito do repositório
 #      certo.
 #
-# COMO: quatro mutações, cada uma com âncoras POR FATO (a unidade é o FATO, não o
-# arquivo) e o mesmo controle:
+#   E) o fio da FILA PARADA — e este mora em OUTRO arquivo. O fato tem DUAS
+#      metades (`runner-queue.mjs`: a fila e quem a puxaria) e a régua que
+#      DECIDE é a folha, não o doctor: o doctor só transporta. A mutação corta a
+#      ORDEM da derivação (`if (queue.waiting === 0)`), que é a regra "fila
+#      vazia é MEDIDA antes do estado do puxador" — e sem ela a fila vazia do
+#      dia a dia cai no ramo do puxador e vira bloqueio (ou dúvida). É o outro
+#      lado da moeda do caso A: lá a violação deixa de bloquear, aqui o SÃO
+#      passa a bloquear — e um falso bloqueio diário é o que ensina a ignorar o
+#      veredito. Alvo PRÓPRIO (`CASO_ARQUIVO`), porque o fio é da folha; a
+#      suíte roda os DOIS arquivos de teste (a folha tem os seus, o doctor mede
+#      a travessia) e exige vermelho nos dois.
+#
+# COMO: cinco mutações, cada uma com âncoras POR FATO (a unidade é o FATO, não o
+# arquivo), com o alvo DECLARADO por caso (`CASO_ARQUIVO`) e o mesmo controle:
 #
 #   A) `const blockers = []` (em `summarize`) → objeto com `push` no-op. Todo
 #      `blockers.push(...)` do doctor vira inócuo com UMA edição, porque é
@@ -77,16 +89,16 @@
 #
 # Cada mutação é IN-PLACE com backup + trap de restauração (NUNCA
 # `git checkout`), roda o vitest REAL (precisa de node_modules — por isso o job
-# é o do seed-guards.yml, NÃO a matriz node-pura do master) em
-# src/lib/__tests__/forge-doctor.test.ts e decide pelo JSON do reporter
-# (--reporter=json), não por texto:
+# é o do seed-guards.yml, NÃO a matriz node-pura do master) em CADA arquivo de
+# `TEST_FILES` (a folha e o doctor: o fato é medido dos dois lados) e decide
+# pelo JSON do reporter (--reporter=json), não por texto:
 #
 #   CONTROLE — arquivo íntegro → suíte VERDE (success=true, 0 falhas) e TODAS as
-#     âncoras das QUATRO mutações EXISTEM e PASSAM agora. Cada âncora tem de casar
+#     âncoras das CINCO mutações EXISTEM e PASSAM agora. Cada âncora tem de casar
 #     EXATAMENTE UM teste: uma âncora ambígua mediria o fato errado (e uma
 #     renomeada/removida não teria o que acender) — fail-fast AQUI, para a
 #     detecção abaixo não ser vácuo;
-#   MUTAÇÃO — fio cortado → suíte VERMELHA (success=false) com:
+#   MUTAÇÃO — fio cortado → suítes VERMELHAS (success=false) com:
 #     • CADA âncora da mutação FAILING — não basta a suíte cair: nenhum fato pode
 #       ficar sem a sua prova (o fio é um só, o efeito tem de aparecer em TODOS);
 #     • as âncoras INTACTAS PASSING — a prova de que a mutação é CIRÚRGICA: o
@@ -96,9 +108,15 @@
 #
 # ⚠️ Source-coupled (como os demais test-mutation-*.sh): o sed ancora nas linhas
 # literais de `summarize` (o coletor de blockers, o ternário do veredito e o
-# `return`), e as asserções nos títulos dos testes. Reformular qualquer uma
-# delas ou renomear um teste exige atualizar ESTE script junto — e ele FALHA
-# (exit 1) em vez de passar em silêncio quando isso acontece.
+# `return`) e da derivação da fila em `runner-queue.mjs` (a ordem dos ramos), e
+# as asserções nos títulos dos testes. Reformular qualquer uma delas ou renomear
+# um teste exige atualizar ESTE script junto — e ele FALHA (exit 1) em vez de
+# passar em silêncio quando isso acontece.
+#
+# ⚠️ O LIMITE do caso E: ele muta a ORDEM (a fila vazia não é dívida), não a
+# LEITURA. As duas leituras reais do fato (a API do GitHub e o banco da Gitea)
+# não são exercitadas aqui — elas têm os seus próprios testes em
+# src/lib/__tests__/runner-queue.test.ts, com a costura de I/O injetada.
 # =============================================================================
 
 set -euo pipefail
@@ -109,7 +127,17 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$SCRIPT_DIR"
 
 DOCTOR="scripts/forge-doctor.mjs"
-TEST_FILE="src/lib/__tests__/forge-doctor.test.ts"
+# O outro alvo possível: a FOLHA do fato da fila parada (o caso E corta um fio da
+# derivação dela, não do doctor — a régua que decide mora lá).
+RUNNER_QUEUE="scripts/runner-queue.mjs"
+# Os arquivos de teste que TODA mutação roda — sempre os DOIS: a folha mede o fato
+# (e as suas duas leituras) e o doctor mede a travessia dele até o veredito. Um fio
+# cortado tem de aparecer nos dois lados, e a contagem total do controle é a
+# mesma em todos os casos (senão uma suíte que nem carregou passaria por cirúrgica).
+TEST_FILES=(
+  "src/lib/__tests__/forge-doctor.test.ts"
+  "src/lib/__tests__/runner-queue.test.ts"
+)
 
 TMP_DIR="$(mktemp -d)"
 BACKUP_DIR="$TMP_DIR/backup"
@@ -159,6 +187,19 @@ C4_MARKER="  for (const name of []) delete out[name] // MUTATION-DOCTOR-CHANNEL"
 # A linha da régua é ÚNICA no arquivo: sobrando alguma, a mutação não teria
 # cortado o fio que ela nomeia.
 C4_LEFTOVER="for (const name of SHARED_GITHUB_CONTEXT) delete out[name]"
+
+# ── Caso E — a ORDEM da derivação da FILA PARADA (o alvo é a FOLHA) ───────
+# A régua que DECIDE o estado mora em `runner-queue.mjs`, não no doctor: o ramo
+# da fila VAZIA tem de vir ANTES do estado do puxador. Cortado, a fila vazia do
+# dia a dia cai no ramo do puxador e o SÃO passa a acusar (bloqueio com o runner
+# offline, dúvida com ele no ar) — o falso bloqueio diário que ensina a ignorar
+# o veredito. É o espelho do caso A: lá a violação deixa de acusar, aqui o são
+# começa a acusar, e os dois erram pelo mesmo caminho (a régua, não o dado).
+C5_ANCHOR_DOC="if (queue.waiting === 0) {"
+C5_SED='/^  if (queue.waiting === 0) {$/ s/if (queue.waiting === 0) {/if (false) { \/\/ MUTATION-DOCTOR-QUEUE-ORDER/'
+C5_MARKER="if (false) { // MUTATION-DOCTOR-QUEUE-ORDER"
+# O ALVO do caso: o arquivo que POSSUI o fio (a folha), e não o doctor.
+C5_FILE="$RUNNER_QUEUE"
 
 # ── Âncoras — UM FATO TRANSPORTADO POR ÂNCORA ────────────────────────────
 # Formato: "nome do fato|substring ÚNICA do fullName do teste".
@@ -259,6 +300,23 @@ C4_INTACT=(
   "o caminho da violação (veredito intocado)|check:required-checks vermelho BLOQUEIA pelo contrato"
 )
 
+# ── Caso E — a ORDEM da derivação, dos dois lados ────────────────────────
+# As âncoras do caso E medem a MESMA regra em dois arquivos de teste: a folha (a
+# régua que decide) e o doctor (a travessia até o veredito) — o fato é medido nos
+# dois lados de propósito, e um fio cortado tem de aparecer nos dois.
+C5_RED=(
+  "a ORDEM da fila vazia (a folha)|fila VAZIA é ociosa"
+  "o bloqueio do SÃO (a folha)|só a forja PARADA gera bloqueio"
+  "a travessia até o veredito (o doctor)|a fila OCIOSA não gera linha nenhuma"
+)
+# A cirurgia do caso E: o fio é a ORDEM, não o estado — com a fila CHEIA a
+# derivação continua dizendo a mesma coisa, e a travessia da PARADA continua
+# bloqueando. Sem isto, a mutação poderia ter matado o fato inteiro.
+C5_INTACT=(
+  "a régua do runner fora do ar (o fio é a ORDEM)|fila cheia e NENHUM runner online"
+  "a travessia da fila parada (o bloqueio segue saindo)|a fila PARADA (runner fora do ar com run esperando) BLOQUEIA"
+)
+
 # Todas as âncoras — o CONTROLE exige cada uma VIVA (1 teste casando, passed).
 ALL_ANCHORS=(
   "${C1_RED[@]}"
@@ -269,6 +327,8 @@ ALL_ANCHORS=(
   "${C3_INTACT[@]}"
   "${C4_RED[@]}"
   "${C4_INTACT[@]}"
+  "${C5_RED[@]}"
+  "${C5_INTACT[@]}"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────
@@ -285,10 +345,18 @@ info() { echo -e "  ${YELLOW}ℹ️${NC} $1"; }
 # ── Restore (trap EXIT — SEMPRE restaura, mesmo com falha) ───────────────
 # cp do backup (NUNCA `git checkout --`) para não descartar edições locais
 # não-commitadas de quem roda o script na própria máquina.
+#
+# São DOIS alvos possíveis (o doctor e a folha da fila): a restauração cobre os
+# dois, porque uma execução morta no meio do caso E deixaria a DERIVAÇÃO mutada
+# num arquivo que a prosa deste script não nomeia.
 restore_doctor() {
   if [ -f "$BACKUP_DIR/doctor" ] && [ -f "$DOCTOR" ]; then
     cp "$BACKUP_DIR/doctor" "$DOCTOR"
     echo "  ↻ $DOCTOR restaurado do backup"
+  fi
+  if [ -f "$BACKUP_DIR/runner-queue.mjs" ] && [ -f "$RUNNER_QUEUE" ]; then
+    cp "$BACKUP_DIR/runner-queue.mjs" "$RUNNER_QUEUE"
+    echo "  ↻ $RUNNER_QUEUE restaurado do backup"
   fi
   rm -rf "$TMP_DIR"
 }
@@ -315,7 +383,7 @@ run_vitest() {
   local results="$1"
   rm -f "$results"
   set +e
-  VITEST_LOG="$(bun x vitest run --config vitest.config.unit.ts --reporter=json --outputFile="$results" "$TEST_FILE" 2>&1)"
+  VITEST_LOG="$(bun x vitest run --config vitest.config.unit.ts --reporter=json --outputFile="$results" "${TEST_FILES[@]}" 2>&1)"
   VITEST_EXIT=$?
   set -e
 }
@@ -403,7 +471,7 @@ assert_control_pass() {
   fi
 
   if ! CONTROL_ALIVE="$(assert_anchors "$RESULTS_CONTROL" passed "${ALL_ANCHORS[@]}")"; then
-    fail "CONTROLE FALHOU: nem todas as âncoras das QUATRO mutações estão vivas agora."
+    fail "CONTROLE FALHOU: nem todas as âncoras das CINCO mutações estão vivas agora."
     exit 1
   fi
 
@@ -412,28 +480,36 @@ assert_control_pass() {
 }
 
 # ── MUTAÇÃO — um fio cortado → suíte VERMELHA ────────────────────────────
-# Lê os globais CASE_* (definidos antes de cada chamada) e decide pelo JSON.
+# Lê os globais CASE_*/CASO_* (definidos antes de cada chamada) e decide pelo JSON.
 assert_mutation_detected() {
   local name="$1"
   local results="$TMP_DIR/mutation.json"
   info "MUTAÇÃO $name — suíte deve ficar VERMELHA..."
 
+  # O ALVO do caso: o doctor (os fios da travessia) ou a FOLHA da fila parada
+  # (o caso E — a régua que decide mora em `runner-queue.mjs`). O backup do alvo
+  # é refeito AQUI, com o arquivo já restaurado pelo caso anterior: cada mutação
+  # é IN-PLACE, e o estado de entrada tem de ser o ÍNTEGRO.
+  local alvo="${CASO_ARQUIVO:-$DOCTOR}"
+  local backup="$BACKUP_DIR/$(basename "$alvo")"
+  cp "$alvo" "$backup"
+
   # Fail-fast da mutação: aplicar, conferir o MARCADOR (o sed não trocou nada é
   # um caso próprio) e a sintaxe.
-  if ! grep -Fq "$CASE_ANCHOR_DOC" "$DOCTOR"; then
-    fail "MUTAÇÃO NÃO APLICOU: a âncora '$CASE_ANCHOR_DOC' não existe em $DOCTOR"
-    fail "O doctor foi refatorado? Atualize a mutação DESTE script junto."
+  if ! grep -Fq "$CASE_ANCHOR_DOC" "$alvo"; then
+    fail "MUTAÇÃO NÃO APLICOU: a âncora '$CASE_ANCHOR_DOC' não existe em $alvo"
+    fail "O arquivo foi refatorado? Atualize a mutação DESTE script junto."
     exit 1
   fi
-  sed -i "$CASE_SED" "$DOCTOR"
-  if ! grep -Fq "$CASE_MARKER" "$DOCTOR"; then
+  sed -i "$CASE_SED" "$alvo"
+  if ! grep -Fq "$CASE_MARKER" "$alvo"; then
     fail "MUTAÇÃO NÃO APLICOU (o sed não produziu o marcador)."
     exit 1
   fi
   if [ -n "$CASE_LEFTOVER" ]; then
     local remaining pristine expected
-    remaining="$(grep -cF "$CASE_LEFTOVER" "$DOCTOR" || true)"
-    pristine="$(grep -cF "$CASE_LEFTOVER" "$BACKUP_DIR/doctor" || true)"
+    remaining="$(grep -cF "$CASE_LEFTOVER" "$alvo" || true)"
+    pristine="$(grep -cF "$CASE_LEFTOVER" "$backup" || true)"
     expected="$((pristine - 1))"
     if [ "$remaining" != "$expected" ]; then
       fail "MUTAÇÃO NÃO-CIRÚRGICA: sobraram $remaining ocorrência(s) de '$CASE_LEFTOVER'"
@@ -441,11 +517,12 @@ assert_mutation_detected() {
       exit 1
     fi
   fi
-  if ! node --check "$DOCTOR" >/dev/null 2>&1; then
+
+  if ! node --check "$alvo" >/dev/null 2>&1; then
     fail "MUTAÇÃO NÃO-CIRÚRGICA: o arquivo mutado não é válido sintaticamente."
     exit 1
   fi
-  pass "Mutação $name aplicada (sintaxe válida)"
+  pass "Mutação $name aplicada em $alvo (sintaxe válida)"
 
   run_vitest "$results"
   echo "$VITEST_LOG" | tail -6
@@ -453,7 +530,7 @@ assert_mutation_detected() {
   # Caso 0 — SUÍTE CEGA: passou com o fio cortado. É exatamente a falha
   # silenciosa que este cenário existe para impedir.
   if [ "$VITEST_EXIT" -eq 0 ]; then
-    fail "SUÍTE CEGA: o forge-doctor.test.ts passou (exit 0) com o fio cortado."
+    fail "SUÍTE CEGA: as suítes dos dois lados passaram (exit 0) com o fio cortado."
     exit 1
   fi
 
@@ -503,17 +580,18 @@ assert_mutation_detected() {
   pass "  • $red fato(s)/limite(s) com a âncora FAILED"
   pass "  • $intact âncora(s) INTACTA(s) PASSED (mutação cirúrgica)"
   # Devolve o arquivo ao estado íntegro antes do próximo caso.
-  cp "$BACKUP_DIR/doctor" "$DOCTOR"
+  cp "$backup" "$alvo"
 }
 
 echo ""
 echo "  ═════════════════════════════════════════════════════════════════"
-echo "   🧪 SEVERINNO — MUTATION TEST (os quatro fios do veredito do doctor)"
+echo "   🧪 SEVERINNO — MUTATION TEST (os cinco fios do veredito do doctor)"
 echo "   A. 'const blockers = []' → push no-op (violação→bloqueio)"
 echo "   B. o ternário para de consultar unknowns.length (a honestidade)"
 echo "   C. 'unproven' volta vazio (o que o relatório NÃO cobre)"
 echo "   D. 'channelEnv' para de apagar o contexto compartilhado (o CANAL de repo)"
-echo "   (scripts/forge-doctor.mjs IN-PLACE, backup + trap de restauração)"
+echo "   E. a ORDEM da fila vazia cai (a régua que decide — runner-queue.mjs)"
+echo "   (IN-PLACE nos dois alvos, backup + trap de restauração)"
 echo "  ═════════════════════════════════════════════════════════════════"
 echo ""
 
@@ -522,6 +600,10 @@ echo ""
 mkdir -p "$BACKUP_DIR"
 cp "$DOCTOR" "$BACKUP_DIR/doctor"
 pass "Backup do doctor criado ($BACKUP_DIR/doctor)"
+# O OUTRO alvo: a folha da fila parada (o caso E). O backup é feito aqui e
+# REFEITO no início de cada caso pelo próprio assert — o trap restaura os dois.
+cp "$RUNNER_QUEUE" "$BACKUP_DIR/runner-queue.mjs"
+pass "Backup da folha do fato criado ($BACKUP_DIR/runner-queue.mjs)"
 
 # ── CONTROLE ──────────────────────────────────────────────────────────────
 
@@ -531,6 +613,7 @@ assert_control_pass
 
 echo ""
 info "Caso A — cortando o fio violação→bloqueio (o coletor de blockers)..."
+CASO_ARQUIVO="$DOCTOR"
 CASE_ANCHOR_DOC="$C1_ANCHOR_DOC"
 CASE_SED="$C1_SED"
 CASE_MARKER="$C1_MARKER"
@@ -541,6 +624,7 @@ assert_mutation_detected "A (violação→bloqueio)"
 
 echo ""
 info "Caso B — cortando a honestidade do veredito (o ternário de unknowns)..."
+CASO_ARQUIVO="$DOCTOR"
 CASE_ANCHOR_DOC="$C2_ANCHOR_DOC"
 CASE_SED="$C2_SED"
 CASE_MARKER="$C2_MARKER"
@@ -551,6 +635,7 @@ assert_mutation_detected "B (o veredito deixa de declarar o não-provado)"
 
 echo ""
 info "Caso C — cortando o que o relatório NÃO cobre (a lista unproven)..."
+CASO_ARQUIVO="$DOCTOR"
 CASE_ANCHOR_DOC="$C3_ANCHOR_DOC"
 CASE_SED="$C3_SED"
 CASE_MARKER="$C3_MARKER"
@@ -561,6 +646,7 @@ assert_mutation_detected "C (o relatório deixa de declarar o que NÃO cobre)"
 
 echo ""
 info "Caso D — cortando a régua do CANAL de repo (o contexto compartilhado)..."
+CASO_ARQUIVO="$DOCTOR"
 CASE_ANCHOR_DOC="$C4_ANCHOR_DOC"
 CASE_SED="$C4_SED"
 CASE_MARKER="$C4_MARKER"
@@ -569,17 +655,30 @@ CASE_RED=("${C4_RED[@]}")
 CASE_INTACT=("${C4_INTACT[@]}")
 assert_mutation_detected "D (o contexto compartilhado volta a resolver o repo)"
 
+echo ""
+info "Caso E — cortando a ORDEM da derivação da fila (o alvo é a FOLHA)..."
+CASO_ARQUIVO="$C5_FILE"
+CASE_ANCHOR_DOC="$C5_ANCHOR_DOC"
+CASE_SED="$C5_SED"
+CASE_MARKER="$C5_MARKER"
+CASE_LEFTOVER=""
+CASE_RED=("${C5_RED[@]}")
+CASE_INTACT=("${C5_INTACT[@]}")
+assert_mutation_detected "E (a fila vazia deixa de ser medida antes do puxador)"
+
 # ═════════════════════════════════════════════════════════════════════════
 # Result (restore roda no trap EXIT)
 # ═════════════════════════════════════════════════════════════════════════
 
 echo ""
-pass "MUTATION TEST PASSED — os quatro fios do veredito do doctor"
-pass "  • controle: doctor íntegro → verde, com as ${#ALL_ANCHORS[@]} âncoras vivas (1 teste cada)"
+pass "MUTATION TEST PASSED — os cinco fios do veredito do doctor"
+pass "  • controle: arquivos íntegros → verde, com as ${#ALL_ANCHORS[@]} âncoras vivas (1 teste cada)"
 pass "  • A: violação→bloqueio cortado → vermelha por CADA fato (${#C1_RED[@]})"
 pass "  • B: veredito sem o não-provado → vermelha por CADA fato (${#C2_RED[@]})"
 pass "  • C: 'NÃO cobre' vazio → vermelha por CADA limite (${#C3_RED[@]})"
 pass "  • D: contexto compartilhado de volta no ambiente → vermelha por CADA consulta (${#C4_RED[@]})"
+pass "  • E: a fila vazia deixa de ser medida antes do puxador → vermelha nos DOIS"
+pass "    arquivos de teste (a folha e o doctor), por CADA âncora do fio (${#C5_RED[@]})"
 pass "  • cirúrgicas: o caminho SAUDÁVEL segue PRONTA, o da VIOLAÇÃO segue bloqueando"
-pass "    e o arquivo roda inteiro em todos os casos"
+pass "    e os arquivos rodam inteiros em todos os casos"
 exit 0

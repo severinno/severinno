@@ -495,25 +495,28 @@ jobs:
             echo "| Cirúrgica: caminho de existência segue verde | ${{ steps.mutation.conclusion == 'success' && '✅ só a comparação morreu' || '❌ falha não isolada' }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ── OS QUATRO FIOS do veredito do doctor ───────────────────────────
+  # ── OS CINCO FIOS do veredito do doctor ───────────────────────────
   # O doctor não mede os fatos da forja: ele os TRANSPORTA para o veredito —
   # cada seção termina no mesmo `blockers.push(...)` (o que faz o veredito ser
   # BLOQUEADA), um fato não provado empurra para `unknowns` (o que impede o
   # veredito de ser PRONTA), `unproven` declara o que o doctor NÃO cobre e
   # `channelEnv` decide de ONDE cada consulta tira o repositório.
-  # Cortar qualquer um dos quatro é silencioso: o doctor continua rodando,
+  # Cortar qualquer um dos cinco é silencioso: o doctor continua rodando,
   # continua imprimindo todas as seções — e passa a dizer PRONTA com a forja
   # quebrada (A), PRONTA sobre o que não conseguiu medir (B), deixa de dizer
-  # onde a pergunta ficou aberta (C) ou consulta o repositório do CONTEXTO
+  # onde a pergunta ficou aberta (C), consulta o repositório do CONTEXTO
   # COMPARTILHADO da forja emulada (D — no runner da Gitea, o repositório da
-  # Gitea: o veredito sai completo, e assinado pelo repositório errado).
+  # Gitea: o veredito sai completo, e assinado pelo repositório errado) ou
+  # confunde a fila VAZIA com a forja PARADA (E — a ORDEM da derivação, na folha
+  # da fila: sem ela, o item mais comum de todos, a fila vazia de todo dia, passa
+  # a abrir BLOQUEIO).
   #
   # O script muta cada fio (IN-PLACE, backup + trap de restauração, TAMBÉM em
   # TERM/INT) e exige, para CADA um, a suíte VERMELHA pela âncora de CADA FATO
-  # (15 violações, 14 não-provados, 10 limites e 6 consultas, respectivamente)
-  # e as âncoras CIRÚRGICAS seguindo PASSING (o caminho SAUDÁVEL segue PRONTA;
-  # o da violação segue bloqueando) — se a suíte passar, o job falha (o
-  # veredito teria perdido a autoridade).
+  # (16 violações, 15 não-provados, 10 limites, 6 consultas e 3 âncoras da folha
+  # da fila, respectivamente) e as âncoras CIRÚRGICAS seguindo PASSING (o caminho
+  # SAUDÁVEL segue PRONTA; o da violação segue bloqueando) — se a suíte passar, o
+  # job falha (o veredito teria perdido a autoridade).
   #
   # A CONTAGEM VIVA de cada fio (e o total de âncoras) é a do CONTROLE do
   # script — a fonte é `scripts/test-mutation-doctor-facts.sh`, e o job imprime
@@ -523,8 +526,8 @@ jobs:
     # ci/required-checks-applied.json): ele NÃO carrega os fios, de propósito —
     # renomeá-lo exige declarar e REAPLICAR a branch protection na forja (é a
     # mesma classe do count no nome que este repositório já pagou uma vez). Os
-    # fios são QUATRO desde o canal de repo (D); o nome fica, e a contagem viva
-    # está no controle do script.
+    # fios são CINCO desde a ORDEM da derivação da fila (E); o nome fica, e a
+    # contagem viva está no controle do script.
     name: Mutation Test (os três fios do veredito do doctor)
     runs-on: self-hosted
     timeout-minutes: 10
@@ -550,25 +553,26 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
-      - name: Run mutation test (os quatro fios do veredito do doctor)
+      - name: Run mutation test (os cinco fios do veredito do doctor)
         id: mutation
         run: |
           bun run test:mutation-doctor-facts
-          echo "  ✅ Mutation test passou — a suíte pega o corte dos quatro fios do veredito"
+          echo "  ✅ Mutation test passou — a suíte pega o corte dos cinco fios do veredito"
 
       - name: Publish summary
         if: always()
         run: |
           {
-            echo '## 🧬 Mutation Test — os quatro fios do veredito do doctor'
+            echo '## 🧬 Mutation Test — os cinco fios do veredito do doctor'
             echo ''
             echo '| Check | Result |'
             echo '|---|---|'
-            echo "| Controle: doctor íntegro → suíte verde (52 âncoras: fatos, não-provados, limites e consultas) | ${{ steps.mutation.conclusion == 'success' && '✅ cada fato tem a sua testemunha' || '❌ controle falhou' }} |"
-            echo "| A. violação→bloqueio cortado (15 fatos) → suíte vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
-            echo "| B. o veredito deixa de declarar o não-provado (14 fatos) → vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| Controle: doctor íntegro → suíte verde (59 âncoras: fatos, não-provados, limites, consultas e a folha da fila) | ${{ steps.mutation.conclusion == 'success' && '✅ cada fato tem a sua testemunha' || '❌ controle falhou' }} |"
+            echo "| A. violação→bloqueio cortado (16 fatos) → suíte vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| B. o veredito deixa de declarar o não-provado (15 fatos) → vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
             echo "| C. o relatório deixa de declarar o que NÃO cobre (10 limites) → vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
             echo "| D. o contexto compartilhado volta a resolver o repo (6 consultas) → vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| E. a fila vazia deixa de ser medida antes do puxador (3 âncoras da folha) → vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
             echo "| Cirúrgica: caminho saudável segue PRONTA e a violação segue bloqueando | ${{ steps.mutation.conclusion == 'success' && '✅ só o fio nomeado morreu' || '❌ falha não isolada' }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 

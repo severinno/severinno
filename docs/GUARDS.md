@@ -4534,6 +4534,45 @@ protection, e nunca "em sincronia". O relatório imprime as duas linhas lado a
 lado na seção 3/7 justamente para isso: uma forja em sincronia e a outra não é
 drift, e não pode ficar invisível.
 
+**A FILA PARADA (o TERCEIRO fato do runner — o registro diz QUEM está registrado,
+não se alguém está PUXANDO):** os dois fatos acima provam que a forja SABE quem
+deve rodar os jobs — labels gravados no `/data/.runner`, versão do binário × a tag
+do compose, o `RUNNER_LABELS` × a API. Nenhum deles pergunta pela FILA. Medido em
+24/09/2026: `hostinger-runner` com `status=offline` e `busy=false` e **5 runs em
+`queued`** (a mais antiga de 23/09 21:30) — o doctor dizia PRONTA com a forja
+parada, porque este defeito não tem sintoma: o job fica em `queued`, nada falha,
+nada fica vermelho — e a fila de um self-hosted não é infinita (o GitHub descarta
+o run sem runner por volta de 24h), então quem espera PERDE a execução em
+silêncio. O fato entra ATÉ no perfil `--ci`: é no PR que a fila parada importa,
+porque quem a espera é o check do PR.
+
+O fato tem DUAS metades, e as duas são a MESMA pergunta
+(`scripts/runner-queue.mjs`): a **FILA** (no GitHub,
+`/repos/:repo/actions/runs?status=queued` — pelo MESMO canal do board, API com
+`GH_TOKEN` + `GH_REPOSITORY` ou a CLI `gh`; na Gitea,
+`action_task.status IN (5 waiting, 7 blocked)`, porque a 1.22 **não expõe a fila
+em REST** — medido no `swagger.v1.json` dela: `/actions/tasks` → HTTP 404 — e a
+leitura é o BANCO da stack pelo mesmo `docker exec … sqlite3` do registro) e
+**QUEM A PUXARIA** (no GitHub a lista de runners vem do **MESMO GET** do fato do
+registro — uma consulta, dois fatos; na Gitea, `action_runner.last_online` ×
+`last_active` contra a régua da PRÓPRIA forja: 1 minuto = offline, 10 segundos =
+idle, `models/actions/runner.go` v1.22.6). **Cinco estados, e a ORDEM importa:**
+**fila vazia é `ociosa`** e é medida ANTES do estado do puxador — zero espera não
+é dívida nem com a forja no chão, e ler o contrário abriria bloqueio no item mais
+comum de todos (a fila vazia de todo dia); **`parada`** (fila cheia e NENHUM runner
+online) **BLOQUEIA**, com a idade do item mais antigo e o comando de RE-REGISTRO na
+própria linha; `drenando` (runner online pegando job) é a forja trabalhando e não
+gera linha; `sem-puxador` (fila cheia, runner online e ninguém pegando) é pergunta
+EM ABERTO e não bloqueio — pode ser a janela do poll, ou nenhum runner casar com os
+`runs-on` da fila; e `unread` é a leitura que não aconteceu, NOMEADA com a causa —
+jamais "sem fila": um repositório ausente do banco devolveria zero itens, e zero
+itens é o verde FALSO desta pergunta (é por isso que a consulta do repositório vem
+ANTES da fila). As duas metades que não são medidas daqui estão declaradas como
+item datado em `ci/unproven.json` (`runner-queue-gitea`, `runner-queue-github`),
+cada uma com o `proveWith` — `bash deploy/gitea-up.sh` e
+`bash deploy/setup-github-runner.sh`, os mesmos comandos que a linha do bloqueio
+publica.
+
 **O CONTRATO DA IMAGEM PUBLICADA (seção 3/7) — o build promete, o ARTEFATO
 prova:** todas as provas acima são sobre o **repositório** — o `FROM` pinado por
 digest, o bloco do contrato fail-closed, as mutações do pin, a identidade que a
@@ -4592,14 +4631,18 @@ serve hoje é o doctor no cron, com a credencial da forja.
 falha, quando a imagem do runner está AUSENTE (sem imagem nenhum job inicia —
 não é um gate vermelho, é a fila parada), quando a branch protection REGISTRADA
 diverge do manifesto (o merge é bloqueado pelo motivo errado, ou não é
-bloqueado), quando o **contrato da imagem PUBLICADA** não é executado pelo
+bloqueado), quando o runner de uma das forjas está **FORA DO AR com run na FILA**
+(o job fica em `queued` para sempre e a execução se perde em silêncio), quando o
+**contrato da imagem PUBLICADA** não é executado pelo
 artefato que o job baixa, ou quando a PROVA do bloqueio é violada
 (a garantia da imagem é decorativa); `INDETERMINADA` quando nada falhou mas
 algo não pôde ser provado (env ausente neste checkout, registry inacessível,
 gate não executado, guards pulados por `--no-guards`, prova pulada por
 branch protection não lida ou pulada por `--no-protection`,
 interpolação pulada/não provada, o contrato publicado não provado (sem daemon,
-sem credencial, pull negado) ou pulado por `--no-image-contract`, registro do
+sem credencial, pull negado) ou pulado por `--no-image-contract`, **a FILA de uma
+forja não lida** (sem a stack de pé ou sem o canal do espelho o fato diz "não
+lida", com a causa), registro do
 act_runner **ou o do runner do GitHub** não lido (este também quando falta token
 de self-hosted runners) ou pulado por `--no-runner-labels`, **a dívida aberta no
 board** (uma issue de drift que ninguém fechou — não prova que o merge pode ser

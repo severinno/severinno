@@ -956,6 +956,10 @@ export function parseGithubRunners(payload) {
       id: r?.id ?? null,
       name: String(r?.name ?? ""),
       status: String(r?.status ?? "unknown"),
+      // O `busy` é o que separa "o runner está no ar" de "o runner está PEGANDO
+      // um job" — a segunda metade da fila parada (um runner online e ocioso com
+      // a fila cheia é outra pergunta, e sem este campo as duas se confundiriam).
+      busy: Boolean(r?.busy),
       version: String(r?.version ?? ""),
       labels: (Array.isArray(r?.labels) ? r.labels : [])
         .map((l) => String(l?.name ?? ""))
@@ -1156,6 +1160,9 @@ export async function fetchGithubRunners({
  *                                   runner chegou a ser selecionado)
  * @property {string|null} runner    o runner comparado (null se nenhum foi selecionado)
  * @property {string|null} status    online/offline do runner comparado
+ * @property {object[]} runners      o registro INTEIRO (nome/status/busy/labels) — a
+ *                                   segunda metade do fato da fila parada (há run
+ *                                   esperando e nenhum runner online?)
  * @property {string|null} repo      owner/nome consultado
  * @property {string} apiUrl
  * @property {string} forge
@@ -1198,6 +1205,12 @@ export async function checkGithubRunnerLabels({
     status: null,
     repo: null,
     apiUrl: null,
+    // A LISTA inteira do registro (nome/status/busy), e não só o runner
+    // selecionado: a fila parada é a pergunta "há run esperando e NENHUM runner
+    // online?", e ela é sobre o CONJUNTO. Sai do MESMO GET desta leitura (uma
+    // chamada, dois fatos) — uma segunda consulta ao mesmo endpoint seria a
+    // segunda verdade sobre o mesmo registro.
+    runners: [],
   }
 
   const scriptPath = join(cwd, GITHUB_RUNNER_SCRIPT)
@@ -1314,6 +1327,7 @@ export async function checkGithubRunnerLabels({
       apiUrl: resolvedApiUrl,
       declared: declaredRaw,
       registered: [],
+      runners: parsed.runners,
       violations: [`${selected.detail} — ${tail}`],
       remedies: [reRegister],
       detail: `${GITHUB_RUNNER_SCRIPT} declara ${declaredEntries.length} label(s) e o repositório não tem o runner declarado`,
@@ -1412,6 +1426,7 @@ export async function checkGithubRunnerLabels({
     remedies,
     declared: declaredRaw,
     registered: registeredEntries.map((e) => e.raw),
+    runners: parsed.runners,
     runner: runner.name,
     status: runner.status,
     repo: resolvedRepo,

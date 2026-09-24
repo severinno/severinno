@@ -1465,6 +1465,32 @@ do dia tiver servido"), e `no-image`/`unread` são o que não deu para julgar. N
 veredito, o drift **BLOQUEIA** e os outros quatro **rebaixam**, com a lacuna datada
 `act-runner-version` em `ci/unproven.json` fechando **por medição**.
 
+**E o TERCEIRO fato do runner — se alguém está PUXANDO a fila.** Os dois acima
+provam que a forja SABE quem deve rodar os jobs (a label gravada, a versão
+registrada × o pin da tag). Nenhum deles pergunta pela FILA — e a resposta medida
+em 24/09/2026 foi: `hostinger-runner` com `status=offline` e `busy=false`, e **5
+runs em `queued`**, a mais antiga de 23/09 às 21:30. O doctor dizia PRONTA com a
+forja parada porque este defeito **não tem sintoma**: o job fica em `queued`, nada
+falha, nada fica vermelho — e a fila de um self-hosted não é infinita (o GitHub
+descarta o run sem runner por volta de 24h), então quem espera PERDE a execução
+em silêncio. O fato (`scripts/runner-queue.mjs`) cruza as DUAS metades da MESMA
+pergunta: a fila (`/actions/runs?status=queued`, pelo mesmo canal do board, e o
+`action_task` do BANCO da Gitea — a 1.22 não tem essa rota em REST, medido no
+`swagger.v1.json` dela) e quem a puxaria (`/actions/runners` do **MESMO GET** do
+fato do registro — uma consulta, dois fatos — e o `action_runner.last_online` × a
+régua da PRÓPRIA forja na Gitea). São **cinco estados**, e a ORDEM importa:
+**fila vazia é `ociosa`** (é medida ANTES do estado do puxador — zero espera não é
+dívida nem com a forja no chão); **`parada`** (fila cheia e NENHUM runner online)
+**BLOQUEIA**, com a idade do item mais antigo e o comando de RE-REGISTRO na
+própria linha; `drenando` (runner online pegando job) é a forja trabalhando;
+`sem-puxador` (fila cheia, runner online e ninguém pegando) é dúvida; e `unread` é
+a leitura que não aconteceu, NOMEADA com a causa — jamais "sem fila", porque um
+repositório ausente do banco devolveria zero itens e zero itens é o verde FALSO
+desta pergunta. O fato entra **até no perfil `--ci`** (é no PR que a fila parada
+importa: quem a espera é o check do PR), e as duas metades que dependem da
+stack/canal estão datadas (`runner-queue-gitea` e `runner-queue-github` em
+`ci/unproven.json`, com o `proveWith` de cada uma).
+
 **A medição seguinte (com o runner já registrado) mostra o mecanismo FECHANDO:** o
 registro ficou com **16 itens** — 8 abertos, 6 limites e **2 provados** (o
 `github-self-hosted-runner`, porque o runner passou a existir, e o
