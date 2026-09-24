@@ -18,8 +18,8 @@
     },
     "github": {
       "runners": 1,
-      "source": "UM runner auto-hospedado no VPS (`hostinger-runner`) — deploy/GITHUB_RUNNER.md; com 1 runner a pipeline do espelho é SERIAL, como a da forja, e o MELHOR caso continua sendo o caminho crítico que o relatório também publica",
-      "date": "2026-09-17"
+      "source": "UM runner auto-hospedado no VPS (`hostinger-runner`) — deploy/GITHUB_RUNNER.md; com 1 runner a FILA do auto-hospedado é SERIAL, como a da forja, e o MELHOR caso continua sendo o caminho crítico que o relatório também publica. Desde 24/09/2026 esse NÃO é o único caminho: os gates de LEITURA DE YAML do `pr-check` rodam no runner HOSPEDADO (12 jobs movidos; 10 na classe derivada do `check:job-deps`), que NÃO passa por esta fila — eles rodam EM PARALELO com o que está nela, então o número declarado aqui segue sendo o PIOR caso (a fila do self-hosted) e o hospedado só ENCURTA o makespan. O que mede isto: `node scripts/check-job-deps.mjs --json` publica a classe e o caminho de cada job",
+      "date": "2026-09-24"
     }
   },
   "jobs": {
