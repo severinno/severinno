@@ -7,7 +7,7 @@
 #   ./scripts/test-mutation-job-deps.sh
 #
 # Exit codes:
-#   0 — as ONZE mutações foram DETECTADAS (pelo gate e/ou pela suíte) e os
+#   0 — as DOZE mutações foram DETECTADAS (pelo gate e/ou pela suíte) e os
 #       controles passaram ✅
 #   1 — guard INDIFERENTE a alguma mutação (não cegou / não acusou) OU controle
 #       falso ❌
@@ -64,6 +64,11 @@
 #        de YAML no caminho da forja passar (a decisão é declarada, não
 #        presumida) — e a MESMA exceção sobre um job que já roda no caminho
 #        hospedado é declaração que sobrou: sem a regra, ela fica para sempre.
+#   M12 — A FILA DE MIGRAÇÃO publicada no veredito. Quem AINDA pede a forja sem
+#        que nenhum fato exija a imagem dela sai NOMEADO no verde (texto e
+#        --json), com a exceção declarada INCLUSA — a declaração tira o job do
+#        vermelho, não da fila. Sem a publicação, migrar o que resta é
+#        varredura manual: o operador teria de cruzar allowlist com workflow.
 #
 # AS DUAS TESTEMUNHAS. Onde a regra muda o veredito do CLI, a prova é o EXIT CODE
 # sobre fixtures (comportamento, não leitura do código). Onde o veredito só
@@ -116,6 +121,7 @@ METADES=(
   'M9|A LEITURA DO CAMINHO: o gate de leitura de YAML preso ao runner da forja'
   'M10|A CLASSE DERIVADA: um leitor que não lê YAML não é gate de leitura'
   'M11|A EXCEÇÃO DECLARADA do caminho, e a que não tem mais objeto'
+  'M12|A FILA DE MIGRAÇÃO: quem ainda pede a forja sem precisar sai NO veredito'
 )
 GUARD="$SCRIPT_DIR/scripts/check-job-deps.mjs"
 SUITE_ARQUIVO="src/lib/__tests__/check-job-deps.test.ts"
@@ -699,7 +705,55 @@ pass "M11 CIRÚRGICA: o defeito de OUTRO contrato segue reprovado — morreu só
 exigir_suite_vermelha "M11"
 restaurar_original
 
-# ── 15. CONTROLE FINAL: a árvore ficou como estava ────────────────────────
+# ── 15. MUTAÇÃO M12: a FILA DE MIGRAÇÃO publicada no veredito ────────────
+header "MUTAÇÃO M12: a fila de migração (quem ainda pede a forja sem precisar)"
+# O SETUP: uma exceção declarada para o leitor do fixture. A fila INCLUI a
+# exceção de propósito — a declaração tira o job do VERMELHO, não da fila: é
+# exatamente o job verde-declarado que o próximo a migrar precisa ver (sem
+# isto, "migrar o que resta" exigiria ler a allowlist e cruzar à mão).
+mutar_guard \
+  'export const RUNNER_PATH_ALLOWLIST = [' \
+  'export const RUNNER_PATH_ALLOWLIST = /* MUTACAO M12-SETUP */ [
+  {
+    job: ".github/workflows/pr.yml::leitor",
+    addedAt: "2026-09-24",
+    reason: "fixture: excecao declarada para o leitor de YAML do fixture",
+  },'
+exigir_aprovado "M12 setup (a exceção declarada: o fixture volta ao verde)" "$FX_CAMINHO_FORJA"
+pass "M12 SETUP: com a exceção declarada o fixture é VERDE — e é o verde que publica a fila"
+rodar_guard_json "$FX_CAMINHO_FORJA"
+# A fila é lida DO JSON (não por proximidade de grep: o id do job também vive
+# em caminho.jobs[], e um teste por janela de linhas mediria o lugar errado).
+FILA_OUT="$(printf '%s' "$JSON_OUT" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps(d["caminho"]["filaMigracao"]))')"
+if ! grep -q '.github/workflows/pr.yml::leitor' <<< "$FILA_OUT"; then
+  fail "M12: o --json VERDE não publica a fila com o job NOMEADO (a lista só existiria no vermelho, ou não nomeia)"
+  echo "$FILA_OUT" | head -6 | sed 's/^/      /'
+  exit 1
+fi
+pass "M12: o --json VERDE publica a fila com o job NOMEADO (a exceção declarada INCLUSA) — o próximo a migrar lê o veredito, não varre workflows"
+# A MUTAÇÃO: a derivação da fila morre (filter vazio) — o verde deixa de
+# publicar a lista, e o operador volta a depender do cruzamento manual.
+mutar_guard \
+  '    filaMigracao: leitura.jobs' \
+  '    filaMigracao: /* MUTACAO M12 */ leitura.jobs.filter(() => false)'
+rodar_guard_json "$FX_CAMINHO_FORJA"
+FILA_OUT="$(printf '%s' "$JSON_OUT" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps(d["caminho"]["filaMigracao"]))')"
+if grep -q 'pr.yml::leitor' <<< "$FILA_OUT"; then
+  fail "M12: a fila sobreviveu à mutação — o job continua publicado no verde"
+  echo "$FILA_OUT" | sed 's/^/      /'
+  exit 1
+fi
+pass "M12: com a derivação da fila mutada, o verde deixa de publicá-la — a publicação é load-bearing, não prosa"
+# A SUÍTE (que importa o módulo e lê a fila no retorno de auditaForjas) pega a
+# MESMA mutação: sem a fila, a prova da publicação fica vermelha no PR.
+exigir_suite_vermelha "M12"
+# A CIRÚRGICA: OUTRO contrato segue medindo outro defeito — a fila some, o
+# veredito das dependências (o primeiro contrato) continua de pé.
+exigir_reprovado "M12 cirúrgica (o defeito de dependências segue reprovado)" "$FX_SEM_INSTALL"
+pass "M12 CIRÚRGICA: o defeito de OUTRO contrato segue reprovado — morreu só a publicação da fila"
+restaurar_original
+
+# ── 16. CONTROLE FINAL: a árvore ficou como estava ────────────────────────
 header "CONTROLE FINAL: restauração verificada por checksum"
 exigir_reprovado "CONTROLE FINAL (job sem install)" "$FX_SEM_INSTALL"
 pass "CONTROLE FINAL: o guard restaurado volta a reprovar o job sem install"
@@ -713,4 +767,4 @@ exigir_aprovado "CONTROLE FINAL (o mesmo leitor no caminho hospedado)" "$FX_CAMI
 pass "CONTROLE FINAL: o leitor de YAML segue verde no caminho hospedado"
 
 echo
-echo -e "${GREEN}═══ MUTATION TEST PASSED — as 11 mutações foram detectadas (gate e/ou suíte) ═══${NC}"
+echo -e "${GREEN}═══ MUTATION TEST PASSED — as 12 mutações foram detectadas (gate e/ou suíte) ═══${NC}"

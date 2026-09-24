@@ -883,6 +883,59 @@ describe("o caminho do gate de leitura de YAML", () => {
     expect(semData.caminho.excecoes.invalid).toHaveLength(1)
   })
 
+  it("a FILA DE MIGRAÇÃO é publicada no próprio veredito — quem ainda pede a forja sem precisar, NOMEADO, com a exceção declarada incluída", () => {
+    const forja = fixtureDeCaminho("self-hosted", LEITOR_YAML)
+    // A fila é derivada do MESMO fato do segundo contrato (`prende`): o job que
+    // pede a forja sem que nenhum fato exija a imagem dela. A exceção declarada
+    // tira o job do VERMELHO, mas não da FILA — é exatamente o job
+    // verde-declarado que o próximo a migrar precisa ver, sem cruzar allowlist
+    // com workflow à mão.
+    const comExcecao = auditaForjas(forja, {
+      isencoes: [],
+      excecoesDeCaminho: [
+        {
+          job: ".github/workflows/pr.yml::leitor",
+          addedAt: "2026-09-24",
+          reason: "fixture: excecao declarada para o leitor",
+        },
+      ],
+    })
+    expect(comExcecao.violacoes).toEqual([]) // o contrato segue verde
+    expect(comExcecao.caminho.filaMigracao.map((f) => f.id)).toEqual([
+      ".github/workflows/pr.yml::leitor",
+    ])
+    // A fila nomeia ONDE o job pede a forja e POR QUE ele é um gate de leitura.
+    expect(comExcecao.caminho.filaMigracao[0].caminho).toBe("self-hosted")
+    expect(comExcecao.caminho.filaMigracao[0].leitores).toEqual([
+      { linha: expect.any(Number), alvo: "scripts/le-yaml.mjs" },
+    ])
+
+    // E o veredito da ÁRVORE REAL publica a fila NO VERDE — no texto e no
+    // --json: a publicação é o substituto da varredura manual.
+    const real = rodaCli(process.cwd())
+    expect(real.status).toBe(EXIT.OK)
+    expect(real.saida).toContain("fila de migracao")
+    for (const entrada of RUNNER_PATH_ALLOWLIST) expect(real.saida).toContain(entrada.job)
+    const realJson = JSON.parse(rodaCli(process.cwd(), ["--json"]).saida) as {
+      resumo: { filaMigracao: number }
+      caminho: { filaMigracao: { id: string }[] }
+    }
+    expect(realJson.resumo.filaMigracao).toBe(RUNNER_PATH_ALLOWLIST.length)
+    expect(realJson.caminho.filaMigracao.map((f) => f.id).sort()).toEqual(
+      RUNNER_PATH_ALLOWLIST.map((e) => e.job).sort(),
+    )
+
+    // Migrado o job (o mesmo leitor no caminho hospedado), a fila ENVELHECE
+    // sozinha: verde absoluto é verde SEM fila — nem linha no texto, nem lista
+    // no json.
+    const migrado = fixtureDeCaminho(CAMINHO_HOSPEDADO, LEITOR_YAML)
+    const semFila = auditaForjas(migrado, { isencoes: [] })
+    expect(semFila.caminho.filaMigracao).toEqual([])
+    const cliMigrado = rodaCli(migrado)
+    expect(cliMigrado.status).toBe(EXIT.OK)
+    expect(cliMigrado.saida).not.toContain("fila de migracao")
+  })
+
   it("a allowlist REAL do caminho tem data e motivo, e a árvore real não acusa exceção sem objeto", () => {
     for (const entrada of RUNNER_PATH_ALLOWLIST) {
       expect(entrada.job).toMatch(/^(\.github|\.gitea)\/workflows\/.+\.[a-z]+::.+$/)
@@ -905,6 +958,15 @@ describe("o caminho do gate de leitura de YAML", () => {
         .map((j) => j.id)
         .sort(),
     ).toEqual(RUNNER_PATH_ALLOWLIST.map((e) => e.job).sort())
+    // A FILA DA ÁRVORE REAL é a mesma lista, ORDENADA — e é o que o veredito
+    // publica para o próximo a migrar (hoje: o `check`, que executa a stack, e
+    // a prova do pre-commit dentro da imagem).
+    expect(auditoria.caminho.filaMigracao.map((f) => f.id).sort()).toEqual(
+      RUNNER_PATH_ALLOWLIST.map((e) => e.job).sort(),
+    )
+    expect(auditoria.caminho.filaMigracao.map((f) => f.id)).toEqual(
+      [...auditoria.caminho.filaMigracao.map((f) => f.id)].sort(),
+    )
   })
 
   it("o `pull_request` é lido do gatilho, não da prosa", () => {

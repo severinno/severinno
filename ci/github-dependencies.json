@@ -99,7 +99,7 @@
       "id": "gh-cli",
       "estagio": 3,
       "substituto": "a API da propria forja pelo cliente que ja existe (os publicadores de issue/comentario tem `--backend gitea`; o doctor e o `ensure-runner-image` leem da forja quando ela e o alvo) e, onde o `gh` e usado para LER estado do GitHub, o proprio guard que mede o estado passa a ler a forja dona do merge.",
-      "porque": "14 scripts chamam o `gh` com credencial de administracao: o canal compartilhado de issue/comentario (`issue-publish.mjs`, usado por todos os publicadores de divida), o doctor, o `ensure-runner-image`, os medidores de benchmark e o publicador de imagem. Enquanto existem, existe um passo que so roda onde o GitHub esta autenticado — e o `gh` e o unico cliente que fala com as DUAS forjas.",
+      "porque": "15 scripts chamam o `gh` com credencial de administracao: o canal compartilhado de issue/comentario (`issue-publish.mjs`, usado por todos os publicadores de divida), o doctor, o `ensure-runner-image`, os medidores de benchmark, o publicador de imagem e a LEITURA da fila do runner do ESPELHO (`runner-queue.mjs` — a metade da fila do GitHub do terceiro fato do runner, com a conta do `check-github-dependencies` passando a INCLUDE o 15o). Enquanto existem, existe um passo que so roda onde o GitHub esta autenticado — e o `gh` e o unico cliente que fala com as DUAS forjas.",
       "declarado": [
         "scripts/bench-setup-bun.mjs",
         "scripts/bench-setup-bun.sh",
@@ -113,7 +113,8 @@
         "scripts/measure-mutation-trend.mjs",
         "scripts/publish-ubuntu-bun.sh",
         "scripts/readme-reverse-issue.mjs",
-        "scripts/restore-baseline.sh"
+        "scripts/restore-baseline.sh",
+        "scripts/runner-queue.mjs"
       ]
     },
     {

@@ -1251,14 +1251,14 @@ depois: `escreveu: true` é violação da família, não um detalhe do log.
 **O custo do job mais caro do PR não é uma conta à mão** (família `mutations` do
 `bench-guard-timing`). O job `mutation-guards` roda 41 sub-tests, e o que CADA um
 custa é medido pelo próprio master (`--json`) e versionado sub-test a sub-test no
-registro: o ato VERSIONADO de 24/09/2026 (`e33f97b9`) — o MESMO comando, com a árvore COMMITADA —
-mediu **630.6s** de sub-tests + **4.7s** de harness =
-**635.3s**, com `pre-commit-proof` (132.6s, 21%), `job-deps` (111.7s, 18%), `workflow-run-syntax` (80.1s, 13%) e `hook-commands` (61.8s, 10%) no topo — antes disso
-ninguém sabia QUAL sub-test pagava a conta. A mediana é **3.1s**, dez sub-tests
-pagam **86%** da soma, e o registro guarda **252 metades**.
+registro: o ato VERSIONADO de 24/09/2026 (`dc32238a`) — o MESMO comando, com a árvore COMMITADA —
+mediu **567.6s** de sub-tests + **4.7s** de harness =
+**572.3s**, com `job-deps` (179.3s, 32%), `workflow-run-syntax` (74.1s, 13%), `hook-commands` (61.0s, 11%) e `bench-freshness` (46.7s, 8%) no topo — antes disso
+ninguém sabia QUAL sub-test pagava a conta. A mediana é **3.2s**, dez sub-tests
+pagam **85%** da soma, e o registro guarda **253 metades**.
 Quem entra com um sub-test novo não compõe nada: ele entra **MEDIDO** na rodada seguinte
-(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~15.5s**) é dita
-como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test.
+(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~14.0s**) é dita
+como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test. **LIMITE DECLARADO:** na rodada do ato, 2 sub-test(s) NÃO passaram (`doc-hashes`, `pre-commit-proof`) — o custo deles não julga nada.
 
 Esta prosa é **DERIVADA**: quem a reescreve é o ato (o bloco é dele), e o
 `check:mutation-count` recusa o commit em que ela divirja do registro versionado.
@@ -2230,7 +2230,11 @@ com o par de install — o hospedado chega sem `node_modules` — ou a exceção
 declarada com data e motivo (`RUNNER_PATH_ALLOWLIST`). Medido em 24/09/2026: com
 o runner auto-hospedado `hostinger-runner` offline, os 50 jobs do `pr-check`
 ficaram ~35 min em `queued` e os gates de leitura não cunharam veredito nenhum —
-a forja não erra, ela espera. Ver docs/GUARDS.md §12.1.
+a forja não erra, ela espera. E quem ainda deve migrar sai NO veredito: a
+**fila de migração** — quem pede a forja sem que nenhum fato exija a imagem dela,
+a exceção declarada incluída — é publicada nomeada na linha verde do guard (e no
+`--json`), em ordem, com o remédio; a fila envelhece sozinha (migrado o job, o
+verde fica sem a linha). Ver docs/GUARDS.md §12.1.
 
 ### Typecheck — gate de tipo do PR
 

@@ -1147,6 +1147,7 @@ export function comandosInternos(comando) {
  *     jobs: JobDeLeitura[],
  *     foraDoEscopo: {arquivo: string, job: string, motivo: string}[],
  *     violacoes: JobDeLeitura[],
+ *     filaMigracao: {id: string, caminho: string|null, leitores: {linha: number, alvo: string}[]}[],
  *     excecoes: {
  *       invalid: {id: string, why: string}[],
  *       aged: {id: string, addedAt: string, days: number, limit: number}[],
@@ -1266,6 +1267,30 @@ export function auditaForjas(
     jobs: leitura.jobs,
     foraDoEscopo: leitura.foraDoEscopo,
     violacoes: leitura.jobs.filter((j) => j.prende && !declaradasNoCaminho.has(j.id)),
+    // A FILA DE MIGRACAO: quem AINDA pede a forja sem que nenhum fato exija a
+    // imagem dela — a excecao declarada incluida. A publicação é o substituto
+    // da varredura manual: o proximo a migrar le a fila do veredito em vez de
+    // vasculhar workflows à mão (e a fila ENVELHECE sozinha: quando o job sai,
+    // ela fica vazia; quando um entra, ela o nomeia).
+    filaMigracao: leitura.jobs
+      .filter((j) => j.prende)
+      .map((j) => ({
+        id: j.id,
+        caminho: j.caminho,
+        // SEM duplicata: o mesmo leitor em dois passos do MESMO job (medido:
+        // `prove-pre-commit-in-runner.mjs` roda em L622 e L639 do pr-check) é
+        // um arquivo na fila — quem migra lê o CONJUNTO, não a contagem de
+        // invocações (o fato cru, com as duas linhas, segue inteiro em
+        // `caminho.jobs[].leitores`).
+        leitores: [
+          ...new Map(
+            j.leitores
+              .filter((l) => l.leYaml)
+              .map((l) => [l.alvo, { linha: l.linha, alvo: l.alvo }]),
+          ).values(),
+        ],
+      }))
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     excecoes: {
       invalid: caminhoInvalid,
       aged: caminhoAged,
@@ -1480,6 +1505,7 @@ function main() {
             leituraPresa: auditoria.caminho.jobs.filter((j) => j.prende).length,
             excecoesDeCaminho: RUNNER_PATH_ALLOWLIST.length,
             caminhoForaDoEscopo: auditoria.caminho.foraDoEscopo.length,
+            filaMigracao: auditoria.caminho.filaMigracao.length,
             violacoes: violacoes.length,
           },
           caminho: {
@@ -1492,6 +1518,7 @@ function main() {
               leitores: j.leitores.map((l) => ({ linha: l.linha, alvo: l.alvo, leYaml: l.leYaml })),
             })),
             foraDoEscopo: auditoria.caminho.foraDoEscopo,
+            filaMigracao: auditoria.caminho.filaMigracao,
           },
           jobs: auditoria.jobs.map((j) => ({
             id: j.id,
@@ -1552,6 +1579,23 @@ function main() {
       `${auditoria.caminho.excecoes.semPrender.length} com excecao declarada e ` +
       `${auditoria.caminho.foraDoEscopo.length} fora do escopo — os dois NOMEADOS em \`--json\`).`,
   )
+  // A FILA DE MIGRACAO, publicada no PROPRIO veredito: quem AINDA pede a forja
+  // sem precisar dela — a excecao declarada incluida. Publicar aqui é o que
+  // dispensa a varredura manual: o proximo a migrar le a fila onde o guard
+  // cunha veredito, não num cruzamento que ninguem faz. Ordem DETERMINISTICA
+  // (por id), para o texto ser comparavel entre rodadas; e a fila vazia NAO
+  // imprime linha — verde absoluto é verde sem fila.
+  if (auditoria.caminho.filaMigracao.length > 0) {
+    console.log(
+      `ℹ️  A fila de migracao do caminho da forja tem ${auditoria.caminho.filaMigracao.length} job(s) ` +
+        `que AINDA pedem a forja sem que nenhum fato exija a imagem dela (a excecao declarada incluida) — ` +
+        `em ordem, os proximos a migrar:`,
+    )
+    for (const f of auditoria.caminho.filaMigracao)
+      console.log(
+        `     - ${f.id} (\`runs-on: ${f.caminho}\`, le YAML por ${f.leitores.map((l) => l.alvo).join(", ")}) — ${RUNNER_PATH_REMEDIO}`,
+      )
+  }
   if (foraDoEscopo.length > 0) {
     const detalhe = [...porCategoria]
       .sort((a, b) => b[1] - a[1])
