@@ -3,7 +3,7 @@
  *
  * A prova por EXECUÇÃO do recorte da pilha no pre-push: uma pilha em que o commit
  * do MEIO nasce vermelho e o TOPO é verde — a classe medida no repositório (o
- * `eee4f65e` pôs o count na bateria local, invalidou a expectativa de outro teste
+ * `2757e3a5` pôs o count na bateria local, invalidou a expectativa de outro teste
  * e o vermelho viajou 12 commits; o topo estava verde, o PR estava verde, e o
  * commit que quebrou o invariante nunca foi julgado).
  *

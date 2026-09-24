@@ -27,23 +27,64 @@
  * A última unidade é a CLI no caminho COMUM (um push de um commit só não tem
  * MEIO): o recorte é vazio, e "nada a medir" é um FATO medido — não um silêncio.
  *
+ * A VARREDURA do resíduo tem prova própria, e ela é a que fecha o defeito MEDIDO
+ * neste repositório (151 worktrees e ~11 GB em `/tmp/pilha-*`): uma execução MORTA
+ * nunca chega ao `rmSync` do fim. O que a suíte trava aqui não é "o código apaga
+ * diretórios" — apagar por padrão de nome mataria a medição de outro processo — é
+ * que o DONO declarado decide: pid vivo no mesmo host fica, `--keep` fica e é dito,
+ * marcador alheio ou ilegível NÃO é tocado, e o resto é varrido. As duas metades
+ * de execução são complementares: o SINAL (SIGTERM) impede o resíduo de NASCER, e
+ * o `kill -9` deixa o resíduo que a varredura da execução seguinte recolhe.
+
  * Execução focada:
  *   npx vitest run --config vitest.config.unit.ts src/lib/__tests__/prove-stack-per-commit.test.ts
  */
 
-import { spawnSync } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
-import { describe, expect, it } from "vitest"
+import { afterAll, describe, expect, it } from "vitest"
 
 import {
   AMOSTRA_PADRAO,
   EXIT,
+  FERRAMENTA,
+  MARCADOR_DO_DONO,
+  WORKTREE_PREFIXO,
   amostrar,
   commitsDoPush,
+  criarWorktree,
+  hostAtual,
+  limparResiduos,
+  limparWorktreeAtual,
+  pidVivo,
   recorteVazio,
   refsDoPush,
+  registrarWorktreeAtual,
+  removerWorktree,
+  renderLimpeza,
   renderRecorteVazio,
+  worktreeEmCurso,
 } from "../../../scripts/prove-stack-per-commit.mjs"
+
+/**
+ * A raiz do repositório medido. A suíte roda do root (é o mesmo `cwd` de que a
+ * CLI abaixo depende): o módulo é resolvido por caminho ABSOLUTO porque o filho
+ * da prova de execução o importa de outro processo.
+ */
+const RAIZ = process.cwd()
+/** O módulo REAL — o filho da prova de execução importa este caminho. */
+const MODULO = join(RAIZ, "scripts/prove-stack-per-commit.mjs")
 
 /** O sha que o git manda para um ref que o remoto ainda não tem. */
 const ZERO = "0".repeat(40)
@@ -189,7 +230,7 @@ describe("amostrar — o RECORTE que cabe no push", () => {
   })
 
   it("amostra 1 mede só o MAIS ANTIGO — o commit que ficou mais tempo na pilha", () => {
-    const { medidos, pulados } = amostrar(commits, 3)
+    const { medidos } = amostrar(commits, 3)
     expect(medidos[0]).toBe("c00")
     expect(amostrar(commits, 1)).toEqual({ medidos: ["c00"], pulados: commits.slice(1) })
   })
@@ -238,5 +279,432 @@ describe("o recorte VAZIO — o caminho comum, MEDIDO", () => {
     )
     expect(cli.status).toBe(EXIT.OK)
     expect(cli.stdout).toContain("NADA A MEDIR")
+  })
+})
+
+/** O sha que a suíte mede: o HEAD do repositório real (a base do fixture). */
+const shaDoHead = () =>
+  spawnSync("git", ["-C", RAIZ, "rev-parse", "HEAD"], { encoding: "utf8" }).stdout.trim()
+
+/** Todos os `tmp` que os casos criaram — o `afterAll` limpa o que sobrou. */
+const TMP_DO_TESTE: string[] = []
+
+/** Um diretório temporário DO TESTE — a varredura enumera SÓ o `tmp` injetado. */
+function tmpDoTeste() {
+  const dir = mkdtempSync(join(tmpdir(), "residuo-teste-"))
+  TMP_DO_TESTE.push(dir)
+  return dir
+}
+
+/**
+ * A suíte limpa o que CRIOU — inclusive quando um caso FALHA (o `rmSync` do fim
+ * de cada caso não roda num vermelho, e os `criarWorktree` registram no git do
+ * repositório REAL, porque é ele que a prova de execução mede). Sem isto, uma
+ * execução vermelha da suíte vira... o resíduo que esta suíte existe para medir.
+ */
+afterAll(() => {
+  for (const tmp of TMP_DO_TESTE) {
+    for (const dir of worktreesRegistrados().filter((d) => d.startsWith(`${tmp}/`))) {
+      spawnSync("git", ["-C", RAIZ, "worktree", "remove", "--force", dir], { encoding: "utf8" })
+    }
+    try {
+      // O caso da remoção NEGADA deixa o `tmp` sem o bit de escrita.
+      chmodSync(tmp, 0o700)
+    } catch {
+      // Diretório já removido: nada a restaurar.
+    }
+    rmSync(tmp, { recursive: true, force: true })
+  }
+  // O metadado de um worktree cujo diretório sumiu fica listado para sempre.
+  spawnSync("git", ["-C", RAIZ, "worktree", "prune", "--expire", "now"], { encoding: "utf8" })
+})
+
+/** Um `pilha-*` de mentira, com o dono declarado (ou sem marcador nenhum). */
+function residuo(tmp: string, nome: string, dono: Record<string, unknown> | null) {
+  const base = join(tmp, `${WORKTREE_PREFIXO}${nome}`)
+  mkdirSync(join(base, "w"), { recursive: true })
+  if (dono) writeFileSync(join(base, MARCADOR_DO_DONO), `${JSON.stringify(dono, null, 2)}\n`)
+  return base
+}
+
+/**
+ * Um pid que NÃO existe. O número sai do `pid_max` do kernel (onde nada é
+ * agendado) e é CONFERIDO com o próprio `pidVivo` — um teste que presumisse
+ * "999999 está morto" ficaria verde por coincidência de host.
+ */
+function pidMorto() {
+  let max = 4194304
+  try {
+    max = Number(readFileSync("/proc/sys/kernel/pid_max", "utf8").trim()) || max
+  } catch {
+    // Sem /proc: o teto de fallback já está acima de qualquer pid vivo.
+  }
+  for (let p = max - 1; p > max - 64; p--) if (!pidVivo(p)) return p
+  return max - 1
+}
+
+/** Os diretórios que o GIT registra como worktree do repositório. */
+function worktreesRegistrados(root = RAIZ) {
+  const out = spawnSync("git", ["-C", root, "worktree", "list", "--porcelain"], {
+    encoding: "utf8",
+  }).stdout
+  return (out || "")
+    .split("\n")
+    .filter((l) => l.startsWith("worktree "))
+    .map((l) => l.slice("worktree ".length))
+}
+
+describe("pidVivo — a vida do dono é medida, não presumida", () => {
+  it("o pid DESTA execução está vivo; um pid fora da tabela de processos está morto", () => {
+    expect(pidVivo(process.pid)).toBe(true)
+    expect(pidVivo(pidMorto())).toBe(false)
+  })
+
+  it("pid inválido (0, negativo, NaN, ausente) NÃO é dono vivo — e não varre nada por engano", () => {
+    // A direção importa: `pidVivo(0)` é FALSO, então um marcador com `pid: 0`
+    // libera a varredura em vez de fingir uma execução em curso.
+    for (const p of [0, -1, Number.NaN, undefined, null, "1", 1.5])
+      expect(pidVivo(p as number)).toBe(false)
+  })
+})
+
+describe("criarWorktree — o dono vai DECLARADO ao lado do worktree", () => {
+  it("declara ferramenta, pid, host, sha e keep, e o fim remove o diretório E o metadado", () => {
+    const tmp = tmpDoTeste()
+    const sha = shaDoHead()
+    const wt = criarWorktree({ root: RAIZ, sha, tmp })
+    expect("erro" in wt).toBe(false)
+    const w = wt as { base: string; dir: string; dono: Record<string, unknown> }
+
+    const dono = JSON.parse(readFileSync(join(w.base, MARCADOR_DO_DONO), "utf8")) as Record<
+      string,
+      unknown
+    >
+    expect(dono.ferramenta).toBe(FERRAMENTA)
+    expect(dono.pid).toBe(process.pid)
+    expect(dono.host).toBe(hostAtual())
+    expect(dono.sha).toBe(sha)
+    expect(dono.keep).toBe(false)
+    expect(dono.dir).toBe(w.dir)
+    expect(existsSync(join(w.dir, ".git"))).toBe(true)
+    expect(worktreesRegistrados()).toContain(w.dir)
+
+    removerWorktree({ root: RAIZ, base: w.base, dir: w.dir })
+    expect(existsSync(w.base)).toBe(false)
+    expect(worktreesRegistrados()).not.toContain(w.dir)
+    rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it("um `--keep` declara a intenção no marcador (o que a varredura seguinte lê)", () => {
+    const tmp = tmpDoTeste()
+    const wt = criarWorktree({ root: RAIZ, sha: shaDoHead(), keep: true, tmp })
+    const w = wt as { base: string; dir: string }
+    const dono = JSON.parse(readFileSync(join(w.base, MARCADOR_DO_DONO), "utf8")) as Record<
+      string,
+      unknown
+    >
+    expect(dono.keep).toBe(true)
+    if (w) removerWorktree({ root: RAIZ, base: w.base, dir: w.dir })
+    rmSync(tmp, { recursive: true, force: true })
+  })
+})
+
+describe("limparResiduos — o DONO decide, nunca o nome do diretório", () => {
+  it("dono MORTO: varrido por inteiro — o diretório E o metadado órfão do git", () => {
+    const tmp = tmpDoTeste()
+    const wt = criarWorktree({ root: RAIZ, sha: shaDoHead(), tmp })
+    const w = wt as { base: string; dir: string; dono: Record<string, unknown> }
+    // A execução MORREU (timeout, kill -9): o que fica é o marcador apontando
+    // para um pid que já não existe. É o único dado que autoriza a varredura.
+    writeFileSync(
+      join(w.base, MARCADOR_DO_DONO),
+      `${JSON.stringify({ ...w.dono, pid: pidMorto() }, null, 2)}\n`,
+    )
+
+    const r = limparResiduos({ root: RAIZ, tmp })
+    expect(r.varridos.map((v) => v.nome)).toEqual([w.base.split("/").pop()])
+    expect(existsSync(w.base)).toBe(false)
+    // O metadado do git vai junto: um diretório que sumiu sem `prune` deixa o
+    // repositório listando um worktree que não existe.
+    expect(worktreesRegistrados()).not.toContain(w.dir)
+    rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it("pid VIVO no MESMO host: preservado (é outra medição em curso, não resíduo)", () => {
+    const tmp = tmpDoTeste()
+    const base = residuo(tmp, "viva", {
+      ferramenta: FERRAMENTA,
+      pid: process.pid,
+      host: hostAtual(),
+      sha: "a".repeat(40),
+      keep: false,
+    })
+    const r = limparResiduos({ root: RAIZ, tmp })
+    expect(r.varridos).toEqual([])
+    expect(r.emUso).toHaveLength(1)
+    expect(existsSync(base)).toBe(true)
+    rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it("o pid de OUTRO host não é evidência de vida AQUI — o marcador de fora é varrido", () => {
+    // O número do pid só é comparável dentro do mesmo host: um pid vivo local que
+    // o marcador diz ser de outro host NÃO é prova de que alguém está medindo.
+    const tmp = tmpDoTeste()
+    const base = residuo(tmp, "outrohost", {
+      ferramenta: FERRAMENTA,
+      pid: process.pid,
+      host: "outro-host",
+      sha: "b".repeat(40),
+      keep: false,
+    })
+    const r = limparResiduos({ root: RAIZ, tmp })
+    expect(r.emUso).toEqual([])
+    expect(r.varridos.map((v) => v.host)).toEqual(["outro-host"])
+    expect(existsSync(base)).toBe(false)
+    rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it("`--keep` do dono: preservado, e DITO (o `--keep` deixa de ser letra morta)", () => {
+    const tmp = tmpDoTeste()
+    const base = residuo(tmp, "keep", {
+      ferramenta: FERRAMENTA,
+      pid: pidMorto(),
+      host: hostAtual(),
+      sha: "c".repeat(40),
+      keep: true,
+    })
+    const r = limparResiduos({ root: RAIZ, tmp })
+    expect(r.preservados).toHaveLength(1)
+    expect(r.varridos).toEqual([])
+    expect(existsSync(base)).toBe(true)
+    rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it("sem marcador legível ou de OUTRA ferramenta: NÃO É TOCADO, e o motivo é nomeado", () => {
+    const tmp = tmpDoTeste()
+    const semMarcador = residuo(tmp, "semmarcador", null)
+    const deOutra = residuo(tmp, "deoutra", { ferramenta: "outra-ferramenta", pid: pidMorto() })
+    const ilegivel = join(tmp, `${WORKTREE_PREFIXO}ilegivel`)
+    mkdirSync(join(ilegivel, "w"), { recursive: true })
+    writeFileSync(join(ilegivel, MARCADOR_DO_DONO), "{ isto não é JSON")
+    // Um diretório que NÃO é `pilha-*` nem entra na enumeração.
+    const alheio = join(tmp, "outro-temp")
+    mkdirSync(alheio, { recursive: true })
+
+    const r = limparResiduos({ root: RAIZ, tmp })
+    expect(r.varridos).toEqual([])
+    expect(r.naoMeus.map((n) => n.nome).sort()).toEqual(
+      [
+        `${WORKTREE_PREFIXO}deoutra`,
+        `${WORKTREE_PREFIXO}ilegivel`,
+        `${WORKTREE_PREFIXO}semmarcador`,
+      ].sort(),
+    )
+    expect(r.naoMeus.map((n) => n.motivo).join(" ")).toContain("outra-ferramenta")
+    expect(r.naoMeus.map((n) => n.motivo).join(" ")).toContain("sem marcador legível")
+    for (const d of [semMarcador, deOutra, ilegivel, alheio]) expect(existsSync(d)).toBe(true)
+    rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it("tmp ilegível: nenhuma varredura e nenhum crash — a varredura nunca derruba a medição", () => {
+    const r = limparResiduos({ root: RAIZ, tmp: join(tmpdir(), "nao-existe-" + Date.now()) })
+    expect(r).toEqual({
+      varridos: [],
+      naoRemovidos: [],
+      preservados: [],
+      emUso: [],
+      naoMeus: [],
+      podados: null,
+    })
+  })
+
+  it("host que NEGA a remoção: o resíduo NÃO entra como varrido — ele é dito, e fica", () => {
+    // A leitura falsa que este caso fecha: `remove` que falha em silêncio com o
+    // relatório dizendo "varrido" — o resíduo continua no disco e ninguém sabe.
+    // (Como root o bit de escrita é ignorado: aí não há host que negue.)
+    if (process.getuid?.() === 0) return
+    const tmp = tmpDoTeste()
+    const base = residuo(tmp, "teimoso", {
+      ferramenta: FERRAMENTA,
+      pid: pidMorto(),
+      host: hostAtual(),
+      sha: "f".repeat(40),
+      keep: false,
+    })
+    chmodSync(tmp, 0o500)
+    const r = limparResiduos({ root: RAIZ, tmp })
+    expect(r.varridos).toEqual([])
+    expect(r.naoRemovidos.map((v) => v.nome)).toEqual([`${WORKTREE_PREFIXO}teimoso`])
+    expect(existsSync(base)).toBe(true)
+    // A varredura que FALHA também é DITA — em texto, não só no dado.
+    expect(renderLimpeza(r).join("\n")).toContain("NÃO pôde ser varrido")
+    chmodSync(tmp, 0o700)
+    rmSync(tmp, { recursive: true, force: true })
+  })
+})
+
+describe("a limpeza da medição EM CURSO — o sinal e o registro", () => {
+  it("o worktree registrado é removido por inteiro, e o registro fica VAZIO (idempotente)", () => {
+    const tmp = tmpDoTeste()
+    const wt = criarWorktree({ root: RAIZ, sha: shaDoHead(), tmp })
+    const w = wt as { base: string; dir: string }
+    registrarWorktreeAtual(w as unknown as Record<string, unknown>)
+    expect(worktreeEmCurso()).toBe(w)
+
+    limparWorktreeAtual({ root: RAIZ })
+    expect(existsSync(w.base)).toBe(false)
+    expect(worktreesRegistrados()).not.toContain(w.dir)
+    // Idempotente: um segundo sinal (ou o `finally`) não pode explodir.
+    limparWorktreeAtual({ root: RAIZ })
+    expect(worktreeEmCurso()).toBeNull()
+    rmSync(tmp, { recursive: true, force: true })
+  })
+})
+
+describe("a interrupção REAL: o SINAL impede o resíduo de nascer, o `kill -9` deixa o que a varredura recolhe", () => {
+  /**
+   * O filho é o processo de VERDADE: ele instala a limpeza no sinal, cria o
+   * worktree pelo caminho do módulo, registra e fica vivo. Publicar o caminho
+   * antes de morrer é o que permite medir o disco DEPOIS da morte — de fora.
+   */
+  const FILHO = `
+import { criarWorktree, instalarLimpezaNoSinal, registrarWorktreeAtual } from ${JSON.stringify(MODULO)}
+instalarLimpezaNoSinal({ root: ${JSON.stringify(RAIZ)} })
+const wt = criarWorktree({ root: ${JSON.stringify(RAIZ)}, sha: ${JSON.stringify(shaDoHead())} })
+if (wt.erro) { console.error("ERRO " + wt.erro); process.exit(3) }
+registrarWorktreeAtual(wt)
+console.log("WORKTREE " + wt.base)
+setInterval(() => {}, 1000)
+`
+
+  function filhoNoWorktree(tmp: string) {
+    const filho = spawn(process.execPath, ["--input-type=module", "-e", FILHO], {
+      // O `TMPDIR` do filho é o do TESTE: o resíduo dele nasce num lugar que a
+      // varredura do teste enumera, nunca o `/tmp` compartilhado deste host.
+      env: { ...process.env, TMPDIR: tmp },
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+    let erro = ""
+    filho.stderr.on("data", (d) => (erro += String(d)))
+    const pronto = new Promise<string>((resolve, reject) => {
+      let saida = ""
+      const prazo = setTimeout(
+        () => reject(new Error(`o filho não publicou o worktree: ${saida} ${erro}`)),
+        60_000,
+      )
+      filho.stdout.on("data", (d) => {
+        saida += String(d)
+        const m = /^WORKTREE (.*)$/m.exec(saida)
+        if (m) {
+          clearTimeout(prazo)
+          resolve(m[1].trim())
+        }
+      })
+      filho.on("error", reject)
+    })
+    const saida = new Promise<{ code: number | null; signal: string | null }>((resolve) => {
+      filho.on("exit", (code, signal) => resolve({ code, signal }))
+    })
+    return { filho, pronto, saida }
+  }
+
+  it(
+    "SIGTERM (o timeout e o ^C): a execução interrompida NÃO deixa o worktree dela",
+    {
+      timeout: 120_000,
+    },
+    async () => {
+      const tmp = tmpDoTeste()
+      const { filho, pronto, saida } = filhoNoWorktree(tmp)
+      const base = await pronto
+      expect(existsSync(base)).toBe(true)
+
+      filho.kill("SIGTERM")
+      const r = await saida
+      expect(r.code).toBe(143)
+      expect(existsSync(base)).toBe(false)
+      expect(worktreesRegistrados()).not.toContain(join(base, "w"))
+      expect(limparResiduos({ root: RAIZ, tmp }).varridos).toEqual([])
+      rmSync(tmp, { recursive: true, force: true })
+    },
+  )
+
+  it(
+    "`kill -9` (o sinal que não dá para tratar): o resíduo NASCE, e a varredura seguinte o recolhe",
+    {
+      timeout: 120_000,
+    },
+    async () => {
+      const tmp = tmpDoTeste()
+      const { filho, pronto, saida } = filhoNoWorktree(tmp)
+      const base = await pronto
+
+      filho.kill("SIGKILL")
+      const r = await saida
+      expect(r.signal).toBe("SIGKILL")
+      // O resíduo existe de verdade — é o defeito medido (151 worktrees, ~11 GB).
+      expect(existsSync(base)).toBe(true)
+      expect(worktreesRegistrados()).toContain(join(base, "w"))
+
+      const limpeza = limparResiduos({ root: RAIZ, tmp })
+      expect(limpeza.varridos.map((v) => v.nome)).toEqual([base.split("/").pop()])
+      expect(existsSync(base)).toBe(false)
+      expect(worktreesRegistrados()).not.toContain(join(base, "w"))
+      rmSync(tmp, { recursive: true, force: true })
+    },
+  )
+})
+
+describe("a varredura entra na CLI e é DITA — no caminho comum e no dado de máquina", () => {
+  const donoMorto = (sha: string) => ({
+    ferramenta: FERRAMENTA,
+    pid: pidMorto(),
+    host: hostAtual(),
+    sha,
+    keep: false,
+  })
+
+  it("o relatório nomeia a varredura: silêncio num resíduo limpo seria o defeito, mais discreto", () => {
+    const tmp = tmpDoTeste()
+    const base = residuo(tmp, "morta", donoMorto("d".repeat(40)))
+    const head = shaDoHead()
+    const cli = spawnSync(
+      "node",
+      ["scripts/prove-stack-per-commit.mjs", "--pushed", "--sem-topo", "--refs", linha(head, head)],
+      { encoding: "utf8", env: { ...process.env, TMPDIR: tmp } },
+    )
+    expect(cli.status).toBe(EXIT.OK)
+    expect(cli.stdout).toContain("resíduo de execuções MORTAS: 1 varrido(s)")
+    expect(cli.stdout).toContain(base.split("/").pop() as string)
+    expect(existsSync(base)).toBe(false)
+    rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it("o `--json` leva a varredura como DADO (quem lê a máquina vê o que foi limpo)", () => {
+    const tmp = tmpDoTeste()
+    residuo(tmp, "morta2", donoMorto("e".repeat(40)))
+    // Um preservado e um fora do escopo para provar que o JSON distingue os três.
+    residuo(tmp, "viva2", { ferramenta: FERRAMENTA, pid: process.pid, host: hostAtual() })
+    residuo(tmp, "alheio2", null)
+    const head = shaDoHead()
+    const cli = spawnSync(
+      "node",
+      [
+        "scripts/prove-stack-per-commit.mjs",
+        "--pushed",
+        "--sem-topo",
+        "--json",
+        "--refs",
+        linha(head, head),
+      ],
+      { encoding: "utf8", env: { ...process.env, TMPDIR: tmp } },
+    )
+    const j = JSON.parse(cli.stdout) as {
+      limpeza: { varridos: Array<{ nome: string }>; emUso: unknown[]; naoMeus: unknown[] }
+    }
+    expect(j.limpeza.varridos.map((v) => v.nome)).toEqual([`${WORKTREE_PREFIXO}morta2`])
+    expect(j.limpeza.emUso).toHaveLength(1)
+    expect(j.limpeza.naoMeus).toHaveLength(1)
+    rmSync(tmp, { recursive: true, force: true })
   })
 })
