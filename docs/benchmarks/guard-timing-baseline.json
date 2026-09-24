@@ -2,7 +2,7 @@
   "meta": {
     "tool": "bench-guard-timing",
     "version": 6,
-    "commit": "acf30b7f",
+    "commit": "2cdc90f8",
     "commitDate": "2026-09-23 10:20:26 -0300",
     "timestamp": "2026-09-23T14:22:58.385Z",
     "act": "bench-guard-timing --only mutations --json --baseline --merge",
@@ -14,35 +14,35 @@
     "reused": {
       "lint": {
         "source": "guard-timing-baseline.json",
-        "commit": "acf30b7f",
+        "commit": "2cdc90f8",
         "commitDate": "2026-09-23 10:20:26 -0300",
         "timestamp": "2026-09-23T13:26:09.397Z",
         "missingInOrigin": null
       },
       "typecheck": {
         "source": "guard-timing-baseline.json",
-        "commit": "acf30b7f",
+        "commit": "2cdc90f8",
         "commitDate": "2026-09-23 10:20:26 -0300",
         "timestamp": "2026-09-23T13:26:09.397Z",
         "missingInOrigin": null
       },
       "tests": {
         "source": "guard-timing-baseline.json",
-        "commit": "acf30b7f",
+        "commit": "2cdc90f8",
         "commitDate": "2026-09-23 10:20:26 -0300",
         "timestamp": "2026-09-23T13:26:09.397Z",
         "missingInOrigin": null
       },
       "hook": {
         "source": "guard-timing-baseline.json",
-        "commit": "acf30b7f",
+        "commit": "2cdc90f8",
         "commitDate": "2026-09-23 10:20:26 -0300",
         "timestamp": "2026-09-23T13:26:09.397Z",
         "missingInOrigin": null
       },
       "battery": {
         "source": "guard-timing-baseline.json",
-        "commit": "acf30b7f",
+        "commit": "2cdc90f8",
         "commitDate": "2026-09-23 10:20:26 -0300",
         "timestamp": "2026-09-23T13:26:09.397Z",
         "missingInOrigin": null
@@ -51,7 +51,7 @@
     "families": {
       "battery": {
         "act": "reused",
-        "commit": "acf30b7f",
+        "commit": "2cdc90f8",
         "commitDate": "2026-09-23 10:20:26 -0300",
         "timestamp": "2026-09-23T13:26:09.397Z",
         "source": "guard-timing-baseline.json",
@@ -59,7 +59,7 @@
       },
       "lint": {
         "act": "reused",
-        "commit": "acf30b7f",
+        "commit": "2cdc90f8",
         "commitDate": "2026-09-23 10:20:26 -0300",
         "timestamp": "2026-09-23T13:26:09.397Z",
         "source": "guard-timing-baseline.json",
@@ -67,7 +67,7 @@
       },
       "typecheck": {
         "act": "reused",
-        "commit": "acf30b7f",
+        "commit": "2cdc90f8",
         "commitDate": "2026-09-23 10:20:26 -0300",
         "timestamp": "2026-09-23T13:26:09.397Z",
         "source": "guard-timing-baseline.json",
@@ -75,7 +75,7 @@
       },
       "tests": {
         "act": "reused",
-        "commit": "acf30b7f",
+        "commit": "2cdc90f8",
         "commitDate": "2026-09-23 10:20:26 -0300",
         "timestamp": "2026-09-23T13:26:09.397Z",
         "source": "guard-timing-baseline.json",
@@ -83,7 +83,7 @@
       },
       "hook": {
         "act": "reused",
-        "commit": "acf30b7f",
+        "commit": "2cdc90f8",
         "commitDate": "2026-09-23 10:20:26 -0300",
         "timestamp": "2026-09-23T13:26:09.397Z",
         "source": "guard-timing-baseline.json",
@@ -91,7 +91,7 @@
       },
       "mutations": {
         "act": "measured",
-        "commit": "acf30b7f",
+        "commit": "2cdc90f8",
         "commitDate": "2026-09-23 10:20:26 -0300",
         "timestamp": "2026-09-23T14:22:58.385Z",
         "source": null,

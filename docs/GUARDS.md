@@ -3343,7 +3343,7 @@ mesmo fato que a régua da idade lê no doctor):
 
 <!-- bench:mutations:tabela — DERIVADA do registro (`mutations` da baseline); não edite à mão: o ato a reescreve -->
 
-Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 23/09/2026 (`acf30b7f`): **40/40 verdes**, **246 metades**.
+Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 23/09/2026 (`2cdc90f8`): **40/40 verdes**, **246 metades**.
 
 | sub-test                                                                  |  wall time | fatia | metades |
 | ------------------------------------------------------------------------- | ---------: | ----: | ------: |

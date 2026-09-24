@@ -1251,7 +1251,7 @@ depois: `escreveu: true` é violação da família, não um detalhe do log.
 **O custo do job mais caro do PR não é uma conta à mão** (família `mutations` do
 `bench-guard-timing`). O job `mutation-guards` roda 40 sub-tests, e o que CADA um
 custa é medido pelo próprio master (`--json`) e versionado sub-test a sub-test no
-registro: o ato VERSIONADO de 23/09/2026 (`acf30b7f`) — o MESMO comando, com a árvore COMMITADA —
+registro: o ato VERSIONADO de 23/09/2026 (`2cdc90f8`) — o MESMO comando, com a árvore COMMITADA —
 mediu **553.9s** de sub-tests + **4.7s** de harness =
 **558.6s**, com `pre-commit-proof` (135.2s, 24%), `workflow-run-syntax` (72.8s, 13%), `hook-commands` (61.9s, 11%) e `job-deps` (46.2s, 8%) no topo — antes disso
 ninguém sabia QUAL sub-test pagava a conta. A mediana é **2.9s**, dez sub-tests
