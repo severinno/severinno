@@ -700,11 +700,12 @@ describe("a premissa: o hook chama o remédio, e de dentro do bloco do gate", ()
       "node scripts/check-mutation-timing-contract.mjs --staged &",
       "node scripts/check-required-checks.mjs --staged &",
       "node scripts/check-mutation-count.mjs --staged &",
+      "node scripts/check-lint-scope.mjs --staged &",
     ]) {
       expect(corpo, `${cmd} ficou fora da função fase_a`).toContain(cmd)
     }
     // A espera da fase A, comparada por LISTA (não por substring): os PIDs da
-    // linha do `wait_all` têm de ser EXATAMENTE os seis guards lançados acima —
+    // linha do `wait_all` têm de ser EXATAMENTE os sete guards lançados acima —
     // nem um a mais, nem um a menos. Um guard novo na fase A que não entre na
     // espera não decide o veredito dela (e a reexecução depois do remédio mediria
     // um commit mais permissivo que o da primeira rodada).
@@ -717,6 +718,7 @@ describe("a premissa: o hook chama o remédio, e de dentro do bloco do gate", ()
       "$PID_TIMING",
       "$PID_REQCHECKS",
       "$PID_COUNT",
+      "$PID_LINTSCOPE",
     ])
   })
 

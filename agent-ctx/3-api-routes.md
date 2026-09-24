@@ -57,11 +57,11 @@ To match what `apiGet<T>` consumers expect (T is the JSON body directly):
 - **passwordHash** is stripped from every public response (via destructure
   or `USER_PUBLIC_SELECT`).
 - **Provider catalog** (`/api/providers`): filters by role=PROVIDER + active
-  + verified; optional `q` (name/bio/city), `categoryId` (matches any
-  service in the category subtree via `getCategoryDescendants` BFS),
-  `radius` (post-fetch haversine). Sort `rating` (default) or `distance`
-  (requires lat/lng). Computes `rating`, `reviewCount`, `favoriteCount`,
-  `distanceKm` in JS (small dataset).
+  - verified; optional `q` (name/bio/city), `categoryId` (matches any
+    service in the category subtree via `getCategoryDescendants` BFS),
+    `radius` (post-fetch haversine). Sort `rating` (default) or `distance`
+    (requires lat/lng). Computes `rating`, `reviewCount`, `favoriteCount`,
+    `distanceKm` in JS (small dataset).
 - **Provider detail**: includes services (with category), availability
   (ordered by dayOfWeek), top-20 reviews with `author`. Returns
   `favorited: boolean` if logged-in client.

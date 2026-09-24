@@ -35,12 +35,12 @@ const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000"
 // ---------------------------------------------------------------------------
 
 const BUDGETS = {
-  LCP: 2500,      // Largest Contentful Paint
-  FCP: 1800,      // First Contentful Paint
-  TBT: 300,       // Total Blocking Time
-  CLS: 0.1,       // Cumulative Layout Shift (unitless)
-  TTI: 3500,      // Time to Interactive
-  LOAD: 4000,     // Full page load
+  LCP: 2500, // Largest Contentful Paint
+  FCP: 1800, // First Contentful Paint
+  TBT: 300, // Total Blocking Time
+  CLS: 0.1, // Cumulative Layout Shift (unitless)
+  TTI: 3500, // Time to Interactive
+  LOAD: 4000, // Full page load
 } as const
 
 // ---------------------------------------------------------------------------
@@ -123,8 +123,7 @@ async function measureWebVitals(
         clsSessionValue += layoutEntry.value ?? 0
         clsSessionEntries.push(entry)
         clsValue = Math.max(clsValue, clsSessionValue)
-        ;(window as unknown as Record<string, Record<string, number>>).__perfMetrics.CLS =
-          clsValue
+        ;(window as unknown as Record<string, Record<string, number>>).__perfMetrics.CLS = clsValue
       }
     }).observe({ type: "layout-shift", buffered: true })
 
@@ -235,9 +234,7 @@ const MOCK_PROVIDERS = {
       distanceKm: 1.5,
       lat: -18.8566,
       lng: -41.9455,
-      services: [
-        { id: "svc-1", title: "Encanador", basePrice: 120, unit: "UNIDADE", photos: [] },
-      ],
+      services: [{ id: "svc-1", title: "Encanador", basePrice: 120, unit: "UNIDADE", photos: [] }],
       completedBookings: 156,
     },
     {
@@ -249,11 +246,9 @@ const MOCK_PROVIDERS = {
       verified: true,
       city: "Governador Valadares",
       distanceKm: 3.2,
-      lat: -18.8600,
-      lng: -41.9500,
-      services: [
-        { id: "svc-2", title: "Diarista", basePrice: 80, unit: "UNIDADE", photos: [] },
-      ],
+      lat: -18.86,
+      lng: -41.95,
+      services: [{ id: "svc-2", title: "Diarista", basePrice: 80, unit: "UNIDADE", photos: [] }],
       completedBookings: 203,
     },
   ],
@@ -269,15 +264,9 @@ const MOCK_CATEGORIES = [
 ]
 
 async function setupMocks(page: Page) {
-  await page.route("**/api/providers**", (route) =>
-    route.fulfill({ json: MOCK_PROVIDERS }),
-  )
-  await page.route("**/api/categories**", (route) =>
-    route.fulfill({ json: MOCK_CATEGORIES }),
-  )
-  await page.route("**/api/search**", (route) =>
-    route.fulfill({ json: MOCK_PROVIDERS }),
-  )
+  await page.route("**/api/providers**", (route) => route.fulfill({ json: MOCK_PROVIDERS }))
+  await page.route("**/api/categories**", (route) => route.fulfill({ json: MOCK_CATEGORIES }))
+  await page.route("**/api/search**", (route) => route.fulfill({ json: MOCK_PROVIDERS }))
   await page.route("**/api/geo/**", (route) =>
     route.fulfill({ json: { lat: -18.8566, lng: -41.9455 } }),
   )
@@ -437,9 +426,7 @@ test.describe("Performance — Resource Loading", () => {
     const images = await page.evaluate(() => {
       const entries = performance.getEntriesByType("resource") as PerformanceResourceTiming[]
       const imgResources = entries.filter(
-        (e) =>
-          e.initiatorType === "img" ||
-          /\.(png|jpg|jpeg|webp|avif|gif|svg)$/i.test(e.name),
+        (e) => e.initiatorType === "img" || /\.(png|jpg|jpeg|webp|avif|gif|svg)$/i.test(e.name),
       )
 
       return {
@@ -448,9 +435,7 @@ test.describe("Performance — Resource Loading", () => {
           const ext = e.name.split(".").pop()?.split("?")[0] || "unknown"
           return ext.toLowerCase()
         }),
-        totalKB: Math.round(
-          imgResources.reduce((sum, e) => sum + (e.transferSize || 0), 0) / 1024,
-        ),
+        totalKB: Math.round(imgResources.reduce((sum, e) => sum + (e.transferSize || 0), 0) / 1024),
       }
     })
 
@@ -460,9 +445,7 @@ test.describe("Performance — Resource Loading", () => {
     console.log(`   Formats: ${[...new Set(images.formats)].join(", ")}`)
 
     // Check if modern formats are used
-    const hasModernFormats = images.formats.some(
-      (f) => f === "webp" || f === "avif" || f === "svg",
-    )
+    const hasModernFormats = images.formats.some((f) => f === "webp" || f === "avif" || f === "svg")
     // Only assert if there are actual images (not just SVG icons)
     if (images.count > 2) {
       expect(hasModernFormats).toBe(true)
@@ -523,8 +506,12 @@ test.describe("Performance — Repeat Visits", () => {
     })
 
     console.log("\n🔄 Repeat Visit Comparison:")
-    console.log(`   Visit 1 — LCP: ${Math.round(metrics1.LCP)}ms, LOAD: ${Math.round(metrics1.LOAD)}ms`)
-    console.log(`   Visit 2 — LCP: ${Math.round(metrics2.LCP)}ms, LOAD: ${Math.round(metrics2.LOAD)}ms`)
+    console.log(
+      `   Visit 1 — LCP: ${Math.round(metrics1.LCP)}ms, LOAD: ${Math.round(metrics1.LOAD)}ms`,
+    )
+    console.log(
+      `   Visit 2 — LCP: ${Math.round(metrics2.LCP)}ms, LOAD: ${Math.round(metrics2.LOAD)}ms`,
+    )
 
     // Second visit should not be significantly slower
     // (allow 20% variance due to system load)
