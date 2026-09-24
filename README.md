@@ -1251,14 +1251,14 @@ depois: `escreveu: true` é violação da família, não um detalhe do log.
 **O custo do job mais caro do PR não é uma conta à mão** (família `mutations` do
 `bench-guard-timing`). O job `mutation-guards` roda 41 sub-tests, e o que CADA um
 custa é medido pelo próprio master (`--json`) e versionado sub-test a sub-test no
-registro: o ato VERSIONADO de 24/09/2026 (`30447a57`) — o MESMO comando, com a árvore COMMITADA —
-mediu **479.8s** de sub-tests + **4.6s** de harness =
-**484.5s**, com `job-deps` (109.3s, 23%), `workflow-run-syntax` (73.4s, 15%), `hook-commands` (60.2s, 13%) e `bench-freshness` (45.9s, 10%) no topo — antes disso
-ninguém sabia QUAL sub-test pagava a conta. A mediana é **1.8s**, dez sub-tests
-pagam **84%** da soma, e o registro guarda **252 metades**.
+registro: o ato VERSIONADO de 24/09/2026 (`e33f97b9`) — o MESMO comando, com a árvore COMMITADA —
+mediu **630.6s** de sub-tests + **4.7s** de harness =
+**635.3s**, com `pre-commit-proof` (132.6s, 21%), `job-deps` (111.7s, 18%), `workflow-run-syntax` (80.1s, 13%) e `hook-commands` (61.8s, 10%) no topo — antes disso
+ninguém sabia QUAL sub-test pagava a conta. A mediana é **3.1s**, dez sub-tests
+pagam **86%** da soma, e o registro guarda **252 metades**.
 Quem entra com um sub-test novo não compõe nada: ele entra **MEDIDO** na rodada seguinte
-(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~11.8s**) é dita
-como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test. **LIMITE DECLARADO:** na rodada do ato, 3 sub-test(s) NÃO passaram (`pipefail-sigpipe`, `github-deps`, `pre-commit-proof`) — o custo deles não julga nada.
+(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~15.5s**) é dita
+como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test.
 
 Esta prosa é **DERIVADA**: quem a reescreve é o ato (o bloco é dele), e o
 `check:mutation-count` recusa o commit em que ela divirja do registro versionado.
