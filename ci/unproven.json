@@ -283,7 +283,7 @@
       "declaração alcança). A chave é o ASSUNTO EXATO do commit (linha única,",
       "format=%s): o rebase renomeia todos os SHAs e o assunto sobrevive. Assunto",
       "que continuou é classificado à parte (re-ancorar). A medição que produziu",
-      "os motivos abaixo é a de 25/09/2026 sobre a pilha de 32 commits (log",
+      "os motivos abaixo é a de 25/09/2026 sobre a pilha de 36 commits (log",
       "`/tmp` efêmero; re-medir: `node scripts/prove-stack-per-commit.mjs --base",
       "30447a57 --medir --json`). Dívida declarada NÃO muda o exit do prover: o",
       "que muda é o nome verdadeiro de cada vermelho no veredito."
@@ -292,11 +292,6 @@
     "declaredAt": "2026-09-25",
     "reviewAfterDays": 90,
     "commits": [
-      {
-        "subject": "feat(bench): a régua da idade mede também o relógio da MATRIZ — o lag que o count não via",
-        "reason": "medido 25/09/2026: vitest(2 arquivo(s)) reprova com 9 falhas sozinha no commit — as expectativas do relógio da matriz e das formas só fecham sobre a baseline re-gravada pelos commits seguintes",
-        "declaredAt": "2026-09-25"
-      },
       {
         "subject": "feat(prova): o pre-commit roda DENTRO da imagem do runner, com a fase A real",
         "reason": "medido 25/09/2026: vitest(5 arquivo(s)) reprova com 12 falhas — as provas que fazem commits REAIS no fixture esperam a recusa do hook real que só a árvore dos commits seguintes arma",
