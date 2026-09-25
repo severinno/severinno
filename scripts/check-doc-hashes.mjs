@@ -26,6 +26,19 @@
 //
 //   README.md · docs/ · ci/ · scripts/ · .husky/ · .github/workflows/ · .gitea/workflows/
 //
+// E A OUTRA METADE DA PROSA — as MENSAGENS de commit. O arquivo versionado é
+// julgado sempre; a mensagem, só nos commits que NENHUMA ref remota alcança: a
+// prosa que a próxima rewrite ainda pode corrigir. A história já publicada fica
+// fora por construção, e por dois motivos MEDIDOS (25/09/2026): ela não tem
+// remédio — reescrever um commit publicado é reescrever a história de todos — e
+// é justamente onde mora o ruído de FORMA (as mensagens de seed cujo assunto é
+// um UUID: o último segmento de 12 hex do identificador é hex de tamanho de
+// commit e não é revisão nenhuma). O defeito que esta metade pega é o mesmo dos
+// arquivos, e estava INVISÍVEL: 6 citações órfãs em corpo de mensagem nos 34
+// commits de uma série não publicada — `git cat-file` achava o objeto, a série
+// seguia verde em todo gate, e a prosa descrevia um ato que ninguém consegue
+// abrir.
+//
 // Fora do escopo, por construção: `src/` (payload de teste e código do app — a
 // mesma régua do `check-github-dependencies`, onde o TEXTO do defeito é dado de
 // prova, não afirmação de doc), `node_modules/`, os binários (`osrm-data/`) e os
@@ -56,12 +69,19 @@
 //      exigir a letra é o que separa `86400000` de `eee4f65e`), (b) vier
 //      precedido de um prefixo de digest (`sha256:`/`sha512:`/`md5:`: aí é o
 //      digest do ARTEFATO) ou (c) estiver na lista de não-citações;
-//   2. toda citação tem de ser ancestral do HEAD (ou o próprio HEAD);
+//   2. toda citação tem de ser ancestral do HEAD (ou o próprio HEAD) — no arquivo
+//      do escopo E no corpo das mensagens dos commits fora do publicado;
 //   3. `git cat-file` separa os dois defeitos, porque o remédio difere:
 //      - EXISTE e está fora da história → ÓRFÃO de reescrita (o guard nomeia o
 //        commit de MESMO ASSUNTO na história — é o nome que a rewrite deixou);
 //      - NÃO existe → hash sem commit nenhum (typo, cópia truncada de outro
 //        identificador, prosa inventada).
+//
+// O REMÉDIO da mensagem NÃO é o mesmo do arquivo: reescrever uma mensagem é
+// reescrever a história (rebase/`--amend`), então a citação órfã de mensagem sai
+// NOMEADA com o candidato de mesmo assunto e pede mão — o `--fix` (que troca o
+// token DENTRO de um arquivo) não a toca, e ela entra nas RECUSAS do remédio em
+// vez de sumir.
 //
 // O veredito é FAIL-CLOSED: git sem resposta, `HEAD` ilegível ou arquivo do
 // escopo que não abre valem exit 2 — "não consegui julgar" nunca vira "está
@@ -355,6 +375,12 @@ export function renderRelatorio(aval, { escopoArquivos }) {
   linhas.push(`  órfãs (rewrite):     ${aval.orfaos.length}`)
   linhas.push(`  sem commit:          ${aval.inexistentes.length}`)
   linhas.push(`  não-citações declaradas: ${aval.naoCitacoes.length}`)
+  const m = aval.mensagens
+  linhas.push(
+    m.revisoes === 0
+      ? "  mensagens: 0 commit(s) fora do publicado — nenhuma prosa de mensagem a julgar (a história publicada é imutável)"
+      : `  mensagens: ${m.revisoes} commit(s) fora do publicado, ${m.citacoes.length} citação(ões) — na história ${m.naHistoria}, órfãs ${m.orfaos.length}, sem commit ${m.inexistentes.length}`,
+  )
   if (aval.orfaos.length > 0) {
     linhas.push("")
     linhas.push("órfãs — o mesmo assunto na história é o nome que a rewrite deixou:")
@@ -441,6 +467,80 @@ export function verificadorGit(root) {
  *
  * @param {{root?: string, verificar?: Function}} [opts]
  */
+/**
+ * Os commits que NENHUMA ref remota alcança — a prosa de mensagem que a próxima
+ * rewrite ainda pode corrigir.
+ *
+ * `rev-list HEAD --not --remotes` é a régua: um commit que o remoto já tem não
+ * se reescreve (a reescrita arrastaria a história publicada junto), e é ele que
+ * carrega o ruído de FORMA que a mensagem não tem como declarar. A história
+ * publicada sai do escopo por DECISÃO medida, não por conveniência — e o
+ * relatório diz quantos commits sobraram, porque "nenhum commit a julgar" tem de
+ * ser um fato lido, não um silêncio.
+ *
+ * @param {string} root
+ * @returns {string[]} os SHAs completos, na ordem do `rev-list`
+ */
+export function commitsForaDoPublicado(root) {
+  return git(root, ["rev-list", "HEAD", "--not", "--remotes"])
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "")
+}
+
+/**
+ * O JULGAMENTO das MENSAGENS — a mesma régua do arquivo, com o mesmo
+ * `verificar`: existe? está na história? qual o commit de mesmo assunto?
+ *
+ * O `file` de cada citação é a REVISÃO (`mensagem <sha curto>`), então a
+ * violação sai apontando o commit e a LINHA do corpo — o autor abre a mensagem e
+ * vê o defeito na linha que o relatório nomeia.
+ *
+ * @param {string} root
+ * @param {(token: string) => {existe: boolean, naHistoria: boolean, assunto: string|null, candidato: string|null}} verificar
+ */
+export function avaliarMensagens(root, verificar) {
+  const revisoes = commitsForaDoPublicado(root)
+  const citacoes = []
+  let digests = 0
+  for (const rev of revisoes) {
+    const corpo = git(root, ["log", "-1", "--format=%B", rev])
+    const r = extrairCitacoes(corpo, `mensagem ${rev.slice(0, 8)}`)
+    citacoes.push(...r.citacoes)
+    digests += r.digests
+  }
+  return { revisoes: revisoes.length, digests, ...avaliarCitacoes({ citacoes, verificar }) }
+}
+
+/**
+ * As violações da metade das MENSAGENS, com o remédio de cada classe.
+ *
+ * @param {ReturnType<typeof avaliarMensagens>} mensagens
+ * @returns {string[]}
+ */
+export function violacoesDeMensagens(mensagens) {
+  const violacoes = []
+  for (const o of mensagens.orfaos) {
+    const remedio = o.candidato
+      ? `o commit de MESMO assunto na história é \`${o.candidato}\` — a mensagem se corrige na HISTÓRIA (rebase/\`--amend\`), não por arquivo`
+      : "não há commit de mesmo assunto no HEAD — confira o ato que a mensagem descreve"
+    violacoes.push(
+      `${o.file}:${o.line}: \`${o.token}\` está ÓRFÃO no CORPO DA MENSAGEM — existe como objeto e NÃO pertence à história do HEAD (a rewrite trocou o nome do commit, e nenhum guard de arquivo lê uma mensagem). ${remedio}.`,
+    )
+  }
+  for (const i of mensagens.inexistentes) {
+    violacoes.push(
+      `${i.file}:${i.line}: \`${i.token}\` citado na MENSAGEM não existe como commit. Se descreve um ATO, cite um commit da história; se é exemplo de formato, declare em NAO_CITACOES com o motivo.`,
+    )
+  }
+  return violacoes
+}
+
+/**
+ * O guard completo sobre uma árvore: lê o escopo, extrai e julga.
+ *
+ * @param {{root?: string, verificar?: Function}} [opts]
+ */
 export function auditar({ root = ROOT, verificar = null } = {}) {
   for (const e of EXCECOES) {
     if (!e.porque || e.porque.trim() === "") {
@@ -480,8 +580,18 @@ export function auditar({ root = ROOT, verificar = null } = {}) {
   // O auditor ENTRA na lista de arquivos (é um arquivo do escopo) mas sai da
   // varredura de citações: `arquivosDoEscopo` filtra ele, e o número relatado é
   // o do escopo EFETIVO — o que o veredito realmente cobriu.
-  const aval = avaliarCitacoes({ citacoes, verificar: verificar ?? verificadorGit(root) })
-  return { ...aval, digests, escopoArquivos: arquivos.length, root }
+  // A MESMA régua para as duas metades: um `verificar` só (a lista de assuntos
+  // do `git log` é montada uma vez e serve ao arquivo e à mensagem).
+  const verificarCitacao = verificar ?? verificadorGit(root)
+  const aval = avaliarCitacoes({ citacoes, verificar: verificarCitacao })
+  const mensagens = avaliarMensagens(root, verificarCitacao)
+  return {
+    ...aval,
+    mensagens,
+    digests: digests + mensagens.digests,
+    escopoArquivos: arquivos.length,
+    root,
+  }
 }
 
 // ── o remédio mecânico ──────────────────────────────────────────────────────
@@ -565,6 +675,26 @@ export function fixAll(root, { dry = false } = {}) {
       line: i.line,
       reason:
         "o token não existe como commit nenhum — não há nome vivo para onde reescrever (o remédio não inventa um hash)",
+    })
+  }
+  // A metade das MENSAGENS sai RECUSADA — nunca remendada: o token vive no corpo
+  // de um commit, e trocá-lo é reescrever a história (rebase/`--amend`), não um
+  // arquivo. O relatório diz o nome vivo de mesmo assunto; a mão faz o resto.
+  for (const o of aval.mensagens.orfaos) {
+    refused.push({
+      file: o.file,
+      line: o.line,
+      reason: o.candidato
+        ? `citação órfã no CORPO DA MENSAGEM — o commit de MESMO assunto é \`${o.candidato}\`; a mensagem se reescreve na HISTÓRIA (rebase/\`--amend\`), e o remédio por arquivo não a toca`
+        : "citação órfã no CORPO DA MENSAGEM, sem commit de mesmo assunto na história — o remédio não inventa um nome",
+    })
+  }
+  for (const i of aval.mensagens.inexistentes) {
+    refused.push({
+      file: i.file,
+      line: i.line,
+      reason:
+        "a MENSAGEM cita um token que não existe como commit nenhum — não há nome vivo para onde reescrever",
     })
   }
 
@@ -744,6 +874,7 @@ Usage:
   node scripts/check-doc-hashes.mjs         # julga a árvore (escopo declarado)
   node scripts/check-doc-hashes.mjs --json  # relatório estruturado
   node scripts/check-doc-hashes.mjs --all   # + os tokens lidos como digest
+  # as MENSAGENS dos commits fora do publicado entram na mesma varredura
   node scripts/check-doc-hashes.mjs --root X  # outro checkout (fixture)
   node scripts/check-doc-hashes.mjs -h
 
@@ -898,7 +1029,11 @@ if (IS_DIRECT_RUN) {
       )
       process.exit(EXIT.USO)
     }
-    const restam = depois.orfaos.length + depois.inexistentes.length
+    const restam =
+      depois.orfaos.length +
+      depois.inexistentes.length +
+      depois.mensagens.orfaos.length +
+      depois.mensagens.inexistentes.length
     console.error(
       `\n--fix: ${aplicado.fixed.length} citação(ões) trocada(s) em ` +
         `${new Set(aplicado.fixed.map((f) => f.file)).size} arquivo(s) — ` +
@@ -911,6 +1046,13 @@ if (IS_DIRECT_RUN) {
     for (const i of depois.inexistentes) {
       console.error(`   ⚠️  ${i.file}:${i.line} \`${i.token}\` não existe como commit`)
     }
+    for (const o of depois.mensagens.orfaos)
+      console.error(
+        `   ⚠️  ${o.file}:${o.line} ainda órfã no CORPO DA MENSAGEM \`${o.token}\`` +
+          (o.candidato ? ` (o nome vivo de mesmo assunto é \`${o.candidato}\`)` : ""),
+      )
+    for (const i of depois.mensagens.inexistentes)
+      console.error(`   ⚠️  ${i.file}:${i.line} na MENSAGEM \`${i.token}\` não existe como commit`)
     process.exit(restam === 0 ? EXIT.OK : EXIT.VIOLACAO)
   }
 
@@ -921,7 +1063,7 @@ if (IS_DIRECT_RUN) {
     console.error(`❌ ${err?.message ?? err}`)
     process.exit(EXIT.USO)
   }
-  const violacoes = violacoesDeCitacoes(aval)
+  const violacoes = [...violacoesDeCitacoes(aval), ...violacoesDeMensagens(aval.mensagens)]
   if (args.includes("--json")) {
     console.log(
       JSON.stringify(
@@ -932,6 +1074,7 @@ if (IS_DIRECT_RUN) {
           orfaos: aval.orfaos,
           inexistentes: aval.inexistentes,
           naoCitacoes: aval.naoCitacoes,
+          mensagens: aval.mensagens,
           digests: aval.digests,
           violacoes,
         },

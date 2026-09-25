@@ -7,7 +7,7 @@
 #   ./scripts/test-mutation-doc-hashes.sh
 #
 # Exit codes:
-#   0 — as OITO mutações foram DETECTADAS (o veredito mudou na direção prevista)
+#   0 — as NOVE mutações foram DETECTADAS (o veredito mudou na direção prevista)
 #       e os controles passaram ✅
 #   1 — a régua ficou INDIFERENTE a alguma mutação (o defeito deixou de ser
 #       acusado, ou a regra parou de proteger o são) OU um controle saiu falso ❌
@@ -21,7 +21,9 @@
 # Três classes de regressão, as duas primeiras já medidas em 22/09/2026:
 #
 #   CEGUEIRA (deixa passar o defeito) — M1 (o commit órfão de reescrita volta a
-#   valer), M4 (o não-julgável vira verde) e M5 (o auditor reprova a si mesmo);
+#   valer), M4 (o não-julgável vira verde), M5 (o auditor reprova a si mesmo) e
+#   M9 (a prosa da MENSAGEM sai da varredura e a origem não resolvível que ela
+#   cita volta a passar em silêncio);
 #   FROUXIDÃO (acusa o são) — M2 (o TTL `31536000` vira citação: 78 falsos
 #   positivos no corpus), M3 (o digest `sha256:` vira "hash sem commit") e M6 (o
 #   id de seed em `.ts` vira citação);
@@ -43,6 +45,11 @@
 #   M6 — A EXTENSÃO FORA DO ESCOPO (`.ts`). O id de seed (12 hex em formato
 #        ObjectId, MONTADO EM DUAS METADES pela própria suíte) é hex de tamanho
 #        de commit e não é revisão nenhuma.
+#   M9 — A PROSA DA MENSAGEM (`commitsForaDoPublicado`). O arquivo versionado
+#        sempre foi julgado; a MENSAGEM do commit não era lida por gate nenhum,
+#        e é onde a citação órfã viajava de graça (medido: 6 no corpo de mensagem
+#        de uma série não publicada). Sem esta metade, nenhuma das outras oito
+#        percebe — a metade que mede a mensagem tem de ser load-bearing por si.
 #
 # O FIXTURE É UM REPOSITÓRIO GIT DE VERDADE — a régua é do git (`cat-file` e
 # `merge-base`) — criado num `mktemp`, com o guard COPIADO para `scripts/`. O
@@ -69,6 +76,7 @@ METADES=(
   'M6|a extensão fora do escopo (.ts de fixture)'
   'M7|o preview do --fix NÃO grava (o --dry-run que o PR publica é o mesmo remendo)'
   'M8|a confirmação explícita: sem --yes e sem terminal NADA é gravado'
+  'M9|a prosa da MENSAGEM: o corpo que cita o commit que a rewrite deixou'
 )
 
 GUARD="$SCRIPT_DIR/scripts/check-doc-hashes.mjs"
@@ -335,9 +343,29 @@ recebe "M8 (cegada)" "$(PRE_COMMIT_REMEDY_NO_PROMPT=1 rodar "$F" --fix)" 0 \
 }
 pass "M8 (cegada) — a árvore mudou sem --yes: a confirmação era o que barrava"
 
+# ── M9 — a prosa da MENSAGEM ───────────────────────────────────────────────
+
+header "M9 — a PROSA DA MENSAGEM (o corpo que cita o commit que a rewrite deixou)"
+F="$TMP/m9"
+montar "$F"
+# O PAR do remédio (o commit citado e o de MESMO assunto que a dobra deixou) e,
+# num commit POSTERIOR, a citação no CORPO — o estado exato que uma rewrite deixa
+# para trás. O README.md fica limpo de propósito: a violação que o controle mede
+# vem SÓ da mensagem, e é isso que separa esta metade das outras oito.
+ORFAO="$(criar_orfao_fixavel "$F")"
+# `--allow-empty`: o commit de conteúdo vazio isola o defeito da MENSAGEM (o
+# README.md do fixture continua 'prosa limpa') — e é a mesma liberdade que a
+# história real toma: o que descreve o ato medido não é o diff, é a prosa.
+git -C "$F" commit -q --allow-empty -m "chore(bench): o ato versiona a matriz" \
+  -m "o registro anterior (${ORFAO}) foi medido com a fatia no ÍNDICE"
+recebe "CONTROLE M9 (defeito presente)" "$(rodar "$F")" 1 "a órfã no corpo da MENSAGEM é acusada"
+mutar_linha "$F" '  const revisoes = commitsForaDoPublicado(root)' '  const revisoes = []'
+recebe "M9 (cegada)" "$(rodar "$F")" 0 "sem a varredura das mensagens, o órfão da mensagem volta a passar"
+
 # ── Veredito ───────────────────────────────────────────────────────────────
 
-echo -e "\n${GREEN}✅ MUTATION TEST PASSOU${NC} — as OITO metades são LOAD-BEARING:"
+echo -e "\n${GREEN}✅ MUTATION TEST PASSOU${NC} — as NOVE metades são LOAD-BEARING:"
 info "M1 a regra da história · M2 o número puro · M3 o digest"
 info "M4 o fail-closed sem git · M5 a exclusão do auditor · M6 a extensão fora do escopo"
 info "M7 o preview não grava · M8 a confirmação explícita"
+info "M9 a prosa da MENSAGEM (a citação órfã que nenhum guard de arquivo lê)"
