@@ -293,7 +293,7 @@
       "declaração alcança). A chave é o ASSUNTO EXATO do commit (linha única,",
       "format=%s): o rebase renomeia todos os SHAs e o assunto sobrevive. Assunto",
       "que continuou é classificado à parte (re-ancorar). A medição que produziu",
-      "os motivos abaixo é a de 25/09/2026 sobre a pilha de 30 commits (log",
+      "os motivos abaixo é a de 25/09/2026 sobre a pilha de 32 commits (log",
       "`/tmp` efêmero; re-medir: `node scripts/prove-stack-per-commit.mjs --base",
       "30447a57 --medir --json`). Dívida declarada NÃO muda o exit do prover: o",
       "que muda é o nome verdadeiro de cada vermelho no veredito."
@@ -325,11 +325,6 @@
       {
         "subject": "chore(bench): o ato versiona a matriz de 40 sub-tests — a defasagem 39 formas × 40 fecha em 558.6s",
         "reason": "medido 25/09/2026: o guard script-headers reprova sozinho — o contrato do BLOCO DE DOCUMENTAÇÃO LÍDER casa com os cabeçalhos reescritos pelos commits seguintes (a tabela do bench e o parágrafo do README são derivados)",
-        "declaredAt": "2026-09-25"
-      },
-      {
-        "subject": "fix(prova): o fixture copia as FOLHAS do guard, e o CONTROLE encena o ato INTEIRO",
-        "reason": "medido 25/09/2026: vitest(4 arquivo(s)) reprova 1 sub-test — a espera separada do gate de sintaxe foi substituída e as provas do hook esperam a âncora que o commit seguinte (a âncora da espera saindo do HOOK) assenta",
         "declaredAt": "2026-09-25"
       },
       {
