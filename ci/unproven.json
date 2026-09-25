@@ -306,6 +306,11 @@
         "subject": "feat(bench): a tabela do GUARDS e o parágrafo do README são DERIVADOS do registro, e a coluna de metades vem da matriz",
         "reason": "medido 25/09/2026: vitest(27 arquivo(s)) reprova 3 sub-tests — a espera do hook é conferida com SEIS PIDs contra o hook do PRÓPRIO commit, que já espera SETE (`$PID_LINTSCOPE` entra na fase A com o guard do lint-scope: o `wait_all` de `bench-guard-timing-hook.test.ts:148` e a fase A de `pre-commit-remedy.test.ts`), e a baseline que o ATO versionou nele carrega formas com `exit 1` (`bench-guard-timing-mutations.test.ts:570`): o `check-job-deps` reprova a árvore do commit, e os fixtures do `mutation-count` e da prova real fecham nos commits seguintes (`fix(count)` e `fix(remedy)`)",
         "declaredAt": "2026-09-25"
+      },
+      {
+        "subject": "feat(gates): o registro do ato passa a CARREGAR a matriz que ele declara — a origem que não carrega é violação nomeada",
+        "reason": "medido 25/09/2026: o commit INTERMEDIÁRIO da prática do ato é vermelho COMO CONSEQÜÊNCIA da forma do bump — ele carrega a matriz de 42 sub-tests junto com o registro que o `--baseline` mediu sobre a árvore SUJA, então o `vitest` afetado (17 arquivo(s)) reprova em `bench-guard-timing-mutations.test.ts:570`: as formas do meio saem com `exit 1` (`bench-freshness` e `pre-commit-proof` comparam a matriz da árvore com o HEAD, que ainda não a tem) mais o limite declarado de `workflow-run-syntax`, cujo vermelho é do scratch gitignored `.tmp/mineracao/*.sh` e não da árvore versionada. O commit SEGUINTE re-mede na árvore COMITADA e é o que faz os três voltarem ao estado real — e é exatamente essa re-rodada que o `check-act-origin`, o gate que este commit instala, passa a EXIGIR",
+        "declaredAt": "2026-09-25"
       }
     ]
   }
