@@ -3112,6 +3112,23 @@ mede **menos** que o CI (`--staged` vê o índice, não a árvore inteira). A
 declaração não iguala os vereditos; torna a **diferença visível e revisável**, que
 é o que uma decisão de escopo precisa ser.
 
+**A QUARTA REGRA, DERIVADA — projeto nomeado, ainda não implementado.** O
+recoverado da pilha de 19/09 (minerado do dump `.tmp/stash-19-09-completo.diff`
+em 25/09/2026) declara a regra que falta: todo guard que as **DUAS pipelines
+executam** tem de ter uma decisão LOCAL — bateria (o hook o roda, ou recorte em
+`HOOK_DECLARED`), ausência declarada (`HOOK_NOT_RUN`) ou isenção com razão
+(`NOT_A_GATE`). O domínio dela é **derivado por INSTRUMENTO** (`subjectOf`), não
+por interseção de texto — é o que a pega o guard que evita a convenção de nome
+(`bash scripts/verify-x.sh`) e o mesmo instrumento em formas diferentes (`bun run
+db:generate` na forja, `bunx prisma generate` no espelho). Medido em 25/09/2026:
+a interseção literal das duas pipelines tem **43 comandos comuns**, e **25
+instrumentos** deles não têm linha de hook hoje — implementar é classificar os
+25 (bateria/ausência/não-gate) e declarar as isenções de infra (`setup-bun-ci.sh`,
+`bun install`, o prisma nas duas formas, o comentário do remédio). O teste
+derivado da regra (13 casos, entre os artefatos minerados) é o contrato a
+desenvolver; a suíte exige que a derivação nunca seja MENOR que a interseção
+literal (anti-vacuidade).
+
 **Prova por mutação:** `bash scripts/test-mutation-hook-ci-parity.sh` — sub-test
 `hook-ci-parity` do master `mutation-guards`. Nove mutações, cada uma
 exigindo a asserção da **própria regra** e medindo as irmãs (as linhas do

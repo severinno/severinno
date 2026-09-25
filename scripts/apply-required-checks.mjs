@@ -86,10 +86,17 @@ function parseArgs(argv) {
     else if (arg === "--json") options.json = true
     else if (arg === "--forge") options.forge = argv[++i]
     else if (arg === "--repo") options.repo = argv[++i]
+    else if (arg === "--root") options.root = argv[++i]
     else if (arg === "--help" || arg === "-h") options.help = true
     else throw new Error(`Argumento desconhecido: ${arg}`)
   }
   if (options.apply && options.check) throw new Error("--apply e --check são mutuamente exclusivos")
+  if (
+    options.root !== undefined &&
+    (typeof options.root !== "string" || options.root.length === 0)
+  ) {
+    throw new Error("--root exige um diretório")
+  }
   if (!["all", "github", "gitea"].includes(options.forge)) {
     throw new Error(`--forge deve ser all|github|gitea (recebido: ${options.forge})`)
   }
@@ -99,6 +106,7 @@ function parseArgs(argv) {
 const USAGE = `
 Aplica ci/required-checks.json no branch protection de cada forja.
 
+  --root <dir>                 outro checkout (a prova usa; default: o repositório)
   --forge <all|github|gitea>   forja alvo (default: all)
   --repo <owner/name>          repositório (default: env da forja)
   --check                      lê a forja e reporta drift (exit 1 se houver)
@@ -372,7 +380,13 @@ async function main() {
     return 0
   }
 
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
+  // O `--root` existe para a PROVA (a suíte do applier roda a CLI contra um
+  // fixture com a forja dublê local — o mesmo recorte que o guard irmão
+  // (`check-required-checks --root`) já aceita). Sem a flag, o root é o do
+  // repositório: a execução do CI não muda.
+  const root = options.root
+    ? resolve(options.root)
+    : resolve(dirname(fileURLToPath(import.meta.url)), "..")
   const manifest = loadManifest(root, defaultIo(root))
   const resolved = resolveManifestContexts(manifest, defaultIo(root))
   const mode = options.apply ? "APPLY" : options.check ? "CHECK" : "DRY-RUN"
