@@ -328,11 +328,6 @@
         "declaredAt": "2026-09-25"
       },
       {
-        "subject": "fix(bench): a âncora da espera sai do HOOK, e o JSON do ato sai formatado pelo repo",
-        "reason": "medido 25/09/2026: vitest(9 arquivo(s)) reprova com 3 falhas no fixture `$PID_MUT` — o mesmo rasgo do lint-scope: a régua derivada casa com o cabeçalho que a árvore do topo declara",
-        "declaredAt": "2026-09-25"
-      },
-      {
         "subject": "feat(doctor): a FILA PARADA é o terceiro fato do runner — o registro diz QUEM está registrado, não se alguém está PUXANDO",
         "reason": "medido 25/09/2026: vitest(12 arquivo(s)) reprova 2 sub-tests — as tabelas DERIVADAS do README (uma unidade por tabela de conteúdo derivado) são julgadas contra o registro do ato que os commits seguintes re-gravam",
         "declaredAt": "2026-09-25"
