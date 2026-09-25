@@ -218,6 +218,24 @@ jobs:
       - name: Doc commit citations (história do HEAD)
         run: node scripts/check-doc-hashes.mjs
 
+      # O REGISTRO DO ATO afirma DUAS coisas ao mesmo tempo: "MEDIDO: N sub-tests
+      # com M metades" e "a medição foi no commit X" (`meta.commit`). As duas
+      # podem divergir, e a divergência é INVISÍVEL para todo guard que lê uma
+      # árvore só — o registro e a matriz concordam entre si na árvore em que os
+      # dois estão, e mesmo assim a árvore de X pode não carregar a matriz
+      # declarada. Foi o que aconteceu no repositório: a rodada gravou um
+      # `meta.commit` cuja árvore não tinha a nona metade que o próprio registro
+      # declara ter medido, e o veredito passou a falar de uma árvore que não
+      # existiu (o `--baseline` roda com a árvore suja; a re-rodada na árvore
+      # COMITADA é que corrige o `meta.commit`, e ela era hábito, não regra).
+      #
+      # Por que é do CORE: a pergunta é do REPOSITÓRIO (o registro versionado ×
+      # a árvore que a própria linha dele declara), não de uma forja — e o
+      # número em jogo é a proveniência que o merge lê. A prova por mutação das
+      # sete regras dele entra na MATRIZ (sub-test `act-origin`), não num passo.
+      - name: Act origin carries the declared matrix
+        run: node scripts/check-act-origin.mjs
+
       # Fonte única do registry OCI (imagens da app + mirrors de toolchain).
       # Impede o reacoplamento ao GHCR: um `ghcr.io/...` solto volta a exigir
       # cota de storage/egress do registry proprietário e quebra o flip de uma

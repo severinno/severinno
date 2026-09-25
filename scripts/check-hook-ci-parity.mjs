@@ -355,6 +355,10 @@ export const HOOK_NOT_RUN = [
     why: "mede a pipeline INTEIRA (o grafo de `needs:` + o modelo de duracao), nao o commit: um commit que nao toca a pipeline nem o modelo nao muda o veredito — e nao existe recorte dele, porque o `--check` le os dois arquivos fixos de qualquer jeito. Quem muda o veredito e exatamente o commit de CI/pipeline, e esse o hook ja cobre pelo gate de paridade de gates.",
   },
   {
+    ids: ["act-origin"],
+    why: "o registro do ato e MEDIDO SOBRE A ARVORE SUJA: o `--baseline` roda com a matriz ja na arvore e o commit que a carrega ainda nao existe, entao a origem gravada e o PAI — cuja arvore e a de ANTES do bump. No pre-commit a origem seria SEMPRE o pai, e o gate fecharia exatamente o commit que a pratica da casa exige (o ato sujo entra no commit A; a RE-RODADA na arvore COMITADA, que corrige o `meta.commit`, entra no commit B): o hook nao pode medir uma arvore que ainda nao existe. A invariante e das DUAS pipelines, no PR, sobre a arvore COMITADA — e e ela que torna a re-rodada obrigatoria em vez de habito.",
+  },
+  {
     ids: ["mutation-matrix", "forge-parity-mutation"],
     why: "sao provas por MUTACAO: a matriz reescreve um guard por vez (32 sub-tests, 248s medidos no job do espelho) e o fixture do contrato de gates COPIA as duas pipelines e muta cada uma. O hook ja roda o gate de PARIDADE DE GATES em todo commit (e ele que exige a classificacao de um gate novo), mas nao pode pagar ~4min POR COMMIT — a prova por execucao e do CI e, desde esta mudanca, do job `guards` das DUAS forjas: antes ela so rodava no espelho, e o PR da forja podia mergear com um guard CEGO.",
   },

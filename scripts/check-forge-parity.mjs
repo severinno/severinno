@@ -747,6 +747,13 @@ export const CORE_INVARIANTS = [
     jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {
+    id: "act-origin",
+    matches: /check-act-origin/,
+    command: /^node scripts\/check-act-origin\.mjs$/m,
+    why: "o registro do ato afirma 'MEDIDO: N sub-tests' e 'medido no commit X' — e as duas podem divergir com o registro e a matriz concordando entre si na arvore em que os dois estao: a arvore de X e o UNICO lugar onde a mentira aparece, e o numero em jogo e a proveniencia que o merge le (medido: uma rodada gravou um `meta.commit` cuja arvore nao carregava a metade que o proprio registro declara ter medido)",
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
+  },
+  {
     id: "pipefail-sigpipe",
     // A classe que JA mordeu este repositorio: sob `set -o pipefail`,
     // `algo | grep -q PADRAO` pode terminar 141 (SIGPIPE) MESMO com o padrao

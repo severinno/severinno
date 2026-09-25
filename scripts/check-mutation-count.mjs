@@ -171,7 +171,7 @@ function readOrDie(root, rel) {
  * @returns {{count: number, ids: string[], entries: {id: string, script: string}[],
  *            comDescricao: {linha: number, id: string}[]}}
  */
-function deriveSubtestCount(masterSrc) {
+export function deriveSubtestCount(masterSrc) {
   const start = masterSrc.indexOf("SUBTESTS=(")
   if (start === -1) {
     const err = new Error("array SUBTESTS=( não encontrado no master")

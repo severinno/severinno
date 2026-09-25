@@ -3144,6 +3144,11 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
     // linha a fixture mediria um mundo em que a invariante existe na declaração
     // (`CORE_INVARIANTS`) e não na pipeline — o oposto do que o fato julga.
     ["doc-hashes", "node scripts/check-doc-hashes.mjs"],
+    // O REGISTRO DO ATO × A ÁRVORE QUE ELE DECLARA TER MEDIDO: entra no job
+    // `guards` das duas forjas pelo MESMO comando, pela mesma razão da linha
+    // acima — sem ela a fixture mediria um mundo em que a invariante existe na
+    // declaração (`CORE_INVARIANTS`) e não na pipeline.
+    ["act-origin", "node scripts/check-act-origin.mjs"],
     // A PROVA POR MUTAÇÃO deixou de ser isenta do dono do merge: a matriz (que
     // mede se um guard MORDE) e a prova das três regras de classificação rodam
     // nas DUAS pipelines, e na forja é DENTRO deste job — pelo mesmo comando.

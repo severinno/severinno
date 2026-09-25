@@ -84,6 +84,7 @@ const REAL_LINES = [
   "      - run: node scripts/check-forge-parity.mjs",
   "      - run: node scripts/check-archived-pipeline.mjs",
   "      - run: node scripts/check-doc-hashes.mjs",
+  "      - run: node scripts/check-act-origin.mjs",
   "      - run: node scripts/check-hooks-symmetry.mjs",
   "      - run: node scripts/check-hook-ci-parity.mjs",
   "      - run: node scripts/check-hook-commands.mjs",
