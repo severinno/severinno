@@ -1251,13 +1251,13 @@ depois: `escreveu: true` é violação da família, não um detalhe do log.
 **O custo do job mais caro do PR não é uma conta à mão** (família `mutations` do
 `bench-guard-timing`). O job `mutation-guards` roda 42 sub-tests, e o que CADA um
 custa é medido pelo próprio master (`--json`) e versionado sub-test a sub-test no
-registro: o ato VERSIONADO de 25/09/2026 (`c14f83c4`) — o MESMO comando, com a árvore COMMITADA —
-mediu **639.6s** de sub-tests + **4.8s** de harness =
-**644.4s**, com `job-deps` (182.8s, 29%), `pre-commit-proof` (134.8s, 21%), `hook-commands` (60.3s, 9%) e `bench-freshness` (42.7s, 7%) no topo — antes disso
+registro: o ato VERSIONADO de 25/09/2026 (`04940c2a`) — o MESMO comando, com a árvore COMMITADA —
+mediu **640.8s** de sub-tests + **4.8s** de harness =
+**645.5s**, com `job-deps` (182.9s, 29%), `pre-commit-proof` (134.6s, 21%), `hook-commands` (60.7s, 9%) e `bench-freshness` (43.0s, 7%) no topo — antes disso
 ninguém sabia QUAL sub-test pagava a conta. A mediana é **2.6s**, dez sub-tests
 pagam **85%** da soma, e o registro guarda **265 metades**.
 Quem entra com um sub-test novo não compõe nada: ele entra **MEDIDO** na rodada seguinte
-(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~15.3s**) é dita
+(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~15.4s**) é dita
 como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test. **LIMITE DECLARADO:** na rodada do ato, 1 sub-test(s) NÃO passaram (`workflow-run-syntax`) — o custo deles não julga nada.
 
 Esta prosa é **DERIVADA**: quem a reescreve é o ato (o bloco é dele), e o
