@@ -283,7 +283,7 @@
       "declaração alcança). A chave é o ASSUNTO EXATO do commit (linha única,",
       "format=%s): o rebase renomeia todos os SHAs e o assunto sobrevive. Assunto",
       "que continuou é classificado à parte (re-ancorar). A medição que produziu",
-      "os motivos abaixo é a de 25/09/2026 sobre a pilha de 36 commits (log",
+      "os motivos abaixo é a de 25/09/2026 sobre a pilha de 34 commits (log",
       "`/tmp` efêmero; re-medir: `node scripts/prove-stack-per-commit.mjs --base",
       "30447a57 --medir --json`). Dívida declarada NÃO muda o exit do prover: o",
       "que muda é o nome verdadeiro de cada vermelho no veredito."
@@ -304,17 +304,7 @@
       },
       {
         "subject": "feat(bench): a tabela do GUARDS e o parágrafo do README são DERIVADOS do registro, e a coluna de metades vem da matriz",
-        "reason": "medido 25/09/2026: o guard mutation-count reprova sozinho — a árvore do commit já tem 41 sub-tests e o ATO versionado nele carrega as 40 formas do ato anterior (o lint-scope entra na matriz no commit seguinte)",
-        "declaredAt": "2026-09-25"
-      },
-      {
-        "subject": "chore(bench): o ato versiona a matriz de 40 sub-tests — a defasagem 39 formas × 40 fecha em 558.6s",
-        "reason": "medido 25/09/2026: o guard script-headers reprova sozinho — o contrato do BLOCO DE DOCUMENTAÇÃO LÍDER casa com os cabeçalhos reescritos pelos commits seguintes (a tabela do bench e o parágrafo do README são derivados)",
-        "declaredAt": "2026-09-25"
-      },
-      {
-        "subject": "feat(doctor): a FILA PARADA é o terceiro fato do runner — o registro diz QUEM está registrado, não se alguém está PUXANDO",
-        "reason": "medido 25/09/2026: vitest(12 arquivo(s)) reprova 2 sub-tests — as tabelas DERIVADAS do README (uma unidade por tabela de conteúdo derivado) são julgadas contra o registro do ato que os commits seguintes re-gravam",
+        "reason": "medido 25/09/2026: vitest(27 arquivo(s)) reprova 3 sub-tests — a espera do hook é conferida com SEIS PIDs contra o hook do PRÓPRIO commit, que já espera SETE (`$PID_LINTSCOPE` entra na fase A com o guard do lint-scope: o `wait_all` de `bench-guard-timing-hook.test.ts:148` e a fase A de `pre-commit-remedy.test.ts`), e a baseline que o ATO versionou nele carrega formas com `exit 1` (`bench-guard-timing-mutations.test.ts:570`): o `check-job-deps` reprova a árvore do commit, e os fixtures do `mutation-count` e da prova real fecham nos commits seguintes (`fix(count)` e `fix(remedy)`)",
         "declaredAt": "2026-09-25"
       }
     ]
