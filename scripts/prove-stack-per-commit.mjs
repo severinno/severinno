@@ -851,6 +851,25 @@ export function renderRelatorio(r) {
   }
   L.push(`  sempre: ${r.sempre.map((s) => s.id).join(", ")}`)
   L.push(...renderLimpeza(r.limpeza))
+  // O RESUMO NO TOPO: a composição dos vermelhos antes da lista — quem lê sabe
+  // em uma linha se a pilha está pior (regressão) ou se ela é a conhecida
+  // (dívida declarada). Os baldes saem TODOS, zeros incluídos (omiti-los
+  // esconderia a contagem), e nos estados em que o registro não julgou a linha
+  // diz NÃO CLASSIFICADO — nunca insinua regressão. Sem `dividaPilha` (chamador
+  // antigo, recorte vazio) a linha não nasce: ausência de leitura não vira
+  // composição inventada.
+  const resumo = r.dividaPilha
+  if (resumo) {
+    if (resumo.estado === "medido") {
+      L.push(
+        `  vermelhos: ${r.vermelhos} — ⚪ ${resumo.divida.length} dívida(s) declarada(s) · 🔴 ${resumo.regressao.length} regressão(ões) · ⚠️  ${resumo.reancorar.length} para re-ancorar · ◐ ${resumo.naoClassificados.length} não classificado(s) · ${resumo.alheios.length} declaração(ões) não alcançada(s)`,
+      )
+    } else if (resumo.naoClassificados.length) {
+      L.push(
+        `  vermelhos: ${r.vermelhos} — ◐ ${resumo.naoClassificados.length} NÃO classificado(s) (o registro não pôde ser julgado)`,
+      )
+    }
+  }
   L.push("")
   for (const c of r.resultados) {
     const marca = c.veredito === "verde" ? "✅" : c.veredito === "vermelho" ? "❌" : "◐"

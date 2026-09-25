@@ -842,6 +842,11 @@ describe("a DÍVIDA da pilha — o veredito separa dívida declarada de regress�
     expect(relatorio).toContain("o helper nasce 3 commits depois [declarado em 2026-09-25]")
     expect(relatorio).toContain("🔴 REGRESSÃO:")
     expect(relatorio).not.toContain("re-ancore a seção")
+    // O RESUMO NO TOPO: a composição dos vermelhos antes da lista, TODOS os
+    // baldes, zeros incluídos.
+    expect(relatorio).toContain(
+      "vermelhos: 2 — ⚪ 1 dívida(s) declarada(s) · 🔴 1 regressão(ões) · ⚠️  0 para re-ancorar · ◐ 0 não classificado(s) · 0 declaração(ões) não alcançada(s)",
+    )
   })
 
   it("o RELATÓRIO com registro ILEGÍVEL não acusa regressão — e diz por quê", async () => {
@@ -874,6 +879,10 @@ describe("a DÍVIDA da pilha — o veredito separa dívida declarada de regress�
     expect(relatorio).toContain("NÃO classificado(s)")
     expect(relatorio).toContain("não a transforma em regressão")
     expect(relatorio).not.toContain("🔴 REGRESSÃO")
+    // E o resumo do topo NÃO insinua regressão quando o registro não julgou.
+    expect(relatorio).toContain(
+      "vermelhos: 1 — ◐ 1 NÃO classificado(s) (o registro não pôde ser julgado)",
+    )
   })
 
   it("o `--json` da CLI leva a separação como DADO (o recorte vazio publica `null`)", () => {
