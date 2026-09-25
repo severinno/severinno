@@ -708,3 +708,190 @@ describe("a varredura entra na CLI e é DITA — no caminho comum e no dado de m
     rmSync(tmp, { recursive: true, force: true })
   })
 })
+
+describe("a DÍVIDA da pilha — o veredito separa dívida declarada de regressão", () => {
+  const VERMELHO_A = "fix(count): o ato de 39 formas entra JUNTO da matriz"
+  const VERMELHO_A_CONTINUADO = VERMELHO_A + " (a segunda metade da fila)"
+  const VERMELHO_NOVO = "feat(z): nenhum registro declara este assunto"
+
+  /** Um resultado vermelho, no formato que `main` produz. */
+  const vermelho = (sha: string, assunto: string) => ({
+    sha,
+    assunto,
+    veredito: "vermelho",
+    escopo: "ambos",
+    sempre: [{ id: "mutation-count", ok: false, ms: 1, motivo: "quebrou" }],
+    testes: { testes: [], porNome: [], porGrafo: [] },
+    motivo: "mutation-count: a contagem não fecha",
+    ms: 1,
+  })
+
+  it("a separação vem do MÓDULO DONO do registro (uma implementação só)", async () => {
+    const { separarDividaDeRegressao } = await import("../../../scripts/doctor-unproven.mjs")
+    const secao = {
+      entrada: {
+        base: null,
+        declaredAt: "2026-09-25",
+        reviewAfterDays: 90,
+        commits: [
+          {
+            subject: VERMELHO_A,
+            reason: "o helper nasce 3 commits depois",
+            declaredAt: "2026-09-25",
+          },
+        ],
+      },
+      erro: null,
+    }
+    const r = separarDividaDeRegressao({
+      vermelhos: [
+        { sha: "a".repeat(40), assunto: VERMELHO_A, motivo: "vitest: import quebrado" },
+        { sha: "b".repeat(40), assunto: VERMELHO_A_CONTINUADO, motivo: "vitest: import quebrado" },
+        { sha: "c".repeat(40), assunto: VERMELHO_NOVO, motivo: "guard: quebrou" },
+      ],
+      secao,
+    })
+    expect(r.estado).toBe("medido")
+    expect(r.divida.map((d: { assunto: string }) => d.assunto)).toEqual([VERMELHO_A])
+    expect(r.reancorar.map((d: { assunto: string }) => d.assunto)).toEqual([VERMELHO_A_CONTINUADO])
+    expect(r.regressao.map((d: { assunto: string }) => d.assunto)).toEqual([VERMELHO_NOVO])
+    expect(r.alheios).toEqual([])
+  })
+
+  it("registro AUSENTE não acusa regressão: não classificado, com a causa nomeada", async () => {
+    const { separarDividaDeRegressao } = await import("../../../scripts/doctor-unproven.mjs")
+    const r = separarDividaDeRegressao({
+      vermelhos: [{ sha: "a".repeat(40), assunto: VERMELHO_NOVO, motivo: "x" }],
+      secao: { entrada: null, erro: "o registro não existe: ci/unproven.json" },
+    })
+    expect(r.estado).toBe("registro-ilegivel")
+    expect(r.regressao).toEqual([])
+    expect(r.naoClassificados).toHaveLength(1)
+    expect(r.erro).toContain("não existe")
+  })
+
+  it("a declaração que a pilha NÃO alcança é DITA (nem dívida queimada, nem regressão)", async () => {
+    const { separarDividaDeRegressao } = await import("../../../scripts/doctor-unproven.mjs")
+    const r = separarDividaDeRegressao({
+      vermelhos: [],
+      secao: {
+        entrada: {
+          base: null,
+          declaredAt: "2026-09-25",
+          reviewAfterDays: 90,
+          commits: [
+            { subject: VERMELHO_A, reason: "x", declaredAt: "2026-09-25" },
+            {
+              subject: "fix(outro): já fechado noutra história",
+              reason: "y",
+              declaredAt: "2026-09-25",
+            },
+          ],
+        },
+        erro: null,
+      },
+    })
+    expect(r.estado).toBe("medido")
+    expect(r.divida).toEqual([])
+    expect(r.alheios).toEqual([VERMELHO_A, "fix(outro): já fechado noutra história"])
+  })
+
+  it("o RELATÓRIO nomeia dívida, reancoragem e regressão com palavras diferentes", async () => {
+    const { renderRelatorio } = await import("../../../scripts/prove-stack-per-commit.mjs")
+    const relatorio = renderRelatorio({
+      base: "origin/main",
+      origemBase: "test",
+      head: "a".repeat(40),
+      teto: 150,
+      sempre: [],
+      commits: ["a".repeat(40), "c".repeat(40)],
+      recorte: null,
+      limpeza: null,
+      resultados: [vermelho("a".repeat(40), VERMELHO_A), vermelho("c".repeat(40), VERMELHO_NOVO)],
+      dividaPilha: {
+        estado: "medido",
+        divida: [
+          {
+            sha: "a".repeat(40),
+            assunto: VERMELHO_A,
+            motivo: "m",
+            declaredAt: "2026-09-25",
+            reason: "o helper nasce 3 commits depois",
+          },
+        ],
+        reancorar: [],
+        regressao: [
+          {
+            sha: "c".repeat(40),
+            assunto: VERMELHO_NOVO,
+            motivo: "m",
+            pista: "nenhuma dívida da seção `pilha` do registro declara este assunto",
+          },
+        ],
+        alheios: [],
+        naoClassificados: [],
+        erro: null,
+      },
+      custoMs: 1,
+      veredito: "broken",
+      exit: 1,
+      vermelhos: 2,
+      indeterminados: 0,
+    })
+    expect(relatorio).toContain("⚪ dívida declarada:")
+    expect(relatorio).toContain("o helper nasce 3 commits depois [declarado em 2026-09-25]")
+    expect(relatorio).toContain("🔴 REGRESSÃO:")
+    expect(relatorio).not.toContain("re-ancore a seção")
+  })
+
+  it("o RELATÓRIO com registro ILEGÍVEL não acusa regressão — e diz por quê", async () => {
+    const { renderRelatorio } = await import("../../../scripts/prove-stack-per-commit.mjs")
+    const relatorio = renderRelatorio({
+      base: "origin/main",
+      origemBase: "test",
+      head: "a".repeat(40),
+      teto: 150,
+      sempre: [],
+      commits: ["a".repeat(40)],
+      recorte: null,
+      limpeza: null,
+      resultados: [vermelho("a".repeat(40), VERMELHO_NOVO)],
+      dividaPilha: {
+        estado: "registro-ilegivel",
+        divida: [],
+        reancorar: [],
+        regressao: [],
+        alheios: [],
+        naoClassificados: [{ sha: "a".repeat(40), assunto: VERMELHO_NOVO, motivo: "m" }],
+        erro: "o registro não é JSON válido",
+      },
+      custoMs: 1,
+      veredito: "broken",
+      exit: 1,
+      vermelhos: 1,
+      indeterminados: 0,
+    })
+    expect(relatorio).toContain("NÃO classificado(s)")
+    expect(relatorio).toContain("não a transforma em regressão")
+    expect(relatorio).not.toContain("🔴 REGRESSÃO")
+  })
+
+  it("o `--json` da CLI leva a separação como DADO (o recorte vazio publica `null`)", () => {
+    const head = shaDoHead()
+    const cli = spawnSync(
+      "node",
+      [
+        "scripts/prove-stack-per-commit.mjs",
+        "--pushed",
+        "--sem-topo",
+        "--json",
+        "--refs",
+        linha(head, head),
+      ],
+      { encoding: "utf8" },
+    )
+    const j = JSON.parse(cli.stdout) as { dividaPilha: unknown; recorte: { noRecorte: number } }
+    expect(j.recorte.noRecorte).toBe(0)
+    expect(j.dividaPilha).toBeNull()
+  })
+})

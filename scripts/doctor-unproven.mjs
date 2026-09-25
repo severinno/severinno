@@ -557,6 +557,199 @@ export function matchesDe(item) {
   return []
 }
 
+// ── A SEÇÃO PILHA — a dívida do veredito POR COMMIT ──────────────────────────
+//
+// O prover por commit (`prove-stack-per-commit.mjs`) julga cada commit SOZINHO e
+// o vermelho dele tem um motivo MEDIDO. Sem um lugar que diga "este vermelho é
+// CONHECIDO", o veredito da pilha trata dívida declarada e regressão nova pela
+// mesma palavra — e a palavra perde o sentido: quem lê não sabe se a pilha está
+// pior ou se ela sempre foi assim.
+//
+// A seção `pilha` do MESMO registro (`ci/unproven.json`) declara, POR ASSUNTO de
+// commit, o vermelho conhecido e o motivo medido de ele existir. O ASSUNTO é a
+// chave porque sobrevive a reescritas de pilha (rebase renomeia TODOS os SHAs —
+// a prova de 09/2026 re-apontou 64 citações de SHAs órfãos duas vezes); o SHA
+// não sobrevive. O casamento é EXATO por assunto; o caso do assunto que
+// CONTINUOU (prefixo) é classificado à parte — é a mesma dívida, mas o registro
+// precisa ser re-ancorado para o casamento exato voltar.
+//
+// FAIL-CLOSED nos DOIS lados: registro ausente/ilegível/inválido NÃO transforma
+// vermelho em regressão ("não consegui ler" não é "não declarou") — fica
+// NÃO CLASSIFICADO, nomeado; e um assunto declarado que a medição não alcançou
+// não é dívida queimada nem regressão — é registro de outra história (ou de uma
+// pilha já fechada), e é DITO.
+
+/**
+ * LÊ a seção `pilha` do registro. `null` sem erro = o registro existe e é
+ * válido, mas não declara a seção (o caso comum de um repositório sem dívida
+ * de pilha) — diferente de ilegível, que vem com `erro` nomeado.
+ *
+ * @param {{root?: string, deps?: {exists?: Function, read?: Function}}} [options]
+ * @returns {{entrada: {base: string|null, declaredAt: string|null, reviewAfterDays: number|null, commits: Array<{subject: string, reason: string, declaredAt: string}>}|null, erro: string|null}}
+ */
+export function lerSecaoPilha({ root = REPO_ROOT, deps = {} } = {}) {
+  const exists = deps.exists ?? existsSync
+  const read = deps.read ?? ((path) => readFileSync(path, "utf8"))
+  const caminho = isAbsolute(UNPROVEN_REGISTRY_PATH)
+    ? UNPROVEN_REGISTRY_PATH
+    : resolve(root, UNPROVEN_REGISTRY_PATH)
+  if (!exists(caminho)) {
+    return {
+      entrada: null,
+      erro: `o registro não existe: ${UNPROVEN_REGISTRY_PATH}`,
+    }
+  }
+  let json
+  try {
+    json = JSON.parse(read(caminho))
+  } catch (error) {
+    return {
+      entrada: null,
+      erro: `o registro não é JSON válido (${UNPROVEN_REGISTRY_PATH}): ${error.message}`,
+    }
+  }
+  if (json === null || typeof json !== "object" || Array.isArray(json)) {
+    return {
+      entrada: null,
+      erro: `o registro não é um objeto (${UNPROVEN_REGISTRY_PATH})`,
+    }
+  }
+  if (json.pilha === undefined) return { entrada: null, erro: null }
+  const secao = json.pilha ?? {}
+  if (typeof secao !== "object" || Array.isArray(secao)) {
+    return {
+      entrada: null,
+      erro: `a seção 'pilha' não é um objeto (${UNPROVEN_REGISTRY_PATH})`,
+    }
+  }
+  if (!Array.isArray(secao.commits)) {
+    return {
+      entrada: null,
+      erro: `a seção 'pilha' não declara 'commits' como array (${UNPROVEN_REGISTRY_PATH})`,
+    }
+  }
+  const commits = []
+  for (let i = 0; i < secao.commits.length; i++) {
+    const c = secao.commits[i] ?? {}
+    const onde = `pilha.commits[${i}]`
+    if (typeof c.subject !== "string" || c.subject.length === 0) {
+      return {
+        entrada: null,
+        erro: `${onde} sem 'subject' (o ASSUNTO é a chave — o SHA não sobrevive a reescrita de pilha)`,
+      }
+    }
+    if (typeof c.reason !== "string" || c.reason.length === 0) {
+      return {
+        entrada: null,
+        erro: `${onde} sem 'reason' — um vermelho declarado sem o motivo medido é dívida anônima`,
+      }
+    }
+    if (parseAddedAt(c.declaredAt) === null) {
+      return { entrada: null, erro: `${onde} sem 'declaredAt' válido (YYYY-MM-DD)` }
+    }
+    if (commits.some((d) => d.subject === c.subject)) {
+      return {
+        entrada: null,
+        erro: `${onde} declara o assunto DUAS VEZES — o casamento é por assunto e a duplicata o tornaria ambíguo`,
+      }
+    }
+    commits.push({ subject: c.subject, reason: c.reason, declaredAt: c.declaredAt })
+  }
+  return {
+    entrada: {
+      base: typeof secao.base === "string" ? secao.base : null,
+      declaredAt: typeof secao.declaredAt === "string" ? secao.declaredAt : null,
+      reviewAfterDays: Number.isInteger(secao.reviewAfterDays) ? secao.reviewAfterDays : null,
+      commits,
+    },
+    erro: null,
+  }
+}
+
+/**
+ * SEPARA os vermelhos medidos entre DÍVIDA DECLARADA e REGRESSÃO — a leitura do
+ * registro que o veredito da pilha publica.
+ *
+ * Os BALDES, cada um nomeado no veredito:
+ *   `divida`     — o assunto do vermelho é EXATAMENTE um assunto declarado;
+ *   `reancorar`  — o assunto do vermelho COMEÇA com um assunto declarado (o
+ *                  commit continuou e o assunto mudou): a MESMA dívida, mas o
+ *                  registro precisa do casamento exato de volta;
+ *   `regressao`  — nenhum assunto declarado alcança o vermelho: é o que o
+ *                  veredito nomeia como regressão de verdade;
+ *   `alheios`    — assuntos declarados que a medição não alcançou (outra
+ *                  história, pilha já fechada): nem dívida queimada nem
+ *                  regressão — e o silêncio sobre eles seria o verde falso do
+ *                  registro;
+ *   `naoClassificados` — quando o registro não pôde julgar (ausente, ilegível,
+ *                  inválido): "não consegui ler" NUNCA vira "não declarou" —
+ *                  virar regressão seria o falso positivo que esta separação
+ *                  existe para não cuspir.
+ *
+ * @param {{vermelhos: Array<{sha: string, assunto: string, motivo: string|null}>, secao: {entrada: object|null, erro: string|null}|null}} p
+ * @returns {{estado: "medido"|"sem-registro"|"registro-ilegivel", divida: Array, reancorar: Array, regressao: Array, alheios: string[], naoClassificados: Array, erro: string|null}}
+ */
+export function separarDividaDeRegressao({ vermelhos = [], secao = null }) {
+  const limpo = Array.isArray(vermelhos)
+    ? vermelhos.filter((v) => v && typeof v.assunto === "string")
+    : []
+  if (!secao || secao.erro) {
+    return {
+      estado: "registro-ilegivel",
+      divida: [],
+      reancorar: [],
+      regressao: [],
+      alheios: [],
+      naoClassificados: limpo,
+      erro: secao?.erro ?? "a seção `pilha` não pôde ser lida",
+    }
+  }
+  if (!secao.entrada) {
+    return {
+      estado: "sem-registro",
+      divida: [],
+      reancorar: [],
+      regressao: [],
+      alheios: [],
+      naoClassificados: limpo,
+      erro: null,
+    }
+  }
+  const declarados = secao.entrada.commits
+  const divida = []
+  const reancorar = []
+  const regressao = []
+  const usados = new Set()
+  for (const v of limpo) {
+    const exato = declarados.find((d) => d.subject === v.assunto)
+    if (exato) {
+      divida.push({ ...v, declaredAt: exato.declaredAt, reason: exato.reason })
+      usados.add(exato.subject)
+      continue
+    }
+    const prefixo = declarados.find((d) => v.assunto.startsWith(d.subject))
+    if (prefixo) {
+      reancorar.push({ ...v, declaredAt: prefixo.declaredAt, reason: prefixo.reason })
+      usados.add(prefixo.subject)
+      continue
+    }
+    regressao.push({
+      ...v,
+      pista: "nenhuma dívida da seção `pilha` do registro declara este assunto",
+    })
+  }
+  const alheios = declarados.filter((d) => !usados.has(d.subject)).map((d) => d.subject)
+  return {
+    estado: "medido",
+    divida,
+    reancorar,
+    regressao,
+    alheios,
+    naoClassificados: [],
+    erro: null,
+  }
+}
+
 // ── CLI ────────────────────────────────────────────────────────────────────
 
 export function parseArgs(argv) {

@@ -119,6 +119,11 @@ import { basename, dirname, extname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 import { resolverLocal, specsDoModulo } from "./check-tla-closure.mjs"
+import {
+  UNPROVEN_REGISTRY_PATH as UNPROVEN_CAMINHO,
+  lerSecaoPilha,
+  separarDividaDeRegressao,
+} from "./doctor-unproven.mjs"
 
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -879,6 +884,39 @@ export function renderRelatorio(r) {
           : `INDETERMINAD${rec ? "O" : "A"} — ${r.indeterminados} commit(s) não puderam ser medidos ◐`
     }`,
   )
+  // A SEPARAÇÃO que o veredito publica: dívida DECLARADA (o registro conhece o
+  // assunto e o motivo) NÃO é regressão — e a regressão é NOMEADA como tal. A
+  // leitura honesta dos DOIS lados: registro ilegível não acusa ninguém (não
+  // classificado), e declaração que a pilha não alcança é DITA (o registro de
+  // outra história envelhece calado). O exit NÃO muda: dívida é dívida, e quem
+  // barra o push é o vermelho — com o nome agora verdadeiro.
+  const dp = r.dividaPilha
+  if (dp) {
+    if (dp.estado === "medido") {
+      if (dp.divida.length)
+        for (const d of dp.divida)
+          L.push(
+            `  ⚪ dívida declarada: ${d.sha.slice(0, 8)} — ${d.reason} [declarado em ${d.declaredAt}]`,
+          )
+      if (dp.reancorar.length)
+        L.push(
+          `  ⚠️  ${dp.reancorar.length} vermelho(s) continuam a declaração mas o ASSUNTO mudou — re-ancore a seção 'pilha' do ${UNPROVEN_CAMINHO} para o casamento exato voltar: ${dp.reancorar.map((d) => d.sha.slice(0, 8)).join(" ")}`,
+        )
+      if (dp.regressao.length)
+        for (const g of dp.regressao)
+          L.push(
+            `  🔴 REGRESSÃO: ${g.sha.slice(0, 8)} — nenhum assunto da seção 'pilha' do ${UNPROVEN_CAMINHO} declara este vermelho`,
+          )
+      if (dp.alheios.length)
+        L.push(
+          `  · ${dp.alheios.length} declaração(ões) da seção 'pilha' não foram alcançadas por esta pilha (outra história ou já fechada): ${dp.alheios.map((s) => s.slice(0, 48) + (s.length > 48 ? "…" : "")).join(" | ")}`,
+        )
+    } else if (dp.naoClassificados.length) {
+      L.push(
+        `  ◐ ${dp.naoClassificados.length} vermelho(s) NÃO classificado(s) — o registro não pôde ser julgado (${dp.erro}): não conseguindo ler a dívida não a transforma em regressão`,
+      )
+    }
+  }
   if (rec) {
     L.push(
       `  ⚠️  Isto NÃO é o veredito da pilha: ${r.commits.length} de ${rec.noRecorte} commit(s) que o push leva foram medidos${
@@ -906,6 +944,7 @@ export function json(r) {
       limpeza: r.limpeza ?? null,
       veredito: r.veredito,
       vermelhos: r.vermelhos,
+      dividaPilha: r.dividaPilha ?? null,
       indeterminados: r.indeterminados,
       custoMs: r.custoMs,
       resultados: r.resultados.map((c) => ({
@@ -1260,6 +1299,17 @@ function main(argv) {
   }
 
   const ag = agregar(resultados)
+  // A LEITURA do registro: os vermelhos medidos são separados entre DÍVIDA
+  // DECLARADA (a seção `pilha` do `ci/unproven.json` declara o assunto e o
+  // motivo medido) e REGRESSÃO (nenhuma declaração alcança). O registro
+  // ausente/ilegível NUNCA vira regressão — "não consegui ler" não é "não
+  // declarou" — e fica NÃO CLASSIFICADO, nomeado no veredito.
+  const dividaPilha = separarDividaDeRegressao({
+    vermelhos: resultados
+      .filter((c) => c.veredito === "vermelho")
+      .map((c) => ({ sha: c.sha, assunto: c.assunto, motivo: c.motivo })),
+    secao: lerSecaoPilha({ root }),
+  })
   const relatorio = {
     base: relatorioBase,
     origemBase,
@@ -1270,6 +1320,7 @@ function main(argv) {
     recorte,
     limpeza,
     resultados,
+    dividaPilha,
     custoMs: Date.now() - inicio,
     ...ag,
   }

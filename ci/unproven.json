@@ -47,7 +47,19 @@
     "mais de um trecho, e a data vai em TODAS as linhas que ele declara: a mesma",
     "declaração aparece no 'não provado' em mais de uma forma (a linha do fato da",
     "proteção e a linha agregada dos gates daquela forja), e datar só uma deixaria",
-    "a outra sem saber desde quando existe."
+    "a outra sem saber desde quando existe.",
+    "",
+    "A SEÇÃO `pilha` (o OUTRO consumidor deste registro): o prover por commit",
+    "(`scripts/prove-stack-per-commit.mjs`) lê esta seção e separa o vermelho da",
+    "pilha entre DÍVIDA DECLARADA (o assunto está em `pilha.commits`, com o",
+    "motivo medido) e REGRESSÃO (nenhuma declaração alcança). A chave é o",
+    "ASSUNTO, não o SHA: o rebase renomeia todos os SHAs e o assunto sobrevive.",
+    "O casamento é EXATO; assunto que continuou (o commit foi estendido) é",
+    "classificado à parte e PEDI re-ancoragem. Registro ilegível NUNCA vira",
+    "regressão — não conseguir ler a dívida não a transforma em outra coisa.",
+    "Declaração que a pilha medida não alcança é DITA no veredito (outra história",
+    "ou dívida já fechada). O exit do prover NÃO muda: dívida é dívida — o que",
+    "muda é o NOME verdadeiro de cada vermelho no veredito."
   ],
   "version": 1,
   "reviewAfterDays": 90,
@@ -272,5 +284,64 @@
       "closedBy": "fila-de-migracao-vazia",
       "matches": "a fila de migracao do caminho da forja tem"
     }
-  ]
+  ],
+  "pilha": {
+    "$comment": [
+      "A DÍVIDA POR COMMIT — lida por `scripts/prove-stack-per-commit.mjs` (e não",
+      "pelo doctor): o veredito da pilha separa o vermelho medido entre DÍVIDA",
+      "DECLARADA (o assunto está aqui, com o motivo medido) e REGRESSÃO (nenhuma",
+      "declaração alcança). A chave é o ASSUNTO EXATO do commit (linha única,",
+      "format=%s): o rebase renomeia todos os SHAs e o assunto sobrevive. Assunto",
+      "que continuou é classificado à parte (re-ancorar). A medição que produziu",
+      "os motivos abaixo é a de 25/09/2026 sobre a pilha de 30 commits (log",
+      "`/tmp` efêmero; re-medir: `node scripts/prove-stack-per-commit.mjs --base",
+      "30447a57 --medir --json`). Dívida declarada NÃO muda o exit do prover: o",
+      "que muda é o nome verdadeiro de cada vermelho no veredito."
+    ],
+    "base": "30447a57 (a ponta de origem medida em 25/09/2026)",
+    "declaredAt": "2026-09-25",
+    "reviewAfterDays": 90,
+    "commits": [
+      {
+        "subject": "feat(bench): a régua da idade mede também o relógio da MATRIZ — o lag que o count não via",
+        "reason": "medido 25/09/2026: vitest(2 arquivo(s)) reprova com 9 falhas sozinha no commit — as expectativas do relógio da matriz e das formas só fecham sobre a baseline re-gravada pelos commits seguintes",
+        "declaredAt": "2026-09-25"
+      },
+      {
+        "subject": "feat(prova): o pre-commit roda DENTRO da imagem do runner, com a fase A real",
+        "reason": "medido 25/09/2026: vitest(5 arquivo(s)) reprova com 12 falhas — as provas que fazem commits REAIS no fixture esperam a recusa do hook real que só a árvore dos commits seguintes arma",
+        "declaredAt": "2026-09-25"
+      },
+      {
+        "subject": "feat(lint): o escopo do lint é DERIVADO — 27 globos, e a declaração ilegível reparada",
+        "reason": "medido 25/09/2026: vitest(11 arquivo(s)) reprova com 5 falhas no fixture `$PID_MUT` do lint-scope — a régua derivada dos globos casa com os cabeçalhos que os commits seguintes declaram",
+        "declaredAt": "2026-09-25"
+      },
+      {
+        "subject": "feat(bench): a tabela do GUARDS e o parágrafo do README são DERIVADOS do registro, e a coluna de metades vem da matriz",
+        "reason": "medido 25/09/2026: o guard mutation-count reprova sozinho — a árvore do commit já tem 41 sub-tests e o ATO versionado nele carrega as 40 formas do ato anterior (o lint-scope entra na matriz no commit seguinte)",
+        "declaredAt": "2026-09-25"
+      },
+      {
+        "subject": "chore(bench): o ato versiona a matriz de 40 sub-tests — a defasagem 39 formas × 40 fecha em 558.6s",
+        "reason": "medido 25/09/2026: o guard script-headers reprova sozinho — o contrato do BLOCO DE DOCUMENTAÇÃO LÍDER casa com os cabeçalhos reescritos pelos commits seguintes (a tabela do bench e o parágrafo do README são derivados)",
+        "declaredAt": "2026-09-25"
+      },
+      {
+        "subject": "fix(prova): o fixture copia as FOLHAS do guard, e o CONTROLE encena o ato INTEIRO",
+        "reason": "medido 25/09/2026: vitest(4 arquivo(s)) reprova 1 sub-test — a espera separada do gate de sintaxe foi substituída e as provas do hook esperam a âncora que o commit seguinte (a âncora da espera saindo do HOOK) assenta",
+        "declaredAt": "2026-09-25"
+      },
+      {
+        "subject": "fix(bench): a âncora da espera sai do HOOK, e o JSON do ato sai formatado pelo repo",
+        "reason": "medido 25/09/2026: vitest(9 arquivo(s)) reprova com 3 falhas no fixture `$PID_MUT` — o mesmo rasgo do lint-scope: a régua derivada casa com o cabeçalho que a árvore do topo declara",
+        "declaredAt": "2026-09-25"
+      },
+      {
+        "subject": "feat(doctor): a FILA PARADA é o terceiro fato do runner — o registro diz QUEM está registrado, não se alguém está PUXANDO",
+        "reason": "medido 25/09/2026: vitest(12 arquivo(s)) reprova 2 sub-tests — as tabelas DERIVADAS do README (uma unidade por tabela de conteúdo derivado) são julgadas contra o registro do ato que os commits seguintes re-gravam",
+        "declaredAt": "2026-09-25"
+      }
+    ]
+  }
 }
