@@ -227,6 +227,7 @@ import {
   thirdPartyPipelineCoverage,
 } from "./check-bun-mirror.mjs"
 import { GITEA_WORKFLOW_DIR, allWorkflowFiles, defaultsRunLines } from "./forge-workflows.mjs"
+import { auditaForjas } from "./check-job-deps.mjs"
 import { workflowShellInheritance } from "./check-pipefail-sigpipe.mjs"
 import {
   clearStaleClosure,
@@ -1598,6 +1599,17 @@ export function summarize(facts) {
   if (facts.skippedProof) {
     unproven.unshift(
       "a PROVA do bloqueio da imagem (pulada — sem ela, o veredito não garante que o runner não sobe sem a tag)",
+    )
+  }
+  // A fila de migração COM CORPO: a linha anônima não nomeia quem ainda pede a
+  // forja sem precisar — e o item datado do registro é o que dá a data e a
+  // janela ao assunto (a prosa aqui é a forma `matches` do item casa).
+  if (
+    facts.jobMigrationQueue?.state === "measured" &&
+    (facts.jobMigrationQueue.queue?.length ?? 0) > 0
+  ) {
+    unproven.push(
+      `a fila de migracao do caminho da forja tem ${facts.jobMigrationQueue.queue.length} job(s) que ainda pedem a forja sem que nenhum fato exija a imagem dela: ${facts.jobMigrationQueue.queue.map((j) => j.id).join(", ")}`,
     )
   }
   // O que o contrato local deixou de fora POR FLAG: o estado `skipped` mora no
@@ -4537,6 +4549,83 @@ export function readShellInheritance({ cwd = REPO_ROOT, deps = {} } = {}) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 4b. A fila de migração do caminho da forja
+//
+// Os jobs que AINDA pedem a forja sem que nenhum fato exija a imagem dela (o
+// guard dono é o `check-job-deps.mjs`, no segundo contrato dele — o CAMINHO).
+// A auditoria é a do PRÓPRIO guard (`auditaForjas` — nenhuma segunda
+// implementação do scan de workflows), e é LEITURA DE CHECKOUT (sem rede,
+// credencial ou estado do HOST), então entra ATÉ no perfil `--ci`.
+//
+// O fato existe para o item datado do `ci/unproven.json`
+// (`runner-path-migration-queue`) fechar POR MEDIÇÃO: a fila ENVELHECE sozinha
+// — quando o job migra (ou sai), ela esvazia e a lacuna fecha; quando um job
+// novo entra na classe, ela o nomeia. Estados, no vocabulário do doctor:
+//   - `measured`    — a auditoria rodou: `queue` é a fila COM CORPO (pode ser
+//     vazia — vazia é o veredito que fecha a lacuna, nunca uma falta de leitura);
+//   - `unavailable` — a varredura não pôde julgar os workflows (um checkout sem
+//     eles NÃO é uma fila vazia): AUSÊNCIA DE PROVA, nunca "nada a migrar".
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * A fila de migração do caminho da forja, como FATO do relatório.
+ *
+ * @param {{cwd?: string}} [options]
+ * @returns {{state: string, queue: {id: string, caminho: string|null, leitores: {linha: number, alvo: string}[]}[]|null, total: number|null, detail: string, error: string|null}}
+ */
+export function readJobMigrationQueue({ cwd = REPO_ROOT } = {}) {
+  try {
+    // O FAIL-CLOSED do ESCOPO: um checkout sem workflow nenhum não tem quem
+    // responder pela fila — o scan nem sabe do que deixou de julgar. "Nada no
+    // escopo" nunca é "a fila está vazia" (o verde falso que o fato existe para
+    // não cunhar).
+    const noEscopo = allWorkflowFiles(cwd).length
+    if (noEscopo === 0) {
+      return {
+        state: "unavailable",
+        queue: null,
+        total: null,
+        detail:
+          "a fila de migracao não pôde ser medida: o escopo da varredura não tem workflow nenhum " +
+          '— ausência de prova, nunca "nada a migrar"',
+        error: "escopo vazio",
+      }
+    }
+    const auditoria = auditaForjas(cwd)
+    // E o fail-closed da AUSÊNCIA DENTRO do escopo: um workflow que não pôde ser
+    // julgado (ilegível, vazio) pode estar escondendo um job da classe.
+    const naoJulgados = auditoria.unjudgeable.length + auditoria.vazios.length
+    if (naoJulgados > 0) {
+      return {
+        state: "unavailable",
+        queue: null,
+        total: null,
+        detail:
+          `a fila de migracao não pôde ser medida: ${auditoria.unjudgeable.length} workflow(s) ilegível(is) e ${auditoria.vazios.length} vazio(s) ` +
+          `no escopo da varredura — ausência de prova, nunca "nada a migrar"`,
+        error: "workflows não julgados no escopo",
+      }
+    }
+    const fila = auditoria.caminho.filaMigracao
+    return {
+      state: "measured",
+      queue: fila,
+      total: fila.length,
+      detail: `fila de migracao do caminho da forja: ${fila.length} job(s)`,
+      error: null,
+    }
+  } catch (error) {
+    return {
+      state: "unavailable",
+      queue: null,
+      total: null,
+      detail: `a fila de migracao não pôde ser medida: ${error.message}`,
+      error: error.message,
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // A COBERTURA DA VARREDURA DE TERCEIRO (invariante 19)
 //
 // A invariante 19 julga os USOS da versão do Bun num pipeline de terceiro
@@ -6929,6 +7018,16 @@ export async function diagnose({
   // e um checkout raso responderia "sem idade" em TODO PR — um indeterminado
   // permanente ensina a ignorar a lista. Quem mede é o cron semanal da régua (com
   // checkout completo) e o doctor INTEIRO.
+  // A FILA DE MIGRACAO do caminho da forja: o fato que os items datados de
+  // `ci/unproven.json` (os jobs presos ao runner `self-hosted`) consultam para
+  // fechar POR MEDIÇÃO. A auditoria é a do PRÓPRIO guard dono
+  // (`auditaForjas` — nenhuma segunda implementação do scan de workflows) e é
+  // LEITURA DE CHECKOUT (sem rede, sem credencial, sem estado do HOST), então
+  // entra ATÉ no perfil `--ci`: é no PR que a fila de migração precisa ser
+  // medida, não só no cron. Um checkout sem workflows NÃO é uma fila vazia:
+  // sai `unavailable` com a razão — o fail-closed do resto das leituras.
+  const jobMigrationQueueFacts = readJobMigrationQueue({ cwd })
+
   const benchFreshnessFacts = benchFreshness
     ? readFreshness({ cwd, deps: benchFreshnessDeps })
     : {
@@ -7117,6 +7216,11 @@ export async function diagnose({
     // QUANDO ele foi medido.
     //
     benchFreshness: benchFreshnessFacts,
+    // A FILA DE MIGRACAO do caminho da forja (medida ACIMA pela auditoria do
+    // guard dono): o fato que o item datado dos jobs presos ao runner
+    // consulta para fechar por medição — o mesmo objeto serve ao veredito
+    // (linha do `NÃO CUBRE`) e ao registro (`closedBy`), para não discordarem.
+    jobMigrationQueue: jobMigrationQueueFacts,
     // A HERANÇA DE SHELL dos workflows: leitura de checkout (sem rede, sem
     // credencial, sem estado do HOST), então ela entra ATÉ no perfil `--ci` — e
     // é ali que ela mais serve: no PR a bateria de guards está pulada, e sem

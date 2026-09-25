@@ -198,6 +198,25 @@ export const CLOSED_BY = {
   "ato-na-matriz": (facts) =>
     facts?.benchFreshness?.matrix?.state === "measured" &&
     facts.benchFreshness.matrix.aged === false,
+  /**
+   * A FILA DE MIGRACAO do caminho da forja está VAZIA — nenhum job pede a forja
+   * sem que nenhum fato exija a imagem dela.
+   *
+   * É o `closedBy` do item datado dos jobs que AINDA rodam presos ao runner
+   * `self-hosted` lendo YAML de passagem (`ci/unproven.json`, id
+   * `runner-path-migration-queue`). O fato é a AUDITORIA do guard dono
+   * (`check-job-deps.mjs`, medindo pela `auditaForjas` exportada — nenhuma
+   * segunda implementação do scan): a fila ENVELHECE sozinha — quando o job
+   * migra (ou sai), ela esvazia e a lacuna FECHA por MEDIÇÃO; quando um job
+   * novo entra na classe, ela o nomeia e a declaração volta a valer.
+   *
+   * `unavailable` NÃO fecha (o primeiro termo é o `state === "measured"`):
+   * "não consegui varrer os workflows" nunca é "a fila está vazia" — o mesmo
+   * fail-closed do resto do registro.
+   */
+  "fila-de-migracao-vazia": (facts) =>
+    facts?.jobMigrationQueue?.state === "measured" &&
+    (facts.jobMigrationQueue.queue?.length ?? -1) === 0,
 }
 
 /** O estado de UMA forja no fato `protection` (o vocabulário de lá). */

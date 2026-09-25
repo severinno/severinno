@@ -530,6 +530,41 @@ describe("datarLinhas — a data na linha onde o operador lê", () => {
     expect(matchesDe({ matches: ["", 42, "b"] })).toEqual(["b"])
     expect(matchesDe({ matches: "" })).toEqual([])
   })
+
+  it("o predicado `fila-de-migracao-vazia`: a fila esvaziada FECHA a lacuna por MEDIÇÃO — e o que não foi medido não fecha", () => {
+    // O item datado dos jobs presos ao runner `self-hosted` (`ci/unproven.json`,
+    // id `runner-path-migration-queue`): o nome do predicado é o MESMO que o
+    // doctor publica, e a medição é a auditoria do guard dono (o fato
+    // `jobMigrationQueue` do relatório) — um `closedBy` divergente cairia no
+    // fail-closed do desconhecido.
+    const ITEM = {
+      id: "runner-path-migration-queue",
+      closedBy: "fila-de-migracao-vazia",
+    }
+    const comFila = (jobMigrationQueue: unknown) => ({ jobMigrationQueue })
+
+    // A fila VAZIA e MEDIDA: o estado que fecha.
+    const fechado = medir([item(ITEM)], {
+      facts: comFila({ state: "measured", queue: [] }),
+    })
+    expect(fechado.state).toBe("proven")
+    expect(fato(fechado, ITEM.id)?.state).toBe("proven")
+
+    // Os estados que NÃO fecham: a fila COM CORPO (a dívida que o item
+    // declara) e a medição indisponível ("não varri" nunca é "está vazia").
+    const naoFecham: [string, unknown][] = [
+      ["a fila com corpo", { state: "measured", queue: [{ id: "job::a" }] }],
+      ["a medição indisponível", { state: "unavailable", queue: null }],
+    ]
+    for (const [motivo, q] of naoFecham) {
+      const aberto = medir([item(ITEM)], { facts: comFila(q) })
+      expect(aberto.state, motivo).toBe("open")
+    }
+
+    // E o FATO AUSENTE (um relatório sem a fila) também NÃO fecha: sem
+    // medição não há prova.
+    expect(medir([item(ITEM)], { facts: {} }).state).toBe("open")
+  })
 })
 
 describe("CLI do coletor", () => {

@@ -89,6 +89,7 @@ import {
   unprovenDebtBlockers,
   unprovenDebtUnknowns,
   deriveBringUpEnv,
+  readJobMigrationQueue,
   readShellInheritance,
   shellInheritanceBlockers,
   shellInheritanceUnknowns,
@@ -121,6 +122,10 @@ import { deriveRunnerQueue, readRunnerQueue } from "../../../scripts/runner-queu
 // a MESMA função que o relatório chama (e é por isso que a mutação do hook aqui
 // embaixo muda o veredito do fato).
 import { CORE_INVARIANTS } from "../../../scripts/check-forge-parity.mjs"
+// A ALLOWLIST do CAMINHO (o segundo contrato do check-job-deps): o fato da fila
+// de migração tem de ter o MESMO corpo que ela — é a suíte do guard que trava o
+// par fila = allowlist, e este teste o confronta do lado do doctor.
+import { RUNNER_PATH_ALLOWLIST } from "../../../scripts/check-job-deps.mjs"
 // O ÍNDICE do bench que o doctor usa para derivar o TETO de cada gate: o teste
 // monta o mesmo índice a partir de um bench de fixture (e a última unidade o
 // confronta com a baseline DE VERDADE do repositório).
@@ -1842,6 +1847,18 @@ describe("summarize — o REGISTRO do que o veredito NÃO cobre", () => {
             "1 forma(s) medida(s) NÃO existem no commit de origem: mutations/doc-hashes @ 8e76c9a6 (39 forma(s) com fonte declarada julgada(s), 32 sem fonte própria)",
           reason: null,
         },
+      },
+      // A FILA DE MIGRAÇÃO do caminho da forja como foi MEDIDA (os 2 jobs da
+      // RUNNER_PATH_ALLOWLIST): é este estado que mantém VIVA a declaração datada
+      // `runner-path-migration-queue` — e é a linha que ela declara que a
+      // cobertura confere (com a fila vazia ela viraria letra morta: o mecanismo
+      // funcionando, não o que este teste mede).
+      jobMigrationQueue: {
+        state: "measured",
+        queue: [...RUNNER_PATH_ALLOWLIST].map((e) => ({ id: e.job })),
+        total: RUNNER_PATH_ALLOWLIST.length,
+        detail: `fila de migracao do caminho da forja: ${RUNNER_PATH_ALLOWLIST.length} job(s)`,
+        error: null,
       },
       ...over,
     })
@@ -7880,5 +7897,93 @@ describe("a prova REAL do bloqueio do push (executada, não lida)", () => {
     expect(r.state).toBe("unavailable")
     expect(r.detail).toContain("não existe neste checkout")
     expect(r.remedies.length).toBeGreaterThan(0)
+  })
+})
+
+describe("readJobMigrationQueue — a fila de migração do caminho da forja, como FATO", () => {
+  /** O estado da fila no REPOSITÓRIO DE VERDADE (a auditoria do guard dono). */
+  const real = readJobMigrationQueue() as unknown as {
+    state: string
+    queue: { id: string }[] | null
+    total: number | null
+    detail: string
+  }
+  // O Run real do guard mede a MESMA fila (a suíte do check-job-deps trava o
+  // par fila = allowlist): o que o fato publica aqui não pode divergir dele.
+  it("o repositório REAL mede: a fila tem o corpo da RUNNER_PATH_ALLOWLIST", () => {
+    expect(real.state).toBe("measured")
+    expect(real.queue!.map((f) => f.id).sort()).toEqual(
+      [...RUNNER_PATH_ALLOWLIST].map((e) => e.job).sort(),
+    )
+    expect(real.detail).toContain(`${RUNNER_PATH_ALLOWLIST.length} job(s)`)
+  })
+
+  it("um checkout sem workflows NÃO é fila vazia: unavailable nomeando o que não foi varrido", () => {
+    const r = readJobMigrationQueue({ cwd: makeDir() }) as unknown as {
+      state: string
+      queue: unknown
+      total: number | null
+      error: string | null
+      detail: string
+    }
+    expect(r.state).toBe("unavailable")
+    expect(r.queue).toBeNull()
+    expect(r.total).toBeNull()
+    expect(r.error).toBe("escopo vazio")
+    expect(r.detail).toContain("ausência de prova")
+  })
+
+  it("um workflow ILEGÍVEL no escopo esconde a fila inteira: unavailable, nunca fila parcial", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "doctor-fila-ilegivel-"))
+    try {
+      const diretorio = join(tempDir, ".gitea", "workflows")
+      mkdirSync(diretorio, { recursive: true })
+      // Ilegível para o scan (nem YAML julgável nem 'runs-on:' na forma crua).
+      writeFileSync(join(diretorio, "quebrado.yml"), "\x00\x01binário não é yaml\x02")
+      const r = readJobMigrationQueue({ cwd: tempDir }) as unknown as {
+        state: string
+        queue: unknown
+        detail: string
+      }
+      expect(r.state).toBe("unavailable")
+      expect(r.queue).toBeNull()
+      expect(r.detail).toContain("ilegível")
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  it("workflows FORA do caminho da forja não respondem pela fila — mas o escopo deles é medido", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "doctor-fila-fora-"))
+    try {
+      const diretorio = join(tempDir, ".github", "workflows")
+      mkdirSync(diretorio, { recursive: true })
+      writeFileSync(
+        join(diretorio, "ci.yml"),
+        "jobs:\n  claro:\n    runs-on: [self-hosted]\n    steps:\n      - run: echo oi\n",
+      )
+      const r = readJobMigrationQueue({ cwd: tempDir }) as unknown as {
+        state: string
+        total: number | null
+        queue: unknown[]
+      }
+      expect(r.state).toBe("measured")
+      expect(r.total).toBe(0)
+      expect(r.queue).toEqual([])
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  it("a fila vazia é o veredito que FECHA a lacuna — e ela nunca nasce num checkout sem escopo", () => {
+    // O par que o fechamento por medição descansa: vazia E medida, nunca vazia
+    // E indisponível (o verde falso que o fail-closed existe para não cunhar).
+    const fechado =
+      real.state === "measured" && real.total === 0
+        ? "por medição"
+        : real.state === "measured" && (real.queue?.length ?? 0) > 0
+          ? "aberta com corpo"
+          : "indisponível"
+    expect(["por medição", "aberta com corpo"]).toContain(fechado)
   })
 })

@@ -261,6 +261,16 @@
         "o COMMIT DE ORIGEM não contém",
         "o COMMIT DE ORIGEM das formas medidas do bench não foi julgado"
       ]
+    },
+    {
+      "id": "runner-path-migration-queue",
+      "kind": "lacuna",
+      "declaredAt": "2026-09-24",
+      "subject": "a FILA DE MIGRACAO do caminho da forja tem 2 job(s) que AINDA pedem a forja (runs-on: self-hosted) lendo YAML de passagem, sem que nenhum fato exija a imagem dela — medido em 24/09/2026: `.github/workflows/pr-check.yml::check` (lê por scripts/check-mirror-coverage.mjs) e `.github/workflows/pr-check.yml::pre-commit-in-runner-proof` (lê por scripts/prove-pre-commit-in-runner.mjs). Os dois têm exceção datada na RUNNER_PATH_ALLOWLIST (addedAt 2026-09-24), e a fila envelhece sozinha: migrado (ou removido) o job, ela esvazia e a declaração fecha por medição",
+      "proveWith": "migrar cada job no caminho que não depende da forja (runs-on: ubuntu-latest) com o par canônico de install — `bash scripts/setup-bun-ci.sh \"${{ vars.BUN_VERSION }}\"` + `bun install --frozen-lockfile` —, exceto o `pre-commit-in-runner-proof`, que por desenho mede a IMAGEM da forja com o tier-1 engajado e só sai da classe quando a prova dela viver fora do runner (o remédio declarado: `bun run prove:runner-image-gate`); a régua fecha por medição: `bun run doctor` (o fato `jobMigrationQueue` é a auditoria do próprio `check-job-deps`) — a fila vazia é o que prova a lacuna fechada",
+      "remedy": "migrar o próximo job da fila publicada pelo veredito do guard (`node scripts/check-job-deps.mjs`) — o caminho hospedado com o par canônico de install; a exceção declarada fica até a migração e cai da allowlist quando o job sai da fila",
+      "closedBy": "fila-de-migracao-vazia",
+      "matches": "a fila de migracao do caminho da forja tem"
     }
   ]
 }
