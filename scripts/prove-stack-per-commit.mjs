@@ -38,8 +38,34 @@
  * O veredito é por commit e agregado:
  *   verde        — o commit passa sozinho (os testes afetados e o sempre, todos 0)
  *   vermelho     — algum gate reprovou SOZINHO neste commit (nomeia o gate)
- *   indeterminado— não foi possível medir (worktree, timeout, comando ausente):
- *                  NUNCA vale verde — "não consegui medir" não é "nada a julgar"
+ *   indeterminado— não foi possível medir (worktree, timeout, comando ausente,
+ *                  ou o GATE que a árvore do commit não carrega): NUNCA vale
+ *                  verde — "não consegui medir" não é "nada a julgar" — e
+ *                  também não vale reprovação, com a razão NOMEADA no motivo
+ *
+ * A RE-MEDIÇÃO — o vermelho é do COMMIT ou do AMBIENTE?
+ *
+ *   Um vermelho pode nascer do commit ou do AMBIENTE, e a classe é medida: um
+ *   teste de integração que sobe container devolve veredito DIFERENTE para a
+ *   MESMA árvore entre execuções. Sem re-medir, o flake é publicado como
+ *   "regressão" — o instrumento acusa um defeito que não existe, e um
+ *   instrumento que acusa o que não existe ensina a ignorá-lo.
+ *
+ *   Por isso o vermelho é medido DUAS vezes, e a régua é a REPETIÇÃO (nunca a
+ *   segunda tentativa sozinha):
+ *
+ *     · vermelho + vermelho   → VERMELHO — o vermelho é do COMMIT;
+ *     · vermelho + verde      → INDETERMINADO, com `flaky: true` e as DUAS
+ *                               tentativas no motivo: as duas se CONTRADIZEM
+ *                               na mesma árvore, e "não sei" não vale verde
+ *                               nem vale reprovação;
+ *     · vermelho + não-medido → VERMELHO — a 2ª tentativa não contradisse a 1ª.
+ *
+ *   O verde NÃO é re-medido (o custo extra é só do vermelho) e NADA sai em
+ *   silêncio: cada commit publica `tentativas` e `flaky` no `--json`, e a PROSA
+ *   (a linha por commit do streaming e a tabela do relatório) escreve
+ *   `[2 tentativas: repetiu o veredito]` no vermelho repetido e `flake` onde um
+ *   flake foi declarado — quem lê o log do CI vê a re-medição, não só o JSON.
  *
  * O RECORTE DO PUSH (o pre-push mede os commits do MEIO que o push leva):
  *
@@ -88,7 +114,14 @@
  *      quantos testes afetados achou, e "0" é leitura honesta, não cobertura;
  *   3. o CONJUNTO SEMPRE é uma lista DECLARADA (três invariantes de árvore), não
  *      a bateria inteira: uma expectativa que vive num guard fora dele só é
- *      pega se o commit tiver tocado o dono dela (aí o teste afetado a pega);
+ *      pega se o commit tiver tocado o dono dela (aí o teste afetado a pega). A
+ *      lista é a DO HEAD, e um commit anterior à criação de um gate dela não o
+ *      carrega: o comando cujo alvo está ausente da árvore sai INDETERMINADO
+ *      com a razão nomeada (`gateAusente`), NUNCA vermelho — a classe medida na
+ *      triagem de 25/09/2026 (13 dos 59 vermelhos de um run real eram gate mais
+ *      novo que a árvore). O que isso NÃO cobre: um gate que existe mas depende
+ *      de um módulo que o commit ainda não tem continua vermelho (a ausência é
+ *      medida no ALVO do comando, não no que ele importa);
  *   4. acima do teto (`--max-commits`, default 150) o veredito é INDETERMINADO:
  *      o teto existe para o job não virar uma medição sem fim, e estourá-lo
  *      nunca vale verde;
@@ -100,7 +133,12 @@
  *      harness chamado de dentro de um gate precisa poder dizer "só a árvore".
  *      Nesse escopo `afetados 0` NÃO quer dizer "o diff não alcança teste
  *      nenhum": quer dizer NÃO MEDIDOS, e é isso que o relatório e o `--json`
- *      (`escopo: "sempre"`) escrevem.
+ *      (`escopo: "sempre"`) escrevem;
+ *   7. a re-medição acontece só no VERMELHO e só UMA vez: um defeito de
+ *      ambiente que se REPETE nas duas tentativas continua sendo lido como
+ *      vermelho do commit (duas amostras não medem repetibilidade, medem
+ *      contradição), e um verde que seja flake (1ª passa, 2ª falharia) não é
+ *      medido — quem mede a taxa é uma série de execuções, não uma re-medição.
  */
 
 import { spawnSync } from "node:child_process"
@@ -408,10 +446,96 @@ export function testesAfetados({ arquivos, testes, root, lerArquivo }) {
 export function agregar(resultados) {
   const vermelhos = resultados.filter((r) => r.veredito === "vermelho").length
   const indeterminados = resultados.filter((r) => r.veredito === "indeterminado").length
-  if (vermelhos > 0) return { veredito: "broken", exit: EXIT.BROKEN, vermelhos, indeterminados }
+  // O FLAKE é um indeterminado que sabe o próprio nome: conta à parte para o
+  // veredito poder dizer POR QUE a pilha não é verde nem reprovada.
+  const flakes = resultados.filter((r) => r.flaky === true).length
+  if (vermelhos > 0)
+    return { veredito: "broken", exit: EXIT.BROKEN, vermelhos, indeterminados, flakes }
   if (indeterminados > 0)
-    return { veredito: "unavailable", exit: EXIT.UNAVAILABLE, vermelhos, indeterminados }
-  return { veredito: "ok", exit: EXIT.OK, vermelhos, indeterminados }
+    return { veredito: "unavailable", exit: EXIT.UNAVAILABLE, vermelhos, indeterminados, flakes }
+  return { veredito: "ok", exit: EXIT.OK, vermelhos, indeterminados, flakes }
+}
+
+/**
+ * A RE-MEDIÇÃO DECLARADA — o que fazer com as DUAS tentativas de um commit.
+ *
+ * POR QUE EXISTE: um vermelho pode nascer do COMMIT ou do AMBIENTE. A classe é
+ * medida (um teste de integração que sobe container devolve veredito diferente
+ * para a MESMA árvore entre execuções), e sem re-medir o flake é publicado como
+ * "regressão": o instrumento acusa um defeito que não existe.
+ *
+ * A régua é a REPETIÇÃO, nunca a segunda tentativa sozinha:
+ *   · vermelho + vermelho   → VERMELHO (o vermelho é do commit — repetiu);
+ *   · vermelho + verde      → INDETERMINADO com `flaky: true` (as duas se
+ *                             CONTRADIZEM na mesma árvore: "não sei" não vale
+ *                             verde, e também não vale reprovação);
+ *   · vermelho + não-medido → VERMELHO (a 2ª tentativa não contradisse a 1ª).
+ *
+ * O verde NÃO é re-medido aqui: quem decide a re-medição é o chamador, e o
+ * custo extra fica só do lado do vermelho.
+ *
+ * @param {object} primeira o resultado da 1ª medição (sempre existe)
+ * @param {object|null} [segunda] o da 2ª, quando ela foi feita
+ * @returns {object} o resultado PUBLICADO, com `tentativas` e `flaky` ditos
+ */
+export function juntarTentativas(primeira, segunda = null) {
+  if (!segunda) return { ...primeira, tentativas: 1, flaky: false }
+  const ms = primeira.ms + segunda.ms
+  if (segunda.veredito === "vermelho")
+    return {
+      ...primeira,
+      ms,
+      tentativas: 2,
+      flaky: false,
+      motivo: `${primeira.motivo} · 2ª tentativa REPETIU: ${segunda.motivo}`,
+    }
+  if (segunda.veredito === "indeterminado")
+    return {
+      ...primeira,
+      ms,
+      tentativas: 2,
+      flaky: false,
+      motivo:
+        `${primeira.motivo} · a 2ª tentativa NÃO mediu (${segunda.motivo}) — ` +
+        "o vermelho não foi contradito",
+    }
+  return {
+    ...primeira,
+    veredito: "indeterminado",
+    ms,
+    tentativas: 2,
+    flaky: true,
+    motivo:
+      `FLAKE: a 1ª tentativa reprovou (${primeira.motivo}) e a 2ª PASSOU na ` +
+      "MESMA árvore — não é determinístico: não vale verde e não vale reprovação",
+  }
+}
+
+/**
+ * A marca de UM veredito no terminal.
+ *
+ * O FLAKE tem marca própria (`🌀`): ele NÃO é um "não consegui medir" qualquer,
+ * e quem lê a lista precisa distinguir os dois de longe — um deles pede repetir
+ * a medição, o outro pede consertar o ambiente.
+ */
+export function marcaDe(r) {
+  if (r.flaky) return "🌀"
+  return r.veredito === "verde" ? "✅" : r.veredito === "vermelho" ? "❌" : "◐"
+}
+
+/**
+ * O que a PROSA diz sobre as TENTATIVAS de um commit. O verde comum foi medido
+ * uma vez e não tem o que declarar; o vermelho REPETIDO e o FLAKE são DITOS — a
+ * re-medição aparece no relatório e no `--json`, nunca só no JSON (quem lê o log
+ * do CI tem de poder distinguir "medido uma vez" de "medido duas vezes").
+ *
+ * @param {{tentativas?: number, flaky?: boolean}} c
+ * @returns {string} vazio quando há uma tentativa só
+ */
+export function tentativasDitas(c) {
+  const n = c.tentativas ?? 1
+  if (n < 2) return ""
+  return ` [${n} tentativas: ${c.flaky ? "a 2ª PASSOU na MESMA árvore" : "repetiu o veredito"}]`
 }
 
 /** Os arquivos de teste da árvore medida (as duas convenções de diretório). */
@@ -433,6 +557,39 @@ export function arquivosDeTeste({ root, dirs = DIRS_DE_TESTE }) {
   }
   for (const d of dirs) anda(join(root, d))
   return fora.sort()
+}
+
+/**
+ * O GATE QUE NÃO EXISTE NESTA ÁRVORE — o alvo DECLARADO do comando ausente do
+ * worktree do commit.
+ *
+ * POR QUE ISTO EXISTE (medido): o `CONJUNTO_SEMPRE` é o do HEAD, e um commit
+ * ANTERIOR à criação de um gate não carrega o arquivo dele — o `node` existe, o
+ * arquivo não, e o processo morre com `MODULE_NOT_FOUND` e exit 1. Lido como
+ * vermelho, isso ACUSA o commit de um defeito que ele não tem: na triagem de um
+ * run real (25/09/2026), **13 dos 59 vermelhos** eram desta classe — o
+ * `check-forge-parity.mjs` nasce em 12/09 e o `check-script-headers.mjs` em
+ * 13/09, e a pilha medida tem commits dos DOIS lados. A resposta honesta é o
+ * INDETERMINADO com a razão nomeada: "não consegui julgar" não é "reprovou".
+ *
+ * O alvo é DERIVADO do comando — o primeiro argumento que é um caminho de
+ * arquivo —, nunca de uma lista de exceções: um comando sem alvo (`node -e 0`,
+ * um binário do PATH) não tem o que estar ausente e roda normal.
+ *
+ * O alvo ABSOLUTO é resolvido contra a raiz do processo, não contra o worktree
+ * (`--sempre "node /tmp/x/flake.mjs"` é um caminho de FORA da árvore medida):
+ * medido — com o `join` do worktree, esse alvo era lido como "ausente" e o
+ * gate de um teste que falhava de verdade saía como indeterminado.
+ *
+ * @param {{dir: string, cmd: string[]}} p
+ * @returns {string|null} a razão, ou null quando o alvo está na árvore
+ */
+export function gateAusente({ dir, cmd }) {
+  const alvo = cmd.slice(1).find((a) => /\.[cm]?[jt]sx?$/.test(a))
+  if (!alvo) return null
+  return existsSync(resolve(dir, alvo))
+    ? null
+    : `o gate não existe NESTA árvore (${alvo} ausente do commit) — não medido, não reprovado`
 }
 
 /** O resultado de UM comando: o veredito é o do comando, nunca o do filtro. */
@@ -744,6 +901,19 @@ export function medirCommit({
 
   // (a) o CONJUNTO SEMPRE — as invariantes de árvore.
   for (const g of semSempre ? [] : sempre) {
+    // O gate que a árvore deste commit não carrega (o gate é mais NOVO que ele):
+    // INDETERMINADO com a razão nomeada, e a varredura CONTINUA — um gate
+    // ausente não pode esconder o vermelho de um gate presente, porque um
+    // vermelho de verdade VENCE o "não consegui julgar".
+    const ausente = gateAusente({ dir, cmd: g.cmd })
+    if (ausente) {
+      resultadosSempre.push({ id: g.id, ok: false, ausente: true, ms: 0, motivo: ausente })
+      if (veredito !== "vermelho") {
+        veredito = "indeterminado"
+        motivo = `${g.id}: ${ausente}`
+      }
+      continue
+    }
     const r = roda(g.cmd, { cwd: dir, timeout })
     resultadosSempre.push({ id: g.id, ok: r.ok, ms: r.ms, motivo: r.motivo })
     if (!r.ok) {
@@ -858,6 +1028,7 @@ export function renderRelatorio(r) {
   // diz NÃO CLASSIFICADO — nunca insinua regressão. Sem `dividaPilha` (chamador
   // antigo, recorte vazio) a linha não nasce: ausência de leitura não vira
   // composição inventada.
+  L.push("  vermelho: medido DUAS vezes (a régua é a REPETIÇÃO — flake não é reprovação nem verde)")
   const resumo = r.dividaPilha
   if (resumo) {
     if (resumo.estado === "medido") {
@@ -872,16 +1043,16 @@ export function renderRelatorio(r) {
   }
   L.push("")
   for (const c of r.resultados) {
-    const marca = c.veredito === "verde" ? "✅" : c.veredito === "vermelho" ? "❌" : "◐"
+    const marca = marcaDe(c)
     const sempre = c.sempre
       .filter((s) => !s.id.startsWith("vitest"))
-      .map((s) => (s.ok ? "·" : "✗"))
+      .map((s) => (s.ausente ? "⊘" : s.ok ? "·" : "✗"))
       .join("")
     const vit = c.sempre.find((s) => s.id.startsWith("vitest"))
     const afetados = c.testes.testes.length
     const naoMedidos = c.escopo === "sempre" && !vit
     L.push(
-      `  ${marca} ${c.sha.slice(0, 8)}  ${c.veredito.padEnd(13)} sempre ${sempre || "—"}  afetados ${naoMedidos ? "—" : String(afetados).padStart(2)}${vit ? ` (${vit.ok ? "passa" : "REPROVA"})` : naoMedidos ? " (NÃO MEDIDOS: escopo --sem-afetados)" : " (nada a rodar)"}  ${(c.ms / 1000).toFixed(1)}s`,
+      `  ${marca} ${c.sha.slice(0, 8)}  ${(c.flaky ? "flake" : c.veredito).padEnd(13)} sempre ${sempre || "—"}  afetados ${naoMedidos ? "—" : String(afetados).padStart(2)}${vit ? ` (${vit.ok ? "passa" : "REPROVA"})` : naoMedidos ? " (NÃO MEDIDOS: escopo --sem-afetados)" : " (nada a rodar)"}  ${(c.ms / 1000).toFixed(1)}s${tentativasDitas(c)}`,
     )
     L.push(`       ${c.assunto.slice(0, 92)}`)
     if (c.motivo) L.push(`       → ${c.motivo.slice(0, 200)}`)
@@ -901,6 +1072,10 @@ export function renderRelatorio(r) {
         : r.veredito === "broken"
           ? `${rec ? "REPROVADO" : "REPROVADA"} — ${r.vermelhos} commit(s) do ${rec ? "recorte" : "pilha"} NÃO passam sozinhos ❌`
           : `INDETERMINAD${rec ? "O" : "A"} — ${r.indeterminados} commit(s) não puderam ser medidos ◐`
+    }${
+      r.flakes
+        ? ` — ${r.flakes} deles é(são) FLAKE 🌀 (a 1ª tentativa reprovou e a 2ª passou na MESMA árvore: repita a medição antes de chamar de defeito)`
+        : ""
     }`,
   )
   // A SEPARAÇÃO que o veredito publica: dívida DECLARADA (o registro conhece o
@@ -965,6 +1140,9 @@ export function json(r) {
       vermelhos: r.vermelhos,
       dividaPilha: r.dividaPilha ?? null,
       indeterminados: r.indeterminados,
+      // O FLAKE entra no dado de máquina: quem lê a série por aqui precisa poder
+      // separar "não é determinístico" de "não consegui medir" sem ler o motivo.
+      flakes: r.flakes ?? 0,
       custoMs: r.custoMs,
       resultados: r.resultados.map((c) => ({
         sha: c.sha,
@@ -975,6 +1153,12 @@ export function json(r) {
         afetados: c.testes.testes,
         afetadosPorNome: c.testes.porNome,
         afetadosPorGrafo: c.testes.porGrafo,
+        // QUANTAS vezes o commit foi medido e se as duas tentativas se
+        // CONTRADIZERAM: `tentativas: 1` é o verde comum (não se re-mede),
+        // `tentativas: 2` + `flaky: false` é o vermelho que repetiu, e
+        // `flaky: true` é o flake — indeterminado por contradição, nunca verde.
+        tentativas: c.tentativas ?? 1,
+        flaky: c.flaky === true,
         motivo: c.motivo,
         ms: c.ms,
       })),
@@ -1022,6 +1206,7 @@ export function recorteVazio(recorte, base, head) {
     veredito: "ok",
     vermelhos: 0,
     indeterminados: 0,
+    flakes: 0,
     custoMs: 0,
     resultados: [],
   }
@@ -1300,20 +1485,29 @@ function main(argv) {
   const inicio = Date.now()
   const resultados = []
   for (const sha of commits) {
-    const r = medirCommit({
-      root,
-      sha,
-      git,
-      sempre,
-      semSempre: opcoes.semSempre,
-      semAfetados: opcoes.semAfetados,
-      lerArquivo: lerArquivoPadrao,
-      keep: opcoes.keep,
-    })
+    const medir = () =>
+      medirCommit({
+        root,
+        sha,
+        git,
+        sempre,
+        semSempre: opcoes.semSempre,
+        semAfetados: opcoes.semAfetados,
+        lerArquivo: lerArquivoPadrao,
+        keep: opcoes.keep,
+      })
+    const primeira = medir()
+    // A RE-MEDIÇÃO só do vermelho: o verde que passou não é medido de novo, e o
+    // que sai daqui vai DECLARADO (`tentativas`, `flaky` e as duas tentativas no
+    // motivo) — um flake em silêncio seria a mesma mentira de antes, ao contrário.
+    const r =
+      primeira.veredito === "vermelho"
+        ? juntarTentativas(primeira, medir())
+        : juntarTentativas(primeira)
     resultados.push(r)
     if (!opcoes.json)
       process.stdout.write(
-        `  ${r.veredito === "verde" ? "✅" : r.veredito === "vermelho" ? "❌" : "◐"} ${r.sha.slice(0, 8)} ${r.veredito}\n`,
+        `  ${marcaDe(r)} ${r.sha.slice(0, 8)} ${r.flaky ? "flake" : r.veredito}${tentativasDitas(r)}\n`,
       )
   }
 

@@ -7,7 +7,7 @@
 #   ./scripts/test-mutation-stack-per-commit.sh
 #
 # Exit codes:
-#   0 — as CINCO metades foram DETECTADAS (o veredito do gate muda com elas fora)
+#   0 — as OITO metades foram DETECTADAS (o veredito do gate muda com elas fora)
 #       e os controles passaram ✅
 #   1 — alguma regra NÃO sustentou o veredito (a mutação não cegou o gate, ou o
 #       gate mudou por outro motivo) ❌
@@ -35,15 +35,36 @@
 #        `vermelho` — os DOIS commits que nascem vermelhos saem ✅ e a pilha sai
 #        APROVADA.
 #   M4 — o veredito da PILHA (`agregar`): os commits seguem vermelhos no
-#        relatório, mas a SÉRIE deixa de reprovar — o exit code do job fica 0
-#        com dois commits vermelhos dentro.
+#        relatório, mas a SÉRIE deixa de julgar — o exit code do job fica 0
+#        com dois commits vermelhos dentro (e um flake declarado).
 #   M5 — o TETO: acima dele o gate sai 0 (verde) sem ter medido um único commit,
 #        quando a regra é "acima do teto é INDETERMINADO, nunca verde".
+#   M6 — a SEGUNDA TENTATIVA fora do julgamento: todo vermelho retentado cai no
+#        ramo do flake, e os dois commits que reprovam DE VERDADE deixam de
+#        reprovar a pilha — ela sai INDETERMINADA, com os repetíveis dentro.
+#   M7 — a RE-MEDIÇÃO fora do caminho: o commit FLAKY do fixture volta a ser
+#        publicado como vermelho e ENTRA no conjunto de reprovados — a
+#        "regressão" falsa que o campo `flaky` existe para não deixar passar.
+#   M8 — o GATE AUSENTE da árvore (o `CONJUNTO_SEMPRE` é o do HEAD, e um commit
+#        anterior à criação de um gate não carrega o arquivo dele): sem o
+#        classificador o comando volta a rodar, morre com `MODULE_NOT_FOUND` e o
+#        commit PASSA a reprovar por um gate que ele não tem — a classe medida na
+#        triagem de um run real (13 dos 59 vermelhos eram gate mais novo que a
+#        árvore). As DUAS metades do controle são o outro lado da régua: com o
+#        alvo PRESENTE reprovando o vermelho FICA (o ausente não amolece o que
+#        existe), e com o alvo presente passando o commit segue verde.
 #
-# O FIXTURE É UM REPOSITÓRIO GIT DE VERDADE, com uma pilha de TRÊS commits sobre
-# uma base sã: dois deles NASCEM VERMELHOS (cada um quebra EXATAMENTE UM dos dois
-# testes, por uma régua diferente) e o TOPO os conserta — é a classe do defeito
-# medida no repositório: o topo verde esconde o vermelho do meio. Os "testes" do
+# O FIXTURE É UM REPOSITÓRIO GIT DE VERDADE, com uma pilha de QUATRO commits
+# sobre uma base sã: dois deles NASCEM VERMELHOS (cada um quebra EXATAMENTE UM
+# dos dois testes, por uma régua diferente), o terceiro (o TOPO até então) os
+# conserta, e o QUARTO nasce FLAKY — o teste dele falha na PRIMEIRA medição e
+# passa na segunda, com a MESMA árvore. É a classe do defeito MEDIDA no
+# repositório (um teste de integração que sobe container deu veredito diferente
+# para a mesma árvore entre execuções): o topo verde esconde o vermelho do meio,
+# e a re-medição é quem separa o vermelho que REPETE do que não repete. O
+# flake do fixture é CONTROLADO, nunca sorteado: o marcador que o faz falhar uma
+# vez vive FORA da árvore medida (cada tentativa materializa o commit num
+# worktree NOVO) e `rodar_gate` o zera antes de cada execução. Os "testes" do
 # fixture são scripts que LEVANTAM quando a expectativa não vale (o runner dele,
 # `scripts/vitest-dofix.mjs`, reprova se algum levantar): o sujeito é o veredito
 # do gate, e o vitest do repositório não é a régua desta suíte. As duas réguas
@@ -97,14 +118,20 @@ METADES=(
   'M1|a régua NOMEADA fora da derivação: o commit vermelho que só o nome alcança sai verde'
   'M2|a régua do GRAFO fora da derivação: o commit vermelho que só o import alcança sai verde'
   'M3|o veredito POR COMMIT: a reprovação do teste afetado deixa de virar vermelho'
-  'M4|o veredito da PILHA (agregar): o vermelho deixa de reprovar a série, e o exit vira 0'
+  'M4|o veredito da PILHA (agregar): nada mais reprova nem indetermina a série, e o exit vira 0'
   'M5|o TETO: acima dele o gate sai verde sem ter medido um único commit'
+  'M6|a 2ª tentativa fora do JULGAMENTO: todo vermelho retentado vira flake e os repetíveis deixam de reprovar'
+  'M7|a RE-MEDIÇÃO fora do caminho: o commit flaky volta a ser publicado como vermelho repetível'
+  'M8|o GATE AUSENTE da árvore deixa de reprovar: o comando que o commit não carrega vira INDETERMINADO nomeado'
 )
 
 ALVO="$SCRIPT_DIR/scripts/prove-stack-per-commit.mjs"
 FIXTURE_DIR="" # montado em TMP_DIR (abaixo), depois das cores
 
 TMP_DIR="$(mktemp -d)"
+# O marcador do FLAKE CONTROLADO: fora da árvore medida, e zerado antes de cada
+# execução do gate (senão a 2ª rodada mediria um commit que já não flakeia).
+FLAKE_MARCA="$TMP_DIR/flake-marca"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -280,17 +307,46 @@ ARQ
   )
   SHA_TOPO="$(git -C "$FIXTURE_DIR" rev-parse HEAD)"
 
+  # O commit FLAKY — a classe que o instrumento não sabia nomear: o teste dele
+  # falha na PRIMEIRA medição e passa na segunda, com a MESMA árvore. O marcador
+  # vive FORA do fixture de propósito: cada tentativa materializa o commit num
+  # worktree NOVO, então um marcador dentro da árvore não sobreviveria à 2ª
+  # medição — e o teste mediria o worktree, não a re-medição.
+  (
+    cd "$FIXTURE_DIR"
+    cat >src/lib/flaky.js <<'ARQ'
+export const marca = "flake"
+ARQ
+    cat >src/lib/__tests__/flaky.test.js <<ARQ
+import { existsSync, writeFileSync } from "node:fs"
+
+// O FLAKE CONTROLADO: reprova UMA vez e passa depois. O marcador está fora da
+// árvore medida (cada tentativa tem o seu worktree), e é `rodar_gate` quem o
+// zera — o flake do fixture é determinístico, nunca sorteado.
+const MARCA = "$FLAKE_MARCA"
+if (!existsSync(MARCA)) {
+  writeFileSync(MARCA, "1")
+  throw new Error("a 1ª medição deste commit falha — flake CONTROLADO")
+}
+ARQ
+    git add -A
+    git commit -qm "nasce FLAKY: falha na 1ª medição e passa na 2ª"
+  )
+  SHA_FLAKE="$(git -C "$FIXTURE_DIR" rev-parse HEAD)"
+
   # Os shas CURTOS: é a forma que o veredito publica (e a que as expectativas
   # comparam) — comparar o curto contra o longo reprovaria o próprio controle.
   NOME_C="${SHA_NOME:0:8}"
   GRAFO_C="${SHA_GRAFO:0:8}"
   TOPO_C="${SHA_TOPO:0:8}"
+  FLAKE_C="${SHA_FLAKE:0:8}"
 
-  # FAIL-CLOSED: o fixture só vale com as QUATRO refs e os TRÊS commits da
+  # FAIL-CLOSED: o fixture só vale com as CINCO refs e os QUATRO commits da
   # pilha. Uma base que não nasceu (git sem identidade, commit recusado) mediria
   # outra pilha — e um erro de fixture é INFRA (exit 2), não um veredito.
   [ -n "$BASE_SHA" ] && [ -n "$SHA_NOME" ] && [ -n "$SHA_GRAFO" ] && [ -n "$SHA_TOPO" ] &&
-    [ "$(git -C "$FIXTURE_DIR" rev-list --count "$BASE_SHA..HEAD" 2>/dev/null)" = "3" ]
+    [ -n "$SHA_FLAKE" ] &&
+    [ "$(git -C "$FIXTURE_DIR" rev-list --count "$BASE_SHA..HEAD" 2>/dev/null)" = "4" ]
 }
 
 # ── rodar_gate: o CLI REAL, sobre o fixture (globais GATE_EXIT/GATE_ERR) ───
@@ -305,6 +361,10 @@ LOG_FIXTURE="$TMP_DIR/derivacao.log"
 rodar_gate() {
   set +e
   rm -f "$LOG_FIXTURE"
+  # O flake do fixture é CONTROLADO: o marcador volta a faltar antes de cada
+  # execução, senão a 2ª rodada mediria um commit que já não flakeia (o teste
+  # falha UMA vez, e só uma).
+  rm -f "$FLAKE_MARCA"
   (cd "$SCRIPT_DIR" && PILHA_FIXTURE_LOG="$LOG_FIXTURE" node "$ALVO" --root "$FIXTURE_DIR" \
     --base "$BASE_SHA" --sempre "node -e 0" --json "$@" >"$GATE_OUT" 2>"$GATE_ERR")
   GATE_EXIT=$?
@@ -313,6 +373,10 @@ rodar_gate() {
 
 # A DERIVAÇÃO lida na fonte: os arquivos que o runner do fixture recebeu NAQUELE
 # commit (o gate passa os testes afetados como argumentos ao runner).
+#
+# DEDUPLICADO de propósito: um commit VERMELHO é medido DUAS vezes (a re-medição
+# passa os MESMOS arquivos outra vez), e a leitura aqui é QUAIS réguas alcançaram
+# o commit — quem diz QUANTAS vezes ele foi medido é `exigir_medicoes`.
 derivacao_do() {
   python3 - "$LOG_FIXTURE" "$1" <<'PY'
 import sys
@@ -322,11 +386,39 @@ try:
     linhas = open(log).read().splitlines()
 except FileNotFoundError:
     linhas = []
+vistos, fora = set(), []
 for linha in linhas:
     campos = linha.split()
     if campos and campos[0].startswith(sha):
-        print(" ".join(campos[1:]))
+        for arquivo in campos[1:]:
+            if arquivo not in vistos:
+                vistos.add(arquivo)
+                fora.append(arquivo)
+print(" ".join(fora))
 PY
+}
+
+# ── exigir_medicoes: QUANTAS vezes o runner foi chamado para aquele commit ──
+# A RE-MEDIÇÃO é observável na fonte, e é o custo extra dito por quem o pagou:
+# um commit VERMELHO é medido duas vezes, um VERDE uma só (o retry é só do
+# vermelho). Sem esta leitura, o custo do retry viveria só no motivo do veredito.
+exigir_medicoes() {
+  local cenario="$1" sha="$2" esperado="$3" real
+  real="$(python3 - "$LOG_FIXTURE" "$sha" <<'PY'
+import sys
+
+log, sha = sys.argv[1], sys.argv[2]
+try:
+    linhas = open(log).read().splitlines()
+except FileNotFoundError:
+    linhas = []
+print(sum(1 for l in linhas if l.split() and l.split()[0].startswith(sha)))
+PY
+)"
+  if [ "$real" != "$esperado" ]; then
+    fail "$cenario: o runner foi chamado $real vez(es) no commit $sha (esperado $esperado) — a re-medição não aconteceu como declarado"
+    exit 1
+  fi
 }
 
 # Os commits vermelhos do veredito (shas curtos, na ordem do relatório).
@@ -380,6 +472,85 @@ exigir_derivacao() {
   fi
 }
 
+# ── exigir_flake: o commit FLAKY é DECLARADO como tal ─────────────────────
+# O dado de máquina é a régua (o `--json`): `flaky: true`, `tentativas: 2` e
+# veredito INDETERMINADO — nunca verde (não sei) e nunca vermelho (não reprova),
+# com o motivo nomeando o FLAKE. E o agregado conta-o à parte: um flake não pode
+# se confundir com "não consegui medir" nem sumir dentro dos vermelhos.
+exigir_flake() {
+  local cenario="$1" sha="$2" erro
+  if ! erro="$(python3 - "$GATE_OUT" "$sha" 2>&1 <<'PY'
+import json, sys
+
+d = json.load(open(sys.argv[1]))
+sha = sys.argv[2]
+alvo = [c for c in d["resultados"] if c["sha"].startswith(sha)]
+if len(alvo) != 1:
+    raise SystemExit(f"{sha} não está (uma vez) no relatório: nada a julgar")
+c = alvo[0]
+if not (c["flaky"] is True and c["tentativas"] == 2 and c["veredito"] == "indeterminado"):
+    raise SystemExit(
+        f"esperado FLAKE DECLARADO (flaky=true, tentativas=2, indeterminado) e veio "
+        f"flaky={c['flaky']} tentativas={c['tentativas']} veredito={c['veredito']}"
+    )
+if "FLAKE" not in c["motivo"]:
+    raise SystemExit(f"o motivo não nomeia o flake: {c['motivo'][:120]}")
+if d.get("flakes") != 1:
+    raise SystemExit(f"o agregado devia contar 1 flake e contou {d.get('flakes')}")
+PY
+)"; then
+    fail "$cenario: $erro"
+    mostrar_gate
+    exit 1
+  fi
+}
+
+# ── exigir_ausente: o gate ausente é INDETERMINADO com a razão NOMEADA ────
+# A régua não é o exit sozinho: um indeterminado por OUTRA causa (worktree,
+# node_modules) não é a prova desta metade — o motivo tem de NOMEAR o arquivo
+# que a árvore não carrega, o `--json` tem de marcar `ausente: true` naquele
+# gate, e NENHUM commit pode estar vermelho (é isso que a metade tira do lugar).
+exigir_ausente() {
+  local cenario="$1" exit_esperado="$2" sha="$3" arquivo="$4" erro
+  if [ "$GATE_EXIT" -ne "$exit_esperado" ]; then
+    fail "$cenario: exit $GATE_EXIT (esperado $exit_esperado)"
+    mostrar_gate
+    exit 1
+  fi
+  if [ -n "$(ordenar <<<"$(vermelhos)")" ]; then
+    fail "$cenario: commits vermelhos '$(vermelhos)' (esperado NENHUM) — o gate ausente voltou a reprovar"
+    mostrar_gate
+    exit 1
+  fi
+  if ! erro="$(python3 - "$GATE_OUT" "$sha" "$arquivo" 2>&1 <<'PY'
+import json, sys
+
+d = json.load(open(sys.argv[1]))
+sha, arquivo = sys.argv[2], sys.argv[3]
+alvo = [c for c in d["resultados"] if c["sha"].startswith(sha)]
+if len(alvo) != 1:
+    raise SystemExit(f"{sha} não está (uma vez) no relatório: nada a julgar")
+c = alvo[0]
+if c["veredito"] != "indeterminado":
+    raise SystemExit(f"esperado INDETERMINADO e veio {c['veredito']} (motivo: {c['motivo'][:160]})")
+if arquivo not in c["motivo"]:
+    raise SystemExit(f"o motivo não NOMEIA o gate ausente: {c['motivo'][:160]}")
+if "ausente" not in c["motivo"]:
+    raise SystemExit(f"o motivo não diz a CLASSE (ausente): {c['motivo'][:160]}")
+ausentes = [s for s in c["sempre"] if s.get("ausente") is True]
+if len(ausentes) != 1:
+    raise SystemExit(f"o --json devia marcar 1 gate ausente e marcou {len(ausentes)}: {c['sempre']}")
+ind = sum(1 for x in d["resultados"] if x["veredito"] == "indeterminado")
+if ind != 1:
+    raise SystemExit(f"esperado 1 commit indeterminado no relatório e veio {ind}")
+PY
+)"; then
+    fail "$cenario: $erro"
+    mostrar_gate
+    exit 1
+  fi
+}
+
 # ── exigir_teto: o gate recusa MEDIR acima do teto (sem veredito nenhum) ──
 exigir_teto() {
   local cenario="$1" exit_esperado="$2" trecho="$3"
@@ -416,8 +587,8 @@ if ! montar_fixture; then
   exit 2
 fi
 echo "  fixture: $FIXTURE_DIR"
-echo "  base: ${BASE_SHA:0:8} · vermelho pelo NOME: ${SHA_NOME:0:8} · vermelho pelo GRAFO: ${SHA_GRAFO:0:8} · TOPO: ${SHA_TOPO:0:8}"
-pass "fixture montado (3 commits na pilha: dois vermelhos por réguas DIFERENTES, um topo que conserta)"
+echo "  base: ${BASE_SHA:0:8} · vermelho pelo NOME: ${SHA_NOME:0:8} · vermelho pelo GRAFO: ${SHA_GRAFO:0:8} · TOPO: ${SHA_TOPO:0:8} · FLAKY: ${SHA_FLAKE:0:8}"
+pass "fixture montado (4 commits na pilha: dois vermelhos por réguas DIFERENTES, um topo que conserta, um FLAKY controlado)"
 
 # ── 1. CONTROLE A: o gate vê EXATAMENTE os dois vermelhos ─────────────────
 header "CONTROLE A: os dois commits vermelhos são vistos, e só eles"
@@ -427,7 +598,17 @@ exigir "CONTROLE A" 1 "$NOME_C $GRAFO_C"
 # que a SUA régua alcança (nenhum dos dois recebeu o do outro).
 exigir_derivacao "CONTROLE A (nome)" "$NOME_C" "src/lib/__tests__/por-nome-quebra.test.js"
 exigir_derivacao "CONTROLE A (grafo)" "$GRAFO_C" "src/lib/__tests__/confere-medido.test.js"
+exigir_flake "CONTROLE A" "$FLAKE_C"
+# E o CUSTO da re-medição, medido na fonte: os TRÊS commits que reprovam na 1ª
+# tentativa foram medidos duas vezes, e o TOPO (verde) uma só — o retry é do
+# vermelho, nunca do verde.
+exigir_medicoes "CONTROLE A (retry)" "$NOME_C" 2
+exigir_medicoes "CONTROLE A (retry)" "$GRAFO_C" 2
+exigir_medicoes "CONTROLE A (retry)" "$FLAKE_C" 2
+exigir_medicoes "CONTROLE A (retry)" "$TOPO_C" 1
 pass "CONTROLE A: exit 1 e o veredito reprova os DOIS commits que nasceram vermelhos ($(vermelhos)) — é este vermelho que cada mutação tem de cegar"
+pass "CONTROLE A: os três commits vermelhos na 1ª tentativa foram medidos DUAS vezes e o topo (verde) UMA só — o custo do retry sai dito"
+pass "CONTROLE A: o FLAKY $FLAKE_C fica FORA dos vermelhos — a 1ª tentativa reprovou e a 2ª passou na MESMA árvore, e ele é declarado como flake (não como regressão)"
 pass "CONTROLE A: a derivação separa as réguas (o commit do NOME recebeu só $(derivacao_do "$NOME_C"), o do GRAFO só $(derivacao_do "$GRAFO_C"))"
 
 # ── 2. CONTROLE B: o TOPO passa SOZINHO (a classe do defeito) ─────────────
@@ -481,9 +662,19 @@ exigir "M3 (veredito restaurado)" 1 "$NOME_C $GRAFO_C"
 pass "M3: com o veredito de volta a pilha reprova de novo (exit 1)"
 
 # ── 6. MUTAÇÃO M4: o veredito da PILHA (agregar) ──────────────────────────
-header "MUTAÇÃO M4: o vermelho deixa de reprovar a SÉRIE (agregar)"
-mutar '  if (vermelhos > 0) return { veredito: "broken", exit: EXIT.BROKEN, vermelhos, indeterminados }' \
-  '  if (false /* MUTACAO M4 */) return { veredito: "broken", exit: EXIT.BROKEN, vermelhos, indeterminados }'
+# As DUAS réguas da série saem juntas: o vermelho deixa de reprovar e o
+# indeterminado deixa de impedir o verde. É a metade inteira do `agregar` — o
+# `if` de um lado só deixaria a série INDETERMINADA (exit 2) por causa do flake
+# do fixture, e o que se mede aqui é o job ficando VERDE com os vermelhos dentro.
+header "MUTAÇÃO M4: a SÉRIE deixa de julgar (agregar)"
+mutar '  if (vermelhos > 0)
+    return { veredito: "broken", exit: EXIT.BROKEN, vermelhos, indeterminados, flakes }
+  if (indeterminados > 0)
+    return { veredito: "unavailable", exit: EXIT.UNAVAILABLE, vermelhos, indeterminados, flakes }' \
+  '  if (false /* MUTACAO M4 */)
+    return { veredito: "broken", exit: EXIT.BROKEN, vermelhos, indeterminados, flakes }
+  if (false /* MUTACAO M4 */)
+    return { veredito: "unavailable", exit: EXIT.UNAVAILABLE, vermelhos, indeterminados, flakes }'
 rodar_gate
 exigir "M4" 0 "$NOME_C $GRAFO_C"
 pass "M4: o relatório SEGUE dizendo os dois vermelhos ($(vermelhos)) e o EXIT vira 0 — o job do CI ficaria verde com dois commits vermelhos dentro"
@@ -513,11 +704,82 @@ rodar_gate --max-commits 1
 exigir_teto "M5 (teto restaurado)" 2 "e o teto é 1"
 pass "M5: com o teto de volta a pilha acima dele volta a ser INDETERMINADA (exit 2)"
 
-# ── 8. CONTROLE FINAL: a árvore ficou como estava ─────────────────────────
+# ── 8. MUTAÇÃO M6: a SEGUNDA TENTATIVA fora do julgamento ─────────────────
+# O que separa "defeito do commit" de "flake do ambiente" é a REPETIÇÃO. Tirando
+# o ramo que lê a 2ª tentativa como "repetiu", todo vermelho retentado cai no
+# ramo do flake — e os dois commits que reprovam de verdade saem da conta como
+# "não é determinístico": a pilha deixa de reprovar sem que nada tenha sido
+# consertado, que é a mentira ao contrário do verde-por-não-medir.
+header "MUTAÇÃO M6: a 2ª tentativa deixa de julgar o vermelho repetível"
+mutar '  if (segunda.veredito === "vermelho")' \
+  '  if (false /* MUTACAO M6 */)'
+rodar_gate
+exigir "M6" 2 ""
+pass "M6: os DOIS vermelhos REPETÍVEIS deixaram de reprovar (vermelhos '$(vermelhos)') e o exit virou 2 (INDETERMINADO) — a régua da repetição é o que separa o defeito do commit do flake do ambiente"
+restaurar_original
+rodar_gate
+exigir "M6 (repetição restaurada)" 1 "$NOME_C $GRAFO_C"
+exigir_flake "M6 (repetição restaurada)" "$FLAKE_C"
+pass "M6: com a régua de volta os dois repetíveis voltam a reprovar (exit 1) e o flake continua declarado como flake"
+
+# ── 9. MUTAÇÃO M7: a RE-MEDIÇÃO fora do caminho ───────────────────────────
+# Sem a re-medição, um commit que flakeia é publicado como "vermelho" e entra no
+# conjunto de reprovados — a "regressão" que não existe, que faz o instrumento
+# acusar o que não mediu (e que ensina quem lê a ignorar o vermelho dele).
+header "MUTAÇÃO M7: a re-medição sai do caminho (o flake vira 'vermelho')"
+mutar '      primeira.veredito === "vermelho"
+        ? juntarTentativas(primeira, medir())' \
+  '      false /* MUTACAO M7 */
+        ? juntarTentativas(primeira, medir())'
+rodar_gate
+exigir "M7" 1 "$NOME_C $GRAFO_C $FLAKE_C"
+exigir_medicoes "M7" "$FLAKE_C" 1
+pass "M7: sem a re-medição o commit FLAKY entra no conjunto de reprovados ($(vermelhos)) — é a regressão falsa que o campo \`flaky\` existe para não deixar passar"
+restaurar_original
+rodar_gate
+exigir "M7 (re-medição restaurada)" 1 "$NOME_C $GRAFO_C"
+exigir_flake "M7 (re-medição restaurada)" "$FLAKE_C"
+pass "M7: com a re-medição de volta o flaky sai dos reprovados e volta a ser declarado como flake"
+
+# ── 10. MUTAÇÃO M8: o GATE AUSENTE da árvore do commit ──────────────
+# O `CONJUNTO_SEMPRE` é o do HEAD: um commit ANTERIOR à criação de um gate não
+# carrega o arquivo dele, o `node` existe, o arquivo não, e o processo morre com
+# `MODULE_NOT_FOUND` e exit 1. Lido como vermelho, isso ACUSA o commit de um
+# defeito que ele não tem (medido na triagem do run 35922847378: **13 dos 59
+# vermelhos** eram gate mais novo que a árvore). O que se mede aqui é a RÉGUA: a
+# existência do ALVO do comando — nunca o exit code.
+header "MUTAÇÃO M8: o gate que a árvore do commit não carrega"
+GATE_AUSENTE="node scripts/gate-ausente-do-fixture.mjs"
+# O CONTROLE da classe: o commit do TOPO passa SOZINHO (CONTROLE B), e com um
+# gate que a árvore dele não carrega ele sai INDETERMINADO com a razão nomeada —
+# não reprovado.
+rodar_gate --only "$SHA_TOPO" --sempre "$GATE_AUSENTE"
+exigir_ausente "CONTROLE do gate ausente" 2 "$TOPO_C" "gate-ausente-do-fixture.mjs"
+pass "CONTROLE do gate ausente: o commit cujo gate a árvore não carrega é INDETERMINADO (exit 2, vermelhos '$(vermelhos)') e o motivo NOMEIA o arquivo — não consegui julgar não é reprovou"
+# O CONTROLE do outro lado da régua: o MESMO commit com um gate que EXISTE e
+# reprova — o vermelho TEM de ficar.
+rodar_gate --only "$SHA_TOPO" --sempre "node -e process.exit(1)"
+exigir "CONTROLE do gate presente que reprova" 1 "$TOPO_C"
+pass "CONTROLE do gate presente que reprova: o vermelho continua ($(vermelhos)) — a classificação é do ALVO, não do exit code"
+# A MUTAÇÃO: o classificador deixa de olhar a árvore (o comando volta a rodar e
+# o `MODULE_NOT_FOUND` volta a ser lido como REPROVAÇÃO do commit).
+mutar 'return existsSync(resolve(dir, alvo))' \
+  'return true /* MUTACAO M8 */'
+rodar_gate --only "$SHA_TOPO" --sempre "$GATE_AUSENTE"
+exigir "M8" 1 "$TOPO_C"
+pass "M8: sem o classificador o gate AUSENTE volta a REPROVAR o commit (vermelhos '$(vermelhos)', exit 1) — o commit é acusado de um gate que ele não tem"
+restaurar_original
+rodar_gate --only "$SHA_TOPO" --sempre "$GATE_AUSENTE"
+exigir_ausente "M8 (classificador restaurado)" 2 "$TOPO_C" "gate-ausente-do-fixture.mjs"
+rodar_gate --only "$SHA_TOPO" --sempre "node -e process.exit(1)"
+exigir "M8 (gate presente que reprova, restaurado)" 1 "$TOPO_C"
+pass "M8: com o classificador de volta o ausente volta a ser INDETERMINADO e o gate PRESENTE que reprova segue vermelho — o ausente não amoleceu o que existe"
+
+# ── 11. CONTROLE FINAL: a árvore ficou como estava ────────────────────────
 header "CONTROLE FINAL: restauração verificada por checksum"
 rodar_gate
 exigir "CONTROLE FINAL" 1 "$NOME_C $GRAFO_C"
 pass "CONTROLE FINAL: o harness restaurado volta a reprovar os MESMOS dois commits — nada ficou mutado"
 
 echo
-echo -e "${GREEN}═══ MUTATION TEST PASSED — as 5 metades foram detectadas pelo veredito do gate, e a escrita ficou como estava ═══${NC}"
+echo -e "${GREEN}═══ MUTATION TEST PASSED — as 8 metades foram detectadas pelo veredito do gate, e a escrita ficou como estava ═══${NC}"

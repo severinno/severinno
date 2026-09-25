@@ -2,9 +2,9 @@
   "meta": {
     "tool": "bench-guard-timing",
     "version": 6,
-    "commit": "0997cd4a",
-    "commitDate": "2026-09-25 16:39:56 -0300",
-    "timestamp": "2026-09-25T19:40:12.616Z",
+    "commit": "c14f83c4",
+    "commitDate": "2026-09-25 16:52:21 -0300",
+    "timestamp": "2026-09-25T22:06:45.278Z",
     "act": "bench-guard-timing --only mutations --json --baseline --merge",
     "nodeVersion": "v20.20.2",
     "platform": "linux",
@@ -14,86 +14,86 @@
     "reused": {
       "lint": {
         "source": "guard-timing-baseline.json",
-        "commit": "0468c27f",
-        "commitDate": "2026-09-25 14:33:20 -0300",
-        "timestamp": "2026-09-25T18:57:03.552Z",
+        "commit": "c14f83c4",
+        "commitDate": "2026-09-25 16:52:21 -0300",
+        "timestamp": "2026-09-25T21:52:36.855Z",
         "missingInOrigin": null
       },
       "typecheck": {
         "source": "guard-timing-baseline.json",
-        "commit": "0468c27f",
-        "commitDate": "2026-09-25 14:33:20 -0300",
-        "timestamp": "2026-09-25T18:57:03.552Z",
+        "commit": "c14f83c4",
+        "commitDate": "2026-09-25 16:52:21 -0300",
+        "timestamp": "2026-09-25T21:52:36.855Z",
         "missingInOrigin": null
       },
       "tests": {
         "source": "guard-timing-baseline.json",
-        "commit": "0468c27f",
-        "commitDate": "2026-09-25 14:33:20 -0300",
-        "timestamp": "2026-09-25T18:57:03.552Z",
+        "commit": "c14f83c4",
+        "commitDate": "2026-09-25 16:52:21 -0300",
+        "timestamp": "2026-09-25T21:52:36.855Z",
         "missingInOrigin": null
       },
       "hook": {
         "source": "guard-timing-baseline.json",
-        "commit": "0468c27f",
-        "commitDate": "2026-09-25 14:33:20 -0300",
-        "timestamp": "2026-09-25T18:57:03.552Z",
+        "commit": "c14f83c4",
+        "commitDate": "2026-09-25 16:52:21 -0300",
+        "timestamp": "2026-09-25T21:52:36.855Z",
         "missingInOrigin": null
       },
       "battery": {
         "source": "guard-timing-baseline.json",
-        "commit": "0468c27f",
-        "commitDate": "2026-09-25 14:33:20 -0300",
-        "timestamp": "2026-09-25T18:57:03.552Z",
+        "commit": "c14f83c4",
+        "commitDate": "2026-09-25 16:52:21 -0300",
+        "timestamp": "2026-09-25T21:52:36.855Z",
         "missingInOrigin": null
       }
     },
     "families": {
       "battery": {
         "act": "reused",
-        "commit": "0468c27f",
-        "commitDate": "2026-09-25 14:33:20 -0300",
-        "timestamp": "2026-09-25T18:57:03.552Z",
+        "commit": "c14f83c4",
+        "commitDate": "2026-09-25 16:52:21 -0300",
+        "timestamp": "2026-09-25T21:52:36.855Z",
         "source": "guard-timing-baseline.json",
         "missingInOrigin": null
       },
       "lint": {
         "act": "reused",
-        "commit": "0468c27f",
-        "commitDate": "2026-09-25 14:33:20 -0300",
-        "timestamp": "2026-09-25T18:57:03.552Z",
+        "commit": "c14f83c4",
+        "commitDate": "2026-09-25 16:52:21 -0300",
+        "timestamp": "2026-09-25T21:52:36.855Z",
         "source": "guard-timing-baseline.json",
         "missingInOrigin": null
       },
       "typecheck": {
         "act": "reused",
-        "commit": "0468c27f",
-        "commitDate": "2026-09-25 14:33:20 -0300",
-        "timestamp": "2026-09-25T18:57:03.552Z",
+        "commit": "c14f83c4",
+        "commitDate": "2026-09-25 16:52:21 -0300",
+        "timestamp": "2026-09-25T21:52:36.855Z",
         "source": "guard-timing-baseline.json",
         "missingInOrigin": null
       },
       "tests": {
         "act": "reused",
-        "commit": "0468c27f",
-        "commitDate": "2026-09-25 14:33:20 -0300",
-        "timestamp": "2026-09-25T18:57:03.552Z",
+        "commit": "c14f83c4",
+        "commitDate": "2026-09-25 16:52:21 -0300",
+        "timestamp": "2026-09-25T21:52:36.855Z",
         "source": "guard-timing-baseline.json",
         "missingInOrigin": null
       },
       "hook": {
         "act": "reused",
-        "commit": "0468c27f",
-        "commitDate": "2026-09-25 14:33:20 -0300",
-        "timestamp": "2026-09-25T18:57:03.552Z",
+        "commit": "c14f83c4",
+        "commitDate": "2026-09-25 16:52:21 -0300",
+        "timestamp": "2026-09-25T21:52:36.855Z",
         "source": "guard-timing-baseline.json",
         "missingInOrigin": null
       },
       "mutations": {
         "act": "measured",
-        "commit": "0997cd4a",
-        "commitDate": "2026-09-25 16:39:56 -0300",
-        "timestamp": "2026-09-25T19:40:12.616Z",
+        "commit": "c14f83c4",
+        "commitDate": "2026-09-25 16:52:21 -0300",
+        "timestamp": "2026-09-25T22:06:45.278Z",
         "source": null,
         "missingInOrigin": []
       }
@@ -102,7 +102,18 @@
       "state": "measured",
       "clean": false,
       "staged": [],
-      "unstaged": ["ci/unproven.json"],
+      "unstaged": [
+        "README.md",
+        "docs/GUARDS.md",
+        "docs/audit/2026-09-25-triagem-do-run-35922847378-stack-per-commit.md",
+        "docs/benchmarks/guard-timing-baseline.json",
+        "docs/benchmarks/guard-timing-latest.json",
+        "scripts/pre-push-proof.mjs",
+        "scripts/prove-stack-per-commit.mjs",
+        "scripts/test-mutation-stack-per-commit.sh",
+        "src/lib/__tests__/pre-push-stack-recorte-blocks.test.ts",
+        "src/lib/__tests__/prove-stack-per-commit.test.ts"
+      ],
       "reason": null
     },
     "formOrigin": {
@@ -135,9 +146,9 @@
     "hookRevalidacaoMs": 68,
     "hookDetectionMs": 318,
     "mutationSubtests": 42,
-    "mutationSubtestsMs": 645249,
-    "mutationHarnessMs": 4834,
-    "mutationTotalMs": 650083
+    "mutationSubtestsMs": 639628,
+    "mutationHarnessMs": 4760,
+    "mutationTotalMs": 644388
   },
   "guards": [
     {
@@ -794,21 +805,21 @@
     "measured": true,
     "cmd": "bash scripts/test-mutation-guards.sh --json",
     "exit": 1,
-    "wallMs": 650112,
+    "wallMs": 644418,
     "subtests": 42,
-    "metades": 262,
+    "metades": 265,
     "forms": [
       {
         "role": "bun-literal",
         "label": "bun-literal",
-        "ms": 1847,
+        "ms": 1782,
         "exit": 0,
         "metades": 5,
         "ok": true,
         "script": "scripts/test-mutation-bun-literal.sh",
         "runs": [
           {
-            "ms": 1847,
+            "ms": 1782,
             "ok": true
           }
         ]
@@ -816,14 +827,14 @@
       {
         "role": "bun-removal",
         "label": "bun-removal",
-        "ms": 117,
+        "ms": 114,
         "exit": 0,
         "metades": 1,
         "ok": true,
         "script": "scripts/test-mutation-bun-removal.sh",
         "runs": [
           {
-            "ms": 117,
+            "ms": 114,
             "ok": true
           }
         ]
@@ -831,14 +842,14 @@
       {
         "role": "hooks-symmetry",
         "label": "hooks-symmetry",
-        "ms": 102,
+        "ms": 101,
         "exit": 0,
         "metades": 2,
         "ok": true,
         "script": "scripts/test-mutation-hooks-symmetry.sh",
         "runs": [
           {
-            "ms": 102,
+            "ms": 101,
             "ok": true
           }
         ]
@@ -846,14 +857,14 @@
       {
         "role": "readme",
         "label": "readme",
-        "ms": 387,
+        "ms": 386,
         "exit": 0,
         "metades": 3,
         "ok": true,
         "script": "scripts/test-mutation-readme-guards.sh",
         "runs": [
           {
-            "ms": 387,
+            "ms": 386,
             "ok": true
           }
         ]
@@ -861,14 +872,14 @@
       {
         "role": "readme-reverse",
         "label": "readme-reverse",
-        "ms": 617,
+        "ms": 581,
         "exit": 0,
         "metades": 3,
         "ok": true,
         "script": "scripts/test-mutation-readme-reverse.sh",
         "runs": [
           {
-            "ms": 617,
+            "ms": 581,
             "ok": true
           }
         ]
@@ -876,14 +887,14 @@
       {
         "role": "docs-anchor",
         "label": "docs-anchor",
-        "ms": 69,
+        "ms": 70,
         "exit": 0,
         "metades": 1,
         "ok": true,
         "script": "scripts/test-mutation-readme-docs-anchor.sh",
         "runs": [
           {
-            "ms": 69,
+            "ms": 70,
             "ok": true
           }
         ]
@@ -891,14 +902,14 @@
       {
         "role": "producer-sent",
         "label": "producer-sent",
-        "ms": 111,
+        "ms": 109,
         "exit": 0,
         "metades": 1,
         "ok": true,
         "script": "scripts/test-mutation-producer-sentinel.sh",
         "runs": [
           {
-            "ms": 111,
+            "ms": 109,
             "ok": true
           }
         ]
@@ -906,14 +917,14 @@
       {
         "role": "mutation-jobs",
         "label": "mutation-jobs",
-        "ms": 411,
+        "ms": 410,
         "exit": 0,
         "metades": 4,
         "ok": true,
         "script": "scripts/test-mutation-mutation-jobs.sh",
         "runs": [
           {
-            "ms": 411,
+            "ms": 410,
             "ok": true
           }
         ]
@@ -921,14 +932,14 @@
       {
         "role": "workflow-refs",
         "label": "workflow-refs",
-        "ms": 492,
+        "ms": 505,
         "exit": 0,
         "metades": 4,
         "ok": true,
         "script": "scripts/test-mutation-workflow-refs.sh",
         "runs": [
           {
-            "ms": 492,
+            "ms": 505,
             "ok": true
           }
         ]
@@ -936,14 +947,14 @@
       {
         "role": "utf8-scope",
         "label": "utf8-scope",
-        "ms": 116,
+        "ms": 127,
         "exit": 0,
         "metades": 2,
         "ok": true,
         "script": "scripts/test-mutation-utf8-scope.sh",
         "runs": [
           {
-            "ms": 116,
+            "ms": 127,
             "ok": true
           }
         ]
@@ -951,14 +962,14 @@
       {
         "role": "timing-budget",
         "label": "timing-budget",
-        "ms": 659,
+        "ms": 649,
         "exit": 0,
         "metades": 5,
         "ok": true,
         "script": "scripts/test-mutation-timing-budget.sh",
         "runs": [
           {
-            "ms": 659,
+            "ms": 649,
             "ok": true
           }
         ]
@@ -966,14 +977,14 @@
       {
         "role": "e2e-cache-budget",
         "label": "e2e-cache-budget",
-        "ms": 5,
+        "ms": 6,
         "exit": 0,
         "metades": 2,
         "ok": true,
         "script": "scripts/test-mutation-e2e-cache-budget.sh",
         "runs": [
           {
-            "ms": 5,
+            "ms": 6,
             "ok": true
           }
         ]
@@ -981,14 +992,14 @@
       {
         "role": "lint-guard",
         "label": "lint-guard",
-        "ms": 855,
+        "ms": 840,
         "exit": 0,
         "metades": 3,
         "ok": true,
         "script": "scripts/test-mutation-lint-guard.sh",
         "runs": [
           {
-            "ms": 855,
+            "ms": 840,
             "ok": true
           }
         ]
@@ -996,14 +1007,14 @@
       {
         "role": "mutation-count",
         "label": "mutation-count",
-        "ms": 9011,
+        "ms": 8893,
         "exit": 0,
         "metades": 18,
         "ok": true,
         "script": "scripts/test-mutation-mutation-count.sh",
         "runs": [
           {
-            "ms": 9011,
+            "ms": 8893,
             "ok": true
           }
         ]
@@ -1011,14 +1022,14 @@
       {
         "role": "no-setup-bun",
         "label": "no-setup-bun",
-        "ms": 229,
+        "ms": 228,
         "exit": 0,
         "metades": 2,
         "ok": true,
         "script": "scripts/test-mutation-no-setup-bun.sh",
         "runs": [
           {
-            "ms": 229,
+            "ms": 228,
             "ok": true
           }
         ]
@@ -1026,14 +1037,14 @@
       {
         "role": "runner-base",
         "label": "runner-base",
-        "ms": 211,
+        "ms": 209,
         "exit": 0,
         "metades": 4,
         "ok": true,
         "script": "scripts/test-mutation-runner-base.sh",
         "runs": [
           {
-            "ms": 211,
+            "ms": 209,
             "ok": true
           }
         ]
@@ -1041,14 +1052,14 @@
       {
         "role": "runner-labels",
         "label": "runner-labels",
-        "ms": 4978,
+        "ms": 4895,
         "exit": 0,
         "metades": 1,
         "ok": true,
         "script": "scripts/test-mutation-runner-labels.sh",
         "runs": [
           {
-            "ms": 4978,
+            "ms": 4895,
             "ok": true
           }
         ]
@@ -1056,14 +1067,14 @@
       {
         "role": "no-leaked-imports",
         "label": "no-leaked-imports",
-        "ms": 132,
+        "ms": 128,
         "exit": 0,
         "metades": 3,
         "ok": true,
         "script": "scripts/test-mutation-no-leaked-imports.sh",
         "runs": [
           {
-            "ms": 132,
+            "ms": 128,
             "ok": true
           }
         ]
@@ -1071,14 +1082,14 @@
       {
         "role": "reconciliation",
         "label": "reconciliation",
-        "ms": 9180,
+        "ms": 9095,
         "exit": 0,
         "metades": 3,
         "ok": true,
         "script": "scripts/test-mutation-reconciliation.sh",
         "runs": [
           {
-            "ms": 9180,
+            "ms": 9095,
             "ok": true
           }
         ]
@@ -1086,14 +1097,14 @@
       {
         "role": "nested-guard",
         "label": "nested-guard",
-        "ms": 17952,
+        "ms": 17695,
         "exit": 0,
         "metades": 2,
         "ok": true,
         "script": "scripts/test-mutation-nested-guard.sh",
         "runs": [
           {
-            "ms": 17952,
+            "ms": 17695,
             "ok": true
           }
         ]
@@ -1101,14 +1112,14 @@
       {
         "role": "pipefail-sigpipe",
         "label": "pipefail-sigpipe",
-        "ms": 2118,
+        "ms": 2140,
         "exit": 0,
         "metades": 22,
         "ok": true,
         "script": "scripts/test-mutation-pipefail-sigpipe.sh",
         "runs": [
           {
-            "ms": 2118,
+            "ms": 2140,
             "ok": true
           }
         ]
@@ -1116,14 +1127,14 @@
       {
         "role": "hook-ci-parity",
         "label": "hook-ci-parity",
-        "ms": 3489,
+        "ms": 3520,
         "exit": 0,
         "metades": 9,
         "ok": true,
         "script": "scripts/test-mutation-hook-ci-parity.sh",
         "runs": [
           {
-            "ms": 3489,
+            "ms": 3520,
             "ok": true
           }
         ]
@@ -1131,14 +1142,14 @@
       {
         "role": "hook-commands",
         "label": "hook-commands",
-        "ms": 61287,
+        "ms": 60332,
         "exit": 0,
         "metades": 27,
         "ok": true,
         "script": "scripts/test-mutation-hook-commands.sh",
         "runs": [
           {
-            "ms": 61287,
+            "ms": 60332,
             "ok": true
           }
         ]
@@ -1146,14 +1157,14 @@
       {
         "role": "workflow-defaults",
         "label": "workflow-defaults",
-        "ms": 944,
+        "ms": 943,
         "exit": 0,
         "metades": 7,
         "ok": true,
         "script": "scripts/test-mutation-workflow-defaults.sh",
         "runs": [
           {
-            "ms": 944,
+            "ms": 943,
             "ok": true
           }
         ]
@@ -1161,14 +1172,14 @@
       {
         "role": "workflow-run-syntax",
         "label": "workflow-run-syntax",
-        "ms": 3129,
+        "ms": 3054,
         "exit": 1,
         "metades": 15,
         "ok": false,
         "script": "scripts/test-mutation-workflow-run-syntax.sh",
         "runs": [
           {
-            "ms": 3129,
+            "ms": 3054,
             "ok": false
           }
         ]
@@ -1176,14 +1187,14 @@
       {
         "role": "merge-latency",
         "label": "merge-latency",
-        "ms": 4438,
+        "ms": 4507,
         "exit": 0,
         "metades": 5,
         "ok": true,
         "script": "scripts/test-mutation-merge-latency.sh",
         "runs": [
           {
-            "ms": 4438,
+            "ms": 4507,
             "ok": true
           }
         ]
@@ -1191,14 +1202,14 @@
       {
         "role": "registry-defaults",
         "label": "registry-defaults",
-        "ms": 26872,
+        "ms": 27019,
         "exit": 0,
         "metades": 9,
         "ok": true,
         "script": "scripts/test-mutation-registry-defaults.sh",
         "runs": [
           {
-            "ms": 26872,
+            "ms": 27019,
             "ok": true
           }
         ]
@@ -1206,14 +1217,14 @@
       {
         "role": "job-deps",
         "label": "job-deps",
-        "ms": 182279,
+        "ms": 182810,
         "exit": 0,
         "metades": 12,
         "ok": true,
         "script": "scripts/test-mutation-job-deps.sh",
         "runs": [
           {
-            "ms": 182279,
+            "ms": 182810,
             "ok": true
           }
         ]
@@ -1221,14 +1232,14 @@
       {
         "role": "remedy-tty",
         "label": "remedy-tty",
-        "ms": 31238,
+        "ms": 30038,
         "exit": 0,
         "metades": 2,
         "ok": true,
         "script": "scripts/test-mutation-remedy-tty.sh",
         "runs": [
           {
-            "ms": 31238,
+            "ms": 30038,
             "ok": true
           }
         ]
@@ -1236,14 +1247,14 @@
       {
         "role": "canal-fixers",
         "label": "canal-fixers",
-        "ms": 10957,
+        "ms": 9403,
         "exit": 0,
         "metades": 6,
         "ok": true,
         "script": "scripts/test-mutation-canal-fixers.sh",
         "runs": [
           {
-            "ms": 10957,
+            "ms": 9403,
             "ok": true
           }
         ]
@@ -1251,14 +1262,14 @@
       {
         "role": "required-applied",
         "label": "required-applied",
-        "ms": 18377,
+        "ms": 17989,
         "exit": 0,
         "metades": 10,
         "ok": true,
         "script": "scripts/test-mutation-required-checks-applied.sh",
         "runs": [
           {
-            "ms": 18377,
+            "ms": 17989,
             "ok": true
           }
         ]
@@ -1266,14 +1277,14 @@
       {
         "role": "gate-registration",
         "label": "gate-registration",
-        "ms": 8503,
+        "ms": 7982,
         "exit": 0,
         "metades": 5,
         "ok": true,
         "script": "scripts/test-mutation-gate-registration.sh",
         "runs": [
           {
-            "ms": 8503,
+            "ms": 7982,
             "ok": true
           }
         ]
@@ -1281,14 +1292,14 @@
       {
         "role": "archived-pipeline",
         "label": "archived-pipeline",
-        "ms": 821,
+        "ms": 781,
         "exit": 0,
         "metades": 6,
         "ok": true,
         "script": "scripts/test-mutation-archived-pipeline.sh",
         "runs": [
           {
-            "ms": 821,
+            "ms": 781,
             "ok": true
           }
         ]
@@ -1296,14 +1307,14 @@
       {
         "role": "doc-hashes",
         "label": "doc-hashes",
-        "ms": 1460,
+        "ms": 1455,
         "exit": 0,
         "metades": 9,
         "ok": true,
         "script": "scripts/test-mutation-doc-hashes.sh",
         "runs": [
           {
-            "ms": 1460,
+            "ms": 1455,
             "ok": true
           }
         ]
@@ -1311,14 +1322,14 @@
       {
         "role": "github-deps",
         "label": "github-deps",
-        "ms": 14326,
+        "ms": 13018,
         "exit": 0,
         "metades": 9,
         "ok": true,
         "script": "scripts/test-mutation-github-dependencies.sh",
         "runs": [
           {
-            "ms": 14326,
+            "ms": 13018,
             "ok": true
           }
         ]
@@ -1326,14 +1337,14 @@
       {
         "role": "cut-stages",
         "label": "cut-stages",
-        "ms": 19262,
+        "ms": 18021,
         "exit": 0,
         "metades": 3,
         "ok": true,
         "script": "scripts/test-mutation-cut-stages.sh",
         "runs": [
           {
-            "ms": 19262,
+            "ms": 18021,
             "ok": true
           }
         ]
@@ -1341,14 +1352,14 @@
       {
         "role": "mirror-coverage",
         "label": "mirror-coverage",
-        "ms": 11547,
+        "ms": 11086,
         "exit": 0,
         "metades": 3,
         "ok": true,
         "script": "scripts/test-mutation-mirror-coverage.sh",
         "runs": [
           {
-            "ms": 11547,
+            "ms": 11086,
             "ok": true
           }
         ]
@@ -1356,14 +1367,14 @@
       {
         "role": "pre-commit-proof",
         "label": "pre-commit-proof",
-        "ms": 137879,
+        "ms": 134812,
         "exit": 0,
         "metades": 3,
         "ok": true,
         "script": "scripts/test-mutation-pre-commit-proof.sh",
         "runs": [
           {
-            "ms": 137879,
+            "ms": 134812,
             "ok": true
           }
         ]
@@ -1371,14 +1382,14 @@
       {
         "role": "bench-freshness",
         "label": "bench-freshness",
-        "ms": 43272,
+        "ms": 42730,
         "exit": 0,
         "metades": 12,
         "ok": true,
         "script": "scripts/test-mutation-bench-freshness.sh",
         "runs": [
           {
-            "ms": 43272,
+            "ms": 42730,
             "ok": true
           }
         ]
@@ -1386,14 +1397,14 @@
       {
         "role": "stack-per-commit",
         "label": "stack-per-commit",
-        "ms": 3279,
+        "ms": 9037,
         "exit": 0,
-        "metades": 5,
+        "metades": 8,
         "ok": true,
         "script": "scripts/test-mutation-stack-per-commit.sh",
         "runs": [
           {
-            "ms": 3279,
+            "ms": 9037,
             "ok": true
           }
         ]
@@ -1401,14 +1412,14 @@
       {
         "role": "lint-scope",
         "label": "lint-scope",
-        "ms": 10897,
+        "ms": 10749,
         "exit": 0,
         "metades": 6,
         "ok": true,
         "script": "scripts/test-mutation-lint-scope.sh",
         "runs": [
           {
-            "ms": 10897,
+            "ms": 10749,
             "ok": true
           }
         ]
@@ -1416,39 +1427,39 @@
       {
         "role": "act-origin",
         "label": "act-origin",
-        "ms": 1394,
+        "ms": 1379,
         "exit": 0,
         "metades": 8,
         "ok": true,
         "script": "scripts/test-mutation-act-origin.sh",
         "runs": [
           {
-            "ms": 1394,
+            "ms": 1379,
             "ok": true
           }
         ]
       }
     ],
     "deltas": {
-      "subtestsMs": 645249,
-      "harnessMs": 4834,
-      "totalMs": 650083,
-      "wallMs": 650112,
-      "proximoSubtestProjetadoMs": 15478,
+      "subtestsMs": 639628,
+      "harnessMs": 4760,
+      "totalMs": 644388,
+      "wallMs": 644418,
+      "proximoSubtestProjetadoMs": 15342,
       "maisCaro": "job-deps",
-      "maisCaroMs": 182279,
-      "medianaMs": 2118
+      "maisCaroMs": 182810,
+      "medianaMs": 2140
     },
     "violations": [
       "sub-test(s) que NÃO passaram no master: workflow-run-syntax (exit 1) — o custo deles não julga nada (um sub-test que morre no meio tem o tempo do pedaço que rodou)"
     ],
     "whatItAdded": [
-      "MEDIDO, sub-test a sub-test: 42 sub-test(s) · 262 metade(s) · 645.2s de sub-tests + 4.8s de harness = 650.1s",
-      "o mais caro: job-deps (182.3s) · a mediana: 2.1s",
-      "o PRÓXIMO sub-test acrescenta ~15.5s (PROJEÇÃO: a média dos scripts medidos + o harness por sub-test) — e entra MEDIDO na primeira rodada que o tiver, sem conta à mão"
+      "MEDIDO, sub-test a sub-test: 42 sub-test(s) · 265 metade(s) · 639.6s de sub-tests + 4.8s de harness = 644.4s",
+      "o mais caro: job-deps (182.8s) · a mediana: 2.1s",
+      "o PRÓXIMO sub-test acrescenta ~15.3s (PROJEÇÃO: a média dos scripts medidos + o harness por sub-test) — e entra MEDIDO na primeira rodada que o tiver, sem conta à mão"
     ],
     "metadesDaMatriz": {
-      "total": 262,
+      "total": 265,
       "atualizadas": 0,
       "semDerivacao": [],
       "naoMedidas": []

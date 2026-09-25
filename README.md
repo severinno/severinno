@@ -1251,13 +1251,13 @@ depois: `escreveu: true` é violação da família, não um detalhe do log.
 **O custo do job mais caro do PR não é uma conta à mão** (família `mutations` do
 `bench-guard-timing`). O job `mutation-guards` roda 42 sub-tests, e o que CADA um
 custa é medido pelo próprio master (`--json`) e versionado sub-test a sub-test no
-registro: o ato VERSIONADO de 25/09/2026 (`0997cd4a`) — o MESMO comando, com a árvore COMMITADA —
-mediu **645.2s** de sub-tests + **4.9s** de harness =
-**650.1s**, com `job-deps` (182.3s, 28%), `pre-commit-proof` (137.9s, 21%), `hook-commands` (61.3s, 9%) e `bench-freshness` (43.3s, 7%) no topo — antes disso
+registro: o ato VERSIONADO de 25/09/2026 (`c14f83c4`) — o MESMO comando, com a árvore COMMITADA —
+mediu **639.6s** de sub-tests + **4.8s** de harness =
+**644.4s**, com `job-deps` (182.8s, 29%), `pre-commit-proof` (134.8s, 21%), `hook-commands` (60.3s, 9%) e `bench-freshness` (42.7s, 7%) no topo — antes disso
 ninguém sabia QUAL sub-test pagava a conta. A mediana é **2.6s**, dez sub-tests
-pagam **86%** da soma, e o registro guarda **262 metades**.
+pagam **85%** da soma, e o registro guarda **265 metades**.
 Quem entra com um sub-test novo não compõe nada: ele entra **MEDIDO** na rodada seguinte
-(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~15.5s**) é dita
+(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~15.3s**) é dita
 como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test. **LIMITE DECLARADO:** na rodada do ato, 1 sub-test(s) NÃO passaram (`workflow-run-syntax`) — o custo deles não julga nada.
 
 Esta prosa é **DERIVADA**: quem a reescreve é o ato (o bloco é dele), e o
@@ -1647,16 +1647,24 @@ medida no simulador (a suíte e o ensaio do pty). Ela custa **≈0,61s** (median
 > asserção que viaja antes do que ela mede), foram consertadas DENTRO do commit que as criou.
 >
 > **A régua tem prova por mutação própria** (`scripts/test-mutation-stack-per-commit.sh`,
-> **em CINCO direções** — a 38.ª sub-test da matriz): o fixture é um repositório git de
-> verdade com uma pilha de três commits onde **dois NASCEM vermelhos**, cada um por uma
-> régua DIFERENTE, e o TOPO os conserta — a classe do defeito, medida. Tirar a régua do
+> **em OITO direções** — a 38.ª sub-test da matriz): o fixture é um repositório git de
+> verdade com uma pilha de quatro commits onde **dois NASCEM vermelhos**, cada um por uma
+> régua DIFERENTE, o terceiro (o topo) os conserta e o quarto nasce **FLAKY** — o teste
+> dele falha na PRIMEIRA medição e passa na segunda, com a MESMA árvore (a classe medida
+> num teste de integração que sobe container). Tirar a régua do
 > nome ou a do grafo da derivação tira **um** vermelho do veredito; tirar o veredito por
 > commit faz os dois saírem ✅; tirar o da série deixa o relatório dizendo os dois
-> vermelhos **com exit 0** (o job ficaria verde com dois commits vermelhos dentro); e
-> tirar o teto faz a pilha acima dele sair verde **sem ter medido um único commit**. A
+> vermelhos **com exit 0** (o job ficaria verde com dois commits vermelhos dentro); tirar o
+> teto faz a pilha acima dele sair verde **sem ter medido um único commit**; tirar a régua
+> da REPETIÇÃO (M6) faz os dois vermelhos de VERDADE passarem por flake e a série ficar
+> INDETERMINADA; tirar a re-medição (M7) faz o commit flaky voltar a ser publicado como
+> **vermelho repetível** — a "regressão" que não existe; e tirar o classificador do gate
+> AUSENTE (M8) faz o commit cujo gate a árvore não carrega VOLTAR A REPROVAR — acusado de
+> um gate que ele não tem (13 dos 59 vermelhos de um run real eram gate mais novo que a
+> árvore, e o gate presente que reprova segue vermelho nas DUAS metades do controle). A
 > detecção é o CONJUNTO de commits vermelhos, e a derivação é lida na fonte (o runner do
-> fixture registra os arquivos que recebeu, por commit). Custa **3,3s** e é node-pura (o
-> fixture declara o próprio runner, sem `node_modules`).
+> fixture registra os arquivos que recebeu, por commit — uma vez por tentativa). Custa
+> **≈4,5s** e é node-pura (o fixture declara o próprio runner, sem `node_modules`).
 >
 > **E o pre-push passou a medir o MEIO da pilha** (o mesmo módulo, com `--pushed`): as refs
 > que saem chegam pelo stdin (o protocolo do git), o recorte é a união `remote_sha..local_sha`

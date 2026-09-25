@@ -80,10 +80,17 @@ describe("o recorte da pilha no caminho do push", () => {
     expect(ev.defeito.nomeouOMeio).toBe(true)
 
     // O rastro: o meio foi MEDIDO, com o veredito do CONTEÚDO e com o teste que a
-    // régua dos afetados derivou (um recorte sem teste derivado mediria o ambiente).
+    // régua dos afetados derivou (um recorte sem teste derivado mediria o
+    // ambiente) — e foi medido DUAS vezes, que é a RE-MEDIÇÃO DECLARADA do
+    // vermelho. O único commit que o recorte mede aqui é o MEIO (a base está no
+    // remoto e o topo sai por `--sem-topo`), então duas invocações do vitest do
+    // fixture são as DUAS TENTATIVAS do mesmo commit. O vermelho do fixture é do
+    // CONTEÚDO versionado (o payload do vitest lê o arquivo), então as duas
+    // tentativas CONCORDAM: é o caso REPETÍVEL, e é por isso que o push continua
+    // recusado aqui — um flake seria a 2ª discordar e sair declarado como flake.
     const quebrados = ev.defeito.medicoes.filter((m) => m.veredito === "QUEBRADO")
-    expect(quebrados).toHaveLength(1)
-    expect(quebrados[0].arquivos.join(" ")).toContain("medido.test.ts")
+    expect(quebrados).toHaveLength(2)
+    for (const m of quebrados) expect(m.arquivos.join(" ")).toContain("medido.test.ts")
 
     // B: o mesmo push com o meio verde chega — a recusa não é do fixture.
     expect(ev.controle.status).toBe(0)

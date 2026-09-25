@@ -798,6 +798,8 @@ export const FECHO_DO_RECORTE = [
   "check-tla-closure.mjs",
   "check-no-leaked-imports.mjs",
   "remedy-canal.mjs",
+  "doctor-unproven.mjs",
+  "allowlist-review.mjs",
 ]
 
 /**

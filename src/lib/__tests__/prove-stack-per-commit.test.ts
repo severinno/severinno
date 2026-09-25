@@ -61,12 +61,16 @@ import {
   FERRAMENTA,
   MARCADOR_DO_DONO,
   WORKTREE_PREFIXO,
+  agregar,
   amostrar,
   commitsDoPush,
   criarWorktree,
+  gateAusente,
   hostAtual,
+  juntarTentativas,
   limparResiduos,
   limparWorktreeAtual,
+  marcaDe,
   pidVivo,
   recorteVazio,
   refsDoPush,
@@ -902,5 +906,248 @@ describe("a DÍVIDA da pilha — o veredito separa dívida declarada de regress�
     const j = JSON.parse(cli.stdout) as { dividaPilha: unknown; recorte: { noRecorte: number } }
     expect(j.recorte.noRecorte).toBe(0)
     expect(j.dividaPilha).toBeNull()
+  })
+})
+
+// ── A RE-MEDIÇÃO: o vermelho é do COMMIT ou do AMBIENTE? ───────────────────
+//
+// Um teste de integração que sobe container devolve veredito DIFERENTE para a
+// MESMA árvore entre execuções (medido: um commit verde na 1ª medição da pilha e
+// vermelho na re-medição seguinte — sem nada ter mudado). Sem re-medir, esse
+// flake é publicado como "regressão": o instrumento acusa um defeito que não
+// existe, e quem lê aprende a ignorar o vermelho dele. O que se trava aqui é a
+// régua — a REPETIÇÃO — em três lugares: a função que junta as duas tentativas,
+// o agregado da série (flake NUNCA vira verde) e a CLI de verdade (a 2ª tentativa
+// acontece, e o que ela mediu fica publicado).
+describe("a RE-MEDIÇÃO — o vermelho repetível × o flake do ambiente", () => {
+  const SHA = "f".repeat(40)
+  const vermelho = (motivo: string, ms = 1000) => ({
+    sha: SHA,
+    veredito: "vermelho",
+    ms,
+    motivo,
+  })
+  const verde = (ms = 200) => ({ sha: SHA, veredito: "verde", ms, motivo: "" })
+  const naoMedido = (motivo: string) => ({ sha: SHA, veredito: "indeterminado", ms: 50, motivo })
+  // A função mora num `.mjs` sem tipos: o TESTE declara o contrato que lê dela —
+  // `tentativas` e `flaky` são justamente o que este bloco trava.
+  type Publicado = { sha: string; veredito: string; ms: number; motivo: string } & {
+    tentativas: number
+    flaky: boolean
+  }
+  const junta = (a: object, b?: object) => juntarTentativas(a, b) as Publicado
+
+  it("um commit medido UMA vez publica `tentativas: 1` — e a marca verde não é flake", () => {
+    const r = junta(verde())
+    expect(r).toMatchObject({ veredito: "verde", tentativas: 1, flaky: false })
+    expect(marcaDe(r)).toBe("✅")
+  })
+
+  it("vermelho REPETIDO na 2ª tentativa segue VERMELHO — e as duas tentativas ficam ditas", () => {
+    const r = junta(
+      vermelho("vitest(3 arquivo(s)): exit 1"),
+      vermelho("vitest(3 arquivo(s)): exit 1", 800),
+    )
+    expect(r).toMatchObject({ veredito: "vermelho", tentativas: 2, flaky: false })
+    expect(r.motivo).toContain("REPETIU")
+    expect(r.motivo).toContain("vitest(3 arquivo(s)): exit 1")
+    // O custo publicado é o das DUAS medições: o retry não é grátis nem escondido.
+    expect(r.ms).toBe(1800)
+    expect(marcaDe(r)).toBe("❌")
+  })
+
+  it("vermelho que PASSA na 2ª é FLAKE: INDETERMINADO (nunca verde), com `flaky` e a marca própria", () => {
+    const r = junta(vermelho("vitest(10 arquivo(s)): exit 1"), verde())
+    expect(r.veredito).toBe("indeterminado")
+    expect(r).toMatchObject({ tentativas: 2, flaky: true })
+    expect(r.motivo).toContain("FLAKE")
+    expect(r.motivo).toContain("vitest(10 arquivo(s)): exit 1")
+    expect(r.motivo).toContain("MESMA árvore")
+    expect(marcaDe(r)).toBe("🌀")
+  })
+
+  it("vermelho cuja 2ª tentativa NÃO MEDIU segue vermelho — a 2ª não contradisse a 1ª", () => {
+    const r = junta(vermelho("forge-parity: exit 1"), naoMedido("node_modules ausente"))
+    expect(r).toMatchObject({ veredito: "vermelho", tentativas: 2, flaky: false })
+    expect(r.motivo).toContain("não foi contradito")
+  })
+
+  it("o FLAKE nunca vira verde na série: a pilha fica INDETERMINADA (exit 2), e ele é contado à parte", () => {
+    const flake = junta(vermelho("vitest(1 arquivo(s)): exit 1"), verde())
+    const ag = agregar([verde(), flake, verde()])
+    expect(ag).toMatchObject({ veredito: "unavailable", exit: EXIT.UNAVAILABLE, flakes: 1 })
+    expect(ag.vermelhos).toBe(0)
+    // Um flake NÃO é reprovação (não entrou nos vermelhos) nem verde (a série não sai 0).
+    expect(ag.exit).not.toBe(EXIT.OK)
+  })
+
+  it("o vermelho REPETÍVEL continua reprovando a série — o retry não amolece o veredito", () => {
+    const repetido = junta(vermelho("a"), vermelho("a"))
+    const ag = agregar([verde(), repetido])
+    expect(ag).toMatchObject({ veredito: "broken", exit: EXIT.BROKEN, vermelhos: 1, flakes: 0 })
+  })
+
+  it("a CLI re-mede MESMO: um comando que sempre reprova sai vermelho com `tentativas: 2`", () => {
+    const cli = spawnSync(
+      "node",
+      [
+        "scripts/prove-stack-per-commit.mjs",
+        "--only",
+        shaDoHead(),
+        "--sem-afetados",
+        "--sempre",
+        "node -e process.exit(1)",
+        "--json",
+      ],
+      { encoding: "utf8" },
+    )
+    const j = JSON.parse(cli.stdout) as {
+      resultados: { veredito: string; flaky: boolean; tentativas: number; motivo: string }[]
+      vermelhos: number
+    }
+    expect(j.resultados).toHaveLength(1)
+    expect(j.resultados[0]).toMatchObject({ veredito: "vermelho", flaky: false, tentativas: 2 })
+    expect(j.resultados[0].motivo).toContain("REPETIU")
+  })
+
+  it("a CLI re-mede o FLAKE e o publica: o comando falha na 1ª vez e passa na 2ª", () => {
+    // O marcador fica FORA do worktree de propósito: cada medição materializa o
+    // commit num worktree NOVO, então um marcador dentro dele nunca sobreviveria
+    // à 2ª tentativa — e o teste mediria outra coisa (o worktree, não o retry).
+    const dir = mkdtempSync(join(tmpdir(), "pilha-flake-"))
+    const marca = join(dir, "marca")
+    const script = join(dir, "flake.mjs")
+    writeFileSync(
+      script,
+      `import { existsSync, writeFileSync } from "node:fs"\n` +
+        `const m = ${JSON.stringify(marca)}\n` +
+        `if (!existsSync(m)) { writeFileSync(m, "1"); console.error("falha da 1ª vez"); process.exit(1) }\n`,
+    )
+    const cli = spawnSync(
+      "node",
+      [
+        "scripts/prove-stack-per-commit.mjs",
+        "--only",
+        shaDoHead(),
+        "--sem-afetados",
+        "--sempre",
+        `node ${script}`,
+        "--json",
+      ],
+      { encoding: "utf8" },
+    )
+    const j = JSON.parse(cli.stdout) as {
+      resultados: { veredito: string; flaky: boolean; tentativas: number; motivo: string }[]
+      flakes: number
+    }
+    expect(j.resultados[0]).toMatchObject({ veredito: "indeterminado", flaky: true, tentativas: 2 })
+    expect(j.resultados[0].motivo).toContain("FLAKE")
+    expect(j.flakes).toBe(1)
+    // E o exit NÃO é 0: "não sei" nunca vale verde — quem decide é a repetição.
+    expect(cli.status).toBe(EXIT.UNAVAILABLE)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it("um commit que PASSOU não é re-medido (o custo extra é só do vermelho)", () => {
+    const cli = spawnSync(
+      "node",
+      [
+        "scripts/prove-stack-per-commit.mjs",
+        "--only",
+        shaDoHead(),
+        "--sem-afetados",
+        "--sempre",
+        "node -e process.exit(0)",
+        "--json",
+      ],
+      { encoding: "utf8" },
+    )
+    const j = JSON.parse(cli.stdout) as {
+      resultados: { veredito: string; tentativas: number }[]
+    }
+    expect(j.resultados[0]).toMatchObject({ veredito: "verde", tentativas: 1 })
+  })
+})
+
+// ── O GATE QUE NÃO EXISTE NESTA ÁRVORE ─────────────────────────────────────
+//
+// O `CONJUNTO_SEMPRE` é o do HEAD, e um commit ANTERIOR à criação de um gate
+// não carrega o arquivo dele: o `node` existe, o arquivo não, e o processo morre
+// com `MODULE_NOT_FOUND` e exit 1. Lido como vermelho, isso ACUSA o commit de um
+// defeito que ele não tem — medido na triagem de um run real (25/09/2026), **13
+// dos 59 vermelhos** eram desta classe. O que se trava aqui é a classificação:
+// alvo AUSENTE é INDETERMINADO com a razão nomeada, e o gate PRESENTE que
+// reprova continua vermelho (a régua é a existência do ALVO, nunca o exit).
+describe("o gate que a árvore do commit não carrega não reprova o commit", () => {
+  it("`gateAusente` mede o ALVO do comando — e um comando sem alvo não tem o que estar ausente", () => {
+    expect(
+      gateAusente({ dir: RAIZ, cmd: ["node", "scripts/prove-stack-per-commit.mjs"] }),
+    ).toBeNull()
+    const ausente = gateAusente({ dir: RAIZ, cmd: ["node", "scripts/gate-que-nao-existe-xyz.mjs"] })
+    expect(ausente).toContain("scripts/gate-que-nao-existe-xyz.mjs")
+    expect(ausente).toContain("não existe NESTA árvore")
+    // Sem alvo de arquivo (`node -e 0`, um binário do PATH): nada a declarar —
+    // é isso que impede a classe de virar um "tudo indeterminado" genérico.
+    expect(gateAusente({ dir: RAIZ, cmd: ["node", "-e", "0"] })).toBeNull()
+    expect(gateAusente({ dir: RAIZ, cmd: ["git", "status"] })).toBeNull()
+    // O alvo ABSOLUTO (um script do TEMP, fora da árvore medida) é medido como
+    // ele é: `--sempre "node /tmp/x/gate.mjs"` não é "gate ausente da árvore" —
+    // medido, o `join` do worktree lia esse caminho como ausente.
+    const fora = join(tmpdir(), "gate-fora-da-arvore.mjs")
+    writeFileSync(fora, "// um gate de fora da árvore medida\n")
+    expect(gateAusente({ dir: RAIZ, cmd: ["node", fora] })).toBeNull()
+    rmSync(fora, { force: true })
+  })
+
+  it("a CLI classifica o gate ausente como INDETERMINADO (exit 2) e NOMEIA o arquivo — não é reprovação", () => {
+    const cli = spawnSync(
+      "node",
+      [
+        "scripts/prove-stack-per-commit.mjs",
+        "--only",
+        shaDoHead(),
+        "--sem-afetados",
+        "--sempre",
+        "node scripts/gate-que-nao-existe-xyz.mjs",
+        "--json",
+      ],
+      { encoding: "utf8" },
+    )
+    const j = JSON.parse(cli.stdout) as {
+      veredito: string
+      vermelhos: number
+      indeterminados: number
+      resultados: { veredito: string; motivo: string; sempre: { ausente?: boolean }[] }[]
+    }
+    expect(cli.status).toBe(EXIT.UNAVAILABLE)
+    expect(j.vermelhos).toBe(0)
+    expect(j.indeterminados).toBe(1)
+    expect(j.resultados[0].veredito).toBe("indeterminado")
+    expect(j.resultados[0].motivo).toContain("scripts/gate-que-nao-existe-xyz.mjs")
+    expect(j.resultados[0].sempre[0].ausente).toBe(true)
+  })
+
+  it("o gate PRESENTE que reprova continua vermelho — o ausente não amolece o que existe", () => {
+    const cli = spawnSync(
+      "node",
+      [
+        "scripts/prove-stack-per-commit.mjs",
+        "--only",
+        shaDoHead(),
+        "--sem-afetados",
+        "--sempre",
+        "node -e process.exit(1)",
+        "--json",
+      ],
+      { encoding: "utf8" },
+    )
+    const j = JSON.parse(cli.stdout) as {
+      vermelhos: number
+      resultados: { veredito: string; sempre: { ausente?: boolean }[] }[]
+    }
+    expect(cli.status).toBe(EXIT.BROKEN)
+    expect(j.vermelhos).toBe(1)
+    expect(j.resultados[0].veredito).toBe("vermelho")
+    expect(j.resultados[0].sempre[0].ausente).toBeUndefined()
   })
 })
