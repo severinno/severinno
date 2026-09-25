@@ -346,20 +346,7 @@ export const RUNNER_PATH_REVIEW_DAYS = DEFAULT_REVIEW_DAYS
  *
  * @type {{job: string, addedAt: string, reason: string}[]}
  */
-export const RUNNER_PATH_ALLOWLIST = [
-  {
-    job: ".github/workflows/pr-check.yml::check",
-    addedAt: "2026-09-24",
-    reason:
-      "o job EXECUTA a stack (o `check-mirror-coverage.mjs` SPAWNA os guards do recorte em worktrees, e `bun run lint`/`bunx prisma generate` rodam de verdade): ele le YAML de passagem, nao E um gate de leitura — a classe derivada e de LEITURA, e mover este job nao muda veredito nenhum, so o lugar onde a suite inteira roda",
-  },
-  {
-    job: ".github/workflows/pr-check.yml::pre-commit-in-runner-proof",
-    addedAt: "2026-09-24",
-    reason:
-      "a prova roda o hook DENTRO da imagem do runner `ubuntu-bun` (o `docker pull`/`docker run` vive no corpo de `prove-pre-commit-in-runner.mjs`, fora do scan de passo): o que ela MEDE e a IMAGEM da forja com o tier-1 engajado — no caminho hospedado nao ha imagem local e a medicao passaria a medir outra coisa",
-  },
-]
+export const RUNNER_PATH_ALLOWLIST = []
 
 /** A linha de uma CHAVE filha direta de um job (delega ao `forge-workflows`). */
 function valorDeChaveDoJob(lines, headerIdx, jobIndent, key) {

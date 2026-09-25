@@ -577,7 +577,7 @@ jobs:
   # pacotes.
   pre-commit-in-runner-proof:
     name: Pre-commit Proof (dentro da imagem do runner)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     # packages: read — pull da imagem PRIVADA ghcr.io/<owner>/ubuntu-bun quando
     # ela ainda não estiver local (auth automático do runner; mesmo contrato do
     # tier1-fastpath-guard e do mutation-coord-timing-act-guard).
@@ -2502,7 +2502,7 @@ jobs:
         run: echo "✅ TypeScript typecheck (bun run typecheck — tsc --noEmit com heap 4096MB, uma régua só) passed."
 
   check:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 

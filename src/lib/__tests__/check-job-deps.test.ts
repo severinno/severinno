@@ -910,20 +910,20 @@ describe("o caminho do gate de leitura de YAML", () => {
       { linha: expect.any(Number), alvo: "scripts/le-yaml.mjs" },
     ])
 
-    // E o veredito da ÁRVORE REAL publica a fila NO VERDE — no texto e no
-    // --json: a publicação é o substituto da varredura manual.
+    // O veredito da ÁRVORE REAL: a árvore MIGROU (os 2 jobs da allowlist foram
+    // ao caminho hospedado em 25/09/2026), então o verde dela é ABSOLUTO — sem
+    // a linha da fila no texto e sem lista no `--json`. É o caso "migrado" que
+    // este teste media por fixture, agora medido no repositório: a fila
+    // envelheceu sozinha, como a promessa declarava.
     const real = rodaCli(process.cwd())
     expect(real.status).toBe(EXIT.OK)
-    expect(real.saida).toContain("fila de migracao")
-    for (const entrada of RUNNER_PATH_ALLOWLIST) expect(real.saida).toContain(entrada.job)
+    expect(real.saida).not.toContain("fila de migracao")
     const realJson = JSON.parse(rodaCli(process.cwd(), ["--json"]).saida) as {
       resumo: { filaMigracao: number }
       caminho: { filaMigracao: { id: string }[] }
     }
-    expect(realJson.resumo.filaMigracao).toBe(RUNNER_PATH_ALLOWLIST.length)
-    expect(realJson.caminho.filaMigracao.map((f) => f.id).sort()).toEqual(
-      RUNNER_PATH_ALLOWLIST.map((e) => e.job).sort(),
-    )
+    expect(realJson.resumo.filaMigracao).toBe(0)
+    expect(realJson.caminho.filaMigracao).toEqual([])
 
     // Migrado o job (o mesmo leitor no caminho hospedado), a fila ENVELHECE
     // sozinha: verde absoluto é verde SEM fila — nem linha no texto, nem lista
@@ -958,15 +958,9 @@ describe("o caminho do gate de leitura de YAML", () => {
         .map((j) => j.id)
         .sort(),
     ).toEqual(RUNNER_PATH_ALLOWLIST.map((e) => e.job).sort())
-    // A FILA DA ÁRVORE REAL é a mesma lista, ORDENADA — e é o que o veredito
-    // publica para o próximo a migrar (hoje: o `check`, que executa a stack, e
-    // a prova do pre-commit dentro da imagem).
-    expect(auditoria.caminho.filaMigracao.map((f) => f.id).sort()).toEqual(
-      RUNNER_PATH_ALLOWLIST.map((e) => e.job).sort(),
-    )
-    expect(auditoria.caminho.filaMigracao.map((f) => f.id)).toEqual(
-      [...auditoria.caminho.filaMigracao.map((f) => f.id)].sort(),
-    )
+    // A FILA DA ÁRVORE REAL está VAZIA (a migração de 25/09/2026 levou os 2
+    // jobs ao caminho hospedado) — e a vacuidade é MEDIDA aqui, não presumida.
+    expect(auditoria.caminho.filaMigracao).toEqual([])
   })
 
   it("o `pull_request` é lido do gatilho, não da prosa", () => {

@@ -3898,11 +3898,13 @@ declarada, noutro canal). Um job sem `runs-on` lido sai NOMEADO em
 `foraDoEscopo`.
 
 **O que a classe MEDIU nesta árvore** (o número sai do `--json`): **10 jobs**
-leem YAML no espelho — **8** no caminho hospedado e **2** com exceção declarada
-(o `check`, que EXECUTA a stack: o `check-mirror-coverage` spawna os guards do
-recorte em worktrees; e o `pre-commit-in-runner-proof`, cujo `docker run` vive no
-corpo do script — fora do scan de passo — porque o que ele mede É a imagem da
-forja). A derivação achou **4 gates que a varredura manual tinha deixado para
+leem YAML no espelho, TODOS no caminho hospedado — **0** com exceção declarada
+desde a migração de 25/09/2026, que levou os dois últimos ao caminho que não
+depende do runner (o `check`, que EXECUTA a stack: o `check-mirror-coverage`
+spawna os guards do recorte em worktrees; e o `pre-commit-in-runner-proof`, cujo
+`docker run` vive no corpo do script — fora do scan de passo — porque o que ele
+mede É a imagem da forja, e na forja dona do merge o `ubuntu-latest` É o
+container da imagem, o caso 1 que o próprio script da prova declara suportar). A derivação achou **4 gates que a varredura manual tinha deixado para
 trás** (`secrets-guard`, `workflow-refs-guard`, `mutation-jobs-staged-guard` e o
 próprio `check`): é o que uma classe derivada compra — um gate novo entra no
 julgamento por FATO, não por alguém lembrar de movê-lo.
@@ -3917,7 +3919,9 @@ verde-declarado que o próximo a migrar precisa ver, e publicar a fila no veredi
 é o que dispensa cruzar `RUNNER_PATH_ALLOWLIST` com os workflows à mão. A fila
 ENVELHECE sozinha: migrado o job, o verde fica sem a linha (a fila vazia não
 imprime nada); entrado um gate novo na classe, a fila o nomeia sozinha. Na
-medição desta árvore a fila é a das **2** exceções acima. A mutação **M12** da
+medição desta árvore a fila está VAZIA — a migração de 25/09/2026 levou as 2
+exceções ao caminho hospedado, e o verde envelheceu até o absoluto (a allowlist
+vazia: exceção sem objeto é violação, então a declaração saiu com o objeto). A mutação **M12** da
 suíte prova a publicação: com a derivação da fila morta, o verde deixa de
 nomear — e a suíte unitária fica vermelha no PR.
 

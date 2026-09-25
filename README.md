@@ -2230,7 +2230,12 @@ com o par de install — o hospedado chega sem `node_modules` — ou a exceção
 declarada com data e motivo (`RUNNER_PATH_ALLOWLIST`). Medido em 24/09/2026: com
 o runner auto-hospedado `hostinger-runner` offline, os 50 jobs do `pr-check`
 ficaram ~35 min em `queued` e os gates de leitura não cunharam veredito nenhum —
-a forja não erra, ela espera. E quem ainda deve migrar sai NO veredito: a
+a forja não erra, ela espera. Medido em 25/09/2026: a MIGRAÇÃO fechou a classe —
+os 2 últimos jobs da fila foram ao caminho hospedado com o par canônico de
+install (o `check`, que executa a stack, e o `pre-commit-in-runner-proof`, cuja
+prova roda dentro da imagem na forja dona do merge pelo label `docker://` do
+`act_runner`), e a allowlist ficou VAZIA — exceção sem objeto é violação, então a
+declaração saiu com o objeto. E quem ainda deve migrar sai NO veredito: a
 **fila de migração** — quem pede a forja sem que nenhum fato exija a imagem dela,
 a exceção declarada incluída — é publicada nomeada na linha verde do guard (e no
 `--json`), em ordem, com o remédio; a fila envelhece sozinha (migrado o job, o
