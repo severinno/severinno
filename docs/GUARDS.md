@@ -3635,7 +3635,13 @@ julga é o custo ABSOLUTO de cada forma, e o delta diz de onde ele veio.
 **esquema v6**: ela carrega as seis famílias e, por família, `meta.families` com
 o **ATO** que mediu o número (`measured` nesta rodada · `reused` herdada de outra
 por `--merge` · `not-measured`) e o **COMMIT de origem**, ao lado de `meta.act`
-(o comando que produziu o arquivo) e do carimbo da máquina. A régua de "esta
+(o comando que produziu o arquivo) e do carimbo da máquina. O **ESTADO DA ÁRVORE**
+que o ato encontrou entra no mesmo registro (`meta.treeState`) com o **TRABALHO**
+não commitado (`staged`/`unstaged` — o que um commit carregaria e a origem não
+tem) e o **ARTEFATO LOCAL DECLARADO** (`declared`, com a regra versionada que o
+declara e o motivo de cada entrada) SEPARADOS: o que o repositório declara local
+não suja a árvore e sai NOMEADO em vez de acusado, e o que casar a tabela sem
+prova versionada sai contado em `undeclared`. A régua de "esta
 família foi medida?" é **UMA SÓ** (`FAMILY_MEASURED`) — a mesma que a comparação
 usa para dizer que falta cobertura, e a mesma que a procedência grava: a
 procedência e o veredito não podem divergir sobre o que foi medido, e uma seção
@@ -5163,13 +5169,26 @@ formas medidas, a `doc-hashes`, **não existia naquele commit** (a suíte estava
 ÍNDICE quando o ato rodou). O número declarado descrevia uma matriz que o commit
 de origem não carrega, e nenhuma régua olhava isso: o frescor da origem é
 PASSADO, não conteúdo. O ATO passou a gravar **o estado da árvore**
-(`meta.treeState`: `git status --porcelain` como DADO — `clean`, e os caminhos
-separados em `staged` (o que o PRÓXIMO commit carrega) e `unstaged` (o que nem
-isso), porque um número medido sobre eles não descreve o commit que a origem
-grava — fail-closed: `git` que não respondeu sai `unavailable`, nunca "limpa") e,
-**por forma**, se ela existe no commit de origem (`meta.formOrigin`, com o
-`script` de cada forma entrando no registro em vez de a fonte ser adivinhada por
-convenção de nome: o id `readme` mede `test-mutation-readme-guards.sh`).
+(`meta.treeState`: `git status --porcelain --ignored=matching` como DADO — o
+**TRABALHO**, com `clean` e os caminhos separados em `staged` (o que o PRÓXIMO
+commit carrega) e `unstaged` (o que nem isso), porque um número medido sobre eles
+não descreve o commit que a origem grava — fail-closed: `git` que não respondeu
+sai `unavailable`, nunca "limpa"). A árvore tem **duas coisas**, e só a primeira
+é dívida: o **ARTEFATO LOCAL DECLARADO** (`declared`) — o scratch de um ensaio, o
+estado do doctor, o cache do tsc — é o que o PRÓPRIO repositório declara local
+(regra de `.gitignore` VERSIONADA, com arquivo e linha), não suja a árvore, e o
+ato o NOMEIA porque um vermelho local explicado por scratch (o
+`workflow-run-syntax` que o `.tmp/mineracao` derrubou em 25/09/2026) tem de ter de
+onde vir no registro. A tabela (`ARTEFATOS_LOCAIS_DECLARADOS`) é MOTIVADA — só
+entra o artefato que PODE MUDAR o que o ato mede — e a entrada não basta: o git
+PROVA a declaração (ignorado, com regra versionada), o que casar a tabela sem
+essa prova sai CONTADO em `undeclared` (o `.git/info/exclude` local ou um ignore
+global é declaração da máquina, não do repositório), e um caminho VERSIONADO que
+case um prefixo continua no trabalho: a declaração não ignora o que o índice
+carrega. E, **por forma**, se ela existe no commit de origem (`meta.formOrigin`,
+com o `script` de cada forma entrando no registro em vez de a fonte ser
+adivinhada por convenção de nome: o id `readme` mede
+`test-mutation-readme-guards.sh`).
 
 **A régua de "de qual arquivo veio esta forma?" é UMA SÓ, e as duas pontas a
 usam.** Ela mora na FOLHA (`fonteDaForma`/`FORM_SECTION` em
@@ -5202,17 +5221,21 @@ sobre o commit de origem, e a linha sai também no relatório do próprio ATO
 onde ele a produziu.
 
 **LIMITES DECLARADOS, e são dois.** (1) O `meta.treeState` e o `formOrigin`
-entram no registro versionado no PRÓXIMO ato: a baseline de hoje (`8e76c9a6`) é
-anterior a estes campos, e o que abre o item é derivado das FORMAS (o
-`missing`/`semResposta` do fato), não do estado gravado — um registro sem o campo
-não é lido como "árvore limpa" por régua nenhuma. O estado da árvore é o que o
-próprio ATO publica ao medir, medido nesta árvore:
-`⚠️ a árvore NÃO estava limpa no ato: 3 caminho(s) no ÍNDICE (staged) e 80 só na
-árvore (unstaged)`. (2) A pergunta é sobre a EXISTÊNCIA do arquivo no commit, não
-sobre o CONTEÚDO: uma forma cujo arquivo existe na origem mas foi medido com uma
-versão modificada no índice sai como "no commit" — o `staged` do
-`meta.treeState` é quem denuncia isso, e é por isso que ele é gravado em vez de a
-régua confiar só no `cat-file`.
+entram no registro versionado no PRÓXIMO ato: a baseline versionada (`405de5c3`)
+já os carrega, mas um registro ANTERIOR a estes campos não é lido como "árvore
+limpa" por régua nenhuma, e o que abre o item é derivado das FORMAS (o
+`missing`/`semResposta` do fato), não do estado gravado. O estado da árvore é o
+que o próprio ATO publica ao medir, medido nesta árvore:
+`⚠️ TRABALHO não commitado no ato: 3 caminho(s) no ÍNDICE (staged) e 80 só na
+árvore (unstaged)` — e o artefato declarado sai em linha PRÓPRIA
+(`🗂 N artefato(s) local(is) DECLARADO(s) na árvore — não é dívida`), sem nunca
+entrar em `staged`/`unstaged`: o registro deixa de acusar como sujeira o que o
+repositório declara local. `clean` responde só pelo TRABALHO — uma árvore com
+artefato declarado e sem trabalho sai limpa e NOMEANDO o que estava vestido. (2)
+A pergunta é sobre a EXISTÊNCIA do arquivo no commit, não sobre o CONTEÚDO: uma
+forma cujo arquivo existe na origem mas foi medido com uma versão modificada no
+índice sai como "no commit" — o `staged` do `meta.treeState` é quem denuncia
+isso, e é por isso que ele é gravado em vez de a régua confiar só no `cat-file`.
 
 **A TERCEIRA PERGUNTA: a matriz ANDOU? — e ela abre ITEM DATADO, não uma linha
 anônima.** As duas réguas acima são de CONTEÚDO: o `check:mutation-count` compara

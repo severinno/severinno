@@ -759,9 +759,24 @@ describe("bench-guard-timing — a baseline versionada carrega CADA sub-test", (
       expect(s.role).toBe(s.label)
       expect(Number.isFinite(s.ms)).toBe(true)
       expect(s.ms).toBeGreaterThan(0)
-      expect(s.exit).toBe(0)
       expect(s.metades).toBeGreaterThan(0)
     }
+    // Um sub-test que NÃO passou pode estar no registro — o custo dele não julga
+    // nada —, mas não pode passar em SILÊNCIO: o registro versionado tem de
+    // NOMEAR cada forma vermelha em `mutations.violations`, e cada violação de
+    // "NÃO passaram" tem de nomear uma forma que existe e está vermelha (as duas
+    // direções). A régua que produz a violação é `mutationCostViolations`, provada
+    // acima; aqui se prova o que o ARQUIVO declara. Medido em 26/09/2026: o
+    // `workflow-run-syntax` fica vermelho NESTA árvore por um scratch local
+    // (`.tmp/mineracao`, gitignored — declarado no `meta.treeState`), e o CI, que
+    // não o tem, o vê verde: exigir verde absoluto aqui seria exigir que o
+    // registro escondesse o que a árvore mediu.
+    const vermelhas = subs.filter((s) => s.exit !== 0).map((s) => s.role)
+    const declaradas = (baseline.mutations.violations as string[]).filter((v) =>
+      v.includes("NÃO passaram"),
+    )
+    expect(declaradas).toHaveLength(vermelhas.length)
+    for (const role of vermelhas) expect(declaradas.join(" ")).toContain(role)
     // As somas da baseline FECHAM com as formas que ela guarda: `harnessMs` é a
     // diferença entre o total do master e a soma — se alguém editar um sub-test à
     // mão, a conta para de fechar e este teste cai.

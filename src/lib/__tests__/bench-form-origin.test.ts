@@ -7,7 +7,13 @@ import {
   fonteDaForma,
   mapaDoMaster,
 } from "../../../scripts/bench-families.mjs"
-import { formOrigin, pathInCommit, treeState } from "../../../scripts/bench-guard-timing.mjs"
+import {
+  ARTEFATOS_LOCAIS_DECLARADOS,
+  artefatosDeclarados,
+  formOrigin,
+  pathInCommit,
+  treeState,
+} from "../../../scripts/bench-guard-timing.mjs"
 import { formOriginFact, formOriginLine } from "../../../scripts/bench-freshness.mjs"
 
 /**
@@ -109,24 +115,44 @@ describe("fonteDaForma — de qual ARQUIVO veio esta forma?", () => {
   })
 })
 
-describe("treeState — o ESTADO DA ÁRVORE no ato (staged/unstaged)", () => {
+describe("treeState — o ESTADO DA ÁRVORE no ato (TRABALHO × artefato DECLARADO)", () => {
   // O `run` é o `spawnSync` REAL no módulo: o dublê entra pelo mesmo lugar e o
   // `as never` é o apagamento de tipo que o resto do repositório usa para injetar
-  // um dublê numa costura tipada pelo `node:child_process`.
-  const comStatus = (stdout: string, status = 0) => ({
-    run: (() => ({ status, stdout })) as never,
+  // um dublê numa costura tipada pelo `node:child_process`. O ato pergunta ao git
+  // em TRÊS comandos (o status da árvore, a regra que declara um ignorado e o
+  // índice), então o dublê responde POR COMANDO — cada pergunta é provada à parte.
+  const comGit = (respostas: {
+    status?: string
+    statusCode?: number
+    regras?: string
+    regrasCode?: number
+    versionados?: string
+    versionadosCode?: number
+  }) => ({
+    run: ((_cmd: string, args: string[]) => {
+      if (args[0] === "status") {
+        return { status: respostas.statusCode ?? 0, stdout: respostas.status ?? "" }
+      }
+      if (args[0] === "check-ignore") {
+        return { status: respostas.regrasCode ?? 0, stdout: respostas.regras ?? "" }
+      }
+      if (args[0] === "ls-files") {
+        return { status: respostas.versionadosCode ?? 0, stdout: respostas.versionados ?? "" }
+      }
+      return { status: 128, stdout: "" }
+    }) as never,
   })
 
   it("separa o ÍNDICE (staged) da árvore (unstaged) e deriva o limpo", () => {
     const estado = treeState(
-      comStatus(
-        [
+      comGit({
+        status: [
           " M scripts/check-mutation-count.mjs",
           "M  scripts/bench-guard-timing.mjs",
           "MM scripts/bench-freshness.mjs",
           "?? docs/novo.md",
         ].join("\n"),
-      ),
+      }),
     )
     expect(estado.state).toBe("measured")
     expect(estado.clean).toBe(false)
@@ -137,20 +163,131 @@ describe("treeState — o ESTADO DA ÁRVORE no ato (staged/unstaged)", () => {
       "scripts/bench-freshness.mjs",
       "scripts/check-mutation-count.mjs",
     ])
+    // Sem nenhum ignorado casando a tabela, nem a regra nem o índice são lidos.
+    expect(estado.declared).toEqual([])
+    expect(estado.undeclared).toEqual([])
   })
 
-  it("a árvore LIMPA é dita limpa (e é o caso em que nada fica fora do commit)", () => {
-    const estado = treeState(comStatus("\n"))
+  it("o ARTEFATO LOCAL DECLARADO não é trabalho: sai nomeado (regra + motivo) e não suja a árvore", () => {
+    const estado = treeState(
+      comGit({
+        status: ["!! .tmp/", "!! .forge-doctor/"].join("\n"),
+        regras: [
+          ".gitignore:66:.tmp/\t.tmp/",
+          ".gitignore:109:.forge-doctor/\t.forge-doctor/",
+        ].join("\n"),
+        versionados: ".gitignore",
+      }),
+    )
     expect(estado.clean).toBe(true)
     expect(estado.staged).toEqual([])
     expect(estado.unstaged).toEqual([])
+    expect(estado.declared.map((a) => a.path)).toEqual([".forge-doctor/", ".tmp/"])
+    // A regra vem do git (arquivo, linha e padrão), e o MOTIVO vem da tabela:
+    // nenhum "declarado" sem procedência e sem porquê.
+    expect(estado.declared[1]).toEqual({
+      path: ".tmp/",
+      rule: { file: ".gitignore", line: 66, pattern: ".tmp/" },
+      porque: ARTEFATOS_LOCAIS_DECLARADOS.find((a) => a.prefixo === ".tmp/")?.porque,
+    })
+    expect(estado.undeclared).toEqual([])
+  })
+
+  it("o ignorado que a TABELA não casa não é nomeado (a lista é do ato, não inventário da árvore)", () => {
+    const estado = treeState(comGit({ status: "!! node_modules/\n" }))
+    expect(estado.clean).toBe(true)
+    expect(estado.declared).toEqual([])
+    expect(estado.undeclared).toEqual([])
+  })
+
+  it("FAIL-CLOSED: regra ausente ou de arquivo NÃO versionado vira `undeclared`, nunca `declared`", () => {
+    // A regra existe, mas mora num `.gitignore` que o índice NÃO carrega (o
+    // `--version/_/.gitignore` é o caso real desta árvore): a máquina o declarou,
+    // o repositório não.
+    const naoVersionado = treeState(
+      comGit({
+        status: "!! .tmp/",
+        regras: "--version/_/.gitignore:1:*\t.tmp/",
+        versionados: "",
+      }),
+    )
+    expect(naoVersionado.declared).toEqual([])
+    expect(naoVersionado.undeclared).toEqual([".tmp/"])
+    // E o git que não responde também não inventa declaração (fail-closed).
+    const semRegra = treeState(comGit({ status: "!! .tmp/", regrasCode: 1 }))
+    expect(semRegra.declared).toEqual([])
+    expect(semRegra.undeclared).toEqual([".tmp/"])
+    const semGit = treeState(comGit({ status: "!! .tmp/", regrasCode: 128, versionadosCode: 128 }))
+    expect(semGit.declared).toEqual([])
+    expect(semGit.undeclared).toEqual([".tmp/"])
+  })
+
+  it("a tabela NÃO tira nada do TRABALHO: um caminho versionado que casa um prefixo continua no trabalho", () => {
+    // O git não ignora o que está no índice: mesmo casando a tabela, o caminho
+    // continua sendo o que um commit carregaria — a declaração não o torna local.
+    const estado = treeState(comGit({ status: " M .tmp/versionado.md" }))
+    expect(estado.clean).toBe(false)
+    expect(estado.unstaged).toEqual([".tmp/versionado.md"])
+    expect(estado.declared).toEqual([])
+  })
+
+  it("a árvore LIMPA é dita limpa (e é o caso em que nada fica fora do commit)", () => {
+    const estado = treeState(comGit({ status: "\n" }))
+    expect(estado.clean).toBe(true)
+    expect(estado.staged).toEqual([])
+    expect(estado.unstaged).toEqual([])
+    expect(estado.declared).toEqual([])
   })
 
   it("git que não responde é `unavailable` com o motivo — nunca uma árvore limpa", () => {
-    const estado = treeState(comStatus("", 128))
+    const estado = treeState(comGit({ status: "", statusCode: 128 }))
     expect(estado.state).toBe("unavailable")
     expect(estado.clean).toBeNull()
+    expect(estado.declared).toEqual([])
+    expect(estado.undeclared).toEqual([])
     expect(estado.reason).toContain("git status")
+  })
+})
+
+describe("artefatosDeclarados — a separação (a TABELA × a prova do git)", () => {
+  const comGit = (regras: string, versionados: string) => ({
+    run: ((_cmd: string, args: string[]) => {
+      if (args[0] === "check-ignore") return { status: 0, stdout: regras }
+      if (args[0] === "ls-files") return { status: 0, stdout: versionados }
+      return { status: 128, stdout: "" }
+    }) as never,
+  })
+
+  it("a TABELA é declarada e MOTIVADA, e nenhum ignorado fora dela é perguntado ao git", () => {
+    expect(ARTEFATOS_LOCAIS_DECLARADOS.map((a) => a.prefixo)).toEqual([
+      ".tmp/",
+      ".forge-doctor/",
+      "tsconfig.tsbuildinfo",
+    ])
+    for (const entrada of ARTEFATOS_LOCAIS_DECLARADOS) {
+      expect(entrada.porque.length).toBeGreaterThan(20)
+    }
+    // Sem casado, nem `check-ignore` nem `ls-files` rodam — e o dublê reprova se
+    // rodarem: a pergunta ao git é do que casou a tabela, não da árvore inteira.
+    const explodir = {
+      run: (() => {
+        throw new Error("não devia perguntar ao git")
+      }) as never,
+    }
+    expect(artefatosDeclarados({ ignorados: ["node_modules/"], ...explodir })).toEqual({
+      declared: [],
+      undeclared: [],
+    })
+  })
+
+  it("o prefixo casa o ARQUIVO também, e o motivo viaja com o caminho declarado", () => {
+    const r = artefatosDeclarados({
+      ignorados: ["tsconfig.tsbuildinfo"],
+      ...comGit(".gitignore:50:*.tsbuildinfo\ttsconfig.tsbuildinfo", ".gitignore"),
+    })
+    expect(r.declared[0].path).toBe("tsconfig.tsbuildinfo")
+    expect(r.declared[0].rule).toEqual({ file: ".gitignore", line: 50, pattern: "*.tsbuildinfo" })
+    expect(r.declared[0].porque).toContain("cache do tsc")
   })
 })
 

@@ -1281,7 +1281,8 @@ O ato é feito em DUAS rodadas, e isso é deliberado: `--no-mutations` mede a
 bateria, o lint, o typecheck, a suíte e o hook, e `--only mutations --baseline
 --merge` mede o master e MOVE a baseline herdando o resto, com o ato e o commit de
 origem de cada família gravados no arquivo (`meta.families`), ao lado do ESTADO DA
-ÁRVORE que o ato encontrou (`meta.treeState`) e do que cada forma mediu
+ÁRVORE que o ato encontrou (`meta.treeState`: o TRABALHO não commitado e o
+ARTEFATO LOCAL DECLARADO, separados) e do que cada forma mediu
 (`meta.formOrigin`).
 
 **E a IDADE dessa régua deixou de ser invisível** (`scripts/bench-freshness.mjs`,
@@ -1354,8 +1355,12 @@ teto de fail-closed nunca sair com a cara de um teto medido.
 **E ela pergunta também o que a origem CONTÉM.** A idade conta commits, e
 distância não é conteúdo: foi por essa fenda que a `doc-hashes` viveu (medida em
 22/09/2026 com a suíte no ÍNDICE, num ato cujo commit de origem — `8e76c9a6` —
-não a tinha). O ato passou a gravar o ESTADO DA ÁRVORE (`meta.treeState`: limpa,
-staged e unstaged, separados) e, por forma, se ela existe no commit de origem
+não a tinha). O ato passou a gravar o ESTADO DA ÁRVORE (`meta.treeState`: `clean`
+e os caminhos do TRABALHO separados em `staged`/`unstaged`, mais o ARTEFATO
+LOCAL DECLARADO em `declared` — o que o PRÓPRIO repositório declara local, com a
+regra versionada que o declara e o motivo de cada entrada; um vermelho local
+causado por scratch passa a ter de onde vir no registro) e, por forma, se ela
+existe no commit de origem
 (`meta.formOrigin`, com o `script` de cada forma no registro em vez de a fonte ser
 adivinhada pelo nome). A régua de "de qual arquivo veio esta forma?" é UMA SÓ (a
 folha `scripts/bench-families.mjs`), aplicada pelo ato à árvore e pela régua da
@@ -1363,9 +1368,11 @@ idade ao commit. O veredito publica a linha ao lado da idade (uma idade vencida
 não pode MASCARAR uma forma que a origem não tem), a classe entra como dúvida com
 o remédio — commite a árvore e rode o ato de novo — e o item
 `bench-forma-fora-do-commit` do registro datado (`ci/unproven.json`) fecha só com
-`missing` e `semResposta` em ZERO: "não perguntei" não fecha dívida. No
-repositório de hoje ela MEDE uma forma fora (a `doc-hashes`), e é essa a dívida
-aberta.
+`missing` e `semResposta` em ZERO: "não perguntei" não fecha dívida. No registro
+versionado de hoje as 43 formas com fonte declarada estão no commit de origem
+(`missing` e `semResposta` em ZERO): a dívida que a `doc-hashes` declarou fecha
+por essa MEDIÇÃO — o ato foi re-rodado com a árvore COMITADA, e é isso que a
+régua lê.
 
 **LIMITE DECLARADO:** a régua mede FRESCOR, não exatidão — um commit a
 mais pode não mudar nada do que a família mede; o que ela impede é o silêncio de

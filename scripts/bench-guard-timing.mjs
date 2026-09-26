@@ -1281,27 +1281,207 @@ export const HOOK_DETECTION_CMD = `node scripts/${REMEDY}`
 // commit de origem não a tem, e o número declarado passou a descrever uma matriz
 // que o commit não carrega. Aqui isso deixa de ser silêncio: o ato grava o estado
 // da árvore (staged/unstaged) e, por forma, se ela existe no commit de origem.
+//
+// DUAS COISAS MORAM NA ÁRVORE, e só uma é dívida. O TRABALHO — o caminho que o
+// `git status` reporta modificado/novo e que NÃO é ignorado — é o que um commit
+// carregaria: medir com ele na frente é medir uma árvore que a origem não tem, e
+// é isso que o `clean` denuncia. O ARTEFATO LOCAL DECLARADO — o que o PRÓPRIO
+// repositório declara local (regra de `.gitignore` VERSIONADA, com arquivo e
+// linha) — não é dívida de ninguém: o `.tmp/` de um ensaio, o estado do doctor e
+// o cache do tsc são esperados na árvore e o CI não os tem. Sem a distinção, o
+// registro versionado acusava os dois como "árvore suja" — e um vermelho local
+// causado por scratch (o `workflow-run-syntax` que o `.tmp/mineracao` derrubou em
+// 25/09/2026) ficava sem de onde vir no registro. Agora o ato NOMEIA o que estava
+// vestido, e o `porque` de cada entrada da tabela viaja com ele.
 
 /**
- * O `git status --porcelain` da árvore real, como DADO.
+ * A TABELA dos artefatos locais que o ato declara — o que ele pode encontrar na
+ * árvore sem que seja dívida.
  *
- * Os dois conjuntos são separados de propósito: `staged` é o que o PRÓXIMO
- * commit vai carregar (o índice já difere do HEAD) e `unstaged` é o que nem
- * isso — um número medido sobre eles não descreve o commit que a baseline grava
- * como origem.
+ * O CRITÉRIO de quem entra é o que PODE MUDAR o que o ato mede: o scratch que um
+ * guard lê (foi ele que reprovou o `workflow-run-syntax` local), o estado que o
+ * doctor grava e o cache que o typecheck apaga para medir frio. Artefato que não
+ * toca medição nenhuma (`node_modules/`, o build) NÃO entra: a lista existe para
+ * a procedência NOMEAR o que estava vestido, não para inventariar a árvore.
  *
- * @returns {{state: string, clean: boolean|null, staged: string[], unstaged: string[], reason: string|null}}
+ * A entrada aqui não basta para um caminho ser declarado (ver
+ * `artefatosDeclarados`): ela diz o que o ato afirma, e quem prova a afirmação é
+ * o git — regra VERSIONADA que declara o caminho ignorado. Tabela e prova são
+ * coisas separadas de propósito: a entrada sem prova vira `undeclared`, dita.
+ *
+ * @type {{prefixo: string, porque: string}[]}
+ */
+export const ARTEFATOS_LOCAIS_DECLARADOS = [
+  {
+    prefixo: ".tmp/",
+    porque:
+      "scratch dos ensaios locais (o que uma sessão escreve para ensaiar e não commita); o `.gitignore` o declara local e o CI não o tem",
+  },
+  {
+    prefixo: ".forge-doctor/",
+    porque:
+      "estado de runtime do `forge-doctor`, regenerado a cada run — o PRÓPRIO ato roda o doctor (--ci)",
+  },
+  {
+    prefixo: "tsconfig.tsbuildinfo",
+    porque: "cache do tsc — a família `typecheck` o apaga para medir frio, e o gate o recria",
+  },
+]
+
+/** O caminho casa o prefixo de alguma entrada da tabela? (a entrada, ou `null`.) */
+function entradaDaTabela(caminho, tabela = ARTEFATOS_LOCAIS_DECLARADOS) {
+  return tabela.find((a) => caminho === a.prefixo || caminho.startsWith(a.prefixo)) ?? null
+}
+
+/**
+ * A REGRA que declara local cada caminho ignorado — `git check-ignore -v`, com os
+ * caminhos pelo stdin (uma pergunta para todos).
+ *
+ * A resposta traz arquivo, linha e padrão; é ela que dá PROCEDÊNCIA à declaração
+ * ("declarado por `.gitignore:66 (.tmp/)`") em vez de o ato afirmar por conta
+ * própria. Sem resposta (git fora do ar, ou nenhum caminho ignorado) o mapa sai
+ * vazio — e um caminho sem regra nunca vira artefato.
+ *
+ * @param {string[]} caminhos
+ * @returns {Map<string, {file: string, line: number, pattern: string}>}
+ */
+export function regrasQueDeclaram(caminhos, { cwd = REPO_ROOT, run = spawnSync } = {}) {
+  const regras = new Map()
+  if (caminhos.length === 0) return regras
+  let res
+  try {
+    res = run("git", ["check-ignore", "-v", "--stdin"], {
+      cwd,
+      encoding: "utf8",
+      input: `${caminhos.join("\n")}\n`,
+      timeout: 30_000,
+    })
+  } catch {
+    return regras
+  }
+  if (res?.status !== 0) return regras
+  for (const linha of String(res.stdout ?? "").split("\n")) {
+    const tab = linha.indexOf("\t")
+    if (tab < 0) continue
+    const m = /^(.+):(\d+):(.*)$/.exec(linha.slice(0, tab))
+    if (!m) continue
+    regras.set(linha.slice(tab + 1).trim(), { file: m[1], line: Number(m[2]), pattern: m[3] })
+  }
+  return regras
+}
+
+/**
+ * Os arquivos que o ÍNDICE carrega (`git ls-files`) — a régua do "declarado pelo
+ * REPOSITÓRIO".
+ *
+ * Existe para separar a declaração VERSIONADA da que é só da MÁQUINA: uma regra
+ * do `.git/info/exclude` (local de cada clone) ou de um ignore global também
+ * esconde o caminho do `git status`, mas não é o repositório que o declara — e
+ * aceitá-la faria o registro chamar de "declarado" o que ninguém versionou. Sem
+ * resposta do git o conjunto sai vazio: fail-closed, nada é declarado.
+ *
+ * @param {string[]} caminhos
+ * @returns {Set<string>}
+ */
+export function arquivosVersionados(caminhos, { cwd = REPO_ROOT, run = spawnSync } = {}) {
+  const versionados = new Set()
+  const distintos = [...new Set(caminhos)]
+  if (distintos.length === 0) return versionados
+  let res
+  try {
+    res = run("git", ["ls-files", "--", ...distintos], { cwd, encoding: "utf8", timeout: 30_000 })
+  } catch {
+    return versionados
+  }
+  if (res?.status !== 0) return versionados
+  for (const linha of String(res.stdout ?? "").split("\n")) {
+    const p = linha.trim()
+    if (p !== "") versionados.add(p)
+  }
+  return versionados
+}
+
+/**
+ * A SEPARAÇÃO: dos caminhos que o git reporta IGNORADOS e que casam a tabela,
+ * quais o repositório declara local de verdade — e quais não puderam ser provados.
+ *
+ * `declared` exige as duas metades: o git ignorar o caminho (a foto do status) E
+ * a regra vir de um arquivo VERSIONADO. `undeclared` é o resto — o que casou a
+ * tabela sem prova —, CONTADO em vez de sumir: uma declaração que o git não
+ * confirma não pode virar silêncio, e é o que impede a tabela de virar uma
+ * isenção que ninguém revisa.
+ *
+ * O que esta função NÃO faz é tirar caminho do TRABALHO: ela só olha os
+ * ignorados. Um arquivo versionado que case um prefixo da tabela continua no
+ * `staged`/`unstaged` — o git não ignora o que está no índice, e a declaração não
+ * torna local o que o commit carrega.
+ *
+ * @param {{ignorados?: string[], cwd?: string, run?: Function, tabela?: {prefixo: string, porque: string}[]}} [o]
+ * @returns {{declared: {path: string, rule: {file: string, line: number, pattern: string}, porque: string}[], undeclared: string[]}}
+ */
+export function artefatosDeclarados({
+  ignorados = [],
+  cwd = REPO_ROOT,
+  run = spawnSync,
+  tabela = ARTEFATOS_LOCAIS_DECLARADOS,
+} = {}) {
+  const casados = ignorados.filter((p) => entradaDaTabela(p, tabela) !== null)
+  const declared = []
+  const undeclared = []
+  if (casados.length === 0) return { declared, undeclared }
+  const regras = regrasQueDeclaram(casados, { cwd, run })
+  const versionados = arquivosVersionados(
+    [...regras.values()].map((r) => r.file),
+    { cwd, run },
+  )
+  for (const caminho of casados) {
+    const regra = regras.get(caminho)
+    if (!regra || !versionados.has(regra.file)) {
+      undeclared.push(caminho)
+      continue
+    }
+    declared.push({ path: caminho, rule: regra, porque: entradaDaTabela(caminho, tabela).porque })
+  }
+  declared.sort((a, b) => a.path.localeCompare(b.path))
+  undeclared.sort()
+  return { declared, undeclared }
+}
+
+/**
+ * O ESTADO DA ÁRVORE no ato, como DADO — TRABALHO e ARTEFATO DECLARADO separados.
+ *
+ * A varredura é UMA (`--ignored=matching`): a mesma foto responde as duas
+ * perguntas, e um `status` sem `--ignored` esconderia justamente os artefatos
+ * (invisíveis para o porcelain comum) — a segunda varredura, além de poder
+ * descrever outra árvore se algo escrevesse entre as duas, sairia de um estado
+ * que o registro não viu.
+ *
+ * `staged` é o que o PRÓXIMO commit vai carregar (o índice já difere do HEAD),
+ * `unstaged` é o que nem isso, e `clean` responde só pelo TRABALHO: o artefato
+ * declarado não suja a árvore (é declarado local), mas o ato o NOMEIA em
+ * `declared` — um vermelho local explicado por scratch (o caso medido do
+ * `workflow-run-syntax`) tem de ter de onde vir no registro. `undeclared` conta o
+ * que casou a tabela sem prova de declaração versionada, e o `reason` do estado
+ * indisponível nunca é lido como "limpa".
+ *
+ * @returns {{state: string, clean: boolean|null, staged: string[], unstaged: string[], declared: {path: string, rule: {file: string, line: number, pattern: string}, porque: string}[], undeclared: string[], reason: string|null}}
  */
 export function treeState({ cwd = REPO_ROOT, run = spawnSync } = {}) {
   let res
   try {
-    res = run("git", ["status", "--porcelain"], { cwd, encoding: "utf8", timeout: 30_000 })
+    res = run("git", ["status", "--porcelain", "--ignored=matching"], {
+      cwd,
+      encoding: "utf8",
+      timeout: 30_000,
+    })
   } catch (error) {
     return {
       state: "unavailable",
       clean: null,
       staged: [],
       unstaged: [],
+      declared: [],
+      undeclared: [],
       reason: `git status não rodou: ${error.message}`,
     }
   }
@@ -1311,6 +1491,8 @@ export function treeState({ cwd = REPO_ROOT, run = spawnSync } = {}) {
       clean: null,
       staged: [],
       unstaged: [],
+      declared: [],
+      undeclared: [],
       reason: `git status não respondeu (exit ${res?.status ?? "?"})`,
     }
   }
@@ -1319,9 +1501,16 @@ export function treeState({ cwd = REPO_ROOT, run = spawnSync } = {}) {
     .filter((l) => l.trim() !== "")
   const staged = []
   const unstaged = []
+  const ignorados = []
+  let trabalho = 0
   for (const linha of linhas) {
     const codigo = linha.slice(0, 2)
     const caminho = linha.slice(3).trim()
+    if (codigo === "!!") {
+      ignorados.push(caminho)
+      continue
+    }
+    trabalho += 1
     if (codigo === "??") {
       unstaged.push(caminho)
       continue
@@ -1329,11 +1518,14 @@ export function treeState({ cwd = REPO_ROOT, run = spawnSync } = {}) {
     if (codigo[0] !== " ") staged.push(caminho)
     if (codigo[1] !== " ") unstaged.push(caminho)
   }
+  const { declared, undeclared } = artefatosDeclarados({ ignorados, cwd, run })
   return {
     state: "measured",
-    clean: linhas.length === 0,
+    clean: trabalho === 0,
     staged: [...new Set(staged)].sort(),
     unstaged: [...new Set(unstaged)].sort(),
+    declared,
+    undeclared,
     reason: null,
   }
 }
@@ -2537,21 +2729,41 @@ function printReport(result) {
 
   // O ESTADO DA ÁRVORE no ato × o COMMIT DE ORIGEM: o número medido descreve a
   // árvore da frente e a origem gravada é o `HEAD` — o que fica no meio é dado,
-  // e o item da régua da idade se abre por causa dele.
+  // e o item da régua da idade se abre por causa dele. TRABALHO e ARTEFATO
+  // DECLARADO saem em linhas separadas: a primeira é o que a origem não tem (a
+  // acusação), a segunda é o que o repositório declara local (o contexto — não é
+  // dívida, mas explica um vermelho local).
   const arvore = meta.treeState ?? null
   const origem = meta.formOrigin ?? null
   if (arvore || origem) {
     console.log("  Estado da arvore no ato × o commit de origem:")
     console.log("  ─────────────────────────────────────────────────────")
+    const declarados = Array.isArray(arvore?.declared) ? arvore.declared : []
     if (!arvore || arvore.state !== "measured") {
       console.log(`    ⚠️  NÃO MEDIDO: ${arvore?.reason ?? "o estado da árvore não foi lido"}`)
     } else if (arvore.clean) {
       console.log(
-        "    ✅ a árvore estava LIMPA no ato — tudo o que ele mediu está no commit de origem",
+        "    ✅ nenhum TRABALHO não commitado no ato — o que ele mediu está no commit de origem",
       )
     } else {
       console.log(
-        `    ⚠️  a árvore NÃO estava limpa no ato: ${arvore.staged.length} caminho(s) no ÍNDICE (staged) e ${arvore.unstaged.length} só na árvore (unstaged)`,
+        `    ⚠️  TRABALHO não commitado no ato: ${arvore.staged.length} caminho(s) no ÍNDICE (staged) e ${arvore.unstaged.length} só na árvore (unstaged) — o número medido descreve uma árvore que a origem não tem`,
+      )
+    }
+    if (declarados.length > 0) {
+      console.log(
+        `    🗂  ${declarados.length} artefato(s) local(is) DECLARADO(s) na árvore — não é dívida:`,
+      )
+      for (const a of declarados) {
+        console.log(
+          `       · ${a.path} — declarado por ${a.rule.file}:${a.rule.line} (${a.rule.pattern}): ${a.porque}`,
+        )
+      }
+    }
+    const naoProvados = Array.isArray(arvore?.undeclared) ? arvore.undeclared : []
+    if (naoProvados.length > 0) {
+      console.log(
+        `    ⚠️  ${naoProvados.length} caminho(s) casaram a tabela de artefatos SEM declaração versionada do repositório: não contados como artefato (${naoProvados.join(", ")})`,
       )
     }
     if (origem) {
