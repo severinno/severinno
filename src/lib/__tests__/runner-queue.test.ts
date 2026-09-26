@@ -10,8 +10,10 @@
  * do GitHub, a CLI `gh`, o `docker exec … sqlite3` no container da stack). O
  * `forge-doctor.test.ts` mede o fato pelo VEREDITO, com dublê; aqui as duas
  * metades saem medidas DIRETO, com o que cada uma recebe: os parsers com os
- * payloads medidos em 24/09/2026 (5 runs em `queued` e o `action_task` da Gitea
- * 1.22), a régua da forja com os limiares do `models/actions/runner.go` v1.22.6
+ * payloads medidos em 24/09/2026 (5 runs em `queued` no GitHub) e o formato do
+ * `sqlite3 -json` da Gitea 1.22 (a fila em `action_run_job`, a linha de
+ * `action_task` só nascendo quando um runner pega), a régua da forja com os
+ * limiares do `models/actions/runner.go` v1.22.6
  * (60s = offline, 10s = idle) e as leituras com a costura de I/O injetada — sem
  * rede, sem docker e sem relógio da forja.
  *
@@ -83,8 +85,11 @@ describe("as constantes", () => {
     expect(RUNNER_QUEUE_FORGES).toEqual(["gitea", "github"])
   })
 
-  it("a espera da Gitea é `waiting` (5) e `blocked` (7) — e `running` (6) NÃO conta", () => {
-    expect(GITEA_QUEUE_STATUSES).toEqual([GITEA_TASK_STATUS.WAITING, GITEA_TASK_STATUS.BLOCKED])
+  it("a espera da Gitea é SÓ `waiting` (5) — `blocked` (7) e `running` (6) NÃO contam", () => {
+    expect(GITEA_QUEUE_STATUSES).toEqual([GITEA_TASK_STATUS.WAITING])
+    // `blocked` (7) é o job que espera `needs`/aprovação: re-registrar runner
+    // nenhum o destrava, e contá-lo publicaria o remédio errado.
+    expect(GITEA_QUEUE_STATUSES).not.toContain(GITEA_TASK_STATUS.BLOCKED)
     // Um job rodando é a forja trabalhando: contá-lo faria a fila parada se
     // disfarçar de fila andando.
     expect(GITEA_QUEUE_STATUSES).not.toContain(GITEA_TASK_STATUS.RUNNING)
@@ -664,7 +669,7 @@ function sqlite({ id = '[{"repo_id":1}]', fila = "[]", runners = "[]" } = {}) {
     // a consulta do id — a tabela do FROM é que diz qual consulta é qual.
     const stdout = /from action_runner\b/.test(sql)
       ? runners
-      : /from action_task\b/.test(sql)
+      : /from action_run_job\b/.test(sql)
         ? fila
         : /from repository\b/.test(sql)
           ? id
@@ -693,8 +698,12 @@ describe("readGiteaQueue — a fila e quem a puxaria, no banco da forja", () => 
     expect(r.ok).toBe(true)
     expect(chamadas).toHaveLength(3)
     expect(chamadas[0]).toContain("from repository")
-    expect(chamadas[1]).toContain("from action_task")
-    expect(chamadas[1]).toContain("status in (5, 7)")
+    // A fila é `action_run_job` — a linha de `action_task` só nasce quando um
+    // runner PEGA o job (e nasce `running`): lê-la aqui leria o trabalho, nunca
+    // a espera. `task_id = 0` é o filtro do `CreateTaskForRunner` da forja.
+    expect(chamadas[1]).toContain("from action_run_job")
+    expect(chamadas[1]).toContain("task_id = 0")
+    expect(chamadas[1]).toContain("status in (5)")
     expect(chamadas[2]).toContain("from action_runner")
     // O escopo dos runners: o do repo, o do dono e o global (system) — e o
     // deletado fora.
@@ -787,8 +796,8 @@ describe("readGiteaQueue — a fila e quem a puxaria, no banco da forja", () => 
   it("exit ≠ 0 é recusa nomeada, no primeiro passo que falhar", () => {
     const falha = (_bin: string, args: string[]) => {
       const sql = args[args.length - 1]
-      return sql.includes("from action_task")
-        ? { status: 1, stdout: "", stderr: "no such table: action_task", error: null }
+      return sql.includes("from action_run_job")
+        ? { status: 1, stdout: "", stderr: "no such table: action_run_job", error: null }
         : { status: 0, stdout: '[{"repo_id":1}]', stderr: "", error: null }
     }
     const r = readGiteaQueue({
@@ -800,7 +809,7 @@ describe("readGiteaQueue — a fila e quem a puxaria, no banco da forja", () => 
       nowMs,
     })
     expect(r.ok).toBe(false)
-    expect(r.detail).toContain("no such table: action_task")
+    expect(r.detail).toContain("no such table: action_run_job")
   })
 })
 

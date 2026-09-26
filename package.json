@@ -62,6 +62,7 @@
     "doctor:issue": "node scripts/forge-doctor-issue.mjs",
     "forge-runtime:prove": "node scripts/prove-forge-runtime.mjs",
     "forge-smoke:prove": "node scripts/prove-forge-smoke-ephemeral.mjs",
+    "runner-queue:prove": "node scripts/prove-runner-queue-cycle.mjs",
     "smoke-render:prove": "node scripts/prove-smoke-render-gate.mjs",
     "image-contract:prove": "node scripts/prove-image-contract.mjs",
     "merge-gate:prove": "node scripts/prove-gitea-merge-gate.mjs",

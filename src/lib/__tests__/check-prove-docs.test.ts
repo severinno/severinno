@@ -97,7 +97,7 @@ function docBlock(
 // ── a FAMÍLIA, derivada ────────────────────────────────────────────────────
 
 describe("discoverFamily — derivada de package.json, não listada", () => {
-  it("acha os DOZE comandos da família e deixa o PUBLICADOR de fora", () => {
+  it("acha os TREZE comandos da família e deixa o PUBLICADOR de fora", () => {
     const pkg = JSON.parse(
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require("node:fs").readFileSync(join(ROOT, "package.json"), "utf8"),
@@ -113,6 +113,7 @@ describe("discoverFamily — derivada de package.json, não listada", () => {
       "merge-gate:prove",
       "pre-commit-in-runner:prove",
       "runner-image:prove",
+      "runner-queue:prove",
       "smoke-render:prove",
       "stack-per-commit:prove",
       "tla-cycle:prove",
@@ -484,11 +485,11 @@ describe("CLI real — o fixture prova a cobertura E a fidelidade", () => {
 // ── o ESTADO REAL do repositório ───────────────────────────────────────────
 
 describe("audit — o repositório como ele está", () => {
-  it("nenhuma violação: os doze comandos documentam e a saída real bate", () => {
+  it("nenhuma violação: os treze comandos documentam e a saída real bate", () => {
     const report = audit({ root: ROOT })
     expect(report.violations).toEqual([])
-    expect(report.family).toHaveLength(12)
-    expect(report.results).toHaveLength(12)
+    expect(report.family).toHaveLength(13)
+    expect(report.results).toHaveLength(13)
     // O desfecho é REPORTADO, não presumido: o que não foi rodado com docker
     // aparece como indeterminado DECLARADO, nunca como "provado".
     const provados = report.results.filter(

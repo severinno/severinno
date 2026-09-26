@@ -7198,7 +7198,21 @@ export async function diagnose({
         ? githubRunnerLabels.runners
         : null,
       declarado: env?.[GITEA_CONTAINER_ENV] ?? null,
-      deps: runnerQueueDeps,
+      // O runner de PROCESSO entra aqui, e por uma medição: a CLI `gh` é um canal
+      // DECLARADO do fato (o cabeçalho do módulo e a doc dizem "API com GH_TOKEN +
+      // GH_REPOSITORY ou a CLI `gh`"), mas ele nascia INERTE — o `readGithubCli`
+      // exige um `run` e o doctor passava `{}`, então quem tem só o `gh auth`
+      // (medido neste checkout, 25/09/2026: `hostinger-runner` offline e 3 runs
+      // em `queued`, a mais antiga com ~22h) lia "sem o canal da API e sem runner
+      // de processo para a CLI `gh`" com a forja PARADA. A forja parada é o
+      // defeito que não tem sintoma: é na fila que ele aparece, e um canal
+      // declarado que não lê deixa a fila morrer em silêncio igual.
+      //
+      // A injeção do TESTE continua vencendo: `runnerQueueDeps.run` explícito
+      // passa na frente, e o `run` do doctor vem depois dele. O `spawnSync`
+      // entra como último recurso porque o `run` do `diagnose` não tem default
+      // (quem o passa é o chamador) — e sem ele o canal volta a nascer inerte.
+      deps: { ...runnerQueueDeps, run: runnerQueueDeps.run ?? run ?? spawnSync },
     }),
     mirrors: mirrorsFacts,
     openDebt: openDebtFacts,

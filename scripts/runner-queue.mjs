@@ -37,12 +37,19 @@
 // uma Gitea 1.22.6 viva — o `swagger.v1.json` dela NÃO tem rota de tarefa de
 // ações (`/repos/{owner}/{repo}/actions/tasks` → HTTP 404) nem de runner de
 // repositório (só `.../actions/runners/registration-token`). A fila e o estado do
-// runner existem, para quem não é a interface web, só nas tabelas `action_task`
-// (o enum de status é o `models/actions/status.go` da mesma versão: 5 =
-// `waiting`, 6 = `running`, 7 = `blocked` — e `blocked` é o job que já nasceu sem
-// runner que o pegue) e `action_runner`. A leitura usa o MESMO canal que a seção 3
-// já usa para o registro (o `docker exec` no container da stack, com o caminho do
-// banco e o tipo DERIVADOS do compose comitado — nunca cravados aqui).
+// runner existem, para quem não é a interface web, só nas tabelas `action_run_job`
+// (a FILA) e `action_runner` (quem a puxaria). A leitura usa o MESMO canal que a
+// seção 3 já usa para o registro (o `docker exec` no container da stack, com o
+// caminho do banco e o tipo DERIVADOS do compose comitado — nunca cravados aqui).
+//
+// A FILA DA GITEA É `action_run_job`, NUNCA `action_task` — medido ao vivo em
+// 26/09/2026 numa 1.22.6 e confirmado no código dela: `InsertRun` cria UMA linha
+// de job por job do workflow, com `status = waiting` (5), no push;
+// `CreateTaskForRunner` só materializa a linha de `action_task` quando um runner
+// PEGA o job — e ela nasce `running` (6), indo direto para um desfecho. Ler a
+// fila em `action_task` leria o TRABALHO do runner (que nunca está `waiting`) e
+// jamais a espera: a fila parada ficaria invisível, que é exatamente o defeito
+// que este fato existe para não deixar passar.
 //
 // NUNCA LANÇA E NUNCA CHUTA: credencial ausente, canal ausente, container fora do
 // ar, `sqlite3` ausente no container, repositório que não existe no banco da
@@ -193,14 +200,18 @@ export const GITEA_TASK_STATUS = {
 }
 
 /**
- * O que CONTA como espera para a Gitea: `waiting` (o job na fila) e `blocked` (o
- * job que não achou runner — `StatusBlocked` é o que a forja põe quando nenhum
- * runner casa com os `runs-on` dele).
+ * O que CONTA como espera para a Gitea: só `waiting` (5) — o estado que a forja
+ * põe no job que nasceu e ainda não foi pego, e o filtro literal do
+ * `CreateTaskForRunner` dela (`task_id = 0 AND status = waiting`). É o conjunto
+ * "um runner o pegaria agora".
  *
- * `running` NÃO conta: um job rodando é a forja trabalhando — e contá-lo aqui
- * faria a fila parada se disfarçar de fila andando.
+ * `blocked` (7) NÃO conta: a v1.22.6 o usa para o job que espera `needs` ou
+ * aprovação (`InsertRun`: `len(needs) > 0 || run.NeedApproval`) — re-registrar
+ * runner nenhum destrava isso, e contá-lo faria o veredito publicar um remédio
+ * que não é o da causa. `running` (6) também não: um job rodando é a forja
+ * trabalhando, e contá-lo faria a fila parada se disfarçar de fila andando.
  */
-export const GITEA_QUEUE_STATUSES = [GITEA_TASK_STATUS.WAITING, GITEA_TASK_STATUS.BLOCKED]
+export const GITEA_QUEUE_STATUSES = [GITEA_TASK_STATUS.WAITING]
 
 /** A régua da forja para o estado do runner (v1.22.6, `models/actions/runner.go`). */
 export const GITEA_RUNNER_OFFLINE_SECONDS = 60
@@ -301,7 +312,9 @@ export function parseGithubQueuedRuns(payload) {
 }
 
 /**
- * A FILA da Gitea, da saída do `sqlite3 -json` sobre `action_task`.
+ * A FILA da Gitea, da saída do `sqlite3 -json` sobre `action_run_job` — a tabela
+ * em que a forja guarda o job que espera (a linha de `action_task` só nasce
+ * quando um runner pega).
  *
  * O `created` da tabela é o timestamp em SEGUNDOS da própria forja, e é dele que
  * sai a idade — a mesma unidade de `action_runner.last_online`, para as duas
@@ -765,9 +778,10 @@ export function resolveGiteaDatabase({
 }
 
 /**
- * A FILA e o ESTADO DOS RUNNERS da Gitea, pelas tabelas `action_task` e
- * `action_runner` — três consultas, no MESMO canal do registro do runner (o
- * `docker exec` no container da stack, com o `sqlite3` de lá).
+ * A FILA e o ESTADO DOS RUNNERS da Gitea, pelas tabelas `repository` (o alvo),
+ * `action_run_job` (a fila) e `action_runner` (quem a puxaria) — três consultas,
+ * no MESMO canal do registro do runner (o `docker exec` no container da stack,
+ * com o `sqlite3` de lá).
  *
  * A ordem é deliberada: primeiro o REPOSITÓRIO. Um slug que não existe no banco
  * devolveria `0` itens esperando — um verde FALSO de fila vazia, que é pior que a
@@ -820,7 +834,11 @@ export function readGiteaQueue({
   const repoId = parseGiteaRepoId(idRes.stdout)
   if (!repoId.ok) return { ok: false, detail: `${repoId.detail} (${slug.detail})` }
 
-  const filaSql = `select count(*) as aguardando, min(created) as mais_antiga from action_task where repo_id = ${repoId.id} and status in (${GITEA_QUEUE_STATUSES.join(", ")});`
+  // `task_id = 0` é o mesmo predicado do `CreateTaskForRunner` da forja: a linha
+  // de `action_run_job` é a FILA, e o `task_id` só sai do zero quando um runner
+  // pega o job (e ele vira `running`, que já não conta) — o filtro separa
+  // "esperando" de "na mão de alguém" mesmo se um estado intermediário escapar.
+  const filaSql = `select count(*) as aguardando, min(created) as mais_antiga from action_run_job where repo_id = ${repoId.id} and task_id = 0 and status in (${GITEA_QUEUE_STATUSES.join(", ")});`
   const filaRes = consulta(filaSql)
   if (filaRes?.error) {
     return {

@@ -4630,9 +4630,9 @@ O fato tem DUAS metades, e as duas são a MESMA pergunta
 (`scripts/runner-queue.mjs`): a **FILA** (no GitHub,
 `/repos/:repo/actions/runs?status=queued` — pelo MESMO canal do board, API com
 `GH_TOKEN` + `GH_REPOSITORY` ou a CLI `gh`; na Gitea,
-`action_task.status IN (5 waiting, 7 blocked)`, porque a 1.22 **não expõe a fila
-em REST** — medido no `swagger.v1.json` dela: `/actions/tasks` → HTTP 404 — e a
-leitura é o BANCO da stack pelo mesmo `docker exec … sqlite3` do registro) e
+`action_run_job.task_id = 0 AND status = 5 waiting`, porque a 1.22 **não expõe a
+fila em REST** — medido no `swagger.v1.json` dela: `/actions/tasks` → HTTP 404 — e
+a leitura é o BANCO da stack pelo mesmo `docker exec … sqlite3` do registro) e
 **QUEM A PUXARIA** (no GitHub a lista de runners vem do **MESMO GET** do fato do
 registro — uma consulta, dois fatos; na Gitea, `action_runner.last_online` ×
 `last_active` contra a régua da PRÓPRIA forja: 1 minuto = offline, 10 segundos =
@@ -4652,6 +4652,50 @@ item datado em `ci/unproven.json` (`runner-queue-gitea`, `runner-queue-github`),
 cada uma com o `proveWith` — `bash deploy/gitea-up.sh` e
 `bash deploy/setup-github-runner.sh`, os mesmos comandos que a linha do bloqueio
 publica.
+
+**A FILA DA GITEA É `action_run_job`, NUNCA `action_task`** — medido ao vivo em
+26/09/2026 numa 1.22.6 e confirmado no código dela: `InsertRun` cria UMA linha de
+job por job do workflow, com `status = waiting` (5), no push;
+`CreateTaskForRunner` só materializa a linha de `action_task` quando um runner
+PEGA o job — e ela nasce `running` (6), indo direto para um desfecho. Ler a fila
+em `action_task` (o que este fato fazia até 26/09) mostrava a tabela VAZIA com o
+runner fora do ar: o doctor dizia `ociosa` com job esperando, que é o defeito que
+este fato existe para não deixar passar. E `blocked` (7) não conta como espera: é
+o job que espera `needs`/aprovação (`InsertRun`), que re-registro nenhum destrava.
+
+**O CICLO, PROVADO LOCAL (forja efêmera, zero efeito externo):**
+`scripts/prove-runner-queue-cycle.mjs` prova as duas metades do fato e o remédio
+ponta a ponta, numa Gitea 1.22 + `gitea/act_runner` efêmeros desta máquina — a
+fase A espera o push virar job NA FILA e mede uma janela de silêncio (20s) com o
+runner fora do ar, exigindo que NENHUMA linha de `action_task` nasça (uma linha
+só nasce quando um runner pega); a fase B lê o MESMO `readRunnerQueue` do doctor
+e exige `parada` com o `bash deploy/gitea-up.sh` na linha do bloqueio; a fase C
+sobe o serviço `runner` do compose comitado e espera o `Runner registered
+successfully.`; a fase D exige o desfecho `success` E a marca do job lida do log.
+O log tem DUAS casas na 1.22, e o ensaio lê a certa pelo `log_in_storage` da
+`action_task`: no DBFS do banco (`dbfs_meta`/`dbfs_data`) enquanto o runner não
+fecha o stream, e em `actions_log/<arquivo>` depois do `TransferLogs`. Limite
+declarado: a 1.22 não tem `workflow_dispatch` (HTTP 404, medido), então o gatilho
+do ensaio é um `push` numa branch do repositório efêmero — o dispatch fica
+declarado no workflow para quem o entende. Rodar:
+`node scripts/prove-runner-queue-cycle.mjs --sem-no-new-privileges --job-image <ref>`
+(as duas flags existem por medição: o hardening `no-new-privileges` do serviço
+`runner` quebra o job em alguns hosts, e a imagem do job precisa EXISTIR no host —
+a do compose aponta para o registry da forja). O ensaio roda o ciclo INTEIRO
+(~4min) e é `indeterminado` sem docker: o bloco documentado é o do cenário em que
+não há o que medir.
+
+<!-- prove-doc: runner-queue:prove
+     run: --json
+     exit: 2
+     cenario: docker-ausente
+     desfecho: indeterminado
+-->
+
+```text
+"verdict": "unavailable"
+docker indisponível
+```
 
 **O CONTRATO DA IMAGEM PUBLICADA (seção 3/7) — o build promete, o ARTEFATO
 prova:** todas as provas acima são sobre o **repositório** — o `FROM` pinado por

@@ -927,7 +927,7 @@ export async function waitForGitea({ port, timeoutS, sleep }) {
  */
 export function readTasks({ container, dbPath, workflowFile, run: runFn = run }) {
   const sql =
-    "select t.id as id, t.status as status, t.log_filename as log_filename, r.workflow_id as workflow_id, r.status as run_status " +
+    "select t.id as id, t.status as status, t.log_filename as log_filename, t.log_in_storage as log_in_storage, r.workflow_id as workflow_id, r.status as run_status " +
     "from action_task t join action_run_job j on t.job_id = j.id join action_run r on r.id = j.run_id " +
     `where r.workflow_id like '%${workflowFile}%' order by t.id;`
   // `.timeout` porque o Gitea ESCREVE nesse banco a cada transição de tarefa: sem
