@@ -29,7 +29,8 @@
  *   npx vitest run --config vitest.config.unit.ts src/lib/__tests__/bench-guard-timing-mutations.test.ts
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { spawnSync } from "node:child_process"
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -64,7 +65,20 @@ const jsonDo = (rel: string) => JSON.parse(readFileSync(join(REPO_ROOT, rel), "u
 
 // ── O fixture de um master: o JSON que o `--json` publica ─────────────────
 
-type Subtest = { id: string; script: string; ms: number; exit: number; metades: number }
+type Subtest = {
+  id: string
+  script: string
+  ms: number
+  exit: number
+  metades: number
+  /** Os campos da RE-MEDIÇÃO: um fixture sem eles é o master de ANTES da régua. */
+  tentativas?: number
+  exit1?: number
+  exit2?: number | null
+  ms1?: number
+  ms2?: number | null
+  flake?: boolean
+}
 
 /**
  * A forma do que a família publica — o contrato tipado que o `--json` da baseline
@@ -79,7 +93,13 @@ type FormaMedida = {
   exit: number
   metades: number
   ok: boolean
-  runs: { ms: number; ok: boolean }[]
+  tentativas: number
+  exit1: number
+  exit2: number | null
+  ms1: number
+  ms2: number | null
+  flake: boolean
+  runs: { ms: number; exit: number | null; ok: boolean }[]
 }
 type Deltas = {
   subtestsMs: number
@@ -103,6 +123,10 @@ type Medicao = {
   deltas: Deltas | null
   violations: string[]
   whatItAdded: string[]
+  /** Quantas TENTATIVAS a matriz pagou no total (uma re-medição por vermelho). */
+  tentativas: number
+  /** Os ids das formas que se contradisseram entre duas medições da MESMA árvore. */
+  flakes: string[]
 }
 
 /** A mesma coisa para a comparação (`forms` sai como `object[]` na JSDoc). */
@@ -136,8 +160,13 @@ function masterFalso(subtests: Subtest[], { falha = null as string | null } = {}
   const subtestsMs = subtests.reduce((acc, s) => acc + s.ms, 0)
   const summary = {
     count: subtests.length,
-    passed: subtests.filter((s) => s.exit === 0).length,
+    // O FLAKE não conta como passado NEM como falhado no master (é a classe que
+    // se contradiz): o fixture publica o mesmo que ele, senão o teste mediria um
+    // master que não existe.
+    passed: subtests.filter((s) => s.exit === 0 && s.flake !== true).length,
     failed: subtests.filter((s) => s.exit !== 0).map((s) => s.id),
+    flakes: subtests.filter((s) => s.flake === true).map((s) => s.id),
+    tentativas: subtests.reduce((acc, s) => acc + (s.tentativas ?? 1), 0),
     metades: subtests.reduce((acc, s) => acc + s.metades, 0),
     subtestsMs,
     harnessMs: 1500,
@@ -221,6 +250,24 @@ describe("bench-guard-timing — a régua da família `mutations`", () => {
       fonte.indexOf('if [ "${#FAILED_LIST[@]}" -gt 0 ]'),
     )
   })
+
+  it("o master RE-MEDE o vermelho e publica as tentativas (a régua é a repetição)", () => {
+    // A disciplina da re-medição mora no MASTER, não aqui: quem lê o custo lê o
+    // `--json` dele e recebe as tentativas prontas. Este teste trava o contrato
+    // na FONTE (o comportamento inteiro roda no ensaio de bash abaixo).
+    const fonte = readFileSync(join(REPO_ROOT, "scripts", "test-mutation-guards.sh"), "utf8")
+
+    expect(fonte).toContain("roda_tentativa")
+    expect(fonte).toContain("RE-MEDINDO uma vez")
+    // O registro carrega as DUAS tentativas e a classe, não só o veredito.
+    for (const campo of ["tentativas", "exit1", "exit2", "ms1", "ms2", "flake"])
+      expect(fonte).toContain(campo)
+    expect(fonte).toContain("FLAKY_LIST")
+    // O flake é INDETERMINADO (2) e nunca verde nem reprovado: o 1 é a
+    // regressão e o 3 é uso inválido (o `exit 2` que era do uso virou o 3).
+    expect(fonte).toContain("exit 2")
+    expect(fonte).toContain("exit 3")
+  })
 })
 
 // ── 2. Cada sub-test medido, o harness por diferença ──────────────────────
@@ -285,6 +332,124 @@ describe("bench-guard-timing — o custo de CADA sub-test", () => {
 
     expect(r.forms.find((f) => f.role === "cego")!.ok).toBe(false)
     expect(r.forms.find((f) => f.role === "workflow-run-syntax")!.ok).toBe(true)
+  })
+})
+
+// ── 2b. A RE-MEDIÇÃO do vermelho: as TENTATIVAS no registro ──────────────
+
+/**
+ * Os fixtures do master COM a disciplina de repetição (o cabeçalho dele):
+ *
+ *   · FLAKY    — a 1ª tentativa reprovou e a 2ª PASSOU: o `ms` é a SOMA, o `exit`
+ *                publicado é o da 2ª (0) e a CLASSE vai em `flake`;
+ *   · REPETIDO — o vermelho repetiu na 2ª: `ok: false`, e o ↺ no registro diz
+ *                que aquele ms são DOIS tiros (não é ruído para re-rodar).
+ */
+const FLAKY: Subtest = {
+  id: "flaky",
+  script: "scripts/test-mutation-flaky.sh",
+  ms: 3_000,
+  exit: 0,
+  metades: 4,
+  tentativas: 2,
+  exit1: 1,
+  exit2: 0,
+  ms1: 1_800,
+  ms2: 1_200,
+  flake: true,
+}
+const REPETIDO: Subtest = {
+  id: "repetido",
+  script: "scripts/test-mutation-repetido.sh",
+  ms: 5_000,
+  exit: 1,
+  metades: 2,
+  tentativas: 2,
+  exit1: 1,
+  exit2: 1,
+  ms1: 2_400,
+  ms2: 2_600,
+  flake: false,
+}
+
+describe("bench-guard-timing — a re-medição do vermelho (as tentativas no registro)", () => {
+  it("o FLAKE sai com a classe DITA: `flake` + as duas tentativas, nunca só o exit", () => {
+    const r = comFalso([...TRES, FLAKY], { falha: "2" })
+
+    const forma = r.forms.find((f) => f.role === "flaky")!
+    expect(forma.flake).toBe(true)
+    expect(forma.tentativas).toBe(2)
+    expect(forma.exit1).toBe(1)
+    expect(forma.exit2).toBe(0)
+    // O `exit` publicado é o da ÚLTIMA tentativa (0): a classe NÃO se esconde
+    // dentro dele — sem o `flake`, este registro diria "passou".
+    expect(forma.exit).toBe(0)
+    expect(forma.ok).toBe(true)
+    // O ms é a SOMA das duas: o custo versionado é o que o job pagou.
+    expect(forma.ms).toBe(3_000)
+    expect(forma.ms1 + (forma.ms2 ?? 0)).toBe(forma.ms)
+    // As tentativas, uma a uma (é o que a re-medição existe para publicar).
+    expect(forma.runs.map((t) => t.exit)).toEqual([1, 0])
+    expect(forma.runs.map((t) => t.ok)).toEqual([false, true])
+
+    // A família NOMEIA o flake — e NÃO o trata como sub-test que não passou:
+    // "não passou" seria uma regressão inventada (a 2ª tentativa passou).
+    expect(r.flakes).toEqual(["flaky"])
+    expect(r.tentativas).toBe(5)
+    expect(r.violations).toEqual([])
+    const frases = r.whatItAdded.join(" ")
+    expect(frases).toContain("🌀 1 forma(s) FLAKY: flaky")
+    expect(frases).toContain("SOMA das duas tentativas")
+  })
+
+  it("o master INDETERMINADO (exit 2) ainda é medido: o custo dos dois tiros fica", () => {
+    // O `--json` sai ANTES do veredito: um flake não apaga o custo dele (nem o
+    // da matriz), e o `exit` do master fica dito para o consumidor saber com o
+    // que ele está falando.
+    const r = comFalso([...TRES, FLAKY], { falha: "2" })
+
+    expect(r.measured).toBe(true)
+    expect(r.exit).toBe(2)
+    expect(r.deltas!.subtestsMs).toBe(103_500)
+    expect(r.subtests).toBe(4)
+  })
+
+  it("o vermelho REPETIDO é dito: 2 tentativas iguais, `ok: false` e o ↺ no registro", () => {
+    const r = comFalso([...TRES, REPETIDO], { falha: "1" })
+
+    const forma = r.forms.find((f) => f.role === "repetido")!
+    expect(forma.tentativas).toBe(2)
+    expect(forma.exit1).toBe(1)
+    expect(forma.exit2).toBe(1)
+    expect(forma.flake).toBe(false)
+    expect(forma.ok).toBe(false)
+    expect(forma.runs.map((t) => t.exit)).toEqual([1, 1])
+    expect(r.flakes).toEqual([])
+
+    // A violação do contrato continua existindo (é um sub-test que não passou) e
+    // a frase acrescenta o que o exit sozinho não diz: o vermelho REPETIU.
+    expect(r.violations.join(" ")).toContain("repetido (exit 1)")
+    expect(r.whatItAdded.join(" ")).toContain("↺ 1 forma(s) RE-MEDIDA(s): repetido")
+  })
+
+  it("um master SEM os campos (de antes da régua) vale 1 tentativa — nunca `undefined`", () => {
+    // O registro herdado de uma rodada anterior à re-medição não pode sair com
+    // `tentativas: undefined` (que leria como "não medido") nem ser re-escrito:
+    // o default é o mundo de UMA tentativa, que é o que aquele master fazia.
+    const r = comFalso(TRES)
+
+    for (const forma of r.forms) {
+      expect(forma.tentativas).toBe(1)
+      expect(forma.exit1).toBe(forma.exit)
+      expect(forma.exit2).toBeNull()
+      expect(forma.ms2).toBeNull()
+      expect(forma.flake).toBe(false)
+      expect(forma.runs).toHaveLength(1)
+    }
+    expect(r.flakes).toEqual([])
+    expect(r.tentativas).toBe(3)
+    expect(r.whatItAdded.join(" ")).not.toContain("🌀")
+    expect(r.whatItAdded.join(" ")).not.toContain("RE-MEDIDA")
   })
 })
 
@@ -408,12 +573,21 @@ describe("bench-guard-timing — o contrato da família `mutations`", () => {
 // ── 5. Na comparação: o sub-test novo entra MEDIDO ────────────────────────
 
 describe("bench-guard-timing — o sub-test novo e a comparação", () => {
-  const familiaMedida = (forms: { role: string; label: string; ms: number; ok: boolean }[]) => ({
+  const familiaMedida = (
+    forms: { role: string; label: string; ms: number; ok: boolean; flake?: boolean }[],
+  ) => ({
     measured: true,
     reason: null,
     exit: 0,
     cmd: MUTATION_CMD,
-    forms: forms.map((f) => ({ ...f, metades: 3, exit: f.ok ? 0 : 1, runs: [] })),
+    forms: forms.map((f) => ({
+      ...f,
+      flake: f.flake === true,
+      tentativas: f.flake ? 2 : 1,
+      metades: 3,
+      exit: f.ok ? 0 : 1,
+      runs: [],
+    })),
     deltas: {
       subtestsMs: forms.reduce((acc, f) => acc + f.ms, 0),
       harnessMs: 1_000,
@@ -487,6 +661,24 @@ describe("bench-guard-timing — o sub-test novo e a comparação", () => {
 
     expect(form.regression).toBe(true)
     expect(form.pct).toBeCloseTo(3, 5)
+  })
+
+  it("o custo do FLAKE também não julga: o ms dele são DUAS tentativas, não um tiro", () => {
+    // Sem isto, o `ms` somado (duas medições) viraria "o sub-test ficou MAIS
+    // LENTO" contra a baseline de uma rodada limpa — um delta que existe, um
+    // trabalho extra que existe, e nenhuma regressão de velocidade do guard.
+    const baseline = relatorio(
+      familiaMedida([{ role: "flaky", label: "flaky", ms: 1_500, ok: true }]),
+    )
+    const atual = relatorio(
+      familiaMedida([{ role: "flaky", label: "flaky", ms: 3_000, ok: true, flake: true }]),
+    )
+
+    const form = comparar(atual, baseline).forms.find((f) => f.label === "sub-test flaky")!
+
+    expect(form.unmeasured).toBe(true)
+    expect(form.regression).toBe(false)
+    expect(form.pct).toBeCloseTo(1, 5)
   })
 
   it("o sub-test que NÃO passou não julga custo (nem rápido nem lento)", () => {
@@ -872,5 +1064,153 @@ describe("merge-latency — o passo do master vem da MEDIÇÃO, não da conta à
 
     const naoMedida = benchIndex({ ...bench, mutations: { measured: false, deltas: null } })
     expect(naoMedida.byCmd.get("test-mutation-guards")).toBeUndefined()
+  })
+})
+
+// ── 8. O master de VERDADE, com uma matriz de ensaio: as três classes ──────
+
+/**
+ * A prova de COMPORTAMENTO da re-medição: o master REAL, numa árvore de ensaio
+ * com três stubs (verde, vermelho, flake).
+ *
+ * POR QUE ASSIM: a disciplina é do BASH (re-medir o vermelho, somar as duas
+ * tentativas, ir a 2 no flake) e um teste que a re-implementasse em JS mediria a
+ * re-implementação. A árvore de ensaio é feita de três coisas e nada mais: a
+ * cópia do mestre com a matriz TROCADA, o `metades.mjs` de verdade (a régua das
+ * metades é a MESMA do repositório, não uma imitação) e os stubs. Nada disto
+ * toca a árvore: quem roda os 42 sub-tests de verdade é o CI.
+ */
+function ensaioDoMaster(subtests: [string, string][]): string {
+  const dir = mkdtempSync(join(tmpdir(), "mut-master-"))
+  criados.push(dir)
+  mkdirSync(join(dir, "scripts"), { recursive: true })
+
+  const fonte = readFileSync(join(REPO_ROOT, "scripts", "test-mutation-guards.sh"), "utf8")
+  const matriz = ["SUBTESTS=(", ...subtests.map(([id, rel]) => `  "${id}|${rel}"`), ")"].join("\n")
+  const trocada = fonte.replace(/SUBTESTS=\(\n[\s\S]*?\n\)/, matriz)
+  expect(trocada).not.toBe(fonte)
+  writeFileSync(join(dir, "scripts", "test-mutation-guards.sh"), trocada)
+  copyFileSync(join(REPO_ROOT, "scripts", "metades.mjs"), join(dir, "scripts", "metades.mjs"))
+
+  const stub = (nome: string, corpo: string) =>
+    writeFileSync(
+      join(dir, "scripts", nome),
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        "# STUB DE ENSAIO (vive num tmpdir): a descrição da metade é lida pelo",
+        "# metades.mjs de verdade, e o exit é o que o mestre re-mede.",
+        "METADES=(",
+        "  'M1|a metade de ensaio — o teste mede o mestre, não o guard'",
+        ")",
+        corpo,
+      ].join("\n"),
+    )
+  stub("stub-verde.sh", "exit 0\n")
+  stub("stub-vermelho.sh", "exit 1\n")
+  // O FLAKE: reprova na 1ª e passa na 2ª. O contador é o estado ENTRE as duas
+  // tentativas — do lado do mestre são dois tiros iguais, que é exatamente o
+  // caso que só a REPETIÇÃO distingue.
+  stub(
+    "stub-flake.sh",
+    [
+      `conta="${dir}/flake"`,
+      'n=$(cat "$conta" 2>/dev/null || echo 0)',
+      "n=$((n + 1))",
+      'printf "%s" "$n" >"$conta"',
+      'if [ "$n" -le 1 ]; then',
+      "  exit 1",
+      "fi",
+      "exit 0",
+      "",
+    ].join("\n"),
+  )
+  return dir
+}
+
+/** O master do ensaio, com o `--json` dele lido como o bench o lê. */
+function rodaEnsaio(subtests: [string, string][]) {
+  const dir = ensaioDoMaster(subtests)
+  const res = spawnSync("bash", [join(dir, "scripts", "test-mutation-guards.sh"), "--json"], {
+    encoding: "utf8",
+    timeout: 60_000,
+  })
+  return {
+    exit: res.status,
+    json: JSON.parse(res.stdout) as {
+      subtests: Subtest[]
+      summary: {
+        count: number
+        passed: number
+        failed: string[]
+        flakes: string[]
+        tentativas: number
+        metades: number
+      }
+    },
+  }
+}
+
+describe("test-mutation-guards — a re-medição no master de VERDADE (matriz de ensaio)", () => {
+  it("verde sai com UMA tentativa: o verde não é re-medido", () => {
+    const { exit, json } = rodaEnsaio([["verde", "scripts/stub-verde.sh"]])
+
+    expect(exit).toBe(0)
+    expect(json.subtests[0].tentativas).toBe(1)
+    expect(json.subtests[0].exit2).toBeNull()
+    expect(json.subtests[0].ms2).toBeNull()
+    expect(json.subtests[0].flake).toBe(false)
+    expect(json.summary.flakes).toEqual([])
+    expect(json.summary.passed).toBe(1)
+  })
+
+  it("vermelho REPETIDO → exit 1, com o exit das DUAS tentativas no registro", () => {
+    const { exit, json } = rodaEnsaio([["vermelho", "scripts/stub-vermelho.sh"]])
+
+    expect(exit).toBe(1)
+    const s = json.subtests[0]
+    expect(s.tentativas).toBe(2)
+    expect(s.exit1).toBe(1)
+    expect(s.exit2).toBe(1)
+    expect(s.exit).toBe(1)
+    expect(s.flake).toBe(false)
+    expect(s.ms).toBe((s.ms1 ?? 0) + (s.ms2 ?? 0))
+    expect(json.summary.failed).toEqual(["vermelho"])
+    expect(json.summary.flakes).toEqual([])
+  })
+
+  it("FLAKE → exit 2 (INDETERMINADO): nenhum reprovou, e o exit não carrega a classe", () => {
+    const { exit, json } = rodaEnsaio([
+      ["verde", "scripts/stub-verde.sh"],
+      ["flake", "scripts/stub-flake.sh"],
+    ])
+
+    expect(exit).toBe(2)
+    expect(json.summary.failed).toEqual([])
+    const s = json.subtests.find((x) => x.id === "flake")!
+    expect(s.tentativas).toBe(2)
+    expect(s.exit1).toBe(1)
+    expect(s.exit2).toBe(0)
+    // O `exit` por sub-test é o da ÚLTIMA tentativa (0) MAIS `flake: true`: sem
+    // a classe, este registro diria que o sub-test passou.
+    expect(s.exit).toBe(0)
+    expect(s.flake).toBe(true)
+    expect(s.ms).toBe((s.ms1 ?? 0) + (s.ms2 ?? 0))
+    // O flake não é passado nem falhado; o verde (1 tentativa) segue intacto.
+    expect(json.summary.passed).toBe(1)
+    expect(json.summary.flakes).toEqual(["flake"])
+    expect(json.subtests.find((x) => x.id === "verde")!.tentativas).toBe(1)
+    expect(json.summary.tentativas).toBe(3)
+  })
+
+  it("vermelho E flake → exit 1 (a regressão manda) e o flake segue NOMEADO", () => {
+    const { exit, json } = rodaEnsaio([
+      ["vermelho", "scripts/stub-vermelho.sh"],
+      ["flake", "scripts/stub-flake.sh"],
+    ])
+
+    expect(exit).toBe(1)
+    expect(json.summary.failed).toEqual(["vermelho"])
+    expect(json.summary.flakes).toEqual(["flake"])
   })
 })

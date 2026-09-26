@@ -18,11 +18,34 @@
 #
 # Exit codes:
 #   0 — todos os sub-tests passaram (mutações detectadas) ✅
-#   1 — pelo menos um sub-test falhou (guard cego / asserção / infra) ❌
-#   2 — uso inválido (--scenario com id desconhecido, flag desconhecida)
+#   1 — pelo menos um sub-test REPROVOU depois de re-medido (guard cego /
+#       asserção / infra) ❌
+#   2 — nenhum reprovou, mas ≥1 ficou INDETERMINADO (FLAKE: a 1ª tentativa
+#       reprovou e a re-medição PASSOU na MESMA árvore) ◐
+#   3 — uso inválido (--scenario com id desconhecido, flag desconhecida)
+#
+# A RE-MEDIÇÃO DO VERMELHO (a mesma disciplina do prover da pilha): um sub-test
+# que sai vermelho é re-medido UMA vez antes de virar veredito. Um vermelho pode
+# nascer do AMBIENTE — as suítes desta matriz sobem fixture, criam container e
+# batem em porta/memória —, e publicar o 1º tiro como veredito acusa um defeito
+# que não existe (o instrumento mente para o lado caro: manda consertar o que não
+# quebrou). A régua é a REPETIÇÃO, nunca a 2ª tentativa sozinha:
+#   · verde               → VERDE (o verde NÃO é re-medido: 1 tentativa);
+#   · vermelho + vermelho → VERMELHO (o vermelho é da ÁRVORE — repetiu);
+#   · vermelho + verde    → INDETERMINADO (`flake: true`): as duas se
+#     CONTRADIZEM na mesma árvore — não vale verde nem vale reprovação, e o
+#     exit 2 é o único que diz isso (um 1 aqui seria uma regressão inventada);
+#   · vermelho + tentativa que nem rodou (exit 126/127) → VERMELHO: a 2ª não
+#     contradisse a 1ª.
+# O que foi repetido é DITO nos dois lugares: no `--json` cada sub-test leva
+# `tentativas`, `exit1`, `exit2`, `ms1`, `ms2` e `flake` — e o `ms` publicado é a
+# SOMA das tentativas, porque o custo do job é o que ele pagou —, e o log marca
+# o flake com 🌀, com `Flaky: N` no resumo.
 #
 # O CUSTO DE CADA SUB-TEST (`--json`): o modo máquina mede o wall time de CADA
-# sub-test e do TOTAL, junto com os sub-tests que falharam. Ele existe para o
+# sub-test e do TOTAL, junto com os sub-tests que falharam, os que ficaram
+# INDETERMINADOS (FLAKES) e as TENTATIVAS de cada um (1 ou 2, pela re-medição).
+# Ele existe para o
 # custo do job `mutation-guards` não ser composto à mão: quem entra com um
 # sub-test novo (ou paga o job no modelo de latência) lê o custo MEDIDO, com o
 # id de quem o pagou. O stdout é SÓ o JSON — toda a saída humana vai para o
@@ -38,7 +61,8 @@
 # Cada script granular é a FONTE ÚNICA do seu cenário (sem duplicação de
 # fixtures/mutações/asserções — o harness só orquestra). TODOS os sub-tests
 # rodam mesmo se um falhar (fail-CONTINUE, não fail-fast) — o exit final é
-# agregado: 0 se TODOS passarem, 1 se QUALQUER um falhar.
+# agregado: 0 se TODOS passarem, 1 se QUALQUER um reprovar (a re-medição do
+# cabeçalho decide isso), 2 se nenhum reprovou e algum ficou INDETERMINADO.
 # =============================================================================
 
 set -euo pipefail
@@ -97,12 +121,29 @@ agora_ms() {
 imprime_json() {
   [ "$JSON_OUT" = true ] || return 0
   printf '%s\n' "${REGISTROS[@]}" | {
-    CUSTO_MS="$CUSTO_TOTAL_MS" PASSED="$PASSED" METADES="$TOTAL_METADES" FALHAS="${FAILED_LIST[*]:-}" node -e '
+    CUSTO_MS="$CUSTO_TOTAL_MS" PASSED="$PASSED" METADES="$TOTAL_METADES" FALHAS="${FAILED_LIST[*]:-}" FLAKES="${FLAKY_LIST[*]:-}" node -e '
 const fs = require("node:fs")
 const linhas = fs.readFileSync(0, "utf8").split("\n").filter((l) => l.trim() !== "")
 const subtests = linhas.map((linha) => {
-  const [id, script, ms, exit, metades] = linha.split("|")
-  return { id, script, ms: Number(ms), exit: Number(exit), metades: Number(metades) }
+  const [id, script, ms, exit, metades, tentativas, exit1, exit2, ms1, ms2, flake] = linha.split("|")
+  return {
+    id,
+    script,
+    ms: Number(ms),
+    exit: Number(exit),
+    metades: Number(metades),
+    // AS TENTATIVAS: o `--json` publica a re-medição (ver o cabeçalho) — o
+    // `exit` é o da ÚLTIMA tentativa (o que o veredito leu) e a CLASSE vai em
+    // `flake`, do mesmo jeito que o prover da pilha publica um commit re-medido:
+    // quem lê o registro distingue "medido uma vez" de "medido duas vezes" sem
+    // depender de prosa.
+    tentativas: Number(tentativas),
+    exit1: Number(exit1),
+    exit2: exit2 === "" ? null : Number(exit2),
+    ms1: Number(ms1),
+    ms2: ms2 === "" ? null : Number(ms2),
+    flake: flake === "true",
+  }
 })
 // O custo dos sub-tests e o SOBRANTE do harness sao separados: o proximo
 // sub-test entra com o custo MEDIDO dele, e a diferenca entre a soma e o total
@@ -113,6 +154,13 @@ const summary = {
   count: subtests.length,
   passed: Number(process.env.PASSED),
   failed: (process.env.FALHAS || "").split(/\s+/).filter(Boolean),
+  // Os FLAKES contam À PARTE: eles não são "não passou" (a 2ª tentativa
+  // passou) nem "passou" (a 1ª reprovou) — somá-los a qualquer um dos dois é
+  // a mentira que a re-medição existe para não publicar.
+  flakes: (process.env.FLAKES || "").split(/\s+/).filter(Boolean),
+  // Quantas tentativas a matriz pagou no total (uma re-medição por vermelho):
+  // o custo do job cresce com isso, e o número fica dito em vez de deduzido.
+  tentativas: subtests.reduce((acc, s) => acc + (s.tentativas || 1), 0),
   metades: Number(process.env.METADES),
   subtestsMs,
   harnessMs: totalMs - subtestsMs,
@@ -206,14 +254,14 @@ while [ $# -gt 0 ]; do
     --scenario)
       if [ $# -lt 2 ]; then
         fail "Uso: --scenario <id> (falta o id)"
-        exit 2
+        exit 3
       fi
       SELECTED_ID="$2"
       shift 2
       ;;
     *)
       fail "Flag desconhecida: $1 (use --scenario <id> | --list | --json)"
-      exit 2
+      exit 3
       ;;
   esac
 done
@@ -263,7 +311,7 @@ if [ -n "$SELECTED_ID" ]; then
       id="${entry%%|*}"
       echo "   - $id"
     done
-    exit 2
+    exit 3
   fi
 fi
 
@@ -275,11 +323,47 @@ echo ""
 
 # ── Executa a matriz (fail-CONTINUE: todos rodam, exit agregado) ────────
 
+# ── UMA TENTATIVA de um sub-test (a re-medição chama isto duas vezes) ────
+# O output COMPLETO do script granular é impresso como sempre (é a
+# granularidade de diagnóstico do master); o par `ms|exit` sai por
+# TENTATIVA_MS/TENTATIVA_EXIT, que o laço lê para decidir o veredito.
+TENTATIVA_MS=0
+TENTATIVA_EXIT=0
+
+roda_tentativa() { # $1 = script granular, $2 = rótulo da tentativa
+  local script="$1" rotulo="$2" inicio="" saida=""
+  inicio="$(agora_ms)"
+  # `set +e` só aqui: o exit do script granular É o dado desta tentativa, e sob
+  # `set -e` o master morreria no primeiro vermelho (fail-fast — o oposto do que
+  # a matriz promete).
+  set +e
+  saida="$(bash "$SCRIPT_DIR/$script" 2>&1)"
+  TENTATIVA_EXIT=$?
+  set -e
+  TENTATIVA_MS=$(( $(agora_ms) - inicio ))
+  printf '%s\n' "$saida"
+  info "$rotulo: exit $TENTATIVA_EXIT em ${TENTATIVA_MS}ms"
+}
+
+# O rótulo da 2ª tentativa. A que NEM RODOU (126 = não executável, 127 = comando
+# não encontrado) não contradisse a 1ª: o veredito é o mesmo vermelho, mas a
+# prosa não pode afirmar que ela "repetiu" — ela não mediu nada.
+rotulo_da_repeticao() { # $1 = exit da 1ª tentativa, $2 = exit da 2ª
+  case "$2" in
+    126 | 127) printf 'a 2ª tentativa NÃO MEDIU (exit %s) — o vermelho não foi contradito' "$2" ;;
+    *) printf 'a 2ª tentativa REPETIU o vermelho (exit %s → %s)' "$1" "$2" ;;
+  esac
+}
+
 TOTAL=0
 PASSED=0
 FAILED_LIST=()
-# Os registros do `--json`: `id|script|ms|exit|metades` por sub-test, na ordem da
-# matriz. O esquema é montado pelo node no fim (um JSON montado à mão em bash
+# Os FLAKES (a 1ª reprovou e a 2ª PASSOU na MESMA árvore) ficam À PARTE dos dois
+# lados: não são "não passou" e não são "passou" — ver o cabeçalho.
+FLAKY_LIST=()
+# Os registros do `--json`: `id|script|ms|exit|metades|tentativas|exit1|exit2|ms1|ms2|flake`
+# por sub-test, na ordem da matriz (`ms` = SOMA das tentativas, `exit` = o da
+# última). O esquema é montado pelo node no fim (um JSON montado à mão em bash
 # escapa errado no dia em que um id tiver aspas).
 REGISTROS=()
 # O total é o WALL TIME do master inteiro (não a soma dos sub-tests): a diferença
@@ -307,29 +391,62 @@ for entry in "${SUBTESTS[@]}"; do
   printf "   ${CYAN}▶ Sub-test [%s]${NC} — %s\n" "$id" "$desc"
   echo "  ───────────────────────────────────────────────────────────────"
 
-  # O CUSTO deste sub-test: o relógio cerca a execução do script granular (não a
-  # leitura do bloco, que é o mesmo trabalho para todos).
-  SUBTEST_INICIO="$(agora_ms)"
-  set +e
-  SUBTEST_OUTPUT="$(bash "$SCRIPT_DIR/$script" 2>&1)"
-  SUBTEST_EXIT=$?
-  set -e
-  SUBTEST_MS=$(( $(agora_ms) - SUBTEST_INICIO ))
-  REGISTROS+=("$id|$script|$SUBTEST_MS|$SUBTEST_EXIT|$(contagem_de "$script")")
+  # ── A 1ª tentativa ───────────────────────────────────────────────────
+  # O relógio cerca a execução do script granular (não a leitura do bloco, que
+  # é o mesmo trabalho para todos).
+  roda_tentativa "$script" "custo do sub-test [$id]"
 
-  # granularidade preservada: imprime o output COMPLETO do script granular
-  echo "$SUBTEST_OUTPUT"
-  info "custo do sub-test [$id]: ${SUBTEST_MS}ms"
+  TENTATIVAS=1
+  EXIT1="$TENTATIVA_EXIT"
+  MS1="$TENTATIVA_MS"
+  # Vazio (e não 0) quando NÃO houve 2ª tentativa: no `--json` o campo sai
+  # `null`, que é "não houve", e um 0 diria "mediu em 0ms".
+  EXIT2=""
+  MS2=""
+  FLAKE=false
+  SUBTEST_EXIT="$EXIT1"
+  SUBTEST_MS="$MS1"
 
-  if [ "$SUBTEST_EXIT" -eq 0 ] && [ "$BLOCO_OK" = true ]; then
+  # ── A RE-MEDIÇÃO: o 1º tiro vermelho NÃO é veredito (ver o cabeçalho) ───
+  if [ "$EXIT1" -ne 0 ]; then
+    info "sub-test [$id] VERMELHO (exit $EXIT1) — RE-MEDINDO uma vez: a régua é a repetição, nunca o 1º tiro"
+    roda_tentativa "$script" "2ª tentativa do sub-test [$id]"
+
+    TENTATIVAS=2
+    EXIT2="$TENTATIVA_EXIT"
+    MS2="$TENTATIVA_MS"
+    # O `ms` publicado é a SOMA: uma re-medição custa o que ela custou, e o
+    # número versionado tem de ser o que o job pagou por este sub-test.
+    SUBTEST_MS=$((MS1 + MS2))
+    # O `exit` publicado é o da ÚLTIMA tentativa (é o veredito que o master leu):
+    # um flake sai com `exit: 0` MAIS `flake: true` — a classe não se esconde
+    # dentro do exit, e quem lê o registro sabe qual dos dois casos é.
+    SUBTEST_EXIT="$EXIT2"
+    if [ "$EXIT2" -eq 0 ]; then
+      FLAKE=true
+    fi
+  fi
+
+  REGISTROS+=("$id|$script|$SUBTEST_MS|$SUBTEST_EXIT|$(contagem_de "$script")|$TENTATIVAS|$EXIT1|$EXIT2|$MS1|$MS2|$FLAKE")
+
+  if [ "$FLAKE" = true ]; then
+    fail "Sub-test [$id] INDETERMINADO (🌀 FLAKE): a 1ª tentativa reprovou (exit $EXIT1) e a 2ª"
+    fail "  PASSOU na MESMA árvore — as duas se CONTRADIZEM: não vale verde (a regressão"
+    fail "  existiu) nem reprovação (ela não repetiu). Repita a suíte [$id] para decidir."
+    FLAKY_LIST+=("$id")
+  elif [ "$SUBTEST_EXIT" -ne 0 ]; then
+    if [ "$TENTATIVAS" -eq 2 ]; then
+      fail "Sub-test [$id] FALHOU (exit $EXIT2) — $(rotulo_da_repeticao "$EXIT1" "$EXIT2")"
+    else
+      fail "Sub-test [$id] FALHOU (exit $EXIT1)"
+    fi
+    FAILED_LIST+=("$id")
+  elif [ "$BLOCO_OK" = true ]; then
     pass "Sub-test [$id] PASS (exit 0)"
     PASSED=$((PASSED + 1))
-  elif [ "$SUBTEST_EXIT" -eq 0 ]; then
+  else
     fail "Sub-test [$id] FALHOU: a suíte passou, mas ela não DECLARA as metades"
     fail "  (a descrição do sub-test e a prosa da doc derivam do bloco METADES)"
-    FAILED_LIST+=("$id")
-  else
-    fail "Sub-test [$id] FALHOU (exit $SUBTEST_EXIT)"
     FAILED_LIST+=("$id")
   fi
   echo ""
@@ -346,20 +463,25 @@ for entry in "${SUBTESTS[@]}"; do
   if [ -n "$SELECTED_ID" ] && [ "$id" != "$SELECTED_ID" ]; then
     continue
   fi
-  # Verdict da célula = SOMENTE a pertença a FAILED_LIST (sem gate de
+  # Verdict da célula = SOMENTE a pertença a FAILED_LIST/FLAKY_LIST (sem gate de
   # PASSED: com todos os sub-tests falhando, PASSED=0 — um gate `$PASSED
   # -gt 0 &&` faria a condição curto-circuitar e TODAS as linhas sairiam
   # como PASS no momento exato em que tudo falhou).
+  # O FLAKE tem marca PRÓPRIA (🌀): ele não é PASS (a regressão existiu) nem FAIL
+  # (ela não repetiu) — quem lê a tabela precisa distinguir os dois de longe.
   # Herestring (não pipe): sob `set -o pipefail`, `printf | grep -qx` pode
   # falhar por SIGPIPE (o grep -q fecha o stdin cedo) — flaky pelo tamanho.
-  if grep -qx "$id" <<<"$(printf '%s\n' "${FAILED_LIST[@]}")"; then
+  if grep -qx "$id" <<<"$(printf '%s\n' "${FLAKY_LIST[@]:-}")"; then
+    printf "   %-10s ${YELLOW}%-6s${NC} 🌀\n" "$id" "FLAKE"
+  elif grep -qx "$id" <<<"$(printf '%s\n' "${FAILED_LIST[@]}")"; then
     printf "   %-10s ${RED}%-6s${NC} ❌\n" "$id" "FAIL"
   else
     printf "   %-10s ${GREEN}%-6s${NC} ✅\n" "$id" "PASS"
   fi
 done
 echo ""
-printf "   Total: %d | Passed: %d | Failed: %d\n" "$TOTAL" "$PASSED" "${#FAILED_LIST[@]}"
+printf "   Total: %d | Passed: %d | Failed: %d | Flaky: %d\n" \
+  "$TOTAL" "$PASSED" "${#FAILED_LIST[@]}" "${#FLAKY_LIST[@]}"
 echo ""
 
 # ── As METADES declaradas por cada sub-test (derivadas, uma a uma) ────────
@@ -398,8 +520,23 @@ imprime_json
 
 if [ "${#FAILED_LIST[@]}" -gt 0 ]; then
   fail "MUTATION TESTS FALHARAM: ${FAILED_LIST[*]} — um sub-test não detectou a"
-  fail "mutação (guard cego / asserção quebrada) ou o script granular falhou."
+  fail "mutação (guard cego / asserção quebrada) ou o script granular falhou — e a"
+  fail "re-medição REPETIU o vermelho (ou não mediu: a 1ª tentativa não foi contradita)."
+  if [ "${#FLAKY_LIST[@]}" -gt 0 ]; then
+    fail "${#FLAKY_LIST[@]} sub-test(s) ficaram INDETERMINADOS (FLAKE 🌀) e seguem NOMEADOS:"
+    fail "  ${FLAKY_LIST[*]} — o veredito da matriz é o dos vermelhos, o flake não vira verde nem"
+    fail "  some dentro deles: repita a suíte de cada um para decidir o que ele é."
+  fi
   exit 1
+fi
+
+if [ "${#FLAKY_LIST[@]}" -gt 0 ]; then
+  fail "MUTATION TESTS INDETERMINADOS (exit 2): ${FLAKY_LIST[*]} — a 1ª tentativa reprovou"
+  fail "e a 2ª PASSOU na MESMA árvore (FLAKE 🌀). As duas se CONTRADIZEM: não é regressão"
+  fail "(o vermelho não repetiu) e não é verde (ele existiu). Repita a suíte para decidir —"
+  fail "a matriz não publica veredito sobre UM tiro, e é este exit 2 que separa o flake"
+  fail "da regressão de verdade."
+  exit 2
 fi
 
 pass "MUTATION TESTS PASSED — os $TOTAL sub-test(s) node-puro detectaram as mutações,"

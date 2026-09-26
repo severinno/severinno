@@ -1725,6 +1725,13 @@ export const MUTATION_CMD = `${MUTATION_MASTER_CMD} --json`
  * medição) — e o `exit` do master vai no resultado para o consumidor saber com o
  * que ele está falando.
  *
+ * AS TENTATIVAS são preservadas como o master as publica: um sub-test que saiu
+ * vermelho foi re-medido UMA vez (a régua do cabeçalho dele é a REPETIÇÃO —
+ * vermelho+vermelho é vermelho, vermelho+verde é FLAKE, e o exit dele vai a 2).
+ * Cada forma leva `tentativas`, `exit1`/`exit2`, `ms1`/`ms2` e `flake`, e o `ms`
+ * dela é a SOMA — o custo versionado é o que o job pagou, e a classe não se
+ * esconde dentro do número.
+ *
  * @param {{cmd?: string, timeoutMs?: number}} [opts]
  * @returns {object}
  */
@@ -1766,19 +1773,49 @@ export function measureMutationCost({ cmd = MUTATION_CMD, timeoutMs = 30 * 60_00
   if (subtests.length === 0)
     return naoMedido("o master não reportou sub-test nenhum (matriz vazia)")
 
-  const forms = subtests.map((s) => ({
-    role: s.id,
-    label: s.id,
-    ms: s.ms,
-    exit: s.exit,
-    metades: s.metades,
-    ok: s.exit === 0,
-    // O SCRIPT que esta forma mede — o `--json` do master já o publica, e é ele
-    // que responde "de qual arquivo veio esta forma?" sem depender de convenção
-    // de nome (o id `readme` mede `test-mutation-readme-guards.sh`).
-    script: s.script ?? null,
-    runs: [{ ms: s.ms, ok: s.exit === 0 }],
-  }))
+  const forms = subtests.map((s) => {
+    // AS TENTATIVAS do master (a re-medição do cabeçalho dele): um sub-test que
+    // saiu vermelho é medido UMA segunda vez, e é a REPETIÇÃO que decide — o
+    // registro carrega as duas, não só o veredito. Um master sem os campos (ou
+    // o registro herdado de antes desta régua) vale 1 tentativa: nunca
+    // `undefined` passando por medido duas vezes.
+    const tentativas = Number.isFinite(s.tentativas) ? s.tentativas : 1
+    const exit1 = Number.isFinite(s.exit1) ? s.exit1 : s.exit
+    const ms1 = Number.isFinite(s.ms1) ? s.ms1 : s.ms
+    const exit2 = Number.isFinite(s.exit2) ? s.exit2 : null
+    const ms2 = Number.isFinite(s.ms2) ? s.ms2 : null
+    return {
+      role: s.id,
+      label: s.id,
+      // O `ms` publicado é o do master: a SOMA das tentativas (uma re-medição
+      // custa o que ela custou, e é isso que o job paga por este sub-test).
+      ms: s.ms,
+      exit: s.exit,
+      metades: s.metades,
+      ok: s.exit === 0,
+      // O SCRIPT que esta forma mede — o `--json` do master já o publica, e é ele
+      // que responde "de qual arquivo veio esta forma?" sem depender de convenção
+      // de nome (o id `readme` mede `test-mutation-readme-guards.sh`).
+      script: s.script ?? null,
+      tentativas,
+      exit1,
+      exit2,
+      ms1,
+      ms2,
+      // O FLAKE é a classe que o EXIT não carrega: a 2ª tentativa passou, então
+      // o exit publicado é 0 — e sem este campo o registro diria "passou" sobre
+      // duas medições que se contradisseram na MESMA árvore.
+      flake: s.flake === true,
+      // As TENTATIVAS, uma a uma: `runs` é a lista que as outras famílias já
+      // usam para as amostras de uma forma (lint/hook), e aqui ela carrega os
+      // TIROS do master — 1 no verde, 2 no vermelho/flake. Quem lê o registro vê
+      // a re-medição sem deduzi-la do `ms` somado.
+      runs: [
+        { ms: ms1, exit: exit1, ok: exit1 === 0 },
+        ...(ms2 === null ? [] : [{ ms: ms2, exit: exit2, ok: exit2 === 0 }]),
+      ],
+    }
+  })
   const subtestsMs = subtests.reduce((acc, s) => acc + s.ms, 0)
   const summary = parsed.summary ?? {}
   const totalMs = Number.isFinite(summary.totalMs) ? summary.totalMs : wallMs
@@ -1811,6 +1848,14 @@ export function measureMutationCost({ cmd = MUTATION_CMD, timeoutMs = 30 * 60_00
     metades: Number(summary.metades ?? 0),
     forms,
     deltas,
+    // AS TENTATIVAS no topo da família: quantas o master pagou no total (uma
+    // re-medição por vermelho) e QUAIS formas se contradisseram entre as duas
+    // medições da mesma árvore. É o que o registro versionado passa a afirmar: o
+    // custo acima é o de N tentativas, não o de uma rodada limpa.
+    tentativas: Number.isFinite(summary.tentativas)
+      ? summary.tentativas
+      : forms.reduce((acc, f) => acc + f.tentativas, 0),
+    flakes: forms.filter((f) => f.flake).map((f) => f.label),
     violations: mutationCostViolations({ forms, summary, harnessMs }),
     whatItAdded: mutationWhatItAdded({
       forms,
@@ -1828,6 +1873,13 @@ export function measureMutationCost({ cmd = MUTATION_CMD, timeoutMs = 30 * 60_00
  * entra no job sem que nada diga o que ela protege. E a soma dos sub-tests tem de
  * FECHAR com o total do master — uma diferença inexplicada é justamente o harness
  * que ninguém mediu.
+ *
+ * O FLAKE não entra aqui, e a ausência é deliberada: a forma flaky PASSOU na 2ª
+ * tentativa (o `ok` dela é verdadeiro e o custo é medido como qualquer outro — as
+ * duas tentativas somadas). Quem a publica é a própria família (`flakes`, a marca
+ * 🌀 na tabela e uma linha dedicada em `whatItAdded`): "não passou" seria uma
+ * regressão inventada, e engolir o flake numa violação de custo o esconderia no
+ * lugar onde ele mais importa — o registro versionado.
  *
  * @param {{forms?: {label?: string, ms?: number, ok?: boolean, exit?: number, metades?: number}[], summary?: {totalMs?: number, subtestsMs?: number}, harnessMs?: number}} [opts]
  * @returns {string[]}
@@ -2386,16 +2438,31 @@ function printMutationReport(mutations) {
   // O EXIT do master dito ao lado do custo: um sub-test vermelho ainda tem custo
   // medido (o `--json` sai antes do veredito), e quem lê a tabela precisa saber
   // que a tabela descreve um run vermelho.
-  if (mutations.exit !== 0)
+  if (mutations.exit !== 0) {
     console.log(
       `    ⚠️  o master saiu com exit ${mutations.exit}: o custo segue medido, o VEREDITO da matriz não`,
     )
+    // O exit 2 é INDETERMINADO, não vermelho: sem esta linha quem lê a tabela
+    // veria uma rodada "com exit não-zero" sem saber que nenhum sub-test reprovou.
+    const flaky = mutations.flakes ?? []
+    if (flaky.length > 0)
+      console.log(
+        `        🌀 e ele é INDETERMINADO (exit 2): ${flaky.join(", ")} reprovou na 1ª tentativa e PASSOU na 2ª, na MESMA árvore — não é regressão e não é verde`,
+      )
+  }
   const total = mutations.deltas.subtestsMs || 1
   for (const form of [...mutations.forms].sort((a, b) => b.ms - a.ms)) {
-    const mark = form.ok ? "✅" : "❌"
+    // A marca: ✅/❌ são o veredito, 🌀 é a classe que o veredito não carrega.
+    const mark = form.flake ? "🌀" : form.ok ? "✅" : "❌"
     const share = ((form.ms / total) * 100).toFixed(0).padStart(3)
+    // As TENTATIVAS ao lado do custo: o ms publicado é a SOMA delas, e uma forma
+    // re-medida sem esta marca faria o número parecer o de um tiro só.
+    const tentativas =
+      (form.tentativas ?? 1) > 1
+        ? ` · ${form.tentativas} TENTATIVAS: ❌→${form.flake ? "✅" : "❌"}`
+        : ""
     console.log(
-      `    ${mark} ${String(form.label).padEnd(22)} ${(form.ms / 1000).toFixed(1).padStart(6)}s  ${share}%  (${form.metades} metade(s))`,
+      `    ${mark} ${String(form.label).padEnd(22)} ${(form.ms / 1000).toFixed(1).padStart(6)}s  ${share}%  (${form.metades} metade(s)${tentativas})`,
     )
   }
   console.log("  ─────────────────────────────────────────────────────")
@@ -2872,7 +2939,13 @@ export function compareTimings(
         label: `sub-test ${form.label}`,
         currentMs: form.ms,
         baselineMs: mutationBaseline(form.role),
-        ok: form.ok !== false,
+        // O FLAKE também NÃO é julgável: o `ms` dele é a SOMA das duas
+        // tentativas, e compará-lo com o de uma rodada que mediu UMA publica
+        // como "o sub-test ficou mais lento" o custo de uma re-medição — o
+        // delta existiria, o trabalho extra também, e o número não diria que o
+        // GUARD ficou mais lento. Quem decide se ele voltou ao normal é a
+        // rodada seguinte (limpa) — aqui, ele sai como não julgável e com 🌀.
+        ok: form.ok !== false && form.flake !== true,
       })
     }
   }

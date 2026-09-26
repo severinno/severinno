@@ -290,17 +290,35 @@ export function fonteDaForma(family, form, { scripts = null } = {}) {
  * classe de erro que o `measured: false` existe para evitar: um número que não foi
  * medido passando por medido.
  *
- * @param {{forms?: object[], deltas?: {subtestsMs?: number, harnessMs?: number, totalMs?: number, proximoSubtestProjetadoMs?: number, maisCaro?: string|null, maisCaroMs?: number|null, medianaMs?: number|null}, subtests?: number, metades?: number}} [opts]
+ * @param {{forms?: {label?: string, role?: string, flake?: boolean, tentativas?: number}[], deltas?: {subtestsMs?: number, harnessMs?: number, totalMs?: number, proximoSubtestProjetadoMs?: number, maisCaro?: string|null, maisCaroMs?: number|null, medianaMs?: number|null}, subtests?: number, metades?: number}} [opts]
  * @returns {string[]}
  */
 export function mutationWhatItAdded({ forms = [], deltas = {}, subtests = 0, metades = 0 } = {}) {
   if (forms.length === 0) return ["NÃO MEDIDO: nenhum sub-test"]
   const seg = (ms) => `${((ms ?? 0) / 1000).toFixed(1)}s`
-  return [
+  const nome = (f) => f.label ?? f.role ?? "(forma sem id)"
+  const linhas = [
     `MEDIDO, sub-test a sub-test: ${subtests} sub-test(s) · ${metades} metade(s) · ${seg(deltas.subtestsMs)} de sub-tests + ${seg(deltas.harnessMs)} de harness = ${seg(deltas.totalMs)}`,
     `o mais caro: ${deltas.maisCaro} (${seg(deltas.maisCaroMs)}) · a mediana: ${seg(deltas.medianaMs)}`,
     `o PRÓXIMO sub-test acrescenta ~${seg(deltas.proximoSubtestProjetadoMs)} (PROJEÇÃO: a média dos scripts medidos + o harness por sub-test) — e entra MEDIDO na primeira rodada que o tiver, sem conta à mão`,
   ]
+  // ── AS TENTATIVAS, no registro versionado ─────────────────────────────
+  // A re-medição do master (ver o cabeçalho dele) só vale como disciplina se o
+  // REGISTRO a publicar: sem estas linhas, o arquivo versionado diria "medido,
+  // tudo certo" sobre um sub-test que se contradisse entre duas medições da
+  // MESMA árvore — e o custo (`ms` = SOMA das tentativas) pareceria o de um
+  // tiro só.
+  const flaky = forms.filter((f) => f?.flake === true)
+  if (flaky.length > 0)
+    linhas.push(
+      `🌀 ${flaky.length} forma(s) FLAKY: ${flaky.map(nome).join(", ")} — cada uma reprovou na 1ª tentativa e PASSOU na 2ª, na MESMA árvore: o veredito do master vai a 2 (INDETERMINADO, nunca "passou") e o ms dela é a SOMA das duas tentativas`,
+    )
+  const remedidas = forms.filter((f) => (f?.tentativas ?? 1) > 1 && f?.flake !== true)
+  if (remedidas.length > 0)
+    linhas.push(
+      `↺ ${remedidas.length} forma(s) RE-MEDIDA(s): ${remedidas.map(nome).join(", ")} — o vermelho REPETIU na 2ª tentativa (é da árvore, não do ambiente), e o ms publicado soma as duas`,
+    )
+  return linhas
 }
 
 /**

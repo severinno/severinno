@@ -1003,6 +1003,19 @@ foi julgada (nunca silêncio), e um registro presente e **corrompido** é exit 2
 coluna herdada FALHA nomeando a forma e o delta, e sem a derivação passada à régua
 ela passa.
 
+**E um sub-test vermelho NÃO é veredito de um tiro só.** Ele é re-medido UMA vez,
+com a régua de repetição que o prover da pilha já aplicava a um commit: vermelho
+que REPETE é vermelho da árvore (exit 1), vermelho que PASSA na segunda medição é
+**INDETERMINADO** (exit 2, `flake: true` — não vale verde, e não vale reprovação),
+e a tentativa que nem rodou não contradiz a primeira. O que foi repetido não fica
+só no log: o `--json` do master publica `tentativas`, `exit1`/`exit2`,
+`ms1`/`ms2` e `flake` por sub-test (o `ms` publicado é a SOMA das tentativas — o
+custo é o que o job pagou), a tabela marca o flake com 🌀 (`Flaky: N` no resumo), e
+a família `mutations` do benchmark versiona os mesmos campos no registro, com a
+frase dela nomeando o flake ou a re-medição que repetiu. Um flake também não julga
+custo na comparação: o número dele são duas tentativas, e publicá-lo como "o
+sub-test ficou mais lento" seria vender a re-medição como regressão.
+
 A prova da
 CLASSIFICAÇÃO do `check-forge-parity` também é um job próprio
 (`forge-parity-mutation`): ela mede o contrato de merge em si — quais gates

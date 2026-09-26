@@ -878,6 +878,40 @@ pr-check (um mutation novo sem job = falha).
 
 **Onde roda:** CI (pr-check), local (`bash scripts/test-mutation-guards.sh`).
 
+#### A re-medição do vermelho — um tiro não é veredito
+
+Um sub-test que sai vermelho é **re-medido UMA vez** antes de virar veredito, a
+mesma disciplina que o prover da pilha aplica a um commit. A razão é medida, não
+estética: as suítes desta matriz sobem fixture, criam container e batem em
+porta/memória, e um vermelho pode nascer do AMBIENTE — o instrumento acusando um
+defeito que não existe, que é a direção cara do erro (manda consertar o que não
+quebrou).
+
+A régua é a **repetição**, nunca a segunda tentativa sozinha:
+
+| 1ª tentativa | 2ª tentativa        | veredito                                                                           |
+| ------------ | ------------------- | ---------------------------------------------------------------------------------- |
+| verde        | (não roda)          | **VERDE** — o verde não é re-medido, e o custo fica de um tiro                     |
+| vermelho     | vermelho            | **VERMELHO** (exit 1) — o vermelho é da ÁRVORE: repetiu                            |
+| vermelho     | verde               | **INDETERMINADO** (exit 2, `flake: true`) — as duas se contradizem na MESMA árvore |
+| vermelho     | não rodou (126/127) | **VERMELHO** — a 2ª não contradisse a 1ª                                           |
+
+O flake **não vale verde nem reprovação**: publicar "verde" sobre um tiro esconde
+uma regressão intermitente, e publicar "reprovado" sobre um flake manda consertar
+o que passou na segunda tentativa. Por isso o exit da matriz distingue os três
+desfechos — 0 todos verdes, 1 algum REPROVOU (depois de re-medido), 2 nenhum
+reprovou e algum ficou indeterminado, 3 uso inválido — e o flake tem marca própria
+(🌀) na tabela e no resumo (`Flaky: N`).
+
+E o que foi repetido é **DITO** nos dois lugares: no `--json` cada sub-test leva
+`tentativas`, `exit1`/`exit2`, `ms1`/`ms2` e `flake` (o `ms` publicado é a SOMA das
+tentativas — o custo é o que o job pagou), e a família `mutations` do benchmark
+versiona os mesmos campos na baseline, com a frase da família nomeando o flake
+(`🌀 … FLAKY: …`) ou a re-medição que repetiu (`↺ … RE-MEDIDA(s)`). Um flake
+também **não julga custo** na comparação: o `ms` dele são duas tentativas, e
+chamar isso de "o sub-test ficou mais lento" seria vender a re-medição como
+regressão.
+
 #### O `name:` do job é o CONTEXTO do required check — o count NÃO mora nele
 
 O nome de um job é o **contexto do status check**, e é esse contexto que o
