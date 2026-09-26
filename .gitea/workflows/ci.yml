@@ -584,6 +584,24 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run db:generate
 
+      # A CLASSE da pilha, sem materializar worktree nenhum: nenhum módulo pode
+      # importar um nome que a ÁRVORE DO SEU COMMIT ainda não exporta (o `export`
+      # entra num commit ACIMA, o topo passa e o commit do MEIO não carrega).
+      #
+      # Roda ANTES do prover de propósito: o mesmo recorte (a MESMA régua de base
+      # e de head: `--base`/`GITHUB_BASE_REF`/`CI_MERGE_REQUEST_TARGET_BRANCH_NAME`
+      # e `PILHA_HEAD`), em segundos, e o veredito NOMEIA o commit — o prover
+      # levava ~11 min para descobrir a mesma coisa. Os dois ficam: este diz QUAL
+      # classe e QUAL nome, o prover continua medindo o resto.
+      #
+      # `PILHA_HEAD`: no PR o checkout é o commit de MERGE — medir a série a
+      # partir dele mediria outra série. O head real do PR entra por env, e a
+      # BASE sai do `GITHUB_BASE_REF` (a mesma régua do `--base`).
+      - name: Import sem export na árvore do commit (a classe da pilha)
+        env:
+          PILHA_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/check-commit-import-exports.mjs
+
       # `PILHA_HEAD`: no PR o checkout é o commit de MERGE — medir a pilha a
       # partir dele mediria outra pilha. O head real do PR entra por env, e a
       # BASE sai do `GITHUB_BASE_REF` (a mesma régua do `--base`).

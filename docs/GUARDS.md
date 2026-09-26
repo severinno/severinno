@@ -3465,57 +3465,58 @@ mesmo fato que a régua da idade lê no doctor):
 
 <!-- bench:mutations:tabela — DERIVADA do registro (`mutations` da baseline); não edite à mão: o ato a reescreve -->
 
-Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 26/09/2026 (`3529e9fd`): **41/42 verdes**, **265 metades**. **1 sub-test(s) NÃO passaram** (`workflow-run-syntax`): o custo deles não julga nada. ↺ 1 sub-test(s) RE-MEDIDO(s) (2 tentativas; o ms deles é a SOMA das duas, não um guard mais lento): `workflow-run-syntax`.
+Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 26/09/2026 (`a7fc4ac6`): **39/43 verdes**, **270 metades**. **4 sub-test(s) NÃO passaram** (`hook-ci-parity`, `workflow-run-syntax`, `pre-commit-proof`, `bench-freshness`): o custo deles não julga nada. ↺ 4 sub-test(s) RE-MEDIDO(s) (2 tentativas; o ms deles é a SOMA das duas, não um guard mais lento): `hook-ci-parity`, `workflow-run-syntax`, `pre-commit-proof`, `bench-freshness`. 🌀 1 FLAKY (reprovou e passou na MESMA árvore — o veredito do master vai a 2, INDETERMINADO): `doc-hashes`.
 
 | sub-test                                                                  |  wall time | fatia | metades |
 | ------------------------------------------------------------------------- | ---------: | ----: | ------: |
-| `job-deps`                                                                |     185.3s |   29% |      12 |
-| `pre-commit-proof` (a declaração dos recusadores, a descida e o CONTROLE) |     133.6s |   21% |       3 |
-| `hook-commands`                                                           |      60.3s |    9% |      27 |
-| `bench-freshness` (a régua da idade e o CONTEÚDO da origem)               |      43.8s |    7% |      12 |
-| `remedy-tty`                                                              |      30.0s |    5% |       2 |
-| `registry-defaults`                                                       |      29.0s |    4% |       9 |
-| `required-applied`                                                        |      18.0s |    3% |      10 |
-| `cut-stages` (as três invariantes duras do corte do GitHub)               |      17.9s |    3% |       3 |
-| `nested-guard`                                                            |      17.8s |    3% |       2 |
-| `github-deps` (a catraca do inventário do GitHub)                         |      13.1s |    2% |       9 |
-| `mirror-coverage` (o CONTROLE, a soma por tabela e o pulo sem motivo)     |      11.1s |    2% |       3 |
-| `lint-scope` (o escopo do lint derivado do próprio comando)               |      10.7s |    2% |       6 |
-| `canal-fixers`                                                            |       9.4s |    1% |       6 |
-| `reconciliation`                                                          |       9.1s |    1% |       3 |
-| `mutation-count`                                                          |       8.9s |    1% |      18 |
-| `stack-per-commit` (a prova de cada commit da pilha passar sozinho)       |       8.7s |    1% |       8 |
-| `gate-registration`                                                       |       8.0s |    1% |       5 |
-| `workflow-run-syntax`                                                     |     6.3s ↺ |    1% |      15 |
-| `runner-labels`                                                           |       4.9s |    1% |       1 |
-| `merge-latency`                                                           |       4.6s |    1% |       5 |
-| `hook-ci-parity`                                                          |       3.7s |    1% |       9 |
-| `pipefail-sigpipe`                                                        |       2.3s |    0% |      22 |
-| `bun-literal`                                                             |       1.8s |    0% |       5 |
-| `doc-hashes` (a régua do hash citado na prosa)                            |       1.4s |    0% |       9 |
-| `act-origin`                                                              |       1.4s |    0% |       8 |
-| `workflow-defaults`                                                       |       0.9s |    0% |       7 |
-| `lint-guard`                                                              |       0.9s |    0% |       3 |
-| `archived-pipeline`                                                       |       0.8s |    0% |       6 |
-| `timing-budget`                                                           |       0.8s |    0% |       5 |
-| `readme-reverse`                                                          |       0.6s |    0% |       3 |
+| `job-deps`                                                                |     202.7s |   38% |      12 |
+| `hook-commands`                                                           |      65.3s |   12% |      27 |
+| `remedy-tty`                                                              |      32.6s |    6% |       2 |
+| `registry-defaults`                                                       |      29.4s |    6% |       9 |
+| `required-applied`                                                        |      21.5s |    4% |      10 |
+| `nested-guard`                                                            |      19.0s |    4% |       2 |
+| `cut-stages` (as três invariantes duras do corte do GitHub)               |      18.4s |    3% |       3 |
+| `pre-commit-proof` (a declaração dos recusadores, a descida e o CONTROLE) |    17.0s ↺ |    3% |       3 |
+| `github-deps` (a catraca do inventário do GitHub)                         |      14.8s |    3% |       9 |
+| `mirror-coverage` (o CONTROLE, a soma por tabela e o pulo sem motivo)     |      12.9s |    2% |       3 |
+| `lint-scope` (o escopo do lint derivado do próprio comando)               |      11.6s |    2% |       6 |
+| `canal-fixers`                                                            |      11.0s |    2% |       6 |
+| `reconciliation`                                                          |      10.6s |    2% |       3 |
+| `mutation-count`                                                          |      10.1s |    2% |      18 |
+| `gate-registration`                                                       |       9.8s |    2% |       5 |
+| `stack-per-commit` (a prova de cada commit da pilha passar sozinho)       |       9.4s |    2% |       8 |
+| `workflow-run-syntax`                                                     |     8.4s ↺ |    2% |      15 |
+| `runner-labels`                                                           |       5.5s |    1% |       1 |
+| `merge-latency`                                                           |       5.0s |    1% |       5 |
+| `pipefail-sigpipe`                                                        |       2.1s |    0% |      22 |
+| `doc-hashes` (a régua do hash citado na prosa)                            |    2.0s 🌀 |    0% |       9 |
+| `bun-literal`                                                             |       2.0s |    0% |       5 |
+| `bench-freshness` (a régua da idade e o CONTEÚDO da origem)               |     1.8s ↺ |    0% |      12 |
+| `act-origin`                                                              |       1.5s |    0% |       8 |
+| `workflow-defaults`                                                       |       1.1s |    0% |       7 |
+| `lint-guard`                                                              |       1.1s |    0% |       3 |
+| `archived-pipeline`                                                       |       0.9s |    0% |       6 |
+| `timing-budget`                                                           |       0.7s |    0% |       5 |
+| `readme-reverse`                                                          |       0.7s |    0% |       3 |
+| `hook-ci-parity`                                                          |     0.6s ↺ |    0% |       9 |
+| `commit-import-exports`                                                   |       0.6s |    0% |       5 |
 | `workflow-refs`                                                           |       0.5s |    0% |       4 |
-| `mutation-jobs`                                                           |       0.5s |    0% |       4 |
+| `mutation-jobs`                                                           |       0.4s |    0% |       4 |
 | `readme`                                                                  |       0.4s |    0% |       3 |
+| `runner-base`                                                             |       0.3s |    0% |       4 |
 | `no-setup-bun`                                                            |       0.2s |    0% |       2 |
-| `runner-base`                                                             |       0.2s |    0% |       4 |
 | `no-leaked-imports`                                                       |       0.1s |    0% |       3 |
-| `utf8-scope`                                                              |       0.1s |    0% |       2 |
-| `producer-sent`                                                           |       0.1s |    0% |       1 |
 | `bun-removal`                                                             |       0.1s |    0% |       1 |
+| `utf8-scope`                                                              |       0.1s |    0% |       2 |
 | `hooks-symmetry`                                                          |       0.1s |    0% |       2 |
+| `producer-sent`                                                           |       0.1s |    0% |       1 |
 | `docs-anchor`                                                             |       0.1s |    0% |       1 |
 | `e2e-cache-budget`                                                        |       0.0s |    0% |       2 |
-| **soma dos 42 sub-tests**                                                 | **647.7s** |  100% | **265** |
-| harness (parse das metades, tabelas, subida do master)                    |       5.0s |       |         |
-| **total do master**                                                       | **652.7s** |       |         |
+| **soma dos 43 sub-tests**                                                 | **532.6s** |  100% | **270** |
+| harness (parse das metades, tabelas, subida do master)                    |       5.4s |       |         |
+| **total do master**                                                       | **538.0s** |       |         |
 
-**Dez** sub-tests pagam **85%** da conta e a mediana é **3.0s**: a cauda é barata, e o harness sai da DIFERENÇA entre o total e a soma dos sub-tests, não de uma constante. O sub-test NOVO entra na rodada seguinte **MEDIDO**, e o PRÓXIMO acrescenta **~15.5s** (PROJEÇÃO: a média dos scripts medidos mais o harness por sub-test). A marca **↺** na linha é sub-test RE-MEDIDO (a régua é a REPETIÇÃO: o ms é a soma das tentativas) e **🌀** é FLAKE (não vale verde nem reprovação). A coluna de metades é DERIVADA da matriz (§ acima) — o ato a reescreve depois da herança e diz o que fez (`metadesDaMatriz`). Esta TABELA (e esta leitura) é **DERIVADA do registro**: quem a reescreve é o ATO, e o `check:mutation-count` recusa o commit em que ela divirja dele — a prosa não tem número próprio.
+**Dez** sub-tests pagam **81%** da conta e a mediana é **2.0s**: a cauda é barata, e o harness sai da DIFERENÇA entre o total e a soma dos sub-tests, não de uma constante. O sub-test NOVO entra na rodada seguinte **MEDIDO**, e o PRÓXIMO acrescenta **~12.5s** (PROJEÇÃO: a média dos scripts medidos mais o harness por sub-test). A marca **↺** na linha é sub-test RE-MEDIDO (a régua é a REPETIÇÃO: o ms é a soma das tentativas) e **🌀** é FLAKE (não vale verde nem reprovação). A coluna de metades é DERIVADA da matriz (§ acima) — o ato a reescreve depois da herança e diz o que fez (`metadesDaMatriz`). Esta TABELA (e esta leitura) é **DERIVADA do registro**: quem a reescreve é o ATO, e o `check:mutation-count` recusa o commit em que ela divirja dele — a prosa não tem número próprio.
 <!-- /bench:mutations:tabela -->
 
 **E a derivação desceu ao PASSO.** O mesmo mecanismo, um nível abaixo: o job
@@ -8215,7 +8216,11 @@ DECLARADOS no guard:
    `sha256:fd027ee7…` da imagem servida pelo registry descreve o ARTEFATO, não
    uma revisão;
 3. as **NÃO-CITAÇÕES declaradas** (`abc1234`, `a1b2c3d`, `ed25519`): exemplos de
-   FORMATO. Um literal novo aqui é DECISÃO com motivo — a lista não é uma
+   FORMATO — mais o **head MORTO** da nota de auditoria de 26/09 (`e8419d5c`, a
+   branch `feature/tres-classes-base` apagada): ele não pertence à história POR
+   CONSTRUÇÃO, o MESMO patch vive em `30447a57` (que é ancestral, mas descreve
+   outro commit) e o que a nota mede é o RUN `35990702155`, não um ato do
+   repositório. Um literal novo aqui é DECISÃO com motivo — a lista não é uma
    allowlist de arquivo.
 
 **Os dois defeitos são separados, porque o remédio difere.** `git cat-file` diz se
@@ -8414,8 +8419,8 @@ em 13 diretórios e 2 extensões de raiz. Doze arquivos que a lista antiga escon
 ficaram em conformidade (formatação apenas: 7 `.md` do `agent-ctx/`, 2 `.spec.ts`
 do `e2e/`, 2 `README.md`, 1 `.cjs`).
 
-**A prova por mutação** (`scripts/test-mutation-lint-scope.sh`, o 40º e último
-sub-test do master) mede **as SEIS metades**, cada uma com o CONTROLE antes (a
+**A prova por mutação** (`scripts/test-mutation-lint-scope.sh`, o 40º sub-test do
+master) mede **as SEIS metades**, cada uma com o CONTROLE antes (a
 bancada sã sai 0 e o buraco sai 1) e a direção do veredito depois:
 
 - **M1** o ORÁCULO (sem perguntar ao prettier, o PNG da bancada vira "julgado":
@@ -8439,6 +8444,107 @@ pipelines — ele roda no job do LINT (`lint` na Gitea, `lint-guard` no GitHub),
 que é o único lugar onde a pergunta é sobre ESTE comando e onde o `bun install` já
 aconteceu. No hook ele é o **7º** guard da fase A, com o recorte `--staged`
 declarado no `check-hook-ci-parity`.
+
+---
+
+## 32. Nenhum módulo importa um nome que a ÁRVORE do commit ainda não exporta — `check:commit-import-exports` (`scripts/check-commit-import-exports.mjs`)
+
+**A classe, medida em 26/09/2026.** Um commit que importa um nome que a PRÓPRIA
+árvore dele ainda não exporta é um commit que **não carrega**: o topo da pilha
+passa (o `export` entra num commit ACIMA) e o commit do MEIO quebra no `import`,
+antes de qualquer asserção. O vermelho só aparecia quando alguém RE-MEDIA a pilha
+commit a commit (`scripts/prove-stack-per-commit.mjs` — a série de 43 commits
+acima de `30447a57` custa ~11 minutos), e o relatório dizia "o commit X reprovou"
+sem dizer que a causa era um import sem export: era a classe que o re-stack
+descobria por medição. O caso real desta árvore é o `8dd4f5e5`
+(`scripts/pre-commit-proof.mjs`), que importa `{ BENCH_PATH }` de
+`scripts/check-mutation-count.mjs` — e o alvo só passa a exportar `BENCH_PATH`
+num commit ACIMA.
+
+**A régua da série é a MESMA do prover (régua única):** `--base` → `GITHUB_BASE_REF`
+→ `CI_MERGE_REQUEST_TARGET_BRANCH_NAME` (a env da forja dona do merge) →
+`origin/main` → `main` local, com o recorte `merge-base(base, HEAD)..HEAD`; o
+`--head`/`PILHA_HEAD` é resolvido por `git rev-parse --verify --quiet
+'<ref>^{commit}'`. SEM base ou head resolvidos o guard sai **2** e diz o que
+falta — fail-closed: um recorte chutado mediria a coisa errada, e o head da fila
+declarada não pode ficar verde por um sha que não resolve.
+
+**Medições desta árvore.** `--only HEAD` (varredura da árvore inteira): **0
+violações**, 25 não-julgáveis (alvos com `export *`). A série `--base 30447a57`:
+**43 commits, 1 violação — 0 novas —, 9 não-julgáveis**, em **4,2s** (antes: ~11
+minutos de re-stack para descobrir o mesmo fato). A violação é a dívida
+DECLARADA em `ci/commit-import-exports-baseline.json` (uma entrada, com o
+motivo), PUBLICADA no relatório — nunca escondida. Duas catracas: violação que
+não está na baseline reprova, e entrada da baseline que NÃO reproduz na série
+medida reprova (dívida declarada que já não existe é dívida que ninguém apagou:
+a lista não vira cemitério).
+
+**O que o parser teve de fechar para a régua não mentir** (todas as classes
+MEDIDAS na própria árvore, cada uma com o comentário no código):
+
+- **strings e comentários** (`estadoDeComentario`): um `"/*"` ou um template com
+  `*/` abria um bloco que nunca fechava e CEGAVA o resto do arquivo — medido em
+  **209 falsos positivos** no topo, todos "o alvo não exporta o nome" (o topo
+  compila); a linha que FECHA o bloco e carrega código depois
+  (` */ export function f…`) conta dos DOIS lados (import e export);
+- **a cláusula multilinha** (o prettier quebra listas) vale até **200 linhas** — o
+  limite anterior truncava listas REAIS (a do `select.tsx`, a do `_shared.ts`);
+  e uma cláusula que promete `from` e não fecha no limite vira **NÃO-JULGÁVEL
+  declarada**, nunca ignorada;
+- **`import type { X }`** não é default import: a palavra `type` sobrava como
+  binding e virava um default exigido do alvo — o bug dos **209 falsos "default
+  de X"**, e é a classe que a metade M3 da suíte de mutação conserva como
+  CONTROLE;
+- **a direção do `as` é o CONTRÁRIO nos dois sentidos**: em `import { run as
+runCountGuard }` o alvo deve `run` (o apelido é LOCAL); em `export { x as y }`
+  o publicado é `y` — o lado errado acusava o apelido dezenas de vezes. E no
+  RE-EXPORT `export { activeTier as currentTier } from "./client"` quem é cobrado
+  do alvo é `activeTier` (quem publica `currentTier` é o outro lado, lido pelo
+  `parseExports`);
+- **corpo não é cláusula**: `export const X = { … }` tem `{` no CORPO e não
+  promete `from` — tratá-lo como cláusula declarou **3252 não-julgáveis falsos**
+  nesta árvore;
+- **`@typedef` do JSDoc publica TIPO**: é assim que `scripts/hook-simulator.mjs`
+  serve `HookFile`/`StubSpec`/`RunResult`/`RepoOptions` ao helper tipado
+  `src/lib/__tests__/helpers/hook-simulator.ts`;
+- o specifier é resolvido com o mapeamento do mundo **NodeNext** (`./x.js` →
+  `./x.ts`, medido em `scripts/geo-benchmark-real.mjs`), com `@/` → `src/`, e o
+  alvo é provado **BLOB** (`git cat-file -t`) antes de ser lido como módulo —
+  `git show rev:dir` devolve a LISTAGEM do diretório, e um diretório lido como
+  módulo viraria "módulo sem o export".
+
+**O que ele NÃO julga** (declarado, e o relatório CONTA cada um): alvo com
+`export * from` é OPACO (import não-julgável); specifier externo (bare, `node:`,
+subpath de pacote) não é árvore; alvo de ASSET (`.css`, `.json`, `.svg`, `.md`…)
+não promete export nomeado; namespace e import de efeito só exigem que o módulo
+exista; a invariante no PAI do primeiro commit da série é ASSUMIDA (o que já está
+na base passou pela régua na época em que foi medido); e a classe ao CONTRÁRIO (o
+commit TIRA um export que outro módulo importa) é julgada para os importadores que
+o `git grep` acha — a busca é por specifier textual, então um import escrito de
+forma exótica não é achado.
+
+**A prova por mutação** (`scripts/test-mutation-commit-import-exports.sh`, o 43º e
+último sub-test do master) declara 5 metades, e a mutação é do MUNDO — um repo git
+de FIXTURE construído commit a commit num `mktemp`, não a régua do guard:
+
+- **M1** o commit do MEIO da série: o import que só o commit de CIMA satisfaz
+  deixa de reprovar — e o CONTROLE roda a MESMA série com o export no meio: o
+  vermelho tem de vir da mutação, nunca de um fixture quebrado;
+- **M2** a DIREÇÃO do `as` no re-export: o alvo passa a ser cobrado pelo nome
+  PUBLICADO, não pelo de origem;
+- **M3** o CONTROLE da classe: lista longa além do limite antigo, `@typedef` do
+  JSDoc e `import type` viram falso positivo;
+- **M4** a violação DECLARADA na baseline deixa de ser publicada como dívida e
+  volta a reprovar;
+- **M5** a entrada OBSOLETA da baseline (a que não reproduz) deixa de reprovar a
+  catraca.
+
+**Na forja e no CI.** O invariante `commit-import-exports` do CORE exige o comando
+`node scripts/check-commit-import-exports.mjs` nas DUAS pipelines, no job
+`stack-per-commit` — o mesmo que já mede cada commit da pilha SOZINHO — com
+`env: PILHA_HEAD` apontando o sha REAL do PR (não o merge): é o mesmo head que o
+prover da pilha mede, e é o commit do MEIO que esta régua existe para pegar. No
+`package.json` o comando é `check:commit-import-exports`.
 
 ---
 

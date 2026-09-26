@@ -1,0 +1,35 @@
+{
+  "$comment": [
+    "DÍVIDA DECLARADA do guard `check-commit-import-exports` (a classe da pilha: um",
+    "commit importar um nome que a ÁRVORE DELE ainda não exporta).",
+    "",
+    "Cada entrada nomeia UMA violação que JÁ EXISTE em commit da série medida — a",
+    "história não se reescreve por gate, então ela é declarada em vez de escondida.",
+    "O guard PUBLICA as entradas declaradas no relatório (nunca as omite) e reprova",
+    "por duas catracas:",
+    "",
+    "  1. violação que NÃO está aqui reprova (a classe não volta a entrar de graça);",
+    "  2. entrada que NÃO reproduz na série medida reprova como OBSOLETA — dívida",
+    "     declarada que já não existe é dívida que ninguém apagou, e esta lista não",
+    "     pode virar cemitério.",
+    "",
+    "A chave de casamento é `commit<TAB>arquivo<TAB>nome<TAB>alvo` com o sha CHEIO",
+    "(é o que `git rev-list` devolve). Consequência declarada: um rebase da série",
+    "muda os shas e a entrada fica obsoleta (ela deixa de reproduzir) — o remédio é",
+    "RE-MEDIR e re-declarar, não afrouxar o guard.",
+    "",
+    "Quando a série for empurrada/mergeada, os commits saem do recorte do guard e as",
+    "entradas desta baseline ficam obsoletas por construção: a catraca (2) cobra a",
+    "remoção imediata, e este arquivo volta a ser uma lista vazia."
+  ],
+  "version": 1,
+  "entradas": [
+    {
+      "commit": "8dd4f5e511da4186d9c93724beed6e24f2e84f76",
+      "arquivo": "scripts/pre-commit-proof.mjs",
+      "nome": "BENCH_PATH",
+      "alvo": "scripts/check-mutation-count.mjs",
+      "motivo": "o import nasceu neste commit e o `export const BENCH_PATH` só entrou no alvo num commit ACIMA dele — no commit, o módulo não carrega (ESM: 'does not provide an export named'). Medido em 26/09/2026 na régua nova: 43 commits, esta é a única violação da série. O remédio de verdade é mover o `export` para dentro deste commit (reescrita), não afrouxar a régua."
+    }
+  ]
+}

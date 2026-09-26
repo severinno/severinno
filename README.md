@@ -948,7 +948,7 @@ hash que não existe) sai NOMEADO: o remédio não inventa um nome.
 
 **Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
 rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
-**42 sub-tests node-puro** via `scripts/test-mutation-guards.sh` — e, desde que a
+**43 sub-tests node-puro** via `scripts/test-mutation-guards.sh` — e, desde que a
 isenção `GITHUB_ONLY` da classe caiu, o **mesmo comando** roda também no job
 `guards` da **forja dona do merge** (o `check-forge-parity` exige a matriz e a
 prova das três regras de classificação nas duas pipelines): quem mergeia na forja
@@ -1262,16 +1262,16 @@ depois: `escreveu: true` é violação da família, não um detalhe do log.
 <!-- bench:mutations:custo — DERIVADO do registro (`mutations` da baseline); não edite à mão: o ato o reescreve -->
 
 **O custo do job mais caro do PR não é uma conta à mão** (família `mutations` do
-`bench-guard-timing`). O job `mutation-guards` roda 42 sub-tests, e o que CADA um
+`bench-guard-timing`). O job `mutation-guards` roda 43 sub-tests, e o que CADA um
 custa é medido pelo próprio master (`--json`) e versionado sub-test a sub-test no
-registro: o ato VERSIONADO de 26/09/2026 (`3529e9fd`) — o MESMO comando, com a árvore COMMITADA —
-mediu **647.7s** de sub-tests + **5.0s** de harness =
-**652.7s**, com `job-deps` (185.3s, 29%), `pre-commit-proof` (133.6s, 21%), `hook-commands` (60.3s, 9%) e `bench-freshness` (43.8s, 7%) no topo — antes disso
-ninguém sabia QUAL sub-test pagava a conta. A mediana é **3.0s**, dez sub-tests
-pagam **85%** da soma, e o registro guarda **265 metades**.
+registro: o ato VERSIONADO de 26/09/2026 (`a7fc4ac6`) — o MESMO comando, com a árvore COMMITADA —
+mediu **532.6s** de sub-tests + **5.4s** de harness =
+**538.0s**, com `job-deps` (202.7s, 38%), `hook-commands` (65.3s, 12%), `remedy-tty` (32.6s, 6%) e `registry-defaults` (29.4s, 6%) no topo — antes disso
+ninguém sabia QUAL sub-test pagava a conta. A mediana é **2.0s**, dez sub-tests
+pagam **81%** da soma, e o registro guarda **270 metades**.
 Quem entra com um sub-test novo não compõe nada: ele entra **MEDIDO** na rodada seguinte
-(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~15.5s**) é dita
-como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test. **LIMITE DECLARADO:** na rodada do ato, 1 sub-test(s) NÃO passaram (`workflow-run-syntax`) — o custo deles não julga nada. E o vermelho foi RE-MEDIDO antes de virar veredito: `workflow-run-syntax` REPETIU o vermelho na 2ª tentativa, então o ms dele é a SOMA das duas (o custo é o que o job pagou).
+(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~12.5s**) é dita
+como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test. **LIMITE DECLARADO:** na rodada do ato, 4 sub-test(s) NÃO passaram (`hook-ci-parity`, `workflow-run-syntax`, `pre-commit-proof`, `bench-freshness`) — o custo deles não julga nada. E o vermelho foi RE-MEDIDO antes de virar veredito: `hook-ci-parity`, `workflow-run-syntax`, `pre-commit-proof`, `bench-freshness` REPETIU o vermelho na 2ª tentativa, então o ms dele é a SOMA das duas (o custo é o que o job pagou).
 
 Esta prosa é **DERIVADA**: quem a reescreve é o ato (o bloco é dele), e o
 `check:mutation-count` recusa o commit em que ela divirja do registro versionado.
@@ -1783,7 +1783,7 @@ warm):
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (42 sub-tests)³  |    **528.5s** (1 run)³     |     **step ≈ 9.1s**²      |
+| master `mutation-guards` (43 sub-tests)³  |    **528.5s** (1 run)³     |     **step ≈ 9.1s**²      |
 | checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
 | Summary                                   |             —              |           0.34s           |
 
@@ -2038,7 +2038,7 @@ runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 | 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |                      — (n/a)                       |         <2s         |
 | `utf8-check` (837 arquivos, `--ci src/`)          |        ≈ **0.92s**         |                     **7.46s**                      |    ~2-5s (est.)     |
 | `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |                     **3.61s**                      |    ~1-2s (est.)     |
-| `mutation-guards` (42 sub-tests node-puro)³       |        **528.5s**³         |                     **9.1s**²                      |   ~15-25s (est.)    |
+| `mutation-guards` (43 sub-tests node-puro)³       |        **528.5s**³         |                     **9.1s**²                      |   ~15-25s (est.)    |
 | `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |                    **4m37.6s**                     |   ~35-45s (est.)³   |
 | `unused-deps-guard` (mutation test + guard real)  |        ≈ **0.5s**⁴         |          **26.8s** cold / **20.9s** warm⁴          |   ~10-15s (est.)    |
 | `lint-guard` (prettier --check + eslint zero)     |     ~**4min** (local)⁵     | **7m22s** 1ª run / **6m23s** 2ª run (lint total)⁴  |   ~4-7 min (est.)   |

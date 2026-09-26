@@ -403,13 +403,21 @@ fi
 pass "mutação G1 DETECTADA: canal ausente numa forja falha nomeando o passo e a pipeline (exit $GUARD_EXIT)"
 
 header "MUTAÇÃO G2: a cobertura do canal trocada por uma LISTA à mão (--all → --fixer <um>)"
-# O fixer que deve sair NOMEADO é lido do REGISTRO (não é cravado aqui): o que a
+# O fixer que deve sair NOMEADO é lido do CANAL (não é cravado aqui): o que a
 # mutação mede é a cobertura derivada, e um nome escrito à mão no harness
-# envelheceria junto com o registro — passando a medir outra coisa.
-FORA="$(node -e 'import(process.argv[1]).then((m) => { const ids = Object.keys(m.FIXERS); console.log(ids[ids.length - 1]) })' "file://$SCRIPT_DIR/scripts/pr-remedy-comment.mjs")"
-PENDENTE="$(node -e 'import(process.argv[1]).then((m) => { const ids = Object.keys(m.FIXERS); console.log(ids[0]) })' "file://$SCRIPT_DIR/scripts/pr-remedy-comment.mjs")"
-if [ -z "$FORA" ]; then
-  fail "não consegui ler o REGISTRO de fixers (harness sem o nome derivado)"
+# envelheceria junto com o canal — passando a medir outra coisa.
+#
+# A CONTAGEM também é derivada, e isso foi um defeito medido: a metade cravava
+# "1 fixer(s)" de quando o canal tinha DOIS ids; quando o terceiro entrou o
+# veredito passou a nomear 2 e a asserção mediu uma cobertura que já não existia
+# (o guard estava certo, o harness era velho). Aqui o conjunto esperado é o canal
+# INTEIRO menos o id que a mutação deixou na linha, na ordem do canal.
+FORA="$(node -e 'import(process.argv[1]).then((m) => { const ids = m.idsDoCanal(); console.log(ids[ids.length - 1]) })' "file://$SCRIPT_DIR/scripts/remedy-canal.mjs")"
+PENDENTE="$(node -e 'import(process.argv[1]).then((m) => { const ids = m.idsDoCanal(); console.log(ids[0]) })' "file://$SCRIPT_DIR/scripts/remedy-canal.mjs")"
+FALTAM="$(node -e 'import(process.argv[1]).then((m) => console.log(m.idsDoCanal().length - 1))' "file://$SCRIPT_DIR/scripts/remedy-canal.mjs")"
+ESPERADOS="$(node -e 'import(process.argv[1]).then((m) => console.log(m.idsDoCanal().filter((i) => i !== process.argv[2]).join(", ")))' "file://$SCRIPT_DIR/scripts/remedy-canal.mjs" "$FORA")"
+if [ -z "$FORA" ] || [ -z "$ESPERADOS" ]; then
+  fail "não consegui ler o CANAL de fixers (harness sem os nomes derivados)"
   exit 1
 fi
 
@@ -421,18 +429,18 @@ if [ "$GUARD_EXIT" -eq 0 ]; then
   fail "guard CEGO: passou com a cobertura do canal reduzida a uma lista à mão (exit 0)"
   exit 1
 fi
-if ! grep -qF "NAO publica 1 fixer(s) do registro" "$TMP_DIR/out.txt"; then
+if ! grep -qF "NAO publica $FALTAM fixer(s) do registro" "$TMP_DIR/out.txt"; then
   fail "guard falhou (exit $GUARD_EXIT) mas NÃO citou a cobertura faltante"
   sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
   exit 1
 fi
-if grep -qF "NAO publica 1 fixer(s) do registro: $FORA" "$TMP_DIR/out.txt"; then
+if grep -qF "NAO publica $FALTAM fixer(s) do registro: $FORA" "$TMP_DIR/out.txt"; then
   fail "o diagnóstico nomeia '$FORA' como NÃO publicado, mas foi ELE que a mutação deixou na linha — a regra está invertida"
   sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
   exit 1
 fi
-if ! grep -qF "NAO publica 1 fixer(s) do registro: $PENDENTE" "$TMP_DIR/out.txt"; then
-  fail "o diagnóstico não nomeou '$PENDENTE' como o fixer que ficou FORA (a cobertura tem de vir do registro)"
+if ! grep -qF "NAO publica $FALTAM fixer(s) do registro: $ESPERADOS" "$TMP_DIR/out.txt"; then
+  fail "o diagnóstico não nomeou o conjunto EXATO que ficou fora do canal ('$ESPERADOS' esperado, com o id '$PENDENTE' entre eles) — a cobertura tem de vir do canal, na ordem dele"
   sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
   exit 1
 fi

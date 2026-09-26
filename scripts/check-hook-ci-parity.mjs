@@ -376,7 +376,14 @@ export const HOOK_NOT_RUN = [
       "sentinel-producer",
       "no-setup-bun",
       "pii-gate-self-test",
+      "commit-import-exports",
     ],
+    // O ÚLTIMO entra pelo ESCOPO, e ele DIZ por quê: mede a SÉRIE
+    // `merge-base(base, HEAD)..HEAD` — a mesma régua do prover da pilha, com o
+    // head REAL do PR em `PILHA_HEAD` no CI —, não o commit. No caminho de cada
+    // commit local o custo é ~4,2s (43 commits medidos) e o recorte mediria a
+    // série do checkout, não a do PR: quem a mede a cada merge é o job
+    // `stack-per-commit` das DUAS pipelines.
     why: "LACUNA DECLARADA, nao impossibilidade: sao node-puros e baratos (<1s cada) e o CI os roda em TODO PR. O hook nao os roda porque esta no caminho de CADA commit — ele e um FILTRO RAPIDO do que o commit muda, nao uma copia do CI. Estar escrito aqui e o que torna a lacuna uma decisao revisavel em vez de um esquecimento.",
   },
 ]

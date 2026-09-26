@@ -747,6 +747,26 @@ export const CORE_INVARIANTS = [
     jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {
+    id: "commit-import-exports",
+    // A CLASSE que a pilha descobria por MEDIÇÃO: um commit da série importa um
+    // nome que a ÁRVORE DELE ainda não exporta — o `export` entra num commit
+    // ACIMA, o topo passa (é ele que o tsc mede) e o commit do MEIO não carrega.
+    // Medido nesta árvore: 1 violação REAL em 43 commits (`8dd4f5e5` importa
+    // `BENCH_PATH` de `scripts/check-mutation-count.mjs`, que só o exporta
+    // depois), achada pelo `prove-stack-per-commit` a ~11 min por rodada — e
+    // ~3,5s pelo guard, que NOMEIA o commit, o arquivo, o nome e o alvo.
+    //
+    // Não podia ser GITHUB_ONLY: o sujeito é a SÉRIE do REPOSITÓRIO (a árvore de
+    // cada commit × os imports dele), e é o PR da FORJA que pode mergear um
+    // commit que não carrega. O comando é o MESMO nas duas, e a base/head saem
+    // da MESMA régua do prover (`--base`/`GITHUB_BASE_REF`/
+    // `CI_MERGE_REQUEST_TARGET_BRANCH_NAME`/`origin/main`, `PILHA_HEAD`).
+    matches: /check-commit-import-exports/,
+    command: /^node scripts\/check-commit-import-exports\.mjs$/m,
+    why: "um commit que importa um nome que a própria árvore dele não exporta não CARREGA — o topo da pilha compila e o commit do meio quebra no import, antes de qualquer asserção: sem o gate, o re-stack paga ~11 min por rodada de prover para redescobrir a mesma classe e recebe um veredito que fala do teste afetado, não do import sem export",
+    jobIds: { gitea: "stack-per-commit", github: "stack-per-commit" },
+  },
+  {
     id: "act-origin",
     matches: /check-act-origin/,
     command: /^node scripts\/check-act-origin\.mjs$/m,
