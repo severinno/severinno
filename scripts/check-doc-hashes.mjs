@@ -53,7 +53,11 @@
 //
 // E as NÃO-CITAÇÕES declaradas (literal → por que): os exemplos didáticos de
 // FORMATO (`abc1234`, `a1b2c3d`) e o `ed25519` do `ssh-keygen` são hex que não
-// pretendem ser commit nenhum. Um literal novo aqui é DECISÃO, com motivo.
+// pretendem ser commit nenhum; e o **head MORTO** da nota de auditoria de 26/09
+// (`e8419d5c`, a branch apagada `feature/tres-classes-base`) não pertence à
+// história POR CONSTRUÇÃO — o mesmo patch vive em `30447a57`, que é ancestral, e
+// a citação da nota é do head que virou `startup_failure`, não de um ato do
+// repositório. Um literal novo aqui é DECISÃO, com motivo.
 //
 // Fora por EXTENSÃO ficam os arquivos de CÓDIGO/FIXTURE do `scripts/` (`.ts`):
 // id de seed em formato ObjectId (`c64695cc6952`) e exemplo sintético de 24 hex
@@ -234,6 +238,11 @@ export const NAO_CITACOES = [
   { literal: "abc1234", porque: "exemplo didático do FORMATO do arquivo de cache (não um commit)" },
   { literal: "a1b2c3d", porque: "exemplo didático da key de cache do Prisma (não um commit)" },
   { literal: "ed25519", porque: "nome do ALGORITMO de chave do `ssh-keygen` (não um commit)" },
+  {
+    literal: "e8419d5c",
+    porque:
+      "head MORTO: a branch `feature/tres-classes-base` foi apagada em 25/09/2026 e este commit não pertence à história do HEAD POR CONSTRUÇÃO — a nota de auditoria de 26/09 o cita como o head que virou `startup_failure` (0 jobs). O MESMO patch vive em `30447a57`, que é ancestral, mas ele descreve OUTRO commit: trocar a citação pelo nome vivo apagaria do registro qual head morreu, e o registro dele é o RUN `35990702155`.",
+  },
 ]
 
 /** O token de um hash: 7 a 40 hexadecimais isolados (o `\b` protege de runs maiores). */
