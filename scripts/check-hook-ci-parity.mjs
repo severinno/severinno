@@ -372,7 +372,7 @@ export const HOOK_NOT_RUN = [
   },
   {
     ids: ["act-origin"],
-    why: "o registro do ato e MEDIDO SOBRE A ARVORE SUJA: o `--baseline` roda com a matriz ja na arvore e o commit que a carrega ainda nao existe, entao a origem gravada e o PAI — cuja arvore e a de ANTES do bump. No pre-commit a origem seria SEMPRE o pai, e o gate fecharia exatamente o commit que a pratica da casa exige (o ato sujo entra no commit A; a RE-RODADA na arvore COMITADA, que corrige o `meta.commit`, entra no commit B): o hook nao pode medir uma arvore que ainda nao existe. A invariante e das DUAS pipelines, no PR, sobre a arvore COMITADA — e e ela que torna a re-rodada obrigatoria em vez de habito.",
+    why: "a ANCORA do registro e RESOLVIDA, nao digitada: um commit nao pode conter o proprio hash, entao o registro v7 declara o PORTADOR (`meta.anchor`) e a procedencia (`meta.parentCommit`), e o gate resolve o commit que CARREGA o registro pela historia — e e essa resolucao que dispensa a re-rodada (ate a v6 o hash gravado era o PAI, e o ato tinha de rodar de novo na arvore COMITADA: dois commits para uma medicao so). No pre-commit o commit que carrega o registro ainda NAO EXISTE, entao o portador nao resolve e o gate fecharia exatamente o commit que a pratica da casa exige: o hook nao pode medir uma arvore que ainda nao existe. A invariante e das DUAS pipelines, no PR, sobre a arvore COMITADA.",
   },
   {
     ids: ["mutation-matrix", "forge-parity-mutation"],

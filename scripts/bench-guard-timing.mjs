@@ -109,16 +109,19 @@ import { escreverJsonFormatado } from "./prettier-format.mjs"
 // daqui não muda — os três nomes são REEXPORTADOS (o critério de cada família
 // está documentado em `bench-families.mjs`).
 import {
+  ANCORA_PORTA,
   BASELINE_FILE,
   FAMILY_MEASURED,
   FORM_SECTION,
   LATEST_FILE,
   MASTER_DOS_SUBTESTS,
+  commitQueCarrega,
   comMetadesDaMatriz,
   fonteDaForma,
   mapaDoMaster,
   metadesDaMatriz,
   mutationWhatItAdded,
+  origemDoRegistro,
 } from "./bench-families.mjs"
 
 // `comMetadesDaMatriz` e `mutationWhatItAdded` são REPASSADOS: as duas são a régua
@@ -2287,8 +2290,20 @@ function runBenchmark({
       // `mutations.forms`, versionado sub-test a sub-test) — antes dela o custo do
       // job mais caro do PR so existia como uma soma composta à mão, e um
       // sub-test novo não tinha onde entrar MEDIDO.
-      version: 6,
-      commit,
+      // v7: a ÂNCORA. Até a v6 este campo gravava o `HEAD` do momento da medição
+      // — o PAI do commit que carrega o registro, porque o `--baseline` roda com a
+      // matriz já na ÁRVORE e o commit que a carrega ainda não existe. A árvore do
+      // PAI não carrega a matriz que o registro declara ter medido (a suíte nova
+      // entra no commit SEGUINTE), e o `check-act-origin` recusava — com razão — o
+      // commit em que a origem não carrega a matriz: o remédio era RODAR O ATO DE
+      // NOVO na árvore já commitada, DOIS commits para uma medição só. Um commit
+      // não pode conter o próprio hash (o campo entra no blob→tree→commit), então
+      // o hash do PORTADOR não é gravável aqui: o registro declara a REGRA
+      // (`anchor`) e a PROCEDÊNCIA (`parentCommit`), e quem lê resolve o portador
+      // pela história (`origemDoRegistro`/`commitQueCarrega`).
+      version: 7,
+      anchor: ANCORA_PORTA,
+      parentCommit: commit,
       commitDate,
       timestamp,
       // O ATO que produziu este arquivo (a linha de comando, com as flags que
@@ -2502,7 +2517,10 @@ export function reuseFamilies(result, sources = []) {
       if (valor === null || valor === undefined) continue
       reused[family] = {
         source,
-        commit: report?.meta?.commit ?? null,
+        // A procedência da família HERDADA: o topo sobre o qual aquele ato rodou
+        // (`parentCommit` na v7 — a âncora dele é o portador, resolvido pela
+        // história, e não é gravável dentro do próprio registro).
+        commit: report?.meta?.parentCommit ?? report?.meta?.commit ?? null,
         commitDate: report?.meta?.commitDate ?? null,
         timestamp: report?.meta?.timestamp ?? null,
         // O estado de árvore do ato que mediu esta família viaja com ela: uma
@@ -2545,7 +2563,8 @@ export function reuseFamilies(result, sources = []) {
   if (fonteDaBateria) {
     reused.battery = {
       source: fonteDaBateria.source,
-      commit: fonteDaBateria.report?.meta?.commit ?? null,
+      commit:
+        fonteDaBateria.report?.meta?.parentCommit ?? fonteDaBateria.report?.meta?.commit ?? null,
       commitDate: fonteDaBateria.report?.meta?.commitDate ?? null,
       timestamp: fonteDaBateria.report?.meta?.timestamp ?? null,
       missingInOrigin: fonteDaBateria.report?.meta?.families?.battery?.missingInOrigin ?? null,
@@ -2699,7 +2718,10 @@ function printReport(result) {
   console.log("   ⏱  BENCH — wall time do doctor e guards")
   console.log("  ═══════════════════════════════════════════════════════════════")
   console.log()
-  console.log(`  commit: ${meta.commit} (${meta.commitDate})`)
+  console.log(
+    `  âncora:   o commit que CARREGA este registro, resolvido pela história (${meta.anchor ?? "?"})` +
+      ` · procedência: ${meta.parentCommit ?? meta.commit ?? "?"} (${meta.commitDate})`,
+  )
   console.log(`  node: ${meta.nodeVersion} · ${meta.platform}/${meta.arch}`)
   if (meta.act) console.log(`  ato: ${meta.act}`)
   console.log()
@@ -2773,7 +2795,7 @@ function printReport(result) {
         )
       } else {
         console.log(
-          `    ❌ ${fora.length} forma(s) medida(s) NÃO existem no commit de origem (${meta.commit}): o número declarado descreve uma árvore que aquele commit não tem`,
+          `    ❌ ${fora.length} forma(s) medida(s) NÃO existem no topo da medição (${meta.parentCommit ?? meta.commit ?? "?"}): o número declarado descreve uma árvore que aquele commit não tem (a âncora é resolvida pelas réguas, pela história)`,
         )
         for (const m of fora) {
           console.log(
@@ -2959,7 +2981,11 @@ export function familyProvenance({ result, reused = {} } = {}) {
     const fonte = daRodada ? null : (reused?.[family] ?? null)
     out[family] = {
       act: daRodada ? "measured" : fonte ? "reused" : "not-measured",
-      commit: daRodada ? (result?.meta?.commit ?? null) : (fonte?.commit ?? null),
+      // A família MEDIDA nesta rodada não tem hash gravável: a âncora dela é o
+      // PORTADOR (o commit que carrega o registro), resolvido pela história — o
+      // `commit` sai `null` e quem lê resolve. A herdada traz o topo do ato que a
+      // mediu.
+      commit: daRodada ? null : (fonte?.commit ?? null),
       commitDate: daRodada ? (result?.meta?.commitDate ?? null) : (fonte?.commitDate ?? null),
       timestamp: daRodada ? (result?.meta?.timestamp ?? null) : (fonte?.timestamp ?? null),
       source: fonte?.source ?? null,
@@ -3229,8 +3255,8 @@ export function compareTimings(
     reason,
     thresholdPct,
     minDeltaMs,
-    baselineCommit: baseline?.meta?.commit ?? null,
-    currentCommit: current?.meta?.commit ?? null,
+    baselineCommit: baseline?.meta?.parentCommit ?? baseline?.meta?.commit ?? null,
+    currentCommit: current?.meta?.parentCommit ?? current?.meta?.commit ?? null,
     forms,
     regressions: forms.filter((form) => form.regression),
     total,
@@ -3254,11 +3280,13 @@ function compareReport(current, baseline) {
   // um delta contra um numero que nao existia.
   const semFamilias = Object.keys(baseline.meta?.families ?? {}).length === 0
   console.log(
-    `  baseline: ${baseline.meta?.commit ?? "?"} (${baseline.meta?.timestamp ?? "?"}) — esquema v${baseline.meta?.version ?? "?"}` +
+    `  baseline: ${baseline.meta?.parentCommit ?? baseline.meta?.commit ?? "?"} (${baseline.meta?.timestamp ?? "?"}) — esquema v${baseline.meta?.version ?? "?"}` +
       (baseline.meta?.act ? ` · ato: ${baseline.meta.act}` : "") +
       (semFamilias ? " · SEM as familias de regua (as formas delas saem como NOVAS)" : ""),
   )
-  console.log(`  atual:    ${current.meta.commit} (${current.meta.timestamp})`)
+  console.log(
+    `  atual:    ${current.meta.parentCommit ?? current.meta.commit ?? "?"} (${current.meta.timestamp})`,
+  )
   console.log()
 
   const arrowOf = (form) =>

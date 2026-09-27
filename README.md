@@ -1265,13 +1265,14 @@ depois: `escreveu: true` é violação da família, não um detalhe do log.
 **O custo do job mais caro do PR não é uma conta à mão** (família `mutations` do
 `bench-guard-timing`). O job `mutation-guards` roda 46 sub-tests, e o que CADA um
 custa é medido pelo próprio master (`--json`) e versionado sub-test a sub-test no
-registro: o ato VERSIONADO de 27/09/2026 (`9fb47458`) — o MESMO comando, com a árvore COMMITADA —
-mediu **865.9s** de sub-tests + **5.4s** de harness =
-**871.3s**, com `job-deps` (204.2s, 24%), `pre-commit-proof` (163.6s, 19%), `workflow-run-syntax` (78.0s, 9%) e `hook-commands` (66.2s, 8%) no topo — antes disso
-ninguém sabia QUAL sub-test pagava a conta. A mediana é **3.3s**, dez sub-tests
-pagam **82%** da soma, e o registro guarda **277 metades**.
+registro: o ato de 27/09/2026, medido sobre `098322e6` — a âncora é o commit que CARREGA o
+registro, resolvida pela história —
+mediu **887.4s** de sub-tests + **5.4s** de harness =
+**892.8s**, com `job-deps` (213.0s, 24%), `pre-commit-proof` (164.3s, 19%), `workflow-run-syntax` (78.5s, 9%) e `hook-commands` (68.7s, 8%) no topo — antes disso
+ninguém sabia QUAL sub-test pagava a conta. A mediana é **3.6s**, dez sub-tests
+pagam **83%** da soma, e o registro guarda **277 metades**.
 Quem entra com um sub-test novo não compõe nada: ele entra **MEDIDO** na rodada seguinte
-(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~18.9s**) é dita
+(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~19.4s**) é dita
 como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test.
 
 Esta prosa é **DERIVADA**: quem a reescreve é o ato (o bloco é dele), e o
@@ -1367,13 +1368,13 @@ adivinhada pelo nome). A régua de "de qual arquivo veio esta forma?" é UMA SÓ
 folha `scripts/bench-families.mjs`), aplicada pelo ato à árvore e pela régua da
 idade ao commit. O veredito publica a linha ao lado da idade (uma idade vencida
 não pode MASCARAR uma forma que a origem não tem), a classe entra como dúvida com
-o remédio — commite a árvore e rode o ato de novo — e o item
+o remédio — o ato, que re-ancora o registro numa rodada só — e o item
 `bench-forma-fora-do-commit` do registro datado (`ci/unproven.json`) fecha só com
 `missing` e `semResposta` em ZERO: "não perguntei" não fecha dívida. No registro
-versionado de hoje as 43 formas com fonte declarada estão no commit de origem
+versionado de hoje as 43 formas com fonte declarada estão na origem
 (`missing` e `semResposta` em ZERO): a dívida que a `doc-hashes` declarou fecha
-por essa MEDIÇÃO — o ato foi re-rodado com a árvore COMITADA, e é isso que a
-régua lê.
+por essa MEDIÇÃO — a ÃNCORA do ato é o commit que CARREGA o registro, resolvido
+pela história (um commit não pode conter o próprio hash), e é isso que a régua lê.
 
 **LIMITE DECLARADO:** a régua mede FRESCOR, não exatidão — um commit a
 mais pode não mudar nada do que a família mede; o que ela impede é o silêncio de

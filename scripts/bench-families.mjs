@@ -41,10 +41,15 @@
 //   3 — uso inválido
 // =============================================================================
 
+import { spawnSync } from "node:child_process"
+import { dirname, join } from "node:path"
 import process from "node:process"
-import { pathToFileURL } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { metadesDeclaradas } from "./metades.mjs"
+
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
+const REPO_ROOT = join(SCRIPT_DIR, "..")
 
 /**
  * Os DOIS arquivos do bench (versionados em `docs/benchmarks/`).
@@ -55,6 +60,97 @@ import { metadesDeclaradas } from "./metades.mjs"
  */
 export const LATEST_FILE = "guard-timing-latest.json"
 export const BASELINE_FILE = "guard-timing-baseline.json"
+
+/** O caminho versionado do registro do ato (a âncora é resolvida por ele). */
+export const REGISTRO_VERSIONADO = `docs/benchmarks/${BASELINE_FILE}`
+
+/**
+ * A ÂNCORA do registro do ato, quando ela NÃO é gravável no próprio arquivo.
+ *
+ * O DEFEITO QUE ISTO FECHA (a re-ancoragem em DOIS commits, medido em 27/09/2026):
+ * a baseline gravava `meta.commit = <topo>` — o PAI do commit que a carrega —,
+ * porque o `--baseline` roda com a matriz já na ÁRVORE e o commit que a carrega
+ * ainda não existe. Só que a árvore do PAI não carrega a matriz que o registro
+ * declara ter medido (a suíte nova entra no commit SEGUINTE), e o
+ * `check-act-origin` — corretamente — recusa o commit em que a origem não carrega
+ * a matriz. O remédio era rodar o ato DE NOVO na árvore já commitada: DOIS
+ * commits para uma medição só.
+ *
+ * UM COMMIT NÃO PODE CONTER O PRÓPRIO HASH — o campo entra no blob, o blob no
+ * tree, o tree no commit. Então o hash do PORTADOR (o commit que carrega o
+ * registro) não é GRAVÁVEL dentro dele, em commit nenhum: a âncora tem de ser
+ * RESOLVIDA pela história, não digitada. É o que este módulo faz — o registro
+ * declara `meta.anchor = "carrier"` e quem lê resolve o portador (`git log`).
+ */
+export const ANCORA_PORTA = "carrier"
+
+/**
+ * O COMMIT QUE CARREGA um caminho — o PORTADOR: o último commit de `head` que
+ * tocou o arquivo. É a âncora do registro que declara `meta.anchor = "carrier"`.
+ *
+ * FAIL-CLOSED: sem `git`, sem `head`, sem o caminho na história ou com o git
+ * respondendo vazio, devolve `null` — "não sei qual commit carrega" NUNCA vira um
+ * hash inventado, e um portador nulo é dívida declarada (a régua acusa), não
+ * verde por omissão.
+ *
+ * @param {{path?: string, head?: string, cwd?: string, run?: Function}} [o]
+ * @returns {string|null} o hash COMPLETO do portador, ou `null`
+ */
+export function commitQueCarrega({
+  path = REGISTRO_VERSIONADO,
+  head = "HEAD",
+  cwd = REPO_ROOT,
+  run = spawnSync,
+} = {}) {
+  if (!path) return null
+  try {
+    const res = run("git", ["log", "-1", "--format=%H", String(head), "--", path], {
+      cwd,
+      encoding: "utf8",
+      timeout: 15_000,
+    })
+    if (res?.status !== 0) return null
+    const hash = String(res.stdout ?? "").trim()
+    return hash === "" ? null : hash
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A ORIGEM de um registro do bench — a âncora RESOLVIDA, com a procedência dita.
+ *
+ * Três casos, e o `via` diz qual deles respondeu (nunca um fallback silencioso):
+ *   · `meta.commit`   — esquema v6: o hash está gravado no próprio arquivo;
+ *   · `carrier`       — esquema v7: a âncora é o PORTADOR, resolvido da história
+ *                      (`meta.commit` não é gravável dentro do próprio commit);
+ *   · `ausente`       — o registro não declara âncora: a origem é NULA, e a régua
+ *                      que lê isto acusa — não presume.
+ *
+ * O `parent` é a PROCEDÊNCIA (o topo sobre o qual o ato rodou): ele não é a
+ * âncora, e por isso tem nome próprio.
+ *
+ * @param {unknown} registro  o registro do bench JÁ PARSEADO
+ * @param {{head?: string, path?: string, cwd?: string, run?: Function}} [o]
+ * @returns {{commit: string|null, via: "meta.commit"|"carrier"|"ausente", parent: string|null}}
+ */
+export function origemDoRegistro(
+  registro,
+  { head = "HEAD", path = REGISTRO_VERSIONADO, cwd = REPO_ROOT, run = spawnSync } = {},
+) {
+  const meta = registro?.meta ?? {}
+  const parent =
+    (typeof meta.parentCommit === "string" && meta.parentCommit.trim()) ||
+    (typeof meta.commit === "string" && meta.commit.trim()) ||
+    null
+  if (typeof meta.commit === "string" && meta.commit.trim() !== "") {
+    return { commit: meta.commit.trim(), via: "meta.commit", parent }
+  }
+  if (meta.anchor === ANCORA_PORTA) {
+    return { commit: commitQueCarrega({ path, head, cwd, run }), via: "carrier", parent }
+  }
+  return { commit: null, via: "ausente", parent }
+}
 
 /**
  * O ATO que mediu cada familia, como fato de primeira classe.

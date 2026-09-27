@@ -366,7 +366,13 @@ export function benchIndex(bench) {
   // diz se ele descreve a árvore de agora.
   const familyCommit = (family) =>
     (typeof familias?.[family]?.commit === "string" ? familias[family].commit : null) ??
-    (typeof bench?.meta?.commit === "string" ? bench.meta.commit : null)
+    // A âncora do registro é o PORTADOR (v7), resolvido pela história; o que o
+    // modelo publica aqui é a PROCEDÊNCIA — o topo sobre o qual o ato rodou.
+    (typeof bench?.meta?.parentCommit === "string"
+      ? bench.meta.parentCommit
+      : typeof bench?.meta?.commit === "string"
+        ? bench.meta.commit
+        : null)
   const add = (cmd, ms) => {
     if (typeof cmd !== "string" || typeof ms !== "number" || !Number.isFinite(ms)) return
     byCmd.set(instrumentKey(cmd), ms)
@@ -419,7 +425,12 @@ export function benchIndex(bench) {
     byScript,
     byForm,
     familyCommit,
-    benchCommit: typeof bench?.meta?.commit === "string" ? bench.meta.commit : null,
+    benchCommit:
+      typeof bench?.meta?.parentCommit === "string"
+        ? bench.meta.parentCommit
+        : typeof bench?.meta?.commit === "string"
+          ? bench.meta.commit
+          : null,
   }
 }
 

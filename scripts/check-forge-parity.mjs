@@ -802,7 +802,7 @@ export const CORE_INVARIANTS = [
     id: "act-origin",
     matches: /check-act-origin/,
     command: /^node scripts\/check-act-origin\.mjs$/m,
-    why: "o registro do ato afirma 'MEDIDO: N sub-tests' e 'medido no commit X' — e as duas podem divergir com o registro e a matriz concordando entre si na arvore em que os dois estao: a arvore de X e o UNICO lugar onde a mentira aparece, e o numero em jogo e a proveniencia que o merge le (medido: uma rodada gravou um `meta.commit` cuja arvore nao carregava a metade que o proprio registro declara ter medido)",
+    why: "o registro do ato afirma 'MEDIDO: N sub-tests' e 'medido no commit X' (a ANCORA, resolvida pela historia: um commit nao pode conter o proprio hash) — e as duas podem divergir com o registro e a matriz concordando entre si na arvore em que os dois estao: a arvore de X e o UNICO lugar onde a mentira aparece, e o numero em jogo e a proveniencia que o merge le (medido: uma rodada gravou uma origem cuja arvore nao carregava a metade que o proprio registro declara ter medido; ate a v6 o hash era o PAI e a re-rodada na arvore COMITADA era obrigatoria)",
     jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {

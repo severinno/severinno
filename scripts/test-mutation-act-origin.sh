@@ -364,8 +364,8 @@ metade "M6 (o TOTAL subtests)" \
 # ── M7 — a ORIGEM DECLARADA: o registro SEM `meta.commit` ────────────────────
 registro "" 2 5 "alfa:3" "beta:2"
 metade "M7 (o registro SEM meta.commit)" \
-  'registro.meta.commit.trim() : ""' \
-  'const origem = typeof registro?.meta?.commit === "string" && registro.meta.commit.trim() ? registro.meta.commit.trim() : "HEAD"'
+  'temOrigem(resolvida.commit) ? resolvida.commit.trim() : ""' \
+  'const origem = temOrigem(resolvida.commit) ? resolvida.commit.trim() : "HEAD"'
 
 # ── M8 — o FAIL-CLOSED: o registro que não é JSON ────────────────────────────
 # Aqui o controle mede o exit 2 (não medido) e a metade exigida é o exit 0: com a

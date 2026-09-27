@@ -122,12 +122,15 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 // medido: o doctor sobre uma cópia do repositório sem ele morria no import.
 // A régua é UMA só: o dono a importa e reexporta de lá.
 import {
+  ANCORA_PORTA,
   BASELINE_FILE,
   FORM_SECTION,
   MASTER_DOS_SUBTESTS,
+  REGISTRO_VERSIONADO,
   fonteDaForma,
   mapaDoMaster,
   measuredFamilies,
+  origemDoRegistro,
 } from "./bench-families.mjs"
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
@@ -508,7 +511,12 @@ export function commitAge(
  */
 export function familyFreshness(
   bench,
-  { maxBehind = FRESHNESS_MAX_COMMITS_BEHIND, head = "HEAD", probe = null } = {},
+  {
+    maxBehind = FRESHNESS_MAX_COMMITS_BEHIND,
+    head = "HEAD",
+    probe = null,
+    path = REGISTRO_VERSIONADO,
+  } = {},
 ) {
   const meta = bench?.meta ?? {}
   const procedencia = meta?.families ?? {}
@@ -532,8 +540,18 @@ export function familyFreshness(
   // dia em que uma família nascesse.
   for (const family of measuredFamilies(bench)) {
     const prov = procedencia?.[family] ?? null
-    const commit = prov?.commit ?? meta?.commit ?? null
-    const origin = prov?.commit ? "family" : meta?.commit ? "meta.commit" : "ausente"
+    // A ÂNCORA: a família HERDADA traz o commit DELA; a medida NESTA rodada não tem
+    // hash gravável (v7) e o commit dela é o PORTADOR — o commit que CARREGA o
+    // registro —, resolvido pela história. Sem resolução, o commit sai `null` e a
+    // idade vira `unknown` (dívida DITA, nunca um verde por omissão).
+    const commit = prov?.commit ?? origemDoRegistro(bench, { head, path }).commit
+    const origin = prov?.commit
+      ? "family"
+      : typeof meta?.commit === "string" && meta.commit.trim()
+        ? "meta.commit"
+        : meta?.anchor === ANCORA_PORTA
+          ? "carrier"
+          : "ausente"
     const idade = sonda(commit)
     const aged = idade.state === "ancestor" && idade.behind > maxBehind
     families.push({
@@ -614,7 +632,10 @@ function existeNoCommit(commit, path, { cwd = REPO_ROOT, run = spawnSync } = {})
  * @param {{cwd?: string, deps?: {run?: Function, ler?: Function, existe?: Function}}} [options]
  * @returns {{state: string, families: {family: string, commit: string|null, judged: number, missing: object[]}[], judged: number, notJudged: number, semResposta: number, missing: {family: string, form: string, path: string|null, id?: string, commit: string|null, via: string}[], detail: string, reason: string|null}}
  */
-export function formOriginFact(bench, { cwd = REPO_ROOT, deps = {} } = {}) {
+export function formOriginFact(
+  bench,
+  { cwd = REPO_ROOT, deps = {}, head = "HEAD", path = REGISTRO_VERSIONADO } = {},
+) {
   const run = deps.run ?? spawnSync
   const ler = deps.ler ?? ((commit, path) => lerDoCommit(commit, path, { cwd, run }))
   const existe = deps.existe ?? ((commit, path) => existeNoCommit(commit, path, { cwd, run }))
@@ -637,6 +658,10 @@ export function formOriginFact(bench, { cwd = REPO_ROOT, deps = {} } = {}) {
 
   const meta = bench?.meta ?? {}
   const procedencia = meta?.families ?? {}
+  // A ÂNCORA do registro, resolvida UMA vez (não a cada família): quando o
+  // registro declara o portador, a origem de TODAS as formas é o commit que o
+  // carrega — o hash não é gravável dentro dele.
+  const ancora = origemDoRegistro(bench, { head, path, cwd, run })
   const masters = new Map()
   const mapaDe = (commit) => {
     if (masters.has(commit)) return masters.get(commit)
@@ -653,7 +678,10 @@ export function formOriginFact(bench, { cwd = REPO_ROOT, deps = {} } = {}) {
   let semResposta = 0
 
   for (const family of familiasMedidas) {
-    const commit = procedencia?.[family]?.commit ?? meta?.commit ?? null
+    const commit =
+      ancora.via === "carrier"
+        ? ancora.commit
+        : (procedencia?.[family]?.commit ?? meta?.commit ?? null)
     const formas = FORM_SECTION[family]?.(bench) ?? []
     if (formas.length === 0) continue
     const faltam = []
@@ -1014,7 +1042,13 @@ export function tetoDaMatriz(ritmo, politica = POLITICA_DA_MATRIZ) {
  */
 export function matrixLagFact(
   bench,
-  { cwd = REPO_ROOT, head = "HEAD", politica = POLITICA_DA_MATRIZ, deps = {} } = {},
+  {
+    cwd = REPO_ROOT,
+    head = "HEAD",
+    politica = POLITICA_DA_MATRIZ,
+    deps = {},
+    path = REGISTRO_VERSIONADO,
+  } = {},
 ) {
   const run = deps.run ?? spawnSync
   const ler = deps.ler ?? ((commit, path) => lerDoCommit(commit, path, { cwd, run }))
@@ -1046,17 +1080,21 @@ export function matrixLagFact(
     )
   }
   const prov = bench?.meta?.families?.mutations ?? null
-  const commit = prov?.commit ?? bench?.meta?.commit ?? null
+  // A ÂNCORA resolvida: a família HERDADA traz o commit DELA; o registro do
+  // PRÓPRIO ato ancora no PORTADOR (v7) — o hash do commit que carrega o registro
+  // não é gravável dentro dele. Em v6 o que responde é o hash gravado.
+  const ancora = origemDoRegistro(bench, { head, path, run })
+  const commit = prov?.commit ?? ancora.commit
   const origin = {
     commit,
     date: prov?.commitDate ?? bench?.meta?.commitDate ?? null,
     act: prov?.act ?? bench?.meta?.act ?? null,
     source: prov?.source ?? null,
-    via: prov?.commit ? "family" : bench?.meta?.commit ? "meta.commit" : "ausente",
+    via: prov?.commit ? "family" : ancora.via,
   }
   if (!commit) {
     return indisponivel(
-      "a família `mutations` não declara commit de origem (nem na procedência, nem no meta do arquivo) — o relógio da matriz não tem de onde contar",
+      'o registro do ato não declara a ÂNCORA (nem `meta.commit` gravado, nem `meta.anchor = "carrier"` com um portador resolvido pela história) — o relógio da matriz não tem de onde contar',
     )
   }
 
@@ -1529,7 +1567,7 @@ export function readBenchFreshness({
   if (lido.erro) return { ...unavailable(lido.erro, { head, maxBehind }), file: lido.rotulo }
 
   return {
-    ...familyFreshness(lido.bench, { maxBehind, head, probe }),
+    ...familyFreshness(lido.bench, { maxBehind, head, probe, path: file }),
     file: lido.rotulo,
   }
 }
@@ -2032,12 +2070,13 @@ export function readFreshness({
     file,
     deps: { exists: deps.exists ?? existsSync, read },
   }).bench
-  const forms = formOriginFact(benchBruto, { cwd, deps })
+  const forms = formOriginFact(benchBruto, { cwd, deps, head, path: file })
   const matrix = matrixLagFact(benchBruto, {
     cwd,
     head,
     politica: POLITICA_DA_MATRIZ,
     deps,
+    path: file,
   })
   const doBench =
     bench.state === "measured"

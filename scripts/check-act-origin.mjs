@@ -6,7 +6,18 @@
  * O DEFEITO QUE ISTO FECHA. O registro do ato (`docs/benchmarks/guard-timing-
  * baseline.json` e o `-latest.json` da mesma rodada) afirma duas coisas ao mesmo
  * tempo: "MEDIDO: N sub-tests com M metades" e "a medição aconteceu no commit X"
- * (`meta.commit`). As duas afirmações podem divergir, e a divergência é INVISÍVEL
+ * (a ÂNCORA).
+ *
+ * A ÂNCORA É RESOLVIDA, NÃO DIGITADA. Até o esquema v6 o commit vinha gravado em
+ * `meta.commit` — e o `--baseline` roda com a matriz já na ÁRVORE, então ele
+ * gravava o PAI: a árvore de lá não carrega a matriz que o registro declara ter
+ * medido (a suíte nova entra no commit SEGUINTE) e este gate acusava, com razão,
+ * TODA rodada honesta — a re-ancoragem em DOIS commits era o preço. Um commit
+ * não pode conter o próprio hash (o campo entra no blob→tree→commit), então o
+ * PORTADOR (o commit que carrega o registro) não é gravável dentro dele: a v7
+ * declara a regra (`meta.anchor = "carrier"`) e a procedência (`meta.parentCommit`),
+ * e este gate RESOLVE o portador pela história (`origemDoRegistro`), aplicando as
+ * três regras à árvore do commit que de fato carrega o registro. As duas afirmações podem divergir, e a divergência é INVISÍVEL
  * para todo guard que lê uma árvore só: o registro e o master concordam entre si
  * na árvore em que os dois estão, e mesmo assim o commit de origem pode NÃO
  * carregar a matriz declarada — foi o que aconteceu no repositório (medido: a
@@ -15,11 +26,11 @@
  * então fala de uma árvore que não existiu, e a proveniência da medição — o
  * número que o merge lê — descreve outra coisa.
  *
- * AS TRÊS REGRAS (cada uma nomeada no veredito):
- *   R1 — o commit de origem RESOLVE? Um nome que não é commit nenhum (o hash de
- *        uma reescrita que sumiu) não sustenta medição nenhuma.
- *   R2 — o commit de origem PERTENCE à história do HEAD? Fora dela, o número
- *        declarado não é reproduzível nesta árvore (a classe da reescrita).
+ * AS TRÊS REGRAS (cada uma nomeada no veredito), aplicadas à ÂNCORA RESOLVIDA:
+ *   R1 — a âncora RESOLVE? Um nome que não é commit nenhum (o hash de uma
+ *        reescrita que sumiu) não sustenta medição nenhuma.
+ *   R2 — a âncora PERTENCE à história do HEAD? Fora dela, o número declarado não
+ *        é reproduzível nesta árvore (a classe da reescrita).
  *   R3 — a MATRIZ DECLARADA é a que a árvore da origem CARREGA? Quatro leituras,
  *        todas com o número nos dois lados: a forma declarada EXISTE na origem,
  *        as METADES dela são as de lá, a árvore não carrega sub-test que o
@@ -60,6 +71,10 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
 import { BENCH_ACT, BENCH_FAMILY, BENCH_PATH, deriveSubtestCount } from "./check-mutation-count.mjs"
+// A ÂNCORA vem da folha (`origemDoRegistro`): o registro declara a REGRA
+// (`meta.anchor = "carrier"`) quando o hash não é gravável dentro dele, e a
+// resolução do PORTADOR é UMA só — a mesma que a idade da régua usa.
+import { origemDoRegistro } from "./bench-families.mjs"
 import { metadesDeclaradas } from "./metades.mjs"
 
 const LATEST_PATH = "docs/benchmarks/guard-timing-latest.json"
@@ -163,25 +178,31 @@ function julgarUm(root, caminho, head) {
     return { indisponivel: `${caminho}: o registro não é JSON válido (${erro.message})` }
   }
 
-  const origem = typeof registro?.meta?.commit === "string" ? registro.meta.commit.trim() : ""
+  // A ÂNCORA RESOLVIDA: `meta.commit` (v6, gravado) ou o PORTADOR (v7, o commit
+  // que CARREGA o registro — resolvido pela história, porque um commit não pode
+  // conter o próprio hash). O `via` diz qual respondeu, e não há fallback mudo.
+  const resolvida = origemDoRegistro(registro, { head, path: caminho, cwd: root })
+  const origem = temOrigem(resolvida.commit) ? resolvida.commit.trim() : ""
   if (!temOrigem(origem)) {
     violacoes.push(
-      `${caminho}: o registro não declara o commit de origem (\`meta.commit\`) — "medido em" sem o commit não é procedência, é prosa`,
+      `${caminho}: o registro não declara a ÂNCORA (nem \`meta.commit\` gravado, nem \`meta.anchor = "carrier"\` com um portador resolvido pela história) — "medido em" sem origem não é procedência, é prosa`,
     )
     return { violacoes, naoJulgadas, origem: null }
   }
   const curto = origem.slice(0, 8)
+  const viaPortador = resolvida.via === "carrier"
+  const oque = viaPortador ? `o portador (o commit que carrega \`${caminho}\`)` : "`meta.commit`"
 
   if (!origemResolve(root, origem)) {
     violacoes.push(
-      `${caminho}: R1 · \`meta.commit\` = \`${curto}\` não resolve para commit nenhum neste repositório — a origem declarada não existe (é a classe da reescrita, que troca o nome do commit preservando o assunto)`,
+      `${caminho}: R1 · ${oque} = \`${curto}\` não resolve para commit nenhum neste repositório — a origem declarada não existe (é a classe da reescrita, que troca o nome do commit preservando o assunto)`,
     )
     return { violacoes, naoJulgadas, origem }
   }
 
   if (!origemNaHistoria(root, origem, head)) {
     violacoes.push(
-      `${caminho}: R2 · \`meta.commit\` = \`${curto}\` existe, mas está FORA da história de ${head.slice(0, 8)} — o número declarado não se reproduz nesta árvore (remédio: \`${BENCH_ACT}\` na árvore COMITADA, ou re-datar a origem para o nome vivo do mesmo ato)`,
+      `${caminho}: R2 · ${oque} = \`${curto}\` existe, mas está FORA da história de ${head.slice(0, 8)} — o número declarado não se reproduz nesta árvore (remédio: \`${BENCH_ACT}\` na árvore COMITADA, ou re-datar a origem para o nome vivo do mesmo ato)`,
     )
     return { violacoes, naoJulgadas, origem }
   }

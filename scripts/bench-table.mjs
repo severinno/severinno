@@ -139,10 +139,19 @@ export function estadoDaMatriz(registro) {
   }
 }
 
-/** A procedência do registro — o commit de ORIGEM e o ato que o gravou. */
+/**
+ * A PROCEDÊNCIA do registro — o topo sobre o qual o ato rodou e o dia da medição.
+ *
+ * O hash aqui é o do PARENTE (`meta.parentCommit`), NÃO o da âncora: desde o
+ * esquema v7 a âncora de um registro é o commit que o CARREGA, e um commit não
+ * pode conter o próprio hash — quem o resolve é quem MEDE (as réguas), pela
+ * história, nunca a prosa. Ela é um artefato RENDERIZADO e comparado byte a byte
+ * pela régua do count, então não pode carregar um valor que dependa de ONDE a
+ * comparação roda; o topo sobre o qual o ato rodou é o que o arquivo de fato GRAVA.
+ */
 export function procedenciaDe(registro) {
   const meta = registro?.meta ?? {}
-  const commit = meta.commit ?? "?"
+  const commit = meta.parentCommit ?? meta.commit ?? "?"
   const quando = String(meta.commitDate ?? meta.timestamp ?? "").slice(0, 10)
   const dia = quando ? quando.split("-").reverse().join("/") : "?"
   return { commit, dia, treeState: meta.treeState ?? null, versao: meta.version ?? null }
@@ -203,7 +212,8 @@ export function tabelaSubTests(estado) {
       `INDETERMINADO): ${estado.flakes.map((f) => `\`${f.role}\``).join(", ")}.`
     : ""
   const legenda =
-    `Cada sub-test do master, MEDIDO e VERSIONADO — o ato de ${dia} (\`${commit}\`): ` +
+    `Cada sub-test do master, MEDIDO e VERSIONADO — o ato de ${dia}, medido sobre \`${commit}\` ` +
+    `(a âncora é o commit que CARREGA este registro, resolvida pela história): ` +
     `**${estado.verdes}/${estado.subtests} verdes**, **${estado.metades} metades**.${feridas}${remedidas}${flaky}`
 
   const leitura =
@@ -254,7 +264,8 @@ export function paragrafoCusto(estado) {
     `**O custo do job mais caro do PR não é uma conta à mão** (família \`mutations\` do`,
     `\`bench-guard-timing\`). O job \`mutation-guards\` roda ${estado.subtests} sub-tests, e o que CADA um`,
     `custa é medido pelo próprio master (\`--json\`) e versionado sub-test a sub-test no`,
-    `registro: o ato VERSIONADO de ${dia} (\`${commit}\`) — o MESMO comando, com a árvore COMMITADA —`,
+    `registro: o ato de ${dia}, medido sobre \`${commit}\` — a âncora é o commit que CARREGA o`,
+    `registro, resolvida pela história —`,
     `mediu **${s(estado.somaSubTestsMs)}** de sub-tests + **${s(estado.harnessMs)}** de harness =`,
     `**${s(estado.wallMs)}**, com ${topo.slice(0, 3).join(", ")} e ${topo[3]} no topo — antes disso`,
     `ninguém sabia QUAL sub-test pagava a conta. A mediana é **${s(estado.medianaMs)}**, dez sub-tests`,

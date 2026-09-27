@@ -363,15 +363,15 @@ jobs:
         run: node scripts/check-doc-hashes.mjs
 
       # O REGISTRO DO ATO afirma DUAS coisas ao mesmo tempo: "MEDIDO: N sub-tests
-      # com M metades" e "a medição foi no commit X" (`meta.commit`). As duas
+      # com M metades" e "a medição foi no commit X" (a ÂNCORA). As duas
       # podem divergir, e a divergência é INVISÍVEL para todo guard que lê uma
       # árvore só — o registro e a matriz concordam entre si na árvore em que os
       # dois estão, e mesmo assim a árvore de X pode não carregar a matriz
-      # declarada. Foi o que aconteceu no repositório: a rodada gravou um
-      # `meta.commit` cuja árvore não tinha a nona metade que o próprio registro
-      # declara ter medido, e o veredito passou a falar de uma árvore que não
-      # existiu (o `--baseline` roda com a árvore suja; a re-rodada na árvore
-      # COMITADA é que corrige o `meta.commit`, e ela era hábito, não regra).
+      # declarada. A ÂNCORA é RESOLVIDA, não digitada: um commit não pode conter o
+      # próprio hash, então o registro v7 declara o PORTADOR (`meta.anchor`) e a
+      # procedência (`meta.parentCommit`), e este gate resolve o commit que
+      # CARREGA o registro pela história — uma rodada, um commit (até a v6 o hash
+      # gravado era o PAI, e a re-rodada na árvore COMITADA era obrigatória).
       #
       # Por que é do CORE: a pergunta é do REPOSITÓRIO (o registro versionado ×
       # a árvore que a própria linha dele declara), não de uma forja — e o
