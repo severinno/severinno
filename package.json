@@ -39,6 +39,7 @@
     "check:hook-commands": "node scripts/check-hook-commands.mjs",
     "check:prove-docs": "node scripts/check-prove-docs.mjs",
     "check:doc-hashes": "node scripts/check-doc-hashes.mjs",
+    "check:generated-format": "node scripts/check-generated-format.mjs",
     "check:commit-import-exports": "node scripts/check-commit-import-exports.mjs",
     "runner-base:pin": "node scripts/check-runner-base.mjs --write",
     "check:forge-parity": "node scripts/check-forge-parity.mjs",

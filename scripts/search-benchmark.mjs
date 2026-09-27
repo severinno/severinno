@@ -19,7 +19,10 @@
  * `scripts/compare-benchmarks.mjs --filter search`.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs"
+import { mkdirSync } from "node:fs"
+
+// O GERADO passa pelo formatador do repositório: o `*-latest.json` é VERSIONADO.
+import { escreverJsonFormatado } from "./prettier-format.mjs"
 import { dirname, join } from "node:path"
 import { calibrateBusyLoop } from "../src/lib/cpu-calibrate.mjs"
 import { measure } from "../src/lib/benchmark-utils.mjs"
@@ -210,7 +213,7 @@ console.log("")
 
 if (jsonFlag) {
   mkdirSync(dirname(jsonFile), { recursive: true })
-  writeFileSync(jsonFile, JSON.stringify(results, null, 2), "utf-8")
+  escreverJsonFormatado(jsonFile, results)
   console.log(`  📁 Results saved to ${jsonFile}`)
   console.log("")
 }

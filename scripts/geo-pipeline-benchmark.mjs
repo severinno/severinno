@@ -33,7 +33,12 @@
  *   node scripts/geo-pipeline-benchmark.mjs --json docs/benchmarks/pipeline.json
  */
 
-import { mkdirSync, writeFileSync } from "node:fs"
+import { mkdirSync } from "node:fs"
+
+// O GERADO passa pelo formatador do repositório: o `--json` escreve em caminho
+// versionado (`docs/benchmarks/`), e o `JSON.stringify` sozinho o deixaria fora
+// do lint.
+import { escreverJsonFormatado } from "./prettier-format.mjs"
 import { dirname, join } from "node:path"
 import { calibrateBusyLoop, busyWait } from "../src/lib/cpu-calibrate.mjs"
 import { measure, generateProviders } from "../src/lib/benchmark-utils.mjs"
@@ -385,7 +390,7 @@ console.log("")
 
 if (jsonFlag) {
   mkdirSync(dirname(jsonFile), { recursive: true })
-  writeFileSync(jsonFile, JSON.stringify(results, null, 2), "utf-8")
+  escreverJsonFormatado(jsonFile, results)
   console.log(`  📁 Results saved to ${jsonFile}`)
   console.log("")
 }

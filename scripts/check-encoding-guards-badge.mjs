@@ -23,8 +23,12 @@
 //   1 — badge divergente ou seção/badge ausente (fail-closed)
 // =============================================================================
 
-import { readFileSync, writeFileSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { join } from "node:path"
+
+// O GERADO passa pelo formatador do repositório: o badge é uma LINHA do README,
+// que é arquivo VERSIONADO e julgado pelo lint.
+import { escreverFormatado } from "./prettier-format.mjs"
 import { pathToFileURL } from "node:url"
 
 /** Regex do badge no README (URL encoded: "encoding guards-8/8 active"). */
@@ -135,7 +139,7 @@ function main() {
         .split(/\r?\n/)
         .map((line) => (BADGE_RE.test(line) ? buildFixedBadge(line, rowCount) : line))
         .join(eol)
-      writeFileSync(readmePath, fixed, "utf8")
+      escreverFormatado(readmePath, fixed)
       console.log(
         `✅ Badge de encoding guards reescrito: ${badge ? `${badge.current}/${badge.total}` : "ausente"} → ${rowCount}/${rowCount}`,
       )

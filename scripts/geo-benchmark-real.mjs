@@ -22,7 +22,11 @@
  */
 
 import pg from "pg"
-import { mkdirSync, writeFileSync } from "node:fs"
+import { mkdirSync } from "node:fs"
+
+// O GERADO passa pelo formatador do repositório: o `geo-real-latest.json` é
+// VERSIONADO e nasce julgado pelo `lint`.
+import { escreverJsonFormatado } from "./prettier-format.mjs"
 import { dirname, join } from "node:path"
 import { generateProviders } from "../src/lib/benchmark-utils.mjs"
 import { haversineKm } from "../src/lib/geo-shared.mjs"
@@ -497,7 +501,7 @@ async function main() {
 
   if (jsonFlag) {
     mkdirSync(dirname(jsonFile), { recursive: true })
-    writeFileSync(jsonFile, JSON.stringify(results, null, 2), "utf-8")
+    escreverJsonFormatado(jsonFile, results)
     console.log(`  📁 Results saved to ${jsonFile}`)
     console.log("")
   }

@@ -1774,7 +1774,7 @@ no caminho comum (nada de corpo nem script staged: um `git diff --cached` e mais
 nada), o que o põe no orçamento de um hook que roda a CADA commit sem duplicar a
 varredura do CI. Custo medido neste host (Linux,
 09/2026, mediana de 3 runs warm): o guard ≈ **2.46s** (2.46–2.48) — ele julga os
-arquivos de shell do repositório (144 hoje: 141 `*.sh` e os 3 hooks do
+arquivos de shell do repositório (145 hoje: 142 `*.sh` e os 3 hooks do
 `.husky/`) e os **35 textos de shell EMBUTIDO** (o `RUN` dos Dockerfiles e o
 payload dos `sh -c`), um `bash -n` por texto — e a prova de mutação ≈ **30.8s** onde o `vitest` está
 instalado (as duas rodadas da suíte unitária do M8 são ~24.9s disso, o que põe o
@@ -2134,8 +2134,8 @@ o `Summary` — que estava FORA do total declarado (21198ms = setup + install + 
 - check) — entrou pela cobertura exata: todo `run:` do job tem de estar contado, e
   um passo novo na pipeline indetermina o veredito em vez de entrar custando zero.
 
-O gate de sintaxe julga três fontes: os **567 corpos** `run:` das duas forjas, os
-**144 scripts de shell** do repositório e — desde a terceira fonte — **35 textos
+O gate de sintaxe julga três fontes: os **570 corpos** `run:` das duas forjas, os
+**145 scripts de shell** do repositório e — desde a terceira fonte — **35 textos
 de shell EMBUTIDO**: as 14 instruções `RUN` dos Dockerfiles (o shell do BUILD,
 com a continuação `\` juntada antes do parser) e os 21 payloads de `sh -c` de
 scripts, corpos e composes (que para o `bash -n` do arquivo que os contém são uma

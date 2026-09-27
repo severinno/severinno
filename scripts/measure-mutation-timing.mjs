@@ -188,9 +188,12 @@
 // =============================================================================
 
 import { spawnSync } from "node:child_process"
-import { readFileSync, writeFileSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { pathToFileURL } from "node:url"
 import { extractDurationFromLine } from "./check-setup-bun-common.mjs"
+// O GERADO (o `--json` do relatório) passa pelo formatador do repositório: o
+// destino comum é um caminho VERSIONADO em `docs/benchmarks/`.
+import { escreverJsonFormatado } from "./prettier-format.mjs"
 
 // ── Constantes de contrato — espelham os nomes REAIS do seed-guards.yml ────
 // Job: 'Mutation Test (contrato coordenado — doc↔anchor↔código)'
@@ -1330,15 +1333,21 @@ function applyBudgetGate(report, args, stepName, viaSuffix) {
   }
 }
 
-/** writeFileSync já importado no topo — helper de escrita do relatório. */
+/**
+ * O helper de escrita do relatório — e o caminho do `--json` passa pelo
+ * FORMATADOR do repositório.
+ *
+ * O destino vem do operador (`--json <caminho>`), e o caso comum é um caminho
+ * VERSIONADO (`docs/benchmarks/`): escrever cru deixaria o arquivo fora do lint
+ * no dia em que ele fosse commitado. A falha de escrita é AVISO, como antes —
+ * quem julga o que foi commitado é o `check-generated-format`.
+ */
 function emit(report, jsonPath) {
-  const json = JSON.stringify(report, null, 2)
-  if (jsonPath) {
-    try {
-      writeFileSync(jsonPath, json)
-    } catch (e) {
-      process.stderr.write(`aviso: não foi possível salvar --json '${jsonPath}': ${e.message}\n`)
-    }
+  if (!jsonPath) return
+  try {
+    escreverJsonFormatado(jsonPath, report)
+  } catch (e) {
+    process.stderr.write(`aviso: não foi possível salvar --json '${jsonPath}': ${e.message}\n`)
   }
 }
 

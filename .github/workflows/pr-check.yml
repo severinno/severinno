@@ -1619,6 +1619,30 @@ jobs:
       - name: Lint scope (o lint cobre o que o hook julga)
         run: node scripts/check-lint-scope.mjs
 
+      # O GERADO — o MESMO comando do job `lint` da Gitea (invariante
+      # `generated-format` do CORE). O defeito medido: um gerador gravava
+      # `JSON.stringify(dados, null, 2)` e o arquivo versionado nascia reprovando
+      # o `bun run lint` (o prettier colapsa o que cabe na largura) — o hook
+      # recusou o commit e o remédio ficou local àquele arquivo, enquanto a mesma
+      # armadilha seguia em todo gerador que não tinha aprendido a lição. O guard
+      # mede o ARTEFATO (versionado, dentro dos globs do `lint`, fora do
+      # `.prettierignore` e SAINDO como o prettier o deixa), o CAMINHO DE ESCRITA
+      # (todo gerador declarado passa pelo formatador) e a COBERTURA da tabela
+      # contra os geradores derivados da árvore (candidato fora da tabela e
+      # entrada stale reprovam).
+      - name: Gerado dentro do lint (todo gerador formatado)
+        run: node scripts/check-generated-format.mjs
+
+      # A PROVA POR MUTAÇÃO do guard acima, ao lado dele (o padrão do job do
+      # jsdom drift e do bun audit): sem ela o guard pode estar verde por nunca
+      # ter disparado. A bancada muta cada metade (o artefato fora da forma, o
+      # gerador que volta a gravar CRU, a saída fora do git, o candidato sem
+      # declaração, a entrada STALE e o `reescreve` fora dos globs) e exige a
+      # leitura do defeito; depois CEGA a metade do guard e exige que a MESMA
+      # bancada passe — a metade é load-bearing, não o fixture.
+      - name: Mutation test — o guard do gerado MORDE (fixtures)
+        run: bash scripts/test-mutation-generated-format.sh
+
       # CONTRATO REPO-WIDE (não PR-scope): o `eslint . --max-warnings 0` do
       # script cobre TODO o repo — um warning introduzido em QUALQUER arquivo
       # (mesmo via merge de base com warning, sem o PR tocar o arquivo) falha o

@@ -150,7 +150,7 @@ describe("no REPO REAL: a descida alcanca os sub-guards dos runners das pipeline
     expect(limites).toEqual([])
   })
 
-  it("a descida alcanca os DEZ sub-guards (inclusive os do idioma `SCRIPT_DIR`)", () => {
+  it("a descida alcanca os ONZE sub-guards (inclusive os do idioma `SCRIPT_DIR`)", () => {
     const scripts = JSON.parse(
       execFileSync("node", ["-p", "JSON.stringify(require('./package.json').scripts)"], {
         cwd: RAIZ,
@@ -162,6 +162,7 @@ describe("no REPO REAL: a descida alcanca os sub-guards dos runners das pipeline
       "scripts/audit-blob-crlf-history.sh",
       "scripts/check-bun-audit-baseline.mjs",
       "scripts/check-forge-parity.mjs",
+      "scripts/check-generated-format.mjs",
       "scripts/check-jsdom-baseline.mjs",
       "scripts/check-mutation-count.mjs",
       "scripts/check-unused-deps.mjs",
@@ -196,7 +197,7 @@ describe("no REPO REAL: a descida alcanca os sub-guards dos runners das pipeline
   it("o guard inteiro sai verde, com CADA sub-guard decidido e os DOIS limites nomeados", () => {
     const report = analyze({ root: RAIZ })
     expect(report.violations).toEqual([])
-    expect(report.subguards.length).toBe(10)
+    expect(report.subguards.length).toBe(11)
     for (const s of report.subguards) expect(s.decision).not.toBeNull()
     // Os DOIS limites que sobraram, nomeados um a um: os bloqueios que NAO sao o
     // idioma do `SCRIPT_DIR` (esse deixou de ser limite quando a regua passou a
@@ -221,7 +222,11 @@ describe("no REPO REAL: a descida alcanca os sub-guards dos runners das pipeline
     expect(porArquivo.get("scripts/test-mutation-workflow-run-syntax.sh")).toContain(
       "CONFERE a sintaxe",
     )
-    expect(porArquivo.get("scripts/test-mutation-guards.sh")).toContain("não resolve")
+    // A CLASSE do que nao deu para provar, e nao a redacao de um dia: o
+    // `${entry#*|}` cai na regua do shell como parametro POSICIONAL (`$1`),
+    // nao como variavel de caminho — a expectativa antiga ("nao resolve")
+    // envelheceu quando a regua passou a NOMEAR a classe do bloqueio.
+    expect(porArquivo.get("scripts/test-mutation-guards.sh")).toContain("é um parâmetro do shell")
   })
 })
 

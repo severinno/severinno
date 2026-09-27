@@ -43,6 +43,14 @@ exports[`pr-check.yml — job lint-guard (sintaxe YAML + snapshot) > parseia com
       "run": "node scripts/check-lint-scope.mjs",
     },
     {
+      "name": "Gerado dentro do lint (todo gerador formatado)",
+      "run": "node scripts/check-generated-format.mjs",
+    },
+    {
+      "name": "Mutation test — o guard do gerado MORDE (fixtures)",
+      "run": "bash scripts/test-mutation-generated-format.sh",
+    },
+    {
       "name": "Summary",
       "run": "echo "✅ All files formatted (prettier) and zero eslint warnings/errors."",
     },

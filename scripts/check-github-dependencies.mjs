@@ -73,8 +73,12 @@
 // =============================================================================
 
 import { execFileSync } from "node:child_process"
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { dirname, join, relative, resolve } from "node:path"
+
+// O GERADO passa pelo formatador do repositório: o inventário é um arquivo
+// VERSIONADO, e o `JSON.stringify(…, 2)` sozinho o deixa fora do lint.
+import { escreverFormatado } from "./prettier-format.mjs"
 import { fileURLToPath } from "node:url"
 
 import {
@@ -750,7 +754,7 @@ if (IS_DIRECT_RUN) {
 
   if (args.includes("--update")) {
     const texto = congelar({ inv })
-    writeFileSync(join(ROOT, DATA), texto, "utf8")
+    escreverFormatado(join(ROOT, DATA), texto)
     console.log(
       `✅ ${DATA} atualizado: o medido virou a declaracao (revise o diff — o numero tem de dizer o que existe).`,
     )

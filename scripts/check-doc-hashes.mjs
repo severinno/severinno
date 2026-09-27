@@ -140,7 +140,7 @@
 // =============================================================================
 
 import { execFileSync } from "node:child_process"
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { basename, dirname, join, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
@@ -154,6 +154,9 @@ import {
   openTerminal,
 } from "./confirm-prompt.mjs"
 import { linhasDe, patchPorArquivo } from "./unified-patch.mjs"
+// O GERADO/REMOVIDO (a reescrita das citações) passa pelo formatador do
+// repositório: a doc é VERSIONADA e julgada pelo `lint`.
+import { escreverFormatado } from "./prettier-format.mjs"
 
 /**
  * O caminho DESTE arquivo. `fileURLToPath` (e não `new URL(...).pathname`) é o que
@@ -757,7 +760,7 @@ export function fixAll(root, { dry = false } = {}) {
       })
       continue
     }
-    if (!dry) writeFileSync(join(root, file), novoConteudo)
+    if (!dry) escreverFormatado(join(root, file), novoConteudo, { root })
     fixed.push(...doArquivo)
   }
 

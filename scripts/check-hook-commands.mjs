@@ -168,9 +168,13 @@
 //     nao uma lista de arquivos escolhidos a mao.
 // =============================================================================
 
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { basename, dirname, join } from "node:path"
 
+// O GERADO (o remendo das linhas de comando) passa pelo formatador do
+// repositório: os arquivos que ele reescreve (docs/README/package.json) são
+// VERSIONADOS e julgados pelo `lint`.
+import { escreverFormatado } from "./prettier-format.mjs"
 import { shellTokens } from "./check-workflow-run-syntax.mjs"
 import { resolveCommand } from "./check-hook-ci-parity.mjs"
 import {
@@ -3004,7 +3008,7 @@ export function aplicarRemendo(root, plano) {
       saida = saida.slice(0, l.span.inicio) + l.item.para + saida.slice(l.span.fim)
       aplicados.push({ ...l.item })
     }
-    writeFileSync(caminho, saida, "utf8")
+    escreverFormatado(caminho, saida)
   }
   return { aplicados, recusados }
 }

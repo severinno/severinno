@@ -150,6 +150,14 @@ export const GUARD_CLOSURE = [
   // FIXTURE, não do defeito — que é exatamente o que o `closureProblems`
   // existe para nomear.
   "check-hook-commands.mjs",
+  // O FORMATADOR DO REPOSITÓRIO entrou pelo mesmo caminho: o remendo da classe
+  // `hook-commands` GRAVA por `escreverFormatado` (o remendo tem de sair dentro
+  // do lint, como todo gerado versionado), e o `check-hook-commands` — que já
+  // viajava no fecho — passou a importá-lo. O `closureProblems` acusou a
+  // referência nova na hora, que é o desfecho certo: sem esta linha o fixture
+  // morreria com "module not found" e o não-zero do hook seria do FIXTURE, não
+  // do defeito.
+  "prettier-format.mjs",
   "confirm-prompt.mjs",
   "check-hook-ci-parity.mjs",
   "check-forge-parity.mjs",

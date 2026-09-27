@@ -411,6 +411,22 @@ export const CORE_INVARIANTS = [
     jobIds: { gitea: "lint", github: "lint-guard" },
   },
   {
+    id: "generated-format",
+    // O PRODUTO da perna do prettier: todo arquivo VERSIONADO que um script do
+    // repositorio produz tem de sair DENTRO do lint — na mao do formatador que o
+    // proprio lint roda. Ele e um invariante do CORE pelo mesmo motivo do
+    // `lint-scope`: a pergunta e sobre o COMANDO `bun run lint`, e o defeito e
+    // ASSIMETRICO — o hook julga o arquivo estagiado (e foi ele que recusou o
+    // commit do `bench-guard-timing`), enquanto o gerador seguia gravando
+    // `JSON.stringify(..., 2)` e reintroduzia a forma no proximo `--update`.
+    // Roda no job do LINT das duas forjas, ao lado do `lint-scope`: e o unico
+    // lugar onde o `node_modules/.bin/prettier` (a regua do guard) esta instalado.
+    matches: /check[:-]generated[:-]format/,
+    command: /^node scripts\/check-generated-format\.mjs$/m,
+    why: "sem o guard, o gerado nasce fora da forma que o lint exige: o hook recusa o commit de quem regenerou, e o proximo `--update` reintroduz o mesmo defeito porque o GERADOR nao aprendeu a lição",
+    jobIds: { gitea: "lint", github: "lint-guard" },
+  },
+  {
     id: "tests",
     matches: /^bun run test:(run|unit|ci)$/,
     command: /^bun run test:run$/m,

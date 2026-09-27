@@ -154,7 +154,7 @@ export const HOOK_DECLARED = [
   {
     match: /^node scripts\/check-workflow-run-syntax\.mjs --staged$/,
     of: "workflow-run-syntax",
-    why: "recorte --staged: julga o INDICE (com o CONTEUDO do commit, via `git show :path`), nao a arvore de trabalho — os workflows, os scripts de shell E o shell embutido (o `RUN` de um Dockerfile e o payload de um `sh -c`) que o commit carrega. O corpo quebrado nasce de uma reescrita mecanica em massa ANTES do commit e e o commit que o carrega; a arvore pode ter WIP que nao faz parte dele. O CI roda o comando inteiro sobre o conteudo mergeado (567 corpos, 144 scripts e 35 textos embutidos das duas forjas — o conteudo do REPOSITORIO: o que o `.gitignore` declara local nao esta no CI nem na varredura da arvore) — a diferenca e de ESCOPO, e o instrumento (o mesmo script) e o do CI.",
+    why: "recorte --staged: julga o INDICE (com o CONTEUDO do commit, via `git show :path`), nao a arvore de trabalho — os workflows, os scripts de shell E o shell embutido (o `RUN` de um Dockerfile e o payload de um `sh -c`) que o commit carrega. O corpo quebrado nasce de uma reescrita mecanica em massa ANTES do commit e e o commit que o carrega; a arvore pode ter WIP que nao faz parte dele. O CI roda o comando inteiro sobre o conteudo mergeado (570 corpos, 145 scripts e 35 textos embutidos das duas forjas — o conteudo do REPOSITORIO: o que o `.gitignore` declara local nao esta no CI nem na varredura da arvore) — a diferenca e de ESCOPO, e o instrumento (o mesmo script) e o do CI.",
   },
   {
     // O ESCOPO DO LINT: o mesmo script do CI (`check-lint-scope.mjs`), com o
@@ -365,6 +365,10 @@ export const HOOK_NOT_RUN = [
   {
     ids: ["workflow-refs"],
     why: "relacao entre WORKFLOWS e scripts/package.json (referencia pendurada): so um commit de CI a muda — e nesse caso o hook ja roda o check de PARIDADE DE GATES, que e o gate que pega o efeito.",
+  },
+  {
+    ids: ["generated-format"],
+    why: "LACUNA DECLARADA, nao impossibilidade: o veredito e do PAR (artefato × gerador) da ARVORE inteira — `git ls-files`, os globs do `lint` e a tabela derivada dos candidatos —, e nao de um commit. Medido nesta arvore: ~4,4s (13 saidas declaradas, uma invocacao do prettier por saida), caro para o caminho de CADA commit. E o que ele acrescenta ao hook e a metade ESTRUTURAL — o caminho de escrita de cada gerador e a cobertura da tabela —, nao a forma: um artefato fora do padrao o hook ja recusa no estagiado (foi assim que o defeito apareceu: o proprio hook recusou o commit do `bench-guard-timing`). Quem mede o defeito a cada PR sao as DUAS pipelines, no job do lint (ao lado do `lint-scope`, com o `node_modules` instalado que o guard exige).",
   },
   {
     ids: [

@@ -58,7 +58,7 @@
 //      reescrita mecânica em massa acontece antes de commitar) e a árvore de
 //      trabalho pode carregar WIP que NÃO faz parte dele. Um defeito que só
 //      exista no working tree não é deste commit — e a varredura inteira (os
-//      567 corpos das duas forjas) continua sendo o veredito do CI. Sem
+//      570 corpos das duas forjas) continua sendo o veredito do CI. Sem
 //      git/índice o modo é FAIL-CLOSED (exit 2): "0 violações" sem ter lido o
 //      índice seria a mesma mentira de um gate que varre menos do que diz.
 //   8. o SHELL declarado é julgado contra o que o RUNNER tem — a única coisa que
@@ -128,7 +128,7 @@
 //      num script não existe runner para resolvê-la ANTES do bash — o texto vai
 //      ao interpretador como está, e a máscara julgaria um texto que não existe
 //      no arquivo (os `${{ }}` que há em `.sh` hoje estão em comentário e dentro
-//      de quote simples, onde são DADO; medido: os 144 passam sem máscara); (b) o
+//      de quote simples, onde são DADO; medido: os 145 passam sem máscara); (b) o
 //      interpretador é o que o SHEBANG declara, não um `shell:` de YAML — shebang
 //      bash/sh é julgado (o mesmo `isBashShell`), shebang de outra linguagem é
 //      PULADO com o motivo dito, e arquivo SEM shebang usa a premissa de quem o
@@ -173,8 +173,8 @@
 //      mais estreita. Com `--staged` o corte é vazio por construção — o índice
 //      não carrega caminho ignorado.
 //
-// SEM ALLOWLIST: o repositório inteiro passa em `bash -n` hoje — 567 corpos das
-// duas forjas, os 144 scripts de shell que o `listShellScripts` enumera (141
+// SEM ALLOWLIST: o repositório inteiro passa em `bash -n` hoje — 570 corpos das
+// duas forjas, os 145 scripts de shell que o `listShellScripts` enumera (142
 // `*.sh` + os 3 hooks do `.husky/`) e 35 textos de shell EMBUTIDO (14 instruções
 // `RUN` de Dockerfile + 21 payloads de `sh -c`, com 2 INDETERMINADOS nomeados:
 // os dois `bash -c "$cmd"` dos scripts de banco, cujo texto é montado em

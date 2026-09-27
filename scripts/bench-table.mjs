@@ -31,8 +31,12 @@
 //   0 — o módulo é FOLHA: não executa nada na carga e não julga repositório
 //       nenhum; o veredito do que ele escreve é do `check:mutation-count`
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+
+// O GERADO (os blocos derivados da doc) passa pelo formatador do repositório: o
+// README e o GUARDS são arquivos VERSIONADOS e julgados pelo `lint`.
+import { escreverFormatado } from "./prettier-format.mjs"
 import process from "node:process"
 
 /** O mapa id→glosa — a ÚNICA prosa desta folha (o resto é derivado). */
@@ -353,7 +357,7 @@ export function escreverDocs({
 }) {
   const estado = estadoDaMatriz(registro)
   const lerArquivo = ler ?? ((p) => readFileSync(p, "utf8"))
-  const escreverArquivo = escrever ?? ((p, t) => writeFileSync(p, t))
+  const escreverArquivo = escrever ?? ((p, t) => escreverFormatado(p, t))
   // Sem a família medida NÃO se toca no arquivo: não há o que renderizar, e
   // reescrever o bloco com "nada" trocaria a prosa por um vazio silencioso.
   if (estado === null)

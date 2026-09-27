@@ -62,7 +62,11 @@
 
 import { execSync } from "node:child_process"
 import { join, dirname } from "node:path"
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync } from "node:fs"
+
+// O GERADO (o manifesto do benchmark) passa pelo formatador do repositório: o
+// arquivo é VERSIONADO e nasce julgado pelo `lint`.
+import { escreverJsonFormatado } from "./prettier-format.mjs"
 import { fileURLToPath } from "node:url"
 
 // ---------------------------------------------------------------------------
@@ -245,7 +249,7 @@ function readCacheManifest() {
 function writeCacheManifest(manifest) {
   try {
     mkdirSync(OUT_DIR, { recursive: true })
-    writeFileSync(CACHE_MANIFEST_PATH, JSON.stringify(manifest, null, 2), "utf-8")
+    escreverJsonFormatado(CACHE_MANIFEST_PATH, manifest)
   } catch {
     // Best-effort — manifest loss only reduces cache efficiency
   }

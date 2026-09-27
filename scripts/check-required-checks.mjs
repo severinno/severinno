@@ -88,8 +88,12 @@
 //       julgar" — a mesma escala da família)
 // =============================================================================
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
+
+// O GERADO passa pelo formatador do repositório: o registro do que foi aplicado
+// é um arquivo VERSIONADO, e o `JSON.stringify(…, 2)` sozinho o deixa fora do lint.
+import { escreverJsonFormatado } from "./prettier-format.mjs"
 import process from "node:process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
@@ -761,7 +765,7 @@ export function writeAppliedRecord(
     atual = null
   }
   const { record, mudou } = buildAppliedRecord(atual, resolved, forges, hoje, unsupported)
-  if (mudou) writeFileSync(join(root, APPLIED_PATH), `${JSON.stringify(record, null, 2)}\n`, "utf8")
+  if (mudou) escreverJsonFormatado(join(root, APPLIED_PATH), record)
   return { escrito: mudou, path: APPLIED_PATH }
 }
 

@@ -71,6 +71,20 @@ jobs:
       - name: Lint scope (o lint cobre o que o hook julga)
         run: node scripts/check-lint-scope.mjs
 
+      # O GERADO (invariante `generated-format` do CORE): todo arquivo VERSIONADO
+      # que um script do repositório produz tem de sair DENTRO do lint — na mão do
+      # formatador que ESTE lint roda (`node_modules/.bin/prettier`). O defeito
+      # medido: um gerador gravava `JSON.stringify(dados, null, 2)` e o arquivo
+      # nascia reprovando o `bun run lint` (o prettier colapsa o que cabe na
+      # largura); o hook recusou o commit e o remédio ficou local àquele arquivo.
+      # O guard mede as três metades: o ARTEFATO (versionado, coberto pelos globs
+      # do `lint` e SAINDO como o prettier o deixa), o CAMINHO DE ESCRITA (quem
+      # gera passa pelo formatador) e a COBERTURA da tabela de geradores derivada
+      # da árvore. Roda ao lado do `lint` porque é o único lugar onde a pergunta é
+      # sobre ESTE comando e onde o `bun install` já aconteceu.
+      - name: Gerado dentro do lint (todo gerador formatado)
+        run: node scripts/check-generated-format.mjs
+
   # ── Repo Guards (invariantes do repositório, node-puro) ───────────────────
   # NÃO dependem do app rodar: são consistência de manifesto, de referências e
   # de fonte única. Job próprio para que a falha aponte o INVARIANTE violado em

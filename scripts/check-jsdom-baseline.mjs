@@ -50,8 +50,12 @@
 // =============================================================================
 
 import { spawnSync } from "node:child_process"
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
+
+// O GERADO passa pelo formatador do repositório: a baseline é um arquivo
+// VERSIONADO, e o `JSON.stringify(…, 2)` sozinho a deixa fora do lint.
+import { escreverJsonFormatado } from "./prettier-format.mjs"
 import { pathToFileURL } from "node:url"
 
 /** Path do baseline default (commitado — a fonte da verdade das falhas conhecidas). */
@@ -270,7 +274,7 @@ function main() {
   if (update) {
     mkdirSync(dirname(baselineFile), { recursive: true })
     const baseline = buildBaseline(failedFiles)
-    writeFileSync(baselineFile, `${JSON.stringify(baseline, null, 2)}\n`, "utf8")
+    escreverJsonFormatado(baselineFile, baseline)
     console.log(
       `✅ Baseline atualizado: ${currentTotal} falha(s) em ${baseline.fileCount} arquivo(s) → ${baselinePath}`,
     )

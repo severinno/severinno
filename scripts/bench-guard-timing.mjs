@@ -77,7 +77,7 @@
 // =============================================================================
 
 import { spawnSync } from "node:child_process"
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs"
 import { cpus, totalmem } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -99,6 +99,9 @@ import {
 } from "./pre-commit-proof.mjs"
 import { NO_PROMPT_ENV } from "./pre-commit-remedy.mjs"
 import { escreverDocs } from "./bench-table.mjs"
+// O GERADO (o registro do bench e os blocos derivados) passa pelo formatador do
+// repositório: o arquivo é VERSIONADO e nasce julgado pelo `lint`.
+import { escreverJsonFormatado } from "./prettier-format.mjs"
 // A parte PURA da régua (a tabela de "foi medida?" e os nomes dos dois arquivos)
 // vem do módulo-FOLHA: o doctor e a idade da régua (`bench-freshness.mjs`) a
 // leem sem arrastar o trabalho que ESTE módulo faz ao carregar (resolver o
@@ -340,26 +343,22 @@ export function legacyCallSites(root = REPO_ROOT) {
  * do repositório é o que faz o escrito sair estável POR CONSTRUÇÃO, em vez de
  * depender de quem escreve adivinhar a largura.
  *
- * O binário vem do `node_modules` do repositório (o mesmo do `lint`): sem ele o
- * arquivo sai cru e o ato DIZ isso — quem julga o JSON é o gate, não este aviso.
+ * O BINÁRIO vem do `node_modules` do repositório (o mesmo do `lint`) e a
+ * formatação é a do módulo COMPARTILHADO (`prettier-format.mjs`): a lição desta
+ * função deixou de ser local quando os outros geradores a receberam — um segundo
+ * formatador aqui divergiria do que o `check-generated-format` mede.
+ *
+ * Sem o binário (dependências não instaladas) o arquivo sai cru e o ato DIZ isso:
+ * quem julga o JSON é o gate, não este aviso — mas o aviso existe porque um gerado
+ * cru é um commit que o hook recusa.
  *
  * @param {string} caminho
  * @param {unknown} dados
  */
 function escreveJson(caminho, dados) {
-  writeFileSync(caminho, JSON.stringify(dados, null, 2) + "\n")
-  const bin = join(REPO_ROOT, "node_modules", ".bin", "prettier")
-  if (!existsSync(bin)) {
-    console.error(
-      `  ⚠️  ${caminho}: prettier não encontrado em node_modules — o JSON saiu CRU (pode reprovar o lint)`,
-    )
-    return
-  }
-  const r = spawnSync(bin, ["--write", caminho], { cwd: REPO_ROOT, encoding: "utf8" })
-  if (r.status !== 0) {
-    console.error(
-      `  ⚠️  ${caminho}: o prettier do repositório não formatou (exit ${r.status}) — o JSON saiu CRU`,
-    )
+  const r = escreverJsonFormatado(caminho, dados, { root: REPO_ROOT })
+  if (!r.formatado) {
+    console.error(`  ⚠️  ${caminho}: ${r.motivo} — o JSON saiu CRU (pode reprovar o lint)`)
   }
 }
 

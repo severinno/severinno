@@ -2387,8 +2387,8 @@ payload que só existe em runtime (`bash -c "$cmd"`) sai **INDETERMINADO** (com 
 motivo), a forma EXEC sem shell e o `-c` de um `python3` saem **PULADOS e
 nomeados**, e o corpo de um **heredoc** é DADO (nunca programa).
 
-Sem allowlist: o repositório passa inteiro — **567 corpos** das duas forjas (e
-todos os `shell:` declarados existem), **144 arquivos de shell** (141 `*.sh` + os
+Sem allowlist: o repositório passa inteiro — **570 corpos** das duas forjas (e
+todos os `shell:` declarados existem), **145 arquivos de shell** (142 `*.sh` + os
 3 hooks do `.husky/`) **e 35 textos de shell embutido** (14 instruções `RUN` +
 21 payloads de `sh -c`, com 2 indeterminados nomeados: os dois `bash -c "$cmd"`
 dos scripts de banco, cujo texto é montado em execução), sem erro E sem aviso. Um
@@ -8584,6 +8584,110 @@ de FIXTURE construído commit a commit num `mktemp`, não a régua do guard:
 `env: PILHA_HEAD` apontando o sha REAL do PR (não o merge): é o mesmo head que o
 prover da pilha mede, e é o commit do MEIO que esta régua existe para pegar. No
 `package.json` o comando é `check:commit-import-exports`.
+
+---
+
+## 33. O GERADO sai DENTRO do lint — `check:generated-format` (`scripts/check-generated-format.mjs` + `scripts/prettier-format.mjs`)
+
+**A classe, medida em 26/09/2026.** Um gerador montava o arquivo com
+`JSON.stringify(dados, null, 2)` e o versionado NASCIA reprovando o `bun run
+lint`: o prettier colapsa o que cabe na largura (um `"staged": ["a.sh",
+"b.sh"]` vira UMA linha, um `runs: [1, 2, 3]` idem) e o `JSON.stringify`
+expande TUDO. O caso real é o `scripts/bench-guard-timing.mjs`: ele gravou a
+baseline assim, o HOOK
+RECUSOU o commit e o remédio ficou local àquele arquivo. A medição que
+dimensionou a classe: naquele dia TODOS os gerados versionados passavam no
+prettier — mas QUASE NENHUM gerador usava o formatador. O produto estava certo
+por sorte de largura; o CAMINHO que o produz é que reintroduz o defeito no
+próximo `--update`, no `ms` a mais que não couber na linha, no dev que copiar o
+idioma antigo.
+
+**A régua é o formatador do PRÓPRIO repositório** (`scripts/prettier-format.mjs`):
+`escreverFormatado(caminho, conteudo)` grava e formata NO LUGAR com o binário
+pinado (`node_modules/.bin/prettier`, a versão lida do pacote — 3.9.6 hoje), e
+`escreverJsonFormatado` é o atalho de JSON (`JSON.stringify(…, 2)` + a
+formatação). Formatar PELO ARQUIVO (e não em memória) é decisão declarada: é
+assim que o prettier resolve a MESMA configuração daquele caminho
+(`.prettierrc`, o parser inferido pela extensão e as exclusões do
+`.prettierignore`) que o `lint` usa — um `format()` em memória teria de
+reconstruir essa decisão e uma reconstrução divergente gravaria um texto que o
+lint reprova. Sem o binário o helper DIZ que não formatou (`motivo`,
+`formatado: false`) — quem FALHA é o guard (fail-closed): nunca um verde por
+dependência ausente. A CLI do helper é uma CONSULTA (publica onde o formatador
+mora e a versão medida), e nada nela julga repositório.
+
+**O guard mede TRÊS metades, e nenhuma é a leitura da intenção:**
+
+1. **o ARTEFATO** (empírico): cada `saidas` da tabela é um arquivo VERSIONADO
+   (`git ls-files`), coberto pelos globs do script `lint` (a régua do
+   `check-lint-scope`, importada — não uma segunda cópia), NÃO ignorado pelo
+   `.prettierignore` e SAINDO como o prettier o deixa (`--check` com o binário
+   do repositório). `reescreve` cobre o gerador cujo alvo é um diretório/arquivo
+   reescrito sem lista exata (o fixer de citações, o de comandos): o prefixo tem
+   de estar coberto;
+2. **o CAMINHO DE ESCRITA** (estrutural, e DITO como tal): quem declara saída
+   passa pelo formatador, e cada chamada CRUA da fonte
+   (`writeFileSync`/`appendFileSync`/`writeFile`) casa EXATAMENTE a lista
+   `escritasCruas` da entrada (com o motivo) — escrita crua nova reprova e
+   declaração que não existe mais é STALE. É a metade que pega o gerador NOVO
+   antes de alguém regenerar o arquivo; o LIMITE é declarado (a forma do
+   caminho, não o efeito — o efeito quem mede é a metade 1);
+3. **a COBERTURA** (bidirecional): o conjunto de candidatos é DERIVADO da
+   árvore — scripts `.mjs` versionados que gravam E citam caminho que existe
+   como arquivo versionado. Candidato fora da tabela reprova (um gerador que
+   ninguém declarou) e entrada que não declara saída E não é candidata é STALE.
+   LIMITE declarado da derivação: ela vê o caminho LITERAL no próprio script —
+   o gerador que recebe o destino de um módulo compartilhado entra na tabela
+   pela DECLARAÇÃO, que é conferida contra a árvore.
+
+**Estado medido desta árvore:** **34** geradores declarados, **13** saídas
+versionadas e **27** candidatos derivados — todos cobertos (o verde publica os
+três números).
+
+**A fiação (o caminho de escrita de cada família).** Passaram a gravar pelo
+helper: as BASELINES e os registros versionados (`check-bun-audit-baseline`,
+`check-secret-leaks-baseline`, `check-jsdom-baseline`,
+`check-readme-reverse-baseline`, `check-github-dependencies`,
+`check-required-checks`); os BLOCOS DERIVADOS da doc (`check-encoding-guards-badge`
+— o badge do README, `check-doc-hashes` — as citações reescritas,
+`check-hook-commands` — o remendo dos comandos, `bench-table` — a tabela do
+custo e a prosa derivada); os BENCHMARKS (`run-benchmark`, `search-benchmark`,
+`cache-benchmark`, `geo-benchmark`, `geo-benchmark-real`,
+`geo-pipeline-benchmark`, `measure-mutation-timing`) e o REGISTRO do ato
+(`bench-guard-timing`, que originou o módulo).
+
+**Na forja e no CI.** O invariante `generated-format` do CORE exige `node
+scripts/check-generated-format.mjs` nas DUAS pipelines, no job do LINT (`lint`
+na Gitea, `lint-guard` no GitHub) ao lado do `lint-scope`: é o único lugar onde
+a pergunta é sobre o comando do lint e onde o `bun install` já aconteceu (o
+guard precisa do binário do prettier). No `package.json` o comando é
+`check:generated-format`. No hook ele é uma LACUNA DECLARADA (`HOOK_NOT_RUN`)
+com o custo medido — **~4,4s** nesta árvore (13 saídas, uma invocação do
+prettier por saída) —, e a metade que ele acrescentaria ao caminho de cada
+commit é ESTRUTURAL (o caminho de escrita e a cobertura da tabela), não a
+forma: um artefato fora do padrão o hook já recusa no estagiado — foi assim
+que o defeito apareceu.
+
+**A prova por mutação** (`scripts/test-mutation-generated-format.sh`) declara
+SETE metades, cada uma nas DUAS direções: a bancada mutada com o guard INTACTO
+tem de REPROVAR (exit 1) pela âncora da metade, e a MESMA bancada com a metade
+CEGADA tem de PASSAR (exit 0) — a metade é load-bearing, não o fixture:
+
+- **M1** o ARTEFATO fora da forma do prettier;
+- **M2** o gerador que volta a gravar CRU (com a escrita declarada: a única
+  regra em jogo é a do formatador);
+- **M3** a saída declarada FORA do `git` (não versionada);
+- **M4** o candidato NOVO fora da tabela;
+- **M5** a entrada STALE;
+- **M6** o `reescreve` fora dos globs do lint;
+- **M7** o artefato no `.prettierignore` (a segunda metade do escopo).
+
+A bancada é um repositório git de FIXTURE num `mktemp` (o prettier que mede e o
+que escreve é o REAL, via symlink de `node_modules`), e nenhum arquivo do
+repositório é mutado: o que se muta é o GUARD, com backup e restauração
+conferida por checksum no `trap EXIT`. A suíte fecha com a INTEGRAÇÃO (o guard
+real na árvore real, o MESMO comando do CI) e com a testemunha unitária
+(`check-generated-format.test.ts`, 17 testes).
 
 ---
 
