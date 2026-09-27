@@ -7,10 +7,11 @@
 #   bash scripts/test-mutation-artefatos-do-hook.sh
 #
 # Exit codes:
-#   0 — a metade foi DETECTADA (a lista derivada esvazia e o FIXTURE fica
-#       VERMELHO — por execução e pela suíte) e o controle passou ✅
-#   1 — a metade NÃO sustentou o veredito (a mutação não mudou a leitura), mutação
-#       não-cirúrgica, ou a restauração falhou ❌
+#   0 — as DUAS metades foram DETECTADAS (a lista derivada esvazia e, na
+#       segunda, perde UM artefato; em ambas o FIXTURE fica VERMELHO — por
+#       execução e pela suíte) e o controle passou ✅
+#   1 — uma metade NÃO sustentou o veredito (a mutação não mudou a leitura),
+#       mutação não-cirúrgica, ou a restauração falhou ❌
 #   2 — infra: a leitura por execução não pôde ser montada
 #
 # O QUE ISTO PROVA (e por que a suíte unitária sozinha não basta)
@@ -18,18 +19,29 @@
 # A derivação deixou de ser uma LISTA À MÃO: `artefatosDoFixture()` responde quais
 # arquivos do repositório o fixture do pre-commit MATERIALIZA a partir do que os
 # guards do hook LEEM por execução. Só que a régua da derivação é ela mesma um
-# mecanismo: se ela voltar a devolver uma lista vazia — um filtro que come as
-# entradas, uma coleta que para de registrar —, o fixture perde os artefatos e o
-# guard fail-closed lê INFRA na CÓPIA. O sintoma é o pior possível: o vermelho
-# passa a ser do FIXTURE, não do defeito, e a lista à mão volta pela porta de trás
-# sem ninguém editar uma linha de lista. Esta suíte desliga a derivação e exige
-# que o veredito MUDE.
+# mecanismo: se ela voltar a devolver uma lista VAZIA, ou a PERDER uma entrada (um
+# filtro que come o item, uma coleta que para de registrar), o fixture deixa de
+# materializar o artefato e o guard fail-closed lê INFRA na CÓPIA. O sintoma é o
+# pior possível: o vermelho passa a ser do FIXTURE, não do defeito, e a lista à mão
+# volta pela porta de trás sem ninguém editar uma linha de lista. Esta suíte desliga
+# a derivação nas DUAS formas e exige que o veredito MUDE em cada uma.
 #
-# A METADE (o que ela tira do lugar): o RETORNO da derivação passa a ser `[]`. Com
-# isso o fixture não materializa o `deploy/docker-compose.gitea.yml`, a guarda da
-# tag do runner não tem o que julgar e o hook cai em INFRA ("não existe em" /
-# "sem o artefato não há veredito a cunhar"), em vez de deixar passar um commit
-# que ele não conseguiu julgar.
+# AS METADES (o que cada uma tira do lugar):
+#
+#   · M1 — o RETORNO da derivação passa a ser `[]`. Com isso o fixture não
+#     materializa o `deploy/docker-compose.gitea.yml`, a guarda da tag do runner
+#     não tem o que julgar e o hook cai em INFRA ("não existe em" / "sem o
+#     artefato não há veredito a cunhar"), em vez de deixar passar um commit que
+#     ele não conseguiu julgar.
+#   · M2 — a COLETA para de registrar UM leitor: o compose da forja sai da lista
+#     que a derivação monta. É o caso VIL, e é por isso que ele é uma metade
+#     SEPARADA: a lista NÃO esvazia — os outros oito artefatos seguem lá, o
+#     fixture materializa oito de nove e a derivação não acusa problema nenhum.
+#     O artefato que sumiu é justamente o que a guarda lê, então o hook cai no
+#     MESMO INFRA e o vermelho do fixture é o mesmo de M1. O que a metade prova é
+#     que "um item a menos" NÃO passa como "uma lista menor": a lista à mão não
+#     volta inteira, volta pela METADE, e quem a barra é o artefato que o fixture
+#     PRECISA (fail-closed por dependência, não por tamanho de lista).
 #
 # DUAS TESTEMUNHAS INDEPENDENTES
 #
@@ -38,8 +50,8 @@
 #       verdade no fixture (a guarda da tag em `passthrough`, o resto dublado).
 #       O que se lê não é a intenção: é a lista derivada, a lista que o fixture
 #       usa, o EXIT do hook e a saída dele. No CONTROLE o fixture fica VERDE
-#       (exit 0, a guarda cunha o veredito do pin e o hook completa); com a metade
-#       ele fica VERMELHO pela INFRA.
+#       (exit 0, a guarda cunha o veredito do pin e o hook completa); com CADA
+#       metade ele fica VERMELHO pela INFRA.
 #   (2) A SUÍTE UNITÁRIA (`pre-commit-runner-tag-blocks.test.ts`) — a suíte do
 #       FIXTURE, que roda em todo PR e que mede a materialização com a guarda
 #       real. A âncora é o título do caso que exige o artefato na cópia, para o
@@ -56,8 +68,10 @@
 #     que mede o artefato NOVO sem edição e o fail-closed do comando ausente; aqui
 #     quem se mede é a CONSEQUÊNCIA da lista esvaziada no fixture, e a leitura por
 #     execução importa a derivação real (não uma cópia);
-#   · só a lista ESVAZIADA é mutada. Uma lista PARCIALMENTE errada (um artefato a
-#     menos) cai na suíte da derivação e no `porComando` do `--json`, não aqui;
+#   · as duas metades tiram o MESMO artefato (o compose da forja) da lista — uma
+#     esvaziando tudo, a outra sumindo com ele. A lista que perde um artefato que
+#     NENHUM guard do hook lê não muda veredito nenhum, e não é mutada aqui: quem
+#     a mede é a suíte da derivação e o `porComando` do `--json`;
 #   · o dublê do hook: os irmãos de fase devolvem 0 por função, e só a guarda que
 #     lê o artefato atravessa (`passthrough`). É a materialização que está em
 #     julgamento, não a bateria inteira do hook.
@@ -79,6 +93,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # master e a prosa da doc são DERIVADAS deste bloco, não mantidas à mão.
 METADES=(
   'M1|a LISTA DERIVADA esvaziada: o fixture perde os artefatos, o hook cai em INFRA na cópia e o vermelho deixa de falar do defeito (a lista à mão de novo)'
+  'M2|a COLETA para de registrar UM leitor: a lista derivada perde o compose, os outros oito ficam e o hook cai no MESMO INFRA — a lista à mão voltando pela metade não passa como lista menor'
 )
 
 cd "$SCRIPT_DIR"
@@ -252,6 +267,24 @@ exigir_iguais() { # <campoA> <campoB> <cenário> — os dois campos leem o MESMO
   pass "$cenario ($campoA = $campoB)"
 }
 
+exigir_perdeu_exatamente() { # <campo> <removido> <referência> <cenário>
+  # A lista lida tem de ser a REFERÊNCIA menos UM item — e o item é nomeado. Uma
+  # mutação que perdesse dois artefatos, ou que trocasse a lista por outra coisa do
+  # mesmo tamanho, seria uma mutação DIFERENTE da declarada (e o veredito dela não
+  # prova o que a metade diz).
+  local campo="$1" removido="$2" referencia="$3" cenario="$4" obtido esperado
+  obtido="$(ler_campo "$campo")"
+  # A ORDEM tem de ser a MESMA do driver: a lista sai do JSON ordenada por code
+  # unit (`Array.sort()`), e o `sort` do shell com locale ordenaria diferente
+  # (`.` antes de `d`? depende do locale) — `LC_ALL=C` é a régua certa.
+  esperado="$(tr ' ' '\n' <<<"$referencia" | grep -vxF -- "$removido" | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
+  if [ "$obtido" != "$esperado" ]; then
+    fail "$cenario: a lista não é o CONTROLE menos '$removido' — obtido: '$obtido' · esperado: '$esperado'"
+    exit 1
+  fi
+  pass "$cenario (o CONTROLE menos '$removido')"
+}
+
 exigir_contem() { # <campo> <trecho> <cenário>
   local campo="$1" trecho="$2" cenario="$3" obtido
   obtido="$(ler_campo "$campo")"
@@ -383,6 +416,10 @@ exigir_suite_vermelha() {
 
 # ── A âncora (o título como o vitest o reporta) ───────────────────────────
 ANCORA_M1="o fixture MATERIALIZA o artefato que a guarda lê"
+# M2 derruba o fixture pela MESMA materialização (é o mesmo caso que exige o
+# artefato na cópia): a âncora da testemunha unitária é a mesma, e o que difere
+# entre as metades é o CAMINHO pelo qual o artefato sai da lista derivada.
+ANCORA_M2="$ANCORA_M1"
 
 echo ""
 echo "  ═════════════════════════════════════════════════════════════════"
@@ -403,6 +440,12 @@ exigir_saida_tem "PINA uma versão" "e a guarda da tag RODOU, cunhando o veredit
 exigir_saida_tem "HOOK_COMPLETOU" "e o hook atravessa tudo"
 exigir_suite_verde "CONTROLE"
 
+# A REFERÊNCIA do controle: M2 é julgada CONTRA ela (a lista menos um item, e mais
+# nada). Sem esta captura a metade compararia com um número fixo, e um artefato
+# novo no repositório faria a metade medir a contagem, não a PERDA.
+CONTROLE_ARTEFATOS="$(ler_campo artefatos)"
+N_CONTROLE="$(contagem artefatos)"
+
 # ── M1: a LISTA DERIVADA esvaziada ────────────────────────────────────────
 header "M1 — a LISTA: a derivação devolve vazio (o fixture perde os artefatos e o hook cai em INFRA)"
 mutar '      artefatos: todos.filter((rel) => !fora.has(rel)),' \
@@ -418,11 +461,31 @@ exigir_saida_sem "HOOK_COMPLETOU" "M1: o hook NÃO atravessa (a cópia é insegu
 exigir_suite_vermelha "M1" "$ANCORA_M1"
 restaurar_original
 
+# ── M2: a LISTA DERIVADA perde UM artefato (a coleta para de registrar o leitor) ──
+header "M2 — a COLETA: um leitor a menos (os outros oito ficam e o hook cai no MESMO INFRA)"
+mutar '        lidos.add(rel)' \
+  '        if (rel !== "deploy/docker-compose.gitea.yml") lidos.add(rel) // MUTACAO M2: a coleta para de registrar UM leitor (o compose da forja)'
+rodar_driver_e_checar "M2"
+exigir_igual "problemas" "" "M2: a derivação 'fecha' (nenhum problema) — a perda é SILENCIOSA"
+exigir_nao_igual "artefatos" "" "M2: a lista NÃO esvazia (é o caso vil: um item a menos, não zero)"
+exigir_contagem "artefatos" "$((N_CONTROLE - 1))" "M2: a lista derivada tem UM artefato a menos que o CONTROLE"
+exigir_perdeu_exatamente "artefatos" "deploy/docker-compose.gitea.yml" "$CONTROLE_ARTEFATOS" "M2: e o que saiu é exatamente o artefato que a guarda da tag lê"
+exigir_iguais "artefatos" "doFixture" "M2: o fixture usa EXATAMENTE a lista derivada (a parcial chega à cópia)"
+exigir_nao_igual "hookStatus" "0" "M2: o hook no fixture fica VERMELHO (o artefato que sumiu é o que a guarda lê)"
+exigir_saida_tem "não existe em" "M2: e a recusa é o MESMO INFRA do artefato ausente (fail-closed)"
+exigir_saida_tem "sem o artefato não há veredito a cunhar" "M2: o motivo nomeia o artefato, não o defeito medido"
+exigir_saida_sem "PINA uma versão" "M2: a guarda não cunha veredito nenhum na cópia"
+exigir_saida_sem "HOOK_COMPLETOU" "M2: o hook NÃO atravessa (a cópia é insegura por construção)"
+exigir_suite_vermelha "M2" "$ANCORA_M2"
+restaurar_original
+
 # ── FECHO ─────────────────────────────────────────────────────────────────
 header "FECHO"
 rodar_driver_e_checar "FECHO"
 exigir_nao_igual "artefatos" "" "na árvore restaurada, a lista derivada volta a ter os artefatos"
+exigir_contagem "artefatos" "$N_CONTROLE" "e o TAMANHO dela volta ao do CONTROLE"
+exigir_contem "artefatos" "deploy/docker-compose.gitea.yml" "e o artefato que as DUAS metades tiraram está de volta na lista"
 exigir_igual "hookStatus" "0" "e o fixture volta a ficar verde"
 exigir_suite_verde "FECHO"
-pass "a metade M1 (a lista derivada esvaziada → o fixture vermelho) foi detectada; o guard está restaurado e medindo"
+pass "as metades M1 (a lista derivada esvaziada) e M2 (a lista derivada com UM artefato a menos) foram detectadas — o fixture fica VERMELHO nas duas; o guard está restaurado e medindo"
 echo ""

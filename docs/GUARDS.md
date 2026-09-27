@@ -1464,20 +1464,28 @@ de diretório. Um comando citado pelo hook e ausente do checkout não vira lista
 parcial: a derivação LEVANTA, e o `artefatosDoFixture()` do fixture também — a
 cópia não se monta com meio fecho.
 
-**A DERIVAÇÃO ela mesma virou uma metade da matriz**
-(`scripts/test-mutation-artefatos-do-hook.sh`, a metade `M1`). A régua da derivação
-é um MECANISMO, e um mecanismo que devolve vazio por regressão é o pior desfecho:
-o fixture perde os artefatos, a guarda fail-closed lê INFRA na cópia e o vermelho
-deixa de falar do defeito — a lista à mão volta pela porta de trás sem que ninguém
-edite uma linha de lista. A metade esvazia o RETORNO da derivação e exige que o
-veredito MUDE, com duas testemunhas: a leitura por execução (node-pura) importa a
-derivação e o fixture REAIS, materializa a cópia e RODA O HOOK — no CONTROLE o
-fixture fica VERDE (exit 0, a guarda da tag cunha o veredito do pin e o hook
-completa), e com a metade ele fica VERMELHO pelo INFRA do artefato ausente ("não
-existe em" / "sem o artefato não há veredito a cunhar", e o hook NÃO completa); e a
-suíte do FIXTURE (`pre-commit-runner-tag-blocks.test.ts`) fica VERMELHA na âncora
-que exige o artefato na cópia. Sem a metade, um PR que devolvesse a lista vazia
-passaria no CI em silêncio.
+**A DERIVAÇÃO ela mesma virou metade da matriz — e a suíte declara 2 metades, de
+propósito** (`scripts/test-mutation-artefatos-do-hook.sh`, as metades `M1` e `M2`).
+A régua da derivação é um MECANISMO, e um mecanismo que devolve vazio por regressão
+é o pior desfecho: o fixture perde os artefatos, a guarda fail-closed lê INFRA na
+cópia e o vermelho deixa de falar do defeito — a lista à mão volta pela porta de
+trás sem que ninguém edite uma linha de lista. A metade `M1` esvazia o RETORNO da
+derivação. A metade `M2` é o caso VIL, e é por isso que ela existe SEPARADA: a
+COLETA para de registrar UM leitor e a lista derivada perde o
+`deploy/docker-compose.gitea.yml` — os OUTROS OITO artefatos seguem lá, a derivação
+não acusa problema nenhum e o fixture materializa oito de nove. Uma lista com um
+item a menos passaria como "lista menor" se só a lista VAZIA fosse vigiada; o que a
+barra é o artefato que o fixture PRECISA (fail-closed por dependência, não por
+tamanho de lista). As duas metades exigem que o veredito MUDE, cada uma com as
+mesmas duas testemunhas: a leitura por execução (node-pura) importa a derivação e o
+fixture REAIS, materializa a cópia e RODA O HOOK — no CONTROLE o fixture fica VERDE
+(exit 0, a guarda da tag cunha o veredito do pin e o hook completa), e com CADA
+metade ele fica VERMELHO pelo INFRA do artefato ausente ("não existe em" / "sem o
+artefato não há veredito a cunhar", e o hook NÃO completa), com a lista mutada
+conferida contra a do CONTROLE menos UM item NOMEADO; e a suíte do FIXTURE
+(`pre-commit-runner-tag-blocks.test.ts`) fica VERMELHA na âncora que exige o
+artefato na cópia. Sem elas, um PR que devolvesse a lista vazia — ou que perdesse um
+artefato dela — passaria no CI em silêncio.
 
 #### Mutation tests que precisam de `node_modules` (fora da matriz node-pura)
 
@@ -3680,61 +3688,61 @@ mesmo fato que a régua da idade lê no doctor):
 
 <!-- bench:mutations:tabela — DERIVADA do registro (`mutations` da baseline); não edite à mão: o ato a reescreve -->
 
-Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 27/09/2026 (`eacfd9d2`): **46/46 verdes**, **276 metades**.
+Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 27/09/2026 (`1b4d73e4`): **45/46 verdes**, **277 metades**. **1 sub-test(s) NÃO passaram** (`pre-commit-proof`): o custo deles não julga nada. ↺ 1 sub-test(s) RE-MEDIDO(s) (2 tentativas; o ms deles é a SOMA das duas, não um guard mais lento): `pre-commit-proof`.
 
 | sub-test                                                                  |  wall time | fatia | metades |
 | ------------------------------------------------------------------------- | ---------: | ----: | ------: |
-| `job-deps`                                                                |     204.8s |   24% |      12 |
-| `pre-commit-proof` (a declaração dos recusadores, a descida e o CONTROLE) |     167.2s |   19% |       3 |
-| `workflow-run-syntax`                                                     |      77.8s |    9% |      15 |
-| `hook-commands`                                                           |      66.3s |    8% |      27 |
-| `local-image`                                                             |      48.8s |    6% |       4 |
-| `bench-freshness` (a régua da idade e o CONTEÚDO da origem)               |      45.0s |    5% |      12 |
-| `remedy-tty`                                                              |      36.4s |    4% |       2 |
-| `registry-defaults`                                                       |      27.9s |    3% |       9 |
-| `required-applied`                                                        |      20.8s |    2% |      10 |
-| `nested-guard`                                                            |      19.7s |    2% |       2 |
-| `artefatos-do-hook`                                                       |      18.8s |    2% |       1 |
-| `cut-stages` (as três invariantes duras do corte do GitHub)               |      18.5s |    2% |       3 |
-| `github-deps` (a catraca do inventário do GitHub)                         |      13.3s |    2% |       9 |
-| `mirror-coverage` (o CONTROLE, a soma por tabela e o pulo sem motivo)     |      11.4s |    1% |       3 |
-| `lint-scope` (o escopo do lint derivado do próprio comando)               |      10.8s |    1% |       6 |
-| `mutation-count`                                                          |      10.4s |    1% |      18 |
+| `job-deps`                                                                |     204.8s |   28% |      12 |
+| `workflow-run-syntax`                                                     |      77.6s |   11% |      15 |
+| `hook-commands`                                                           |      66.7s |    9% |      27 |
+| `local-image`                                                             |      49.2s |    7% |       4 |
+| `bench-freshness` (a régua da idade e o CONTEÚDO da origem)               |      45.1s |    6% |      12 |
+| `remedy-tty`                                                              |      36.7s |    5% |       2 |
+| `registry-defaults`                                                       |      27.9s |    4% |       9 |
+| `artefatos-do-hook`                                                       |      24.1s |    3% |       2 |
+| `required-applied`                                                        |      20.7s |    3% |      10 |
+| `nested-guard`                                                            |      19.8s |    3% |       2 |
+| `cut-stages` (as três invariantes duras do corte do GitHub)               |      18.7s |    3% |       3 |
+| `pre-commit-proof` (a declaração dos recusadores, a descida e o CONTROLE) |    15.8s ↺ |    2% |       3 |
+| `github-deps` (a catraca do inventário do GitHub)                         |      13.6s |    2% |       9 |
+| `mirror-coverage` (o CONTROLE, a soma por tabela e o pulo sem motivo)     |      11.2s |    2% |       3 |
+| `lint-scope` (o escopo do lint derivado do próprio comando)               |      10.9s |    2% |       6 |
+| `mutation-count`                                                          |      10.7s |    1% |      18 |
 | `canal-fixers`                                                            |       9.6s |    1% |       6 |
 | `reconciliation`                                                          |       9.3s |    1% |       3 |
-| `stack-per-commit` (a prova de cada commit da pilha passar sozinho)       |       8.9s |    1% |       8 |
+| `stack-per-commit` (a prova de cada commit da pilha passar sozinho)       |       9.0s |    1% |       8 |
 | `gate-registration`                                                       |       8.1s |    1% |       5 |
-| `runner-labels`                                                           |       5.2s |    1% |       1 |
-| `merge-latency`                                                           |       4.6s |    1% |       5 |
+| `runner-labels`                                                           |       5.3s |    1% |       1 |
+| `merge-latency`                                                           |       4.5s |    1% |       5 |
 | `hook-ci-parity`                                                          |       3.6s |    0% |       9 |
 | `runner-tag`                                                              |       3.2s |    0% |       1 |
-| `pipefail-sigpipe`                                                        |       2.4s |    0% |      22 |
+| `pipefail-sigpipe`                                                        |       2.3s |    0% |      22 |
 | `doc-hashes` (a régua do hash citado na prosa)                            |       2.1s |    0% |       9 |
 | `act-origin`                                                              |       2.0s |    0% |       8 |
-| `bun-literal`                                                             |       1.8s |    0% |       5 |
+| `bun-literal`                                                             |       1.9s |    0% |       5 |
 | `workflow-defaults`                                                       |       1.0s |    0% |       7 |
 | `lint-guard`                                                              |       0.9s |    0% |       3 |
 | `archived-pipeline`                                                       |       0.8s |    0% |       6 |
-| `timing-budget`                                                           |       0.7s |    0% |       5 |
+| `timing-budget`                                                           |       0.8s |    0% |       5 |
 | `readme-reverse`                                                          |       0.6s |    0% |       3 |
-| `commit-import-exports`                                                   |       0.5s |    0% |       5 |
-| `workflow-refs`                                                           |       0.5s |    0% |       4 |
-| `mutation-jobs`                                                           |       0.4s |    0% |       4 |
+| `commit-import-exports`                                                   |       0.6s |    0% |       5 |
+| `workflow-refs`                                                           |       0.6s |    0% |       4 |
+| `mutation-jobs`                                                           |       0.5s |    0% |       4 |
 | `readme`                                                                  |       0.4s |    0% |       3 |
-| `no-setup-bun`                                                            |       0.2s |    0% |       2 |
-| `runner-base`                                                             |       0.2s |    0% |       4 |
+| `runner-base`                                                             |       0.3s |    0% |       4 |
+| `no-setup-bun`                                                            |       0.3s |    0% |       2 |
+| `producer-sent`                                                           |       0.1s |    0% |       1 |
 | `no-leaked-imports`                                                       |       0.1s |    0% |       3 |
 | `utf8-scope`                                                              |       0.1s |    0% |       2 |
 | `bun-removal`                                                             |       0.1s |    0% |       1 |
-| `producer-sent`                                                           |       0.1s |    0% |       1 |
 | `hooks-symmetry`                                                          |       0.1s |    0% |       2 |
 | `docs-anchor`                                                             |       0.1s |    0% |       1 |
 | `e2e-cache-budget`                                                        |       0.0s |    0% |       2 |
-| **soma dos 46 sub-tests**                                                 | **865.7s** |  100% | **276** |
+| **soma dos 46 sub-tests**                                                 | **721.4s** |  100% | **277** |
 | harness (parse das metades, tabelas, subida do master)                    |       5.4s |       |         |
-| **total do master**                                                       | **871.1s** |       |         |
+| **total do master**                                                       | **726.9s** |       |         |
 
-**Dez** sub-tests pagam **83%** da conta e a mediana é **3.4s**: a cauda é barata, e o harness sai da DIFERENÇA entre o total e a soma dos sub-tests, não de uma constante. O sub-test NOVO entra na rodada seguinte **MEDIDO**, e o PRÓXIMO acrescenta **~18.9s** (PROJEÇÃO: a média dos scripts medidos mais o harness por sub-test). A marca **↺** na linha é sub-test RE-MEDIDO (a régua é a REPETIÇÃO: o ms é a soma das tentativas) e **🌀** é FLAKE (não vale verde nem reprovação). A coluna de metades é DERIVADA da matriz (§ acima) — o ato a reescreve depois da herança e diz o que fez (`metadesDaMatriz`). Esta TABELA (e esta leitura) é **DERIVADA do registro**: quem a reescreve é o ATO, e o `check:mutation-count` recusa o commit em que ela divirja dele — a prosa não tem número próprio.
+**Dez** sub-tests pagam **79%** da conta e a mediana é **3.4s**: a cauda é barata, e o harness sai da DIFERENÇA entre o total e a soma dos sub-tests, não de uma constante. O sub-test NOVO entra na rodada seguinte **MEDIDO**, e o PRÓXIMO acrescenta **~15.8s** (PROJEÇÃO: a média dos scripts medidos mais o harness por sub-test). A marca **↺** na linha é sub-test RE-MEDIDO (a régua é a REPETIÇÃO: o ms é a soma das tentativas) e **🌀** é FLAKE (não vale verde nem reprovação). A coluna de metades é DERIVADA da matriz (§ acima) — o ato a reescreve depois da herança e diz o que fez (`metadesDaMatriz`). Esta TABELA (e esta leitura) é **DERIVADA do registro**: quem a reescreve é o ATO, e o `check:mutation-count` recusa o commit em que ela divirja dele — a prosa não tem número próprio.
 <!-- /bench:mutations:tabela -->
 
 **E a derivação desceu ao PASSO.** O mesmo mecanismo, um nível abaixo: o job
