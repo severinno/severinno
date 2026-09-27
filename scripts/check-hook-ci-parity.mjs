@@ -264,12 +264,12 @@ export const HOOK_DECLARED = [
  * dele) e o guard confere as DUAS direcoes: sub-guard sem decisao E declaracao
  * que nao casa com sub-guard nenhum (stale).
  *
- * A TABELA TEM DUAS ENTRADAS porque a regua de caminho passou a resolver o
- * idioma `SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"` e o alvo
+ * A TABELA NASCEU COM DUAS ENTRADAS porque a regua de caminho passou a resolver
+ * o idioma `SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"` e o alvo
  * `node "$GUARD"` que sai dele: a descida das pipelines foi de **18 limites
- * declarados para 2**, de **2 para 8** arquivos alcancados — e os dois que
- * sobraram sem decisao local estao aqui, um a um, com a razao escrita (antes
- * deles o `bash "$AUDIT"` e o `node "$GUARD"` eram "nao desci": invisiveis).
+ * declarados para 2**, de **2 para 8** arquivos alcancados — e os que sobraram
+ * sem decisao local entram aqui, um a um, com a razao escrita (antes deles o
+ * `bash "$AUDIT"` e o `node "$GUARD"` eram "nao desci": invisiveis).
  *
  * O fato medido e o que sustenta a tabela: nenhum dos dois roda no hook porque
  * o veredito local e o RECORTE do commit e os dois medem o HISTORICO/ a ARVORE
@@ -292,6 +292,10 @@ export const RUNNER_SUBGUARD = [
   {
     file: "scripts/metades.mjs",
     why: "nao e um gate: e a REGUA das metades (biblioteca pura, sem veredito proprio). O CI a executa por dois caminhos — o master de mutacao (`bash scripts/test-mutation-guards.sh`, que imprime a descricao de cada sub-test) e o `check:mutation-count` —, e nenhum dos dois roda no hook (o master custa ~10 min). O que a regua decide e lido pelos consumidores; se ela estiver errada, quem fica vermelho e o master e o `check:mutation-count` no CI.",
+  },
+  {
+    file: "scripts/fecho-imports.mjs",
+    why: "nao e um gate: e a REGUA DO FECHO DE IMPORTS (biblioteca pura, sem veredito proprio) que os fixtures de mutacao usam para copiar o guard COPIADO e as arestas dele — quem copia um modulo leva o que o importador importa. O CI a executa pelos runners da matriz (`bash scripts/test-mutation-doc-hashes.sh`, `bash scripts/test-mutation-act-origin.sh` e `bash scripts/test-mutation-generated-format.sh`), e nenhum deles roda no hook (a matriz custa ~16 min, e o que o hook mede da contagem e o `check:mutation-count --staged`). O que a regua decide e lido pelos consumidores; se ela estiver errada, quem fica vermelho e a suite de mutacao no CI — e a propria execucao e a testemunha: `ERR_MODULE_NOT_FOUND` na copia PARA a suite em 2 (infra), nunca em veredito.",
   },
 ]
 
@@ -317,6 +321,18 @@ export const HOOK_NOT_RUN = [
     ids: ["doctor-ci"],
     why: "compara os espelhos com as repository variables: `vars.*` SO existem no runner do CI — localmente nao ha valor contra o que comparar (e o doctor sai INDETERMINADA, nunca verde).",
   },
+  // AQUI ESTAVA o `runner-tag` — a entrada saiu porque o hook passou a rodar a
+  // guarda, e nao porque a decisao foi esquecida. A razao antiga era de ESCOPO e
+  // estava certa enquanto valia: a guarda julga um ARTEFATO do repositorio (o
+  // compose da forja) e o fixture do hook copiava so o FECHO de `scripts/` — na
+  // copia ela lia o ramo de INFRA (compose ausente = exit 2, fail-closed) e o
+  // vermelho seria do FIXTURE, nao do defeito. O que mudou foi o FIXTURE: o
+  // simulador passou a materializar os ARTEFATOS que os guards do hook LEEM
+  // (`artefatosDoFixture()`, DERIVADO por execucao em `scripts/artefatos-do-hook.mjs`)
+  // e o hook roda a
+  // guarda na fase B com a MESMA linha do CI (o comando canonico do invariante,
+  // reconhecido por IGUALDADE — sem recorte e sem entrada em HOOK_DECLARED).
+  // Prova de execucao: `src/lib/__tests__/pre-commit-runner-tag-blocks.test.ts`.
   // AQUI ESTAVA o `pipefail-sigpipe` — a entrada saiu porque o hook passou a
   // rodar o guard, e nao porque a decisao foi esquecida. A razao antiga era de
   // CUSTO ("~1s no CI, ruido no caminho de cada commit") e de ESCOPO ("o defeito

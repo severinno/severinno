@@ -370,6 +370,22 @@ jobs:
       - name: Runner base pin (digest + contrato)
         run: node scripts/check-runner-base.mjs
 
+      # A DECLARAÇÃO da imagem do runner: a tag do serviço `runner` no compose
+      # PINa uma versão (`0.6.1`) ou é um digest imutável? É a metade do pin que
+      # não precisa de docker nem de container (o `runner-base` julga a BASE do
+      # Dockerfile por digest; o `runner-labels:check`, o registro × o binário no
+      # ar — este último só roda no smoke manual).
+      #
+      # Por que importa: o act_runner NÃO se auto-atualiza — quem decide a versão
+      # do binário é a IMAGEM —, e uma tag flutuante (`latest`) faz o
+      # `docker compose pull` de outro dia trocar a versão que a forja RODA sem
+      # uma linha do repositório mudar e sem sintoma. Foi o estado medido em
+      # 22/09/2026 (o binário reportava `v0.6.1` e a tag `0.2.11`, também no
+      # disco, reportava `v0.2.11`). Node puro e offline: sem registry e sem
+      # docker.
+      - name: Runner image tag (pina versão)
+        run: node scripts/check-runner-tag.mjs
+
       # Nenhuma referência pendurada entre workflow → script/package.json.
       - name: Workflow references
         run: node scripts/check-workflow-refs.mjs --pkg-internal

@@ -622,7 +622,6 @@ export async function proveRunnerQueueCycle(deps = {}) {
   })
   if (!renderedBase.ok) return finish("unavailable", renderedBase.detail)
   const volumesKeys = Object.keys(renderedBase.config.volumes ?? {})
-  const declarado = renderedBase.config.services?.[GITEA_SERVICE]?.environment ?? {}
   // A IMAGEM DO JOB sai do RUNNER, não do serviço da Gitea: quem declara as
   // referências é o `GITEA_RUNNER_LABELS` dele (`<label>:docker://<imagem>`), e a
   // régua que as lê é a MESMA do guard dos labels (`parseLabelEntries`). Antes

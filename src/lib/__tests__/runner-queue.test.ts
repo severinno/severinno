@@ -219,23 +219,30 @@ describe("parseGiteaQueueCounts", () => {
   })
 
   it("tabela VAZIA (stdout vazio do `-json`) é uma fila vazia MEDIDA", () => {
-    const r = parseGiteaQueueCounts("", Date.now())
+    // O `nowMs` é o MESMO relógio fixo das outras metades deste bloco (e não o
+    // `Date.now()`): o veredito destas quatro leituras NÃO depende do relógio, e
+    // ler o relógio real numa asserção é a bomba-relógio que o
+    // `check-clock-bombs` recusa — o arquivo mede a régua SEM o relógio da forja.
+    const nowMs = Date.UTC(2026, 8, 24, 12, 0, 0)
+    const r = parseGiteaQueueCounts("", nowMs)
     expect(r.ok).toBe(true)
     expect(r.waiting).toBe(0)
     expect(r.oldestMs).toBeNull()
   })
 
   it("zero em espera com um `min(created)` nulo não inventa idade", () => {
-    const r = parseGiteaQueueCounts('[{"aguardando":0,"mais_antiga":null}]', Date.now())
+    const nowMs = Date.UTC(2026, 8, 24, 12, 0, 0)
+    const r = parseGiteaQueueCounts('[{"aguardando":0,"mais_antiga":null}]', nowMs)
     expect(r.ok).toBe(true)
     expect(r.waiting).toBe(0)
     expect(r.oldestMs).toBeNull()
   })
 
   it("saída ilegível e contagem negativa são leitura que não aconteceu", () => {
-    expect(parseGiteaQueueCounts("nao e json", Date.now()).ok).toBe(false)
-    expect(parseGiteaQueueCounts('{"aguardando":1}', Date.now()).ok).toBe(false)
-    const negativa = parseGiteaQueueCounts('[{"aguardando":-1,"mais_antiga":1}]', Date.now())
+    const nowMs = Date.UTC(2026, 8, 24, 12, 0, 0)
+    expect(parseGiteaQueueCounts("nao e json", nowMs).ok).toBe(false)
+    expect(parseGiteaQueueCounts('{"aguardando":1}', nowMs).ok).toBe(false)
+    const negativa = parseGiteaQueueCounts('[{"aguardando":-1,"mais_antiga":1}]', nowMs)
     expect(negativa.ok).toBe(false)
     expect(negativa.detail).toContain("não é um número")
   })

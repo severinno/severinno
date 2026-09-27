@@ -3103,6 +3103,10 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
     ["required-checks", "node scripts/check-required-checks.mjs"],
     ["registry-source", "node scripts/check-registry-source.mjs"],
     ["runner-base", "node scripts/check-runner-base.mjs"],
+    // A OUTRA metade do pin do runner: o `runner-base` julga a BASE do
+    // Dockerfile (por digest) e esta julga a TAG do serviço no compose. Node
+    // puro e offline, pelas mesmas razões da linha acima.
+    ["runner-tag", "node scripts/check-runner-tag.mjs"],
     ["forge-workflow-scope", "node scripts/check-forge-workflow-scope.mjs"],
     ["forge-parity", "node scripts/check-forge-parity.mjs"],
     ["script-headers", "node scripts/check-script-headers.mjs"],
@@ -3194,6 +3198,9 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
       "  workflow-refs-guard:",
       "    steps:",
       "      - run: node scripts/check-workflow-refs.mjs --pkg-internal",
+      // O pin da TAG do runner no compose: no repositório ele vive NESTE job do
+      // espelho (o par do `guards` da Gitea), e a fixture tem de medir o mesmo.
+      "      - run: node scripts/check-runner-tag.mjs",
       // O gate de paridade hook↔CI roda nas DUAS forjas (o veredito local e o
       // do merge são dois conjuntos de comandos em dois arquivos).
       "      - run: node scripts/check-hook-ci-parity.mjs",

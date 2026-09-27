@@ -274,7 +274,9 @@ export function nomesDaLista(conteudo, direcao = "import") {
  */
 function pareceClausulaComFrom(t) {
   if (/^import\s/.test(t) && !/^import\s*["']/.test(t)) return true
-  if (/^export\s+(?:type\s+)?[\{*]/.test(t)) return true
+  // Na CLASSE de caracteres o `{` já é literal: o escape não faz nada (e o lint
+  // o acusa como `no-useless-escape`).
+  if (/^export\s+(?:type\s+)?[{*]/.test(t)) return true
   return false
 }
 

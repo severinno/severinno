@@ -17,31 +17,72 @@
  * outro gate ou de um fixture quebrado — e a prova estaria medindo o bloqueio de
  * um gate que já não funcionava.
  *
- * A SEGUNDA unidade é a completude do FECHO do fixture, e ela existe por um
- * achado real: a primeira execução desta prova morreu com `ERR_MODULE_NOT_FOUND`
- * (o `check-tla-closure.mjs` importa o `check-no-leaked-imports.mjs`) — e o
- * não-zero do módulo do recorte, com o hook tratando qualquer não-zero como "um
- * commit do meio é vermelho", virou uma ACUSAÇÃO ao commit. Fecho incompleto é
- * uma prova que mede o fixture; ele aparece NOMEADO aqui (derivado do grafo de
- * imports, não de uma lista conferida à mão).
+ * A SEGUNDA unidade é o FECHO do fixture, e ela existe por um achado real: a
+ * primeira execução desta prova morreu com `ERR_MODULE_NOT_FOUND` (o
+ * `check-tla-closure.mjs` importa o `check-no-leaked-imports.mjs`) — e o não-zero
+ * do módulo do recorte, com o hook tratando qualquer não-zero como "um commit do
+ * meio é vermelho", virou uma ACUSAÇÃO ao commit. Fecho incompleto é uma prova
+ * que mede o fixture. Aqui o fixture COPIA a lista DERIVADA do grafo
+ * (`fechoDoRecorte`, a régua única das suítes de mutação): não há lista declarada
+ * para envelhecer, e o que esta unidade prova é que a derivação continua vendo o
+ * grafo que a prova mede.
  *
  * Execução focada:
  *   npx vitest run --config vitest.config.unit.ts src/lib/__tests__/pre-push-stack-recorte-blocks.test.ts
  */
 
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+
 import { describe, expect, it } from "vitest"
 
 import {
-  FECHO_DO_RECORTE,
-  fechoDoRecorteProblemas,
+  RECORTE_MODULO,
+  fechoDoRecorte,
   provePushBlocksMiddle,
 } from "../../../scripts/pre-push-proof.mjs"
 import { HOOK_SOURCE } from "@/lib/__tests__/helpers/pre-push-fixture"
 
-describe("o fecho do fixture do recorte é COMPLETO (derivado do grafo)", () => {
-  it("toda dependência relativa do módulo do recorte está copiada — e nada sobra na lista", () => {
-    expect(fechoDoRecorteProblemas()).toEqual([])
-    expect(FECHO_DO_RECORTE).toContain("prove-stack-per-commit.mjs")
+describe("o fecho do fixture do recorte é o DERIVADO do grafo", () => {
+  it("a derivação vê o módulo do recorte e as arestas que a prova mede", () => {
+    // O que o fixture copia é esta lista — e ela não é conferida contra uma lista
+    // declarada (não há mais uma): a derivação LEVANTA quando o fecho não fecha, e
+    // o `catch` da prova o publica como `unavailable`.
+    const fecho = fechoDoRecorte()
+    expect(fecho).toContain(RECORTE_MODULO)
+    // As arestas que o fixture precisa ter, nomeadas uma a uma: a que o achado de
+    // 26/09 mediu (`check-tla-closure` → `check-no-leaked-imports`) e as folhas do
+    // módulo do recorte.
+    expect(fecho).toContain("check-tla-closure.mjs")
+    expect(fecho).toContain("check-no-leaked-imports.mjs")
+    expect(fecho).toContain("remedy-canal.mjs")
+    expect(fecho).toContain("doctor-unproven.mjs")
+    expect(fecho).toContain("allowlist-review.mjs")
+  })
+
+  it("um fecho que NÃO fecha LEVANTA o problema: meio fecho nunca vira fixture", () => {
+    // O grafo é lido de `root`, então a árvore do caso é um tmpdir com uma aresta
+    // por vez: a que não resolve e a que é PACOTE (este fixture roda sem
+    // `node_modules`). O desfecho é uma EXCEÇÃO com o problema NOMEADO — o
+    // `catch` do `provePushBlocksMiddle` (e o do `readPrePushBlock`) a publica
+    // como `unavailable`, e é por isso que a prova nunca mede o fixture.
+    const monta = (conteudo: string) => {
+      const dir = mkdtempSync(join(tmpdir(), "fecho-recorte-"))
+      mkdirSync(join(dir, "scripts"), { recursive: true })
+      writeFileSync(join(dir, "scripts", RECORTE_MODULO), conteudo, "utf8")
+      return dir
+    }
+    const arestaQuebrada = monta('import { x } from "./faltando.mjs"\n')
+    const comPacote = monta('import { z } from "zod"\n')
+
+    try {
+      expect(() => fechoDoRecorte(arestaQuebrada)).toThrow(/NÃO FECHA/)
+      expect(() => fechoDoRecorte(arestaQuebrada)).toThrow(/faltando\.mjs/)
+      expect(() => fechoDoRecorte(comPacote)).toThrow(/zod/)
+    } finally {
+      for (const dir of [arestaQuebrada, comPacote]) rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it("o hook REAL está ligado no recorte, e o bloqueio exige o VEREDITO (não só o exit)", () => {

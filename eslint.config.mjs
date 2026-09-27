@@ -130,6 +130,15 @@ const eslintConfig = [
       "next-env.d.ts",
       "examples/**",
       "skills",
+      // O SCRATCH LOCAL DECLARADO não tem veredito de lint. O `eslint .` varria o
+      // `.tmp/` (gitignorado, `.gitignore:66`) e o veredito local ficava vermelho
+      // por 31 problemas (5 erros de parse) de OUTRA sessão — e o CI, num checkout
+      // limpo, nunca os vê: a inversão exata do "passou aqui e quebrou lá". O que
+      // pode ser COMMITADO continua julgado — gitignorado não entra em commit
+      // nenhum, então ignorar aqui não abre buraco no recorte do merge (quem mede
+      // o escopo do lint contra a árvore versionada é o `check:lint-scope`).
+      ".tmp/**",
+      ".forge-doctor/**",
     ],
   },
 ]

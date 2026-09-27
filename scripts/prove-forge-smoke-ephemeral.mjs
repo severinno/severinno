@@ -54,12 +54,22 @@
 //     variáveis que o smoke usa (`vars.BUN_VERSION` & cia) saem do mesmo
 //     template, e a lista delas é DERIVADA do workflow (um `vars.X` novo no
 //     smoke entra sozinho — e falha se não existir no template);
+//   - o `config.yaml` do runner é GERADO e semeado no volume efêmero. Ele existe
+//     por um motivo medido: sem `container.network`, o act_runner cria uma rede
+//     POR JOB e o container do job nasce FORA da rede do projeto — onde o nome
+//     `gitea` resolve. O primeiro passo do smoke (`actions/checkout@v4`) morre
+//     com `Could not resolve host: gitea` e nenhuma das 5 provas roda. Na
+//     produção esse arquivo é do OPERADOR (vive no volume dele, é lá que o
+//     `container.docker_host` da doc é ajustado): o ensaio gera o equivalente;
+//     o resto dos campos é o DEFAULT do próprio binário, de propósito;
 //   - o repositório do ensaio é um snapshot do worktree (ou de `HEAD`, com
 //     `--source`), com o smoke COMITADO e o gatilho `push` ACRESCENTADO — ver
 //     "O gatilho" abaixo;
 //   - o veredito não vem de texto: vem de `action_task.status` do banco do
-//     Gitea (1 = sucesso, 2 = falha) e o log COMPLETO do job, que o Gitea
-//     guarda (`actions_log/<log_filename>`), traz as linhas `✅`/`::error::`.
+//     Gitea (1 = sucesso, 2 = falha) e o log COMPLETO do job — lido de ONDE a
+//     1.22 o guarda (`actions_log/<log_filename>` depois da transferência, ou
+//     o DBFS do banco enquanto ela não acontece) —, que traz as linhas
+//     `✅`/`::error::`.
 //
 // O gatilho (a única diferença entre o arquivo empurrado e o comitado)
 //
@@ -185,10 +195,36 @@ export const FAILURE_STATUS = 2
 export const DEFAULT_TIMEOUT_S = 900
 
 /**
- * As marcas que o próprio act_runner escreve no log do job. Derivar delas é o
- * que permite exigir "cada passo RODOU" sem cravar a lista de passos aqui.
+ * As marcas que o próprio act_runner escreve no log do job.
+ *
+ * `GROUP_MARKER` é a régua de "este passo EXECUTOU": o runner abre um grupo
+ * (`::group::Run <rótulo>`) para CADA passo que roda, e o rótulo é derivado do
+ * passo (a referência do `uses:` — ou o nome, quando ele tem um — e, para
+ * `run:`, a PRIMEIRA linha do script). MEDIDO em quatro jobs desta série: é a
+ * única linha que aparece para todo passo executado.
+ *
+ * `RUN_MARKER` (o `⭐ Run Main …`) NÃO serve para isso, apesar do nome: o runner
+ * o grava para o PRIMEIRO passo do job e para os estágios `Post` — e não para os
+ * demais (medido: um job com quatro passos de `run:` tinha o `⭐` só do
+ * `actions/checkout@v4`). Ele fica para o diagnóstico grosso de "o runner não
+ * executou job nenhum".
  */
+export const GROUP_MARKER = "::group::Run "
 export const RUN_MARKER = "⭐ Run Main "
+
+/**
+ * O formato de uma linha de ECO do script (o act imprime o script do passo antes
+ * de executá-lo: `  echo "✅ …"` é texto do workflow, NÃO saída do passo).
+ *
+ * A distinção é obrigatória, e MEDIDA: o smoke tem um `echo "::error::…"` em
+ * CADA ramo de falha das provas, e o eco deixa esses literais no log de QUALQUER
+ * run — inclusive de um run VERDE. Sem descontar o eco, um verde seria lido como
+ * "o log tem sete marcas de falha" e o ensaio reprovaria a própria forja.
+ */
+export const SCRIPT_ECHO_LINE = /^\s*echo\s+["']/
+
+/** O carimbo de tempo que o Gitea põe em toda linha do log (para olhá-la por dentro). */
+export const LOG_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[^\s]*Z\s*/
 export const JOB_FAILED_MARKER = "🏁  Job failed"
 export const ERROR_ANNOTATION = "::error::"
 
@@ -402,6 +438,42 @@ jobs:
 }
 
 /**
+ * O caminho do `config.yaml` do runner DENTRO do container (o `run.sh` da imagem
+ * só passa `--config` quando a env `CONFIG_FILE` existe — medido).
+ */
+export const RUNNER_CONFIG_PATH = "/data/config.yaml"
+
+/**
+ * O `config.yaml` do runner efêmero: o mínimo que sai do default do binário.
+ *
+ * Um campo, e o motivo é medido: sem `container.network`, o act_runner cria uma
+ * rede POR JOB (`networkNameForGitea()` devolve `<job>-<id>-network` e manda
+ * criar) e o container do job nasce fora da rede do projeto — onde o nome do
+ * serviço `gitea` resolve. O `actions/checkout@v4` do smoke morre com
+ * `Could not resolve host: gitea` e nenhuma das 5 provas roda. Com o alvo
+ * declarado, o fork usa a rede EXISTENTE e não cria nem apaga rede nenhuma.
+ *
+ * O resto NÃO é declarado de propósito: o `LoadDefault` do binário preenche os
+ * zeros (`runner.file=.runner` no cwd — que o `run.sh` faz `/data` —,
+ * `capacity=1`, `timeout=3h`, cache LIGADO e `container.docker_host` vazio, que
+ * acha o socket e o MONTA no container do job — é ele que a Prova 5 usa).
+ *
+ * @param {{network: string}} args
+ */
+export function renderRunnerConfig({ network }) {
+  return [
+    "# GERADO pelo ensaio efêmero (prove-forge-smoke-ephemeral.mjs) — não editar.",
+    "#",
+    "# `container.network`: sem ele o act_runner cria uma rede POR JOB e o job não",
+    "# resolve `gitea` (medido: `Could not resolve host: gitea` no checkout).",
+    "# O resto dos campos é o default do binário — e é assim que tem de ser.",
+    "container:",
+    `  network: ${network}`,
+    "",
+  ].join("\n")
+}
+
+/**
  * O override do compose: o que PRECISA ser efêmero, e só isso.
  *
  * Três pontos e nada mais:
@@ -416,17 +488,25 @@ jobs:
  *      (`container_name` do render) — renomeá-lo faria o smoke acusar
  *      "NÃO PROVADO" por culpa do ensaio, e não da forja.
  *
- * Labels, imagens e serviços continuam vindo do compose real.
+ * Labels, imagens e serviços continuam vindo do compose real. A única env que
+ * este override acrescenta é OPCIONAL (`runnerConfigPath`): sem ela o `run.sh`
+ * usa o default do binário e o job não sai da rede por job — quem a passa é o
+ * ensaio, que semeia o arquivo no volume do projeto antes de subir o runner.
  *
- * @param {{project: string, port: number, volumeKeys: string[], giteaContainerName?: string}} args
+ * @param {{project: string, port: number, volumeKeys: string[], giteaContainerName?: string, runnerConfigPath?: string|null}} args
  */
 export function renderOverrideCompose({
   project,
   port,
   volumeKeys,
   giteaContainerName = `${project}-${GITEA_SERVICE}`,
+  runnerConfigPath = null,
 }) {
   const volumes = [...volumeKeys].map((key) => `  ${key}:\n    name: ${project}-${key}`)
+  const runner =
+    runnerConfigPath === null
+      ? []
+      : [`  ${RUNNER_SERVICE}:`, "    environment:", `      - CONFIG_FILE=${runnerConfigPath}`]
   return [
     "# GERADO pelo ensaio efêmero (prove-forge-smoke-ephemeral.mjs). Não editar.",
     "services:",
@@ -434,6 +514,7 @@ export function renderOverrideCompose({
     `    container_name: ${giteaContainerName}`,
     "    ports:",
     `      - '127.0.0.1:${port}:3000'`,
+    ...runner,
     "volumes:",
     ...volumes,
     "",
@@ -504,14 +585,24 @@ export function parseActionTasks(stdout) {
  * novo entra sozinho na exigência, e um `✅` sem `echo` correspondente deixa de
  * ser exigido sem que ninguém precise lembrar de atualizar esta lista.
  *
- * Três vocabulários saem daqui:
- *   - `steps`   — os `- name:` do job (o log traz `⭐ Run Main <nome>`);
+ * Quatro vocabulários saem daqui:
+ *   - `steps`   — os `- name:` do job (o relatório nomeia o que faltou);
+ *   - `groups`  — para CADA passo, o rótulo do grupo que o runner abre
+ *                 (`::group::Run <rótulo>`, com a CONTAGEM esperada: os passos
+ *                 que compartilham rótulo — `set -euo pipefail` é o primeiro de
+ *                 todos os `run:` do smoke — exigem uma ocorrência cada). É a
+ *                 evidência de que o passo EXECUTOU, e é medida, não suposta;
  *   - `success` — as linhas `echo "✅ …"`, truncadas na primeira interpolação
  *                 (`$`), porque a parte literal é o que dá para exigir;
  *   - `failure` — as linhas `echo "::error::…"`, o mesmo truncamento. É o que
  *                 NÃO pode aparecer num run verde.
  *   - `variables` — os `vars.<NAME>` usados pelo workflow: são exatamente as
  *                 repository variables que o ensaio precisa criar.
+ *
+ * O rótulo do grupo é derivado do TIPO do passo porque o log do runner o deriva
+ * do tipo também: `uses:` com nome → o nome; `uses:` sem nome → a referência
+ * (`actions/checkout@v4`); `run:` → a PRIMEIRA linha do script. Cravá-lo aqui
+ * (ou exigir o nome do passo) seria exigir uma linha que o runner não grava.
  *
  * @param {string} text conteúdo de `SMOKE_WORKFLOW`
  */
@@ -528,6 +619,49 @@ export function smokeExpectations(text) {
   const steps = named
     .filter((entry) => entry.indent === stepIndent)
     .map((entry) => entry.name.trim().replace(/^"(.*)"$/, "$1"))
+
+  // ── o rótulo do grupo de CADA passo (a evidência de que ele executou) ──────
+  const desquote = (value) =>
+    value
+      .trim()
+      .replace(/^"(.*)"$/, "$1")
+      .replace(/^'(.*)'$/, "$1")
+  const scannable = (line, indent) => line.trim() === "" || line.match(/^\s*/)[0].length > indent
+  const stepGroups = []
+  for (let i = 0; i < lines.length; i += 1) {
+    const item = lines[i].match(/^(\s*)- (.*)$/)
+    if (!item || item[1].length !== stepIndent) continue
+    const passo = { name: null, uses: null, run: null }
+    const primeiro = item[2].match(/^(name|uses|run):\s*(.*)$/)
+    if (primeiro) {
+      const [, chave, valor] = primeiro
+      if (chave === "run" && /^[|>]/.test(valor)) passo.run = { at: i, indent: item[1].length }
+      else passo[chave] = desquote(valor)
+    }
+    for (let j = i + 1; j < lines.length; j += 1) {
+      if (!scannable(lines[j], stepIndent)) break
+      const chave = lines[j].match(/^\s*(name|uses|run):\s*(.*)$/)
+      if (chave) {
+        const indent = lines[j].match(/^\s*/)[0].length
+        if (chave[1] === "run" && /^[|>]/.test(chave[2])) passo.run = { at: j, indent }
+        else passo[chave[1]] = desquote(chave[2])
+        continue
+      }
+      // a PRIMEIRA linha do script de um bloco `run: |` (é ela que vira rótulo)
+      if (passo.run && typeof passo.run === "object" && lines[j].trim() !== "")
+        passo.run = lines[j].trim()
+    }
+    const rotulo = passo.uses ? passo.name || passo.uses : passo.run || passo.name
+    if (rotulo) stepGroups.push({ rotulo, name: passo.name ?? rotulo })
+  }
+  const byLabel = new Map()
+  for (const { rotulo, name } of stepGroups) {
+    const entry = byLabel.get(rotulo) ?? { label: rotulo, count: 0, steps: [] }
+    entry.count += 1
+    entry.steps.push(name)
+    byLabel.set(rotulo, entry)
+  }
+  const groups = [...byLabel.values()]
 
   const literals = (prefix) => {
     const found = []
@@ -549,7 +683,8 @@ export function smokeExpectations(text) {
     success: literals("✅"),
     failure: literals("::error::"),
     variables,
-    required: [...steps.map((name) => `${RUN_MARKER}${name}`)],
+    groups,
+    required: groups.map((entry) => `${GROUP_MARKER}${entry.label}`),
   }
 }
 
@@ -563,19 +698,40 @@ export function smokeExpectations(text) {
  *
  * @param {{log: string, status: number|null, expectations: ReturnType<typeof smokeExpectations>}} args
  */
+// (a assinatura acima é a mesma desde a primeira versão: o que mudou foi a
+// RÉGUA de cada campo — grupo por CONTAGEM e literais contra a SAÍDA.)
 export function evaluateSmokeLog({ log, status, expectations }) {
   const text = String(log ?? "")
-  const missingSteps = expectations.required.filter((line) => !text.includes(line))
-  const missingSuccess = expectations.success.filter((line) => !text.includes(line))
+  // A saída REAL do job: o log sem as linhas de eco do script (ver
+  // `SCRIPT_ECHO_LINE`). A contagem de grupos usa o log inteiro de propósito —
+  // as linhas `::group::Run …` são do runner, nunca eco.
+  const saida = text
+    .split("\n")
+    .filter((linha) => !SCRIPT_ECHO_LINE.test(linha.replace(LOG_TIMESTAMP, "")))
+    .join("\n")
+  const contar = (linha) => text.split(linha).length - 1
+  // O passo executou? A régua é a CONTAGEM do grupo dele: um rótulo que mais de
+  // um passo compartilha (`set -euo pipefail` abre todos os `run:` do smoke)
+  // exige uma ocorrência por passo — exigir "a linha existe" deixaria um run
+  // onde só o primeiro rodou passar como se todos tivessem rodado.
+  const missingGroups = (expectations.groups ?? [])
+    .map((grupo) => ({ ...grupo, found: contar(`${GROUP_MARKER}${grupo.label}`) }))
+    .filter((grupo) => grupo.found < grupo.count)
+  const missingSteps = missingGroups.map(
+    (grupo) =>
+      `${grupo.steps.join(", ")}: o log tem ${grupo.found}/${grupo.count} de \`${GROUP_MARKER}${grupo.label}\``,
+  )
+  const missingSuccess = expectations.success.filter((line) => !saida.includes(line))
   const hitFailure = [
-    ...expectations.failure.filter((line) => text.includes(line)),
-    ...(text.includes(ERROR_ANNOTATION) ? [ERROR_ANNOTATION] : []),
-    ...(text.includes(JOB_FAILED_MARKER) ? [JOB_FAILED_MARKER] : []),
+    ...expectations.failure.filter((line) => saida.includes(line)),
+    ...(saida.includes(ERROR_ANNOTATION) ? [ERROR_ANNOTATION] : []),
+    ...(saida.includes(JOB_FAILED_MARKER) ? [JOB_FAILED_MARKER] : []),
   ]
   const state = classifyTaskStatus(status)
   return {
     state,
     missingSteps,
+    missingGroups,
     missingSuccess,
     hitFailure: [...new Set(hitFailure)],
     ok:
@@ -961,6 +1117,75 @@ export function readJobLog({ container, logPath, run: runFn = run }) {
   return { ok: true, log: res.stdout, detail: `${res.stdout.length} bytes` }
 }
 
+/**
+ * O MESMO log, lido do DBFS do Gitea — a segunda casa onde a 1.22 o guarda.
+ *
+ * O runner streama o log para o Gitea em BLOCOS de 32KB, e a instância o
+ * segura no DBFS do banco (`dbfs_meta`/`dbfs_data`) enquanto não o transfere
+ * para `actions_log/<log_filename>`. A transferência é assíncrona e pode não
+ * acontecer antes do fim do ensaio: MEDIDO em 26/09/2026 (o irmão
+ * `prove-runner-queue-cycle` documenta o mesmo caso ao vivo) — o job fecha
+ * `success` com o log INTEIRO no banco e o ARQUIVO inexistente. Ler só o
+ * arquivo diria "não consegui ler" sobre um log que EXISTE, e o ensaio sairia
+ * INDETERMINADO por um lugar de leitura, não por um fato da forja (medido de
+ * novo: `No such file or directory` em `actions_log/prova/ensaio/02/2.log`
+ * com a tarefa já terminal).
+ *
+ * O `group_concat` existe porque o DBFS guarda o log em BLOCOS: sem ele um
+ * marcador partido na fronteira de dois blocos leria como ausente.
+ *
+ * @param {{container: string, dbPath: string, filename: string, run?: Function}} args
+ * @returns {{ok: boolean, log: string, detail: string}}
+ */
+export function readDbfsLog({ container, dbPath, filename, run: runFn = run }) {
+  const sql =
+    `select group_concat(cast(blob_data as text), '') as log from (` +
+    `select blob_data from dbfs_data where meta_id = (` +
+    `select id from dbfs_meta where full_path like '%${filename}' order by id desc limit 1) ` +
+    `order by blob_offset);`
+  const res = runFn(
+    "docker",
+    ["exec", container, "sqlite3", "-cmd", ".timeout 10000", dbPath, sql],
+    { timeout: 60_000 },
+  )
+  if (res.error || res.status !== 0) {
+    return {
+      ok: false,
+      log: "",
+      detail: `não consegui ler o log no DBFS (${(res.stderr || res.error?.message || "").trim().split("\n")[0] || `exit ${res.status}`})`,
+    }
+  }
+  const texto = String(res.stdout ?? "")
+  if (texto === "")
+    return { ok: false, log: "", detail: `o DBFS não tem log para ${filename} (ainda)` }
+  return { ok: true, log: texto, detail: `${texto.length} bytes (DBFS do banco)` }
+}
+
+/**
+ * O log de um job, lido de ONDE ele estiver — arquivo primeiro, DBFS depois.
+ *
+ * O arquivo vem primeiro porque, existindo, ele é a cópia TRANSFERIDA e
+ * portanto completa; o DBFS é a casa enquanto a transferência não aconteceu.
+ * As duas são tentadas na MESMA leitura de propósito: a transferência pode
+ * acontecer entre duas voltas da espera, e quem espera não deve escolher uma
+ * casa só — quem escolhe é o estado da forja.
+ *
+ * @param {{container: string, dbPath: string, logDir: string, filename: string, run?: Function}} args
+ * @returns {{ok: boolean, log: string, onde: string|null, detail: string}}
+ */
+export function readTaskLog({ container, dbPath, logDir, filename, run: runFn = run }) {
+  const arquivo = readJobLog({ container, logPath: join(logDir, filename), run: runFn })
+  if (arquivo.ok && arquivo.log !== "") return { ...arquivo, onde: "actions_log" }
+  const dbfs = readDbfsLog({ container, dbPath, filename, run: runFn })
+  if (dbfs.ok) return { ...dbfs, onde: "dbfs" }
+  return {
+    ok: false,
+    log: "",
+    onde: null,
+    detail: `não achei o log de ${filename} em casa alguma (${arquivo.detail}; DBFS: ${dbfs.detail})`,
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 3. O snapshot empurrado para o Gitea efêmero
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1187,6 +1412,35 @@ export async function proveForgeSmokeEphemeral(deps = {}) {
     `o label do runner aponta para ${result.images.job} — é a imagem que roda o smoke`,
   )
 
+  // ── a rede do job e o volume do runner: o que o config.yaml precisa ───────
+  // Os dois saem do RENDER (nada cravado aqui): um serviço re-declarado no
+  // compose muda a topologia e tem de virar INDETERMINADO, nunca uma prova
+  // sobre outra rede.
+  const giteaNetworkKeys = Object.keys(giteaService.networks ?? {})
+  const giteaNetwork =
+    giteaNetworkKeys.length === 1
+      ? (base.config.networks?.[giteaNetworkKeys[0]]?.name ?? null)
+      : null
+  if (!giteaNetwork) {
+    const detail = `${GITEA_COMPOSE}: não consigo dizer em QUAL rede o job nasce — o serviço '${GITEA_SERVICE}' declara ${giteaNetworkKeys.length} rede(s) [${giteaNetworkKeys.join(", ")}] e o render tem de trazer o nome RESOLVIDO (é ele que vai no config do runner)`
+    step("rede do job", "fail", detail)
+    return finish("unavailable", detail, [detail])
+  }
+  const runnerDataMount = (runnerService.volumes ?? []).find(
+    (m) => m && m.type === "volume" && String(m.target) === "/data",
+  )
+  if (!runnerDataMount) {
+    const detail = `${GITEA_COMPOSE}: o serviço '${RUNNER_SERVICE}' não monta um volume nomeado em /data — é lá que o registro E o config do runner vivem, e sem isso o ensaio não sabe onde semear`
+    step("config do runner", "fail", detail)
+    return finish("unavailable", detail, [detail])
+  }
+  const runnerVolumeName = `${project}-${runnerDataMount.source}`
+  step(
+    "rede do job",
+    "ok",
+    `o job nasce na rede '${giteaNetwork}' — a do serviço '${GITEA_SERVICE}' no render — e o config vai para o volume '${runnerVolumeName}'`,
+  )
+
   // ── segurança: nada de produção ──────────────────────────────────────────
   const runnerName =
     typeof runnerService.container_name === "string" && runnerService.container_name !== ""
@@ -1349,7 +1603,13 @@ export async function proveForgeSmokeEphemeral(deps = {}) {
       )
     writeFileSync(
       overridePath,
-      renderOverrideCompose({ project, port, volumeKeys, giteaContainerName: giteaContainer }),
+      renderOverrideCompose({
+        project,
+        port,
+        volumeKeys,
+        giteaContainerName: giteaContainer,
+        runnerConfigPath: RUNNER_CONFIG_PATH,
+      }),
     )
     writeFileSync(
       envPath,
@@ -1505,6 +1765,49 @@ export async function proveForgeSmokeEphemeral(deps = {}) {
       `branch '${opts.branch}'${opts.sentinela ? ` + '${SENTINELA_BRANCH}'` : ""} empurrado(s) para o Gitea efêmero`,
     )
 
+    // ── o config do runner, semeado no volume DO PROJETO ────────────────────
+    // O `run.sh` da imagem só passa `--config` quando a env `CONFIG_FILE`
+    // existe (medido), e o arquivo tem de estar lá ANTES do container subir:
+    // sem ele o próprio `register` morre. A escrita vai por DENTRO de um
+    // container que monta o volume do projeto — o daemon deste host não vê o
+    // /tmp de quem o controla (medido: montar um caminho de /tmp cria
+    // DIRETÓRIO no destino), e o volume é onde o arquivo tem de viver mesmo.
+    const seedRunnerConfig = () => {
+      const seeded = runFn(
+        "docker",
+        [
+          "run",
+          "--rm",
+          "-i",
+          "--entrypoint",
+          "sh",
+          "-v",
+          `${runnerVolumeName}:/data`,
+          runnerImage,
+          "-c",
+          `cat > ${RUNNER_CONFIG_PATH}`,
+        ],
+        { input: renderRunnerConfig({ network: giteaNetwork }), timeout: 300_000 },
+      )
+      const last = (seeded.stderr || seeded.error?.message || "")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .slice(-1)[0]
+      return {
+        ok: !seeded.error && seeded.status === 0,
+        detail: `container.network=${giteaNetwork} escrito em '${runnerVolumeName}:${RUNNER_CONFIG_PATH}'`,
+        error: `não consegui escrever o config do runner no volume '${runnerVolumeName}': ${last || `exit ${seeded.status}`}`,
+      }
+    }
+    const seededConfig = seedRunnerConfig()
+    step(
+      "config do runner",
+      seededConfig.ok ? "ok" : "fail",
+      seededConfig.ok ? seededConfig.detail : seededConfig.error,
+    )
+    if (!seededConfig.ok) throw new Error(seededConfig.error)
+
     const upRunner = runFn(
       "docker",
       composeArgs({
@@ -1571,6 +1874,29 @@ export async function proveForgeSmokeEphemeral(deps = {}) {
       return finish("unavailable", runnerReady.detail, [runnerReady.detail])
     }
     step("runner efêmero", "ok", runnerReady.detail)
+
+    // O arquivo que o DAEMON lê é o que o ensaio semeou? Medido DENTRO do
+    // container: um volume trocado (ou um config que não chegou) faria o job
+    // nascer fora da rede do projeto, e o veredito sairia "violado" por culpa
+    // do ensaio — o defeito que este ensaio existe para não cometer.
+    const configReadBack = runFn("docker", ["exec", runnerName, "cat", RUNNER_CONFIG_PATH], {
+      timeout: 30_000,
+    })
+    const expectedConfig = renderRunnerConfig({ network: giteaNetwork }).trim()
+    if (
+      configReadBack.error ||
+      configReadBack.status !== 0 ||
+      String(configReadBack.stdout ?? "").trim() !== expectedConfig
+    ) {
+      const detail = `o config que o runner LÊ em ${RUNNER_CONFIG_PATH} não é o que o ensaio semeou (${configReadBack.status !== 0 ? `cat saiu ${configReadBack.status}` : "conteúdo divergente"}) — o job nasceria fora da rede do projeto`
+      step("config do runner (lido de dentro)", "fail", detail)
+      return finish("unavailable", detail, [detail])
+    }
+    step(
+      "config do runner (lido de dentro)",
+      "ok",
+      `${RUNNER_CONFIG_PATH} no container do runner: container.network=${giteaNetwork}, o mesmo texto semeado`,
+    )
     if (!opts.sentinela)
       step("segurança (sentinela)", "skip", "controle negativo pulado (--no-sentinela)")
 
@@ -1627,17 +1953,54 @@ export async function proveForgeSmokeEphemeral(deps = {}) {
       }
     }
 
+    /**
+     * Espera o log COMPLETO de uma tarefa, em qualquer das duas casas.
+     *
+     * Dois atrasos, medidos nesta série, empurram a leitura para depois da hora:
+     * (a) o Gitea grava o ARQUIVO quando descarrega o buffer — segundos DEPOIS
+     * de a tarefa virar terminal no banco (a leitura imediata achou `No such
+     * file or directory` com a tarefa já em 2, rodada #4); e (b) a transferência
+     * pode não ter acontecido até o prazo do ensaio, com o log INTEIRO no DBFS
+     * (rodadas #5 e #7: 60s de `cat` falhando sobre um log que existia). Um log
+     * que ainda não chegou não é "o canal está cego": a leitura espera, e o
+     * PRAZO é quem decide — o último erro entra no veredito.
+     *
+     * A espera só aceita o log quando ele está ESTÁVEL (dois lados da mesma
+     * medida): um log que ainda cresce leria como "passo não rodou" — e um
+     * vermelho por truncamento é pior que um INDETERMINADO.
+     *
+     * @param {{log_filename: string}} task
+     */
+    const readLogEventually = async (task, { timeoutS = 60 } = {}) => {
+      const deadline = now() + timeoutS * 1000
+      const filename = String(task.log_filename)
+      let last = readTaskLog({ container: giteaContainer, dbPath, logDir, filename, run: runFn })
+      for (;;) {
+        if (last.ok) {
+          const again = readTaskLog({
+            container: giteaContainer,
+            dbPath,
+            logDir,
+            filename,
+            run: runFn,
+          })
+          if (again.ok && again.log === last.log)
+            return { ...again, detail: `${again.detail}, estável (${again.onde})` }
+          last = again.ok ? again : last
+        }
+        if (now() > deadline)
+          return { ...last, detail: `${last.detail} (esperei ${timeoutS}s pelo log)` }
+        await sleep(2_000)
+      }
+    }
+
     if (opts.sentinela) {
       const sent = await waitTask({
         workflowFile: "prova-sentinela",
         timeoutS: Math.max(120, Math.round(opts.timeoutS / 3)),
       })
       if (!sent.ok) throw new Error(`a sentinela não deu desfecho: ${sent.detail}`)
-      const sentLog = readJobLog({
-        container: giteaContainer,
-        logPath: join(logDir, String(sent.task.log_filename)),
-        run: runFn,
-      })
+      const sentLog = await readLogEventually(sent.task)
       const sentState = classifyTaskStatus(Number(sent.task.status))
       const marker = sentLog.ok && sentLog.log.includes(SENTINELA_MARKER)
       const tail = sentLog.log.trim().split("\n").slice(-1)[0] ?? "<log vazio>"
@@ -1646,14 +2009,15 @@ export async function proveForgeSmokeEphemeral(deps = {}) {
         state: sentState,
         marker,
         log: String(sent.task.log_filename),
+        onde: sentLog.onde,
         detail: sentLog.detail,
       }
       if (sentState !== "failure" || !marker) {
         // FALHA SEM PASSO RODADO não é a sentinela funcionando: é o runner que
         // não executou o job (o act_runner marca a tarefa como falha e o log não
-        // tem nenhum `⭐ Run Main`). Tratar isso como "o canal vê vermelho"
+        // tem NENHUM grupo de passo). Tratar isso como "o canal vê vermelho"
         // seria tomar um problema de HOST por prova de rigor.
-        if (!sentLog.log.includes(RUN_MARKER)) {
+        if (!sentLog.log.includes(GROUP_MARKER)) {
           const detail = `a sentinela terminou em falha (status ${sent.task.status}) SEM rodar nenhum passo — o runner não executou o job. Log: ${String(sent.task.log_filename)} (${sentLog.detail}). Últimas linhas: ${tail.slice(0, 300)}`
           step("sentinela (canal vê vermelho)", "fail", detail)
           return finish("unavailable", detail, [
@@ -1684,11 +2048,7 @@ export async function proveForgeSmokeEphemeral(deps = {}) {
       afterId: 0,
     })
     if (!smokeTask.ok) throw new Error(`o smoke não deu desfecho: ${smokeTask.detail}`)
-    const logText = readJobLog({
-      container: giteaContainer,
-      logPath: join(logDir, String(smokeTask.task.log_filename)),
-      run: runFn,
-    })
+    const logText = await readLogEventually(smokeTask.task)
     if (!logText.ok) throw new Error(`não consegui ler o log do smoke: ${logText.detail}`)
     result.log = logText.log
     const evaluation = evaluateSmokeLog({
@@ -1703,18 +2063,23 @@ export async function proveForgeSmokeEphemeral(deps = {}) {
       missingSuccess: evaluation.missingSuccess,
       hitFailure: evaluation.hitFailure,
       log: String(smokeTask.task.log_filename),
+      onde: logText.onde,
       durationMs: null,
     }
+    const passosAusentes = evaluation.missingGroups.reduce(
+      (total, grupo) => total + (grupo.count - grupo.found),
+      0,
+    )
     step(
       "smoke (5 provas)",
       evaluation.ok ? "ok" : "fail",
-      `status ${smokeTask.task.status} (${evaluation.state}), ${prepared.expectations.steps.length - evaluation.missingSteps.length}/${prepared.expectations.steps.length} passo(s), ${prepared.expectations.success.length - evaluation.missingSuccess.length}/${prepared.expectations.success.length} ✅`,
+      `status ${smokeTask.task.status} (${evaluation.state}), ${prepared.expectations.steps.length - passosAusentes}/${prepared.expectations.steps.length} passo(s), ${prepared.expectations.success.length - evaluation.missingSuccess.length}/${prepared.expectations.success.length} ✅ (log: ${logText.onde})`,
     )
 
     // Falha do job SEM nenhum passo rodado: é o runner que não executou o job
     // (host), e não o smoke que ficou vermelho. A distinção é a diferença entre
     // "a forja reprovou" e "eu não consegui medir" — e ela decide o exit code.
-    if (!logText.log.includes(RUN_MARKER)) {
+    if (!logText.log.includes(GROUP_MARKER)) {
       const detail = `o job do smoke terminou com status ${smokeTask.task.status} (${evaluation.state}) SEM rodar nenhum passo — o runner efêmero não executou o job neste host. Log: ${String(smokeTask.task.log_filename)} (${logText.detail})`
       step("smoke executou?", "fail", detail)
       return finish("unavailable", detail, [
@@ -1787,6 +2152,10 @@ export async function proveForgeSmokeEphemeral(deps = {}) {
       runFn("docker", ["volume", "rm", `${project}-${runnerVolumeMount.source ?? "runner-data"}`], {
         timeout: 120_000,
       })
+      // O volume levou o config junto: re-semear ANTES de subir o runner mutado,
+      // senão o `register` morre abrindo um arquivo que não existe mais.
+      const seededMutation = seedRunnerConfig()
+      if (!seededMutation.ok) throw new Error(seededMutation.error)
       const freshToken = runFn(
         "docker",
         ["exec", "-u", "git", giteaContainer, "gitea", "actions", "generate-runner-token"],
@@ -1838,11 +2207,8 @@ export async function proveForgeSmokeEphemeral(deps = {}) {
       })
       if (!mutatedTask.ok)
         throw new Error(`a fase de mutação não deu desfecho: ${mutatedTask.detail}`)
-      const mutatedLog = readJobLog({
-        container: giteaContainer,
-        logPath: join(logDir, String(mutatedTask.task.log_filename)),
-        run: runFn,
-      })
+      const mutatedLog = await readLogEventually(mutatedTask.task)
+      if (!mutatedLog.ok) throw new Error(`não consegui ler o log da mutação: ${mutatedLog.detail}`)
       const mutatedEval = evaluateSmokeLog({
         log: mutatedLog.log,
         status: Number(mutatedTask.task.status),
@@ -1854,6 +2220,14 @@ export async function proveForgeSmokeEphemeral(deps = {}) {
         state: mutatedEval.state,
         missingSuccess: mutatedEval.missingSuccess,
         hitFailure: mutatedEval.hitFailure,
+        onde: mutatedLog.onde,
+        // O LOG da mutação entra no relatório: um veredito violado diz "a Prova
+        // 5 NÃO mordeu" — e sem o texto do job não há como saber ONDE ele
+        // morreu (a leitura existia e era descartada; a primeira rodada da fase
+        // 2 saiu violada e sem elogio possível por causa disso). `detail` diz
+        // quantos bytes e de qual casa vieram.
+        log: mutatedLog.log,
+        detail: mutatedLog.detail,
         pro5Caught: pro5
           ? mutatedEval.hitFailure.includes(pro5)
           : mutatedEval.hitFailure.length > 0,
@@ -1885,7 +2259,9 @@ export async function proveForgeSmokeEphemeral(deps = {}) {
     const detail = error?.message ?? String(error)
     step("ensaio", "fail", detail)
     const unavailable =
-      /não terminou|não subiu|não respondeu|não existe localmente|não consegui ler/.test(detail)
+      /não terminou|não subiu|não respondeu|não existe localmente|não consegui (?:ler|escrever)/.test(
+        detail,
+      )
     return finish(unavailable ? "unavailable" : "violated", detail, [detail])
   } finally {
     cleanupFn()
@@ -1977,6 +2353,9 @@ async function main() {
   }
   deviations.push(
     "container do Gitea: renomeado para '<projeto>-gitea' no ensaio (o nome declarado no compose pode estar ocupado por um container PARADO no host, e o ensaio não remove container alheio). O runner mantém o nome declarado de propósito — é o nome que a Prova 5 usa para ler o registro.",
+  )
+  deviations.push(
+    `config do runner: o ensaio GERA um \`config.yaml\` (só \`container.network = a rede do projeto\`, o resto é o default do binário) e o semeia no volume efêmero, com \`CONFIG_FILE=${RUNNER_CONFIG_PATH}\` no serviço runner. Na produção esse arquivo é do OPERADOR, no volume dele — e sem essa linha nenhum job resolve \`gitea\` (medido: \`Could not resolve host: gitea\` no primeiro passo do smoke).`,
   )
   if (opts.semNoNewPrivileges) {
     deviations.push(

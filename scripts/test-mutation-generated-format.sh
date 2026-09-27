@@ -139,6 +139,32 @@ restaurar_original() {
   pass "guard restaurado (checksum confere)"
 }
 
+# ── O fecho de imports DERIVADO (a bancada copia o módulo E o que ele importa) ──
+# O gerador da bancada importa o formatador da casa, e o formatador é um módulo
+# como qualquer outro: quem o copia leva as arestas DELE junto. A lista à mão
+# envelhecia em silêncio (um import novo deixaria a bancada morta com
+# ERR_MODULE_NOT_FOUND, e o exit 1 do NODE passaria por veredito do guard), então
+# o que a cópia leva sai do PRÓPRIO GRAFO — e uma aresta que não resolva PARA a
+# suíte em vez de montar meia bancada.
+fecho_do_formatador() { # ecoa os módulos do fecho (o próprio + o que ele importa)
+  local saida=""
+  if ! saida="$(node "$SCRIPT_DIR/scripts/fecho-imports.mjs" "$SCRIPT_DIR/scripts/prettier-format.mjs" --root "$SCRIPT_DIR" --com-raiz 2>&1)"; then
+    echo "❌ o fecho de imports do formatador NÃO foi derivado — a bancada não pode ser montada:" >&2
+    printf '%s\n' "$saida" | sed 's/^/   /' >&2
+    exit 2
+  fi
+  printf '%s\n' "$saida"
+}
+
+copiar_fecho() { # $1 = raiz do destino (o caminho relativo é preservado)
+  local destino="$1" rel
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    mkdir -p "$destino/$(dirname "$rel")"
+    cp "$SCRIPT_DIR/$rel" "$destino/$rel"
+  done < <(fecho_do_formatador)
+}
+
 # ── montar_modelo: a bancada SÃ (copiada por cenário) ─────────────────────
 # O `package.json` declara o comando do lint — é dele que o guard DERIVA os
 # globs (a régua única), então a bancada mede o escopo inteiro. O gerador grava
@@ -153,7 +179,7 @@ montar_modelo() {
   }
 }
 JSON
-  cp scripts/prettier-format.mjs "$MODELO/scripts/prettier-format.mjs"
+  copiar_fecho "$MODELO"
   cat >"$MODELO/scripts/gerador.mjs" <<'JS'
 // O gerador da bancada: grava o artefato versionado pelo FORMATADOR da casa.
 import { escreverJsonFormatado } from "./prettier-format.mjs"

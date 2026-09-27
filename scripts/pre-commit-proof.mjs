@@ -44,6 +44,19 @@ import { DOCS, escreverDocs } from "./bench-table.mjs"
 // ajuste, e a divergência apareceria como "o fixture recusa o que o guard não".
 import { BENCH_PATH, run as runCountGuard } from "./check-mutation-count.mjs"
 import { MASTER_DOS_SUBTESTS, comMetadesDaMatriz, metadesDaMatriz } from "./bench-families.mjs"
+// A RÉGUA do fecho de imports é a MESMA das suítes de mutação (uma só régua para
+// quem copia módulo para fixture — ver `docs/GUARDS.md`, "O FIXTURE QUE NÃO
+// CARREGA"): este arquivo tinha a descida PRÓPRIA dele (regex de `from` e de
+// `new URL`) e ela não via o `import("./x.mjs")` LITERAL — a aresta medida no
+// `ensure-runner-image.mjs` → `prove-runner-image-gate.mjs`.
+import { fechoDeImports } from "./fecho-imports.mjs"
+// OS ARTEFATOS do fixture são DERIVADOS do que os guards do hook LEEM (por
+// execução — ver `artefatos-do-hook.mjs`): o caminho do compose não mora aqui, e
+// sim na medição. Antes desta régua o fixture levava uma LISTA À MÃO que não sabia
+// de guard novo, e um guard fail-closed sobre um artefato lia INFRA na cópia (o
+// vermelho era do FIXTURE) — foi o que deixou o `check-runner-tag` declarado em
+// `HOOK_NOT_RUN` até alguém acrescentar o caminho à mão.
+import { artefatosDoHookMemo } from "./artefatos-do-hook.mjs"
 // O diretório de workflow das forjas vem da FONTE ÚNICA (cravar o literal aqui
 // deixaria as outras forjas fora da varredura — foi assim que a pipeline dona do
 // merge ficou fora da cobertura dos guards).
@@ -106,144 +119,150 @@ export const GUARD_COMMAND = `node scripts/${GUARD} --staged &`
 /** A linha do hook que roda o guard do Bun no modo do índice. */
 export const BUN_GUARD_COMMAND = `node scripts/${BUN_GUARD} --staged &`
 
+/**
+ * A guarda da DECLARAÇÃO da imagem do act_runner (a tag pina versão?) e a linha
+ * do hook que a executa.
+ *
+ * A linha é o MESMO comando do CI (o `command` canônico do invariante
+ * `runner-tag` do CORE), SEM recorte: por isso ela não precisa de entrada em
+ * `HOOK_DECLARED` — o `check-hook-ci-parity` a reconhece por IGUALDADE (mesmo
+ * instrumento, mesmo escopo). E é também por isso que ela NÃO leva `--staged`:
+ * o `check-mirror-coverage` DERIVA o recorte das linhas `--staged` do hook, e
+ * esta guarda não julga espelho nenhum (ela julga a declaração de UMA imagem).
+ */
+export const RUNNER_TAG_GUARD = "check-runner-tag.mjs"
+export const RUNNER_TAG_COMMAND = `node scripts/${RUNNER_TAG_GUARD}`
+
 /** A linha do hook que torna o REMÉDIO real no fixture (é ele que elege o veredito). */
 export const REMEDY_COMMAND = `node scripts/${REMEDY} && REMEDIO=0 || true`
 
-/**
- * O fecho transitivo do guard (ele + os imports locais). É o que o fixture
- * copia: sem o fecho completo o guard morreria com "module not found" e o
- * não-zero do hook seria do fixture, não do defeito. O remédio entra aqui porque
- * ele IMPORTA o guard e SPAWNA o guard — as duas metades do veredito do hook.
- */
-export const GUARD_CLOSURE = [
-  GUARD,
-  REMEDY,
-  "check-pipefail-sigpipe.mjs",
-  "ensure-runner-image.mjs",
-  "forge-workflows.mjs",
-  "allowlist-review.mjs",
-  // A TERCEIRA FONTE puxou estas duas: a régua do que é um COMPOSE
-  // (`COMPOSE_FILE_RE`) vem do `check-bun-mirror`, que por sua vez deriva a
-  // versão do Bun da fonte única (`bun-version`). Sem elas o fecho morre com
-  // "module not found" e o não-zero do hook seria do FIXTURE, não do defeito — é
-  // exatamente o que o teste de completude existe para pegar.
-  "check-bun-mirror.mjs",
-  "bun-version.mjs",
-  // E o RESOLVEDOR do registry/namespace entrou pelo `ensure-runner-image` (que
-  // deixou de cravar o literal de reserva e passa a ler o valor DECLARADO por
-  // ele): é a mesma régua do teste de completude — uma referência nova aparece
-  // nomeada, em vez de virar um controle verde por acidente.
-  "registry-source.mjs",
-  // A DECLARAÇÃO dos shells do runner (e o probe que a mediu) passou a ser
-  // importada pelo guard: o dono dela é o módulo da medição, e o gate importa em
-  // vez de manter a cópia. Sem esta linha o fixture morreria com "module not
-  // found" e o não-zero do hook seria do FIXTURE, não do defeito — o teste de
-  // completude acusou a referência nova na hora (`closureProblems`), que é
-  // exatamente o desfecho certo: uma dependência nova aparece NOMEADA.
-  "runner-shells.mjs",
-  // O REMENDO DO CAMINHO TIPADO entrou no fecho: a classe `hook-commands` do
-  // remédio IMPORTA a régua do guard dono (`check-hook-commands`) — que importa a
-  // tokenização (`shellTokens`), o resolvedor do comando canônico do CI e a
-  // PERGUNTA compartilhada. O par que o `check-hook-commands` puxa
-  // (`check-hook-ci-parity` → `check-forge-parity`) entra junto. Sem estas
-  // linhas o fecho morre com "module not found" e o não-zero do hook seria do
-  // FIXTURE, não do defeito — que é exatamente o que o `closureProblems`
-  // existe para nomear.
-  "check-hook-commands.mjs",
-  // O FORMATADOR DO REPOSITÓRIO entrou pelo mesmo caminho: o remendo da classe
-  // `hook-commands` GRAVA por `escreverFormatado` (o remendo tem de sair dentro
-  // do lint, como todo gerado versionado), e o `check-hook-commands` — que já
-  // viajava no fecho — passou a importá-lo. O `closureProblems` acusou a
-  // referência nova na hora, que é o desfecho certo: sem esta linha o fixture
-  // morreria com "module not found" e o não-zero do hook seria do FIXTURE, não
-  // do defeito.
-  "prettier-format.mjs",
-  "confirm-prompt.mjs",
-  "check-hook-ci-parity.mjs",
-  "check-forge-parity.mjs",
-  // A CONSTRUÇÃO DO PATCH do remédio virou módulo COMPARTILHADO pelo `--fix`
-  // dos DOIS fixers mecânicos (`check-workflow-run-syntax` e
-  // `check-pipefail-sigpipe` importam os dois): um hunk sem CONTEXTO é recusado
-  // pelo `git apply`, e o patch que o comentário do PR publica tem de aplicar
-  // byte a byte. O `check-pipefail-sigpipe` JÁ estava no fecho, e passou a
-  // depender deste na hora em que o preview dele ganhou o mesmo patch — o teste
-  // de completude (`closureProblems`) acusou as duas referências novas na hora,
-  // que é exatamente o desfecho certo: dependência nova aparece NOMEADA, em vez
-  // de virar um controle verde por acidente (o fixture morreria com "module not
-  // found" e o não-zero do hook seria do FIXTURE, não do defeito).
-  "unified-patch.mjs",
-  // A OFERTA DO REMÉDIO virou DESCOBERTA: o driver deixou de ter a lista à mão e
-  // passa a importar `remedy-classes.mjs`, que varre `scripts/remedy-classes/`.
-  // Os declarations são importados por CAMINHO CALCULADO (a varredura não é
-  // estática), então o `closureProblems` não os vê — é a CONTAGEM de classes
-  // deste fecho que responde por eles: sem a pasta (ou com uma declaração a
-  // menos) o fixture roda um remédio com oferta incompleta, e é o exit 2 da
-  // recusa que aparece, não um verde por acidente.
-  "remedy-classes.mjs",
-  "remedy-shell-guard.mjs",
-  "remedy-classes/run-syntax.mjs",
-  "remedy-classes/crlf.mjs",
-  "remedy-classes/blob-crlf.mjs",
-  "remedy-classes/utf8.mjs",
-  "remedy-classes/hook-commands.mjs",
-  // A SEXTA classe entrou com o guard dono DELA no hook (fase B): a varredura do
-  // `check-pipefail-sigpipe` e a mesma do CI, e o remendo (`--fix` -> herestring)
-  // passa a ser oferecido no momento do defeito. A declaração importa o `fixAll`
-  // do dono, e o DONO já viajava neste fecho; o que faltava era a declaração — o
-  // fixture roda um remédio com oferta incompleta sem ela, e a recusa (exit 2)
-  // apareceria como veredito do defeito, que é exatamente o que o comentário
-  // acima descreve.
-  "remedy-classes/pipefail-sigpipe.mjs",
-  // A SÉTIMA classe: o remendo da DECLARAÇÃO DE ESPELHO apagada (o arg do build
-  // site e o `packageManager`), com o fixer do guard dono (`check-bun-mirror.mjs`,
-  // que já viajava neste fecho como dependência dos guards do índice). A
-  // declaração importa o `fixRemovedMirrors` do dono, e o realmente novo aqui é
-  // que o dono passou a ter `--fix`: a descoberta RECUSA a classe quando o dono
-  // não o declara, então sem esta linha (e sem o `--fix` no guard) o fixture
-  // rodaria um remédio com oferta incompleta.
-  "remedy-classes/bun-mirror-removal.mjs",
-  // E OS GUARDS DONOS das três classes de ENCODING viajam com as declarações:
-  // a descoberta RECUSA a rodada quando uma declaração cita um dono que não
-  // existe NESTE repositório, então um fixture com as declarações e sem os donos
-  // é uma árvore INCONSISTENTE — o remédio sairia 2 antes de julgar o commit, e
-  // um não-zero vindo da OFERTA seria lido como veredito do defeito. Declaração e
-  // guard dono são um par que anda junto (é o que o diretório significa).
+/** Os guards de ENCODING — o par DECLARAÇÃO + guard dono que anda junto (ver
+ * `CLOSURE_SEM_GRAFO`). São SHELL e PYTHON: não há import a derivar, e quem os
+ * consome (o fixture deste hook e o da fase B do remédio) lê daqui — uma lista
+ * por consumidor divergiria no primeiro encoder novo. */
+export const GUARDS_DE_ENCODING = [
   "check-crlf.sh",
   "check_crlf.py",
   "check-blob-crlf.sh",
   "check_blob_crlf.py",
   "check-utf8.sh",
   "check_utf8.py",
-  // A FASE A REAL (a prova do LUGAR roda os irmãos SEM o dublê) precisa dos
-  // QUATRO guards do ÍNDICE no fecho: sem eles o fixture morreria com "module not
-  // found" e o não-zero do hook seria do FIXTURE, não do defeito — o mesmo
-  // desfecho que o `closureProblems` existe para nomear. As dependências deles
-  // (`check-bun-mirror`, `forge-workflows`, `allowlist-review`) já viajavam aqui.
+]
+
+/** As DUAS entradas do fixture: o guard do ÍNDICE e o remédio — as duas metades
+ * do veredito do hook (o remédio IMPORTA o guard e SPAWNA o guard). */
+const ENTRADAS_DO_FIXTURE = [GUARD, REMEDY]
+
+/**
+ * Os ARTEFATOS do repositório (fora de `scripts/`) que a cópia do fixture tem de
+ * MATERIALIZAR — DERIVADOS do que os guards do hook leem.
+ *
+ * POR QUE ISTO EXISTE (medido em 27/09/2026): o fixture copiava só o fecho de
+ * `scripts/`, e um guard fail-closed sobre um ARTEFATO do repositório — o
+ * compose ausente é INFRA (exit 2) — rodava no CI e NÃO podia rodar no hook: na
+ * cópia ele lia o ramo de INFRA, e o vermelho seria do FIXTURE, não do defeito.
+ * Foi por isso que o `runner-tag` ficou declarado em `HOOK_NOT_RUN`. Com o
+ * artefato materializado, a guarda roda no hook de verdade — com a MESMA linha
+ * do CI.
+ *
+ * A LISTA À MÃO SAIU (27/09/2026). Ela era `[GITEA_COMPOSE]` e não sabia de guard
+ * novo: quem acrescentasse uma guarda que abre um arquivo do repositório teria de
+ * LEMBRAR de vir aqui — e o sintoma de esquecer é o pior possível (o guard lê
+ * INFRA na cópia e o vermelho passa a ser do fixture). Agora quem responde é a
+ * EXECUÇÃO (`artefatos-do-hook.mjs`): monta-se o fixture com o fecho dos comandos
+ * do hook e NENHUM artefato, roda-se cada comando atrás de um pré-carregador que
+ * registra as tentativas de abertura, e o artefato é o caminho que um guard abriu,
+ * não achou na cópia e EXISTE no repositório. Um guard novo entra SOZINHO — o
+ * teste da derivação mede exatamente isso, com uma guarda e um artefato que não
+ * existem no repositório.
+ *
+ * O `staged` é o MESMO conteúdo que o fixture escreve no ÍNDICE: os guards de
+ * `--staged` só fazem o trabalho deles com algo no índice, e sem isso a derivação
+ * mediria um caminho em que eles saem cedo — e o artefato que eles leem nunca seria
+ * aberto.
+ *
+ * @param {{root?: string, hook?: string}} [opts]
+ * @returns {string[]}
+ */
+export function artefatosDoFixture({ root = REPO_ROOT, hook } = {}) {
+  const { artefatos, problemas } = artefatosDoHookMemo({
+    root,
+    hook,
+    staged: [
+      { rel: WORKFLOW, content: WORKFLOW_QUEBRADO },
+      { rel: SHELL_SCRIPT, content: SHELL_QUEBRADO },
+    ],
+  })
+  if (problemas.length > 0)
+    throw new Error(
+      `a derivação dos artefatos do fixture NÃO FECHA — a cópia não pode ser montada com a lista pela metade: ${problemas.join(" | ")}`,
+    )
+  return artefatos
+}
+
+/**
+ * O que o fixture copia ALÉM do que o grafo alcança — as SEMENTES que import
+ * nenhum liga às duas entradas.
+ *
+ * O fixture copia `fechoDoGuard()`: a derivação do grafo a partir das entradas
+ * MAIS estas sementes (o que elas puxam por import entra sozinho, transitivamente
+ * — é a MESMA régua das suítes de mutação e do recorte do pre-push). A régua não
+ * basta sozinha aqui porque metade deste fixture não é aresta de import:
+ *
+ *   · as DECLARAÇÕES de classe (`remedy-classes/*.mjs`) e do canal
+ *     (`remedy-canal/*.mjs`) são carregadas por CAMINHO CALCULADO — a varredura de
+ *     diretório não é estática, e o grafo não as vê. Quem responde por elas é a
+ *     CONTAGEM: um fixture sem a pasta (ou com uma declaração a menos) roda um
+ *     remédio com oferta INCOMPLETA, e o exit 2 da recusa apareceria como
+ *     veredito do defeito;
+ *   · o PUBLICADOR do canal e os guards do ÍNDICE são SPAWNADOS (pelo dublê do
+ *     hook e pela fase A real, que roda os irmãos sem o dublê): são comandos, não
+ *     imports;
+ *   · os guards de ENCODING (`GUARDS_DE_ENCODING`) são SHELL e PYTHON, e a
+ *     descoberta RECUSA a rodada quando uma declaração cita um dono que não
+ *     existe NESTE repositório: declaração e dono são um par.
+ *
+ * MEDIDO (27/09/2026): a lista à mão que existia aqui tinha 42 linhas; o grafo das
+ * duas ENTRADAS alcançava 15 delas, e estas 20 sementes são MÍNIMAS — a poda foi
+ * medida uma a uma (nenhuma é alcançada pelas outras 19), a derivação devolve as
+ * 46 (as 42 de então MAIS a guarda do artefato e as 3 dependências dela), e é essa
+ * poda que `closureProblems()` refaz a cada rodada para uma linha redundante
+ * aparecer NOMEADA em vez de envelhecer em silêncio.
+ */
+export const CLOSURE_SEM_GRAFO = [
+  // As sete declarações de classe (caminho CALCULADO: a varredura de diretório).
+  "remedy-classes/run-syntax.mjs",
+  "remedy-classes/crlf.mjs",
+  "remedy-classes/blob-crlf.mjs",
+  "remedy-classes/utf8.mjs",
+  "remedy-classes/hook-commands.mjs",
+  "remedy-classes/pipefail-sigpipe.mjs",
+  "remedy-classes/bun-mirror-removal.mjs",
+  // As declarações do CANAL (mesma descoberta por diretório). O leitor folha
+  // (`remedy-canal.mjs`) e o registro (`pr-fixers.mjs`) vêm pelo GRAFO a partir
+  // daqui — é o `pr-remedy-comment.mjs`, abaixo, que os importa.
+  "remedy-canal/run-syntax.mjs",
+  "remedy-canal/pipefail-sigpipe.mjs",
+  // O PUBLICADOR do canal: SPAWNADO pelo remédio (a mecânica do comentário e o
+  // publicador de issue vêm pelo GRAFO a partir dele).
+  "pr-remedy-comment.mjs",
+  // Os guards do ÍNDICE que a fase A real RODA sem o dublê (as dependências
+  // deles — `check-bun-mirror`, `forge-workflows`, `allowlist-review` — vêm pelo
+  // GRAFO).
   "check-mutation-jobs.mjs",
   "check-unused-deps.mjs",
   "check-mutation-timing-contract.mjs",
-  // O CANAL DO REMEDIO entrou no fecho porque o `check-forge-parity` passou a
-  // importar o REGISTRO de fixers (`FIXERS`) dele: a regra 5 da paridade mede a
-  // COBERTURA do canal nas duas forjas, e uma lista de fixers escrita no guard
-  // envelheceria no primeiro fixer novo — que e exatamente o que a regra existe
-  // para impedir. A cadeia que vem junto (a mecanica do comentario e o
-  // publicador de issue) nao tem dependencia de pacote: ela e copiada para o
-  // fixture, e o teste de completude (`closureProblems`) acusa a referencia
-  // nova na hora em vez de deixar o fixture morrer com "module not found".
-  "pr-remedy-comment.mjs",
-  "pr-comment-channel.mjs",
-  "issue-publish.mjs",
-  // O REGISTRO do canal virou DESCOBERTA (`pr-fixers.mjs` → as declarações de
-  // `remedy-canal/`), e o `pr-remedy-comment.mjs` o importa: sem estas linhas o
-  // fixture morre com "module not found". As declarações do canal são importadas
-  // por CAMINHO CALCULADO (a varredura de diretório não é estática), então o
-  // `closureProblems` não as vê — é por isso que elas entram aqui à mão, como as
-  // classes do pre-commit. O `remedy-canal.mjs` (o LEITOR folha do diretório) é
-  // estático nas DUAS pontas: o `pr-fixers.mjs` e o `check-forge-parity.mjs`.
-  "pr-fixers.mjs",
-  "remedy-canal.mjs",
-  "remedy-canal/run-syntax.mjs",
-  "remedy-canal/pipefail-sigpipe.mjs",
+  // A guarda da DECLARAÇÃO da imagem do runner (fase B do hook): nenhuma das
+  // entradas a importa, e ela precisa estar na cópia porque o fixture a roda de
+  // verdade quando um teste a pede por `passthrough` — sem o arquivo, o `node`
+  // do dublê morreria com ENOENT do FIXTURE em vez de cunhar o veredito dela.
+  // Julga um ARTEFATO do repositório (o compose da forja, que a MATERIALIZAÇÃO
+  // derivada por `artefatosDoHook` leva para a cópia); as dependências dela
+  // (`check-runner-labels`, `check-bun-mirror`) vêm pelo GRAFO, com a régua do pin
+  // no dono.
+  "check-runner-tag.mjs",
+  // Os encoders (SHELL/PYTHON: sem import a derivar).
+  ...GUARDS_DE_ENCODING,
 ]
 
 export const WORKFLOW = `${GITHUB_WORKFLOW_DIR}/ci.yml`
@@ -353,34 +372,86 @@ export const HOOKS_DIR = ".husky"
 export function novoRepo({ passthrough = [], prefix = "pre-commit-runsyntax-" } = {}) {
   return novoRepoSim({
     prefix,
-    closure: GUARD_CLOSURE,
+    closure: fechoDoGuard(),
     wrapper: passthrough.length === 0 ? WRAPPER_SOURCE : wrapperSource(specsDoWrapper(passthrough)),
     dirs: [GITHUB_WORKFLOW_DIR],
+    artefatos: artefatosDoFixture(),
   })
 }
 
 /**
- * As referências LOCAIS (`from "./x.mjs"` e `new URL("./x.mjs", ...)`) que NÃO
- * estão no fecho declarado. Uma referência nova aparece AQUI, nomeada, em vez de
- * virar um controle verde por acidente (o teste mediria o fixture).
+ * A derivação do fecho, configurada para ESTE fixture: `permitirPacotes` é
+ * DECLARADO (o fixture roda com o `node_modules` da instalação — o `linkModules`
+ * do simulador — e resolve o parser de YAML; quem mede os pacotes do fecho é o
+ * `naoRelativos()`, no teste).
+ *
+ * @param {string} root
+ * @param {string[]} entradas
+ * @returns {{fecho: string[], adiados: object[], problemas: string[]}}
+ */
+function derivarFecho(root, entradas) {
+  return fechoDeImports(entradas, {
+    root: join(root, "scripts"),
+    comRaiz: true,
+    permitirPacotes: true,
+  })
+}
+
+/**
+ * O FECHO do fixture — o que `novoRepo` COPIA: a derivação do grafo a partir das
+ * duas ENTRADAS MAIS as sementes que import nenhum liga a elas
+ * (`CLOSURE_SEM_GRAFO`).
+ *
+ * Uma aresta nova entra na cópia sozinha — não há lista de vizinhos para
+ * envelhecer. Fail-closed como no recorte do pre-push: quando a régua RECUSA
+ * (aresta que não resolve, caminho fora da raiz, semente ausente do checkout), a
+ * função LEVANTA com os problemas nomeados e o fixture NÃO é montado; quem
+ * publica o desfecho é quem chama (o `closureProblems` do `proveCommitBlocks`
+ * vira `unavailable`, e um teste fica vermelho dizendo o porquê).
+ *
+ * @param {string} [root]
+ * @returns {string[]}
+ */
+export function fechoDoGuard(root = REPO_ROOT) {
+  const { fecho, problemas } = derivarFecho(root, [...ENTRADAS_DO_FIXTURE, ...CLOSURE_SEM_GRAFO])
+  if (problemas.length > 0)
+    throw new Error(
+      `o fecho do fixture NÃO FECHA — a cópia não pode ser montada com meio fecho: ${problemas.join(" | ")}`,
+    )
+  return fecho
+}
+
+/**
+ * As referências que o fixture NÃO copiaria — DERIVADAS do grafo pela MESMA régua
+ * das suítes de mutação (`scripts/fecho-imports.mjs`).
+ *
+ * Duas perguntas, e nenhuma delas é uma lista paralela:
+ *   1. o fecho fecha? (aresta que não resolve, semente ausente do checkout,
+ *      caminho fora da raiz — a régua é fail-closed);
+ *   2. alguma semente declarada à mão é REDUNDANTE? Uma linha cuja derivação SEM
+ *      ela já traz não é um defeito do fixture (o arquivo é copiado de qualquer
+ *      forma), mas é dívida que envelhece: foi assim que o
+ *      `prove-runner-image-gate.mjs` (que entrou à mão pelo `import()` LITERAL)
+ *      ficou na lista depois de o grafo passar a alcançá-lo. MEDIDO: as 20 podas
+ *      custam ~0,3s (a rodada inteira do `closureProblems`, 20 derivações) — barato
+ *      para uma checagem que roda uma vez por prova.
  *
  * @param {string} [root]
  * @returns {string[]}
  */
 export function closureProblems(root = REPO_ROOT) {
-  const faltando = []
-  for (const f of GUARD_CLOSURE) {
-    const path = join(root, "scripts", f)
-    if (!existsSync(path)) {
-      faltando.push(`${f} → ausente do checkout`)
-      continue
-    }
-    const src = readFileSync(path, "utf8")
-    for (const re of [/from\s+"\.\/([^"]+\.mjs)"/g, /new URL\("\.\/([^"]+\.mjs)"/g]) {
-      for (const m of src.matchAll(re)) {
-        if (!GUARD_CLOSURE.includes(m[1])) faltando.push(`${f} → ${m[1]}`)
-      }
-    }
+  const seeds = [...ENTRADAS_DO_FIXTURE, ...CLOSURE_SEM_GRAFO]
+  const { problemas } = derivarFecho(root, seeds)
+  const faltando = [...problemas]
+  for (const s of CLOSURE_SEM_GRAFO) {
+    const sem = derivarFecho(
+      root,
+      seeds.filter((x) => x !== s),
+    )
+    if (sem.fecho.includes(s))
+      faltando.push(
+        `${s} → declarado em CLOSURE_SEM_GRAFO, mas a derivação SEM ele já o traz (linha à mão redundante: o grafo é quem deve trazê-lo)`,
+      )
   }
   return faltando
 }
@@ -388,10 +459,15 @@ export function closureProblems(root = REPO_ROOT) {
 /**
  * As dependências NÃO relativas do fecho (o que o fixture tem de RESOLVER).
  *
- * Um `import`/`require` de pacote é a outra metade do fecho que a lista acima
- * não vê: copiar só os `.mjs` deixa o guard sem o parser, e o não-zero que a
- * prova mediria seria do fixture. Aqui elas são LIDAS do fonte (não declaradas à
- * mão), então uma dependência nova aparece sozinha no probe do teste.
+ * Um `import`/`require` de pacote é a outra metade do fecho que a cópia não
+ * traz: copiar só os `.mjs` deixa o guard sem o parser, e o não-zero que a prova
+ * mediria seria do fixture. O fecho varrido é o MESMO que o fixture copia
+ * (`fechoDoGuard`, derivado ∪ sementes), e as dependências são LIDAS do fonte
+ * (não declaradas à mão): uma dependência nova aparece sozinha no probe do teste
+ * — que é quem as mede de verdade (resolve e parsa).
+ *
+ * `fechoDoGuard` LEVANTA quando o fecho não fecha: sem fecho não há o que
+ * resolver, e o desfecho de chamar isto é o erro nomeado, não uma lista vazia.
  *
  * @param {string} [root]
  * @returns {string[]}
@@ -403,7 +479,7 @@ export function naoRelativos(root = REPO_ROOT) {
     /\brequire\(\s*"([^"]+)"\s*\)/g,
     /\bimport\(\s*"([^"]+)"\s*\)/g,
   ]
-  for (const f of GUARD_CLOSURE) {
+  for (const f of fechoDoGuard(root)) {
     const path = join(root, "scripts", f)
     if (!existsSync(path)) continue
     // Comentário fora: prosa que CITA um pacote não é dependência dele.

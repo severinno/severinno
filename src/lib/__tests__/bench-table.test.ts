@@ -4,7 +4,6 @@ import {
   BLOCO_README,
   DOCS,
   blocoDoTexto,
-  conteudoDoBloco,
   divergencia,
   escreverDocs,
   estadoDaMatriz,

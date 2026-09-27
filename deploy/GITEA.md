@@ -150,6 +150,34 @@ Pre-requisitos, NESTA ordem:
    credencial) nunca publica: o comando falha com o remedio, porque "nao sei"
    nao e "nao existe". Pacote privado e um erro por si: quem puxa a imagem e o
    daemon do runner, **sem credencial**.
+
+   **HOST SEM REGISTRY: a decisao e explicita, e nao um beco.** A recusa acima
+   esta certa — "nao consegui perguntar" nunca vira "a tag existe" —, mas num
+   host que opera SEM alcancar o registry (rede fechada, DNS que nao resolve,
+   pacote privado sem credencial anonima) ela nao deixava NADA que o operador
+   pudesse rodar daqui. Nesse host a flag `--local-image` AFIRMA que a imagem
+   esta na copia local, e o bring-up cobra a PROVA: o ensure confere a MESMA
+   referencia dos labels do compose no daemon DESTE host e devolve um estado
+   proprio (exit 6) — a subida segue, e o que NAO fica provado e dito em voz
+   alta (que a TAG exista no registry e que um host SEM esta copia a puxe):
+
+   ```bash
+   # so no host sem registry: aceita a copia LOCAL da imagem como prova
+   ENV_FILE=/opt/gitea/.env COMPOSE_FILE=/opt/gitea/docker-compose.yml \
+     bash $REPO/deploy/gitea-up.sh --local-image
+   # sem a copia local a subida CONTINUA recusada — e o remedio e construir aqui:
+   docker build --build-arg BUN_VERSION=<versao> -f Dockerfile.ubuntu-bun \
+     -t <IMAGE_REGISTRY>/<IMAGE_NAMESPACE>/ubuntu-bun:<versao> .
+   ```
+
+   Sem a flag o veredito e EXATAMENTE o de antes: INDETERMINADO recusa e nada
+   sobe. AUSENTE (exit 4) e falha ao publicar (exit 5) nao sao afrouxados pela
+   flag — a copia local responde por "nao consegui perguntar", nao por "o
+   registry respondeu que nao tem" —, e `--local-image` com `--no-runner` e
+   recusado (um afirma a imagem do runner, o outro o deixa de fora). A prova
+   (`bun run runner-image:prove`) cobre os tres lados: sem a flag, com a flag e
+   SEM a copia, e com a flag e a copia (o controle que sobe).
+
 2. `BUN_VERSION`, `IMAGE_REGISTRY` e `IMAGE_NAMESPACE` no `.env.gitea`
    precisam ser **iguais** as repository variables de mesmo nome do repositorio
    (as tres montam a tag da imagem do runner). Os espelhos das variaveis sao
@@ -318,6 +346,29 @@ DELEGANDO ao script real.
 
 (Equivalente pela UI: **Site Administration -> Runners ->** apague `vps-runner`
 e crie outro, colando o token novo em `RUNNER_TOKEN`.)
+
+**O job precisa ALCANCAR a forja por nome.** O `GITEA_INSTANCE_URL` do runner e
+`http://gitea:3000`, e e ESSE endereco que o job recebe (como
+`GITHUB_SERVER_URL`) — o primeiro passo de todo workflow (`actions/checkout`) o
+usa. So que o act_runner nao poe o container do job na rede do projeto: com
+`container.network` vazio ele cria uma rede POR JOB, e dentro dela o nome `gitea`
+nao resolve (medido: `fatal: unable to access 'http://gitea:3000/...': Could not
+resolve host: gitea` — o job morre no checkout, sem rodar um passo).
+
+O ajuste e no `config.yaml` do runner, que vive no volume dele
+(`/data/config.yaml` — a imagem so o le quando a env `CONFIG_FILE` existe):
+
+```yaml
+container:
+  # O nome REAL da rede do projeto (o compose nao declara `name:`, entao ela
+  # ganha o prefixo do projeto). Descubra-o com:
+  #   docker inspect gitea --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}'
+  network: <projeto>_gitea-net
+```
+
+Com a rede declarada, o job nasce NELA (o fork usa a rede existente e nao cria
+nem apaga rede nenhuma) e o `gitea` resolve. O `bun run forge-smoke:prove` gera o
+equivalente para a stack efemera dele — nao ha passo manual extra para ensaiar.
 
 ### 3.2. Antes de confiar o merge à forja: `bun run doctor`
 
@@ -980,6 +1031,11 @@ cat /opt/gitea/.env
 1. Verifique se o runner esta online em **Site Administration** → **Runner**
 2. Verifique se o workflow esta em `.gitea/workflows/`
 3. Verifique os logs do runner: `docker logs gitea-runner -f`
+4. Se o job morre no PRIMEIRO passo com `Could not resolve host: gitea`, o
+   `config.yaml` do runner nao declara `container.network` — o job nasce numa
+   rede por job, fora da rede do projeto. Remedio e o mesmo da secao
+   "Runner: a imagem que roda os jobs": declare a rede no `config.yaml` do
+   volume (`/data/config.yaml`).
 
 ### Erro de permissao
 

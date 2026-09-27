@@ -33,11 +33,14 @@ import {
 } from "../../../../scripts/pre-commit-proof.mjs"
 
 export {
+  artefatosDoFixture,
   BUN_GUARD,
   BUN_GUARD_COMMAND,
+  CLOSURE_SEM_GRAFO,
   GUARD,
-  GUARD_CLOSURE,
   GUARD_COMMAND,
+  RUNNER_TAG_COMMAND,
+  RUNNER_TAG_GUARD,
   HOOK,
   HOOKS_DIR,
   REMEDY,
@@ -53,6 +56,7 @@ export {
   WORKFLOW_VALIDO,
   WRAPPER_SOURCE,
   closureProblems,
+  fechoDoGuard,
   hookSource,
   naoRelativos,
   novoRepo,

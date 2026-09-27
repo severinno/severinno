@@ -22,6 +22,8 @@
 #   bash deploy/gitea-up.sh --check-only        # só confere (env + imagem + prontidão); não sobe nada
 #   bash deploy/gitea-up.sh --no-runner         # sobe só Gitea + Caddy (pula os pré-requisitos do runner)
 #   bash deploy/gitea-up.sh --re-register       # confere + garante + re-registra o runner
+#   bash deploy/gitea-up.sh --local-image       # host SEM REGISTRY: aceita a CÓPIA LOCAL da
+#                                               # imagem como prova do pré-requisito 1
 #   ENV_FILE=deploy/.env.gitea bash deploy/gitea-up.sh
 #
 # TRÊS PRÉ-REQUISITOS, nesta ordem:
@@ -57,6 +59,26 @@
 # recusa é a violação provada. Um doctor que nem rodou (exit >=3) recusa: sem
 # veredito não há prontidão.
 #
+# O HOST SEM REGISTRY (--local-image): INDETERMINADO é um estado PRÓPRIO, não um
+# fim de linha. O pré-requisito 1 recusa quando o registry não responde — e está
+# certo: "não consegui perguntar" não é "a tag existe" (o ensure nunca publica
+# nesse estado). Só que num host que opera SEM alcançar o registry (rede fechada,
+# DNS que não resolve, pacote privado sem credencial anônima) a recusa não deixa
+# NADA que o operador possa rodar daqui: o beco. Com --local-image o operador
+# AFIRMA "este host tem a imagem na cópia local" e o bring-up cobra a prova
+# disso: o ensure confere a MESMA referência que os labels do compose usam no
+# daemon DESTE host e devolve um estado próprio (exit 6, `pré-requisito
+# satisfeito pela CÓPIA LOCAL`) — a subida segue, com o que NÃO ficou provado
+# dito em voz alta (que a TAG exista no registry e que um host sem a cópia a
+# puxe). Sem a flag, o veredito é EXATAMENTE o de antes: INDETERMINADO recusa e
+# nada sobe. A decisão é explícita nos dois sentidos — não há caminho em que a
+# cópia local sirva de prova por conta própria.
+#
+# O 6 NÃO sai daqui: ele é o estado que a flag autoriza, e a subida continua.
+# AUSENTE (4) e falha ao publicar (5) NÃO são afrouxados pela flag: a cópia local
+# responde por "não consegui perguntar", não por "o registry respondeu que não
+# tem".
+#
 # --re-register: para quem TROCOU os labels (ou a BUN_VERSION) e precisa que o
 # runner envie o registro de novo. O act_runner envia os labels NO REGISTRO e
 # depois usa os que ficaram gravados em /data/.runner — `restart` não aplica
@@ -74,7 +96,9 @@
 #       não sai, compose ou env ausente), OU a prontidão BLOQUEADA (doctor exit
 #       1) / o doctor não conseguiu rodar (exit >=3) — NADA é subido
 #   >=2 — código do ensure-runner-image.mjs (2 env, 3 indeterminado,
-#         4 ausente no --check-only, 5 falha ao publicar) — NADA é subido
+#         4 ausente no --check-only, 5 falha ao publicar) — NADA é subido.
+#         O 6 (INDETERMINADO aceito pela CÓPIA LOCAL) só existe com
+#         --local-image e NÃO é propagado: ele é o estado que autoriza a subida
 # =============================================================================
 
 set -uo pipefail
@@ -97,6 +121,11 @@ SOURCE="auto"
 CHECK_ONLY=0
 NO_RUNNER=0
 RE_REGISTER=0
+LOCAL_IMAGE=0
+# 1 quando o pré-requisito 1 foi satisfeito pela CÓPIA LOCAL (exit 6 do ensure):
+# o estado entra no resumo final, para a subida não parecer uma garantia de
+# registry que ninguém deu.
+IMAGEM_LOCAL=0
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -130,6 +159,7 @@ while [ $# -gt 0 ]; do
     --check-only) CHECK_ONLY=1 ;;
     --no-runner) NO_RUNNER=1 ;;
     --re-register) RE_REGISTER=1 ;;
+    --local-image) LOCAL_IMAGE=1 ;;
     --env-file) ENV_FILE="${2:-}"; shift ;;
     --source) SOURCE="${2:-}"; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -147,6 +177,13 @@ if [ "$RE_REGISTER" -eq 1 ] && [ "$CHECK_ONLY" -eq 1 ]; then
 fi
 if [ "$RE_REGISTER" -eq 1 ] && [ "$NO_RUNNER" -eq 1 ]; then
   fail "--re-register e --no-runner são contraditórios (um sobe o runner, o outro o deixa de fora)"
+  exit 1
+fi
+# A flag AFIRMA algo sobre a imagem do runner; o --no-runner pula o pré-requisito
+# inteiro. Coexistir seria prometer uma prova que ninguém vai pedir (e o operador
+# leria "imagem conferida" onde nada foi conferido).
+if [ "$LOCAL_IMAGE" -eq 1 ] && [ "$NO_RUNNER" -eq 1 ]; then
+  fail "--local-image e --no-runner são contraditórios (um afirma a imagem do runner, o outro deixa o runner de fora)"
   exit 1
 fi
 
@@ -218,6 +255,9 @@ fi
 # com exit 9, sem a nossa mensagem.
 ENSURE_ARGS=(--gitea-env "$ENV_FILE" --source "$SOURCE")
 [ "$CHECK_ONLY" -eq 1 ] && ENSURE_ARGS+=(--check)
+# A flag vai para o ensure, que é quem resolve a referência da imagem (e o dono
+# do probe local): sem repassá-la, o estado de cópia local nunca existiria.
+[ "$LOCAL_IMAGE" -eq 1 ] && ENSURE_ARGS+=(--local-image)
 
 ENSURE_CODE=0
 if [ "$SKIP_RUNNER_PREREQS" -eq 1 ]; then
@@ -228,9 +268,24 @@ else
   node "$ENSURE_SCRIPT" "${ENSURE_ARGS[@]}"
   ENSURE_CODE=$?
   echo ""
-  if [ "$ENSURE_CODE" -ne 0 ]; then
+  if [ "$ENSURE_CODE" -eq 6 ]; then
+    # ACEITO PELA CÓPIA LOCAL — o estado que SÓ existe com --local-image. O
+    # registry está INDETERMINADO ("não consegui perguntar", não "a tag não
+    # existe") e a imagem está no daemon DESTE host: é ela que os jobs rodam
+    # aqui. O veredito é NOMEADO e a subida segue — o pré-requisito 2 (o doctor)
+    # continua no caminho, e ele reporta o que não alcança.
+    IMAGEM_LOCAL=1
+    warn "pré-requisito 1 satisfeito pela CÓPIA LOCAL da imagem (registry INDETERMINADO — exit 6)."
+    warn "NÃO fica provado: que a TAG exista no registry, nem que um host SEM esta cópia a puxe."
+  elif [ "$ENSURE_CODE" -ne 0 ]; then
     fail "imagem do runner NÃO garantida (exit ${ENSURE_CODE}) — NADA foi subido."
     fail "O runner subiria e todos os jobs falhariam ao iniciar o container."
+    if [ "$LOCAL_IMAGE" -eq 1 ] && [ "$ENSURE_CODE" -eq 3 ]; then
+      # A flag foi dada e MESMO ASSIM recusou: a cópia local não foi encontrada
+      # (ou o docker não respondeu). O remédio está na saída do ensure acima —
+      # construa a imagem localmente e a cópia local passa a existir.
+      fail "--local-image foi dada: o ensure só recusaria se a cópia local NÃO servisse de prova (veja o remédio acima)."
+    fi
     exit "$ENSURE_CODE"
   fi
 fi
@@ -295,7 +350,11 @@ fi
 
 if [ "$CHECK_ONLY" -eq 1 ]; then
   echo ""
-  pass "check-only: env espelhado + imagem em ordem + prontidão conferida, stack NÃO foi tocada."
+  if [ "$IMAGEM_LOCAL" -eq 1 ]; then
+    pass "check-only: env espelhado + imagem pela CÓPIA LOCAL (registry INDETERMINADO) + prontidão conferida, stack NÃO foi tocada."
+  else
+    pass "check-only: env espelhado + imagem em ordem + prontidão conferida, stack NÃO foi tocada."
+  fi
   exit 0
 fi
 
@@ -370,6 +429,10 @@ else
   pass "stack no ar — runner rodando a imagem com o Bun pré-instalado (tier-1 ativo)"
 fi
 info "confirme em: Site Administration → Runners (o runner envia os labels no REGISTRO)"
+
+if [ "$IMAGEM_LOCAL" -eq 1 ]; then
+  warn "imagem: pré-requisito satisfeito pela CÓPIA LOCAL (registry INDETERMINADO) — os jobs DESTE host rodam a cópia local; publique a tag para a forja de outro host poder puxá-la"
+fi
 
 echo ""
 info "wall time total da subida: ${SECONDS}s (doctor: ${DOCTOR_ELAPSED:-N/A}s)"

@@ -41,6 +41,7 @@ import { afterAll, describe, expect, it } from "vitest"
 
 import { EXIT } from "../../../scripts/check-workflow-run-syntax.mjs"
 import { cleanupFixtures, novoRepo, resolveBash, stage } from "../../../scripts/hook-simulator.mjs"
+import { GUARDS_DE_ENCODING } from "../../../scripts/pre-commit-proof.mjs"
 import { CLASSES, remedy } from "../../../scripts/pre-commit-remedy.mjs"
 
 afterAll(() => {
@@ -49,15 +50,13 @@ afterAll(() => {
 
 const ROOT = resolve(__dirname, "..", "..", "..")
 
-/** O fecho dos guards de encoding — os MESMOS que a fase B executa. */
-const FECHO_ENCODING = [
-  "check-crlf.sh",
-  "check_crlf.py",
-  "check-blob-crlf.sh",
-  "check_blob_crlf.py",
-  "check-utf8.sh",
-  "check_utf8.py",
-]
+/**
+ * O fecho dos guards de encoding — os MESMOS que a fase B executa, lidos do DONO
+ * da lista (`GUARDS_DE_ENCODING`, no módulo da prova do hook): são shell/python,
+ * não há import a derivar, e uma cópia por consumidor divergiria no primeiro
+ * encoder novo.
+ */
+const FECHO_ENCODING = GUARDS_DE_ENCODING
 
 /** O byte que NÃO é o 0x97: UTF-8 inválido que o fixer do guard recusa. */
 const BYTE_INVALIDO = 0xff

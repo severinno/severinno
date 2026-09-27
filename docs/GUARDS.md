@@ -730,6 +730,65 @@ exit code — **0** provado, **1** registro velho/vazio/runner ausente ou offlin
 que não olhou nada. Para o GitHub a entrada é `runner-labels:check:github`
 (`--forge github`), documentada em `deploy/GITHUB_RUNNER.md`.
 
+**`check:runner-tag` (a DECLARAÇÃO do pin — a metade que não precisa da stack):**
+as duas perguntas acima medem ESTADO e RESOLUÇÃO (`runner-labels:check` lê o
+`/data/.runner` DENTRO do container; o `check:registry-source` resolve a
+interpolação do render), e as duas exigem docker no host. Faltava a pergunta que
+se responde lendo o TEXTO do compose — a única que cabe no job de guards, a cada
+PR, nas duas forjas: a tag do serviço `runner` DECLARA versão? A linha é a que
+decide o que a forja RODA (o act_runner não se auto-atualiza: quem decide a
+versão do binário é a IMAGEM), e `scripts/check-runner-tag.mjs` recusa (exit 1)
+justamente os estados que não pinam — `latest`/`stable`, a imagem SEM tag (o
+`latest` implícito do docker), o valor interpolado (`${…}`: o pin sairia do texto
+do repositório) e o serviço sem `image:` —, cada um com o remédio escrito
+(`bash deploy/gitea-up.sh --re-register`). O DIGEST passa, com aviso: ele pina
+por CONTEÚDO (é o estado `digest` do `runner-labels:check`, onde a comparação com
+a versão do binário não se aplica), e tratar um pin mais forte como violação
+seria alarme falso. Compose ausente ou ilegível é **INFRA** (exit 2, fail-closed):
+sem o artefato não há veredito a cunhar. A régua ("a tag declara versão?") é
+**importada** do `check-runner-labels.mjs` — `isVersionTag`/`imageTag`/
+`imageDigest` —, uma implementação só: uma segunda régua divergiria no primeiro
+caso de borda (tag ausente, digest, o `v` de prefixo) e os dois vereditos
+passariam a falar de coisas diferentes com o mesmo nome. Dois limites
+declarados: ele **não** julga as outras imagens do compose (uma regra geral de
+"declara versão" acusaria tags legítimas com sufixo, `postgres:16-alpine`) e
+**não** consulta o registry (o que a tag serve hoje é do `check-runner-base`; o
+que o binário reporta é do `runner-labels:check`). É invariante do CORE e roda
+nas DUAS pipelines, ao lado do irmão `check-runner-base` — e, desde 27/09/2026,
+também no **pre-commit** (fase B do `.husky/pre-commit`), com a MESMA linha do
+CI: o comando canônico do invariante, reconhecido por IGUALDADE no
+`check-hook-ci-parity` (sem recorte, e por isso sem entrada em `HOOK_DECLARED`).
+Ele **não** leva `--staged`, e os dois motivos são declarados: (a) a linha do hook
+é a do CI, e não há uma segunda semântica para divergir; (b) o
+`check-mirror-coverage` **deriva** o recorte do hook — toda linha `--staged` dele
+— para decidir se cada espelho é julgado, e esta guarda não julga espelho nenhum
+(julga a declaração de UMA imagem). O que o hook lê é o artefato da ÁRVORE (o CI
+lê o conteúdo mergeado): o caso que escapa do local é um `git add -p` que
+deixasse no ÍNDICE uma tag diferente da árvore — janela estreita, e nomeada em vez
+de escondida. E ele só consegue rodar lá porque o fixture passou a
+**materializar os artefatos que os guards do hook LEEM** (derivados por execução —
+ver "O FIXTURE QUE NÃO CARREGA"): antes disso a cópia tinha só o fecho de
+`scripts/`, a guarda lia o ramo de INFRA (compose ausente = exit 2, fail-closed) e
+o vermelho seria do FIXTURE — a razão pela qual ela estava declarada em
+`HOOK_NOT_RUN`.
+
+A prova de que a guarda RODA no hook (e de que é a linha dele que recusa) está em
+`src/lib/__tests__/pre-commit-runner-tag-blocks.test.ts`: o hook REAL, somado,
+com o compose materializado na cópia — o CONTROLE com a tag pinada sai 0 e traz a
+manchete da guarda, a tag flutuante/`${…}`/`image:` ausente é recusada, o artefato
+removido da cópia cai em INFRA (o fail-closed, medido), e a mutação que troca a
+linha do hook por `true &` faz o defeito PASSAR.
+
+**A prova por MUTAÇÃO** (`scripts/test-mutation-runner-tag.sh`, a metade `M1`):
+um guard cujo valor é a REGRA ("a tag pina uma versão?") passa a valer só para o
+arquivo de hoje no dia em que a régua some da execução — a metade desliga o
+`if (!isVersionTag(tag))` e exige que o comportamento MUDE: `latest` volta a sair
+`proven` nas duas testemunhas (a leitura por execução, que importa o guard mutado
+e julga cinco declarações sintéticas sem docker nenhum, e a suíte unitária, que
+fica VERMELHA na âncora `UMA TAG QUE NÃO É VERSÃO É VIOLAÇÃO`). O CONTROLE mede a
+mesma leitura íntegra: a versão passa e sai 0, `latest` sai 1 com o remédio no
+texto, o digest passa com aviso e o interpolado é violação.
+
 **`check:runner-base` (a mesma família, do outro lado do build — CONTRA O QUE o
 build verifica):** o `Dockerfile.ubuntu-bun` responde por duas coisas ao mesmo
 tempo: o tier-1 do setup-bun (o fast path de 0s) e o **contrato da imagem** (o
@@ -1294,6 +1353,131 @@ de o mutante ser injetado; sem isso a detecção seria vácuo. Foi medido em
 `test-mutation-reconciliation.sh`, o único que lia exit code como veredito: com
 `bun`/vitest indisponíveis ele imprimia "3 mutações DETECTADAS / MUTATION TEST
 PASSED" sem a suíte existir.
+
+**O FIXTURE QUE NÃO CARREGA é a mesma classe, e foi medido em 26/09/2026.** Duas
+suítes montam um fixture com o guard **COPIADO** (`test-mutation-doc-hashes.sh` e
+`test-mutation-act-origin.sh`) e levavam os vizinhos por uma **lista à mão**
+(`FECHO_GUARD=(...)`). Quando a entrega do gerado fez o `bench-table.mjs` — vizinho
+de **SEGUNDO grau** do `check-mutation-count.mjs` — importar o formatador do
+repositório, a cópia ficou **incompleta**: o guard morria com
+`ERR_MODULE_NOT_FOUND` e o exit 1 do **NODE** passava por veredito do guard. As
+duas pontas passaram a ser fechadas, e nenhuma delas é uma lista:
+**(1)** o fecho é **DERIVADO do grafo** (`scripts/fecho-imports.mjs`): quem copia um
+módulo copia o que o importador importa, transitivamente, e uma aresta relativa que
+não resolve (ou um bare de PACOTE, que o fixture sem `node_modules` não roda) sai 2
+— meio fecho mede outra coisa;
+**(2)** a suíte mede a **EXECUÇÃO**: `ERR_MODULE_NOT_FOUND` na saída da cópia PARA
+a suíte em 2 (infra declarada), nunca veredito. A checagem mora FORA do `rodar` de
+propósito: ele é chamado em substituição de comando (`$(rodar …)`) e um `exit` lá
+dentro terminaria o SUBSHELL, deixando o pai seguir com o fixture morto — medido no
+ensaio, o `exit 2` "saía" e a suíte terminava 1, com o defeito do fixture lido como
+falha de mutação.
+
+**A RÉGUA PASSOU A SER UMA SÓ, também para os outros dois fixtures que copiam
+módulo.** A prova do `pre-commit` e o recorte do `pre-push` conferiam a completude
+com uma **descida própria** — regex de `from` e de `new URL` numa, regex de `from`
+na outra —, e a diferença entre duas réguas apareceu na primeira medição com a
+régua única: a derivação do fecho do `pre-commit` devolveu **42 módulos contra 41**
+da lista, e o que faltava era `prove-runner-image-gate.mjs`, carregado por
+`await import("./…")` **LITERAL** no `ensure-runner-image.mjs` — uma aresta que as
+regexes locais não leem, e que o fixture precisaria ter no dia em que aquele
+caminho fosse exercido. Para não perder a forma que a descida antiga cobria, a
+régua passou a seguir também `new URL("./x.mjs", import.meta.url)` (como o remédio
+do pre-commit referencia o guard vizinho): uma aresta a MAIS para todo consumidor,
+em vez de um caso a menos por régua. E o bare de pacote — que a régua recusa por
+desenho — é **permitido por declaração** no caso do `pre-commit`
+(`permitirPacotes`): aquele fixture roda com o `node_modules` da instalação, e quem
+responde pelos pacotes dele é o `naoRelativos()` com o probe do teste, que os
+nomeia.
+
+Os dois fixtures foram além da conferência, e cada um no limite do que o grafo
+alcança. O recorte do `pre-push` **deixou de declarar lista**: ele copia a
+derivação do grafo (`fechoDoRecorte`, o mesmo que as suítes de mutação fazem com o
+`mapfile`), então não há lista para envelhecer — e uma derivação que não fecha
+LEVANTA com os problemas nomeados (aresta que não resolve, bare de pacote, caminho
+fora da raiz), que o `catch` da prova e o do `readPrePushBlock` publicam como
+`unavailable`, nunca como meio fixture medido. A prova do `pre-commit` copia a derivação
+que sai das duas ENTRADAS (o guard do índice e o remédio) MAIS as SEMENTES que
+import nenhum liga a elas (`CLOSURE_SEM_GRAFO`) — e as sementes são o limite do
+que o grafo não vê: as declarações de classe e do canal, carregadas por CAMINHO
+CALCULADO (a varredura de diretório não é estática), os guards que o dublê do hook
+SPAWNA e os encoders de SHELL/PYTHON (não há import a derivar; declaração e guard
+dono andam em par). MEDIDO (27/09/2026): a lista à mão que existia ali tinha 42
+linhas, o grafo das ENTRADAS alcançava 15, e a derivação com as SEMENTES devolve
+**46** — as 42 de então mais a guarda da declaração da imagem do runner
+(`check-runner-tag.mjs`, que o hook roda na fase B) e as TRÊS dependências que ela
+puxa pelo grafo (`check-runner-labels.mjs`, `check-actrc-sync.mjs`,
+`check-registry-source.mjs`) — com a poda conferida uma a uma (nenhuma semente é
+alcançada pelas outras). O que a catraca acrescenta: uma semente que a derivação SEM ela já traz
+sai NOMEADA como linha redundante — foi assim que o `prove-runner-image-gate.mjs`
+(que entrara à mão pelo `import()` LITERAL) foi visto —, em vez de envelhecer em
+silêncio.
+
+**E o fixture passou a MATERIALIZAR ARTEFATOS do repositório — DERIVADOS, e já não
+por lista à mão.** O fecho cobre `scripts/`; um guard fail-closed sobre um arquivo
+FORA dele — o compose da forja, que a guarda da tag da imagem do runner abre por
+caminho — lia, na cópia, o ramo de INFRA (artefato ausente = exit 2) e o vermelho
+seria do FIXTURE, não do defeito. Era essa a razão de o `runner-tag` estar em
+`HOOK_NOT_RUN`; com o artefato na cópia a guarda roda no hook, na fase B, com a
+MESMA linha do CI.
+
+Até 27/09/2026 essa materialização saía de `ARTEFATOS_DO_FIXTURE = [GITEA_COMPOSE]`
+— uma LISTA À MÃO, e o motivo de ela existir era dito no próprio código: "o guard
+abre um caminho calculado em runtime, não há aresta de import a derivar". Isso é
+verdade sobre o GRAFO e falso sobre o FIXTURE: o que não se deriva do fonte se MEDE
+da EXECUÇÃO. Quem responde agora é o `scripts/artefatos-do-hook.mjs`:
+
+1. lê os comandos de node do TEXTO do hook (cada guard é uma linha — a mesma fonte
+   que o `check-hook-commands` julga), deriva o **fecho de imports** de cada um
+   (fail-closed: aresta que não resolve, bare de pacote ou comando ausente do
+   checkout LEVANTA, em vez de devolver uma lista parcial) e monta um fixture com
+   esse fecho e **nenhum** artefato;
+2. roda cada comando atrás de um **pré-carregador** que registra toda TENTATIVA de
+   abertura (`readFileSync`/`openSync`/`readFile`/`createReadStream`/`existsSync`),
+   e o link `--require` vai no argv do processo que ele mesmo spawna (sem depender
+   de `NODE_OPTIONS`, que teria de citar um caminho de tmpdir);
+3. o artefato é o caminho que um guard ABRIU, não achou na cópia e **existe no
+   repositório** — e cada entrada sai com o COMANDO que a abriu (`porComando`),
+   então uma sobra sem leitor deixou de passar em silêncio.
+
+MEDIDO na árvore de hoje: **9 artefatos** (o compose, `.actrc`, os quatro
+`Dockerfile*`, `mini-services/realtime/Dockerfile`, `deploy/env.gitea.example` e
+`.woodpecker.yml`), todos com leitor nomeado. O que ele **não vê** é declarado no
+cabeçalho do módulo: só processos de NODE (os comandos `bun`/`bash` do hook operam
+sobre a própria cópia) e nenhum processo filho de um guard.
+
+E uma recusa é DECLARADA, não filtrada em silêncio: o `package.json` é aberto por
+três comandos e **não** entra na lista (`NAO_SAO_ARTEFATOS`, com o motivo). Medido
+com o terminal de verdade: materializá-lo deixa o par (`.husky/`, `package.json`)
+completo, e aí o remédio passa a julgar o hook DA CÓPIA — que é o DUBÊ do harness,
+nao o hook do repositório — acusando o harness e derrubando três casos da suíte do
+pty em que a resposta correta é "nada a remendar". O par responde pelo mesmo motivo
+que o `.husky/` está fora do escopo: o hook da cópia é a FONTE SOB TESTE, e quem o
+julga é a prova da mutação, não a prontidão do commit.
+
+O que faz a lista à mão **não** voltar é um teste, não uma promessa
+(`src/lib/__tests__/artefatos-do-hook.test.ts`): num root sintético, uma guarda que
+NÃO EXISTE no repositório mais um hook que a chama fazem o artefato dela entrar
+SOZINHO — e o par contra-prova (o mesmo root com o artefato e a guarda na árvore,
+e um hook que NÃO a chama) mostra que a derivação segue o HOOK, e não uma varredura
+de diretório. Um comando citado pelo hook e ausente do checkout não vira lista
+parcial: a derivação LEVANTA, e o `artefatosDoFixture()` do fixture também — a
+cópia não se monta com meio fecho.
+
+**A DERIVAÇÃO ela mesma virou uma metade da matriz**
+(`scripts/test-mutation-artefatos-do-hook.sh`, a metade `M1`). A régua da derivação
+é um MECANISMO, e um mecanismo que devolve vazio por regressão é o pior desfecho:
+o fixture perde os artefatos, a guarda fail-closed lê INFRA na cópia e o vermelho
+deixa de falar do defeito — a lista à mão volta pela porta de trás sem que ninguém
+edite uma linha de lista. A metade esvazia o RETORNO da derivação e exige que o
+veredito MUDE, com duas testemunhas: a leitura por execução (node-pura) importa a
+derivação e o fixture REAIS, materializa a cópia e RODA O HOOK — no CONTROLE o
+fixture fica VERDE (exit 0, a guarda da tag cunha o veredito do pin e o hook
+completa), e com a metade ele fica VERMELHO pelo INFRA do artefato ausente ("não
+existe em" / "sem o artefato não há veredito a cunhar", e o hook NÃO completa); e a
+suíte do FIXTURE (`pre-commit-runner-tag-blocks.test.ts`) fica VERMELHA na âncora
+que exige o artefato na cópia. Sem a metade, um PR que devolvesse a lista vazia
+passaria no CI em silêncio.
 
 #### Mutation tests que precisam de `node_modules` (fora da matriz node-pura)
 
@@ -2084,6 +2268,21 @@ required check (está no `ci/required-checks.json`, nas duas forjas) e a invaria
 do CORE `bring-up-env-gate-proof` obriga as duas pipelines a mantê-lo: tirá-lo de
 uma delas vira drift no `check:forge-parity`, não silêncio. Quem editar o
 `gitea-up.sh` e remover o passo 0 derruba este job.
+
+**E o host SEM REGISTRY deixou de ser um beco — virou DECISÃO.** O pré-requisito 1
+recusa quando o registry não responde, e está certo: "não consegui perguntar" não é
+"a tag existe" (o ensure nunca publica nesse estado). Só que num host que opera
+sem alcançar o registry (rede fechada, DNS que não resolve, pacote privado sem
+credencial anônima) a recusa não deixava NADA que o operador pudesse rodar daqui.
+A flag `--local-image` desse host AFIRMA que a imagem está na cópia local, e o
+bring-up cobra a prova: o ensure confere a MESMA referência dos labels do compose
+no daemon DESTE host e devolve um estado próprio (exit 6) — a subida segue, com o
+que NÃO ficou provado dito em voz alta (que a TAG exista no registry e que um host
+sem esta cópia a puxe). Sem a flag, o veredito é EXATAMENTE o de antes:
+INDETERMINADO recusa e nada sobe. AUSENTE (4) e falha ao publicar (5) NÃO são
+afrouxados pela flag — a cópia local responde por "não consegui perguntar", não
+por "o registry respondeu que não tem" —, e `--local-image` com `--no-runner` é
+recusado (um afirma a imagem do runner, o outro a deixa de fora).
 
 **E o operador deixou de corrigir o env à mão.** O comando ganhou `--patch` (o
 diff que reconcilia o host; o **STDOUT leva só o patch** e o relatório vai para o
@@ -3481,35 +3680,38 @@ mesmo fato que a régua da idade lê no doctor):
 
 <!-- bench:mutations:tabela — DERIVADA do registro (`mutations` da baseline); não edite à mão: o ato a reescreve -->
 
-Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 26/09/2026 (`eecb7d09`): **43/43 verdes**, **270 metades**.
+Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 26/09/2026 (`00829c6f`): **44/46 verdes**, **276 metades**. **2 sub-test(s) NÃO passaram** (`pre-commit-proof`, `bench-freshness`): o custo deles não julga nada. ↺ 2 sub-test(s) RE-MEDIDO(s) (2 tentativas; o ms deles é a SOMA das duas, não um guard mais lento): `pre-commit-proof`, `bench-freshness`.
 
 | sub-test                                                                  |  wall time | fatia | metades |
 | ------------------------------------------------------------------------- | ---------: | ----: | ------: |
-| `job-deps`                                                                |     194.2s |   26% |      12 |
-| `pre-commit-proof` (a declaração dos recusadores, a descida e o CONTROLE) |     156.5s |   21% |       3 |
-| `workflow-run-syntax`                                                     |      76.2s |   10% |      15 |
-| `hook-commands`                                                           |      65.2s |    9% |      27 |
-| `bench-freshness` (a régua da idade e o CONTEÚDO da origem)               |      44.1s |    6% |      12 |
-| `remedy-tty`                                                              |      30.2s |    4% |       2 |
-| `registry-defaults`                                                       |      27.3s |    4% |       9 |
-| `required-applied`                                                        |      20.3s |    3% |      10 |
-| `nested-guard`                                                            |      18.6s |    2% |       2 |
-| `cut-stages` (as três invariantes duras do corte do GitHub)               |      17.9s |    2% |       3 |
-| `github-deps` (a catraca do inventário do GitHub)                         |      13.1s |    2% |       9 |
-| `mirror-coverage` (o CONTROLE, a soma por tabela e o pulo sem motivo)     |      11.0s |    1% |       3 |
-| `lint-scope` (o escopo do lint derivado do próprio comando)               |      10.7s |    1% |       6 |
-| `mutation-count`                                                          |      10.3s |    1% |      18 |
-| `canal-fixers`                                                            |       9.4s |    1% |       6 |
-| `reconciliation`                                                          |       9.0s |    1% |       3 |
-| `stack-per-commit` (a prova de cada commit da pilha passar sozinho)       |       8.7s |    1% |       8 |
-| `gate-registration`                                                       |       8.0s |    1% |       5 |
-| `runner-labels`                                                           |       4.9s |    1% |       1 |
+| `job-deps`                                                                |     204.3s |   30% |      12 |
+| `workflow-run-syntax`                                                     |      78.1s |   12% |      15 |
+| `hook-commands`                                                           |      66.2s |   10% |      27 |
+| `local-image`                                                             |      49.2s |    7% |       4 |
+| `remedy-tty`                                                              |      36.5s |    5% |       2 |
+| `registry-defaults`                                                       |      27.9s |    4% |       9 |
+| `required-applied`                                                        |      20.6s |    3% |      10 |
+| `nested-guard`                                                            |      19.6s |    3% |       2 |
+| `cut-stages` (as três invariantes duras do corte do GitHub)               |      18.6s |    3% |       3 |
+| `artefatos-do-hook`                                                       |      18.5s |    3% |       1 |
+| `pre-commit-proof` (a declaração dos recusadores, a descida e o CONTROLE) |    16.1s ↺ |    2% |       3 |
+| `github-deps` (a catraca do inventário do GitHub)                         |      13.3s |    2% |       9 |
+| `mirror-coverage` (o CONTROLE, a soma por tabela e o pulo sem motivo)     |      11.2s |    2% |       3 |
+| `lint-scope` (o escopo do lint derivado do próprio comando)               |      11.0s |    2% |       6 |
+| `mutation-count`                                                          |      10.3s |    2% |      18 |
+| `reconciliation`                                                          |       9.6s |    1% |       3 |
+| `canal-fixers`                                                            |       9.6s |    1% |       6 |
+| `stack-per-commit` (a prova de cada commit da pilha passar sozinho)       |       9.0s |    1% |       8 |
+| `gate-registration`                                                       |       8.1s |    1% |       5 |
+| `runner-labels`                                                           |       5.2s |    1% |       1 |
 | `merge-latency`                                                           |       4.5s |    1% |       5 |
-| `hook-ci-parity`                                                          |       3.6s |    0% |       9 |
-| `pipefail-sigpipe`                                                        |       2.2s |    0% |      22 |
+| `hook-ci-parity`                                                          |       3.6s |    1% |       9 |
+| `runner-tag`                                                              |       3.2s |    0% |       1 |
+| `pipefail-sigpipe`                                                        |       2.3s |    0% |      22 |
+| `doc-hashes` (a régua do hash citado na prosa)                            |       2.1s |    0% |       9 |
+| `act-origin`                                                              |       2.0s |    0% |       8 |
 | `bun-literal`                                                             |       1.8s |    0% |       5 |
-| `doc-hashes` (a régua do hash citado na prosa)                            |       1.5s |    0% |       9 |
-| `act-origin`                                                              |       1.4s |    0% |       8 |
+| `bench-freshness` (a régua da idade e o CONTEÚDO da origem)               |     1.8s ↺ |    0% |      12 |
 | `workflow-defaults`                                                       |       1.0s |    0% |       7 |
 | `lint-guard`                                                              |       0.9s |    0% |       3 |
 | `archived-pipeline`                                                       |       0.8s |    0% |       6 |
@@ -3528,11 +3730,11 @@ Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 26/09/2026 (`eecb7d09`
 | `hooks-symmetry`                                                          |       0.1s |    0% |       2 |
 | `docs-anchor`                                                             |       0.1s |    0% |       1 |
 | `e2e-cache-budget`                                                        |       0.0s |    0% |       2 |
-| **soma dos 43 sub-tests**                                                 | **757.4s** |  100% | **270** |
-| harness (parse das metades, tabelas, subida do master)                    |       5.0s |       |         |
-| **total do master**                                                       | **762.3s** |       |         |
+| **soma dos 46 sub-tests**                                                 | **671.0s** |  100% | **276** |
+| harness (parse das metades, tabelas, subida do master)                    |       5.3s |       |         |
+| **total do master**                                                       | **676.4s** |       |         |
 
-**Dez** sub-tests pagam **86%** da conta e a mediana é **2.2s**: a cauda é barata, e o harness sai da DIFERENÇA entre o total e a soma dos sub-tests, não de uma constante. O sub-test NOVO entra na rodada seguinte **MEDIDO**, e o PRÓXIMO acrescenta **~17.7s** (PROJEÇÃO: a média dos scripts medidos mais o harness por sub-test). A marca **↺** na linha é sub-test RE-MEDIDO (a régua é a REPETIÇÃO: o ms é a soma das tentativas) e **🌀** é FLAKE (não vale verde nem reprovação). A coluna de metades é DERIVADA da matriz (§ acima) — o ato a reescreve depois da herança e diz o que fez (`metadesDaMatriz`). Esta TABELA (e esta leitura) é **DERIVADA do registro**: quem a reescreve é o ATO, e o `check:mutation-count` recusa o commit em que ela divirja dele — a prosa não tem número próprio.
+**Dez** sub-tests pagam **80%** da conta e a mediana é **2.7s**: a cauda é barata, e o harness sai da DIFERENÇA entre o total e a soma dos sub-tests, não de uma constante. O sub-test NOVO entra na rodada seguinte **MEDIDO**, e o PRÓXIMO acrescenta **~14.7s** (PROJEÇÃO: a média dos scripts medidos mais o harness por sub-test). A marca **↺** na linha é sub-test RE-MEDIDO (a régua é a REPETIÇÃO: o ms é a soma das tentativas) e **🌀** é FLAKE (não vale verde nem reprovação). A coluna de metades é DERIVADA da matriz (§ acima) — o ato a reescreve depois da herança e diz o que fez (`metadesDaMatriz`). Esta TABELA (e esta leitura) é **DERIVADA do registro**: quem a reescreve é o ATO, e o `check:mutation-count` recusa o commit em que ela divirja dele — a prosa não tem número próprio.
 <!-- /bench:mutations:tabela -->
 
 **E a derivação desceu ao PASSO.** O mesmo mecanismo, um nível abaixo: o job
@@ -4447,6 +4649,42 @@ Invertida a ordem, o runner sobe com o registro ANTIGO e nada acusa; apagado
 antes da garantia, a falha leva consigo o registro que funcionava (o oposto do
 runbook antigo, que apagava primeiro e conferia depois). Cada promessa tem a sua
 mutação do `gitea-up.sh`, e o teste exige que a prova caia junto com ela.
+
+**E o HOST SEM REGISTRY (família `registry-offline`): a DECISÃO, medida nos dois
+sentidos.** O registry de teste ganhou um terceiro modo — **inalcançável** (a
+porta existe e não responde; é o estado em que o ensure nunca publica) —, e o
+dublê do docker um estado de cópia local. Três casos, e nenhum é dispensável: sem
+a flag, o gate de sempre recusa (exit 3, **zero** docker e **zero** idas ao
+registry); com a flag e **sem** a cópia local, ainda recusa — a flag não é cheque
+em branco — e o remédio que constrói a imagem aqui é impresso (é ele que fecha o
+beco); com a flag e a cópia, a stack SOBE — o CONTROLE, sem o qual "recusou"
+passaria por "o gate funciona" num bring-up quebrado. A decisão tem DUAS metades,
+uma por arquivo — o **bring-up decide** (repassa a flag, reconhece o exit 6 e o
+nomeia) e o **ensure prova** (o probe local, dono do estado) —, e o teste da prova
+mede as duas, com uma mutação cada: tirar o REPASSE da flag derruba o CONTROLE (a
+cópia deixa de ser pedida); aceitar o INDETERMINADO cru (`-eq 3` no lugar do
+exit 6) derruba a recusa de sempre (o beco viraria permissão silenciosa); o ensure
+não devolver o estado próprio derruba o CONTROLE (a cópia vira UNKNOWN); e o probe
+local respondendo `present` sempre faz da flag um cheque em branco (o caso SEM a
+cópia sobe). As duas últimas mutam o ARQUIVO do ensure, não o bring-up: mutar uma
+metade só deixaria a outra sem medida.
+
+**A prova por MUTAÇÃO** (`scripts/test-mutation-local-image.sh`, as metades `M1`,
+`M2`, `M3` e `M4`): a suíte unitária diz que o comportamento de HOJE está certo;
+ela não diz que as REGRAS que o sustentam seguem no caminho — e é aí que a
+decisão degrada em silêncio. O sub-test da matriz desliga uma regra de cada vez e
+exige que o veredito MUDE: o REPASSE da flag (`M1`: o `--local-image` deixa de
+chegar ao ensure e o CONTROLE cai, o host sem registry voltando ao beco), a
+ACEITAÇÃO do INDETERMINADO (`M2`: o exit 3 cru passa por decisão e a recusa de
+sempre cai) e as duas metades do ensure, o ESTADO próprio (`M3`: a cópia local
+vira UNKNOWN) e o PROBE local (`M4`: responder `present` sempre faz da flag um
+cheque em branco). A leitura por execução roda a PROVA REAL
+(`prove-runner-image-gate.mjs`) contra o registry de teste e o daemon dublê e lê o
+RESULTADO por caso — o exit, se o runner subiu, os `ensureArgs` que o ensure
+RECEBEU e a falha nomeada; a segunda testemunha é o describe da decisão na suíte
+unitária, que tem de ficar VERMELHA na âncora da metade mutada. Sem as quatro, um
+PR que devolvesse o beco (o repasse da flag fora do bring-up, ou a cópia local
+aceita sem prova) passaria no CI em silêncio.
 
 **E as FLAGS deixaram de ser uma leitura do texto.** O guard `checkGiteaBringUp`
 prende no TEXTO do `gitea-up.sh` que a linha do espelho tem `--host`/`--template`,
@@ -6085,15 +6323,45 @@ ponta a ponta, lendo o veredito de onde ele é de fato gravado.
   ensaio são as `vars.<NOME>` que o workflow USA (derivadas do arquivo) e o valor
   vem do template: um `vars.X` novo no smoke entra sozinho — e o ensaio recusa
   rodar se ele não existir no template, em vez de inventar valor;
+- **o `config.yaml` do runner é GERADO** (e semeado no volume efêmero, com
+  `CONFIG_FILE` no serviço, antes do runner subir). Ele existe por um fato
+  medido: sem `container.network`, o act_runner cria uma rede POR JOB e o
+  container do job nasce fora da rede do projeto — onde o nome do serviço
+  `gitea` resolve —, e o primeiro passo do smoke (`actions/checkout@v4`) morre
+  com `Could not resolve host: gitea`, sem que nenhuma das 5 provas rode. O
+  arquivo declara SÓ esse campo: o resto é o default do próprio binário
+  (`runner.file`, capacidade, timeout, cache ligado e o `docker_host` vazio, que
+  acha o socket e o MONTA no job — é ele que a Prova 5 usa). Na PRODUÇÃO esse
+  arquivo é do OPERADOR, no volume dele — é o `config.yaml` que a doc de remédio
+  já cita, e sem essa linha nenhum job resolve a forja;
 - **o veredito não é texto.** Ele vem de `action_task.status` no banco do Gitea
   efêmero (1 = sucesso, 2 = falha; MEDIDO na série 1.22 — e todo outro código é
   "ainda não terminou", incluindo o 6, que aparece com o job rodando) e o log
-  COMPLETO do job, que o Gitea guarda (`actions_log/<log_filename>`);
-- **as expectativas vêm do arquivo.** O ensaio exige cada passo (`⭐ Run Main
-<nome>`) e cada `echo "✅ …"` do smoke, e proíbe cada `echo "::error:: …"` —
-  tudo truncado na primeira interpolação, porque é a parte literal que dá para
-  exigir. Um `✅` novo passa a ser exigido sozinho; um passo que não rodou vira
-  vermelho DIZENDO qual;
+  COMPLETO do job — lido de ONDE a 1.22 o guarda: o ARQUIVO
+  `actions_log/<log_filename>` quando a transferência já aconteceu, ou o DBFS do
+  banco (`dbfs_meta`/`dbfs_data`, com os blocos de 32KB CONCATENADOS pela ordem
+  de `blob_offset`) enquanto ela não acontece. As duas casas são tentadas na
+  MESMA leitura, e o relatório diz de qual veio; ler só o arquivo saía
+  INDETERMINADO por um lugar de leitura, não por um fato da forja (MEDIDO duas
+  vezes: `No such file or directory` com a tarefa já terminal e o log inteiro no
+  DBFS). E só um log ESTÁVEL — dois lados da mesma medida — é aceito: um log
+  ainda em curso leria como "passo não rodou";
+- **as expectativas vêm do arquivo.** Quem diz "este passo EXECUTOU" é o GRUPO
+  que o runner abre para cada passo (`::group::Run <rótulo>`), exigido por
+  CONTAGEM: os três primeiros `run:` do smoke abrem com o mesmo
+  `set -euo pipefail`, e "a linha existe" deixaria um run onde só o primeiro
+  rodou passar como se todos tivessem rodado. O rótulo é derivado do TIPO do passo — `uses:` sem nome → a
+  referência, `uses:` com nome → o nome, `run:` → a primeira linha do script —
+  porque é assim que o runner o deriva. O `⭐ Run Main <nome>` **não** serve de
+  régua (medido: o runner o grava para o PRIMEIRO passo do job e para os estágios
+  `Post` — e não para os demais). Além dele, cada `echo "✅ …"` e cada `echo
+"::error:: …"` do smoke
+  entram truncados na primeira interpolação — e as linhas de ECO do script (o
+  act imprime o script antes de executá-lo) são DESCONTADAS: sem isso todo run
+  verde traria os sete literais de `::error::` do próprio smoke e o ensaio
+  reprovaria a forja que ele existe para julgar. Um `✅` novo passa a ser exigido
+  sozinho; um passo que não rodou vira vermelho DIZENDO qual — e com que
+  contagem;
 - **o gatilho é a ÚNICA diferença do arquivo empurrado.** O Gitea 1.22 não tem
   `workflow_dispatch` — nem UI, nem API (medido: 404 em todas as rotas de
   dispatch da instância, e nenhuma delas existe no swagger). O ensaio ACRESCENTA
@@ -6109,13 +6377,24 @@ ponta a ponta, lendo o veredito de onde ele é de fato gravado.
 - **`--mutacao-labels` (fase 2).** Re-registra o runner com um label A MAIS que
   o compose não declara — o defeito invisível da Prova 5 (um label que ninguém
   usa não é visto pelas provas 2 e 3) — e exige o smoke VERMELHO com as provas
-  1–4 ainda verdes.
+  1–4 ainda verdes. Vermelho NÃO basta: a linha `::error::REGISTRO VELHO` tem de
+  estar no log, ou o vermelho não diz QUAL prova caiu. A fase já mordeu um
+  defeito REAL do próprio smoke: o act roda cada `run:` com o shell
+  `bash --noprofile --norc -e -o pipefail {0}` e `set -uo pipefail` NÃO desliga
+  esse `-e` — o `OUT="$(…)"` da Prova 5 morria NA ATRIBUIÇÃO, o `case` era
+  código morto e o job saía vermelho sem NENHUMA das três mensagens (MEDIDO:
+  status 2 e `hitFailure` só com o marcador de job falho). O passo fecha com
+  `+e`, e a suíte do smoke carrega a régua: todo `run:` que decide por `$?` tem
+  de desligar o errexit que o runner impõe. O log da mutação passou a ir no
+  relatório — um veredito violado tem de ser diagnosticável sem re-rodar.
 
 **Desvios declarados (o relatório lista todos).** O gatilho acrescentado; a
 sentinela (artefato do ensaio, não do repositório); o container do Gitea
-renomeado; e — só com `--sem-no-new-privileges` — a stack do ensaio DIFERE da
-produção em uma linha: `security_opt: no-new-privileges:true` do serviço
-`runner`. A flag existe porque em hosts com confinamento do daemon (medido:
+renomeado; o `config.yaml` do runner (GERADO pelo ensaio e semeado no volume
+`runner-data` do projeto — na produção esse arquivo é do operador, e o ensaio só
+pode provar o que ele mesmo põe lá); e — só com `--sem-no-new-privileges` — a
+stack do ensaio DIFERE da produção em uma linha: `security_opt:
+no-new-privileges:true` do serviço `runner`. A flag existe porque em hosts com confinamento do daemon (medido:
 Docker 29 sob snap) esse hardening impede QUALQUER `exec` dentro do container —
 `tini`, `sh` e o `alpine` puro falham com `operation not permitted` — e o runner
 nunca sobe. Sem a flag o ensaio DIZ isso, com o estado do container e a última
@@ -7090,8 +7369,8 @@ UNIÃO com a atribuição do filho, o `source` sem `export` e o `export VAR` soz
 de linha, `$( )`, `case`, função, continuação). E o repositório REAL é julgado com
 um **PISO de cobertura** (`comandos >= 200`, os três hooks e os scripts descidos nomeados): se a extração
 ou a descida pararem de funcionar, a contagem cai e o guard "passa" — o piso é o
-que impede o verde por vazio. Em produção: **272 comandos** (127 nos 3 hooks +
-145 dentro dos 5 scripts chamados), **266 resolvidos** e **6 indeterminados
+que impede o verde por vazio. Em produção: **273 comandos** (128 nos 3 hooks +
+145 dentro dos 5 scripts chamados), **267 resolvidos** e **6 indeterminados
 DECLARADOS** (as quatro decisões de caminho viraram prova; sobraram os payloads de
 `-c`).
 
@@ -8385,9 +8664,13 @@ Cada mutação é FAIL-CLOSED sobre si mesma: o marcador tem de existir UMA vez 
 guard, o arquivo tem de MUDAR e o resultado tem de continuar parseável — uma
 mutação que não muta é pior que nenhuma. O fixture é um repositório git de VERDADE
 num `mktemp` (a régua é do git), e **nenhum arquivo do repositório real é tocado** —
-e o guard COPIADO para lá leva o fecho de imports dele junto (`confirm-prompt.mjs`
-e `unified-patch.mjs`, que o `--fix` trouxe): sem os vizinhos, a cópia morre com
-`ERR_MODULE_NOT_FOUND` e o exit 1 do NODE passaria por veredito do guard.
+e o guard COPIADO para lá leva o fecho de imports dele, **DERIVADO do grafo**
+(`scripts/fecho-imports.mjs`): quem diz o que a cópia precisa é a aresta do
+próprio guard — `confirm-prompt.mjs` e `unified-patch.mjs` (que o `--fix` trouxe) e
+o formatador. A lista à mão que fazia esse papel envelheceu sem aviso e deixou a
+cópia MORTA quando a aresta do gerado entrou (ver §3, "O FIXTURE QUE NÃO
+CARREGA"): sem os vizinhos, a cópia morre com `ERR_MODULE_NOT_FOUND` e o exit 1 do
+NODE passaria por veredito do guard.
 
 **O guard pegou a própria suíte de mutação** — que citava o id de seed (12 hex)
 no cabeçalho e no fixture da M6 —, e o desfecho NÃO foi declará-lo: uma declaração
@@ -8519,6 +8802,20 @@ motivo), PUBLICADA no relatório — nunca escondida. Duas catracas: violação 
 não está na baseline reprova, e entrada da baseline que NÃO reproduz na série
 medida reprova (dívida declarada que já não existe é dívida que ninguém apagou:
 a lista não vira cemitério).
+
+**A SÉRIE LARGA — a que o CI mede — tem a MESMA classe, e ela foi re-medida em
+27/09/2026:** `origin/main..HEAD` são **195 commits, 12 violações — 0 novas — e
+13 não-julgáveis**, e as 11 que não estavam na baseline vieram de TRÊS commits de
+117 a 180 atrás (`f0650ba8`, oito nomes, todos no `forge-doctor`; `1f9ac5ee`, um;
+`136735bb`, dois). Cada uma foi medida uma a uma — o alvo não exporta o nome NO
+commit, o importador o importa, e o `export` entra de **1 a 3 commits ACIMA** — e
+cada entrada da baseline nomeia em qual (é a mesma classe do `8dd4f5e5`; o que
+muda é a base da série). A régua ESTREITA publicada acima media só a entrada do
+`8dd4f5e5` porque a base dela (`30447a57`) começa depois desses três: a lição é
+da régua, não do código — **o número de violações declaradas depende da base que
+se mede**, e é a base do CI que manda. O remédio de verdade segue sendo a
+reescrita (mover cada `export` para dentro do commit que o importa), decisão do
+operador; até lá a dívida fica PUBLICADA, nunca escondida.
 
 **O que o parser teve de fechar para a régua não mentir** (todas as classes
 MEDIDAS na própria árvore, cada uma com o comentário no código):

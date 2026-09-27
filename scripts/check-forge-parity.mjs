@@ -569,6 +569,22 @@ export const CORE_INVARIANTS = [
     jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {
+    id: "runner-tag",
+    // A DECLARACAO da imagem do runner — a metade do pin que se le do TEXTO do
+    // compose. O `runner-base` julga a BASE do Dockerfile (por digest) e o
+    // `runner-labels:check` julga o registro × o binario NO AR (exige docker e
+    // container); esta nao precisa de nenhum dos dois, e e ela que cabe no job
+    // de guards das duas forjas. E do CORE porque o defeito e do TEXTO do
+    // compose (o mesmo nas duas) e porque foi MEDIDO: a tag era `latest`, o act
+    // runner NAO se auto-atualiza (quem decide a versao do binario e a imagem) e
+    // o `docker compose pull` de outro dia trocava a versao que a forja RODA sem
+    // uma linha do repositorio mudar e sem sintoma nenhum.
+    matches: /check[:-]runner[:-]tag/,
+    command: /^node scripts\/check-runner-tag\.mjs$/m,
+    why: "sem a guarda, a tag volta a poder ser `latest` (ou sumir, ou virar `${…}`) em silencio: o `runner-labels:check` prova o registro, mas ele so roda no smoke manual — a cada PR ninguem respondia se a versao que a forja executa esta PINADA no repositorio",
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
+  },
+  {
     id: "workflow-refs",
     matches: /check[:-]workflow[:-]refs/,
     command: /^node scripts\/check-workflow-refs\.mjs --pkg-internal$/m,

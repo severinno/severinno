@@ -97,6 +97,7 @@ export const WRAPPER_FILE = "wrapper.sh"
  * @typedef {{ status: number|null, output: string }} RunResult
  * @typedef {{
  *   prefix?: string, closure?: string[], wrapper: string, dirs?: string[],
+ *   artefatos?: string[],
  * }} RepoOptions
  * @typedef {{ name: string, source: string, hooksPath: string }} HookFile
  */
@@ -288,10 +289,22 @@ function linkModules(dir) {
 }
 
 /**
- * Um repositório git de verdade, com o dublê declarado e (opcional) o fecho.
+ * Um repositório git de verdade, com o dublê declarado, o fecho e os
+ * ARTEFATOS do repositório que os guards do fixture leem.
+ *
  * O `wrapper` é OBRIGATÓRIO: sem ele o hook rodaria os binários REAIS (o
- * não-zero viria do ambiente, e um verde poderia não ter nada a ver com o
+ * não-zero viria do ambiente, e um verde poderia ter nada a ver com o
  * comando sob teste) — o falso positivo que o simulador existe para evitar.
+ *
+ * `artefatos` são arquivos do REPOSITÓRIO (fora de `scripts/`) que a cópia leva
+ * porque um guard os lê por CAMINHO — o compose da forja é o caso concreto: a
+ * guarda que julga a tag da imagem do runner abre
+ * `deploy/docker-compose.gitea.yml` e, sem o arquivo, cai no ramo de INFRA
+ * (fail-closed). Copiar é o que permite que ela rode no hook; sem isso o
+ * vermelho seria do FIXTURE, não do defeito. A lista é DECLARADA por quem monta
+ * o fixture (nada aqui adivinha o que um guard vai abrir) e um item FALTANDO no
+ * repositório LEVANTA — montar a cópia com o artefato de fora seria montar um
+ * fixture cujo não-zero não é o do defeito.
  *
  * @param {RepoOptions} opts
  * @returns {string}
@@ -311,6 +324,27 @@ export function novoRepo(opts) {
     // não-zero do FIXTURE e não do defeito).
     mkdirSync(dirname(destino), { recursive: true })
     copyFileSync(join(REPO_ROOT, "scripts", f), destino)
+  }
+  for (const rel of opts.artefatos ?? []) {
+    // Fail-closed e NOMEADO: um caminho absoluto (ou com `..`) escreveria FORA do
+    // fixture, e um artefato que não existe no repositório viraria um fixture
+    // sem ele — exatamente o caso em que o guard lê INFRA e o vermelho deixa de
+    // falar do defeito.
+    if (rel.startsWith("/") || rel.split(/[\\/]/).includes("..")) {
+      throw new Error(
+        `artefato do fixture tem de ser um caminho RELATIVO dentro do repositório: ${rel}`,
+      )
+    }
+    const origem = join(REPO_ROOT, rel)
+    if (!existsSync(origem)) {
+      throw new Error(
+        `artefato do fixture não existe no repositório: ${rel} — a cópia não é montada ` +
+          "com um artefato faltando (o guard que o lê cairia em INFRA, e o vermelho seria do FIXTURE)",
+      )
+    }
+    const destino = join(dir, rel)
+    mkdirSync(dirname(destino), { recursive: true })
+    copyFileSync(origem, destino)
   }
   writeFileSync(join(dir, WRAPPER_FILE), opts.wrapper, "utf8")
   git(dir, ["init", "-q"])

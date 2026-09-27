@@ -81,14 +81,37 @@ METADES=(
 
 GUARD="$SCRIPT_DIR/scripts/check-doc-hashes.mjs"
 
-# O FECHO DE IMPORTS do guard: o remédio (`--fix`) trouxe o módulo do prompt, o do
-# patch e o FORMATADOR do repositório (a doc REMENDADA é VERSIONADA e julgada pelo
-# `lint`: a escrita passa por `escreverFormatado`), e o fixture roda o guard
-# COPIADO — sem os vizinhos, a cópia morre com ERR_MODULE_NOT_FOUND e o exit 1 do
-# NODE passaria por veredito do guard (é a mesma classe que a suíte do `pipefail`
-# declara: o fecho tem de vir junto; sem formatador a escrita degrada com motivo,
-# nunca em silêncio, então o fixture sem `node_modules` segue medindo o remendo).
-FECHO_GUARD=(confirm-prompt.mjs unified-patch.mjs prettier-format.mjs)
+# O FECHO DE IMPORTS do guard é DERIVADO do grafo (`scripts/fecho-imports.mjs`),
+# nunca uma lista à mão: o remédio (`--fix`) trouxe o módulo do prompt, o do patch e
+# o FORMATADOR do repositório (a doc REMENDADA é VERSIONADA e julgada pelo `lint`: a
+# escrita passa por `escreverFormatado`), e o fixture roda o guard COPIADO — sem os
+# vizinhos, a cópia morre com ERR_MODULE_NOT_FOUND e o exit 1 do NODE passaria por
+# veredito do guard (é a mesma classe que a suíte do `pipefail` declara: o fecho
+# tem de vir junto; sem formatador a escrita degrada com motivo, nunca em silêncio,
+# então o fixture sem `node_modules` segue medindo o remendo).
+#
+# POR QUE DERIVADO: a lista à mão envelhecia sem aviso — medido em 26/09/2026, a
+# aresta do formatador que o `bench-table.mjs` ganhou deixou esta cópia MORTA e o
+# exit 1 do NODE passou por veredito. Aqui quem diz o que a cópia precisa é a
+# aresta do próprio guard, e uma aresta que não resolva sai 2 (infra declarada).
+fecho_do_guard() { # ecoa os módulos do fecho, relativos à raiz do repositório
+  local saida=""
+  if ! saida="$(node "$SCRIPT_DIR/scripts/fecho-imports.mjs" "$GUARD" --root "$SCRIPT_DIR" 2>&1)"; then
+    echo "❌ o fecho de imports de $GUARD NÃO foi derivado — fixture incompleto não mede:" >&2
+    printf '%s\n' "$saida" | sed 's/^/   /' >&2
+    exit 2
+  fi
+  printf '%s\n' "$saida"
+}
+
+copiar_fecho() { # $1 = raiz do fixture que recebe o fecho (o caminho é preservado)
+  local destino="$1" rel
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    mkdir -p "$destino/$(dirname "$rel")"
+    cp "$SCRIPT_DIR/$rel" "$destino/$rel"
+  done < <(fecho_do_guard)
+}
 
 command -v git >/dev/null || { echo "❌ git ausente (fail-closed)"; exit 2; }
 command -v node >/dev/null || { echo "❌ node ausente (fail-closed)"; exit 2; }
@@ -114,7 +137,7 @@ montar() { # $1 = diretório
   rm -rf "$dir"
   mkdir -p "$dir/scripts" "$dir/docs" "$dir/ci" "$dir/.husky" "$dir/.github/workflows"
   cp "$GUARD" "$dir/scripts/check-doc-hashes.mjs"
-  for vizinho in "${FECHO_GUARD[@]}"; do cp "$SCRIPT_DIR/scripts/$vizinho" "$dir/scripts/$vizinho"; done
+  copiar_fecho "$dir"
   git -C "$dir" init -q
   git -C "$dir" config user.email "m@m.m"
   git -C "$dir" config user.name "m"
@@ -179,8 +202,22 @@ rodar() { # $1 = repo; $2.. = flags extras do guard; ecoa o exit code
   local dir="$1"
   shift
   local rc=0
-  node "$dir/scripts/check-doc-hashes.mjs" --root "$dir" "$@" >/dev/null 2>&1 || rc=$?
+  node "$dir/scripts/check-doc-hashes.mjs" --root "$dir" "$@" >/dev/null 2>"$TMP/erro" || rc=$?
   echo "$rc"
+}
+
+# O MÓDULO QUE NÃO CARREGOU NÃO É VEREDITO: se a cópia do guard morre por um
+# import que faltou (uma aresta que a derivação não viu), o `node` sai 1 — e o
+# exit 1 do NODE passaria por "o guard acusou". A checagem mora AQUI, e não dentro
+# do `rodar`, por uma razão de shell: `rodar` é chamado em SUBSTITUIÇÃO DE COMANDO
+# (`$(rodar ...)`), e um `exit` lá dentro termina o SUBSHELL — o pai seguiria com o
+# fixture morto. Quem chama `recebe` passa por aqui, no processo que decide.
+checar_carga() {
+  if grep -q "ERR_MODULE_NOT_FOUND\|Cannot find module" "$TMP/erro" 2>/dev/null; then
+    fail "o guard COPIADO não CARREGOU (o fecho do fixture está incompleto): o veredito seria do NODE, não do guard"
+    sed 's/^/     /' "$TMP/erro" >&2
+    exit 2
+  fi
 }
 
 # A MUTAÇÃO, fail-closed: o marcador tem de existir UMA vez no guard, e o
@@ -208,6 +245,7 @@ mutar_linha() { # $1 = repo, $2 = marcador (literal), $3 = a linha nova
 }
 
 recebe() { # $1 = rótulo, $2 = exit obtido, $3 = esperado, $4 = o que a medição diz
+  checar_carga
   if [ "$2" = "$3" ]; then
     pass "$1 — exit $2 ($4)"
   else
@@ -269,7 +307,7 @@ header "M4 — o fail-closed sem git: árvore que não é repositório sai 2"
 F="$TMP/m4"
 mkdir -p "$F/scripts"
 cp "$GUARD" "$F/scripts/check-doc-hashes.mjs"
-for vizinho in "${FECHO_GUARD[@]}"; do cp "$SCRIPT_DIR/scripts/$vizinho" "$F/scripts/$vizinho"; done
+copiar_fecho "$F"
 recebe "CONTROLE M4 (fail-closed)" "$(rodar "$F")" 2 "árvore que não é repositório sai 2"
 mutar_linha "$F" 'throw new Error(`git ${args.join(" ")} falhou' '    return ""'
 recebe "M4 (removida)" "$(rodar "$F")" 0 "sem o throw, o não-julgável vira verde"
@@ -318,6 +356,7 @@ recebe "CONTROLE M7 (preview)" "$(rodar "$F" --fix --dry-run)" 0 "o preview prev
 # que o comentário do PR publica mentiria.
 mutar_linha "$F" 'if (!dry) escreverFormatado(join(root, file), novoConteudo, { root })' '    escreverFormatado(join(root, file), novoConteudo, { root })'
 rodar "$F" --fix --dry-run >/dev/null
+checar_carga
 if [ "$(cksum <"$F/README.md")" = "$ANTES" ]; then
   fail "M7 (cegada) — sem o `dry`, o preview tem de GRAVAR a árvore e não gravou"
   exit 1

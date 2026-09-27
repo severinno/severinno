@@ -152,6 +152,10 @@ export const ENSURE_SCRIPT = "scripts/ensure-runner-image.mjs"
 /** A FAMÍLIA do caso: a pergunta que ele responde (o relatório agrupa por ela). */
 export const PROOF_FAMILIES = [
   { id: "image", title: "o PRÉ-REQUISITO 1 — a imagem existe no registry" },
+  {
+    id: "registry-offline",
+    title: "o HOST SEM REGISTRY — o INDETERMINADO aceito pela CÓPIA LOCAL (--local-image)",
+  },
   { id: "env-mirror", title: "o PRÉ-REQUISITO 0 — o env do host espelha o template" },
   { id: "re-register", title: "o RE-REGISTRO — apagar o registro gravado antes de subir" },
   { id: "instructions", title: "AS INSTRUÇÕES — o que o instalador e o runbook mandam rodar" },
@@ -192,7 +196,13 @@ const C = {
  * pergunta da prova é binária, e um registry mais rico (Bearer, blobs)
  * esconderia a resposta atrás de fidelidade que não está em julgamento.
  *
- * @param {"exists"|"missing"} mode
+ * `unreachable` → a porta é RESERVADA e LIBERADA antes do caso rodar: o registry
+ * não responde, e é essa a resposta que o host sem registry dá. A distinção é o
+ * ponto do terceiro modo: 404 é "perguntei e a tag não está lá" (AUSENTE); não
+ * responder é "não consegui perguntar" (INDETERMINADO) — e é só o segundo que a
+ * cópia local pode cobrir.
+ *
+ * @param {"exists"|"missing"|"unreachable"} mode
  * @returns {Promise<{url: string, port: number, hits: string[], close: () => Promise<void>}>}
  */
 export function startTestRegistry(mode) {
@@ -208,12 +218,20 @@ export function startTestRegistry(mode) {
     server.listen(0, "127.0.0.1", () => {
       const addr = server.address()
       const port = typeof addr === "object" && addr ? addr.port : 0
-      resolve({
+      const result = {
         url: `http://127.0.0.1:${port}`,
         port,
         hits,
-        close: () => new Promise((done) => server.close(() => done())),
-      })
+        close: () =>
+          new Promise((done) => (server.listening ? server.close(() => done()) : done())),
+      }
+      if (mode === "unreachable") {
+        // A porta fica LIVRE: o caso roda contra um endereço que ninguém atende
+        // (conexão recusada — rápido e determinístico no loopback).
+        server.close(() => resolve(result))
+        return
+      }
+      resolve(result)
     })
   })
 }
@@ -239,6 +257,9 @@ export function startTestRegistry(mode) {
  *   - `volume inspect` reflete o ESTADO do volume do registro (`volume` abaixo),
  *     e `volume rm` o apaga — ou MENTE que apagou, no modo `stuck`, que é o
  *     caminho em que o registro antigo sobrevive;
+ *   - `image inspect` reflete o ESTADO da cópia LOCAL da imagem (`image` abaixo,
+ *     default `present`): 0 quando ela está no daemon, 1 com a mensagem do docker
+ *     quando não está. É o que a flag `--local-image` do ensure pergunta;
  *   - `commit`/`compose`/qualquer outra coisa sai 0.
  *
  * O `gh` sempre falha: sem `gh` autenticado o ensure não pode escolher o
@@ -268,11 +289,17 @@ export function startTestRegistry(mode) {
  * @param {string} [options.cwd]  raiz de onde saem os scripts REAIS que os espiões
  *   delegam (default: esta) — com `--cwd` de uma raiz mutada, o espião delega ao
  *   script DAQUELA raiz, e a mutação continua valendo.
+ * @param {"present"|"absent"} [options.image]  o estado da CÓPIA LOCAL da imagem
+ *   no daemon dublê (`docker image inspect`): `present` (default) é o host que já
+ *   tem a imagem; `absent`, o que não tem.
  * @returns {{binDir: string, doctorStub: string, mirrorSpy: string, ensureSpy: string,
  *   doctorCalls: () => string[][], mirrorCalls: () => string[][], ensureCalls: () => string[][],
  *   dockerCalls: () => string[], trace: () => {tag: string, line: string}[]}}
  */
-export function makeFakeBin(parentDir, { volume = "removable", cwd = REPO_ROOT } = {}) {
+export function makeFakeBin(
+  parentDir,
+  { volume = "removable", cwd = REPO_ROOT, image = "present" } = {},
+) {
   const binDir = join(parentDir, "fake-bin")
   mkdirSync(binDir, { recursive: true })
   const dockerLog = join(binDir, "docker.log")
@@ -284,12 +311,14 @@ export function makeFakeBin(parentDir, { volume = "removable", cwd = REPO_ROOT }
   // 'up -d gitea'") — um log por binário não diz quem veio primeiro.
   const traceLog = join(binDir, "trace.log")
   const volumeState = join(binDir, "volume.state")
+  const imageState = join(binDir, "image.state")
   writeFileSync(dockerLog, "")
   writeFileSync(doctorLog, "")
   writeFileSync(mirrorLog, "")
   writeFileSync(ensureLog, "")
   writeFileSync(traceLog, "")
   writeFileSync(volumeState, volume === "absent" ? "absent" : "present")
+  writeFileSync(imageState, image === "absent" ? "absent" : "present")
 
   writeFileSync(
     join(binDir, "docker"),
@@ -300,6 +329,11 @@ export function makeFakeBin(parentDir, { volume = "removable", cwd = REPO_ROOT }
       'case "$1" in',
       '  --version) echo "Docker version 27.0.0, build fake"; exit 0 ;;',
       "  manifest) exit 1 ;;",
+      "  image)",
+      '    [ "$2" = inspect ] || exit 0',
+      `    [ -f "${imageState}" ] && [ "$(cat "${imageState}")" = present ] && { echo '[{"Id":"sha256:${"0".repeat(64)}"}]'; exit 0; }`,
+      '    echo "Error response from daemon: No such image: ${3:-<sem-ref>}" >&2',
+      "    exit 1 ;;",
       "  volume)",
       '    case "$2" in',
       `      inspect) [ -f "${volumeState}" ] && [ "$(cat "${volumeState}")" = present ] && exit 0; exit 1 ;;`,
@@ -710,7 +744,7 @@ export function runbookInvocation(content) {
  * @typedef {object} ProofCase
  * @property {string} id
  * @property {string} title
- * @property {"exists"|"missing"} registry
+ * @property {"exists"|"missing"|"unreachable"} registry
  * @property {string[]} args        argumentos extras do gitea-up.sh
  * @property {number} expectExit
  * @property {boolean} expectRunnerUp
@@ -722,7 +756,7 @@ export function runbookInvocation(content) {
  * @property {boolean} [expectVolumeRm]   houve 'volume rm'? (omitido = não opina)
  * @property {boolean} [expectOrder]      'rm' tem de vir ANTES do 'up -d runner'?
  * @property {string} why                 o que este caso prova
- * @property {"image"|"env-mirror"|"re-register"|"instructions"|"no-runner"|"contradiction"} family
+ * @property {"image"|"env-mirror"|"re-register"|"instructions"|"no-runner"|"registry-offline"|"contradiction"} family
  * @property {"sync"|"divergent"|"secret-equal"} [env]  o env do host x o template
  * @property {number} [expectRegistryHits]  nº exato de idas ao registry (omitido = não checa)
  * @property {number} [expectDockerCalls]   nº exato de chamadas ao binário `docker` (omitido = não checa)
@@ -739,6 +773,19 @@ export function runbookInvocation(content) {
  *                                          o argv que o doctor TEM de ter recebido
  * @property {boolean} [expectDoctorBeforeStack]  o doctor tem de aparecer ANTES do
  *                                          'up -d gitea' no registro ORDENADO
+ * @property {"present"|"absent"} [localImage]  o estado da CÓPIA LOCAL no dublê do
+ *                                          docker (`docker image inspect`); o
+ *                                          default é `present`
+ * @property {boolean} [expectEnsureLocalImage]  o ensure tem de ter RECEBIDO
+ *                                          `--local-image`? Medido no argv do
+ *                                          espião: é ele que decide se o estado de
+ *                                          cópia local existe (o beco de volta)
+ * @property {boolean} [expectLocalState]   a saída deve trazer o estado PRÓPRIO
+ *                                          'CÓPIA LOCAL'? `false` = um caso em que
+ *                                          aceitá-lo seria permissão silenciosa
+ * @property {boolean} [expectLocalBuildRemedy]  a recusa deve imprimir o remédio
+ *                                          que constrói a imagem AQUI (o que fecha
+ *                                          o beco do host sem registry)
  * @property {"installer-check-only"|"installer-full"|"runbook"} [invocation]
  *                                          o caso roda a INSTRUÇÃO de um documento
  *                                          (instalador/runbook) em vez do bring-up
@@ -871,6 +918,82 @@ export const PROOF_CASES = [
     expectDoctorArgs: { giteaEnv: true, noRunnerLabels: false },
     expectDoctorBeforeStack: true,
     why: "com a tag presente E o env em sincronia a stack SOBE o runner — é isto que faz do 'não subiu' uma prova (vale para a imagem e para o passo 0), e não um script quebrado",
+  },
+
+  // ── FAMÍLIA E: o HOST SEM REGISTRY (`--local-image`) ───────────────────
+  //
+  // INDETERMINADO é o estado em que o ensure NÃO publica e RECUSA — "não
+  // consegui perguntar" não é "a tag existe" (o 404 da família A é a outra
+  // resposta, e é ele que autoriza publicar). Só que num host que opera sem
+  // alcançar o registry essa recusa não deixava NADA para o operador rodar: o
+  // beco. O que a flag compra é a DECISÃO — aceitar a CÓPIA LOCAL do daemon como
+  // prova, com estado próprio (exit 6) e o que não ficou provado dito.
+  //
+  // Os três casos medem os três lados, e nenhum é dispensável: sem a flag a
+  // recusa de sempre (o gate continua de pé); com a flag e SEM a cópia, ainda
+  // recusa (a flag não é um cheque em branco); com a flag e a cópia, o runner
+  // SOBE — o CONTROLE, sem o qual "recusou" passaria por "o gate funciona" num
+  // bring-up quebrado.
+  {
+    id: "registry-offline-sem-flag",
+    family: "registry-offline",
+    title: "registry INALCANÇÁVEL + subida normal: o gate de sempre RECUSA",
+    registry: "unreachable",
+    env: "sync",
+    expectDoctorStub: false,
+    args: [],
+    expectExit: EXIT.UNKNOWN,
+    expectRunnerUp: false,
+    expectCompose: 0,
+    expectPublish: false,
+    expectBlockMsg: true,
+    expectMirrorFlags: true,
+    expectEnsureFlags: "invoked",
+    expectEnsureLocalImage: false,
+    expectLocalState: false,
+    why: "INDETERMINADO recusa sem a flag — é ESTE caso que a mutação 'aceito o indeterminado de qualquer jeito' derruba: sem ele, afrouxar o pré-requisito passaria como se a cópia local tivesse sido pedida",
+  },
+  {
+    id: "registry-offline-com-flag-sem-copia",
+    family: "registry-offline",
+    title: "registry INALCANÇÁVEL + --local-image SEM a cópia local: ainda RECUSA",
+    registry: "unreachable",
+    env: "sync",
+    localImage: "absent",
+    expectDoctorStub: false,
+    args: ["--local-image"],
+    expectExit: EXIT.UNKNOWN,
+    expectRunnerUp: false,
+    expectCompose: 0,
+    expectPublish: false,
+    expectBlockMsg: true,
+    expectMirrorFlags: true,
+    expectEnsureFlags: "invoked",
+    expectEnsureLocalImage: true,
+    expectLocalState: false,
+    expectLocalBuildRemedy: true,
+    why: "a flag NÃO é um cheque em branco: ela pede a prova (a cópia local), e sem a prova a subida continua recusada — com o remédio que constrói a imagem localmente, que é o que fecha o beco sem registry",
+  },
+  {
+    id: "registry-offline-com-copia-local",
+    family: "registry-offline",
+    title: "CONTROLE — registry INALCANÇÁVEL + --local-image COM a cópia local: SOBE",
+    registry: "unreachable",
+    env: "sync",
+    localImage: "present",
+    expectDoctorStub: true,
+    args: ["--local-image"],
+    expectExit: EXIT.OK,
+    expectRunnerUp: true,
+    expectCompose: null,
+    expectPublish: false,
+    expectBlockMsg: false,
+    expectMirrorFlags: true,
+    expectEnsureFlags: "invoked",
+    expectEnsureLocalImage: true,
+    expectLocalState: true,
+    expectDoctorArgs: { giteaEnv: true, noRunnerLabels: false },
+    why: "com a cópia local a stack SOBE — é o contraste que faz das duas recusas acima uma prova (e não um bring-up que aborta por qualquer motivo); o doctor continua no caminho e a flag não pula pré-requisito nenhum",
   },
 
   // ── FAMÍLIA B: o RE-REGISTRO (o caminho que troca os labels) ────────────
@@ -1096,6 +1219,22 @@ export const PROOF_CASES = [
     expectDockerCalls: 0,
     why: "o bring-up recusa ANTES de qualquer docker: --re-register quer subir o runner (apagando o registro), mas --no-runner diz que o runner não vai subir — o bring-up escolhe NÃO agir em silêncio",
   },
+  {
+    id: "local-image-no-runner",
+    family: "contradiction",
+    title: "--local-image + --no-runner (um afirma a imagem do runner, o outro o deixa de fora)",
+    registry: "unreachable",
+    args: ["--local-image", "--no-runner"],
+    expectDoctorStub: false,
+    expectExit: 1,
+    expectRunnerUp: false,
+    expectCompose: 0,
+    expectPublish: false,
+    expectBlockMsg: false,
+    expectRegistryHits: 0,
+    expectDockerCalls: 0,
+    why: "--local-image AFIRMA algo sobre a imagem do runner e o --no-runner pula o pré-requisito inteiro: coexistir seria prometer uma prova que ninguém vai pedir (o operador leria 'imagem conferida' onde nada foi conferido) — e a recusa é antes de qualquer docker",
+  },
 ]
 
 /**
@@ -1302,7 +1441,13 @@ async function runCase(testCase, { cwd, bash, spawn }) {
   const tmp = mkdtempSync(join(tmpdir(), `prove-gate-${testCase.id}-`))
   const registry = await startTestRegistry(testCase.registry)
   try {
-    const fake = makeFakeBin(tmp, { volume: testCase.volume, cwd })
+    const fake = makeFakeBin(tmp, {
+      volume: testCase.volume,
+      cwd,
+      // A cópia LOCAL da imagem no host (o que `docker image inspect` responde):
+      // é o fato que a flag `--local-image` cobra antes de a subida seguir.
+      image: testCase.localImage ?? "present",
+    })
     const {
       binDir,
       doctorStub,
@@ -1503,6 +1648,37 @@ async function runCase(testCase, { cwd, bash, spawn }) {
         }
       }
     }
+    // ── A DECISÃO DO HOST SEM REGISTRY ─────────────────────────────────────
+    // Três fatos, um por linha: a flag CHEGOU ao ensure (é ele que resolve a
+    // referência e faz o probe local), o estado de cópia local APARECEU na saída,
+    // e — quando a cópia não existe — o remédio que constrói a imagem aqui está
+    // impresso. A flag não ser repassada, ou o estado sair sem a flag, são
+    // defeitos de SENTIDOS OPOSTOS (o beco e a permissão silenciosa).
+    if (testCase.expectEnsureLocalImage !== undefined) {
+      const recebeu = !!ensureArgs && ensureArgs.includes("--local-image")
+      if (recebeu !== testCase.expectEnsureLocalImage) {
+        failures.push(
+          recebeu
+            ? "o ensure recebeu --local-image e este caso NÃO a autoriza — a cópia local serviria de prova sem o operador ter decidido"
+            : "o ensure NÃO recebeu --local-image — sem a flag o estado de cópia local não existe, e o caso fica sem a prova que descreve",
+        )
+      }
+    }
+    if (testCase.expectLocalState !== undefined) {
+      const local = out.includes("CÓPIA LOCAL")
+      if (local !== testCase.expectLocalState) {
+        failures.push(
+          local
+            ? "a saída afirma 'CÓPIA LOCAL' e este caso NÃO autoriza esse estado (registry indeterminado aceito sem decisão do operador)"
+            : "a saída NÃO traz o estado 'CÓPIA LOCAL' — o pré-requisito 1 foi satisfeito por outra coisa que não a cópia local",
+        )
+      }
+    }
+    if (testCase.expectLocalBuildRemedy && !out.includes("construa a imagem AQUI")) {
+      failures.push(
+        "a recusa não imprime o remédio do host sem registry (`construa a imagem AQUI`) — sem ele o operador fica sem o que rodar, que é o beco que este caminho existe para fechar",
+      )
+    }
     if (testCase.expectEnsureFlags === "not" && ensureArgs) {
       failures.push(
         `o ensure FOI invocado ('${ensureArgs.join(" ")}') e este caso recusa ANTES do passo 1 — a ordem que ele prova (o espelho primeiro) não é a que executa`,
@@ -1663,7 +1839,7 @@ export async function proveRunnerImageGate({
     status: broken.length === 0 ? "holds" : "violated",
     detail:
       broken.length === 0
-        ? "com a tag ausente o runner NÃO sobe (subida e re-registro) e, com a tag presente, sobe (controles) — no re-registro o registro antigo é apagado ANTES de subir; com o env do host DIVERGENTE o passo 0 RECUSA antes de qualquer docker (sem tocar no registry); e as INSTRUÇÕES do instalador e do runbook são EXTRAÍDAS dos documentos e EXECUTADAS — o comando que o operador copia funciona, com as flags medidas no argv de cada filho (--host/--template no espelho, --gitea-env no ensure e no doctor, e --no-runner-labels no --re-register)"
+        ? "com a tag ausente o runner NÃO sobe (subida e re-registro) e, com a tag presente, sobe (controles) — no re-registro o registro antigo é apagado ANTES de subir; com o env do host DIVERGENTE o passo 0 RECUSA antes de qualquer docker (sem tocar no registry); com o registry INALCANÇÁVEL a subida recusa SEM a flag e, COM --local-image, sobe se — e só se — a cópia local da imagem estiver no daemon; e as INSTRUÇÕES do instalador e do runbook são EXTRAÍDAS dos documentos e EXECUTADAS — o comando que o operador copia funciona, com as flags medidas no argv de cada filho (--host/--template no espelho, --gitea-env no ensure e no doctor, --local-image só quando autorizada, e --no-runner-labels no --re-register)"
         : `${broken.length} caso(s) da prova falharam: ${broken.map((c) => c.id).join(", ")}`,
     cases,
   }

@@ -40,6 +40,7 @@ import { afterAll, describe, expect, it } from "vitest"
 
 import {
   BRING_UP,
+  ENSURE_SCRIPT,
   PROOF_CASES,
   PROOF_VERSION,
   RUNBOOK,
@@ -79,12 +80,19 @@ afterAll(() => {
  * raiz mutada sem o script, e TODOS os casos sairiam 1 pelo motivo errado.
  *
  * @param {(content: string) => string} mutate  recebe o gitea-up.sh e devolve o mutado
- * @param {{setup?: (content: string) => string, runbook?: (content: string) => string}} [also]
- *   mutações do INSTALADOR e do RUNBOOK (a FAMÍLIA D tira as instruções deles)
+ * @param {{setup?: (content: string) => string, runbook?: (content: string) => string,
+ *   ensure?: (content: string) => string}} [also]
+ *   mutações do INSTALADOR, do RUNBOOK (a FAMÍLIA D tira as instruções deles) e do
+ *   ENSURE (a guarda da decisão `--local-image` tem DUAS metades: o bring-up
+ *   decide, o ensure prova — mutar só uma delas deixaria a outra sem medir)
  */
 function mutatedRoot(
   mutate: (content: string) => string,
-  also: { setup?: (content: string) => string; runbook?: (content: string) => string } = {},
+  also: {
+    setup?: (content: string) => string
+    runbook?: (content: string) => string
+    ensure?: (content: string) => string
+  } = {},
 ): string {
   const dir = makeDir()
   mkdirSync(join(dir, "deploy"), { recursive: true })
@@ -103,6 +111,7 @@ function mutatedRoot(
   for (const [rel, fn] of [
     [SETUP_SCRIPT, also.setup],
     [RUNBOOK, also.runbook],
+    [ENSURE_SCRIPT, also.ensure],
   ] as const) {
     if (fn) writeFileSync(join(dir, rel), fn(readFileSync(join(dir, rel), "utf8")))
   }
@@ -157,6 +166,9 @@ describe("proveRunnerImageGate — no repositório real", () => {
       "check-only",
       "ausente",
       "presente",
+      "registry-offline-sem-flag",
+      "registry-offline-com-flag-sem-copia",
+      "registry-offline-com-copia-local",
       "re-register-sem-imagem",
       "re-register",
       "re-register-primeira-vez",
@@ -167,6 +179,7 @@ describe("proveRunnerImageGate — no repositório real", () => {
       "no-runner",
       "re-register-check-only",
       "re-register-no-runner",
+      "local-image-no-runner",
     ])
 
     const byId = Object.fromEntries(result.cases.map((c) => [c.id, c]))
@@ -299,6 +312,37 @@ describe("proveRunnerImageGate — no repositório real", () => {
     expect(byId["installer-check-only"].invokedAs).toContain("gitea-up.sh --check-only")
     expect(byId["runbook-re-register"].invokedAs).toBe("runbook --re-register")
 
+    // ── FAMÍLIA E: o HOST SEM REGISTRY — a DECISÃO, nos dois sentidos ────────
+    // Sem a flag, o gate de sempre: recusa (exit 3) com ZERO docker e ZERO
+    // registry tocado. Com a flag e SEM a cópia, ainda recusa — a flag não é
+    // cheque em branco. Com a flag e a cópia, SOBE: e o CONTROLE é o que faz
+    // das recusas acima uma prova, não um bring-up que aborta por qualquer
+    // motivo.
+    expect(byId["registry-offline-sem-flag"]).toMatchObject({
+      exit: 3,
+      ok: true,
+      runnerUp: false,
+      composeCalls: 0,
+      dockerCalls: 0,
+      registryHits: 0,
+    })
+    expect(byId["registry-offline-sem-flag"].ensureArgs).not.toContain("--local-image")
+    expect(byId["registry-offline-com-flag-sem-copia"]).toMatchObject({
+      exit: 3,
+      ok: true,
+      runnerUp: false,
+      composeCalls: 0,
+    })
+    expect(byId["registry-offline-com-flag-sem-copia"].ensureArgs).toContain("--local-image")
+    expect(byId["registry-offline-com-copia-local"]).toMatchObject({
+      exit: 0,
+      ok: true,
+      runnerUp: true,
+    })
+    // A FLAG medida no argv: é ela — e não a menção no texto do script — que
+    // fez o estado de cópia local existir nos dois últimos casos.
+    expect(byId["registry-offline-com-copia-local"].ensureArgs).toContain("--local-image")
+
     // ── FAMÍLIA: --no-runner — sobe Gitea+Caddy, pula pré-requisitos do runner ─
     expect(byId["no-runner"]).toMatchObject({
       exit: 0,
@@ -324,6 +368,14 @@ describe("proveRunnerImageGate — no repositório real", () => {
       registryHits: 0,
     })
     expect(byId["re-register-no-runner"]).toMatchObject({
+      exit: 1,
+      ok: true,
+      runnerUp: false,
+      composeCalls: 0,
+      dockerCalls: 0,
+      registryHits: 0,
+    })
+    expect(byId["local-image-no-runner"]).toMatchObject({
       exit: 1,
       ok: true,
       runnerUp: false,
@@ -380,10 +432,39 @@ describe("proveRunnerImageGate — no repositório real", () => {
     expect(instructions.filter((c) => c.expectRunnerUp).length).toBe(2)
     expect(instructions.filter((c) => c.expectDoctorBeforeStack).length).toBe(2)
 
+    // O HOST SEM REGISTRY (`registry-offline`): 3 casos, e o CONTROLE (o runner
+    // sobe) é o que faz das duas recusas uma prova. A DECISÃO é medida nos dois
+    // sentidos — a flag chega ao ensure quando é dada, e NÃO chega quando não é.
+    const offline = PROOF_CASES.filter((c) => c.family === "registry-offline")
+    expect(offline.length).toBe(3)
+    expect(offline.filter((c) => c.expectRunnerUp).length).toBe(1)
+    expect(offline.every((c) => c.registry === "unreachable")).toBe(true)
+    expect(
+      offline.every((c) => c.expectEnsureLocalImage === c.args.includes("--local-image")),
+    ).toBe(true)
+    expect(offline.filter((c) => c.expectLocalState).map((c) => c.id)).toEqual([
+      "registry-offline-com-copia-local",
+    ])
+    // A flag NÃO é cheque em branco: sem a cópia local a subida continua recusada
+    // e o remédio que constrói a imagem aqui é impresso.
+    const semCopia = offline.find((c) => c.id === "registry-offline-com-flag-sem-copia")
+    expect(semCopia).toMatchObject({
+      localImage: "absent",
+      expectExit: 3,
+      expectRunnerUp: false,
+      expectLocalBuildRemedy: true,
+    })
+    // As TRÊS combinações contraditórias recusam antes de qualquer docker.
+    expect(
+      PROOF_CASES.filter((c) => c.family === "contradiction")
+        .map((c) => c.id)
+        .sort(),
+    ).toEqual(["local-image-no-runner", "re-register-check-only", "re-register-no-runner"])
+
     // TODA família tem os dois sentidos quando ela decide a subida: um caso de
     // CONTROLE (a stack sobe) e um de BLOQUEIO — é o contraste que faz do "não
     // subiu" uma prova em vez de um script quebrado.
-    for (const id of ["image", "re-register", "instructions"]) {
+    for (const id of ["image", "re-register", "instructions", "registry-offline"]) {
       const cases = PROOF_CASES.filter((c) => c.family === id)
       expect(
         cases.some((c) => c.expectRunnerUp),
@@ -430,14 +511,12 @@ describe("proveRunnerImageGate — no repositório real", () => {
 describe("proveRunnerImageGate — detecta o bloqueio que deixou de existir", () => {
   it("bring-up que IGNORA a falha do ensure → violada, e o caso culpado é nomeado", async () => {
     const dir = mutatedRoot((content) => {
-      const blocker =
-        '  if [ "$ENSURE_CODE" -ne 0 ]; then\n' +
-        '    fail "imagem do runner NÃO garantida (exit ${ENSURE_CODE}) — NADA foi subido."\n' +
-        '    fail "O runner subiria e todos os jobs falhariam ao iniciar o container."\n' +
-        '    exit "$ENSURE_CODE"\n' +
-        "  fi"
+      // A mutação não tira as MENSAGENS da falha: tira a CONSEQUÊNCIA — o ramo
+      // fica inalcançável e a subida segue com a imagem NÃO garantida. É o
+      // desfecho que a prova existe para pegar.
+      const blocker = '  elif [ "$ENSURE_CODE" -ne 0 ]; then'
       expect(content, "o bloco do bloqueio mudou de forma — atualize a mutação").toContain(blocker)
-      return content.replace(blocker, '  warn "mutação: sigo em frente com a imagem não garantida"')
+      return content.replace(blocker, "  elif false; then # mutação: ignoro a falha do ensure")
     })
 
     const result = await proveRunnerImageGate({ cwd: dir })
@@ -592,6 +671,128 @@ describe("proveRunnerImageGate — o PRÉ-REQUISITO 0 (o env do host)", () => {
 
     // O CONTROLE continua passando: a falha é do bloqueio, não da prova.
     expect(byId.presente.ok).toBe(true)
+  }, 60000)
+})
+
+// ── a DECISÃO do host sem registry tem DUAS metades, e cada uma é medida ──
+//
+// A promessa do `--local-image` não mora num arquivo só: o BRING-UP decide (aceita
+// a flag, reconhece o exit 6 e nomeia o que NÃO ficou provado) e o ENSURE prova
+// (o probe local, que é o dono do estado). Mutar uma metade só deixaria a outra
+// sem medida — e é justamente a metade não mutada que tornaria a mutação "verde"
+// por acidente. Por isso as quatro mutações abaixo atacam as duas, e cada uma
+// nomeia o caso que cai junto:
+//   - tirar o REPASSE da flag → o CONTROLE cai (a cópia local deixa de ser pedida);
+//   - aceitar o INDETERMINADO sem a flag → a recusa de sempre cai (o beco vira
+//     permissão silenciosa);
+//   - o ensure não devolver o estado próprio → o CONTROLE cai (a cópia vira UNKNOWN);
+//   - o probe local responder 'present' sempre → a flag vira cheque em branco.
+
+describe("proveRunnerImageGate — a decisão do host sem registry (--local-image)", () => {
+  it("bring-up que NÃO repassa a flag → o CONTROLE cai (a cópia local deixa de ser pedida)", async () => {
+    const dir = mutatedRoot((content) => {
+      const anchor = '[ "$LOCAL_IMAGE" -eq 1 ] && ENSURE_ARGS+=(--local-image)'
+      expect(content, "o repasse da flag mudou de forma — atualize a mutação").toContain(anchor)
+      // A flag CONTINUA aceita na linha de comando (o `case` fica): o que morre é
+      // o repasse, e sem ele o estado de cópia local não existe no ensure. Só o
+      // argv MEDIDO do filho denuncia — a menção ao estado segue no texto.
+      return content.replace(anchor, ": # mutação: a flag não chega ao ensure")
+    })
+
+    const result = await proveRunnerImageGate({ cwd: dir })
+    expect(result.status).toBe("violated")
+    const byId = Object.fromEntries(result.cases.map((c) => [c.id, c]))
+    const controle = byId["registry-offline-com-copia-local"]
+    expect(controle.ok).toBe(false)
+    expect(controle.failures.join(" | ")).toContain("NÃO recebeu --local-image")
+    // O DESFECHO volta a ser o beco: o registry INDETERMINADO recusa e nada sobe.
+    expect(controle.exit).toBe(3)
+    expect(controle.runnerUp).toBe(false)
+    // Os casos SEM a flag seguem verdes: a falha é do REPASSE, não do gate.
+    expect(byId["registry-offline-sem-flag"].ok).toBe(true)
+  }, 60000)
+
+  it("bring-up que ACEITA o INDETERMINADO sem a flag → a recusa de sempre cai (o beco viraria permissão silenciosa)", async () => {
+    const dir = mutatedRoot((content) => {
+      const anchor = '  if [ "$ENSURE_CODE" -eq 6 ]; then'
+      expect(content, "o bloco do exit 6 mudou de forma — atualize a mutação").toContain(anchor)
+      // A mutação troca o ESTADO reconhecido (6, que só existe com a flag) pelo
+      // INDETERMINADO cru (3): o pré-requisito 1 passa a ser dado por vencido sem
+      // ninguém ter decidido nada.
+      return content.replace(
+        anchor,
+        '  if [ "$ENSURE_CODE" -eq 3 ]; then # mutação: aceito o indeterminado de qualquer jeito',
+      )
+    })
+
+    const result = await proveRunnerImageGate({ cwd: dir })
+    expect(result.status).toBe("violated")
+    const byId = Object.fromEntries(result.cases.map((c) => [c.id, c]))
+    const semFlag = byId["registry-offline-sem-flag"]
+    expect(semFlag.ok).toBe(false)
+    // O pior desfecho, nomeado: o runner SOBE sem o operador ter decidido nada.
+    expect(semFlag.runnerUp).toBe(true)
+    expect(semFlag.failures.join(" | ")).toContain("runner SUBIU")
+    // E a decisão vira TEXTO sem prova: a saída afirma o estado de cópia local
+    // num caso em que cópia nenhuma foi conferida.
+    expect(semFlag.failures.join(" | ")).toContain("CÓPIA LOCAL")
+  }, 60000)
+
+  it("ensure que NUNCA devolve o estado local → o CONTROLE cai (a cópia local vira UNKNOWN)", async () => {
+    const dir = mutatedRoot((c) => c, {
+      ensure: (content) => {
+        const anchor = '      if (local.state === "present") {'
+        expect(content, "o ramo da cópia local mudou de forma — atualize a mutação").toContain(
+          anchor,
+        )
+        return content.replace(
+          anchor,
+          "      if (false) { // mutação: a cópia local nunca é aceita",
+        )
+      },
+    })
+
+    const result = await proveRunnerImageGate({ cwd: dir })
+    expect(result.status).toBe("violated")
+    const byId = Object.fromEntries(result.cases.map((c) => [c.id, c]))
+    const controle = byId["registry-offline-com-copia-local"]
+    expect(controle.ok).toBe(false)
+    // O estado PRÓPRIO (exit 6) não sai: o bring-up recebe o UNKNOWN de sempre.
+    expect(controle.exit).toBe(3)
+    expect(controle.runnerUp).toBe(false)
+    expect(controle.failures.join(" | ")).toContain("NÃO traz o estado 'CÓPIA LOCAL'")
+    // E a recusa SEM a cópia continua recusando: a falha é do estado que deixou
+    // de existir, não do gate que deixou de recusar.
+    expect(byId["registry-offline-com-flag-sem-copia"].ok).toBe(true)
+  }, 60000)
+
+  it("ensure com o probe local SEMPRE 'present' → a flag vira cheque em branco (o caso SEM a cópia cai)", async () => {
+    const dir = mutatedRoot((c) => c, {
+      ensure: (content) => {
+        const anchor =
+          '  const res = run("docker", ["image", "inspect", ref], { allowFailure: true, timeoutMs: 20000 })\n' +
+          "  if (res.ok) {"
+        expect(content, "o probe local mudou de forma — atualize a mutação").toContain(anchor)
+        return content.replace(
+          anchor,
+          '  const res = run("docker", ["image", "inspect", ref], { allowFailure: true, timeoutMs: 20000 })\n' +
+            '  if (true) { // mutação: a cópia local "existe" sempre',
+        )
+      },
+    })
+
+    const result = await proveRunnerImageGate({ cwd: dir })
+    expect(result.status).toBe("violated")
+    const byId = Object.fromEntries(result.cases.map((c) => [c.id, c]))
+    const semCopia = byId["registry-offline-com-flag-sem-copia"]
+    expect(semCopia.ok).toBe(false)
+    expect(semCopia.runnerUp).toBe(true)
+    expect(semCopia.failures.join(" | ")).toContain("runner SUBIU")
+    // O remédio que fechava o beco deixa de ser impresso: sem ele o operador com
+    // a flag e sem a cópia fica exatamente onde estava.
+    expect(semCopia.failures.join(" | ")).toContain("construa a imagem AQUI")
+    // O CONTROLE segue verde: a falha é do PROBE, não da decisão.
+    expect(byId["registry-offline-com-copia-local"].ok).toBe(true)
   }, 60000)
 })
 

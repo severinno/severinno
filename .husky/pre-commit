@@ -302,6 +302,28 @@ fase_b() {
   node scripts/check-doc-hashes.mjs &
   PID_DOCHASH=$!
 
+  # A IMAGEM DO act_runner DECLARA uma versão? O serviço `runner` do compose da
+  # forja (`deploy/docker-compose.gitea.yml`) tem de pinar a versão que a stack
+  # RODA: com uma tag flutuante (`latest`), o `docker compose pull` de outro dia
+  # troca o binário do runner SEM uma linha do repositório mudar e SEM SINTOMA
+  # (o act_runner não se auto-atualiza — quem decide a versão é a imagem).
+  #
+  # POR QUE ELE ENTRA NO HOOK: o defeito MUDA por commit e o remédio é de UMA
+  # LINHA — o commit que troca a tag por `latest` (ou por `${…}`, ou que apaga o
+  # `image:`) sai daqui e só encontra o veredito no PR. Custo MEDIDO neste host:
+  # ~0,05s (node puro, offline: lê UMA linha do texto do compose), em paralelo
+  # com o resto da fase. O comando é o MESMO do CI (as duas pipelines), sem
+  # recorte — é o comando canônico do invariante `runner-tag` do CORE, e por isso
+  # não há decisão de escopo a declarar no check-hook-ci-parity.
+  #
+  # O ARTEFATO VEM DA CÓPIA DO FIXTURE: a prova do hook materializa os arquivos do
+  # repositório que os guards DESTE hook leem — a lista é DERIVADA por execução
+  # (`scripts/artefatos-do-hook.mjs`), não declarada à mão: sem o compose a guarda
+  # cairia no ramo de INFRA (artefato ausente = exit 2, fail-closed) e o vermelho
+  # seria do FIXTURE, não do defeito.
+  node scripts/check-runner-tag.mjs &
+  PID_RUNNERTAG=$!
+
   # Prettier check STAGED — feedback de formatação ANTES do lint-staged
   (
     STAGED_FORMAT=$(git diff --cached --name-only --diff-filter=ACMR | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
@@ -311,7 +333,7 @@ fase_b() {
   ) &
   PID_PRETTIER=$!
 
-  wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY $PID_HOOKCMD $PID_PIPEFAIL $PID_ARQUIVO $PID_TLA $PID_DOCHASH
+  wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY $PID_HOOKCMD $PID_PIPEFAIL $PID_ARQUIVO $PID_TLA $PID_DOCHASH $PID_RUNNERTAG
 }
 
 FASE_B=0

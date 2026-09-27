@@ -66,13 +66,35 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 GUARD="$SCRIPT_DIR/scripts/check-act-origin.mjs"
-# O FECHO DE IMPORTS do gate: ele lê a matriz da árvore com as MESMAS réguas da
-# casa, e o fixture roda o gate COPIADO — sem os vizinhos, a cópia morre com
-# ERR_MODULE_NOT_FOUND e o exit 1 do NODE passaria por veredito do gate. O
-# `bench-table` (o renderizador da tabela derivada) importa o FORMATADOR do
-# repositório desde que o gerado passou a sair DENTRO do lint — ele é vizinho de
-# segundo grau, e o fecho do fixture é PLANO (o helper só importa builtins).
-FECHO_GUARD=("check-mutation-count.mjs" "bench-table.mjs" "metades.mjs" "prettier-format.mjs")
+# O FECHO DE IMPORTS do gate é DERIVADO do grafo (`scripts/fecho-imports.mjs`),
+# nunca uma lista à mão: ele lê a matriz da árvore com as MESMAS réguas da casa
+# (`check-mutation-count` → `bench-table` → o FORMATADOR do repositório, que entrou
+# quando o gerado passou a sair DENTRO do lint) e o fixture roda o gate COPIADO —
+# sem os vizinhos, a cópia morre com ERR_MODULE_NOT_FOUND e o exit 1 do NODE
+# passaria por veredito do gate.
+#
+# POR QUE DERIVADO: a lista à mão envelhecia sem aviso — medido em 26/09/2026, o
+# vizinho de SEGUNDO grau que a entrega do gerado trouxe deixou esta cópia MORTA e
+# o exit 1 do NODE passou por veredito. Aqui quem responde é a aresta do próprio
+# gate, e aresta que não resolva sai 2 (infra declarada).
+fecho_do_gate() { # ecoa os módulos do fecho, relativos à raiz do repositório
+  local saida=""
+  if ! saida="$(node "$SCRIPT_DIR/scripts/fecho-imports.mjs" "$GUARD" --root "$SCRIPT_DIR" 2>&1)"; then
+    echo "❌ o fecho de imports de $GUARD NÃO foi derivado — fixture incompleto não mede:" >&2
+    printf '%s\n' "$saida" | sed 's/^/   /' >&2
+    exit 2
+  fi
+  printf '%s\n' "$saida"
+}
+
+copiar_fecho() { # $1 = raiz do fixture que recebe o fecho (o caminho é preservado)
+  local destino="$1" rel
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    mkdir -p "$destino/$(dirname "$rel")"
+    cp "$SCRIPT_DIR/$rel" "$destino/$rel"
+  done < <(fecho_do_gate)
+}
 
 METADES=(
   'M1|R1 — a origem que NÃO resolve deixa de ser recusa (o nome da classe)'
@@ -191,12 +213,26 @@ PY
 # ── O gate, do fixture, e a cópia que cada metade muta ───────────────────────
 instalar_guard() {
   cp "$GUARD" "$F/scripts/check-act-origin.mjs"
-  for vizinho in "${FECHO_GUARD[@]}"; do cp "$SCRIPT_DIR/scripts/$vizinho" "$F/scripts/$vizinho"; done
+  copiar_fecho "$F"
 }
 rodar() { # ecoa o exit code do gate contra o fixture; a saída fica em $TMP/saida
   local rc=0
   (cd "$F" && node scripts/check-act-origin.mjs) >"$TMP/saida" 2>&1 || rc=$?
   echo "$rc"
+}
+
+# O MÓDULO QUE NÃO CARREGOU NÃO É VEREDITO: se a cópia do gate morre por um
+# import que faltou (uma aresta que a derivação não viu), o `node` sai 1 — e o
+# exit 1 do NODE passaria por "o gate recusou". A checagem mora AQUI, e não dentro
+# do `rodar`, por uma razão de shell: `rodar` é chamado em SUBSTITUIÇÃO DE COMANDO
+# (`$(rodar)`), e um `exit` lá dentro termina o SUBSHELL — o pai seguiria com o
+# fixture morto. Quem chama `recebe` passa por aqui, no processo que decide.
+checar_carga() {
+  if grep -q "ERR_MODULE_NOT_FOUND\|Cannot find module" "$TMP/saida" 2>/dev/null; then
+    fail "o gate COPIADO não CARREGOU (o fecho do fixture está incompleto): o veredito seria do NODE, não do gate"
+    sed 's/^/   /' "$TMP/saida" >&2
+    exit 2
+  fi
 }
 acusa() { # $1 = trecho que a saída do ÚLTIMO rodar tem de conter
   if grep -qF -- "$1" "$TMP/saida"; then
@@ -246,6 +282,7 @@ PY
 }
 
 recebe() { # $1 = rótulo, $2 = exit obtido, $3 = esperado, $4 = o que a medição diz
+  checar_carga
   if [ "$2" = "$3" ]; then
     pass "$1 — exit $2 ($4)"
   else
@@ -271,7 +308,7 @@ recebe "CONTROLE honesto" "$(rodar)" 0 "a origem carrega exatamente as duas form
 
 mkdir -p "$TMP/norepo/scripts" "$TMP/norepo/docs/benchmarks"
 cp "$GUARD" "$TMP/norepo/scripts/check-act-origin.mjs"
-for vizinho in "${FECHO_GUARD[@]}"; do cp "$SCRIPT_DIR/scripts/$vizinho" "$TMP/norepo/scripts/$vizinho"; done
+copiar_fecho "$TMP/norepo"
 recebe "CONTROLE fail-closed (não é repositório)" \
   "$(cd "$TMP/norepo" && node scripts/check-act-origin.mjs >/dev/null 2>&1; echo $?)" 2 \
   "árvore que não é repositório é INDISPONÍVEL, nunca verde"

@@ -37,6 +37,8 @@
 //   node scripts/ensure-runner-image.mjs --check          # só verifica; nunca publica
 //   node scripts/ensure-runner-image.mjs --gitea-env deploy/.env.gitea
 //   node scripts/ensure-runner-image.mjs --source workflow   # só pelo workflow
+//   node scripts/ensure-runner-image.mjs --local-image    # host SEM registry: aceita a
+//                                                         # CÓPIA LOCAL do daemon como prova
 //   node scripts/ensure-runner-image.mjs --json
 //   node scripts/ensure-runner-image.mjs --prove          # PROVA o bloqueio contra um
 //                                                         # registry de TESTE (ver abaixo)
@@ -81,6 +83,25 @@
 //   3 — INDETERMINADO (registry inacessível, ou pacote privado sem credencial)
 //   4 — AUSENTE (só no modo --check: a tag não existe e não publicamos)
 //   5 — publicação falhou OU a releitura não confirmou a tag
+//   6 — INDETERMINADO, ACEITO pela CÓPIA LOCAL do daemon (só com --local-image):
+//       a imagem está no docker DESTE host — o que segue sem prova é a TAG no
+//       registry (e um host SEM esta cópia)
+//
+// ── --local-image: o host sem registry, como DECISÃO e não como fim de linha ──
+//
+// INDETERMINADO ≠ AUSENTE, e é por isso que este script se recusa a publicar
+// nesse estado: o registry pode estar fora, o pacote pode ser privado — publicar
+// às cegas mascararia a causa. Mas num host que opera SEM alcançar o registry
+// (rede fechada, DNS que não resolve, pacote sem credencial anônima) a recusa
+// virava um beco: não há nada que o operador possa rodar daqui. A pergunta que
+// FALTAVA é respondível localmente — a imagem está no daemon DESTE host? —, e
+// ela não substitui a outra: quem responde "a tag existe no registry?" continua
+// sendo o probe. O que a flag faz é tornar a segunda pergunta uma ESCOLHA do
+// operador, com o veredito próprio (exit 6) e o que NÃO ficou provado dito em
+// voz alta. Sem a flag nada disto acontece: o caminho é exatamente o de antes
+// (INDETERMINADO, exit 3) — aceitar a cópia local por conta própria trocaria o
+// pré-requisito por uma suposição, que é o defeito que o script existe para
+// impedir.
 // =============================================================================
 
 import { execFileSync } from "node:child_process"
@@ -95,6 +116,13 @@ export const RUNNER_IMAGE_REPO = "ubuntu-bun"
 export const SYNC_WORKFLOW = "sync-ubuntu-bun-mirror.yml"
 export const DOCKERFILE = "Dockerfile.ubuntu-bun"
 
+/**
+ * O nome da variável da versão, montado por CÓDIGO (mesma preocupação do
+ * `check-bun-mirror`): uma string literal `BUN_VERSION=` no fonte é o que os
+ * guards estáticos procuram — e este arquivo não declara versão nenhuma.
+ */
+const VERSION_KEY_BARE = ["BUN", "VERSION"].join("_")
+
 export const EXIT = {
   OK: 0,
   USAGE: 1,
@@ -102,6 +130,12 @@ export const EXIT = {
   UNKNOWN: 3,
   MISSING: 4,
   PUBLISH_FAILED: 5,
+  // Só sai com `--local-image`: o registry está INDETERMINADO e a imagem foi
+  // encontrada na cópia LOCAL do daemon. É um código PRÓPRIO porque os outros
+  // dois estados mentiriam: `OK` diria que a tag está publicada, e `UNKNOWN`
+  // diria que nada foi provado — e a cópia local É uma prova, sobre um fato
+  // diferente (o runner deste host roda esta imagem).
+  LOCAL: 6,
 }
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
@@ -611,6 +645,52 @@ export function createRegistryIdentityCache({ probe = probeImageIdentity } = {})
 }
 
 /**
+ * A imagem está no daemon DESTE host?
+ *
+ * É a resposta para a pergunta que o probe do registry NÃO faz: "dá para rodar
+ * os jobs com o que já está aqui?". A referência é a MESMA que os labels do
+ * compose usam (a que `resolveImageRef` montou), então "presente" significa
+ * exatamente a imagem que o runner usaria a partir deste host — não uma parecida.
+ *
+ * Estados (e a diferença é o ponto, como no resto do módulo):
+ *   - `present` — `docker image inspect` saiu 0: a cópia local existe;
+ *   - `absent`  — o docker respondeu que NÃO conhece a imagem (a remoção/build
+ *                 futuro tem uma resposta, e ela é esta);
+ *   - `unknown` — não deu para perguntar (docker ausente, permissão, erro):
+ *                 NADA se sabe, e "não sabe" nunca vira "presente".
+ *
+ * @param {string} ref
+ * @param {{run?: Function}} [deps]  execFileSync real ou dublê de teste
+ * @returns {{state: "present"|"absent"|"unknown", digest: string|null, detail: string}}
+ */
+export function localImagePresent(ref, { run = defaultRun } = {}) {
+  const res = run("docker", ["image", "inspect", ref], { allowFailure: true, timeoutMs: 20000 })
+  if (res.ok) {
+    const digest = /"Id":\s*"(sha256:[0-9a-f]+)"/.exec(res.stdout ?? "")?.[1] ?? null
+    return {
+      state: "present",
+      digest,
+      detail: digest
+        ? `docker image inspect ok (${digest.slice(0, 19)}…)`
+        : "docker image inspect ok (sem o digest na saída)",
+    }
+  }
+  const saida = `${res.stdout ?? ""}\n${res.stderr ?? ""}`.toLowerCase()
+  if (/no such image|no such object|not found|image does not exist/.test(saida)) {
+    return {
+      state: "absent",
+      digest: null,
+      detail: `docker image inspect: ${(res.stderr ?? "").trim().split("\n")[0] || "a imagem não está no daemon local"}`,
+    }
+  }
+  return {
+    state: "unknown",
+    digest: null,
+    detail: `docker image inspect falhou sem dizer se a imagem existe: ${(res.stderr ?? "").trim().split("\n")[0] || "sem saída"}`,
+  }
+}
+
+/**
  * Fallback para o caso 401/403: o docker guarda o login do registry. Se ELE
  * conhece a tag, ela está publicada (mesmo que o acesso anônimo falhe — o que
  * já é um problema, porque o runner puxa sem credencial).
@@ -817,6 +897,9 @@ function defaultSleep(ms) {
  * @param {Function} [options.sleep]
  * @param {object} [options.emit]         logger (pass/fail/warn/info/plain)
  * @param {number} [options.waitSeconds]
+ * @param {boolean} [options.localImage] aceita a CÓPIA LOCAL do daemon como
+ *   prova quando o registry está INDETERMINADO (exit 6). Sem ela, o estado
+ *   indeterminado continua sendo exit 3 — e é isso que mantém o gate.
  * @returns {Promise<{code: number, ref?: string, version?: string, state: string, detail: string, published?: boolean}>}
  */
 export async function ensureRunnerImage({
@@ -824,6 +907,7 @@ export async function ensureRunnerImage({
   cwd = REPO_ROOT,
   check = false,
   source = "auto",
+  localImage = false,
   gitRef = "main",
   fetchImpl = globalThis.fetch,
   run = defaultRun,
@@ -877,6 +961,37 @@ export async function ensureRunnerImage({
   }
 
   if (result.state !== "missing") {
+    // ── A CÓPIA LOCAL: a SEGUNDA pergunta, e só com a flag ──────────────────
+    // O estado indeterminado não diz "a tag não existe": diz "não consegui
+    // perguntar". Num host sem acesso ao registry a pergunta seguinte é
+    // respondível AQUI — esta imagem está no daemon deste host? —, e ela é o que
+    // transforma o beco em decisão. Só com `--local-image`: sem a flag nada
+    // disto roda, e o veredito é o de sempre.
+    if (localImage) {
+      const local = localImagePresent(ref, { run })
+      if (local.state === "present") {
+        emit.warn(`registry INDETERMINADO (${result.state}): ${result.detail}`)
+        emit.warn(
+          `a imagem '${ref}' está no daemon LOCAL deste host (${local.detail}) — é a que o runner usaria daqui`,
+        )
+        emit.warn(
+          "O que NÃO fica provado: que a TAG exista no registry (a publicação segue sem veredito) e que um host SEM esta cópia consiga puxá-la.",
+        )
+        return {
+          code: EXIT.LOCAL,
+          ref,
+          version,
+          state: "local",
+          detail: `registry ${result.state}, mas a imagem está na cópia LOCAL do daemon (${local.detail})`,
+        }
+      }
+      emit.fail(
+        `a imagem '${ref}' NÃO está no daemon LOCAL deste host (${local.state}: ${local.detail}) — a cópia local não pode servir de prova`,
+      )
+      emit.fail(
+        `Remédio sem registry: construa a imagem AQUI e use a cópia local (sem publicar nada): docker build --build-arg ${VERSION_KEY_BARE}=${version} -f ${DOCKERFILE} -t ${ref} .`,
+      )
+    }
     emit.fail(`não consegui determinar se '${ref}' existe (${result.state}): ${result.detail}`)
     emit.fail(
       "INDETERMINADO não é AUSENTE: não publico neste estado (poderia sobrescrever um erro de permissão).",
@@ -972,6 +1087,9 @@ Opções:
                       próprio runtime ANTES do script — com arquivo ausente o
                       processo morre com exit 9 e sem diagnóstico nosso)
   --check             só verifica; NUNCA publica (exit 4 se a tag não existir)
+  --local-image       num host SEM acesso ao registry: aceita a CÓPIA LOCAL do
+                      daemon como prova quando o estado é INDETERMINADO (exit 6).
+                      NÃO publica, e não diz que a tag existe no registry
   --prove             prova que o runner não sobe com a tag ausente, contra um
                       registry de TESTE (não confunde com o registry de produção)
   --source <s>        auto | workflow | local (default: auto)
@@ -981,6 +1099,7 @@ Opções:
   -h, --help          esta ajuda
 
 Exit codes: 0 ok · 2 env inválido · 3 indeterminado · 4 ausente · 5 falha ao publicar
+             6 indeterminado aceito pela CÓPIA LOCAL (só com --local-image)
 
 Com --prove: 0 prova segura · 2 prova indisponível · 5 prova VIOLADA (o bloqueio não existe)`
 
@@ -998,6 +1117,7 @@ export function parseArgs(argv) {
     check: false,
     prove: false,
     source: "auto",
+    localImage: false,
     gitRef: "main",
     waitSeconds: 900,
     json: false,
@@ -1008,6 +1128,7 @@ export function parseArgs(argv) {
     if (arg === "--help" || arg === "-h") return { opts, help: true, error: null }
     else if (arg === "--check") opts.check = true
     else if (arg === "--prove") opts.prove = true
+    else if (arg === "--local-image") opts.localImage = true
     else if (arg === "--json") opts.json = true
     else if (arg === "--gitea-env") opts.envFile = argv[++i]
     else if (arg === "--source") opts.source = argv[++i]
@@ -1072,7 +1193,13 @@ async function main() {
   if (opts.json) {
     console.log(
       JSON.stringify(
-        { ...result, envFile: opts.envFile, check: opts.check, source: opts.source },
+        {
+          ...result,
+          envFile: opts.envFile,
+          check: opts.check,
+          source: opts.source,
+          localImage: opts.localImage,
+        },
         null,
         2,
       ),
@@ -1080,6 +1207,11 @@ async function main() {
   } else if (result.code === EXIT.OK) {
     console.log("")
     console.log(`  ${C.green}✅ imagem do runner pronta — o compose pode subir o runner${C.nc}`)
+  } else if (result.code === EXIT.LOCAL) {
+    console.log("")
+    console.log(
+      `  ${C.yellow}⚠️  registry INDETERMINADO: pré-requisito satisfeito pela CÓPIA LOCAL${C.nc}`,
+    )
   }
   return result.code
 }

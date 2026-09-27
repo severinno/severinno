@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 43 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 46 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -222,6 +222,9 @@ SUBTESTS=(
   "lint-scope|scripts/test-mutation-lint-scope.sh"
   "act-origin|scripts/test-mutation-act-origin.sh"
   "commit-import-exports|scripts/test-mutation-commit-import-exports.sh"
+  "runner-tag|scripts/test-mutation-runner-tag.sh"
+  "local-image|scripts/test-mutation-local-image.sh"
+  "artefatos-do-hook|scripts/test-mutation-artefatos-do-hook.sh"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────

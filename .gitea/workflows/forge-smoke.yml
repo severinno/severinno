@@ -217,7 +217,15 @@ jobs:
       - name: "Prova 5 — o registro do runner é o do compose"
         shell: bash
         run: |
-          set -uo pipefail
+          set -uo pipefail +e
+          # O `+e` NAO e decorativo: o act roda este passo com `bash --noprofile
+          # --norc -e -o pipefail {0}` (MEDIDO no log do job) e `set -uo
+          # pipefail` NAO desliga esse `-e`. Sem ele, um `OUT="$(…)"` que sai
+          # != 0 mata o passo NA ATRIBUICAO — o `case` abaixo vira codigo morto,
+          # a saida capturada se perde, e o job fica vermelho SEM dizer que foi
+          # a Prova 5 (MEDIDO com `--mutacao-labels`: status 2 e nenhuma das tres
+          # mensagens no log). Com o `+e`, quem decide o desfecho e o `case` — e
+          # todo caminho dele sai `exit 1` dizendo qual e.
           OUT="$(bun run runner-labels:check 2>&1)"
           CODE=$?
           printf '%s\n' "$OUT"

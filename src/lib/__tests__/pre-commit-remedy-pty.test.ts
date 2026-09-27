@@ -70,13 +70,13 @@ import {
   tempDir,
 } from "@/lib/__tests__/helpers/hook-simulator"
 import {
-  GUARD_CLOSURE,
   HOOK,
   WORKFLOW,
   WORKFLOW_CICATRIZ,
   WORKFLOW_QUEBRADO,
   WORKFLOW_VALIDO,
   WRAPPER_SOURCE,
+  fechoDoGuard,
   novoRepo,
   writeHooksShim,
 } from "@/lib/__tests__/helpers/pre-commit-fixture"
@@ -432,21 +432,6 @@ describe("o hook invocado PELO GIT (o fluxo do operador)", () => {
 
 // ── o REMÉDIO pelo caminho da FASE B (e quem dá o veredito é a fase) ─────
 
-/**
- * Os guards de ENCODING: o que a fase B executa e o remédio SPAWNA pelo caminho.
- * Eles entram no fixture por CÓPIA declarada (o wrapper da casa não os importa),
- * e sem eles a classe se declara inaplicável — o caminho da fase B ficaria sem
- * nada para remendar, que é o oposto do que este ensaio mede.
- */
-const FECHO_ENCODING = [
-  "check-crlf.sh",
-  "check_crlf.py",
-  "check-blob-crlf.sh",
-  "check_blob_crlf.py",
-  "check-utf8.sh",
-  "check_utf8.py",
-]
-
 /** O defeito da fase B que o remédio conhece: CRLF num `.sh` rastreado. */
 const SH_COM_CRLF = "#!/usr/bin/env bash\r\necho oi\r\n"
 const SH_EM_LF = "#!/usr/bin/env bash\necho oi\n"
@@ -506,9 +491,13 @@ function wrapperDaFaseB(marca: string | null) {
  * hook REAL instalado no `core.hooksPath`.
  */
 function repoDaFaseB(marca: string | null = null) {
+  // O fecho vem DERIVADO do dono (`fechoDoGuard`): o grafo traz as arestas, e as
+  // sementes declaradas trazem o que ele não liga — inclusive os guards de
+  // ENCODING, que a fase B executa e o remédio SPAWNA (sem eles a classe se
+  // declara inaplicável e o caminho da fase B ficaria sem nada para remendar).
   const dir = novoRepoSim({
     prefix: "remedy-fase-b-",
-    closure: [...GUARD_CLOSURE, ...FECHO_ENCODING],
+    closure: fechoDoGuard(),
     wrapper: wrapperDaFaseB(marca),
     dirs: [".github/workflows"],
   })

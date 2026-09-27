@@ -30,7 +30,9 @@
  * `pre-commit-git-commit-blocks.test.ts` — o irmão onde o GIT invoca o hook por
  * `core.hooksPath` e o veredito é medido no OBJETO de commit. Duas cópias da
  * régua divergem no dia em que uma delas for ajustada; por isso os defeitos e o
- * fecho são importados, e a completude do fecho é ASSERIDA aqui.
+ * fecho são importados, e a completude do fecho é ASSERIDA aqui — derivada pela
+ * régua ÚNICA do fecho de imports (`scripts/fecho-imports.mjs`), a mesma das
+ * suítes de mutação, e não por uma descida própria desta prova.
  *
  * O defeito medido era invisível porque o hook só era conferido por leitura: a
  * prova por leitura acha a linha, não prova que ela roda nem que o exit code sai
@@ -59,6 +61,7 @@ import {
   touch,
 } from "@/lib/__tests__/helpers/hook-simulator"
 import {
+  CLOSURE_SEM_GRAFO,
   GUARD,
   GUARD_COMMAND,
   HOOK_SOURCE,
@@ -72,6 +75,7 @@ import {
   WORKFLOW_QUEBRADO,
   WORKFLOW_VALIDO,
   closureProblems,
+  fechoDoGuard,
   naoRelativos,
   novoRepo,
   runHook,
@@ -115,9 +119,23 @@ describe("a premissa do harness", () => {
   it("o fecho copiado é COMPLETO: toda referência local (import E spawn) está nele", () => {
     // Sem o fecho completo o script morre com "module not found" (ou o spawn do
     // guard falha) e o não-zero do hook seria do fixture, não do defeito. Uma
-    // referência nova — `from "./x.mjs"` OU `new URL("./x.mjs", ...)` — aparece
-    // AQUI, nomeada, em vez de virar um controle verde por acidente.
+    // referência nova — `from "./x.mjs"`, `import("./x.mjs")` ou
+    // `new URL("./x.mjs", ...)` — aparece AQUI, nomeada, em vez de virar um
+    // controle verde por acidente: a completude é DERIVADA pela régua do fecho
+    // de imports (`scripts/fecho-imports.mjs`), a mesma das suítes de mutação —
+    // não mais pela descida própria desta prova.
     expect(closureProblems()).toEqual([])
+    // E a aresta que a descida antiga (regex de `from` e de `new URL`) NÃO via, e
+    // que a régua do grafo passou a ver: o `ensure-runner-image.mjs` carrega a
+    // prova da imagem por `await import("./prove-runner-image-gate.mjs")` — um
+    // `import()` LITERAL. Ele está na CÓPIA sem ninguém declará-lo: é o grafo
+    // que o traz, e é isso que faz uma aresta nova não derrubar a bancada em
+    // silêncio.
+    expect(fechoDoGuard()).toContain("prove-runner-image-gate.mjs")
+    // O outro lado do trato: o que o grafo NÃO liga continua DECLARADO
+    // (`CLOSURE_SEM_GRAFO`), e a catraca do `closureProblems()` acusa uma linha
+    // redundante — nunca a mantém por inércia.
+    expect(fechoDoGuard().length).toBeGreaterThan(CLOSURE_SEM_GRAFO.length)
   })
 
   it("o fixture RESOLVE as dependências não relativas do fecho — senão o guard não JULGA nada", () => {

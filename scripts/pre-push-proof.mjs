@@ -71,7 +71,7 @@
 
 import { existsSync, readFileSync } from "node:fs"
 import { spawnSync } from "node:child_process"
-import { dirname, join, relative } from "node:path"
+import { join } from "node:path"
 
 import {
   REPO_ROOT,
@@ -93,6 +93,11 @@ import {
 // árvore DERIVANDO a lista deles — um guard novo no conjunto não pode virar um
 // ENOENT que deixaria o recorte INDETERMINADO por um buraco do fixture.
 import { CONJUNTO_SEMPRE } from "./prove-stack-per-commit.mjs"
+// A RÉGUA do fecho de imports é a MESMA das suítes de mutação (uma só régua para
+// quem copia módulo para fixture — ver `docs/GUARDS.md`, "O FIXTURE QUE NÃO
+// CARREGA"): este arquivo tinha a descida PRÓPRIA dele (regex de `from`), e é a
+// régua única que passa a dizer o que o fixture do recorte copia.
+import { fechoDeImports } from "./fecho-imports.mjs"
 
 /** O hook REAL do repositório (o arquivo que o git executa num push). */
 export const HOOK = join(REPO_ROOT, ".husky", "pre-push")
@@ -781,63 +786,44 @@ export function provePushBlocks({ root = REPO_ROOT, hookSourceTexto = null } = {
 //     de encoding (irmão de fase, não é o assunto) e o `curl` do bloco ADVISORY
 //     (o mesmo motivo do fixture de cima: determinismo do push).
 
-/**
- * O FECHO que o fixture do recorte COPIA — a lista é o que o `closure` do
- * `novoRepo` leva, e a completude dela é CONFERIDA contra o grafo real de
- * imports (`fechoDoRecorteProblemas`), não presumida.
- *
- * POR QUE a conferência existe: a primeira execução desta prova morreu com
- * `ERR_MODULE_NOT_FOUND` (o `check-tla-closure.mjs` importa o
- * `check-no-leaked-imports.mjs`, que não estava na lista) — e o não-zero do
- * módulo do recorte, com o hook tratando qualquer não-zero como "um commit do
- * meio é vermelho", virou uma ACUSAÇÃO ao commit. Um fecho incompleto é uma
- * prova que mede o fixture; por isso ele aparece NOMEADO no teste.
- */
-export const FECHO_DO_RECORTE = [
-  "prove-stack-per-commit.mjs",
-  "check-tla-closure.mjs",
-  "check-no-leaked-imports.mjs",
-  "remedy-canal.mjs",
-  "doctor-unproven.mjs",
-  "allowlist-review.mjs",
-]
+/** O MÓDULO do recorte — a ENTRADA da derivação do fecho que o fixture copia. */
+export const RECORTE_MODULO = "prove-stack-per-commit.mjs"
 
 /**
- * A COMPLETUDE do fecho, DERIVADA do grafo: fecha transitivamente as dependências
- * relativas do módulo do recorte e compara com a lista declarada — nos DOIS
- * sentidos (uma dependência nova falta na lista; uma linha da lista que ninguém
- * importa é uma cópia a mais, que envelhece sem avisar).
+ * O FECHO que o fixture do recorte COPIA — DERIVADO do grafo pela régua única
+ * (`scripts/fecho-imports.mjs`), como as suítes de mutação derivam o delas (o
+ * `mapfile` que copia o guard e as arestas dele). Aqui NÃO há lista declarada:
+ * quem diz o que a cópia precisa é a aresta do próprio módulo, e uma dependência
+ * nova entra sozinha — não há lista para envelhecer sem avisar.
+ *
+ * POR QUE a derivação não é conforto: a primeira execução desta prova morreu com
+ * `ERR_MODULE_NOT_FOUND` (o `check-tla-closure.mjs` importa o
+ * `check-no-leaked-imports.mjs`, que não estava na lista à mão) — e o não-zero do
+ * módulo do recorte, com o hook tratando qualquer não-zero como "um commit do
+ * meio é vermelho", virou uma ACUSAÇÃO ao commit. Meio fecho é uma prova que mede
+ * o fixture, então ele é fail-closed: quando a régua RECUSA (aresta que não
+ * resolve, bare de PACOTE — o fixture do recorte roda SEM `node_modules` — ou
+ * caminho que sai da raiz), a função LEVANTA com os problemas nomeados e o
+ * fixture NÃO é montado. Quem transforma isso em desfecho é quem chama: o
+ * `catch` do `provePushBlocksMiddle` (e o do `readPrePushBlock`, no doctor) o
+ * publica como `unavailable` — nunca como veredito.
+ *
+ * O `import()` NÃO literal (`check-tla-closure.mjs`) fica NOMEADO nos `adiados` da
+ * régua, nunca em silêncio: ele é limite declarado, não cópia a fazer.
  *
  * @param {string} [root]
- * @returns {string[]} os problemas (vazio = o fecho está completo)
+ * @returns {string[]} o fecho (o módulo do recorte e as arestas dele)
  */
-export function fechoDoRecorteProblemas(root = REPO_ROOT) {
-  const problemas = []
-  const visto = new Set()
-  const anda = (rel) => {
-    if (visto.has(rel)) return
-    visto.add(rel)
-    const path = join(root, "scripts", rel)
-    if (!existsSync(path)) {
-      problemas.push(`${rel} → ausente do checkout`)
-      return
-    }
-    const src = readFileSync(path, "utf8")
-    for (const m of src.matchAll(/from\s+"(\.\/[^"]+)"/g)) {
-      anda(relative("scripts", join("scripts", dirname(rel), m[1])))
-    }
-  }
-  anda("prove-stack-per-commit.mjs")
-  for (const f of visto) {
-    if (!FECHO_DO_RECORTE.includes(f))
-      problemas.push(
-        `${f} → importado pelo recorte e FORA de FECHO_DO_RECORTE (o fixture não o copiaria)`,
-      )
-  }
-  for (const f of FECHO_DO_RECORTE) {
-    if (!visto.has(f)) problemas.push(`${f} → declarado no fecho e ninguém o importa (lista velha)`)
-  }
-  return problemas
+export function fechoDoRecorte(root = REPO_ROOT) {
+  const { fecho, problemas } = fechoDeImports([RECORTE_MODULO], {
+    root: join(root, "scripts"),
+    comRaiz: true,
+  })
+  if (problemas.length > 0)
+    throw new Error(
+      `o fecho do recorte NÃO FECHA — o fixture não pode ser montado com meio fecho: ${problemas.join(" | ")}`,
+    )
+  return fecho
 }
 
 /** O arquivo que o commit do MEIO quebra — o veredito é do CONTEÚDO versionado. */
@@ -993,10 +979,10 @@ export function montaPushPilhaFixture({ meio = "vermelho", hookSourceTexto, wrap
     wrapper: wrapper ?? WRAPPER_PILHA,
     dirs: ["scripts", "src", "src/lib/__tests__"],
     // O RECORTE é o módulo REAL, com o fecho que ele importa: a prova mede a
-    // régua do repositório, não uma reimplementação dela. A lista é a MESMA que
-    // `fechoDoRecorteProblemas` confere contra o grafo (uma dependência nova
-    // aparece acusada, em vez de virar um `ERR_MODULE_NOT_FOUND` na prova).
-    closure: [...FECHO_DO_RECORTE],
+    // régua do repositório, não uma reimplementação dela. O fecho é DERIVADO do
+    // grafo na hora de montar (`fechoDoRecorte`) — uma aresta nova entra na cópia
+    // sozinha, em vez de virar um `ERR_MODULE_NOT_FOUND` na prova.
+    closure: fechoDoRecorte(),
   })
   stage(dir, "package.json", PACKAGE_JSON_PILHA)
   stage(dir, PAYLOAD_FILE, TYPECHECK_PAYLOAD_PILHA)

@@ -150,7 +150,7 @@ describe("no REPO REAL: a descida alcanca os sub-guards dos runners das pipeline
     expect(limites).toEqual([])
   })
 
-  it("a descida alcanca os ONZE sub-guards (inclusive os do idioma `SCRIPT_DIR`)", () => {
+  it("a descida alcanca os DOZE sub-guards (inclusive os do idioma `SCRIPT_DIR`)", () => {
     const scripts = JSON.parse(
       execFileSync("node", ["-p", "JSON.stringify(require('./package.json').scripts)"], {
         cwd: RAIZ,
@@ -169,6 +169,11 @@ describe("no REPO REAL: a descida alcanca os sub-guards dos runners das pipeline
       "scripts/check-workflow-run-syntax.mjs",
       "scripts/check_utf8.mjs",
       "scripts/check_utf8.py",
+      // A regua unica do FECHO DE IMPORTS, que a matriz executa pelos runners
+      // dela (`test-mutation-{doc-hashes,act-origin,generated-format}.sh`): ela
+      // entra pela descida do master, e a decisao local dela e a entrada de
+      // RUNNER_SUBGUARD logo abaixo.
+      "scripts/fecho-imports.mjs",
       "scripts/metades.mjs",
     ])
     // A procedencia sai no relatorio: qual runner trouxe cada sub-guard.
@@ -197,7 +202,7 @@ describe("no REPO REAL: a descida alcanca os sub-guards dos runners das pipeline
   it("o guard inteiro sai verde, com CADA sub-guard decidido e os DOIS limites nomeados", () => {
     const report = analyze({ root: RAIZ })
     expect(report.violations).toEqual([])
-    expect(report.subguards.length).toBe(11)
+    expect(report.subguards.length).toBe(12)
     for (const s of report.subguards) expect(s.decision).not.toBeNull()
     // Os DOIS limites que sobraram, nomeados um a um: os bloqueios que NAO sao o
     // idioma do `SCRIPT_DIR` (esse deixou de ser limite quando a regua passou a
