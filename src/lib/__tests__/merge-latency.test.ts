@@ -808,7 +808,13 @@ describe("no REPO REAL: o job do count é composto, não um número medido à pa
     expect(job.derivedMs).toBe(forma.ms)
     const ligado = passos.find((p) => p.derived)!
     expect(ligado.ms).toBe(forma.ms)
-    expect(ligado.commit).toBe(bench.meta.families.mutations.commit)
+    // A PROCEDÊNCIA do número derivado: o commit DA FAMÍLIA quando o ato o grava,
+    // e a ÂNCORA do registro quando a família foi MEDIDA nesta rodada (v7: um
+    // commit não contém o próprio hash, então o índice publica o `parentCommit` —
+    // o topo sobre o qual o ato rodou —, o MESMO fallback do `benchCommit`).
+    const esperado = bench.meta.families.mutations.commit ?? bench.meta.parentCommit
+    expect(esperado).not.toBeNull()
+    expect(ligado.commit).toBe(esperado)
   })
 
   it("nenhum job do PR declara passos que não fecham (a cobertura é exata na árvore real)", () => {

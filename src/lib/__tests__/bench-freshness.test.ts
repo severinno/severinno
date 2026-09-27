@@ -382,18 +382,30 @@ describe("familyFreshness — a régua do teto", () => {
   })
 
   it("a PROCEDÊNCIA é dita: sem `meta.families` a origem é o `meta.commit` do arquivo", () => {
-    const fact = familyFreshness(bench({ semFamilies: true }), {
+    // O fallback do esquema v6: o arquivo SEM a tabela por família E SEM a âncora
+    // v7 declara o commit do ATO INTEIRO — e a procedência é ele, ainda JULGADO.
+    const semFamilies = bench({ semFamilies: true })
+    delete semFamilies.meta.anchor
+    semFamilies.meta.commit = "ato-inteiro"
+    const fact = familyFreshness(semFamilies, {
       probe: () => ({ state: "ancestor", behind: 1 }),
     })
     for (const f of fact.families) {
       expect(f.origin).toBe("meta.commit")
-      expect(f.commit).toBe(REAL.meta.commit)
+      expect(f.commit).toBe("ato-inteiro")
     }
-    // Com a tabela do dono, a origem é a DA FAMÍLIA (e o ato aparece).
+    // Com a tabela do dono, a origem é a DA FAMÍLIA (e o ato aparece) — MENOS a
+    // família MEDIDA nesta rodada: ela não tem hash gravável e a procedência é a
+    // ÂNCORA v7 (o PORTADOR, resolvido pela história), não um verde por omissão.
     const comTabela = familyFreshness(bench(), {
       probe: () => ({ state: "ancestor", behind: 1 }),
     })
-    expect(comTabela.families.every((f: { origin: string }) => f.origin === "family")).toBe(true)
+    expect(comTabela.families.map((f: { origin: string }) => f.origin)).toContain("family")
+    expect(
+      comTabela.families
+        .filter((f: { origin: string }) => f.origin !== "family")
+        .map((f: { family: string }) => f.family),
+    ).toEqual(["mutations"])
     expect(comTabela.families.map((f) => f.act)).toContain("measured")
   })
 
@@ -411,21 +423,20 @@ describe("familyFreshness — a régua do teto", () => {
   })
 
   it("família SEM idade (clone raso) deixa o fato medido, mas a lista `unknown` não some", () => {
-    // A baseline tem procedência POR FAMÍLIA (dois atos): o dublê mapeia cada
-    // commit distinto — o de `lint`, o do ato novo — senão as famílias do outro
-    // commit caíssem em `unknown` por um dublê que só conhece `meta.commit`.
-    const origens = [
-      ...new Set((Object.values(REAL.meta.families) as { commit: string }[]).map((f) => f.commit)),
-    ]
+    // A baseline tem procedência POR FAMÍLIA (dois atos) E uma família MEDIDA nesta
+    // rodada (a ÂNCORA v7, cujo commit é o PORTADOR resolvido pela HISTÓRIA): o
+    // dublê responde por QUALQUER commit que ele conhece, e só o `ausente` — o de
+    // `lint` — fica sem idade. Um dublê que só conhecesse `meta.commit` jogaria as
+    // famílias do outro ato (e o portador) em `unknown` por engano.
     const fact = familyFreshness(bench({ commits: { lint: "ausente" } }), {
-      probe: probeDe({
-        ...Object.fromEntries(origens.map((c: string) => [c, { state: "ancestor", behind: 2 }])),
-        ausente: {
-          state: "unknown",
-          behind: null,
-          reason: "o commit de origem ausente não está neste checkout (clone raso)",
-        },
-      }),
+      probe: (commit) =>
+        commit === "ausente"
+          ? {
+              state: "unknown",
+              behind: null,
+              reason: "o commit de origem ausente não está neste checkout (clone raso)",
+            }
+          : { state: "ancestor", behind: 2 },
     })
     expect(fact.state).toBe("measured")
     expect(fact.unknown).toEqual(["lint"])

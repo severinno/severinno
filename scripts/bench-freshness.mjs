@@ -435,7 +435,11 @@ export function commitAge(
  *
  * `origin` diz a PROCEDÊNCIA em vez de presumi-la: `family` quando o
  * `meta.families` do próprio arquivo grava o commit daquela família, `meta.commit`
- * quando só o ato inteiro foi gravado, e `ausente` quando o arquivo não diz nada.
+ * quando só o ato inteiro foi gravado (esquema v6), `carrier` quando o registro
+ * declara a ÂNCORA v7 (`meta.anchor = "carrier"`) e o commit é o PORTADOR — o
+ * commit que CARREGA o arquivo, resolvido pela HISTÓRIA (a família MEDIDA nesta
+ * rodada não tem hash gravável: um commit não contém o próprio hash) —, e
+ * `ausente` quando o arquivo não diz nada.
  *
  * @typedef {object} FamilyAge
  * @property {string} family
@@ -443,7 +447,7 @@ export function commitAge(
  *                                      do teto dela); opcional porque um fato de
  *                                      famílias sozinho não o carrega
  * @property {string|null} act          o ato do bench que a mediu (`measured`/…)
- * @property {"family"|"meta.commit"|"ausente"} origin
+ * @property {"family"|"meta.commit"|"carrier"|"ausente"} origin
  * @property {string|null} source
  * @property {string|null} commit       o commit de ORIGEM gravado
  * @property {string|null} commitDate

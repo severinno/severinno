@@ -8,7 +8,7 @@
 #   ./scripts/test-mutation-act-origin.sh
 #
 # Exit codes:
-#   0 — as OITO metades foram DETECTADAS (a mutação cega a regra) e os controles
+#   0 — as NOVE metades foram DETECTADAS (a mutação cega a regra) e os controles
 #       passaram ✅
 #   1 — alguma regra NÃO sustentou o veredito (a mutação não mudou o gate, ou o
 #       gate mudou por outro motivo) ❌
@@ -36,8 +36,14 @@
 #   M5 — R3c (a forma SOBRANDO): a árvore da origem carrega um sub-test que o
 #        registro não declara — a medição declarada é MENOR que a matriz.
 #   M6 — R3d (o TOTAL `subtests`): o count declarado deixa de ser confrontado.
-#   M7 — a ORIGEM DECLARADA: sem `meta.commit`, o registro deixa de ser recusado.
+#   M7 — a ORIGEM DECLARADA: sem `meta.commit` nem `meta.anchor`, o registro
+#        deixa de ser recusado.
 #   M8 — o FAIL-CLOSED: registro que não é JSON deixa de sair 2.
+#   M9 — a ÂNCORA RESOLVIDA (v7): o PORTADOR — o commit que CARREGA o registro —
+#        deixa de ser resolvido pela história, e o gate passa a julgar o PAI. O
+#        registro vai para um commit cuja árvore carrega TRÊS formas declarando
+#        DUAS, e o PAI carrega exatamente as duas: cega a resolução, o registro
+#        desonesto passa a ser julgado contra a árvore onde ele é VERDADEIRO.
 #
 # M1 É MEDIDA PELA ACUSAÇÃO, NÃO PELO EXIT — e isso é do fenômeno, não da suíte:
 # uma origem que não resolve é, POR CONSTRUÇÃO, também fora da história (e sem
@@ -105,6 +111,7 @@ METADES=(
   'M6|R3d — o TOTAL `subtests` do registro deixa de ser confrontado'
   'M7|a ORIGEM DECLARADA — o registro sem `meta.commit` deixa de ser recusa'
   'M8|o FAIL-CLOSED — o registro que não é JSON deixa de sair 2 (não medido)'
+  'M9|a ANCORA RESOLVIDA — o PORTADOR deixa de ser resolvido e o gate julga o PAI'
 )
 
 falhas=0
@@ -210,6 +217,71 @@ for nome in ("guard-timing-baseline.json", "guard-timing-latest.json"):
 PY
 }
 
+# ── O registro com a ÂNCORA RESOLVIDA (esquema v7), na árvore E no COMMIT ────
+# $1 = a PROCEDÊNCIA (`meta.parentCommit`: o topo sobre o qual o ato rodou),
+# $2.. = "forma:metades" da matriz DECLARADA.
+#
+# DIFERENÇA PARA O `registro` ACIMA, e ela é o sujeito da M9: aqui o registro é
+# COMMITADO, porque o PORTADOR (o commit que o carrega) é o último commit de HEAD
+# que tocou o arquivo — um registro só na árvore de trabalho não tem portador
+# nenhum e o gate resolveria `null`. E o commit que o carrega TROCA a matriz: o
+# master ganha uma TERCEIRA forma (gama) que o registro NÃO declara, enquanto o
+# PAI (a procedência gravada) carrega exatamente as duas declaradas — a assimetria
+# que separa "julgar o portador" de "julgar o pai".
+registro_carrier() {
+  python3 - "$F" "$@" <<'PY'
+import json, os, sys
+raiz, pai = sys.argv[1], sys.argv[2]
+formas = []
+for par in sys.argv[3:]:
+    forma, n = par.split(":")
+    formas.append({"role": forma, "label": forma, "ms": 10, "exit": 0, "metades": int(n), "ok": True})
+registro = {
+    "meta": {
+        "tool": "bench-guard-timing",
+        "version": 7,
+        "anchor": "carrier",
+        "parentCommit": pai,
+        "commitDate": "2026-09-25 10:00:00 -0300",
+        "act": "bench-guard-timing --only mutations --json --baseline --merge",
+    },
+    "summary": {},
+    "mutations": {
+        "measured": True,
+        "cmd": "bash scripts/test-mutation-guards.sh --json",
+        "exit": 0,
+        "subtests": len(formas),
+        "metades": sum(f["metades"] for f in formas),
+        "forms": formas,
+    },
+}
+os.makedirs(f"{raiz}/docs/benchmarks", exist_ok=True)
+for nome in ("guard-timing-baseline.json", "guard-timing-latest.json"):
+    with open(f"{raiz}/docs/benchmarks/{nome}", "w") as fh:
+        json.dump(registro, fh, indent=2)
+        fh.write("\n")
+PY
+  cat >"$F/scripts/test-mutation-gama.sh" <<'SH'
+#!/usr/bin/env bash
+METADES=(
+  'G1|a primeira metade'
+  'G2|a segunda metade'
+  'G3|a terceira metade'
+  'G4|a quarta metade'
+)
+SH
+  cat >"$F/scripts/test-mutation-guards.sh" <<'SH'
+#!/usr/bin/env bash
+SUBTESTS=(
+  "alfa|scripts/test-mutation-alfa.sh"
+  "beta|scripts/test-mutation-beta.sh"
+  "gama|scripts/test-mutation-gama.sh"
+)
+SH
+  git -C "$F" add -A
+  git -C "$F" commit -qm "a matriz ganha a TERCEIRA forma (o que o registro NAO declara)"
+}
+
 # ── O gate, do fixture, e a cópia que cada metade muta ───────────────────────
 instalar_guard() {
   cp "$GUARD" "$F/scripts/check-act-origin.mjs"
@@ -313,7 +385,7 @@ recebe "CONTROLE fail-closed (não é repositório)" \
   "$(cd "$TMP/norepo" && node scripts/check-act-origin.mjs >/dev/null 2>&1; echo $?)" 2 \
   "árvore que não é repositório é INDISPONÍVEL, nunca verde"
 
-echo "== as OITO metades"
+echo "== as NOVE metades"
 
 # ── M1 — R1: a EXISTÊNCIA da origem (medida pela ACUSAÇÃO, ver o cabeçalho) ──
 # O hash MORTO é montado em SETE pedaços de ≤6 hex. Um literal de 40 aqui seria
@@ -378,6 +450,27 @@ recebe "CONTROLE M8 (registro ilegível)" "$(rodar)" 2 "ilegível é INDISPONÍV
 mutar_linha 'o registro não é JSON válido' \
   "    registro = { meta: { commit: \"$A\" }, mutations: { subtests: 2, forms: [{ role: \"alfa\", metades: 3 }, { role: \"beta\", metades: 2 }] } }"
 recebe "M8 (cegada)" "$(rodar)" 0 "cegado o fail-closed, um registro ilegível passa a HONESTO"
+
+# ── M9 — a ÂNCORA RESOLVIDA: o PORTADOR (o commit que CARREGA o registro) ────
+# A regra que a v7 introduziu. O hash da âncora NÃO é gravável dentro do próprio
+# registro — um commit não pode conter o próprio hash (o campo entra no blob, o
+# blob no tree, o tree no commit) —, então o registro declara a REGRA
+# (`meta.anchor = "carrier"`) e a PROCEDÊNCIA (`meta.parentCommit`), e o gate
+# resolve o PORTADOR pela história: o último commit de HEAD que tocou o arquivo
+# do registro. Aqui o portador carrega TRÊS formas e o registro declara DUAS
+# (R3c: a forma sobrando; R3d: o total), enquanto a PROCEDÊNCIA aponta um commit
+# que carrega exatamente as duas. Cegar a RESOLUÇÃO é o defeito que a v7 fecha:
+# o gate volta a julgar o PAI (era o comportamento do esquema v6) e o registro
+# desonesto PASSA — o verde falso que esta metade existe para não produzir.
+instalar_guard
+registro_carrier "$A" "alfa:3" "beta:2"
+recebe "CONTROLE M9 (o PORTADOR não carrega a matriz declarada)" "$(rodar)" 1 \
+  "o commit que CARREGA o registro não carrega a matriz declarada — tem de ser RECUSADO"
+acusa "R3 ·"
+mutar_linha 'origemDoRegistro(registro, { head, path: caminho, cwd: root })' \
+  '  const resolvida = { commit: registro?.meta?.parentCommit ?? "", via: "portador" }'
+recebe "M9 (cegada)" "$(rodar)" 0 \
+  "cegada a resolução, o mesmo registro PASSA — julgado contra o PAI, que carrega a matriz declarada"
 
 echo
 if [ "$falhas" -gt 0 ]; then
