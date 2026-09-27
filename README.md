@@ -1264,14 +1264,14 @@ depois: `escreveu: true` é violação da família, não um detalhe do log.
 **O custo do job mais caro do PR não é uma conta à mão** (família `mutations` do
 `bench-guard-timing`). O job `mutation-guards` roda 43 sub-tests, e o que CADA um
 custa é medido pelo próprio master (`--json`) e versionado sub-test a sub-test no
-registro: o ato VERSIONADO de 26/09/2026 (`405de5c3`) — o MESMO comando, com a árvore COMMITADA —
-mediu **652.1s** de sub-tests + **5.1s** de harness =
-**657.2s**, com `job-deps` (186.4s, 29%), `pre-commit-proof` (135.0s, 21%), `hook-commands` (61.8s, 9%) e `bench-freshness` (43.9s, 7%) no topo — antes disso
-ninguém sabia QUAL sub-test pagava a conta. A mediana é **2.1s**, dez sub-tests
-pagam **85%** da soma, e o registro guarda **270 metades**.
+registro: o ato VERSIONADO de 26/09/2026 (`eecb7d09`) — o MESMO comando, com a árvore COMMITADA —
+mediu **757.4s** de sub-tests + **5.0s** de harness =
+**762.3s**, com `job-deps` (194.2s, 26%), `pre-commit-proof` (156.5s, 21%), `workflow-run-syntax` (76.2s, 10%) e `hook-commands` (65.2s, 9%) no topo — antes disso
+ninguém sabia QUAL sub-test pagava a conta. A mediana é **2.2s**, dez sub-tests
+pagam **86%** da soma, e o registro guarda **270 metades**.
 Quem entra com um sub-test novo não compõe nada: ele entra **MEDIDO** na rodada seguinte
-(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~15.3s**) é dita
-como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test. **LIMITE DECLARADO:** na rodada do ato, 1 sub-test(s) NÃO passaram (`workflow-run-syntax`) — o custo deles não julga nada. E o vermelho foi RE-MEDIDO antes de virar veredito: `workflow-run-syntax` REPETIU o vermelho na 2ª tentativa, então o ms dele é a SOMA das duas (o custo é o que o job pagou).
+(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~17.7s**) é dita
+como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test.
 
 Esta prosa é **DERIVADA**: quem a reescreve é o ato (o bloco é dele), e o
 `check:mutation-count` recusa o commit em que ela divirja do registro versionado.
