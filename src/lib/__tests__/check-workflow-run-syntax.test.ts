@@ -43,6 +43,7 @@ import {
   collectRunBodies as collectBruto,
   collectShellScripts as collectShellScriptsBruto,
   dockerfileRunUnits,
+  embeddedDoRepositorio,
   embeddedPaths,
   embeddedPayloads,
   fixAll as fixAllBruto,
@@ -59,6 +60,10 @@ import {
   shellTokens,
   yamlEmbeddedPayloads,
 } from "../../../scripts/check-workflow-run-syntax.mjs"
+// A varredura de SCRIPTS é do `check-pipefail-sigpipe` (uma definição de "script
+// do repositório", não duas): o corte de escopo é medido pela MESMA função que
+// o outro guard consome.
+import { scriptsDoRepositorio } from "../../../scripts/check-pipefail-sigpipe.mjs"
 import { declaredImageValue } from "../../../scripts/registry-source.mjs"
 
 /** O módulo é .mjs: o teste tipa só o que consome (o resto é o runtime). */
@@ -113,6 +118,8 @@ type ColetaDeShell = {
   unread: { file: string; detail: string }[]
 }
 type ResultadoScan = Coleta & {
+  /** O corte de ESCOPO: o que o repositório declara LOCAL pelo `.gitignore`. */
+  locais: string[]
   failures: (Corpo & { kind: string; error: string })[]
   shellFiles: string[]
   shellScripts: ArquivoDeShell[]
@@ -1271,7 +1278,145 @@ describe("A TERCEIRA FONTE no veredito (e nenhum alvo invisível)", () => {
   })
 })
 
-// ── 10. A régua compartilhada (heredoc) ────────────────────────────────────
+// ── 10. O CORTE DE ESCOPO: o que o repositório declara LOCAL ──────────────
+//
+// A varredura é da ÁRVORE, e a árvore de um checkout compartilhado carrega
+// scratch que o `.gitignore` declara local — o defeito medido: um PATCH salvo
+// com extensão `.sh` dentro de `.tmp/` era julgado por `bash -n` e pintava o
+// local de vermelho num arquivo que o CI nunca vê. O corte é ESCOPO, não
+// exceção, e vale para as TRÊS fontes: o que o git declara local não é um
+// script do repositório NEM um Dockerfile dele.
+
+describe("o corte de escopo — o scratch ignorado não é artefato do repositório", () => {
+  /** Um repo git de verdade no tmpdir: sem ele não há corte a medir. */
+  function repoGit(): string {
+    const root = makeDir()
+    const r = spawnSync("git", ["init", "-q", "."], { cwd: root, encoding: "utf8" })
+    if (r.status !== 0) {
+      throw new Error(`git init falhou no fixture: ${r.stderr ?? r.error?.message ?? r.status}`)
+    }
+    return root
+  }
+
+  /** Roda git no fixture — e LANÇA se falhar (o fixture não pode mentir). */
+  function git(root: string, args: string[]): void {
+    const r = spawnSync("git", args, { cwd: root, encoding: "utf8" })
+    if (r.status !== 0) {
+      throw new Error(`git ${args.join(" ")} falhou: ${r.stderr ?? r.error?.message ?? r.status}`)
+    }
+  }
+
+  it("o Dockerfile IGNORADO sai e é NOMEADO no corte — e o VERSIONADO que casa a regra FICA", () => {
+    const root = repoGit()
+    writeFileSync(join(root, ".gitignore"), "scratch/\n", "utf8")
+    mkdirSync(join(root, "scratch"), { recursive: true })
+    writeFileSync(join(root, "scratch", "Dockerfile"), "FROM x\nRUN if [ x ]; then\n", "utf8")
+    writeFileSync(join(root, "Dockerfile.real"), "FROM y\nRUN echo ok\n", "utf8")
+    // Um Dockerfile VERSIONADO dentro do diretório que a regra cobre: o ignore
+    // não vale para o ÍNDICE, e é isso que o corte pergunta ao git (`ls-files`).
+    writeFileSync(join(root, "scratch", "Dockerfile.versionado"), "FROM z\nRUN echo v\n", "utf8")
+    git(root, ["add", ".gitignore", "Dockerfile.real"])
+    git(root, ["add", "-f", "scratch/Dockerfile.versionado"])
+
+    const r = embeddedDoRepositorio(root)
+    expect(r.caminhos).toContain("Dockerfile.real")
+    expect(r.caminhos).toContain("scratch/Dockerfile.versionado")
+    expect(r.caminhos).not.toContain("scratch/Dockerfile")
+    expect(r.locais).toEqual(["scratch/Dockerfile"])
+    expect(r.indisponivel).toBeNull()
+    // O atalho sem procedência é a MESMA lista (uma régua, dois consumidores).
+    expect(embeddedPaths(root)).toEqual(r.caminhos)
+  })
+
+  it("o `scan` une o corte das DUAS fontes de arquivo, sem repetir e ordenado", () => {
+    const root = repoGit()
+    writeFileSync(join(root, ".gitignore"), ".tmp/\n", "utf8")
+    mkdirSync(join(root, ".tmp"), { recursive: true })
+    writeFileSync(join(root, ".tmp", "Dockerfile"), "FROM x\nRUN echo ok\n", "utf8")
+    writeFileSync(join(root, ".tmp", "scratch.sh"), "echo ok\n", "utf8")
+    mkdirSync(join(root, ".github", "workflows"), { recursive: true })
+    writeFileSync(
+      join(root, ".github", "workflows", "ci.yml"),
+      "on:\n  push:\njobs:\n  a:\n    steps:\n      - run: echo ok\n",
+      "utf8",
+    )
+    git(root, ["add", "-A"])
+
+    const s = scan(root)
+    expect(s.locais).toEqual([".tmp/Dockerfile", ".tmp/scratch.sh"])
+    expect(s.scriptFailures).toEqual([])
+    expect(s.embeddedFailures).toEqual([])
+  })
+
+  it("`--staged` NÃO tem corte por construção: o ÍNDICE não carrega caminho ignorado", () => {
+    const root = repoGit()
+    writeFileSync(join(root, ".gitignore"), ".tmp/\n", "utf8")
+    mkdirSync(join(root, ".tmp"), { recursive: true })
+    writeFileSync(join(root, ".tmp", "Dockerfile"), "FROM x\nRUN if [ x ]; then\n", "utf8")
+    mkdirSync(join(root, ".github", "workflows"), { recursive: true })
+    writeFileSync(
+      join(root, ".github", "workflows", "ci.yml"),
+      "on:\n  push:\njobs:\n  a:\n    steps:\n      - run: echo ok\n",
+      "utf8",
+    )
+    git(root, ["add", "-A"])
+
+    const s = scan(root, { staged: true })
+    expect(s.locais).toEqual([])
+    expect(s.files).toContain(".github/workflows/ci.yml")
+    expect(s.embeddedFiles).not.toContain(".tmp/Dockerfile")
+  })
+
+  it("CLI: o corte do `--list` vai para o STDERR (o STDOUT é uma LISTA de caminhos)", () => {
+    const root = repoGit()
+    writeFileSync(join(root, ".gitignore"), ".tmp/\n", "utf8")
+    mkdirSync(join(root, ".tmp"), { recursive: true })
+    writeFileSync(join(root, ".tmp", "scratch.sh"), "echo ok\n", "utf8")
+    writeFileSync(join(root, "ok.sh"), "echo ok\n", "utf8")
+    git(root, ["add", "-A"])
+
+    const r = cli(["--root", root, "--list"])
+    expect(r.code).toBe(EXIT.OK)
+    expect(r.out).toContain("ok.sh")
+    expect(r.out).not.toContain("FORA da varredura")
+    expect(r.err).toContain("FORA da varredura")
+    expect(r.err).toContain(".tmp/scratch.sh")
+  })
+
+  it("CLI: o relatório NOMEIA o corte, e o JSON o carrega (o número não fica sozinho)", () => {
+    const root = repoGit()
+    writeFileSync(join(root, ".gitignore"), ".tmp/\n", "utf8")
+    mkdirSync(join(root, ".tmp"), { recursive: true })
+    // O scratch DE VERDADE do defeito medido: um Dockerfile que NÃO faz parsing
+    // é o que o gate acusaria se o corte não existisse.
+    writeFileSync(join(root, ".tmp", "Dockerfile"), "FROM x\nRUN if [ x ]; then\n", "utf8")
+    writeFileSync(join(root, "Dockerfile.real"), "FROM y\nRUN echo ok\n", "utf8")
+    git(root, ["add", "-A"])
+
+    const relatorio = cli(["--root", root])
+    expect(relatorio.code).toBe(EXIT.OK)
+    expect(relatorio.out).toContain("FORA da varredura")
+    expect(relatorio.out).toContain(".tmp/Dockerfile")
+
+    const json = cli(["--root", root, "--json"])
+    expect(json.code).toBe(EXIT.OK)
+    expect((JSON.parse(json.out) as { locais: string[] }).locais).toEqual([".tmp/Dockerfile"])
+  })
+
+  it("REPO REAL: todo caminho que o corte nomeia é IGNORADO no git e NÃO versionado", () => {
+    // A invariante que o corte promete — e ela não depende de haver scratch hoje:
+    // o gate nunca pode tirar do escopo um arquivo que o CI carrega.
+    const locais = [...scriptsDoRepositorio(ROOT).locais, ...embeddedDoRepositorio(ROOT).locais]
+    for (const rel of locais) {
+      const ignorado = spawnSync("git", ["check-ignore", "--quiet", rel], { cwd: ROOT })
+      expect(ignorado.status, `${rel} deveria ser ignorado`).toBe(0)
+      const versionado = spawnSync("git", ["ls-files", "--error-unmatch", rel], { cwd: ROOT })
+      expect(versionado.status, `${rel} NÃO pode estar no índice`).not.toBe(0)
+    }
+  })
+})
+
+// ── 11. A régua compartilhada (heredoc) ────────────────────────────────────
 
 describe("lineOfText — a linha de um texto dentro do arquivo", () => {
   it("acha a linha pela primeira linha DISTINTIVA, e é `null` quando é ambíguo", () => {

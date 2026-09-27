@@ -154,7 +154,7 @@ export const HOOK_DECLARED = [
   {
     match: /^node scripts\/check-workflow-run-syntax\.mjs --staged$/,
     of: "workflow-run-syntax",
-    why: "recorte --staged: julga o INDICE (com o CONTEUDO do commit, via `git show :path`), nao a arvore de trabalho — os workflows, os scripts de shell E o shell embutido (o `RUN` de um Dockerfile e o payload de um `sh -c`) que o commit carrega. O corpo quebrado nasce de uma reescrita mecanica em massa ANTES do commit e e o commit que o carrega; a arvore pode ter WIP que nao faz parte dele. O CI roda o comando inteiro sobre o conteudo mergeado (482 corpos, 124 scripts e 33 textos embutidos das duas forjas) — a diferenca e de ESCOPO, e o instrumento (o mesmo script) e o do CI.",
+    why: "recorte --staged: julga o INDICE (com o CONTEUDO do commit, via `git show :path`), nao a arvore de trabalho — os workflows, os scripts de shell E o shell embutido (o `RUN` de um Dockerfile e o payload de um `sh -c`) que o commit carrega. O corpo quebrado nasce de uma reescrita mecanica em massa ANTES do commit e e o commit que o carrega; a arvore pode ter WIP que nao faz parte dele. O CI roda o comando inteiro sobre o conteudo mergeado (567 corpos, 144 scripts e 35 textos embutidos das duas forjas — o conteudo do REPOSITORIO: o que o `.gitignore` declara local nao esta no CI nem na varredura da arvore) — a diferenca e de ESCOPO, e o instrumento (o mesmo script) e o do CI.",
   },
   {
     // O ESCOPO DO LINT: o mesmo script do CI (`check-lint-scope.mjs`), com o

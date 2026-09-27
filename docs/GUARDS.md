@@ -2264,6 +2264,22 @@ recorte do pre-commit (`HOOK_DECLARED` do `check-hook-ci-parity`), e sem
 git/índice ele é **fail-closed** (exit 2), porque "0 violações" sem ter lido o
 índice seria uma afirmação sobre nada.
 
+**O ESCOPO é do REPOSITÓRIO, não da árvore.** O que o próprio repositório
+declara **LOCAL** pelo `.gitignore` — o scratch de uma sessão num checkout
+compartilhado, o cache — sai da varredura das três fontes de **ARQUIVO**. O
+defeito medido (26/09/2026): um PATCH salvo com extensão `.sh` dentro de `.tmp/`
+era julgado por `bash -n` e pintava o local de vermelho num arquivo que o CI nunca
+vê. Quem decide o corte é o **git**, em duas perguntas (`semLocaisIgnorados`, do
+dono da varredura de shell): o **ÍNDICE** (`git ls-files`) mantém o VERSIONADO
+mesmo que uma regra o case — o CI o carrega, e tirá-lo seria varrer menos do que
+parece —, e o **IGNORE** (`git check-ignore -v --stdin`) tira o resto. O corte é
+**NOMEADO** no relatório e no `--json` (no `--list`, no STDERR: o STDOUT ali é
+uma lista de caminhos), porque gate que varre menos sem dizer mente pelo que não
+diz; git que não responde (uma fixture fora de repositório) devolve a lista
+**INTEIRA** com o motivo — a varredura fica mais **AMPLA**, nunca mais estreita —,
+e com `--staged` o corte é vazio por construção (o índice não carrega caminho
+ignorado).
+
 **Por que existe:** o repositório reescreve corpo de `run:` por MÁQUINA, de
 propósito — o `--fix` do `check-pipefail-sigpipe` (seção 20) trocou **216**
 ocorrências de `PRODUTOR | grep -q P` por `grep -q P <<< "$(PRODUTOR)"`. É
@@ -2371,10 +2387,10 @@ payload que só existe em runtime (`bash -c "$cmd"`) sai **INDETERMINADO** (com 
 motivo), a forma EXEC sem shell e o `-c` de um `python3` saem **PULADOS e
 nomeados**, e o corpo de um **heredoc** é DADO (nunca programa).
 
-Sem allowlist: o repositório passa inteiro — **482 corpos** das duas forjas (e
-todos os `shell:` declarados existem), **124 arquivos de shell** (121 `*.sh` + os
-3 hooks do `.husky/`) **e 33 textos de shell embutido** (14 instruções `RUN` +
-19 payloads de `sh -c`, com 2 indeterminados nomeados: os dois `bash -c "$cmd"`
+Sem allowlist: o repositório passa inteiro — **567 corpos** das duas forjas (e
+todos os `shell:` declarados existem), **144 arquivos de shell** (141 `*.sh` + os
+3 hooks do `.husky/`) **e 35 textos de shell embutido** (14 instruções `RUN` +
+21 payloads de `sh -c`, com 2 indeterminados nomeados: os dois `bash -c "$cmd"`
 dos scripts de banco, cujo texto é montado em execução), sem erro E sem aviso. Um
 gate que nasce absoluto não tem cota para envelhecer — cota aqui significaria
 declarar que um corpo (ou um script, ou um `RUN` de build) quebrado pode ficar

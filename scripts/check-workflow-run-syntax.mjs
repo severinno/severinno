@@ -58,7 +58,7 @@
 //      reescrita mecânica em massa acontece antes de commitar) e a árvore de
 //      trabalho pode carregar WIP que NÃO faz parte dele. Um defeito que só
 //      exista no working tree não é deste commit — e a varredura inteira (os
-//      482 corpos das duas forjas) continua sendo o veredito do CI. Sem
+//      567 corpos das duas forjas) continua sendo o veredito do CI. Sem
 //      git/índice o modo é FAIL-CLOSED (exit 2): "0 violações" sem ter lido o
 //      índice seria a mesma mentira de um gate que varre menos do que diz.
 //   8. o SHELL declarado é julgado contra o que o RUNNER tem — a única coisa que
@@ -116,9 +116,11 @@
 //      nunca o texto do relatório): lá está o contrato do comentário.
 //
 //  10. o MESMO parser julga a SEGUNDA fonte de shell do repositório: os SCRIPTS
-//      VERSIONADOS (`*.sh`, `*.bash` e os hooks sem extensão do `.husky/`), pela
-//      MESMA lista que o `check:pipefail-sigpipe` usa (`listShellScripts`) — o
-//      que é "script do repositório" tem UMA definição, não duas. O motivo é o
+//      DO REPOSITÓRIO (`*.sh`, `*.bash` e os hooks sem extensão do `.husky/`),
+//      pela MESMA lista que o `check:pipefail-sigpipe` usa (`listShellScripts`)
+//      — o que é "script do repositório" tem UMA definição, não duas (e ela é a
+//      da ÁRVORE menos o que o próprio repositório declara LOCAL: item 13). O
+//      motivo é o
 //      mesmo dos corpos: o corpo de um passo morre no runner; um script morre no
 //      PASSO que o executa (`bash scripts/x.sh`), depois do setup e longe da
 //      causa. Três diferenças DELIBERADAS em relação aos corpos:
@@ -126,7 +128,7 @@
 //      num script não existe runner para resolvê-la ANTES do bash — o texto vai
 //      ao interpretador como está, e a máscara julgaria um texto que não existe
 //      no arquivo (os `${{ }}` que há em `.sh` hoje estão em comentário e dentro
-//      de quote simples, onde são DADO; medido: os 124 passam sem máscara); (b) o
+//      de quote simples, onde são DADO; medido: os 144 passam sem máscara); (b) o
 //      interpretador é o que o SHEBANG declara, não um `shell:` de YAML — shebang
 //      bash/sh é julgado (o mesmo `isBashShell`), shebang de outra linguagem é
 //      PULADO com o motivo dito, e arquivo SEM shebang usa a premissa de quem o
@@ -154,10 +156,27 @@
 //      Dockerfiles vem da ÁRVORE (qualquer `Dockerfile*`), não de uma lista à mão:
 //      um Dockerfile novo num diretório novo entra na varredura sem editar nada.
 //
-// SEM ALLOWLIST: o repositório inteiro passa em `bash -n` hoje — 482 corpos das
-// duas forjas, os 124 scripts de shell que o `listShellScripts` enumera (121
-// `*.sh` + os 3 hooks do `.husky/`) e 33 textos de shell EMBUTIDO (14 instruções
-// `RUN` de Dockerfile + 19 payloads de `sh -c`, com 2 INDETERMINADOS nomeados:
+//  13. o ESCOPO é do REPOSITÓRIO, não da árvore: o que o próprio repositório
+//      declara LOCAL (o `.gitignore`) sai da varredura das TRÊS fontes de
+//      ARQUIVO — o scratch de uma sessão, o cache. O defeito MEDIDO: um PATCH
+//      salvo com extensão `.sh` dentro de `.tmp/` era julgado por `bash -n` e
+//      pintava o local de vermelho num arquivo que o CI nunca vê. Quem decide o
+//      corte é o GIT, em DUAS perguntas (`semLocaisIgnorados`, do dono da
+//      varredura de shell): o ÍNDICE (`git ls-files`) mantém o VERSIONADO mesmo
+//      que uma regra o case — o CI o carrega, e tirá-lo seria varrer menos do
+//      que parece —, e o IGNORE (`git check-ignore -v --stdin`) tira o resto.
+//      O corte é NOMEADO no relatório (e no `--json`), porque um gate que varre
+//      menos sem dizer mente pelo que NÃO diz; no `--list` ele sai no STDERR
+//      (o STDOUT ali é uma lista de caminhos, e um "ℹ️" no meio dela quebraria
+//      quem a consome). Git que não responde (uma fixture fora de repositório)
+//      devolve a lista INTEIRA com o motivo: a varredura fica mais AMPLA, nunca
+//      mais estreita. Com `--staged` o corte é vazio por construção — o índice
+//      não carrega caminho ignorado.
+//
+// SEM ALLOWLIST: o repositório inteiro passa em `bash -n` hoje — 567 corpos das
+// duas forjas, os 144 scripts de shell que o `listShellScripts` enumera (141
+// `*.sh` + os 3 hooks do `.husky/`) e 35 textos de shell EMBUTIDO (14 instruções
+// `RUN` de Dockerfile + 21 payloads de `sh -c`, com 2 INDETERMINADOS nomeados:
 // os dois `bash -c "$cmd"` dos scripts de banco, cujo texto é montado em
 // execução), todos sem ERRO e sem AVISO. Um gate que nasce absoluto não tem cota
 // para envelhecer — e uma cota aqui significaria declarar que um corpo quebrado
@@ -178,9 +197,10 @@
 //   0 — todo corpo `run:`, todo script de shell E todo texto de shell EMBUTIDO
 //       (a instrução `RUN` de um Dockerfile e o payload de um `sh -c`) passam em
 //       `bash -n` sem erro E sem aviso (os passos não-bash, os scripts de shebang
-//       não-bash, o shell embutido fora do escopo e os payloads que só existem em
-//       runtime são contados e nomeados) e todo `shell:` declarado existe no
-//       runner medido
+//       não-bash, o shell embutido fora do escopo, os arquivos que o repositório
+//       declara LOCAIS pelo `.gitignore` e os payloads que só existem em runtime
+//       são contados e nomeados) e todo `shell:` declarado existe no runner
+//       medido
 //   1 — violação: o corpo de um passo, um arquivo de shell OU um texto de shell
 //       embutido não faz parsing, OU o parser emitiu aviso (com a mensagem do
 //       bash, o arquivo e a linha do passo), OU o passo declara um `shell:` que o
@@ -210,6 +230,8 @@ import {
   heredocDelimiters,
   isShellScript,
   listShellScripts,
+  scriptsDoRepositorio,
+  semLocaisIgnorados,
   workflowDefaultShells,
   workflowRunSteps,
 } from "./check-pipefail-sigpipe.mjs"
@@ -1369,18 +1391,17 @@ export function dockerfileRunUnits(content, { file = "Dockerfile" } = {}) {
 }
 
 /**
- * Os arquivos que carregam shell EMBUTIDO: os Dockerfiles (por NOME, em qualquer
- * diretório) e os composes do repositório.
+ * A varredura CRUA dos embutidos: os Dockerfiles (por NOME, em qualquer
+ * diretório) e os composes — a metade interna de `embeddedDoRepositorio`.
  *
  * A enumeração caminha a ÁRVORE em vez de ler uma lista à mão: um `Dockerfile`
  * novo num diretório novo entra na varredura sem editar nada aqui — a lista
  * fixa é justamente como um alvo fica invisível (o `DOCKERFILES` do
  * `check-bun-mirror` é uma lista de OUTRO assunto, e este gate não depende dela).
- *
- * @param {string} root
- * @returns {string[]}
+ * O que a árvore carrega e o REPOSITÓRIO não (`semLocaisIgnorados`) é subtraído
+ * um nível acima: scratch de sessão não é Dockerfile do repositório.
  */
-export function embeddedPaths(root) {
+function varreduraDeEmbutidos(root) {
   const out = []
   const walk = (dir) => {
     const abs = dir === "" ? root : join(root, dir)
@@ -1398,6 +1419,33 @@ export function embeddedPaths(root) {
   }
   walk("")
   return out.sort()
+}
+
+/**
+ * Os Dockerfiles/composes DO REPOSITÓRIO, com a procedência do corte.
+ *
+ * A régua do corte é a MESMA dos scripts (`semLocaisIgnorados`, do dono da
+ * varredura de shell): o que o `.gitignore` declara local não é um Dockerfile do
+ * repositório — um scratch com esse nome num diretório ignorado não pode
+ * reprovar o gate que o CI nunca veria.
+ *
+ * @param {string} root
+ * @param {{run?: Function}} [deps]
+ * @returns {{caminhos: string[], locais: string[], indisponivel: string|null}}
+ */
+export function embeddedDoRepositorio(root, { run = spawnSync } = {}) {
+  return semLocaisIgnorados(root, varreduraDeEmbutidos(root), { run })
+}
+
+/**
+ * Os arquivos que carregam shell EMBUTIDO — o atalho sem a procedência do corte
+ * (os Dockerfiles/composes do repositório).
+ *
+ * @param {string} root
+ * @returns {string[]}
+ */
+export function embeddedPaths(root) {
+  return embeddedDoRepositorio(root).caminhos
 }
 
 /**
@@ -1422,7 +1470,7 @@ export function embeddedPaths(root) {
  *
  * @param {string} root
  * @param {{staged?: boolean}} [opts]
- * @returns {{files: string[], donos: string[], units: {file: string, line: number, body: string, fonte: string}[], payloads: {file: string, line: number|null, body: string, fonte: string, mascara: "runner"|"compose"|null}[], skipped: {file: string, line: number|null, detail: string}[], indeterminate: {file: string, line: number|null, detail: string}[], unread: {file: string, detail: string}[]}}
+ * @returns {{files: string[], donos: string[], units: {file: string, line: number, body: string, fonte: string}[], payloads: {file: string, line: number|null, body: string, fonte: string, mascara: "runner"|"compose"|null}[], skipped: {file: string, line: number|null, detail: string}[], indeterminate: {file: string, line: number|null, detail: string}[], unread: {file: string, detail: string}[], locais: string[]}}
  */
 export function collectEmbeddedShell(root, { staged = false } = {}) {
   const files = []
@@ -1432,9 +1480,17 @@ export function collectEmbeddedShell(root, { staged = false } = {}) {
   const skipped = []
   const indeterminate = []
   const unread = []
+  const locais = []
   let alvos
   try {
-    const donosVarridos = staged ? embeddedStagedPaths(root) : embeddedPaths(root)
+    let donosVarridos
+    if (staged) {
+      donosVarridos = embeddedStagedPaths(root)
+    } else {
+      const doRepositorio = embeddedDoRepositorio(root)
+      donosVarridos = doRepositorio.caminhos
+      locais.push(...doRepositorio.locais)
+    }
     donos.push(...donosVarridos)
     const workflows = staged ? stagedWorkflowPaths(root) : allWorkflowFiles(root).map((w) => w.path)
     const scripts = staged ? stagedShellScriptPaths(root) : listShellScripts(root)
@@ -1448,6 +1504,7 @@ export function collectEmbeddedShell(root, { staged = false } = {}) {
       skipped,
       indeterminate,
       unread: [{ file: root, detail: String(err?.message ?? err) }],
+      locais,
     }
   }
   for (const rel of alvos) {
@@ -1507,7 +1564,7 @@ export function collectEmbeddedShell(root, { staged = false } = {}) {
       indeterminate.push({ file: rel, line: s.linha, detail: s.detail })
     }
   }
-  return { files, donos, units, payloads, skipped, indeterminate, unread }
+  return { files, donos, units, payloads, skipped, indeterminate, unread, locais }
 }
 
 /**
@@ -1545,22 +1602,30 @@ export function embeddedStagedPaths(root) {
  *
  * @param {string} root
  * @param {{staged?: boolean}} [opts]
- * @returns {{files: string[], scripts: {file: string, body: string, interpreter: string, fonte: string}[], skipped: {file: string, detail: string}[], unread: {file: string, detail: string}[]}}
+ * @returns {{files: string[], scripts: {file: string, body: string, interpreter: string, fonte: string}[], skipped: {file: string, detail: string}[], unread: {file: string, detail: string}[], locais: string[]}}
  */
 export function collectShellScripts(root, { staged = false } = {}) {
   const files = []
   const scripts = []
   const skipped = []
   const unread = []
+  const locais = []
   let lista
   try {
-    lista = staged ? stagedShellScriptPaths(root) : listShellScripts(root)
+    if (staged) {
+      lista = stagedShellScriptPaths(root)
+    } else {
+      const doRepositorio = scriptsDoRepositorio(root)
+      lista = doRepositorio.caminhos
+      locais.push(...doRepositorio.locais)
+    }
   } catch (err) {
     return {
       files,
       scripts,
       skipped,
       unread: [{ file: root, detail: String(err?.message ?? err) }],
+      locais,
     }
   }
   for (const rel of lista) {
@@ -1597,7 +1662,7 @@ export function collectShellScripts(root, { staged = false } = {}) {
       fonte: interp.declared ? "shebang" : "premissa",
     })
   }
-  return { files, scripts, skipped, unread }
+  return { files, scripts, skipped, unread, locais }
 }
 
 /**
@@ -1793,12 +1858,23 @@ export function checkBody(body, { bash = DEFAULT_BASH, run = spawnSync } = {}) {
  * O exit code e o relatório SOMAM as três: um script quebrado é a mesma classe
  * que um corpo quebrado, e separá-los em vereditos separados deixaria o CI verde
  * por metade.
+ *
+ * O resultado leva `locais` — o corte de ESCOPO das duas fontes de ARQUIVO (o
+ * que o repositório declara local pelo `.gitignore`): ele não é uma violação nem
+ * um pulo, é o que o relatório NOMEIA para o gate não varrer menos do que
+ * parece. Com `--staged` o corte é vazio por construção: o índice não carrega
+ * caminho ignorado.
  */
 export function scan(root, { bash = DEFAULT_BASH, run = spawnSync, staged = false } = {}) {
   const { files, steps, skipped, indeterminate, shellFailures, unread, yamlInvalido } =
     collectRunBodies(root, { staged })
   const arquivos = collectShellScripts(root, { staged })
   const embutido = collectEmbeddedShell(root, { staged })
+  // O CORTE DE ESCOPO, reunido dos dois coletores que varrem a ÁRVORE (o
+  // `--staged` lê o ÍNDICE, e o índice não tem caminho ignorado): é o que o
+  // relatório NOMEIA — um gate que varre menos do que parece mente pelo que NÃO
+  // diz.
+  const locais = [...new Set([...arquivos.locais, ...embutido.locais])].sort()
   const failures = []
   const scriptFailures = []
   const embeddedFailures = []
@@ -1867,6 +1943,7 @@ export function scan(root, { bash = DEFAULT_BASH, run = spawnSync, staged = fals
     shellFailures,
     unread: unreadTodos,
     yamlInvalido,
+    locais,
     shellFiles: arquivos.files,
     shellScripts: arquivos.scripts,
     scriptSkipped: arquivos.skipped,
@@ -2211,6 +2288,7 @@ function main() {
     embeddedPayloads,
     embeddedSkipped,
     embeddedIndeterminate,
+    locais,
     failures,
     scriptFailures,
     embeddedFailures,
@@ -2223,6 +2301,15 @@ function main() {
     for (const s of shellScripts) console.log(s.file)
     for (const u of embeddedUnits) console.log(`${u.file}:${u.line}`)
     for (const p of embeddedPayloads) console.log(p.line ? `${p.file}:${p.line}` : p.file)
+    // O CORTE DE ESCOPO sai no STDERR: o STDOUT do `--list` é uma LISTA (quem a
+    // consome espera caminhos), e misturar a procedência nele quebraria o
+    // consumidor. O gate DIZ o que ficou fora — só não o diz no canal de dados.
+    if (locais.length > 0) {
+      console.error(
+        `ℹ️  ${locais.length} arquivo(s) de shell ficaram FORA da varredura — o repositório os declara LOCAIS:`,
+      )
+      for (const l of locais) console.error(`     ${l}`)
+    }
     process.exit(EXIT.OK)
   }
 
@@ -2233,6 +2320,11 @@ function main() {
           root,
           bash,
           staged,
+          // O CORTE DE ESCOPO, nomeado: o que o repositório declara LOCAL não é
+          // script dele (o scratch de uma sessão, o cache) — sem esta lista, o
+          // número de `arquivosDeShell` não distingue "o repositório não tem mais
+          // scripts" de "o gate tirou alguns do escopo".
+          locais,
           arquivos: files,
           passos: steps.length,
           skipped,
@@ -2476,6 +2568,17 @@ function main() {
       console.log(`     ${s.line ? `${s.file}:${s.line}` : s.file}  ${s.detail}`)
     }
   }
+  // O CORTE DE ESCOPO, nomeado: o que o repositório declara LOCAL não é um
+  // script dele — o scratch de uma sessão, o cache —, e o corte sai DITO. Um
+  // gate que varre menos do que parece mente pelo que NÃO diz, e o CI (que não
+  // tem o scratch) varre exatamente o mesmo conjunto sem ele.
+  if (locais.length > 0) {
+    console.log(
+      `ℹ️  ${locais.length} arquivo(s) FORA da varredura — o repositório os declara LOCAIS (regra de ignore, medida agora):`,
+    )
+    for (const l of locais) console.log(`     ${l}`)
+  }
+
   if (staged) {
     if (files.length === 0 && shellFiles.length === 0 && embeddedUnits.length === 0) {
       console.log(
@@ -2492,7 +2595,7 @@ function main() {
   console.log(
     `✅ ${steps.length} corpo(s) \`run:\`, ${shellScripts.length} arquivo(s) de shell E ${embeddedUnits.length + embeddedPayloads.length} texto(s) de shell EMBUTIDO ` +
       `(${embeddedUnits.length} instrução(ões) \`RUN\` de Dockerfile + ${embeddedPayloads.length} payload(s) de \`sh -c\`) passam em \`${bash} -n\` ` +
-      `(as duas forjas + os scripts versionados + os Dockerfiles e composes, sem allowlist): sem erro E sem aviso — e todo \`shell:\` ` +
+      `(as duas forjas + os scripts do repositório + os Dockerfiles e composes, sem allowlist): sem erro E sem aviso — e todo \`shell:\` ` +
       `declarado existe no runner medido. O gate prova que o corpo, o arquivo e o texto embutido fazem PARSING, e que o ` +
       `interpretador existe; NÃO prova que eles fazem o que dizem.`,
   )

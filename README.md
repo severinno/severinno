@@ -1774,9 +1774,9 @@ no caminho comum (nada de corpo nem script staged: um `git diff --cached` e mais
 nada), o que o põe no orçamento de um hook que roda a CADA commit sem duplicar a
 varredura do CI. Custo medido neste host (Linux,
 09/2026, mediana de 3 runs warm): o guard ≈ **2.46s** (2.46–2.48) — ele julga os
-**124 arquivos de shell** (121 `*.sh` e os 3 hooks do `.husky/`) e os **33 textos
-de shell EMBUTIDO** (o `RUN` dos Dockerfiles e o payload dos `sh -c`), um
-`bash -n` por texto — e a prova de mutação ≈ **30.8s** onde o `vitest` está
+arquivos de shell do repositório (144 hoje: 141 `*.sh` e os 3 hooks do
+`.husky/`) e os **35 textos de shell EMBUTIDO** (o `RUN` dos Dockerfiles e o
+payload dos `sh -c`), um `bash -n` por texto — e a prova de mutação ≈ **30.8s** onde o `vitest` está
 instalado (as duas rodadas da suíte unitária do M8 são ~24.9s disso, o que põe o
 gate sozinho em ≈ **5.9s**: aritmética sobre duas medições deste host, não uma
 nova medição): o caminho do gate é node-puro (um `bash -n` por cenário, sem
@@ -2134,11 +2134,18 @@ o `Summary` — que estava FORA do total declarado (21198ms = setup + install + 
 - check) — entrou pela cobertura exata: todo `run:` do job tem de estar contado, e
   um passo novo na pipeline indetermina o veredito em vez de entrar custando zero.
 
-O gate de sintaxe julga três fontes: os **482 corpos** `run:` das duas forjas, os
-**124 scripts de shell** versionados e — desde a terceira fonte — **33 textos de
-shell EMBUTIDO**: as 14 instruções `RUN` dos Dockerfiles (o shell do BUILD, com a
-continuação `\` juntada antes do parser) e os 19 payloads de `sh -c` de scripts,
-corpos e composes (que para o `bash -n` do arquivo que os contém são uma STRING).
+O gate de sintaxe julga três fontes: os **567 corpos** `run:` das duas forjas, os
+**144 scripts de shell** do repositório e — desde a terceira fonte — **35 textos
+de shell EMBUTIDO**: as 14 instruções `RUN` dos Dockerfiles (o shell do BUILD,
+com a continuação `\` juntada antes do parser) e os 21 payloads de `sh -c` de
+scripts, corpos e composes (que para o `bash -n` do arquivo que os contém são uma
+STRING). O escopo é do **repositório**, não da árvore: o que o próprio
+`.gitignore` declara **local** (o scratch de uma sessão num checkout
+compartilhado) sai da varredura — um PATCH salvo com extensão `.sh` dentro de
+`.tmp/` pintava o local de vermelho num arquivo que o CI nunca vê —, e o
+**versionado nunca sai**, mesmo que uma regra o case: o CI o carrega. O corte sai
+**nomeado** no relatório (e no `--json`), e git que não responde devolve a lista
+inteira, com o motivo.
 O escopo cresceu de novo e o custo acompanhou **apenas em parte**: o guard foi
 2280ms → 2464ms → **2496ms** (os composes e os Dockerfiles entram na leitura, e o
 `bash -n` deles é marginal), enquanto o mutation test — dominante no job, 96% —

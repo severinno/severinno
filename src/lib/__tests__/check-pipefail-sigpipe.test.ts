@@ -22,6 +22,7 @@
 // Sem docker, sem rede, sem executar gate: as funções puras + fixtures em tmpdir.
 // =============================================================================
 
+import { spawnSync } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -48,6 +49,8 @@ import {
   listShellScripts,
   logicalCommands,
   scanRoot,
+  scriptsDoRepositorio,
+  semLocaisIgnorados,
   splitPipelines,
   suggestHerestring,
   shellEnablesPipefail,
@@ -82,6 +85,8 @@ type ResultadoScan = {
   violations: Violacao[]
   premissas: Premissa[]
   ilegiveis: { file: string; line: number; scope: string; job: string | null; shell: string }[]
+  /** O corte de ESCOPO: o que o repositório declara LOCAL (`.gitignore`). */
+  locais: string[]
   scanned: {
     shellScripts: number
     shellScriptsComPipefail: number
@@ -92,6 +97,8 @@ type ResultadoScan = {
     passosComDefaultDeclarado: number
     passosComShellNoPasso: number
     defaultShellsEmPipefail: number
+    /** Quantos scripts o corte tirou do escopo (o que `shellScripts` NÃO julga). */
+    locais: number
   }
 }
 
@@ -663,6 +670,142 @@ describe("scanRoot — o que entra na varredura", () => {
       ].join("\n"),
     )
     expect(scanRoot(dir).violations).toEqual([])
+  })
+})
+
+// ── O CORTE DE ESCOPO: o que o repositório declara LOCAL ──────────────────
+//
+// A varredura é da ÁRVORE, e a árvore de um checkout compartilhado carrega
+// scratch que o `.gitignore` declara local (o `.tmp/` de outra sessão). O
+// defeito MEDIDO: um PATCH salvo com extensão `.sh` dentro de `.tmp/` era
+// julgado por `bash -n` e pintava o local de vermelho — um arquivo que o CI
+// nunca vê. O corte é ESCOPO, não exceção, e as DUAS direções importam: o
+// ignorado SAI, e o VERSIONADO que casa uma regra FICA (o CI o carrega).
+
+describe("semLocaisIgnorados — quem decide o corte é o git, não a varredura", () => {
+  /** Um repo git de verdade no tmpdir: sem ele não há corte a medir. */
+  function repoGit(): string {
+    const dir = makeDir()
+    const r = spawnSync("git", ["init", "-q", "."], { cwd: dir, encoding: "utf8" })
+    if (r.status !== 0) {
+      throw new Error(`git init falhou no fixture: ${r.stderr ?? r.error?.message ?? r.status}`)
+    }
+    return dir
+  }
+
+  /** Roda git no fixture — e LANÇA se falhar (o fixture não pode mentir). */
+  function git(dir: string, args: string[]): void {
+    const r = spawnSync("git", args, { cwd: dir, encoding: "utf8" })
+    if (r.status !== 0) {
+      throw new Error(`git ${args.join(" ")} falhou: ${r.stderr ?? r.error?.message ?? r.status}`)
+    }
+  }
+
+  it("o scratch IGNORADO sai da lista e é NOMEADO no corte (o arquivo ESTÁ na árvore)", () => {
+    const dir = repoGit()
+    escrever(dir, ".gitignore", ".tmp/\n")
+    escrever(dir, "scripts/real.sh", "#!/usr/bin/env bash\nset -euo pipefail\n")
+    escrever(dir, ".tmp/scratch.sh", "if [ x ]; then\n") // nem parsing faz
+    git(dir, ["add", "-A"])
+
+    const r = scriptsDoRepositorio(dir)
+    // A metade anti-tautologia: o arquivo ESTÁ na árvore — quem o tirou da
+    // varredura foi o `.gitignore` dele, não a ausência do arquivo.
+    expect(existsSync(join(dir, ".tmp/scratch.sh"))).toBe(true)
+    expect(r.caminhos).toEqual(["scripts/real.sh"])
+    expect(r.locais).toEqual([".tmp/scratch.sh"])
+    expect(r.indisponivel).toBeNull()
+  })
+
+  it("o VERSIONADO que casa a regra FICA — tirá-lo seria varrer menos que o CI", () => {
+    const dir = repoGit()
+    escrever(dir, ".gitignore", "scratch/\n")
+    escrever(dir, "scratch/versionado.sh", "#!/usr/bin/env bash\nset -euo pipefail\n")
+    escrever(dir, "scratch/so-na-arvore.sh", "#!/usr/bin/env bash\nset -euo pipefail\n")
+    // `-f`: o ignore não vale para o ÍNDICE — é essa metade que o corte pergunta.
+    git(dir, ["add", "-f", "scratch/versionado.sh"])
+
+    const r = scriptsDoRepositorio(dir)
+    expect(r.caminhos).toContain("scratch/versionado.sh")
+    expect(r.caminhos).not.toContain("scratch/so-na-arvore.sh")
+    expect(r.locais).toEqual(["scratch/so-na-arvore.sh"])
+  })
+
+  it("o NÃO versionado que o ignore NÃO cobre segue no escopo (o corte não é 'tudo que não foi commitado')", () => {
+    const dir = repoGit()
+    escrever(dir, "scripts/novo.sh", "#!/usr/bin/env bash\nset -euo pipefail\n")
+
+    const r = scriptsDoRepositorio(dir)
+    expect(r.caminhos).toEqual(["scripts/novo.sh"])
+    expect(r.locais).toEqual([])
+    expect(r.indisponivel).toBeNull()
+  })
+
+  it("FALLBACK declarado: git que não responde devolve a lista INTEIRA — nunca um corte inventado", () => {
+    // O caso do `--root` dos testes: fixture em tmpdir, fora de repositório.
+    const dir = makeDir()
+    escrever(dir, "scripts/a.sh", "#!/usr/bin/env bash\nset -euo pipefail\n")
+    const semGit = scriptsDoRepositorio(dir)
+    expect(semGit.caminhos).toEqual(["scripts/a.sh"])
+    expect(semGit.locais).toEqual([])
+    expect(semGit.indisponivel).toMatch(/git ls-files indisponível/)
+
+    // O git que responde com FALHA (status ≠ 0) cai no MESMO desfecho...
+    const falhou = semLocaisIgnorados(dir, ["a.sh"], {
+      run: () => ({ status: 128, stdout: "", stderr: "fatal: not a git repository\n" }),
+    })
+    expect(falhou).toEqual({
+      caminhos: ["a.sh"],
+      locais: [],
+      indisponivel: "git ls-files indisponível (exit 128)",
+    })
+
+    // ...e o git que LANÇA também: a varredura fica mais AMPLA, jamais mais estreita.
+    const lancou = semLocaisIgnorados(dir, ["a.sh"], {
+      run: () => {
+        throw new Error("spawnSync git ENOENT")
+      },
+    })
+    expect(lancou.caminhos).toEqual(["a.sh"])
+    expect(lancou.locais).toEqual([])
+    expect(lancou.indisponivel).toBe("git ls-files não rodou: spawnSync git ENOENT")
+  })
+
+  it("FALLBACK por metade: `check-ignore` que falha não tira NINGUÉM do escopo", () => {
+    const dir = makeDir()
+    const ok = { status: 0, stdout: "a.sh\u0000", stderr: "" }
+    const r = semLocaisIgnorados(dir, ["a.sh", "b.sh"], {
+      run: (_cmd: string, args: string[]) =>
+        args[0] === "ls-files" ? ok : { status: 2, stdout: "", stderr: "fatal: bad option\n" },
+    })
+    expect(r.caminhos).toEqual(["a.sh", "b.sh"])
+    expect(r.locais).toEqual([])
+    expect(r.indisponivel).toMatch(/git check-ignore indisponível \(exit 2\)/)
+  })
+
+  it("o `scanRoot` julga o VERSIONADO e NOMEIA o corte — o ignorado não conta nem vira violação", () => {
+    const dir = repoGit()
+    escrever(dir, ".gitignore", ".tmp/\n")
+    const violacao =
+      '#!/usr/bin/env bash\nset -euo pipefail\nOUT=$(x)\necho "$OUT" | grep -Fq "ok"\n'
+    escrever(dir, "scripts/violacao.sh", violacao)
+    escrever(dir, ".tmp/copia.sh", violacao) // a MESMA violação, do lado de fora
+    git(dir, ["add", "-A"])
+
+    const r = scan(dir)
+    expect(r.violations.map((v) => v.file)).toEqual(["scripts/violacao.sh"])
+    expect(r.locais).toEqual([".tmp/copia.sh"])
+    expect(r.scanned.locais).toBe(1)
+    expect(r.scanned.shellScripts).toBe(1)
+  })
+
+  it("fixture fora de repositório: NENHUM corte é afirmado (`locais` vazio) — o git não respondeu", () => {
+    const dir = makeDir()
+    escrever(dir, "scripts/x.sh", "#!/usr/bin/env bash\nset -euo pipefail\n")
+    const r = scan(dir)
+    expect(r.locais).toEqual([])
+    expect(r.scanned.locais).toBe(0)
+    expect(r.scanned.shellScripts).toBe(1)
   })
 })
 

@@ -60,11 +60,18 @@
 //      semanal, ao lado das outras allowlists) faz da decisão vencida VIOLAÇÃO.
 //
 // ESCOPO (declarado, porque gate que varre menos do que parece mente):
-//   1. scripts de shell versionados (*.sh, *.bash) que DECLARAM pipefail
+//   1. scripts de shell DO REPOSITÓRIO (*.sh, *.bash) que DECLARAM pipefail
 //      (`set -euo pipefail` & cia) — sem pipefail a soma do pipeline é o status
 //      do grep e o SIGPIPE do produtor não é observado, então não é a classe;
 //      NÃO existe `set +o pipefail` no repositório: a declaração vale para o
-//      arquivo inteiro;
+//      arquivo inteiro. "Do repositório" é a ÁRVORE menos o que o próprio
+//      repositório declara LOCAL (`semLocaisIgnorados`): o scratch de uma sessão
+//      (o `.tmp/` de um checkout compartilhado) não é script dele, e o
+//      VERSIONADO nunca sai — mesmo que uma regra de ignore o case, o CI o
+//      carrega. O que ficou de fora sai NOMEADO no relatório (e no `--json`),
+//      porque gate que varre menos sem dizer mente pelo que não diz; e git que
+//      não responde devolve a lista INTEIRA, com o motivo — nunca um corte
+//      inventado;
 //   2. os hooks do `.husky/` (arquivos SEM extensão que o git roda: `pre-commit`,
 //      `pre-push`, `post-checkout`) — são scripts de shell como os outros, e um
 //      deles já tinha a classe;
@@ -142,6 +149,7 @@
 // falsa segurança que ele recusa em todas as outras dimensões.
 // =============================================================================
 
+import { spawnSync } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
@@ -1070,15 +1078,19 @@ export function isShellScript(relPath) {
   return parts.length >= 2 && parts[parts.length - 2] === HUSKY_DIR
 }
 
-/** Varre a árvore e devolve os scripts de shell (caminhos relativos ao root). */
-export function listShellScripts(root, { dir = "", out = [] } = {}) {
+/**
+ * A varredura CRUA da árvore: o que a extensão (ou o `.husky/`) diz, sem a
+ * régua do git. É a metade INTERNA de `scriptsDoRepositorio` — quem chama de
+ * fora pede a lista DO REPOSITÓRIO, não a da árvore.
+ */
+function varreduraDeShell(root, { dir = "", out = [] } = {}) {
   const abs = dir === "" ? root : join(root, dir)
   if (!existsSync(abs)) return out
   for (const entry of readdirSync(abs, { withFileTypes: true })) {
     const rel = dir === "" ? entry.name : `${dir}/${entry.name}`
     if (entry.isDirectory()) {
       if (SKIP_DIRS.has(entry.name)) continue
-      listShellScripts(root, { dir: rel, out })
+      varreduraDeShell(root, { dir: rel, out })
       continue
     }
     if (!entry.isFile()) continue
@@ -1088,13 +1100,139 @@ export function listShellScripts(root, { dir = "", out = [] } = {}) {
 }
 
 /**
- * A varredura inteira: scripts de shell + os `run:` dos workflows das forjas.
+ * A DECLARAÇÃO do repositório sobre o que é LOCAL: tira da lista o que as
+ * regras de ignore escondem do `git status` — esse caminho não é do repositório,
+ * e o CI (que não o tem) varre exatamente o mesmo conjunto sem ele.
+ *
+ * POR QUE ISTO EXISTE (o defeito medido em 26/09/2026): a varredura é da ÁRVORE,
+ * e a árvore de um checkout compartilhado carrega scratch que o `.gitignore`
+ * declara local — `.tmp/mineracao/test-mutation-remedy-classes.sh` é o conteúdo
+ * de um PATCH com extensão `.sh`, e o `bash -n` reprovava o DIFF (não um
+ * programa), pintando o local de vermelho num defeito que o CI nunca vê. É
+ * ESCOPO e não exceção: o arquivo ignorado não é um script do repositório, do
+ * mesmo jeito que o que está dentro de `node_modules` não é.
+ *
+ * AS DUAS METADES SÃO PERGUNTADAS AO GIT — a varredura não decide sozinha:
+ *   1. o ÍNDICE (`git ls-files`): um caminho VERSIONADO fica, mesmo que uma
+ *      regra o case — o ignore não vale para o que já está no índice, e tirar do
+ *      escopo o que o CI carrega seria varrer menos do que parece;
+ *   2. o IGNORE (`git check-ignore -v`): dos que NÃO estão no índice, os que o
+ *      repositório declara locais saem.
+ *
+ * FALLBACK DECLARADO: quando o git não responde (uma fixture que não é
+ * repositório — o caso do `--root` dos testes), a lista sai INTEIRA e o
+ * `indisponivel` diz por quê. A varredura fica mais AMPLA, nunca mais estreita:
+ * um root sem git não pode ser confundido com um repositório limpo, e "não
+ * consegui perguntar" jamais apaga arquivo do escopo.
  *
  * @param {string} root
- * @returns {{files: string[], violations: object[], foraDoEscopo: object[], premissas: object[], ilegiveis: object[], scanned: object}}
+ * @param {string[]} caminhos
+ * @param {{run?: Function}} [deps]
+ * @returns {{caminhos: string[], locais: string[], indisponivel: string|null}}
+ */
+export function semLocaisIgnorados(root, caminhos, { run = spawnSync } = {}) {
+  const lista = [...caminhos]
+  if (lista.length === 0) return { caminhos: lista, locais: [], indisponivel: null }
+  const git = (args, opts = {}) =>
+    run("git", args, {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 60_000,
+      maxBuffer: 64 * 1024 * 1024,
+      ...opts,
+    })
+  let versionados
+  try {
+    const r = git(["ls-files", "-z"])
+    if (r?.error || r?.status !== 0) {
+      return {
+        caminhos: lista,
+        locais: [],
+        indisponivel: `git ls-files indisponível (${r?.error?.message ?? `exit ${r?.status}`})`,
+      }
+    }
+    versionados = new Set(
+      String(r.stdout ?? "")
+        .split("\u0000")
+        .filter((p) => p !== ""),
+    )
+  } catch (error) {
+    return {
+      caminhos: lista,
+      locais: [],
+      indisponivel: `git ls-files não rodou: ${error?.message ?? error}`,
+    }
+  }
+  const candidatos = lista.filter((p) => !versionados.has(p))
+  if (candidatos.length === 0) return { caminhos: lista, locais: [], indisponivel: null }
+  let ignorados
+  try {
+    // O exit do `check-ignore` é um DESFECHO, não um erro: 0 = um ou mais
+    // caminhos ignorados, 1 = nenhum. Outro código é o git que não respondeu.
+    const r = git(["check-ignore", "-v", "--stdin"], { input: `${candidatos.join("\n")}\n` })
+    if (r?.error || (r?.status !== 0 && r?.status !== 1)) {
+      return {
+        caminhos: lista,
+        locais: [],
+        indisponivel: `git check-ignore indisponível (${r?.error?.message ?? `exit ${r?.status}`})`,
+      }
+    }
+    ignorados = new Set(
+      String(r.stdout ?? "")
+        .split("\n")
+        .filter((l) => l !== "")
+        .map((l) => l.slice(l.lastIndexOf("\t") + 1).trim()),
+    )
+  } catch (error) {
+    return {
+      caminhos: lista,
+      locais: [],
+      indisponivel: `git check-ignore não rodou: ${error?.message ?? error}`,
+    }
+  }
+  return {
+    caminhos: lista.filter((p) => !ignorados.has(p)),
+    locais: candidatos.filter((p) => ignorados.has(p)).sort(),
+    indisponivel: null,
+  }
+}
+
+/**
+ * OS SCRIPTS DE SHELL DO REPOSITÓRIO — a lista que os guards deste módulo, o
+ * `check:pipefail-sigpipe` e o `check-workflow-run-syntax` consomem: a varredura
+ * da árvore MENOS o que o próprio repositório declara local.
+ *
+ * Com a procedência do que ficou fora (`locais`), para o relatório NOMEAR o
+ * corte em vez de varrer menos em silêncio.
+ */
+export function scriptsDoRepositorio(root, { run = spawnSync } = {}) {
+  return semLocaisIgnorados(root, varreduraDeShell(root), { run })
+}
+
+/**
+ * A lista de scripts do repositório, sem a procedência — o atalho dos
+ * consumidores que não relatam o corte.
+ *
+ * @param {string} root
+ * @returns {string[]}
+ */
+export function listShellScripts(root) {
+  return scriptsDoRepositorio(root).caminhos
+}
+
+/**
+ * A varredura inteira: scripts de shell + os `run:` dos workflows das forjas.
+ *
+ * A lista de scripts é a do REPOSITÓRIO (`scriptsDoRepositorio`): a varredura da
+ * árvore MENOS o que o `.gitignore` declara local — o scratch de uma sessão não
+ * é um script do repositório, e `locais` leva a procedência desse corte para o
+ * relatório NOMEAR o que ficou fora.
+ *
+ * @param {string} root
+ * @returns {{files: string[], violations: object[], foraDoEscopo: object[], premissas: object[], ilegiveis: object[], locais: string[], scanned: object}}
  */
 export function scanRoot(root) {
-  const files = listShellScripts(root)
+  const { caminhos: files, locais } = scriptsDoRepositorio(root)
   const violations = []
   // O que a varredura NÃO conseguiu ler, NOMEADO: as duas fontes do guard (o
   // `.sh` do repositório e o workflow das forjas). Antes o `readFileSync` cru
@@ -1226,6 +1364,7 @@ export function scanRoot(root) {
     ),
     ilegiveis,
     naoLidos: naoLidos.sort((a, b) => a.path.localeCompare(b.path)),
+    locais,
     scanned: {
       shellScripts: files.length,
       shellScriptsComPipefail: scriptsComPipefail,
@@ -1237,6 +1376,10 @@ export function scanRoot(root) {
       passosComDefaultDeclarado,
       passosComShellNoPasso,
       defaultShellsEmPipefail: [...premissas.values()].length,
+      // O corte de ESCOPO, contado: `shellScripts` é o que foi julgado, e este é
+      // o que o repositório declara local — sem ele, os dois números seriam um
+      // só e o relatório não diria que houve corte.
+      locais: locais.length,
     },
   }
 }
@@ -1604,7 +1747,7 @@ function main() {
     process.exit(EXIT.UNAVAILABLE)
   }
 
-  const { files, violations, foraDoEscopo, premissas, ilegiveis, naoLidos, scanned } =
+  const { files, violations, foraDoEscopo, premissas, ilegiveis, naoLidos, locais, scanned } =
     scanRoot(root)
   // NÃO SEI JULGAR vem primeiro, em qualquer modo de saída: sem ter lido todo o
   // escopo, "nenhuma ocorrência nova" (e o JSON que o doctor publica) seria uma
@@ -1782,6 +1925,11 @@ function main() {
           premissas,
           ilegiveis,
           naoLidos,
+          // O CORTE DE ESCOPO, nomeado: o que o repositório declara LOCAL não é
+          // script dele (o scratch de uma sessão, o cache) — sem esta lista, o
+          // `scanned.shellScripts` não distingue "o repositório não tem mais
+          // scripts" de "o gate tirou alguns do escopo".
+          locais,
           // O QUE A VARREDURA NÃO JULGOU, nomeado: sem esta lista, "N passos" no
           // relatório não distingue "não havia o que julgar" de "o gate não olhou".
           foraDoEscopo,
@@ -1857,6 +2005,17 @@ function main() {
         .map((r) => `${r.file}: ${r.baseline}→${r.atual}`)
         .join(", ")}) — a dívida diminuiu; rode \`--update\` (local) para registrar.`,
     )
+  }
+
+  // O CORTE DE ESCOPO, nomeado: o que o repositório declara LOCAL não é script
+  // dele (o scratch de uma sessão, o cache), e o corte sai DITO — um gate que
+  // varre menos do que parece mente pelo que NÃO diz.
+  if (locais.length > 0) {
+    console.log(
+      `ℹ️  ${locais.length} arquivo(s) de shell FORA da varredura — o repositório os declara LOCAIS ` +
+        `(regra de ignore, medida agora):`,
+    )
+    for (const l of locais) console.log(`     ${l}`)
   }
 
   // O ESCOPO DECLARADO: os passos que a varredura NÃO julgou, um a um. Um gate
