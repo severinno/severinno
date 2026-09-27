@@ -7,9 +7,10 @@
 #   bash scripts/test-mutation-artefatos-do-hook.sh
 #
 # Exit codes:
-#   0 — as DUAS metades foram DETECTADAS (a lista derivada esvazia e, na
-#       segunda, perde UM artefato; em ambas o FIXTURE fica VERMELHO — por
-#       execução e pela suíte) e o controle passou ✅
+#   0 — as TRÊS metades foram DETECTADAS (a lista derivada esvazia e, na
+#       segunda, perde UM artefato — em ambas o FIXTURE fica VERMELHO, por
+#       execução e pela suíte —; a terceira exige a RECUSA da troca SEM a
+#       prova-de-aplicação) e o controle passou ✅
 #   1 — uma metade NÃO sustentou o veredito (a mutação não mudou a leitura),
 #       mutação não-cirúrgica, ou a restauração falhou ❌
 #   2 — infra: a leitura por execução não pôde ser montada
@@ -42,6 +43,14 @@
 #     que "um item a menos" NÃO passa como "uma lista menor": a lista à mão não
 #     volta inteira, volta pela METADE, e quem a barra é o artefato que o fixture
 #     PRECISA (fail-closed por dependência, não por tamanho de lista).
+#   · M3 — a PROVA-DE-APLICAÇÃO do próprio harness: a troca SEM o marcador
+#     `MUTACAO` no texto novo. O `mutar` não confia no replace — ele exige que a
+#     mutação CARREGUE o marcador, que é o que PROVA que ela aplicou (o alvo pode
+#     casar e a escrita falhar). Sem essa prova, uma mutação que não aplicasse
+#     seria medida contra o guard ÍNTEGRO: o teste passaria por VÁCUO e o verde
+#     da suíte não diria nada. É a metade que exige o VERMELHO da PRÓPRIA suíte, e
+#     é de propósito: aqui quem é load-bearing é a guarda do harness, não o
+#     veredito do fixture.
 #
 # DUAS TESTEMUNHAS INDEPENDENTES
 #
@@ -94,6 +103,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 METADES=(
   'M1|a LISTA DERIVADA esvaziada: o fixture perde os artefatos, o hook cai em INFRA na cópia e o vermelho deixa de falar do defeito (a lista à mão de novo)'
   'M2|a COLETA para de registrar UM leitor: a lista derivada perde o compose, os outros oito ficam e o hook cai no MESMO INFRA — a lista à mão voltando pela metade não passa como lista menor'
+  'M3|a PROVA-DE-APLICAÇÃO — a troca SEM o marcador MUTACAO é RECUSADA pela suíte: sem ela a detecção de mutação poderia passar em VÁCUO (medindo o guard íntegro)'
 )
 
 cd "$SCRIPT_DIR"
@@ -479,6 +489,36 @@ exigir_saida_sem "HOOK_COMPLETOU" "M2: o hook NÃO atravessa (a cópia é insegu
 exigir_suite_vermelha "M2" "$ANCORA_M2"
 restaurar_original
 
+# ── M3 — a PROVA-DE-APLICAÇÃO: a troca SEM o marcador MUTACAO é RECUSADA ────
+# O marcador `MUTACAO M` no texto NOVO é o que prova que a mutação APLICOU — o
+# alvo pode casar e a escrita falhar, e uma mutação que não aplicou seria medida
+# contra o guard ÍNTEGRO (a suíte passaria em VÁCUO, dando verde sobre uma árvore
+# que ninguém mutou). Aqui a troca é a MESMA da M1 (o retorno da derivação
+# esvaziado), SÓ SEM o marcador: o `mutar` tem de RECUSAR e a suíte, por
+# consequência, sair VERMELHA. É o ÚNICO ponto da matriz em que se exige o vermelho
+# da PRÓPRIA suíte — e é de propósito: quem é load-bearing aqui é a guarda do
+# harness, não o veredito do fixture. O MOTIVO da recusa é conferido na saída: um
+# vermelho por outra causa (a troca não-cirúrgica, por exemplo) não é a prova
+# desta metade. Note que o `mutar` ESCREVE o guard antes de conferir o marcador —
+# a recusa não é "a escrita falhou", é "a escrita não se provou".
+header "M3 — a PROVA-DE-APLICAÇÃO: a troca SEM o marcador MUTACAO é recusada"
+set +e
+M3_SAIDA="$( ( mutar '      artefatos: todos.filter((rel) => !fora.has(rel)),' '      artefatos: []' ) 2>&1 )"
+M3_EXIT=$?
+set -e
+if [ "$M3_EXIT" -eq 0 ]; then
+  fail "M3: a suíte ACEITOU uma mutação SEM a prova-de-aplicação — o marcador MUTACAO não é load-bearing e a detecção poderia ser VÁCUA"
+  echo "$M3_SAIDA" | sed 's/^/      /'
+  exit 1
+fi
+if ! grep -qF "a mutação não aplicou no guard" <<<"$M3_SAIDA"; then
+  fail "M3: o vermelho veio de OUTRO motivo, não da guarda do marcador — o que se mede é a PROVA-DE-APLICAÇÃO:"
+  echo "$M3_SAIDA" | sed 's/^/      /'
+  exit 1
+fi
+pass "M3: a suíte RECUSOU a troca sem o marcador MUTACAO (exit $M3_EXIT) — a prova-de-aplicação é load-bearing"
+restaurar_original
+
 # ── FECHO ─────────────────────────────────────────────────────────────────
 header "FECHO"
 rodar_driver_e_checar "FECHO"
@@ -487,5 +527,5 @@ exigir_contagem "artefatos" "$N_CONTROLE" "e o TAMANHO dela volta ao do CONTROLE
 exigir_contem "artefatos" "deploy/docker-compose.gitea.yml" "e o artefato que as DUAS metades tiraram está de volta na lista"
 exigir_igual "hookStatus" "0" "e o fixture volta a ficar verde"
 exigir_suite_verde "FECHO"
-pass "as metades M1 (a lista derivada esvaziada) e M2 (a lista derivada com UM artefato a menos) foram detectadas — o fixture fica VERMELHO nas duas; o guard está restaurado e medindo"
+pass "as metades M1 (a lista derivada esvaziada) e M2 (a lista derivada com UM artefato a menos) foram detectadas (o fixture fica VERMELHO nas duas) e a M3 (a troca SEM a prova-de-aplicação) foi RECUSADA — a guarda do harness é load-bearing; o guard está restaurado e medindo"
 echo ""
