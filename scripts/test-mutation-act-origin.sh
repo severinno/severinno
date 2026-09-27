@@ -68,8 +68,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 GUARD="$SCRIPT_DIR/scripts/check-act-origin.mjs"
 # O FECHO DE IMPORTS do gate: ele lê a matriz da árvore com as MESMAS réguas da
 # casa, e o fixture roda o gate COPIADO — sem os vizinhos, a cópia morre com
-# ERR_MODULE_NOT_FOUND e o exit 1 do NODE passaria por veredito do gate.
-FECHO_GUARD=("check-mutation-count.mjs" "bench-table.mjs" "metades.mjs")
+# ERR_MODULE_NOT_FOUND e o exit 1 do NODE passaria por veredito do gate. O
+# `bench-table` (o renderizador da tabela derivada) importa o FORMATADOR do
+# repositório desde que o gerado passou a sair DENTRO do lint — ele é vizinho de
+# segundo grau, e o fecho do fixture é PLANO (o helper só importa builtins).
+FECHO_GUARD=("check-mutation-count.mjs" "bench-table.mjs" "metades.mjs" "prettier-format.mjs")
 
 METADES=(
   'M1|R1 — a origem que NÃO resolve deixa de ser recusa (o nome da classe)'

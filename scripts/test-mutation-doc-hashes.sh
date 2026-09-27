@@ -81,11 +81,14 @@ METADES=(
 
 GUARD="$SCRIPT_DIR/scripts/check-doc-hashes.mjs"
 
-# O FECHO DE IMPORTS do guard: o remédio (`--fix`) trouxe o módulo do prompt e o
-# do patch, e o fixture roda o guard COPIADO — sem os vizinhos, a cópia morre com
-# ERR_MODULE_NOT_FOUND e o exit 1 do NODE passaria por veredito do guard (é a
-# mesma classe que a suíte do `pipefail` declara: o fecho tem de vir junto).
-FECHO_GUARD=(confirm-prompt.mjs unified-patch.mjs)
+# O FECHO DE IMPORTS do guard: o remédio (`--fix`) trouxe o módulo do prompt, o do
+# patch e o FORMATADOR do repositório (a doc REMENDADA é VERSIONADA e julgada pelo
+# `lint`: a escrita passa por `escreverFormatado`), e o fixture roda o guard
+# COPIADO — sem os vizinhos, a cópia morre com ERR_MODULE_NOT_FOUND e o exit 1 do
+# NODE passaria por veredito do guard (é a mesma classe que a suíte do `pipefail`
+# declara: o fecho tem de vir junto; sem formatador a escrita degrada com motivo,
+# nunca em silêncio, então o fixture sem `node_modules` segue medindo o remendo).
+FECHO_GUARD=(confirm-prompt.mjs unified-patch.mjs prettier-format.mjs)
 
 command -v git >/dev/null || { echo "❌ git ausente (fail-closed)"; exit 2; }
 command -v node >/dev/null || { echo "❌ node ausente (fail-closed)"; exit 2; }
@@ -309,7 +312,11 @@ recebe "CONTROLE M7 (preview)" "$(rodar "$F" --fix --dry-run)" 0 "o preview prev
   fail "CONTROLE M7: o preview GRAVOU (--dry-run deixou de ser previsão)"
   exit 1
 }
-mutar_linha "$F" 'if (!dry) writeFileSync(join(root, file), novoConteudo)' '    writeFileSync(join(root, file), novoConteudo)'
+# A âncora é a linha da ESCRITA do remendo — que hoje passa pelo formatador do
+# repositório (`escreverFormatado`; a doc REMENDADA é versionada e julgada pelo
+# `lint`). A mutação tira o `dry` dela: com o preview gravando, o `--dry-run`
+# que o comentário do PR publica mentiria.
+mutar_linha "$F" 'if (!dry) escreverFormatado(join(root, file), novoConteudo, { root })' '    escreverFormatado(join(root, file), novoConteudo, { root })'
 rodar "$F" --fix --dry-run >/dev/null
 if [ "$(cksum <"$F/README.md")" = "$ANTES" ]; then
   fail "M7 (cegada) — sem o `dry`, o preview tem de GRAVAR a árvore e não gravou"
