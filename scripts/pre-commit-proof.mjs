@@ -1800,7 +1800,36 @@ export function bumpDaMatriz(copia, { ler = readFileSync } = {}) {
     .replace(bloco, (_t, corpo) => `SUBTESTS=(${corpo}\n  "${BUMP_SUBTEST}|${BUMP_SUITE}"\n)`)
     .split(`Roda os ${n} mutation tests node-puro`)
     .join(`Roda os ${nNovo} mutation tests node-puro`)
-  writeFileSync(caminhoMaster, masterNovo)
+  // A RÉGUA ÚNICA: a suíte nova tem de DECLARAR a relação dela com a prova de
+  // aplicação — e ela existe para a MATRIZ (o fixture da metade 6), nunca chama
+  // `mutacao_aplicar`: a linha vai em `FORA_DA_REGUA` com o motivo. Sem ela, o
+  // CONTROLE do bump (o MESMO índice com o ato) é recusado pela régua em vez de
+  // entrar — e a recusa medida deixaria de ser atribuível à defasagem (medido:
+  // "a suíte 'prova-bump' NÃO declara a sua relação com a régua única").
+  const foraDaRegua = "FORA_DA_REGUA=("
+  if (!masterNovo.includes(foraDaRegua)) {
+    return {
+      ok: false,
+      motivo: `${MASTER_DA_MATRIZ} não tem o bloco FORA_DA_REGUA=(...)`,
+      n,
+      nNovo,
+      refs: 0,
+    }
+  }
+  const masterComRégua = masterNovo.replace(
+    foraDaRegua,
+    `${foraDaRegua}\n  '${BUMP_SUBTEST}|a suíte do FIXTURE da prova (o bump medido): nada a mutar — existe para a matriz declarar o custo'`,
+  )
+  if (masterComRégua === masterNovo) {
+    return {
+      ok: false,
+      motivo: `a linha da régua de '${BUMP_SUBTEST}' não pôde ser acrescentada a ${MASTER_DA_MATRIZ}`,
+      n,
+      nNovo,
+      refs: 0,
+    }
+  }
+  writeFileSync(caminhoMaster, masterComRégua)
 
   // 3. O `pr-check.yml`: o summary e o comentário do job (as duas refs do count).
   const caminhoWf = join(copia, WORKFLOW_DO_COUNT)

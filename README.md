@@ -490,6 +490,28 @@ bun run e2e
 > **Snapshot management:** `bun run test:snapshot-update` → revisar `git diff`.
 > [Guia completo → `docs/TESTING.md#snapshot-management`](docs/TESTING.md#snapshot-management)
 
+### Bun no PATH — exigência das meta-suítes (incl. CI local)
+
+As meta-suítes de guardas (doctor-ci, forge-doctor, pre-push-blocks,
+prove-runner-image, pre-commit-real-proof) rodam **provas reais** que invocam
+`bun` por `spawnSync` — sem o binário no PATH, a prova sai **`unavailable`
+fail-closed** (nunca falseia veredito), e a suíte falha com
+`spawnSync bun ENOENT`.
+
+O instalador do Bun adiciona `~/.bun/bin` ao `~/.bashrc`, mas o **guard
+interativo** no topo do arquivo (`case $- in *i*) ;; *) return;; esac`) faz
+shells **não-interativos** — os que rodam testes e hooks — retornarem antes de
+alcançá-lo. O fix permanente é um symlink em `~/.local/bin` (já no PATH de
+shells não-interativos via `~/.profile`), que sobrevive a self-updates:
+
+```bash
+ln -sf ~/.bun/bin/bun  ~/.local/bin/bun
+ln -sf ~/.bun/bin/bunx ~/.local/bin/bunx
+```
+
+No CI a imagem oficial já resolve o binário — a exigência vale para **shells
+locais** (testes, hooks do husky, act).
+
 ## Encoding Guards
 
 Quatro camadas de proteção previnem que arquivos com encoding corrompido (ex: byte `0x97` Windows-1252) cheguem ao repositório:

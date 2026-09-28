@@ -338,9 +338,14 @@ function copiaMaterialDoCount(root: string, { countGuardCego = false } = {}): Se
   // As suítes que o master cita, DERIVADAS dele: uma lista à mão envelheceria no
   // dia em que um sub-test novo entrasse, e o guard recusaria o material por uma
   // suíte que a fixture não copiou (a recusa mediria a fixture).
-  const suites = [...master.matchAll(/\|(scripts\/test-mutation-[a-z0-9-]+\.sh)"/g)].map(
-    (m) => m[1],
-  )
+  // TODAS as formas, não só a tabela SUBTESTS: o master também declara suítes nos
+  // blocos de régua (SEM_MARCADOR, FORA_DA_REGUA, PROVA_DE_APLICACAO) em formato
+  // diverso ('script|motivo', aspas simples) — e o guard as confere contra o
+  // fixture (medido: a ausência de `test-mutation-forge-parity.sh` saía como
+  // "o arquivo não existe" e refutava o CONTROLE junto com o defeito).
+  const suites = [
+    ...new Set([...master.matchAll(/scripts\/test-mutation-[a-z0-9-]+\.sh/g)].map((m) => m[0])),
+  ]
   for (const rel of [
     "scripts/test-mutation-guards.sh",
     "scripts/metades.mjs",
