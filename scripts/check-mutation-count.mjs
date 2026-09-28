@@ -131,7 +131,16 @@
 //      classe declarada de `marcadorDeAtoPassado` — data explícita, `naquela
 //      rodada`, `entrou na matriz`, `era`, `medido em`, `custava`…). As duas
 //      grafias afirmam o mesmo número, e todas envelhecem igual: o que a régua
-//      PULA sai dito no relatório (`historico` / `foraDeEscopo`). O
+//      PULA sai dito no relatório (`historico` / `foraDeEscopo` /
+//      `blocoDerivado`). E o PULO é DECLARADO e travado: a doc carrega a linha
+//      `**A régua do ordinal: N referência(s) JULGADA(S) e M PULADA(S)**`, o
+//      veredito verde publica os dois números (o `--json` em
+//      `ordinaisCobertura`) e o pulo medido tem de ser IGUAL ao declarado nas
+//      DUAS direções — subir é a cobertura PIORANDO (a mensagem nomeia a
+//      referência e a classe), descer é o teto que ENVELHECEU e a declaração
+//      tem de BAIXAR junto (é a igualdade que faz o pulo só poder DIMINUIR). As
+//      JULGADAS são um PISO: a régua pode julgar mais e não pode julgar menos
+//      sem que a perda esteja numa decisão. O
 //      número tem de bater com a ordem REAL do SUBTESTS, e a referência tem de
 //      NOMEAR a suíte (o `id` entre crases ou o caminho do script) na MESMA
 //      frase — um ordinal sem a suíte ao lado é VIOLAÇÃO, nunca omissão: é o
@@ -144,9 +153,9 @@
 //      o escopo era um par escrito no fonte, e o que a régua não lê envelhece
 //      igual ao que ela lê.
 //
-// --json: { ok, derivedCount, derivedMetades, metades, prova, ordinais, bench,
-// refs: { prCheck: [...] }, violations: [...] } — exit 0 mesmo com violações
-// (modo report).
+// --json: { ok, derivedCount, derivedMetades, metades, prova, ordinais,
+// ordinaisCobertura, bench, refs: { prCheck: [...] }, violations: [...] } — exit
+// 0 mesmo com violações (modo report).
 //
 // CONTRATO DE FRASE: o guard exige a string EXATA "Roda os N mutation tests
 // node-puro" no header do master E no comentário do job do pr-check.yml —
@@ -617,9 +626,15 @@ export function ordinalDeExtenso(trecho) {
  * envelhece exatamente como a que ela lê: em silêncio. Com a varredura, o doc
  * novo entra na régua sozinho.
  *
+ * A COBERTURA SAI JUNTO, e é ela que a declaração da doc trava (a regra 4d):
+ * quantas referências foram JULGADAS e quantas foram PULADAS, com a classe de
+ * cada pulo. Uma régua que pula não tem como impedir que uma referência nova caia
+ * no pulo — mas o número do pulo é CONFERÍVEL, e é isso que transforma "a régua
+ * encolheu" em vermelho em vez de silêncio.
+ *
  * @param {string} root
  * @param {{id: string, script: string}[]} entries
- * @returns {{refs: {arquivo: string, linha: number, ordinal: number, citada: string, candidatos: string[], forma: string, historico?: string, foraDeEscopo?: boolean}[], violations: string[]}}
+ * @returns {{refs: {arquivo: string, linha: number, ordinal: number, citada: string, candidatos: string[], forma: string, historico?: string, foraDeEscopo?: boolean, blocoDerivado?: boolean}[], cobertura: {julgadas: number, puladas: number, porClasse: {historico: number, foraDeEscopo: number, blocoDerivado: number}}, violations: string[]}}
  */
 /**
  * A PROSA que a régua do ordinal lê: o README e TODOS os `.md` da árvore de
@@ -681,6 +696,14 @@ export function analisaOrdinais(root, entries) {
   )
   const refs = []
   const violations = []
+  // A COBERTURA: o que a régua JULGA e o que ela PULA (por classe). O pulo é a
+  // única parte da régua que cresce sem ninguém decidir — e é por isso que ele é
+  // contado aqui e declarado na doc (a regra 4d).
+  const cobertura = {
+    julgadas: 0,
+    puladas: 0,
+    porClasse: { historico: 0, foraDeEscopo: 0, blocoDerivado: 0 },
+  }
 
   for (const rel of docs) {
     const p = join(root, rel)
@@ -776,7 +799,6 @@ export function analisaOrdinais(root, entries) {
 
     for (const { idx, ordinal, citada, forma } of casamentos) {
       const linha = linhaDe(idx)
-      if (dentroDoBloco(linha)) continue
       const frase = fraseEm(idx)
       // Os CANDIDATOS: as suítes que a própria frase nomeia — o `id` entre crases
       // ou o caminho do script dela. É assim que a régua sabe DE QUEM é o número.
@@ -791,6 +813,25 @@ export function analisaOrdinais(root, entries) {
       }
       const referencia = citada.replace(/\s+/g, " ")
 
+      // O BLOCO DERIVADO é uma classe de PULO como as outras, e não um
+      // `continue` mudo: a régua daquela prosa é a da DERIVAÇÃO (o ato a
+      // reescreve do registro), mas a referência foi VISTA — e o que a régua vê e
+      // não julga entra na contagem e sai DITO no relatório.
+      if (dentroDoBloco(linha)) {
+        cobertura.puladas += 1
+        cobertura.porClasse.blocoDerivado += 1
+        refs.push({
+          arquivo: rel,
+          linha,
+          ordinal,
+          citada: referencia,
+          candidatos,
+          forma,
+          blocoDerivado: true,
+        })
+        continue
+      }
+
       if (forma === "nua") {
         // O ATO PASSADO é uma classe DECLARADA (a lista dos marcadores está no
         // `marcadorDeAtoPassado`): a ordem daquele momento é história do
@@ -798,6 +839,8 @@ export function analisaOrdinais(root, entries) {
         // que a pulou e por quê.
         const marca = marcadorDeAtoPassado(frase)
         if (marca !== null) {
+          cobertura.puladas += 1
+          cobertura.porClasse.historico += 1
           refs.push({
             arquivo: rel,
             linha,
@@ -812,6 +855,8 @@ export function analisaOrdinais(root, entries) {
         // Sem o CONTEXTO da matriz na frase, o número é de OUTRA lista (a suíte,
         // um passo, uma fila): fica fora do escopo, e também sai DITO.
         if (!CONTEXTO_DA_MATRIZ.test(frase)) {
+          cobertura.puladas += 1
+          cobertura.porClasse.foraDeEscopo += 1
           refs.push({
             arquivo: rel,
             linha,
@@ -825,6 +870,7 @@ export function analisaOrdinais(root, entries) {
         }
       }
 
+      cobertura.julgadas += 1
       refs.push({ arquivo: rel, linha, ordinal, citada: referencia, candidatos, forma })
 
       if (candidatos.length === 0) {
@@ -841,7 +887,90 @@ export function analisaOrdinais(root, entries) {
       }
     }
   }
-  return { refs, violations }
+  return { refs, cobertura, violations }
+}
+
+// ── A COBERTURA DA RÉGUA DO ORDINAL: publicada e TRAVADA ───────────────────
+
+/**
+ * A LINHA da doc que declara a cobertura — a forma canônica, usada pela doc e
+ * pelas mensagens de violação (o remédio é sempre a MESMA linha, com o número de
+ * agora).
+ *
+ * @param {{julgadas: number, puladas: number}} c
+ * @returns {string}
+ */
+export function linhaDaCobertura({ julgadas, puladas }) {
+  return `**A régua do ordinal: ${julgadas} referência(s) JULGADA(S) e ${puladas} PULADA(S)**`
+}
+
+/** A forma canônica da linha da cobertura, lida da prosa. */
+export const COBERTURA_ORDINAL_RE =
+  /\*\*A régua do ordinal:\s*(\d+)\s*referência\(s\)\s*JULGADA\(S\)\s*e\s*(\d+)\s*PULADA\(S\)\*\*/
+
+/**
+ * A COBERTURA da régua do ordinal × a declaração da doc.
+ *
+ * O DEFEITO: a régua pula referências por três classes (a forma NUA num ATO
+ * PASSADO, a forma nua sem o CONTEXTO da matriz e o que vive dentro de um BLOCO
+ * DERIVADO) e o pulo não tinha número nenhum. Uma referência nova escrita de
+ * forma que cai no pulo — um `era a 42.ª entrada` numa prosa de hoje — encolhia a
+ * régua sem deixar rastro: o veredito continuava verde, e a cobertura caía em
+ * silêncio. Declarar "quantas são julgadas e quantas são puladas" é o que torna
+ * a queda um vermelho.
+ *
+ * As DUAS DIREÇÕES do pulo, e a razão de NÃO haver folga:
+ *   · o pulo medido SOBE (acima do declarado) → a cobertura PIOROU: a mensagem
+ *     nomeia a referência e a classe que escaparam;
+ *   · o pulo medido DESCE → o teto ENVELHECEU: a declaração tem de BAIXAR junto.
+ *     Sem esta direção, o número declarado seria um teto frouxo, e uma folga
+ *     deixada para trás é exatamente o que deixa a próxima piora passar verde —
+ *     é a igualdade que faz o pulo **só poder diminuir**.
+ *
+ * As JULGADAS entram como PISO: a régua pode julgar MAIS (uma referência nova na
+ * prosa é bem-vinda, e o número declarado é o que não se perde) e NÃO pode julgar
+ * menos sem que a perda esteja numa decisão — a referência que saiu da prosa, o
+ * doc que sumiu, o escopo que alguém estreitou.
+ *
+ * A doc AUSENTE não vira violação (é o `DOC_OPCIONAL` da lista, e o fixture
+ * mínimo não a tem): sem doc não há onde declarar, e o relatório diz isso
+ * (`declarado: null`) em vez de inventar.
+ *
+ * @param {string | null} docSrc a doc das metades (null = não existe)
+ * @param {{julgadas: number, puladas: number, porClasse: Record<string, number>}} cobertura
+ * @param {{refs: {arquivo: string, linha: number, forma: string, citada: string, historico?: string, foraDeEscopo?: boolean, blocoDerivado?: boolean}[]}} ordinais
+ * @returns {{declarado: {julgadas: number, puladas: number} | null, violations: string[]}}
+ */
+export function analisaCoberturaOrdinal(docSrc, cobertura, ordinais) {
+  const violations = []
+  if (docSrc === null) return { declarado: null, violations }
+  const m = COBERTURA_ORDINAL_RE.exec(docSrc)
+  if (!m) {
+    violations.push(
+      `${DOC_OPCIONAL}: não DECLARA a cobertura da régua do ordinal — a linha '${linhaDaCobertura(cobertura)}' (com o número de AGORA) é o que TRAVA a régua: sem ela, uma referência que caia no pulo encolhe a cobertura sem deixar rastro, e o veredito segue verde sobre uma régua menor`,
+    )
+    return { declarado: null, violations }
+  }
+  const declarado = { julgadas: Number(m[1]), puladas: Number(m[2]) }
+  const classe = (r) =>
+    r.historico ? `historico: ${r.historico}` : r.foraDeEscopo ? "foraDeEscopo" : "blocoDerivado"
+  const puladas = ordinais.refs.filter((r) => r.historico || r.foraDeEscopo || r.blocoDerivado)
+  if (cobertura.puladas > declarado.puladas) {
+    const listadas = puladas.slice(0, 6).map((r) => `${r.arquivo}:${r.linha} (${classe(r)})`)
+    violations.push(
+      `${DOC_OPCIONAL}: a COBERTURA da régua do ordinal PIOROU — ${cobertura.puladas} referência(s) PULADA(S) contra ${declarado.puladas} declarada(s) (julgadas: ${cobertura.julgadas}). O que saiu do julgamento: ${listadas.join(" · ")}${puladas.length > listadas.length ? ` (+${puladas.length - listadas.length})` : ""} — se o pulo é LEGÍTIMO (um ato passado, um bloco derivado, um número que não é da matriz), atualize a declaração para '${linhaDaCobertura(cobertura)}' e diga por quê; se não é, a referência se ancora na suíte`,
+    )
+  } else if (cobertura.puladas < declarado.puladas) {
+    violations.push(
+      `${DOC_OPCIONAL}: o TETO da cobertura da régua do ordinal ENVELHECEU — o pulo caiu para ${cobertura.puladas} e a declaração diz ${declarado.puladas}. BAIXE o número ('${linhaDaCobertura(cobertura)}'): a declaração acompanha o pulo para baixo, e uma folga deixada para trás é o que deixa a próxima piora passar sem vermelho`,
+    )
+  }
+  if (cobertura.julgadas < declarado.julgadas) {
+    violations.push(
+      `${DOC_OPCIONAL}: a COBERTURA da régua do ordinal PERDEU JULGAMENTO — julgaria ${declarado.julgadas} referência(s) e julga ${cobertura.julgadas} (o piso é o que não se perde): a referência que saiu da prosa — ou o doc que sumiu, ou o escopo que alguém estreitou — tem de estar numa decisão. Se a perda é mesmo a decisão, baixe o PISO junto ('${linhaDaCobertura(cobertura)}')`,
+    )
+  }
+  return { declarado, violations }
 }
 
 // ── A PROVA-DE-APLICAÇÃO (a régua única × as suítes que a chamam) ─────────
@@ -1499,6 +1628,19 @@ export function run(root) {
   const ordinais = analisaOrdinais(root, entries)
   violations.push(...ordinais.violations)
 
+  // 4d. A COBERTURA da régua do ordinal — PUBLICADA e TRAVADA: a doc declara
+  //     quantas referências são julgadas e quantas são puladas, e o pulo só pode
+  //     DIMINUIR (uma direção é a cobertura piorando; a outra é o teto que
+  //     envelheceu e tem de baixar). Sem a declaração, uma referência que caia no
+  //     pulo encolhe a régua e o veredito continua verde.
+  const docDaCobertura = join(root, DOC_OPCIONAL)
+  const coberturaOrdinal = analisaCoberturaOrdinal(
+    existsSync(docDaCobertura) ? readFileSync(docDaCobertura, "utf8") : null,
+    ordinais.cobertura,
+    ordinais,
+  )
+  violations.push(...coberturaOrdinal.violations)
+
   // 5. A MATRIZ × O ATO QUE A VERSIONA (a defasagem que o count sozinho não vê).
   //    O registro é LIDO, não exigido: um fixture (ou um checkout sem o bench)
   //    não tem a ligação a julgar, e é o `present: false` que o diz.
@@ -1524,6 +1666,9 @@ export function run(root) {
       declaradas: prova.declaradas,
     },
     ordinais: ordinais.refs,
+    // A COBERTURA publicada: o que a régua julga, o que ela pula (com a classe) e
+    // o que a doc declara. É o par que a regra 4d trava.
+    ordinaisCobertura: { ...ordinais.cobertura, declarado: coberturaOrdinal.declarado },
     bench,
     refs: {
       prCheck: {
@@ -1818,9 +1963,18 @@ function main() {
     ? ` O ATO versionou a matriz: ${result.bench.versionados.length} forma(s) na família \`${BENCH_FAMILY}\` de ${BENCH_PATH}${result.bench.sobrando.length > 0 ? ` — fora da matriz (até o próximo ato): ${result.bench.sobrando.join(", ")}` : ""}.`
     : ` ⚠️ a ligação matriz ↔ ato NÃO foi julgada aqui: ${result.bench?.motivo}`
 
+  // A COBERTURA da régua do ordinal entra no veredito VERDE também: "as refs
+  // batem" não diz QUANTO da prosa a régua leu, e é a diferença entre a régua
+  // inteira e a régua que encolheu que a declaração trava.
+  const cob = result.ordinaisCobertura
+  const cobertura =
+    cob && cob.declarado
+      ? ` A RÉGUA DO ORDINAL: ${cob.julgadas} julgada(s) · ${cob.puladas} pulada(s) (historico ${cob.porClasse.historico} · foraDeEscopo ${cob.porClasse.foraDeEscopo} · blocoDerivado ${cob.porClasse.blocoDerivado}) — declarado ${cob.declarado.julgadas} / ${cob.declarado.puladas}.`
+      : ""
+
   if (result.ok) {
     console.log(
-      `✅ check-mutation-count: ${result.derivedCount} sub-tests da matriz (${result.derivedMetades} metades declaradas) ${escopo} — pr-check.yml, master, README e a doc das metades consistentes.${ato}`,
+      `✅ check-mutation-count: ${result.derivedCount} sub-tests da matriz (${result.derivedMetades} metades declaradas) ${escopo} — pr-check.yml, master, README e a doc das metades consistentes.${ato}${cobertura}`,
     )
     process.exit(0)
   }

@@ -327,6 +327,12 @@ make_fixture() {
     else
       echo 'A suíte `scripts/test-mutation-sub-1.sh` declara 2 metades no bloco.'
     fi
+    # A DECLARAÇÃO da COBERTURA da régua do ordinal: a doc do fixture carrega a
+    # MESMA linha do repositório, com o número do próprio fixture — nenhuma
+    # referência posicional aqui, então 0 julgadas e 0 puladas. Sem ela o
+    # CONTROLE sai vermelho por uma regra que o fixture não exercita.
+    echo ''
+    echo '**A régua do ordinal: 0 referência(s) JULGADA(S) e 0 PULADA(S)**'
   } > "$TMP_DIR/docs/GUARDS.md"
 
   # pr-check.yml com o job mutation-guards (name COUNT-FREE por default — é o

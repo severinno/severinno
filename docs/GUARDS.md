@@ -1107,8 +1107,27 @@ entram nessa classe: quem escreve `da matriz` (ou `do master`) está afirmando a
 posição de agora por construção — e isso foi MEDIDO: uma referência viva com uma
 data no fim da frase acende qualquer heurística de verbo, então ela só vale onde a
 âncora não dá o veredito. **O que a régua pula, ela DIZ**: o relatório publica
-cada referência com a sua `forma`, e as puladas com `historico: <marcador>` ou
-`foraDeEscopo: true` — escopo é DECISÃO, nunca omissão.
+cada referência com a sua `forma`, e as puladas com `historico: <marcador>`,
+`foraDeEscopo: true` ou `blocoDerivado: true` (a referência que vive dentro de um
+bloco DERIVADO, cuja régua é a da derivação — o ato o reescreve do registro) —
+escopo é DECISÃO, nunca omissão.
+
+**A COBERTURA da régua é PUBLICADA e TRAVADA.**
+
+**A régua do ordinal: 9 referência(s) JULGADA(S) e 1 PULADA(S)**
+
+Aquela linha é a declaração viva: o `check-mutation-count` a lê, o veredito verde
+publica os dois números com a classe de cada pulo (`historico` · `foraDeEscopo` ·
+`blocoDerivado`) e o `--json` os leva em `ordinaisCobertura`. O PULO medido tem de
+ser **IGUAL** ao declarado, nas DUAS direções: um pulo que SOBE é a cobertura
+piorando (e a mensagem nomeia a referência e a classe que escaparam — se o pulo é
+legítimo, a declaração sobe junto e o commit diz por quê), e um pulo que DESCE é o
+teto que **envelheceu** — a declaração tem de BAIXAR junto, e é essa igualdade que
+faz o pulo **só poder diminuir**: uma folga deixada para trás é exatamente o que
+deixa a próxima piora passar sem vermelho. As JULGADAS entram como **PISO**: a
+régua pode julgar MAIS (uma referência nova na prosa é bem-vinda) e não pode
+julgar menos sem que a perda esteja numa decisão — a referência que saiu da prosa,
+o doc que sumiu, o escopo que alguém estreitou.
 
 **A mesma posição escrita POR EXTENSO entra na MESMA régua** — `a quadragésima
 entrada da matriz` é a 40.ª, e o número é conferido contra a ordem do `SUBTESTS`

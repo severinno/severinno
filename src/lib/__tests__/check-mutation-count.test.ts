@@ -18,8 +18,10 @@ import {
   caminhosDoVeredito,
   comparaComOAto,
   docsDaProsa,
+  linhaDaCobertura,
   run,
   runStaged,
+  analisaOrdinais,
 } from "../../../scripts/check-mutation-count.mjs"
 import {
   BLOCO_GUARDS,
@@ -107,6 +109,16 @@ interface FixtureOpts {
   semMarcadorLista?: string[] | null
   /** Índices das suítes que chamam o CAMINHO DECLARADO da régua. */
   semMarcadorSuites?: number[]
+  /**
+   * A COBERTURA da régua do ordinal declarada na doc — a linha
+   * `**A régua do ordinal: N referência(s) JULGADA(S) e M PULADA(S)**`:
+   *   - `"auto"` (default): a LINHA com o número REAL do próprio fixture (o
+   *     teste declara o que escreveu sem contar à mão o que a régua julgou);
+   *   - `{ julgadas, puladas }`: a linha com o número que o teste mandar — é
+   *     assim que os testes da TRAVA declaram o teto/piso errados;
+   *   - `"sem-linha"`: a doc SEM a declaração (fail-closed).
+   */
+  cobertura?: "auto" | "sem-linha" | { julgadas: number; puladas: number }
 }
 
 /**
@@ -157,6 +169,7 @@ function makeFixture({
   foraLista = null,
   semMarcadorLista = null,
   semMarcadorSuites = [],
+  cobertura = "auto",
 }: FixtureOpts = {}) {
   const dir = mkdtempSync(join(tmpdir(), "mutation-count-"))
   mkdirSync(join(dir, "scripts"), { recursive: true })
@@ -263,6 +276,25 @@ ${provaBloco}${foraBloco}${semMarcadorBloco}`
   if (doc !== null) {
     mkdirSync(join(dir, "docs"), { recursive: true })
     writeFileSync(join(dir, "docs/GUARDS.md"), doc)
+  }
+
+  // A DECLARAÇÃO da cobertura da régua do ordinal (a linha que o
+  // `check-mutation-count` confere): o `"auto"` a escreve com o número REAL do
+  // fixture — a régua do ordinal RODADA sobre ele —, e os testes da TRAVA passam
+  // o número que quiserem. A ausência da linha é do teste que a pedir.
+  const docFixture = join(dir, "docs/GUARDS.md")
+  if (cobertura !== "sem-linha" && existsSync(docFixture)) {
+    const real =
+      cobertura === "auto"
+        ? analisaOrdinais(
+            dir,
+            Array.from({ length: count }, (_, i) => ({
+              id: `sub-${i}`,
+              script: `scripts/test-mutation-sub-${i}.sh`,
+            })),
+          ).cobertura
+        : cobertura
+    appendFileSync(docFixture, `\n${linhaDaCobertura(real)}\n`)
   }
   return dir
 }
@@ -1053,6 +1085,137 @@ describe("check-mutation-count — o ORDINAL da suíte × a ordem real do SUBTES
       "#!/usr/bin/env bash\nset -euo pipefail\n\nMETADES=(\n  'M1|a metade de ensaio'\n)\n",
     )
     expect(run(depois).violations.some((v) => v.includes("`sub-2` é a 4.ª"))).toBe(true)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// A COBERTURA DA RÉGUA DO ORDINAL — publicada e TRAVADA. A doc declara quantas
+// referências são JULGADAS e quantas são PULADAS, o veredito verde publica os
+// dois números (com a classe de cada pulo) e o pulo só pode DIMINUIR: um pulo
+// que sobe é a cobertura piorando, e um pulo que desce é o teto que envelheceu
+// (a declaração tem de baixar junto). Sem a linha, uma referência que caia no
+// pulo encolhe a régua — e o veredito continua verde sobre uma régua menor.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("check-mutation-count — a COBERTURA da régua do ordinal (publicada e travada)", () => {
+  const daCobertura = (v: string) => /cobertura da régua do ordinal/i.test(v)
+  /** A mesma doc, com a referência PULADA (a forma nua de um ato passado). */
+  const DOC_PULADA = "# Guards\n\nO `sub-2` era a 9.ª entrada na matriz (medido em 22/09/2026).\n"
+  const DOC_JULGADA = "# Guards\n\nA suíte é a 3.ª entrada da matriz (`sub-2`).\n"
+
+  it("a declaração com o número REAL publica a cobertura (e o veredito fica verde)", () => {
+    // O `"auto"` do fixture escreve a linha com o número que a régua DERIVOU: a
+    // doc declara o que a prosa carrega, e o veredito verde publica os dois
+    // números com a classe de cada pulo.
+    const r = run(makeFixture({ count: 5, doc: DOC_JULGADA }))
+    expect(r.violations.filter(daCobertura)).toEqual([])
+    expect(r.ok).toBe(true)
+    expect(r.ordinaisCobertura).toEqual({
+      julgadas: 1,
+      puladas: 0,
+      porClasse: { historico: 0, foraDeEscopo: 0, blocoDerivado: 0 },
+      declarado: { julgadas: 1, puladas: 0 },
+    })
+  })
+
+  it("o PULO que SOBE é a cobertura PIORANDO — e a violação nomeia a referência e a classe", () => {
+    // O defeito: uma referência nova escrita de um jeito que CAI no pulo (a forma
+    // nua de um ato passado) encolhe a régua — o veredito seguiria verde se o
+    // pulo não fosse conferido contra uma declaração.
+    const r = run(
+      makeFixture({ count: 5, doc: DOC_PULADA, cobertura: { julgadas: 0, puladas: 0 } }),
+    )
+    expect(r.ok).toBe(false)
+    const v = r.violations.find(daCobertura)!
+    expect(v).toContain("PIOROU")
+    expect(v).toContain("1 referência(s) PULADA(S) contra 0 declarada(s)")
+    expect(v).toContain("docs/GUARDS.md:3 (historico")
+    expect(v).toContain("atualize a declaração")
+  })
+
+  it("o PULO que DESCE é o TETO que envelheceu — a declaração tem de BAIXAR", () => {
+    // NÃO pode haver folga: um teto declarado acima do medido é exatamente o que
+    // deixa a próxima piora passar sem vermelho.
+    const r = run(
+      makeFixture({ count: 5, doc: DOC_PULADA, cobertura: { julgadas: 0, puladas: 2 } }),
+    )
+    expect(r.ok).toBe(false)
+    const v = r.violations.find(daCobertura)!
+    expect(v).toContain("ENVELHECEU")
+    expect(v).toContain("o pulo caiu para 1 e a declaração diz 2")
+    expect(v).toContain(linhaDaCobertura({ julgadas: 0, puladas: 1 }))
+  })
+
+  it("as JULGADAS são um PISO: julgar MAIS passa, julgar MENOS acusa", () => {
+    // Mais: uma referência nova na prosa é bem-vinda (o declarado é o que NÃO se
+    // perde, não um teto).
+    const mais = run(
+      makeFixture({ count: 5, doc: DOC_JULGADA, cobertura: { julgadas: 0, puladas: 0 } }),
+    )
+    expect(mais.violations.filter(daCobertura)).toEqual([])
+    expect(mais.ordinaisCobertura.julgadas).toBe(1)
+    expect(mais.ordinaisCobertura.declarado).toEqual({ julgadas: 0, puladas: 0 })
+
+    // Menos: perder julgamento é perder cobertura — a perda tem de estar numa
+    // decisão (a referência que saiu, o doc que sumiu, o escopo que estreitou).
+    const menos = run(
+      makeFixture({ count: 5, doc: DOC_JULGADA, cobertura: { julgadas: 3, puladas: 0 } }),
+    )
+    expect(menos.ok).toBe(false)
+    const v = menos.violations.find(daCobertura)!
+    expect(v).toContain("PERDEU JULGAMENTO")
+    expect(v).toContain("julgaria 3 referência(s) e julga 1")
+  })
+
+  it("FAIL-CLOSED: a doc SEM a declaração é violação, nunca omissão", () => {
+    // Sem a linha não há o que travar: "a régua encolheu" e "a régua nunca mediu
+    // isso" seriam a mesma coisa, e o remédio (a linha com o número de agora) sai
+    // na própria mensagem.
+    const r = run(makeFixture({ count: 5, doc: DOC_JULGADA, cobertura: "sem-linha" }))
+    expect(r.ok).toBe(false)
+    const v = r.violations.find(daCobertura)!
+    expect(v).toContain("não DECLARA a cobertura da régua do ordinal")
+    expect(v).toContain(linhaDaCobertura({ julgadas: 1, puladas: 0 }))
+    expect(r.ordinaisCobertura.declarado).toBeNull()
+  })
+
+  it("o BLOCO DERIVADO é uma classe de pulo CONTADA (a régua daquela prosa é a derivação)", () => {
+    // A referência dentro do bloco derivado não é julgada aqui (o ato reescreve o
+    // bloco do registro), mas ela foi VISTA: entra na contagem e sai DITA — o
+    // `continue` mudo de antes deixava essa classe fora da cobertura.
+    const dir = makeFixture({
+      count: 3,
+      bench: "completo",
+      docDerivado: true,
+      cobertura: { julgadas: 0, puladas: 1 },
+    })
+    try {
+      const p = join(dir, "docs/GUARDS.md")
+      writeFileSync(
+        p,
+        readFileSync(p, "utf8").replace(
+          `${BLOCO_GUARDS.abre}\n`,
+          `${BLOCO_GUARDS.abre}\n\nA suíte é a 3.ª entrada da matriz (\`sub-2\`).\n`,
+        ),
+      )
+      const r = run(dir)
+      expect(r.violations.filter(daCobertura)).toEqual([])
+      expect(r.ordinais.filter((x) => x.blocoDerivado === true)).toHaveLength(1)
+      expect(r.ordinaisCobertura).toEqual({
+        julgadas: 0,
+        puladas: 1,
+        porClasse: { historico: 0, foraDeEscopo: 0, blocoDerivado: 1 },
+        declarado: { julgadas: 0, puladas: 1 },
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("sem a doc não há onde declarar — e o relatório DIZ isso em vez de inventar", () => {
+    const r = run(makeFixture({ count: 3 }))
+    expect(r.violations.filter(daCobertura)).toEqual([])
+    expect(r.ordinaisCobertura.declarado).toBeNull()
   })
 })
 
