@@ -936,6 +936,83 @@ describe("check-mutation-count — o ORDINAL da suíte × a ordem real do SUBTES
     expect([...rels].sort()).toEqual(rels)
   })
 
+  it("as âncoras `do master` e `de número` afirmam a posição de HOJE", () => {
+    // As OUTRAS formas de ancorar a posição de agora: o master É a matriz, e o
+    // `de número` afirma o número sem rodeio. As duas são julgadas como o
+    // `da matriz` — a régua é uma só.
+    const certo = makeFixture({
+      count: 5,
+      doc: "# Guards\n\nA suíte é a 3.ª do master (`sub-2`), e a suíte de número 3 é a mesma (`scripts/test-mutation-sub-2.sh`).\n",
+    })
+    expect(run(certo).violations.filter(daMatriz)).toEqual([])
+
+    const errado = makeFixture({
+      count: 5,
+      doc: "# Guards\n\nA suíte é a 9.ª do master (`sub-2`).\n",
+    })
+    const v1 = run(errado).violations.find((x) => x.includes("9.ª do master"))!
+    expect(v1).toContain("`sub-2` é a 3.ª")
+
+    const errado2 = makeFixture({
+      count: 5,
+      doc: "# Guards\n\nA suíte de número 9 é a `sub-2`.\n",
+    })
+    const v2 = run(errado2).violations.find((x) => x.includes("suíte de número 9"))!
+    expect(v2).toContain("`sub-2` é a 3.ª")
+  })
+
+  it("a forma NUA é julgada com o CONTEXTO da matriz — e o sem-suíte é fail-closed", () => {
+    // `a 42.ª entrada`, sem âncora nenhuma: a régua a julga quando a MESMA frase
+    // diz que é da matriz (senão o número é de outra lista) e a suíte está lá.
+    const certo = makeFixture({
+      count: 5,
+      doc: "# Guards\n\nO `sub-2` é a 3.ª entrada na matriz.\n",
+    })
+    expect(run(certo).violations.filter(daMatriz)).toEqual([])
+
+    const errado = makeFixture({
+      count: 5,
+      doc: "# Guards\n\nO `sub-2` é a 9.ª entrada na matriz.\n",
+    })
+    const v = run(errado).violations.find((x) => x.includes("9.ª entrada"))!
+    expect(v).toContain("`sub-2` é a 3.ª")
+
+    const semSuite = makeFixture({
+      count: 5,
+      doc: "# Guards\n\nA suíte é a 9.ª entrada na matriz.\n",
+    })
+    expect(run(semSuite).violations.some((x) => x.includes("NÃO nomeia a suíte"))).toBe(true)
+  })
+
+  it("o ATO PASSADO da forma nua é PULADO — e sai DITO no relatório", () => {
+    // A ordem daquele momento é história do instrumento: a matriz de hoje não é a
+    // de então, e conferir o número contra ela seria a acusação ao que não foi
+    // medido. A referência pula — e o relatório DIZ que pulou, e por quê.
+    const dir = makeFixture({
+      count: 5,
+      doc: "# Guards\n\nO `sub-2` era a 9.ª entrada na matriz (medido em 22/09/2026).\n",
+    })
+    const r = run(dir)
+    expect(r.violations.filter(daMatriz)).toEqual([])
+    expect(r.ordinais).toEqual([
+      expect.objectContaining({ ordinal: 9, candidatos: ["sub-2"], forma: "nua" }),
+    ])
+    expect(r.ordinais[0].historico).toBeDefined()
+  })
+
+  it("a forma nua SEM o contexto da matriz fica FORA do escopo, e também sai DITA", () => {
+    // `a 9.ª entrada da lista de jobs` não fala da matriz: o escopo é declarado, e
+    // uma referência que a régua não julga não pode sumir do relatório.
+    const r = run(
+      makeFixture({
+        count: 5,
+        doc: "# Guards\n\nO `sub-2` é a 9.ª entrada da lista de jobs.\n",
+      }),
+    )
+    expect(r.violations.filter(daMatriz)).toEqual([])
+    expect(r.ordinais[0].foraDeEscopo).toBe(true)
+  })
+
   it("o CAMINHO do script também ancora (não só o `id` entre crases)", () => {
     const dir = makeFixture({
       count: 5,

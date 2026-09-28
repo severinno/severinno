@@ -1085,6 +1085,31 @@ na direção que o defeito exige: um ordinal que não nomeia a suíte é **viola
 não omissão — um número sem a suíte ao lado é exatamente o que ninguém consegue
 conferir, e é assim que ele envelhece.
 
+**As OUTRAS formas posicionais entram na mesma régua.** A âncora da posição de
+hoje não é só o `da matriz`: `<N>ª … do master` (o master **é** a matriz) e `a
+suíte de número N` afirmam a posição de agora e são julgadas como ela. E a forma
+**NUA** (`<N>ª entrada`, sem âncora nenhuma) é julgada **quando a própria frase
+traz o contexto da matriz** (`matriz`, `SUBTESTS`, `do master`, a `régua`,
+`mutation tests`): fora desse contexto o número é de outra lista (a suíte, um
+passo, uma fila), e a régua não o inventa.
+
+**HOJE × ATO PASSADO é uma classe DECLARADA, e vale para a forma nua.** O exemplo
+acima sai como FORMULA (`<N>ª`) porque um número escrito aqui seria ele próprio
+uma afirmação de posição — e a régua o julgaria como qualquer outra (medido: a
+primeira redação desta seção usava `a 42.ª entrada` e o guard a acusou, que é
+exatamente o que a régua existe para fazer). Ela é a
+única que pode estar narrando um MOMENTO — a matriz daquele ato não é a de hoje, e
+conferir o número contra ela seria a acusação ao que não foi medido —, e a régua a
+**pula** quando a frase carrega um marcador de ato passado: uma data explícita,
+`naquela rodada`, `no ato de`, `entrou na matriz`, `era`/`eram`, `medido em`,
+`custava`, `ganhou a`, `passou de`, `deixou de ser`. As formas **ANCORADAS** não
+entram nessa classe: quem escreve `da matriz` (ou `do master`) está afirmando a
+posição de agora por construção — e isso foi MEDIDO: uma referência viva com uma
+data no fim da frase acende qualquer heurística de verbo, então ela só vale onde a
+âncora não dá o veredito. **O que a régua pula, ela DIZ**: o relatório publica
+cada referência com a sua `forma`, e as puladas com `historico: <marcador>` ou
+`foraDeEscopo: true` — escopo é DECISÃO, nunca omissão.
+
 **A mesma posição escrita POR EXTENSO entra na MESMA régua** — `a quadragésima
 entrada da matriz` é a 40.ª, e o número é conferido contra a ordem do `SUBTESTS`
 como qualquer outro: hoje a `stack-per-commit` é a quadragésima entrada da matriz,
@@ -1115,7 +1140,7 @@ conferir"). Fica de fora, por DECLARAÇÃO: os `.md` da raiz que não são o REA
 (notas de sessão) e os registros de `ci/`, que são narrativa DATADA de medições
 — história do instrumento, não afirmação da posição de hoje.
 
-**Como é provado:** treze casos em `check-mutation-count.test.ts` — o ordinal certo
+**Como é provado:** dezessete casos em `check-mutation-count.test.ts` — o ordinal certo
 passa (e o relatório publica a suíte que a frase nomeia), o errado acusa nomeando
 a posição real, o ordinal SEM a suíte acusa o fail-closed, o POR EXTENSO certo
 passa (`quadragésima primeira` = 41, com a dezena composta), o extenso errado
@@ -1124,8 +1149,12 @@ não é ordinal não é referência, o caminho do script também ancora, o hist�
 custo fica fora, a MESMA prosa fica errada quando uma entrada nasce ANTES (o
 `sub-2` que era a 3.ª vira a 4.ª), uma referência num TERCEIRO doc da árvore é
 julgada (e o `.md` da raiz fora do escopo não é), o recorte `--staged` materializa
-essa prosa, e a varredura de `docsDaProsa` é recursiva, ordenada e ignora o que
-não é markdown.
+essa prosa, a varredura de `docsDaProsa` é recursiva, ordenada e ignora o que não
+é markdown, e as formas novas têm as DUAS direções cada: `<N>ª do master` e `a
+suíte de número N` certas passam e as erradas acusam, a forma NUA com contexto da
+matriz é julgada (e o sem-suíte acusa o fail-closed), a NUA num ATO PASSADO é
+pulada **e dita** (`historico`), e a NUA sem o contexto da matriz fica fora do
+escopo **e dita** (`foraDeEscopo`).
 
 #### O count não pode ser PARTIDO entre dois commits locais — o recorte `--staged`
 

@@ -123,10 +123,15 @@
 //      entra na materialização do índice, então o que o commit carrega é o que é
 //      julgado.
 //
-//   5. OS ORDINAIS DA MATRIZ — a suíte identificada pela POSIÇÃO na prosa
-//      (`N.ª entrada da matriz`, `N.ª sub-test da matriz`, `N.ª da matriz`) ou
-//      escrita POR EXTENSO (`a quadragésima entrada da matriz`): as duas grafias
-//      afirmam o mesmo número, e as duas envelhecem igual. O
+//   5. OS ORDINAIS DA MATRIZ — a suíte identificada pela POSIÇÃO na prosa, em
+//      TODAS as formas que a afirmam: ancoradas em `da matriz` / `do master` /
+//      `de número N` (e as mesmas POR EXTENSO, `a quadragésima entrada da
+//      matriz`) e a forma NUA (`a 42.ª entrada`), que é julgada só com o
+//      CONTEXTO da matriz na frase e nunca quando ela narra um ATO PASSADO (a
+//      classe declarada de `marcadorDeAtoPassado` — data explícita, `naquela
+//      rodada`, `entrou na matriz`, `era`, `medido em`, `custava`…). As duas
+//      grafias afirmam o mesmo número, e todas envelhecem igual: o que a régua
+//      PULA sai dito no relatório (`historico` / `foraDeEscopo`). O
 //      número tem de bater com a ordem REAL do SUBTESTS, e a referência tem de
 //      NOMEAR a suíte (o `id` entre crases ou o caminho do script) na MESMA
 //      frase — um ordinal sem a suíte ao lado é VIOLAÇÃO, nunca omissão: é o
@@ -503,6 +508,42 @@ function semAcento(texto) {
 }
 
 /**
+ * OS MARCADORES DE UM ATO PASSADO — a classe DECLARADA que separa a posição de
+ * hoje da ordem de um momento. São marcas de TEMPO ou de MOVIMENTO na matriz, e
+ * não adjetivos soltos: uma DATA explícita, `naquela rodada`, `no ato de`,
+ * `entrou na/na matriz`, `era/eram`, `medido em`, `custava`, `ganhou a`,
+ * `passou de`, `deixou de ser`. A frase que os carrega está narrando um ato — a
+ * matriz daquele ato não é a de hoje, e conferir o número contra ela seria a
+ * acusação ao que não foi medido.
+ *
+ * A LISTA É DECLARADA, e o que ela pula sai NOMEADO no relatório: se um marcador
+ * for largo demais, isso aparece como uma referência `historico` que não devia
+ * ser, e não como um número que ninguém confere.
+ */
+const MARCADORES_DE_ATO_PASSADO = [
+  ["uma data explícita", /\d{1,2}\/\d{1,2}\/\d{2,4}|\d{4}-\d{2}-\d{2}/],
+  [
+    "'naquela rodada'/'no ato de'",
+    /naquela rodada|naquele ato|no ato de|num ato de|numa rodada de/,
+  ],
+  ["'entrou' na matriz", /entrou (na|como)|quando entrou/],
+  ["o verbo no passado ('era')", /\bera\b|\beram\b/],
+  ["'medido em'/'custava'", /medi[do]a? em|custava/],
+  ["'ganhou a'/'passou de'/'deixou de'", /ganhou a|passou de|deixou de ser/],
+]
+
+/**
+ * O marcador de ATO PASSADO da frase, ou `null` se ela fala da posição de hoje.
+ *
+ * @param {string} frase
+ * @returns {string | null}
+ */
+export function marcadorDeAtoPassado(frase) {
+  for (const [nome, re] of MARCADORES_DE_ATO_PASSADO) if (re.test(frase)) return nome
+  return null
+}
+
+/**
  * O NÚMERO de um ordinal escrito por extenso (`quadragésima primeira` → 41), ou
  * `null` quando o trecho NÃO é um ordinal composto válido.
  *
@@ -538,14 +579,21 @@ export function ordinalDeExtenso(trecho) {
  * a doc a escreveu e é a 40.ª hoje, e a prosa seguiu dizendo 38, apontando para a
  * suíte errada: o count derivado não vê posição, e o drift passou em silêncio.
  *
- * A RÉGUA: uma referência da forma `<N>ª entrada da matriz` / `<N>ª sub-test da
- * matriz` / `<N>ª da matriz` — e a MESMA referência escrita POR EXTENSO (`a
- * quadragésima entrada da matriz`, `a trigésima oitava sub-test da matriz`) —
- * tem de bater com a POSIÇÃO (1-based) do id que a PRÓPRIA FRASE nomeia (o `id`
- * entre crases ou o caminho do script). E ela é FAIL-CLOSED na direção que o
- * defeito exige: uma referência posicional que NÃO nomeia a suíte é VIOLAÇÃO,
- * não omissão — um número sem a suíte ao lado é exatamente o que ninguém
- * consegue conferir, e é assim que ele envelhece.
+ * A RÉGUA: uma referência posicional tem de bater com a POSIÇÃO (1-based) do id
+ * que a PRÓPRIA FRASE nomeia (o `id` entre crases ou o caminho do script). As
+ * FORMAS que ela lê:
+ *   · ANCORADAS — `<N>ª entrada da matriz` / `<N>ª sub-test da matriz` / `<N>ª da
+ *     matriz` / `<N>ª … do master` / `a suíte de número N`, e as mesmas escritas
+ *     POR EXTENSO (`a quadragésima entrada da matriz`). A âncora é a afirmação
+ *     da posição de HOJE: quem a escreve está falando da matriz de agora;
+ *   · NUA — `<N>ª entrada` / `<N>ª sub-test` sem âncora: julgada só quando a
+ *     MESMA frase traz o CONTEXTO da matriz (senão o número é de outra lista) e
+ *     não é um ATO PASSADO (a classe declarada de `marcadorDeAtoPassado`).
+ * O que a régua pula, ela DIZ no relatório (`historico: <marcador>` ou
+ * `foraDeEscopo: true`), porque um número que ninguém confere é assim que ele
+ * envelhece — e o que sai do escopo é uma DECISÃO, nunca uma omissão. E ela é
+ * FAIL-CLOSED na direção que o defeito exige: uma referência posicional JULGADA
+ * que NÃO nomeia a suíte é VIOLAÇÃO, não omissão.
  *
  * O EXTENSO NÃO É UMA RÉGUA À PARTE: a posição escrita em palavras envelhece
  * IGUAL (`a quadragésima` deixa de ser a mesma suíte no dia em que uma entrada
@@ -571,7 +619,7 @@ export function ordinalDeExtenso(trecho) {
  *
  * @param {string} root
  * @param {{id: string, script: string}[]} entries
- * @returns {{refs: {arquivo: string, linha: number, ordinal: number, citada: string, candidatos: string[]}[], violations: string[]}}
+ * @returns {{refs: {arquivo: string, linha: number, ordinal: number, citada: string, candidatos: string[], forma: string, historico?: string, foraDeEscopo?: boolean}[], violations: string[]}}
  */
 /**
  * A PROSA que a régua do ordinal lê: o README e TODOS os `.md` da árvore de
@@ -604,16 +652,33 @@ export function analisaOrdinais(root, entries) {
   const posicao = new Map(entries.map((e, i) => [e.id, i + 1]))
   const idDoScript = new Map(entries.map((e) => [e.script, e.id]))
   const docs = docsDaProsa(root)
-  // O `da matriz` no fim é o que separa esta referência (a posição de HOJE) da
-  // ordem de um ato do PASSADO — o histórico de custo do README não o carrega.
-  const ORDINAL =
-    /(\d{1,3})\s*\.?ª\s+(?:entrada\s+da\s+matriz|sub-tests?\s+da\s+matriz|da\s+matriz)\b/gi
-  // A MESMA referência escrita POR EXTENSO: uma ou duas palavras antes do
-  // `da matriz` (`quadragésima primeira entrada da matriz`). Quem decide se o
-  // trecho é um ordinal é o `ordinalDeExtenso` — a regex é só a JANELA, e uma
-  // palavra que não seja ordinal (`a última metade da matriz`) cai fora ali.
-  const REF_EXTENSO =
-    /([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)?)\s+(?:entrada\s+da\s+matriz|sub-tests?\s+da\s+matriz|da\s+matriz)\b/gi
+  // AS ÂNCORAS DA POSIÇÃO DE HOJE. O `da matriz` é a matriz de hoje; o
+  // `do master` também (o master É a matriz), e o `de número` afirma a posição
+  // sem rodeio (`a suíte de número 38`). Quem carrega uma âncora está afirmando a
+  // posição de AGORA — a ordem de um ato do PASSADO se narra contando o TAMANHO
+  // daquele ato, e não traz âncora nenhuma (o histórico de custo do README).
+  const ANCORA_MATRIZ = "entrada\\s+da\\s+matriz|sub-tests?\\s+da\\s+matriz|da\\s+matriz"
+  const ANCORA_MASTER = "entrada\\s+do\\s+master|sub-tests?\\s+do\\s+master|do\\s+master"
+  const ORDINAL_ANCORADO = new RegExp(
+    `(\\d{1,3})\\s*\\.?ª\\s+(?:${ANCORA_MATRIZ}|${ANCORA_MASTER})\\b`,
+    "gi",
+  )
+  const ORDINAL_DE_NUMERO = /(?:entrada|sub-tests?|suíte|forma)\s+de\s+n[úu]mero\s+(\d{1,3})\b/gi
+  // A FORMA NUA — `a 42.ª entrada`, sem âncora nenhuma. Ela NÃO é julgada por
+  // si: a referência só é conferível quando a MESMA frase traz o CONTEXTO da
+  // matriz (senão o número é de outra lista qualquer) e não é um ATO PASSADO
+  // (classe declarada abaixo). Quando ela é julgada, é com a régua de sempre — e
+  // sem o contexto, ou num passado, ela sai DITA no relatório, nunca em silêncio.
+  const ORDINAL_NU = /(\d{1,3})\s*\.?ª\s+(?:entrada|sub-tests?|suíte|forma)\b/gi
+  const CONTEXTO_DA_MATRIZ = /matriz|SUBTESTS|do master|da régua|mutation tests|mutation-count/i
+  // A MESMA referência escrita POR EXTENSO: uma ou duas palavras antes da âncora
+  // (`quadragésima primeira entrada da matriz`). Quem decide se o trecho é um
+  // ordinal é o `ordinalDeExtenso` — a regex é só a JANELA, e uma palavra que
+  // não seja ordinal (`a última metade da matriz`) cai fora ali.
+  const REF_EXTENSO = new RegExp(
+    `([A-Za-zÀ-ÿ]+(?:\\s+[A-Za-zÀ-ÿ]+)?)\\s+(?:${ANCORA_MATRIZ}|${ANCORA_MASTER})\\b`,
+    "gi",
+  )
   const refs = []
   const violations = []
 
@@ -678,23 +743,38 @@ export function analisaOrdinais(root, entries) {
       return limpo.slice(ini, fim)
     }
 
-    // As duas GRAFIAS viram o MESMO casamento (a posição e o número que ela
-    // afirma), e a conferência é UMA só: o que muda entre `<N>ª` e o extenso é
-    // como a prosa escreve o número, não a régua que o julga.
+    // As GRAFIAS e as FORMAS viram o MESMO casamento (a posição e o número que
+    // ele afirma), e a conferência é UMA só: o que muda entre `<N>ª`, o extenso
+    // e a forma nua é como a prosa escreve o número, não a régua que o julga.
+    // A ORDEM da coleta é a precedência: a forma ANCORADA reivindica o índice
+    // (`40.ª entrada da matriz` também casa a forma nua), e a nua só pega o que
+    // sobrou — uma referência, um casamento.
     const casamentos = []
-    ORDINAL.lastIndex = 0
-    let m
-    while ((m = ORDINAL.exec(limpo)) !== null) {
-      casamentos.push({ idx: m.index, ordinal: Number(m[1]), citada: m[0] })
+    const jaVisto = new Set()
+    const coleta = (re, forma) => {
+      re.lastIndex = 0
+      let m
+      while ((m = re.exec(limpo)) !== null) {
+        if (jaVisto.has(m.index)) continue
+        jaVisto.add(m.index)
+        casamentos.push({ idx: m.index, ordinal: Number(m[1]), citada: m[0], forma })
+      }
     }
+    coleta(ORDINAL_ANCORADO, "ancorada")
+    coleta(ORDINAL_DE_NUMERO, "de-numero")
+    coleta(ORDINAL_NU, "nua")
     REF_EXTENSO.lastIndex = 0
+    let m
     while ((m = REF_EXTENSO.exec(limpo)) !== null) {
       const ordinal = ordinalDeExtenso(m[1])
-      if (ordinal !== null) casamentos.push({ idx: m.index, ordinal, citada: m[0] })
+      if (ordinal === null) continue
+      if (jaVisto.has(m.index)) continue
+      jaVisto.add(m.index)
+      casamentos.push({ idx: m.index, ordinal, citada: m[0], forma: "ancorada" })
     }
     casamentos.sort((a, b) => a.idx - b.idx)
 
-    for (const { idx, ordinal, citada } of casamentos) {
+    for (const { idx, ordinal, citada, forma } of casamentos) {
       const linha = linhaDe(idx)
       if (dentroDoBloco(linha)) continue
       const frase = fraseEm(idx)
@@ -710,7 +790,42 @@ export function analisaOrdinais(root, entries) {
         if (!candidatos.includes(id) && frase.includes(script)) candidatos.push(id)
       }
       const referencia = citada.replace(/\s+/g, " ")
-      refs.push({ arquivo: rel, linha, ordinal, citada: referencia, candidatos })
+
+      if (forma === "nua") {
+        // O ATO PASSADO é uma classe DECLARADA (a lista dos marcadores está no
+        // `marcadorDeAtoPassado`): a ordem daquele momento é história do
+        // instrumento, e a régua não a julga contra a matriz de hoje — mas DIZ
+        // que a pulou e por quê.
+        const marca = marcadorDeAtoPassado(frase)
+        if (marca !== null) {
+          refs.push({
+            arquivo: rel,
+            linha,
+            ordinal,
+            citada: referencia,
+            candidatos,
+            forma,
+            historico: marca,
+          })
+          continue
+        }
+        // Sem o CONTEXTO da matriz na frase, o número é de OUTRA lista (a suíte,
+        // um passo, uma fila): fica fora do escopo, e também sai DITO.
+        if (!CONTEXTO_DA_MATRIZ.test(frase)) {
+          refs.push({
+            arquivo: rel,
+            linha,
+            ordinal,
+            citada: referencia,
+            candidatos,
+            forma,
+            foraDeEscopo: true,
+          })
+          continue
+        }
+      }
+
+      refs.push({ arquivo: rel, linha, ordinal, citada: referencia, candidatos, forma })
 
       if (candidatos.length === 0) {
         violations.push(
