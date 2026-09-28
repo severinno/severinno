@@ -828,6 +828,62 @@ describe("check-mutation-count — o ORDINAL da suíte × a ordem real do SUBTES
     expect(r.violations.some((v) => v.includes("NÃO nomeia a suíte"))).toBe(true)
   })
 
+  it("o ordinal POR EXTENSO que BATE com a ordem passa (a mesma régua, a outra grafia)", () => {
+    // A posição escrita em palavras NÃO é um caso à parte: `quadragésima primeira
+    // entrada da matriz` é a 41.ª, e o relatório publica o número que a régua
+    // derivou do texto.
+    const dir = makeFixture({
+      count: 41,
+      doc: "# Guards\n\nA suíte é a quadragésima primeira entrada da matriz (`sub-40`).\n",
+    })
+    const r = run(dir)
+    expect(r.violations.filter(daMatriz)).toEqual([])
+    expect(r.ok).toBe(true)
+    expect(r.ordinais).toEqual([
+      expect.objectContaining({
+        arquivo: "docs/GUARDS.md",
+        ordinal: 41,
+        citada: "quadragésima primeira entrada da matriz",
+        candidatos: ["sub-40"],
+      }),
+    ])
+  })
+
+  it("o ordinal POR EXTENSO ERRADO acusa, nomeando a posição REAL da suíte citada", () => {
+    // O extenso envelhece IGUAL ao `<N>ª`: a mesma prosa fica errada no dia em
+    // que uma entrada nasce antes — e é essa a razão de a régua lê-lo.
+    const dir = makeFixture({
+      count: 41,
+      doc: "# Guards\n\nA suíte é a quadragésima entrada da matriz (`sub-2`).\n",
+    })
+    const r = run(dir)
+    expect(r.ok).toBe(false)
+    const v = r.violations.find((x) => x.includes("quadragésima entrada da matriz"))!
+    expect(v).toContain("`sub-2` é a 3.ª")
+  })
+
+  it("FAIL-CLOSED também no EXTENSO: sem a suíte ao lado é violação, nunca omissão", () => {
+    const dir = makeFixture({
+      count: 41,
+      doc: "# Guards\n\nA suíte é a quadragésima entrada da matriz.\n",
+    })
+    expect(run(dir).violations.some((v) => v.includes("NÃO nomeia a suíte"))).toBe(true)
+  })
+
+  it("o CONTROLE: uma palavra que NÃO é ordinal antes do `da matriz` não é referência", () => {
+    // A janela do extenso são PALAVRAS antes do `da matriz` — quem diz se o
+    // trecho é uma posição é o dicionário, não a regex: `última metade` e uma
+    // dezena seguida de outra (`vigésima trigésima`) não são número nenhum, e
+    // inventá-lo acusaria prosa que não fala de posição.
+    const dir = makeFixture({
+      count: 41,
+      doc: "# Guards\n\nA última metade da matriz descreve o histórico do ato.\n",
+    })
+    const r = run(dir)
+    expect(r.violations.filter(daMatriz)).toEqual([])
+    expect(r.ordinais).toEqual([])
+  })
+
   it("o CAMINHO do script também ancora (não só o `id` entre crases)", () => {
     const dir = makeFixture({
       count: 5,

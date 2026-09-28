@@ -124,7 +124,9 @@
 //      julgado.
 //
 //   5. OS ORDINAIS DA MATRIZ — a suíte identificada pela POSIÇÃO na prosa
-//      (`N.ª entrada da matriz`, `N.ª sub-test da matriz`, `N.ª da matriz`). O
+//      (`N.ª entrada da matriz`, `N.ª sub-test da matriz`, `N.ª da matriz`) ou
+//      escrita POR EXTENSO (`a quadragésima entrada da matriz`): as duas grafias
+//      afirmam o mesmo número, e as duas envelhecem igual. O
 //      número tem de bater com a ordem REAL do SUBTESTS, e a referência tem de
 //      NOMEAR a suíte (o `id` entre crases ou o caminho do script) na MESMA
 //      frase — um ordinal sem a suíte ao lado é VIOLAÇÃO, nunca omissão: é o
@@ -438,6 +440,91 @@ function analisaMetades(root, entries) {
 // ── OS ORDINAIS DA MATRIZ (a suíte identificada pela POSIÇÃO) ─────────────
 
 /**
+ * OS ORDINAIS POR EXTENSO que a prosa usa — normalizados (minúsculos, sem
+ * acento). O masculino e o feminino são chaves DISTINTAS porque a palavra é o que
+ * está ESCRITO (`quadragésimo` e `quadragésima` são a MESMA posição), e a prosa
+ * do repositório escreve as duas formas (`decima` sem acento inclusive).
+ *
+ * Unidades, dezenas e a centena: é o que a prosa precisa para escrever uma
+ * posição desta matriz (47 entradas hoje, e as dezenas compostas saem da soma de
+ * duas palavras — `quadragésima primeira`).
+ */
+const PALAVRAS_ORDINAIS = new Map([
+  ["primeiro", 1],
+  ["primeira", 1],
+  ["segundo", 2],
+  ["segunda", 2],
+  ["terceiro", 3],
+  ["terceira", 3],
+  ["quarto", 4],
+  ["quarta", 4],
+  ["quinto", 5],
+  ["quinta", 5],
+  ["sexto", 6],
+  ["sexta", 6],
+  ["setimo", 7],
+  ["setima", 7],
+  ["oitavo", 8],
+  ["oitava", 8],
+  ["nono", 9],
+  ["nona", 9],
+  ["decimo", 10],
+  ["decima", 10],
+  ["vigesimo", 20],
+  ["vigesima", 20],
+  ["trigesimo", 30],
+  ["trigesima", 30],
+  ["quadragesimo", 40],
+  ["quadragesima", 40],
+  ["quinquagesimo", 50],
+  ["quinquagesima", 50],
+  ["sexagesimo", 60],
+  ["sexagesima", 60],
+  ["septuagesimo", 70],
+  ["septuagesima", 70],
+  ["octogesimo", 80],
+  ["octogesima", 80],
+  ["nonagesimo", 90],
+  ["nonagesima", 90],
+  ["centesimo", 100],
+  ["centesima", 100],
+])
+
+/** Sem acento, minúsculo: é a forma em que as duas grafias coincidem. */
+function semAcento(texto) {
+  return texto
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+}
+
+/**
+ * O NÚMERO de um ordinal escrito por extenso (`quadragésima primeira` → 41), ou
+ * `null` quando o trecho NÃO é um ordinal composto válido.
+ *
+ * A forma composta é DEZENA + UNIDADE (`trigésima oitava` = 38, `quadragésima
+ * primeira` = 41); duas dezenas seguidas (`vigésima trigésima`) não são um ordinal
+ * e caem no `null` — o trecho que não é ordinal não é referência nenhuma, e
+ * inventar um número ali seria acusar a prosa que não fala de posição.
+ *
+ * @param {string} trecho
+ * @returns {number | null}
+ */
+export function ordinalDeExtenso(trecho) {
+  const palavras = semAcento(trecho).split(/\s+/).filter(Boolean)
+  // O ARTIGO da frente (`a quadragésima`, `o quadragésimo`) faz parte da frase,
+  // não do número: a janela do casamento o captura junto com o ordinal.
+  if (palavras[0] === "a" || palavras[0] === "o") palavras.shift()
+  if (palavras.length === 0 || palavras.length > 2) return null
+  const valores = palavras.map((p) => PALAVRAS_ORDINAIS.get(p))
+  if (valores.some((v) => v === undefined)) return null
+  if (valores.length === 1) return valores[0]
+  const [dezena, unidade] = valores
+  if (dezena >= 10 && dezena % 10 === 0 && unidade >= 1 && unidade <= 9) return dezena + unidade
+  return null
+}
+
+/**
  * O ORDINAL da suíte × a ORDEM real do `SUBTESTS` (a posição de HOJE).
  *
  * O DEFEITO MEDIDO (27/09/2026): a prosa identifica uma suíte pela POSIÇÃO que
@@ -448,11 +535,18 @@ function analisaMetades(root, entries) {
  * suíte errada: o count derivado não vê posição, e o drift passou em silêncio.
  *
  * A RÉGUA: uma referência da forma `<N>ª entrada da matriz` / `<N>ª sub-test da
- * matriz` / `<N>ª da matriz` tem de bater com a POSIÇÃO (1-based) do id que a
- * PRÓPRIA FRASE nomeia (o `id` entre crases ou o caminho do script). E ela é
- * FAIL-CLOSED na direção que o defeito exige: uma referência posicional que NÃO
- * nomeia a suíte é VIOLAÇÃO, não omissão — um número sem a suíte ao lado é
- * exatamente o que ninguém consegue conferir, e é assim que ele envelhece.
+ * matriz` / `<N>ª da matriz` — e a MESMA referência escrita POR EXTENSO (`a
+ * quadragésima entrada da matriz`, `a trigésima oitava sub-test da matriz`) —
+ * tem de bater com a POSIÇÃO (1-based) do id que a PRÓPRIA FRASE nomeia (o `id`
+ * entre crases ou o caminho do script). E ela é FAIL-CLOSED na direção que o
+ * defeito exige: uma referência posicional que NÃO nomeia a suíte é VIOLAÇÃO,
+ * não omissão — um número sem a suíte ao lado é exatamente o que ninguém
+ * consegue conferir, e é assim que ele envelhece.
+ *
+ * O EXTENSO NÃO É UMA RÉGUA À PARTE: a posição escrita em palavras envelhece
+ * IGUAL (`a quadragésima` deixa de ser a mesma suíte no dia em que uma entrada
+ * nasce antes), e uma forma que o guard não lesse seria o lugar onde o número
+ * errado passa — a régua lê as duas grafias e confere o MESMO número.
  *
  * O ESCOPO: as menções que identificam a suíte na matriz de HOJE. As ordens do
  * histórico de custo do README (`a 33ª custando 9.0s`, num ato de 33 sub-tests)
@@ -476,6 +570,12 @@ export function analisaOrdinais(root, entries) {
   // ordem de um ato do PASSADO — o histórico de custo do README não o carrega.
   const ORDINAL =
     /(\d{1,3})\s*\.?ª\s+(?:entrada\s+da\s+matriz|sub-tests?\s+da\s+matriz|da\s+matriz)\b/gi
+  // A MESMA referência escrita POR EXTENSO: uma ou duas palavras antes do
+  // `da matriz` (`quadragésima primeira entrada da matriz`). Quem decide se o
+  // trecho é um ordinal é o `ordinalDeExtenso` — a regex é só a JANELA, e uma
+  // palavra que não seja ordinal (`a última metade da matriz`) cai fora ali.
+  const REF_EXTENSO =
+    /([A-Za-zÀ-ÿ]+(?:\s+[A-Za-zÀ-ÿ]+)?)\s+(?:entrada\s+da\s+matriz|sub-tests?\s+da\s+matriz|da\s+matriz)\b/gi
   const refs = []
   const violations = []
 
@@ -540,13 +640,26 @@ export function analisaOrdinais(root, entries) {
       return limpo.slice(ini, fim)
     }
 
+    // As duas GRAFIAS viram o MESMO casamento (a posição e o número que ela
+    // afirma), e a conferência é UMA só: o que muda entre `<N>ª` e o extenso é
+    // como a prosa escreve o número, não a régua que o julga.
+    const casamentos = []
     ORDINAL.lastIndex = 0
     let m
     while ((m = ORDINAL.exec(limpo)) !== null) {
-      const linha = linhaDe(m.index)
+      casamentos.push({ idx: m.index, ordinal: Number(m[1]), citada: m[0] })
+    }
+    REF_EXTENSO.lastIndex = 0
+    while ((m = REF_EXTENSO.exec(limpo)) !== null) {
+      const ordinal = ordinalDeExtenso(m[1])
+      if (ordinal !== null) casamentos.push({ idx: m.index, ordinal, citada: m[0] })
+    }
+    casamentos.sort((a, b) => a.idx - b.idx)
+
+    for (const { idx, ordinal, citada } of casamentos) {
+      const linha = linhaDe(idx)
       if (dentroDoBloco(linha)) continue
-      const ordinal = Number(m[1])
-      const frase = fraseEm(m.index)
+      const frase = fraseEm(idx)
       // Os CANDIDATOS: as suítes que a própria frase nomeia — o `id` entre crases
       // ou o caminho do script dela. É assim que a régua sabe DE QUEM é o número.
       const candidatos = []
@@ -558,19 +671,19 @@ export function analisaOrdinais(root, entries) {
       for (const [script, id] of idDoScript) {
         if (!candidatos.includes(id) && frase.includes(script)) candidatos.push(id)
       }
-      const citada = m[0].replace(/\s+/g, " ")
-      refs.push({ arquivo: rel, linha, ordinal, citada, candidatos })
+      const referencia = citada.replace(/\s+/g, " ")
+      refs.push({ arquivo: rel, linha, ordinal, citada: referencia, candidatos })
 
       if (candidatos.length === 0) {
         violations.push(
-          `${rel}:${linha}: o ordinal '${citada}' NÃO nomeia a suíte — um número sozinho não é conferível contra a matriz, e é assim que ele envelhece em silêncio. Ancore-o no \`id\` do sub-test (ou no caminho do script): a matriz tem ${entries.length} entradas hoje`,
+          `${rel}:${linha}: o ordinal '${referencia}' NÃO nomeia a suíte — um número sozinho não é conferível contra a matriz, e é assim que ele envelhece em silêncio. Ancore-o no \`id\` do sub-test (ou no caminho do script): a matriz tem ${entries.length} entradas hoje`,
         )
         continue
       }
       if (!candidatos.some((id) => posicao.get(id) === ordinal)) {
         const real = candidatos.map((id) => `\`${id}\` é a ${posicao.get(id)}.ª`).join(", ")
         violations.push(
-          `${rel}:${linha}: o ordinal '${citada}' NÃO bate com a ordem do SUBTESTS (${real}) — uma entrada inserida ANTES move a suíte, e a prosa passa a identificar a errada. O número é a POSIÇÃO de hoje; ou cite a suíte só pelo \`id\``,
+          `${rel}:${linha}: o ordinal '${referencia}' NÃO bate com a ordem do SUBTESTS (${real}) — uma entrada inserida ANTES move a suíte, e a prosa passa a identificar a errada. O número é a POSIÇÃO de hoje; ou cite a suíte só pelo \`id\``,
         )
       }
     }

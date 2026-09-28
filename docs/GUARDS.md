@@ -1085,6 +1085,17 @@ na direção que o defeito exige: um ordinal que não nomeia a suíte é **viola
 não omissão — um número sem a suíte ao lado é exatamente o que ninguém consegue
 conferir, e é assim que ele envelhece.
 
+**A mesma posição escrita POR EXTENSO entra na MESMA régua** — `a quadragésima
+entrada da matriz` é a 40.ª, e o número é conferido contra a ordem do `SUBTESTS`
+como qualquer outro: hoje a `stack-per-commit` é a quadragésima entrada da matriz,
+e a `mutacao-prova` a quadragésima sétima entrada da matriz. Escrever a posição em
+palavras não a torna estável — o dia em que uma entrada nascer ANTES delas a prosa
+fica vermelha do mesmo jeito —, e uma grafia que o guard não lesse seria
+exatamente o lugar por onde o número errado passaria. A janela do extenso são as
+PALAVRAS antes do `da matriz`, e quem diz se o trecho é uma posição é um
+dicionário de ordinais (masculino e feminino, com e sem acento): uma palavra que
+não é ordinal (`a última metade da matriz`) não vira número nenhum.
+
 O escopo é a posição de **hoje**: as ordens do histórico de custo do README (`a
 33ª custando 9.0s`, num ato de 33 sub-tests) descrevem o TAMANHO da matriz daquele
 ato — são instantâneos do momento, não a posição de agora —, e por isso não trazem
@@ -1092,11 +1103,14 @@ o `da matriz` que a régua ancora. A prosa é hard-wrapped e a LINHA não é a
 unidade: uma referência partida entre duas linhas (o `<N>ª` de uma e o `entrada
 da matriz` da seguinte) é lida como uma frase só.
 
-**Como é provado:** seis casos em `check-mutation-count.test.ts` — o ordinal certo
+**Como é provado:** dez casos em `check-mutation-count.test.ts` — o ordinal certo
 passa (e o relatório publica a suíte que a frase nomeia), o errado acusa nomeando
-a posição real, o ordinal SEM a suíte acusa o fail-closed, o caminho do script
-também ancora, o histórico de custo fica fora, e a MESMA prosa fica errada quando
-uma entrada nasce ANTES (o `sub-2` que era a 3.ª vira a 4.ª).
+a posição real, o ordinal SEM a suíte acusa o fail-closed, o POR EXTENSO certo
+passa (`quadragésima primeira` = 41, com a dezena composta), o extenso errado
+acusa nomeando a posição real, o extenso SEM a suíte também acusa, uma palavra que
+não é ordinal não é referência, o caminho do script também ancora, o histórico de
+custo fica fora, e a MESMA prosa fica errada quando uma entrada nasce ANTES (o
+`sub-2` que era a 3.ª vira a 4.ª).
 
 #### O count não pode ser PARTIDO entre dois commits locais — o recorte `--staged`
 
