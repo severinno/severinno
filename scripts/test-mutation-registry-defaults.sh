@@ -228,43 +228,31 @@ PY
 # As três inserções são a tabela e nada mais: o nome na lista do guard
 # (`NON_VERSIONED_IMAGE_VARIABLES`), o nome na lista do resolvedor
 # (`IMAGE_VARIABLES`) e o espelho onde o valor dele é declarado
-# (`IMAGE_MIRRORS`). O marcador NÃO é `MUTACAO M` de propósito: esta não é uma
-# mutação (não cega nada) e o `mutar` da M7 usa a ausência dele para saber que a
-# própria escrita aplicou.
+# (`IMAGE_MIRRORS`).
+#
+# A TROCA PASSA PELA RÉGUA ÚNICA (`mutacao_aplicar_sem_marcador`, o caminho
+# DECLARADO). Antes era um `python3 - <<'PY'` privado que escrevia direto na
+# árvore — o `check-mutation-count` passou a recusar isso (a cirurgia privada
+# mede o alvo sem a prova de que a troca aplicou) e a suíte converteu. O caminho
+# DECLARADO é o certo aqui porque o marcador `MUTACAO` NÃO pode entrar: esta não
+# é uma mutação (não cega nada) e a M7 usa a AUSÊNCIA dele para saber que a
+# própria escrita aplicou — quem dispensa a prova do marcador DIZ por quê (o
+# MOTIVO abaixo é argumento OBRIGATÓRIO e está declarado no `SEM_MARCADOR` do
+# master).
+MOTIVO_PATCH='o remendo da TABELA não é uma mutação (não cega nada): o payload entra SEM o marcador MUTACAO de propósito, e a M7 usa a AUSÊNCIA dele para saber que a própria escrita aplicou'
 patch_tabela() {
-  ARQ_GUARD="$GUARD" ARQ_RESOLVER="$RESOLVER" python3 - <<'PY'
-import os
-
-guard, resolver = os.environ["ARQ_GUARD"], os.environ["ARQ_RESOLVER"]
-adicoes = {
-    guard: [
-        (
-            'export const NON_VERSIONED_IMAGE_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE", "BUN_VERSION"]',
-            'export const NON_VERSIONED_IMAGE_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE", "BUN_VERSION", "IMAGE_TAG"] /* TIPO NOVO (tabela) */',
-        ),
-    ],
-    resolver: [
-        (
-            'export const IMAGE_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE"]',
-            'export const IMAGE_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE", "IMAGE_TAG"] /* TIPO NOVO (tabela) */',
-        ),
-        (
-            "export const IMAGE_MIRRORS = {\n",
-            'export const IMAGE_MIRRORS = {\n  IMAGE_TAG: [\n    {\n      file: ".env.production.example",\n      line: /^IMAGE_TAG=(.+)$/m,\n      format: (v) => `IMAGE_TAG=${v}`,\n    },\n  ], /* TIPO NOVO (tabela) */\n',
-        ),
-    ],
-}
-for path, pares in adicoes.items():
-    s = open(path).read()
-    for alvo, novo in pares:
-        n = s.count(alvo)
-        if n != 1:
-            raise SystemExit(
-                f"patch da tabela nao-cirurgico em {path}: {n} ocorrencia(s) do alvo {alvo[:70]!r}"
-            )
-        s = s.replace(alvo, novo)
-    open(path, "w").write(s)
-PY
+  mutacao_aplicar_sem_marcador "$GUARD" \
+    'export const NON_VERSIONED_IMAGE_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE", "BUN_VERSION"]' \
+    'export const NON_VERSIONED_IMAGE_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE", "BUN_VERSION", "IMAGE_TAG"] /* TIPO NOVO (tabela) */' \
+    "$(soma_de "$GUARD")" "$MOTIVO_PATCH"
+  mutacao_aplicar_sem_marcador "$RESOLVER" \
+    'export const IMAGE_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE"]' \
+    'export const IMAGE_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE", "IMAGE_TAG"] /* TIPO NOVO (tabela) */' \
+    "$(soma_de "$RESOLVER")" "$MOTIVO_PATCH"
+  mutacao_aplicar_sem_marcador "$RESOLVER" \
+    $'export const IMAGE_MIRRORS = {\n' \
+    $'export const IMAGE_MIRRORS = {\n  IMAGE_TAG: [\n    {\n      file: ".env.production.example",\n      line: /^IMAGE_TAG=(.+)$/m,\n      format: (v) => `IMAGE_TAG=${v}`,\n    },\n  ], /* TIPO NOVO (tabela) */\n' \
+    "$(soma_de "$RESOLVER")" "$MOTIVO_PATCH"
 }
 
 # ── mkfixture: um mini-repo com o VALOR DECLARADO e UM defeito ────────────

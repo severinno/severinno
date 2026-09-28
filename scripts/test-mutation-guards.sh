@@ -398,6 +398,14 @@ SEM_MARCADOR=(
   # comando do hook com o do CI). As mutações no guard `.mjs` vão pelo caminho
   # ESTRITO: lá o comentário não muda o que ele mede.
   'scripts/test-mutation-hook-ci-parity.sh|o payload é uma linha de HOOK/YAML lida CRUA pelo guard da paridade: um comentário de marcador entraria no texto medido'
+  # O `registry-defaults` remenda a TABELA do tipo novo ANTES de mutar o guard
+  # (o tipo precisa estar na tabela para a M7 ter o que cegar) — e o remendo é a
+  # CONSTRUÇÃO do cenário, não uma mutação: ele NÃO pode carregar o marcador, e a
+  # M7 lê a AUSÊNCIA dele para saber que a própria escrita aplicou. Quem o aplica
+  # é o caminho DECLARADO, e o MOTIVO aqui é o MESMO texto que a suíte passa na
+  # chamada (`$MOTIVO_PATCH`). A cirurgia privada que ele fazia (`python3` sobre a
+  # árvore) é o que a regra da CIRURGIA PRIVADA do `check-mutation-count` recusa.
+  'scripts/test-mutation-registry-defaults.sh|o remendo da TABELA não é uma mutação (não cega nada): o payload entra SEM o marcador MUTACAO de propósito, e a M7 usa a AUSÊNCIA dele para saber que a própria escrita aplicou'
 )
 
 # ── AS SUÍTES FORA DA RÉGUA: por que cada uma NÃO chama a régua única ───────
@@ -413,8 +421,16 @@ SEM_MARCADOR=(
 # scratch (a régua é a prova do alvo da ÁRVORE, e a cópia já morre com o tmp);
 # (b) a mutação é a CONSTRUÇÃO do fixture (o arquivo mutado nasce escrito, não há
 # troca num alvo); (c) a suíte ORQUESTRA outras suítes e não injeta mutação
-# própria. As três linhas marcadas PENDENTE são troca na ÁRVORE por helper
-# privado — o caso exato da régua, ainda não convertido.
+# própria.
+#
+# A CIRURGIA PRIVADA NA ÁRVORE É VIOLAÇÃO, e quem a recusa é a regra do
+# `check-mutation-count`: uma suíte da MATRIZ que escreve num arquivo do
+# repositório por `sed -i`/`python3` privado (em vez da régua única) faz o guard
+# FALHAR. A nota antiga de "três linhas PENDENTE" ficou obsoleta: as suítes que
+# trocavam na árvore por helper privado foram convertidas para a régua
+# (`reconciliation`, `nested-guard`, `hook-ci-parity`) e o `registry-defaults`
+# fechou o caso do remendo da tabela. O caso desta lista é a cirurgia na CÓPIA do
+# fixture, nunca na árvore.
 FORA_DA_REGUA=(
   'bun-literal|muta a CÓPIA do fixture no scratch (`node -e`/`sed -i`), não a árvore'
   'bun-removal|a mutação é a CONSTRUÇÃO do fixture (o workflow mutado nasce escrito)'

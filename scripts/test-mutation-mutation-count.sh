@@ -883,7 +883,7 @@ else
   pass "K (CONTROLE): o ÍNDICE partido reprova (exit $K_STAGED_EXIT) e a ÁRVORE coerente passa (exit 0)"
 
   mutar_guard \
-    '    const result = run(dir)' \
+    '    const result = run(dir, { arvore: root })' \
     '    const result = run(root) /* MUTACAO M-K: o recorte julga a ARVORE */'
   rodar_staged
   if [ "$EXIT" -ne 0 ]; then

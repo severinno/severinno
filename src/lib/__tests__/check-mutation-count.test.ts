@@ -110,6 +110,13 @@ interface FixtureOpts {
   /** Índices das suítes que chamam o CAMINHO DECLARADO da régua. */
   semMarcadorSuites?: number[]
   /**
+   * As suítes que fazem CIRURGIA PRIVADA NA ÁRVORE: índice → o trecho que a
+   * suíte ganha (um `sed -i`, um redirecionamento ou um heredoc que grava). O
+   * ALVO do trecho tem de existir no fixture para a regra reconhecê-lo como
+   * arquivo da árvore — o teste o escreve (ou aponta para um arquivo da matriz).
+   */
+  cirurgiaNaArvore?: Record<number, string>
+  /**
    * A COBERTURA da régua do ordinal declarada na doc — a linha
    * `**A régua do ordinal: N referência(s) JULGADA(S) e M PULADA(S) — historico
    * N · foraDeEscopo N · blocoDerivado N**`:
@@ -178,6 +185,7 @@ function makeFixture({
   foraLista = null,
   semMarcadorLista = null,
   semMarcadorSuites = [],
+  cirurgiaNaArvore = {},
   cobertura = "auto",
 }: FixtureOpts = {}) {
   const dir = mkdtempSync(join(tmpdir(), "mutation-count-"))
@@ -213,7 +221,13 @@ function makeFixture({
         : i === provaCopia
           ? "\nmutar() { if ! grep -qF 'MUTACAO M' \"$1\"; then exit 1; fi }\n"
           : ""
-    writeFileSync(join(dir, rel), `#!/usr/bin/env bash\nset -euo pipefail\n${corpo}${prova}`)
+    // A CIRURGIA PRIVADA NA ÁRVORE: o trecho que escreve num arquivo do
+    // repositório por fora da régua (o alvo é escrito pelo PRÓPRIO teste).
+    const cirurgia = cirurgiaNaArvore[i] ?? ""
+    writeFileSync(
+      join(dir, rel),
+      `#!/usr/bin/env bash\nset -euo pipefail\n${corpo}${prova}${cirurgia}`,
+    )
   }
   const provaBloco =
     provaLista === null || provaLista === undefined
@@ -1432,6 +1446,86 @@ describe("check-mutation-count — a PROVA-DE-APLICAÇÃO (a régua única × a 
     // O CONTROLE: sem o bloco e SEM ninguém chamando a régua, não há lista a
     // exigir (é o caso das suítes que mutam por conta própria).
     expect(run(makeFixture()).violations.some((v) => v.includes("não DECLARA"))).toBe(false)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// A CIRURGIA PRIVADA NA ÁRVORE — a suíte da matriz que volta a `sed -i`/`python3`
+// privado para escrever num arquivo do REPOSITÓRIO, em vez de passar a troca pela
+// régua única. O que a regra impede: uma escrita que NÃO entrou deixa a suíte
+// verde sobre a árvore ÍNTEGRA (o verde em VÁCUO), e ninguém vê.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("check-mutation-count — a CIRURGIA PRIVADA NA ÁRVORE (a régua é o único caminho)", () => {
+  /** O fixture com a suíte 0 fazendo cirurgia privada e o ALVO existindo na árvore. */
+  const comCirurgia = (
+    trecho: string,
+    alvo = "scripts/check-x.mjs",
+    over: Partial<FixtureOpts> = {},
+  ) => {
+    const dir = makeFixture({ count: 3, cirurgiaNaArvore: { 0: `\n${trecho}\n` }, ...over })
+    writeFileSync(join(dir, alvo), "export const valor = 1\n")
+    return dir
+  }
+  const daCirurgia = (v: string) => v.includes("troca na ÁRVORE por cirurgia PRIVADA")
+
+  it("o `sed -i` num arquivo da árvore é violação, com a linha, o alvo e o remédio", () => {
+    const r = run(comCirurgia(`sed -i 's/valor = 1/valor = 2/' "$SCRIPT_DIR/scripts/check-x.mjs"`))
+    const v = r.violations.find(daCirurgia)
+    expect(v).toContain("scripts/test-mutation-sub-0.sh")
+    expect(v).toContain("(sed -i em 'scripts/check-x.mjs')")
+    expect(v).toContain("mutacao_aplicar")
+  })
+
+  it('o heredoc de `python3` que dá `open(path, "w")` num arquivo da árvore é violação', () => {
+    const dir = comCirurgia(
+      `ARQ="$SCRIPT_DIR/scripts/check-x.mjs" python3 - <<'PY'\nimport os\np = os.environ["ARQ"]\ns = open(p).read()\nopen(p, "w").write(s)\nPY`,
+    )
+    const v = run(dir).violations.find(daCirurgia)
+    expect(v).toContain("heredoc/env ARQ em 'scripts/check-x.mjs'")
+  })
+
+  it("o redirecionamento `>` num arquivo da árvore é violação", () => {
+    const r = run(comCirurgia(`printf 'x\\n' > "$SCRIPT_DIR/scripts/check-x.mjs"`))
+    expect(r.violations.find(daCirurgia)).toContain("(> / >> em 'scripts/check-x.mjs')")
+  })
+
+  it("a CÓPIA do fixture (o `$TMP_DIR` de um `mktemp`) NÃO é a árvore: não é violação", () => {
+    const r = run(
+      comCirurgia(`TMP_DIR="$(mktemp -d)"\nsed -i 's/valor = 1/valor = 2/' "$TMP_DIR/check-x.mjs"`),
+    )
+    expect(r.violations.filter(daCirurgia)).toEqual([])
+  })
+
+  it("um caminho relativo que NÃO existe no repositório não é a árvore: não é violação", () => {
+    // O caso MEDIDO (`stack-per-commit`): o `sed -i` roda sob `cd "$FIXTURE_DIR"`,
+    // sobre um `scripts/por-nome.js` que não existe no repositório.
+    const r = run(comCirurgia(`sed -i 's/a/b/' scripts/por-nome.js`))
+    expect(r.violations.filter(daCirurgia)).toEqual([])
+  })
+
+  it("a suíte que aplica a troca PELA RÉGUA não é violação (o CONTROLE)", () => {
+    const dir = comCirurgia("", "scripts/check-x.mjs", {
+      provaSuites: [0],
+      provaLista: ["sub-0"],
+      doc: `# Guards\n\n**1 suítes** provam a aplicação pela régua única.\n`,
+    })
+    expect(run(dir).violations.filter(daCirurgia)).toEqual([])
+  })
+
+  it("o recorte `--staged` também recusa: o FONTE vem do índice, o ALVO da árvore", () => {
+    // No pre-commit o índice materializa só o que o veredito lê (o master, as
+    // refs e as suítes) — o ALVO da cirurgia não está entre eles. É contra a
+    // ÁRVORE de verdade que o alvo é reconhecido, e é isso que faz o guard ver a
+    // cirurgia ANTES do commit (sem isso ela só apareceria no CI).
+    const arvore = makeFixture({ count: 3 })
+    writeFileSync(join(arvore, "scripts/check-x.mjs"), "export const valor = 1\n")
+    const indice = makeFixture({
+      count: 3,
+      cirurgiaNaArvore: { 0: `\nsed -i 's/a/b/' "$SCRIPT_DIR/scripts/check-x.mjs"\n` },
+    })
+    const r = runStaged(arvore, { ler: indiceDe(indice) })
+    expect(r.violations.filter(daCirurgia).length).toBe(1)
   })
 })
 

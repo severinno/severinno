@@ -89,6 +89,16 @@
 //     DECLARAÇÃO do total e ignora o id de um controle, de propósito — cobrar
 //     toda ocorrência daria falso positivo em texto correto.
 //
+//   - a CIRURGIA PRIVADA NA ÁRVORE: nenhuma suíte da MATRIZ escreve num arquivo
+//     do REPOSITÓRIO por fora da régua única — `sed -i`/`--in-place`, um
+//     redirecionamento `>`/`>>` ou um heredoc (`python3`) cujo CORPO GRAVA. Quem
+//     escreve na árvore é a régua (`scripts/mutacao-prova.sh`), que PROVA que a
+//     escrita entrou (a cirurgia, o marcador e o conteúdo); a cirurgia privada
+//     mede o alvo SEM prova nenhuma, e uma escrita que não entrou deixa a suíte
+//     verde sobre a árvore ÍNTEGRA (o verde em VÁCUO). A cópia do fixture no
+//     scratch (`$TMP_DIR`/`$MUT_DIR` de um `mktemp`) NÃO é a árvore: é o que
+//     separa esta regra da classe legítima de `FORA_DA_REGUA`.
+//
 // O QUE é validado (refs VIVAS — devem usar EXATAMENTE N, salvo o name):
 //   1. pr-check.yml:
 //      - name do job mutation-guards: "Mutation guards master" EXATO e SEM
@@ -175,6 +185,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs"
 import { dirname, join, relative, resolve } from "node:path"
@@ -1430,6 +1441,217 @@ export function analisaProvaDeAplicacao(root, masterSrc, entries) {
   }
 }
 
+// ── A CIRURGIA PRIVADA NA ÁRVORE (o caminho que a régua não vê) ─────────────
+//
+// O DEFEITO que esta regra existe para impedir: uma suíte da matriz volta a
+// ESCREVER num arquivo do REPOSITÓRIO por conta própria — `sed -i`, um
+// redirecionamento (`>`/`>>`) ou um heredoc de `python3` que dá `open(path, "w")`
+// — em vez de passar a troca pela régua única. A régua é o ÚNICO caminho que
+// escreve na árvore e PROVA que a escrita entrou (a CIRURGIA que casa uma vez, o
+// MARCADOR, o CONTEÚDO que mudou); a cirurgia privada mede o alvo sem prova
+// nenhuma, e uma escrita que não aplicou deixa a suíte verde sobre a árvore
+// ÍNTEGRA — o verde em VÁCUO, que é o que ninguém vê.
+//
+// O QUE É A ÁRVORE, e por que a régua NÃO flagra o scratch: o alvo é um arquivo
+// que EXISTE no repositório (resolvido contra a raiz julgada). A cópia do
+// fixture nasce de um `mktemp` no `$TMP_DIR`/`$MUT_DIR` e o seu valor não é
+// estável — os tokens que dependem dele NÃO resolvem, e o que não resolve a
+// régua não julga. É o que separa a cirurgia na árvore (o caso deste guard) da
+// cirurgia na CÓPIA (a classe legítima das suítes declaradas em FORA_DA_REGUA).
+//
+// LIMITE DECLARADO (fail-closed onde dá, honesto onde não dá):
+//   - a detecção é ESTÁTICA, sobre o fonte da suíte — um alvo montado em tempo de
+//     execução (`"$dir/$nome"` num laço, um caminho lido de um arquivo) NÃO é
+//     julgado; a régua prefere o silêncio falso-negativo à violação falsa, e o
+//     caminho que ela cobre é o que as suítes de fato usam;
+//   - a SEGUNDA testemunha (uma metade que desliga esta regra no gabarito da
+//     matriz) está DECLARADA como lacuna: acrescentar a metade mudaria a coluna
+//     de metades do registro versionado, que é REESCRITA pelo ato (e o ato exige
+//     a árvore já commitada). A cobertura viva são os casos unitários da suíte
+//     (`check-mutation-count.test.ts`) e a conversão da suíte que a regra pegou.
+
+/** Os tokens de uma linha, com o básico de aspas simples/duplas (o que a régua precisa). */
+function tokensDaLinha(linha) {
+  const fora = []
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g
+  let m
+  while ((m = re.exec(linha)) !== null) fora.push(m[1] ?? m[2] ?? m[3])
+  return fora
+}
+
+/**
+ * As atribuições `VAR=valor` do fonte, com expansão de `$VAR`/`${VAR}` em
+ * passadas sucessivas. `SCRIPT_DIR`/`ROOT`/`PWD` nascem com a RAIZ da árvore — é
+ * o que as suítes usam para apontar para o repositório.
+ *
+ * Uma atribuição cujo valor é um COMANDO (`$(mktemp -d)`, crase) fica de FORA: o
+ * scratch das suítes nasce de um `mktemp` e o que ele vale não é estável. O que
+ * não resolve é o que a régua NÃO julga — uma variável de scratch não pode virar
+ * um alvo da árvore só porque o seu valor é desconhecido.
+ */
+function variaveisDoFonte(src, raiz) {
+  const vars = { SCRIPT_DIR: raiz, ROOT: raiz, PWD: raiz }
+  const atrib = [
+    ...src.matchAll(
+      /^[ \t]*(?:export[ \t]+|local[ \t]+|declare[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S*)/gm,
+    ),
+  ]
+  for (let volta = 0; volta < 5; volta++) {
+    for (const m of atrib) {
+      let v = m[2].replace(/^["']|["']$/g, "")
+      if (v.includes("$(") || v.includes("`")) continue
+      for (const [n, val] of Object.entries(vars)) {
+        v = v.replace(new RegExp(`\\$\\{?${n}\\}?`, "g"), val)
+      }
+      vars[m[1]] = v
+    }
+  }
+  return vars
+}
+
+/** Expande `$VAR`/`${VAR}` de um token. `null` quando sobra `$` (não resolvido). */
+function expandeVariaveis(token, vars) {
+  if (!token.includes("$")) return token
+  if (token.includes("$(") || token.includes("`")) return null
+  let v = token
+  for (const [n, val] of Object.entries(vars)) {
+    v = v.replace(new RegExp(`\\$\\{?${n}\\}?`, "g"), val)
+  }
+  return v.includes("$") ? null : v
+}
+
+/**
+ * O caminho de um token É um arquivo da ÁRVORE? Aceita caminho absoluto sob a
+ * raiz e caminho relativo — sempre conferido contra a raiz julgada: só o que
+ * EXISTE no repositório é a árvore, e a cópia do fixture no scratch nunca casa.
+ */
+function ehArquivoDaArvore(raiz, caminho) {
+  if (caminho === null || caminho === "") return null
+  let rel = caminho
+  if (rel.startsWith("/")) {
+    if (!rel.startsWith(`${raiz}/`)) return null
+    rel = rel.slice(raiz.length + 1)
+  }
+  if (rel.includes("$") || rel.includes("`") || rel.includes("..")) return null
+  try {
+    return statSync(join(raiz, rel)).isFile() ? rel : null
+  } catch {
+    return null
+  }
+}
+
+/** A ASSINATURA de ESCRITA num corpo de `python`/`node` (o que GRAVA, não o que lê). */
+const ASSINATURA_ESCRITA =
+  /\b(?:write_text|write_bytes|writeFileSync|appendFileSync|writeFile|truncate)\s*\(|open\s*\([^)]*["'](?:w|a|wb|ab)["']/
+
+/**
+ * As CIRURGIAS PRIVADAS NA ÁRVORE de UMA suíte: cada achado é `{linha, tipo, alvo}`.
+ *
+ * Três primitivas, as que o repositório usa de verdade:
+ *   (A) `sed -i`/`--in-place` — o alvo é o último token que não é flag nem
+ *       expressão `s/.../.../`;
+ *   (B) redirecionamento `>`/`>>` para um arquivo — o token da direita;
+ *   (C) um heredoc (`python3 - <<'PY'`, `cat > arq <<'EOF'`) cujo CORPO tem
+ *       assinatura de escrita: o alvo é o literal que a escrita abre, ou a
+ *       variável de ambiente que a linha de invocação associa a um arquivo da
+ *       árvore.
+ *
+ * @param {string} src o fonte da suíte
+ * @param {string} raiz a raiz da árvore julgada
+ * @returns {{linha: number, tipo: string, alvo: string}[]}
+ */
+export function cirurgiasPrivadasNaArvore(src, raiz) {
+  const achados = []
+  const vars = variaveisDoFonte(src, raiz)
+  const linhas = src.split("\n")
+
+  for (const [i, linha] of linhas.entries()) {
+    if (/^\s*#/.test(linha)) continue
+
+    // (A) `sed -i` — a troca no lugar sobre um arquivo.
+    if (/\bsed\s+(?:-[A-Za-z]*i[A-Za-z]*|--in-place)\b/.test(linha)) {
+      const alvoTok = [...tokensDaLinha(linha)]
+        .reverse()
+        .find((t) => !t.startsWith("-") && !/^[0-9,]*[sy]?[/|]/.test(t))
+      const alvo = alvoTok ? ehArquivoDaArvore(raiz, expandeVariaveis(alvoTok, vars)) : null
+      if (alvo) achados.push({ linha: i + 1, tipo: "sed -i", alvo })
+    }
+
+    // (B) o redirecionamento `>`/`>>` para um arquivo.
+    const red = /(?:>>?)\s*("[^"]+"|'[^']+'|\$[A-Za-z_][A-Za-z0-9_]*)/g
+    let mm
+    while ((mm = red.exec(linha)) !== null) {
+      const token = mm[1].replace(/^["']|["']$/g, "")
+      const alvo = ehArquivoDaArvore(raiz, expandeVariaveis(token, vars))
+      if (alvo) achados.push({ linha: i + 1, tipo: "> / >>", alvo })
+    }
+  }
+
+  // (C) os heredocs cujo corpo GRAVA.
+  for (const m of src.matchAll(/<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?\n([\s\S]*?)\n\1/g)) {
+    const corpo = m[2]
+    if (!ASSINATURA_ESCRITA.test(corpo)) continue
+    const linhaInvoc = src.slice(0, m.index).split("\n").length
+    const invocLinha = linhas[linhaInvoc - 1] ?? ""
+    // (C1) as variáveis de ambiente da linha de invocação que apontam p/ a árvore.
+    for (const e of invocLinha.matchAll(/([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S+)/g)) {
+      const nome = e[1]
+      const alvo = ehArquivoDaArvore(raiz, expandeVariaveis(`$${nome}`, vars))
+      if (!alvo) continue
+      if (
+        corpo.includes(`"${nome}"`) ||
+        corpo.includes(`'${nome}'`) ||
+        corpo.includes(`$${nome}`)
+      ) {
+        achados.push({ linha: linhaInvoc, tipo: `heredoc/env ${nome}`, alvo })
+      }
+    }
+    // (C2) o literal que a ESCRITA abre (o payload citado não conta).
+    for (const lit of corpo.matchAll(/["']([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)["']/g)) {
+      const alvo = ehArquivoDaArvore(raiz, lit[1])
+      if (!alvo) continue
+      const antes = corpo.slice(Math.max(0, lit.index - 40), lit.index)
+      if (/(?:open|writeFileSync|writeFile|truncate)\s*\(\s*$|write_text\s*\(\s*$/.test(antes)) {
+        achados.push({ linha: linhaInvoc, tipo: "heredoc", alvo })
+      }
+    }
+  }
+  return achados
+}
+
+/**
+ * A REGRA: uma suíte da MATRIZ não troca um arquivo da ÁRVORE por cirurgia
+ * PRIVADA. Quem escreve na árvore é a régua única (`PROVA_LIB`) — e a razão de a
+ * regra existir é que a cirurgia privada mede o alvo SEM a prova de que a troca
+ * aplicou (o verde em VÁCUO).
+ *
+ * O ESCOPO é a MATRIZ (as suítes do `SUBTESTS`): são elas as que declaram a
+ * relação com a régua, e é nelas que "voltar à cirurgia de fora da régua" é uma
+ * regressão — uma suíte que nunca esteve na régua está fora desta jurisdição.
+ *
+ * @param {string} root a raiz julgada (o fixture, ou a árvore do ÍNDICE)
+ * @param {{id: string, script: string}[]} entries
+ * @param {{arvore?: string}} [opts] `arvore` é a raiz do REPOSITÓRIO de verdade:
+ *   no recorte `--staged` o que se julga é o ÍNDICE, e é contra a árvore de
+ *   verdade que o TARGET tem de existir para ser reconhecido como nosso (sem
+ *   isso o guard não veria a cirurgia antes do commit). Sem ela, `root`.
+ * @returns {{violations: string[]}}
+ */
+export function analisaCirurgiaNaArvore(root, entries, { arvore = root } = {}) {
+  const violations = []
+  for (const { script } of entries) {
+    const p = join(root, script)
+    if (!existsSync(p)) continue // ausente = violação da regra das metades
+    const src = readFileSync(p, "utf8")
+    for (const { linha, tipo, alvo } of cirurgiasPrivadasNaArvore(src, arvore)) {
+      violations.push(
+        `${script}:${linha}: troca na ÁRVORE por cirurgia PRIVADA (${tipo} em '${alvo}') — a régua ÚNICA (${PROVA_LIB}) é o ÚNICO caminho que escreve num arquivo do repositório e PROVA que a escrita entrou: use \`mutacao_aplicar\` (o payload carrega o marcador MUTACAO) ou \`mutacao_aplicar_sem_marcador\` (o payload que não o comporta, com o MOTIVO declarado). Uma suíte que volta a \`${tipo}\` por conta própria mede o alvo SEM a prova de aplicação — e uma escrita que não entrou deixa a suíte verde sobre a árvore ÍNTEGRA (o verde em VÁCUO)`,
+      )
+    }
+  }
+  return { violations }
+}
+
 /** True se a linha tem marcador de contexto HISTÓRICO (não é count atual). */
 function isHistoricalLine(line) {
   return /era de\b|após a medição|foi adicionado após|medição de \d/.test(line)
@@ -1661,7 +1883,7 @@ export function comparaComOAto(bench, ids, { metades = [] } = {}) {
 
 // ── Guard principal ────────────────────────────────────────────────────────
 
-export function run(root) {
+export function run(root, { arvore = root } = {}) {
   const masterPath = "scripts/test-mutation-guards.sh"
   const workflowPath = ".github/workflows/pr-check.yml"
   const readmePath = "README.md"
@@ -1758,6 +1980,14 @@ export function run(root) {
   const prova = analisaProvaDeAplicacao(root, masterSrc, entries)
   violations.push(...prova.violations)
 
+  // 4b-bis. A CIRURGIA PRIVADA NA ÁRVORE — a suíte da matriz que volta a
+  //        `sed -i`/`python3` privado para escrever num arquivo do repositório,
+  //        em vez de passar a troca pela régua única. `arvore` é a raiz de
+  //        verdade: no recorte `--staged` o alvo tem de existir LÁ para ser
+  //        reconhecido como nosso (o índice materializa só o que o veredito lê).
+  const cirurgia = analisaCirurgiaNaArvore(root, entries, { arvore })
+  violations.push(...cirurgia.violations)
+
   // 4c. OS ORDINAIS DA MATRIZ — a suíte identificada pela POSIÇÃO (`a N.ª
   //     entrada da matriz`). Um número que ninguém confere envelhece em silêncio
   //     quando uma entrada nasce ANTES dele, e a prosa passa a apontar para a
@@ -1805,6 +2035,8 @@ export function run(root) {
       comProva: prova.comProva.map((c) => c.id),
       declaradas: prova.declaradas,
     },
+    cirurgiaNaArvore: cirurgia.violations.length,
+    arvore,
     ordinais: ordinais.refs,
     // A COBERTURA publicada: o que a régua julga, o que ela pula (com a classe) e
     // o que a doc declara. É o par que a regra 4d trava.
@@ -2045,7 +2277,11 @@ export function runStaged(root, { ler = lerDoIndice } = {}) {
       mkdirSync(dirname(destino), { recursive: true })
       writeFileSync(destino, r.conteudo)
     }
-    const result = run(dir)
+    // A raiz da ÁRVORE de verdade vai junto: o julgamento é do ÍNDICE, mas é
+    // contra o repositório real que um ALVO é reconhecido como arquivo nosso —
+    // sem isso, a cirurgia privada na árvore escaparia do pre-commit (o índice
+    // materializa só os arquivos que o veredito lê, não os alvos das suítes).
+    const result = run(dir, { arvore: root })
     const violacoes = [...result.violations]
     for (const a of ausentes) {
       violacoes.push(
