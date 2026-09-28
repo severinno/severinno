@@ -3761,7 +3761,8 @@ medição deixa de ficar escondida atrás do número antigo. É esse mesmo mecan
 que fechou a defasagem que esta prosa declarava à mão até aqui (o ato de
 `8e76c9a6` guardava 231 metades contra as 236 da árvore): a coluna deixou de
 precisar de nota. O ato de 37,
-por comparação, deixava SETE metades fora dele — as CINCO da pilha commit a commit (M1–M5, a 38.ª entrada da matriz,
+por comparação, deixava SETE metades fora dele — as CINCO da pilha commit a commit (M1–M5, a suíte
+`stack-per-commit` — hoje a 40.ª entrada da matriz —,
 cujo custo havia sido medido por execução em 22/09/2026: **3.3s**) e as DUAS do
 teto derivado da régua da idade (M7 e M8, com a suíte a **22.8s** contra os 17.3s
 daquele ato) —, e
@@ -8095,7 +8096,7 @@ verde escondendo o vermelho do meio. A detecção é o **CONJUNTO de commits ver
 recebeu. O fixture DECLARA o próprio `vitest` (um script no `package.json` dele que
 importa os arquivos e reprova se algum levantar): o sujeito é o veredito do gate sobre o
 exit code do runner, e um fixture que exigisse `node_modules` iria a vermelho por
-AMBIENTE num job sem dependências. A suíte é a **38.ª sub-test** da matriz do master, e
+AMBIENTE num job sem dependências. A suíte é a **40.ª sub-test** da matriz do master, e
 por isso roda com o MESMO comando nas DUAS forjas (o job `guards` da dona do merge e o
 `mutation-guards` do espelho).
 

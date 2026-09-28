@@ -1676,7 +1676,7 @@ medida no simulador (a suíte e o ensaio do pty). Ela custa **≈0,61s** (median
 > asserção que viaja antes do que ela mede), foram consertadas DENTRO do commit que as criou.
 >
 > **A régua tem prova por mutação própria** (`scripts/test-mutation-stack-per-commit.sh`,
-> **em OITO direções** — a 38.ª sub-test da matriz): o fixture é um repositório git de
+> **em OITO direções** — a 40.ª sub-test da matriz): o fixture é um repositório git de
 > verdade com uma pilha de quatro commits onde **dois NASCEM vermelhos**, cada um por uma
 > régua DIFERENTE, o terceiro (o topo) os conserta e o quarto nasce **FLAKY** — o teste
 > dele falha na PRIMEIRA medição e passa na segunda, com a MESMA árvore (a classe medida
