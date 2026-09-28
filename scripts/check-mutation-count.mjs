@@ -1069,6 +1069,54 @@ export function deriveForaDaRegua(masterSrc) {
 }
 
 /**
+ * A CLASSIFICAÇÃO de cada sub-test contra a régua — a publicação da doc
+ * derivada (a tabela do `docs/GUARDS.md`), e a razão de ela ser DERIVADA.
+ *
+ * O que ela responde, sub-test a sub-test: quem PROVA a aplicação (chama
+ * `mutacao_aplicar`, o caminho estrito), quem usa TAMBÉM o caminho DECLARADO (o
+ * payload que não comporta o marcador), quem é o GABARITO (muta a própria régua
+ * para medir que as provas dela são load-bearing) e quem MUTA POR CONTA PRÓPRIA
+ * (está em `FORA_DA_REGUA`, e a linha do master diz o PORQUÊ).
+ *
+ * É derivada do MASTER, e não do registro: a relação de uma suíte com a régua é
+ * uma propriedade da MATRIZ (o que ela é), não da medição (quanto ela custa) — e
+ * a prosa que a publica tem de bater com o master do momento, que é o mesmo
+ * "lado vivo" que o `check-mutation-count` já confere. Sem os DOIS blocos
+ * declarados (o master anterior às listas) ela devolve `null`: aí não há
+ * classificação a publicar, e a doc derivada sai SEM esta seção em vez de
+ * inventar zero isenta.
+ *
+ * @param {string} masterSrc
+ * @param {{id: string, script: string}[]} entries
+ * @returns {{provam: string[], isentas: {id: string, motivo: string}[], declaradas: string[], gabarito: string | null} | null}
+ */
+export function classificacaoDaRegua(masterSrc, entries) {
+  const { presente, ids } = deriveProvaDeAplicacao(masterSrc)
+  const { presente: foraPresente, entradas: fora } = deriveForaDaRegua(masterSrc)
+  if (!presente || !foraPresente) return null
+  const porScript = new Map(entries.map((e) => [e.script, e.id]))
+  const daMatriz = new Set(entries.map((e) => e.id))
+  // O GABARITO e o `forge-parity` (que NÃO é sub-test do master) entram pelo
+  // caminho do script: a chave de `SEM_MARCADOR` é o CAMINHO, não o id.
+  const declaradas = deriveSemMarcador(masterSrc)
+    .entradas.map((e) => porScript.get(e.chave))
+    .filter((id) => id !== undefined)
+    .sort()
+  return {
+    provam: ids.filter((id) => daMatriz.has(id)).sort(),
+    isentas: fora
+      .filter((f) => daMatriz.has(f.chave))
+      .map((f) => ({ id: f.chave, motivo: f.motivo }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+    declaradas,
+    gabarito: porScript.get(PROVA_GABARITO) ?? null,
+    // O CAMINHO da cópia única vai junto: quem publica a prosa derivada não
+    // crava o caminho da régua na folha (ele é uma decisão de UMA linha, aqui).
+    lib: PROVA_LIB,
+  }
+}
+
+/**
  * Os caminhos de `scripts/test-mutation-*.sh` que CHAMAM `<token>` no próprio
  * fonte (a conferência do caminho declarado é do DIRETÓRIO, não da matriz).
  */
@@ -1654,7 +1702,7 @@ export function run(root) {
   //    cada ato. Agora quem a reescreve é o ato (o `--baseline` chama o
   //    `escreverDocs`) e este guard a recusa quando ela divirge do registro —
   //    linha a linha, porque um número trocado à mão não muda a contagem.
-  violations.push(...julgaAsProsas(root))
+  violations.push(...julgaAsProsas(root, masterSrc, entries))
 
   return {
     ok: violations.length === 0,
@@ -1696,7 +1744,7 @@ export function run(root) {
  * @param {string} root
  * @returns {string[]}
  */
-function julgaAsProsas(root) {
+function julgaAsProsas(root, masterSrc, entries) {
   const caminho = join(root, BENCH_PATH)
   // O registro é LIDO, não exigido — a mesma régua da regra 5: um fixture (ou um
   // checkout sem o bench) não tem prosa derivada a julgar. Sem o registro NÃO
@@ -1710,7 +1758,12 @@ function julgaAsProsas(root) {
     // se inventa uma segunda opinião sobre o mesmo arquivo ilegível.
     return []
   }
-  const estado = estadoDaMatriz(registro)
+  // A CLASSIFICAÇÃO da régua vai junto: a prosa derivada publica quantos
+  // sub-tests PROVAM a aplicação, quantos MUTAM POR CONTA PRÓPRIA (com o porquê
+  // de cada um) e qual é o GABARITO — e é do MASTER que ela sai, como o resto do
+  // "lado vivo" que este guard confere. Sem os blocos declarados ela é `null` e
+  // a doc derivada sai sem a seção (não há relação a publicar).
+  const estado = estadoDaMatriz(registro, classificacaoDaRegua(masterSrc, entries))
   const violations = []
   const curto = (t) => (t.length > 110 ? `${t.slice(0, 107)}...` : t)
   for (const { arquivo, bloco, render, nome } of DOCS) {

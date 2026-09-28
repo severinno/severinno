@@ -42,7 +42,12 @@ import { DOCS, escreverDocs } from "./bench-table.mjs"
 // (`check-mutation-count.mjs`): o fixture e o veredito falam do MESMO arquivo e
 // do MESMO parser — uma segunda cópia do caminho divergiria no dia do primeiro
 // ajuste, e a divergência apareceria como "o fixture recusa o que o guard não".
-import { BENCH_PATH, run as runCountGuard } from "./check-mutation-count.mjs"
+import {
+  BENCH_PATH,
+  classificacaoDaRegua,
+  deriveSubtestCount,
+  run as runCountGuard,
+} from "./check-mutation-count.mjs"
 import { MASTER_DOS_SUBTESTS, comMetadesDaMatriz, metadesDaMatriz } from "./bench-families.mjs"
 // A RÉGUA do fecho de imports é a MESMA das suítes de mutação (uma só régua para
 // quem copia módulo para fixture — ver `docs/GUARDS.md`, "O FIXTURE QUE NÃO
@@ -1915,9 +1920,22 @@ export function versionaOAto(copia, { nNovo, ler = readFileSync }) {
   // Versionar só o registro deixaria o índice com a prosa do ato ANTERIOR — o
   // guard o recusaria pela prosa (a regra 6), e não pela defasagem que esta
   // metade mede (medido: o CONTROLE do bump era recusado com o resto verde).
+  // A CLASSIFICAÇÃO da régua única da CÓPIA: o ato publica a coluna e a seção
+  // da régua (`PROVA_DE_APLICACAO` / `FORA_DA_REGUA`), e o guard RODA na cópia
+  // logo abaixo — a doc que o fixture grava sem ela divergiria do render do
+  // guard e a recusa mediria a prosa, não a defasagem do bump. Lida do master
+  // DA CÓPIA, como a coluna de metades.
+  let regua = null
+  try {
+    const masterDaCopia = String(ler(join(copia, MASTER_DOS_SUBTESTS), "utf8"))
+    regua = classificacaoDaRegua(masterDaCopia, deriveSubtestCount(masterDaCopia).entries)
+  } catch {
+    regua = null
+  }
   const notas = escreverDocs({
     cwd: copia,
     registro: bench,
+    regua,
     ler: (p) => String(ler(p, "utf8")),
   })
   const ruins = notas.filter((n) => n.status !== "reescrito" && n.status !== "jaEstava")

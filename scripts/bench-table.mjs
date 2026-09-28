@@ -89,17 +89,34 @@ export function mediana(valores) {
  *   vermelhas: Array<{role: string, glosa: string | null, ms: number, metades: number, exit: number, tentativas: number, flake: boolean, infra: boolean}>,
  *   remedidas: Array<{role: string}>, flakes: Array<{role: string}>,
  *   naoMedidas: Array<{role: string}>,
- *   procedencia: {commit: string, dia: string, treeState: unknown, versao: unknown}}}
+ *   procedencia: {commit: string, dia: string, treeState: unknown, versao: unknown},
+ *   regua: {provam: string[], isentas: {id: string, motivo: string}[], declaradas: string[], gabarito: string | null, lib: string} | null}}
  *   `null` quando a família não foi medida (nada a renderizar)
+ *
+ * O `regua` é a classificação das suítes contra a régua única — a publicação
+ * que o `bench-guard-timing` e o `check:mutation-count` passam para cá. Ele vem
+ * do MASTER (a relação de uma suíte com a régua é o que ela É, não quanto ela
+ * custa) e é OPCIONAL: sem ele a tabela sai sem a coluna e sem a seção da régua,
+ * em vez de inventar zero isenta.
  */
-export function estadoDaMatriz(registro) {
+export function estadoDaMatriz(registro, regua = null) {
   const m = registro?.mutations
   if (!m || !Array.isArray(m.forms) || m.forms.length === 0) return null
+
+  // A CLASSE de cada suíte na régua única (a coluna `régua` da tabela).
+  const classeDaRegua = (role) => {
+    if (!regua) return null
+    if (regua.gabarito === role) return "gabarito"
+    if (regua.isentas.some((i) => i.id === role)) return "isenta"
+    if (!regua.provam.includes(role)) return "—"
+    return regua.declaradas.includes(role) ? "prova·declarado" : "prova"
+  }
 
   const forms = m.forms.map((f) => {
     const role = String(f.role ?? f.label ?? "?")
     return {
       role,
+      regua: classeDaRegua(role),
       glosa: GLOSAS[role] ?? null,
       ms: Number(f.ms) || 0,
       metades: Number(f.metades) || 0,
@@ -145,6 +162,7 @@ export function estadoDaMatriz(registro) {
     flakes: forms.filter((f) => f.flake),
     naoMedidas: forms.filter((f) => f.infra),
     procedencia: procedenciaDe(registro),
+    regua,
   }
 }
 
@@ -178,7 +196,12 @@ function larguras(linhas) {
  */
 export function tabelaSubTests(estado) {
   if (!estado) return null
-  const cabecalho = ["sub-test", "wall time", "fatia", "metades"]
+  // A COLUNA `régua` existe quando a classificação foi passada (o repositório a
+  // tem; um fixture sem os blocos declarados no master não tem o que publicar).
+  const comRegua = Boolean(estado.regua)
+  const cabecalho = comRegua
+    ? ["sub-test", "wall time", "fatia", "metades", "régua"]
+    : ["sub-test", "wall time", "fatia", "metades"]
   const corpo = estado.formas.map((f) => [
     f.glosa ? `\`${f.role}\` (${f.glosa})` : `\`${f.role}\``,
     // A marca da classe ao lado do ms: 🚧 quando a suíte NÃO mediu (exit 2), 🌀
@@ -193,20 +216,24 @@ export function tabelaSubTests(estado) {
           : s(f.ms),
     `${pct(f.ms, estado.somaSubTestsMs)}%`,
     String(f.metades),
+    ...(comRegua ? [f.regua ?? "—"] : []),
   ])
+  const vazio = comRegua ? [""] : []
   const somaLinha = [
     `**soma dos ${estado.subtests} sub-tests**`,
     `**${s(estado.somaSubTestsMs)}**`,
     "100%",
     `**${estado.metades}**`,
+    ...vazio,
   ]
   const harnessLinha = [
     "harness (parse das metades, tabelas, subida do master)",
     s(estado.harnessMs),
     "",
     "",
+    ...vazio,
   ]
-  const totalLinha = ["**total do master**", `**${s(estado.wallMs)}**`, "", ""]
+  const totalLinha = ["**total do master**", `**${s(estado.wallMs)}**`, "", "", ...vazio]
 
   const w = larguras([cabecalho, ...corpo, somaLinha, harnessLinha, totalLinha])
   // O id à esquerda (é texto) e as três colunas numéricas à direita — a leitura
@@ -264,7 +291,54 @@ export function tabelaSubTests(estado) {
     linha(totalLinha),
     "",
     leitura,
+    ...secaoRegua(estado),
   ].join("\n")
+}
+
+/**
+ * A SEÇÃO DA RÉGUA ÚNICA — quantos sub-tests PROVAM a aplicação, quantos MUTAM
+ * POR CONTA PRÓPRIA (cada um com o PORQUÊ, que é a linha do `FORA_DA_REGUA` do
+ * master) e qual deles é o GABARITO.
+ *
+ * POR QUE ELA VIVE NO BLOCO DERIVADO: a contagem e os porquês existem no master
+ * (as listas `PROVA_DE_APLICACAO` e `FORA_DA_REGUA`) e no lugar nenhum da doc —
+ * quem abre a doc via 29 suítes provando a aplicação e não tinha como saber
+ * QUAIS, nem por que as outras mutam por conta própria. Aqui a prosa não tem
+ * número próprio: ela é renderizada das MESMAS listas que o
+ * `check:mutation-count` cobra, e o guard recusa o commit em que ela divirja.
+ */
+function secaoRegua(estado) {
+  const r = estado.regua
+  if (!r) return []
+  const gabarito = r.gabarito
+  const declaradas = r.declaradas
+  const soma = r.provam.length + r.isentas.length + (gabarito ? 1 : 0)
+  const declaradasTxt = declaradas.length
+    ? declaradas.map((id) => `\`${id}\``).join(", ")
+    : "nenhum"
+  const fecho =
+    soma === estado.subtests
+      ? `As três classes somam os ${estado.subtests} sub-tests da matriz.`
+      : `⚠️ as três classes somam ${soma} e a matriz tem ${estado.subtests} sub-test(s): ` +
+        `a suíte que não declara a sua relação com a régua aparece aqui como buraco.`
+  return [
+    "",
+    `**A RÉGUA ÚNICA, sub-test a sub-test: ${r.provam.length} PROVAM a aplicação, ` +
+      `${r.isentas.length} mutam por conta própria${gabarito ? ` e o GABARITO (\`${gabarito}\`) mede a régua` : ""}.**`,
+    "",
+    `Os ${r.provam.length} que PROVAM chamam \`mutacao_aplicar\` (a cópia única, \`${r.lib}\`): ` +
+      `a CIRURGIA (o alvo casa uma vez), o MARCADOR (o payload carrega \`MUTACAO\`) e o CONTEÚDO ` +
+      `(o checksum mudou) vêm da MESMA régua — uma cópia privada que sumisse não deixaria rastro. ` +
+      `${r.declaradas.length ? `${r.declaradas.length} deles usam TAMBÉM o caminho DECLARADO ` : ""}` +
+      `${r.declaradas.length ? `(\`mutacao_aplicar_sem_marcador\`, para o payload que não comporta o marcador): ${declaradasTxt}. ` : ""}` +
+      `${gabarito ? `E o GABARITO é \`${gabarito}\`: ele MUTA a régua para medir que as provas dela são ` + `load-bearing — não é isento nem conta como quem muta por conta própria. ` : ""}` +
+      `${fecho}`,
+    "",
+    `**Os ${r.isentas.length} que mutam por conta própria — o PORQUÊ de cada um** (a linha do ` +
+      `\`FORA_DA_REGUA\` no master, declarada lá e publicada aqui):`,
+    "",
+    ...r.isentas.map((i) => `· \`${i.id}\` — ${i.motivo}`),
+  ]
 }
 
 /** O PARÁGRAFO de custo do README — os mesmos fatos, em prosa. */
@@ -396,12 +470,13 @@ export const DOCS = [
  */
 export function escreverDocs({
   registro,
+  regua = null,
   ler,
   escrever,
   existe = existsSync,
   cwd = process.cwd(),
 }) {
-  const estado = estadoDaMatriz(registro)
+  const estado = estadoDaMatriz(registro, regua)
   const lerArquivo = ler ?? ((p) => readFileSync(p, "utf8"))
   const escreverArquivo = escrever ?? ((p, t) => escreverFormatado(p, t))
   // Sem a família medida NÃO se toca no arquivo: não há o que renderizar, e

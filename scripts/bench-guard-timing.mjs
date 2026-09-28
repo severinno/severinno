@@ -99,6 +99,11 @@ import {
 } from "./pre-commit-proof.mjs"
 import { NO_PROMPT_ENV } from "./pre-commit-remedy.mjs"
 import { escreverDocs } from "./bench-table.mjs"
+// A CLASSIFICAÇÃO da régua única (quem prova a aplicação, quem muta por conta
+// própria e o porquê de cada um) sai do MESMO módulo que a julga: é ele que lê
+// as listas do master (`PROVA_DE_APLICACAO` / `FORA_DA_REGUA`), e uma segunda
+// leitura aqui seria uma segunda opinião sobre a mesma declaração.
+import { classificacaoDaRegua, deriveSubtestCount } from "./check-mutation-count.mjs"
 // O GERADO (o registro do bench e os blocos derivados) passa pelo formatador do
 // repositório: o arquivo é VERSIONADO e nasce julgado pelo `lint`.
 import { escreverJsonFormatado } from "./prettier-format.mjs"
@@ -3620,7 +3625,21 @@ Exit codes: 0 sucesso · 1 falha/regressão · 2 argumento inválido`)
     // não muda o que a doc declara. O status sai em voz alta POR ARQUIVO — um
     // bloco com o marcador apagado é dito (`semMarcador`), em vez de o ato
     // afirmar que reescreveu os dois.
-    for (const d of escreverDocs({ registro: result })) {
+    // A RÉGUA ÚNICA entra na doc derivada junto do registro: a classificação de
+    // cada sub-test (quem PROVA a aplicação, quem usa também o caminho
+    // DECLARADO, qual é o GABARITO e quem MUTA POR CONTA PRÓPRIA, com o porquê)
+    // é lida do MASTER — a mesma declaração viva que o `check:mutation-count`
+    // cobra — e não do registro, porque ela é o que a suíte É, não o que ela
+    // custou. Sem ela (master ilegível) a seção sai AUSENTE: o ato não publica
+    // "zero isenta" sobre uma leitura que não fez.
+    let regua = null
+    try {
+      const masterSrc = readFileSync(join(REPO_ROOT, MASTER_DOS_SUBTESTS), "utf8")
+      regua = classificacaoDaRegua(masterSrc, deriveSubtestCount(masterSrc).entries)
+    } catch {
+      regua = null
+    }
+    for (const d of escreverDocs({ registro: result, regua })) {
       const como =
         {
           reescrito: "reescrito do registro",
