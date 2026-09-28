@@ -47,7 +47,7 @@
 #   3. CONTEÚDO — o checksum do arquivo MUDOU. É a prova de que o conteúdo mudou
 #      (o `<antes>` pode casar, a escrita entrar e o texto ser idêntico — um
 #      remendo de espaços, um `<depois>` igual ao `<antes>`).
-## O QUE A SUÍTE PRECISA TER DEFINIDO: só o `fail` de sempre (uma função global),
+# O QUE A SUÍTE PRECISA TER DEFINIDO: só o `fail` de sempre (uma função global),
 # já que o módulo é sourced no shell dela. O `<modo>` `binario` existe para os
 # alvos que NÃO são utf-8 (o `workflow-refs` muta um YAML lido em bytes).
 #

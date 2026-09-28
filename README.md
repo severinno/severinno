@@ -1265,15 +1265,15 @@ depois: `escreveu: true` é violação da família, não um detalhe do log.
 **O custo do job mais caro do PR não é uma conta à mão** (família `mutations` do
 `bench-guard-timing`). O job `mutation-guards` roda 47 sub-tests, e o que CADA um
 custa é medido pelo próprio master (`--json`) e versionado sub-test a sub-test no
-registro: o ato de 27/09/2026, medido sobre `8b5673fa` — a âncora é o commit que CARREGA o
+registro: o ato de 27/09/2026, medido sobre `7023f088` — a âncora é o commit que CARREGA o
 registro, resolvida pela história —
-mediu **675.8s** de sub-tests + **5.5s** de harness =
-**681.3s**, com `job-deps` (204.3s, 30%), `workflow-run-syntax` (78.4s, 12%), `hook-commands` (66.1s, 10%) e `local-image` (47.9s, 7%) no topo — antes disso
-ninguém sabia QUAL sub-test pagava a conta. A mediana é **2.3s**, dez sub-tests
-pagam **81%** da soma, e o registro guarda **282 metades**.
+mediu **869.8s** de sub-tests + **5.4s** de harness =
+**875.2s**, com `job-deps` (204.3s, 23%), `pre-commit-proof` (167.9s, 19%), `workflow-run-syntax` (77.9s, 9%) e `hook-commands` (66.2s, 8%) no topo — antes disso
+ninguém sabia QUAL sub-test pagava a conta. A mediana é **3.1s**, dez sub-tests
+pagam **83%** da soma, e o registro guarda **282 metades**.
 Quem entra com um sub-test novo não compõe nada: ele entra **MEDIDO** na rodada seguinte
-(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~14.5s**) é dita
-como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test. **LIMITE DECLARADO:** na rodada do ato, 2 sub-test(s) NÃO passaram (`pre-commit-proof`, `bench-freshness`) — o custo deles não julga nada. E o vermelho foi RE-MEDIDO antes de virar veredito: `pre-commit-proof`, `bench-freshness` REPETIU o vermelho na 2ª tentativa, então o ms dele é a SOMA das duas (o custo é o que o job pagou).
+(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~18.6s**) é dita
+como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test.
 
 Esta prosa é **DERIVADA**: quem a reescreve é o ato (o bloco é dele), e o
 `check:mutation-count` recusa o commit em que ela divirja do registro versionado.
