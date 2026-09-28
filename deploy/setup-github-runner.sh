@@ -165,8 +165,12 @@ sudo -u "$RUNNER_USER" "${RUNNER_HOME}/config.sh" \
   --unattended
 
 # ── Instalar como serviço systemd ──────────────────────────────────────────
+# O svc.sh EXIGE rodar DE DENTRO do diretório do runner (medido em 28/09/2026:
+# invocado por caminho absoluto de fora, ele falha com "Must run from runner root
+# or install is corrupt" DEPOIS de o runner já ter registrado — o registro fica,
+# mas o serviço não sobe). O subshell com `cd` garante a raiz certa.
 log "Instalando como serviço systemd..."
-"${RUNNER_HOME}/svc.sh" install "$RUNNER_USER"
+( cd "$RUNNER_HOME" && ./svc.sh install "$RUNNER_USER" )
 
 # ── Bun no PATH do daemon (issue #32) ──────────────────────────────────────
 # O PATH do serviço é fixado NO START: o remédio tem de ser aplicado ENTRE o
@@ -175,7 +179,7 @@ garantirBunNoPath
 
 # ── Iniciar serviço ────────────────────────────────────────────────────────
 log "Iniciando serviço..."
-"${RUNNER_HOME}/svc.sh" start
+( cd "$RUNNER_HOME" && ./svc.sh start )
 
 # ── Verificar status ───────────────────────────────────────────────────────
 sleep 2
