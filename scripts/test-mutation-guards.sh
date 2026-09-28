@@ -365,6 +365,9 @@ PROVA_DE_APLICACAO=(
   "local-image"
   "artefatos-do-hook"
   "archived-pipeline"
+  "reconciliation"
+  "nested-guard"
+  "hook-ci-parity"
 )
 
 # ── O CAMINHO DECLARADO (sem marcador): o alvo que o payload não deixa marcar ──
@@ -389,6 +392,12 @@ SEM_MARCADOR=(
   # M5 e M6), e quem chama é declarado como qualquer outro chamador. A dispensa
   # aqui não é de uma suíte que muta um alvo: é a do CASO que exercita o caminho.
   'scripts/test-mutation-mutacao-prova.sh|o caso do gabarito mede o caminho DECLARADO com um payload que não comporta o marcador: a linha é uma remoção, e não há texto novo onde ele caiba'
+  # O `hook-ci-parity` tem TRÊS payloads que o guard da paridade lê CRU — a linha
+  # de comando dos DOIS hooks, a chamada injetada no runner da pipeline e o passo
+  # de YAML do workflow. O marcador entraria no texto MEDIDO (a paridade compara o
+  # comando do hook com o do CI). As mutações no guard `.mjs` vão pelo caminho
+  # ESTRITO: lá o comentário não muda o que ele mede.
+  'scripts/test-mutation-hook-ci-parity.sh|o payload é uma linha de HOOK/YAML lida CRUA pelo guard da paridade: um comentário de marcador entraria no texto medido'
 )
 
 # ── AS SUÍTES FORA DA RÉGUA: por que cada uma NÃO chama a régua única ───────
@@ -423,9 +432,6 @@ FORA_DA_REGUA=(
   'runner-base|a troca é `sed -i` no fixture (`$dir`/`$FIXTURE`)'
   'no-leaked-imports|a mutação é a CONSTRUÇÃO de um worktree ANINHADO no scratch'
   'commit-import-exports|a mutação é a CONSTRUÇÃO do fixture (`cat >`/`printf`)'
-  'reconciliation|PENDENTE: troca no arquivo da ÁRVORE por `sed`/`python3` privados (o caso da régua)'
-  'nested-guard|PENDENTE: troca no `$DOCTOR` da ÁRVORE por `python3` privado (o caso da régua)'
-  'hook-ci-parity|PENDENTE: troca nos hooks e no guard da ÁRVORE por `sed -i`/`python3` privados'
   'doc-hashes|o guard mutado é a CÓPIA do fixture (`mutar_linha`: `sed -i` ancorado por marcador)'
   'act-origin|o gate mutado é a CÓPIA do fixture (`mutar_linha`: linha inteira por `python3`)'
 )

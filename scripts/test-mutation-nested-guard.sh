@@ -28,7 +28,9 @@
 # metade do fato cai junto com a metade do corte.
 #
 # COMO: muta o guard IN-PLACE (backup + trap EXIT de restauração) e exige que a
-# suíte filtrada por `NESTED_GUARD_ENV` fique VERMELHA em cada mutação.
+# suíte filtrada por `NESTED_GUARD_ENV` fique VERMELHA em cada mutação. A troca é
+# da régua ÚNICA (`scripts/mutacao-prova.sh`): cada metade prova a CIRURGIA, o
+# MARCADOR e o CONTEÚDO — uma mutação que não aplicou mediria o guard ÍNTEGRO.
 # =============================================================================
 
 set -euo pipefail
@@ -46,6 +48,15 @@ mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
   exit 2
 }
 
+# ── A PROVA-DE-APLICAÇÃO: a régua ÚNICA (`scripts/mutacao-prova.sh`) ────────
+# As DUAS mutações trocam código REAL de `scripts/forge-doctor.mjs` na ÁRVORE (é
+# o caso da régua): a troca carrega o marcador `MUTACAO` no payload e o checksum
+# é conferido entre as metades — sem isso uma mutação que NÃO aplicou mediria o
+# guard ÍNTEGRO e a suíte passaria em VÁCUO. Uma cópia privada que sumisse não
+# deixava rastro. Quem chama a régua é declarado em `PROVA_DE_APLICACAO`.
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
@@ -58,6 +69,9 @@ cd "$SCRIPT_DIR"
 
 DOCTOR="scripts/forge-doctor.mjs"
 SUITE="src/lib/__tests__/forge-doctor.test.ts"
+# O checksum da base ÍNTEGRA: a régua o usa para cobrar que o CONTEÚDO mudou em
+# cada metade (o `cp` do backup entre A e B devolve o guard ao estado de origem).
+DOCTOR_SUM="$(cksum "$DOCTOR" | cut -d' ' -f1)"
 
 TMP_DIR="$(mktemp -d "$MUT_SCRATCH/mut-XXXXXX")"
 BACKUP="$TMP_DIR/forge-doctor.mjs.backup"
@@ -72,6 +86,16 @@ NC='\033[0m'
 pass() { echo -e "  ${GREEN}✅${NC} $1"; }
 fail() { echo -e "  ${RED}❌${NC} $1"; }
 info() { echo -e "  ${YELLOW}ℹ️${NC} $1"; }
+
+# ── A MUTAÇÃO, pela régua ÚNICA ───────────────────────────────────────────
+# `mutacao_aplicar` cobra a CIRURGIA (o alvo casa UMA vez — 0 ou 2+ é mutação
+# não-cirúrgica e a suíte PARA em vez de medir outra coisa), o MARCADOR (o
+# payload carrega `MUTACAO`) e o CONTEÚDO (o checksum mudou);
+# `mutacao_sintaxe_node` cobra que o alvo mutado continue parseando.
+mutar() {
+  mutacao_aplicar "$DOCTOR" "$1" "$2" "$DOCTOR_SUM"
+  mutacao_sintaxe_node "$DOCTOR"
+}
 
 # ── Restore (trap EXIT — SEMPRE restaura, mesmo com falha) ────────────────
 restore() {
@@ -123,27 +147,41 @@ fi
 pass "Controle OK — suíte verde com o guard intacto"
 
 # ── MUTAÇÃO A — remove o bloco do guard em main() ─────────────────────────
-info "MUTAÇÃO A — removendo o bloco do guard em main()..."
-python3 -c "
-import re, sys
-src = open('$DOCTOR').read()
-pat = re.compile(
-    r'\n\s*// DEFESA EM PROFUNDIDADE[\s\S]*?if \(isNestedDoctorInvocation\(\)\) \{[\s\S]*?process\.exit\((?:NESTED_GUARD_EXIT|3)\)\s*\}\n',
-    re.MULTILINE,
-)
-if not pat.search(src):
-    print('MUTACAO A NAO APLICOU: padrao nao encontrado', file=sys.stderr)
-    sys.exit(1)
-src = pat.sub('\n  // MUTATION-NESTED-GUARD: guard desativado\n', src)
-open('$DOCTOR', 'w').write(src)
-"
+# O alvo é LITERAL (não uma regex de conveniência): a régua casa este texto UMA
+# vez e o substitui pelo marcador — o bloco do guard, o comentário dele e o `if`
+# inteiro saem de `main()`.
+ANTES_A='  // DEFESA EM PROFUNDIDADE contra recursão: a prova (seção 4) executa o
+  // bring-up, que executa o doctor. O corte primário é o DOCTOR_SCRIPT
+  // (dublagem), mas este guard é a segunda camada — se o stub falhar ou
+  // for removido, o doctor recusa em vez de recursar infinitamente.
+  //
+  // A marca vale por DOIS canais (env var OU flag): quem não controla o
+  // ambiente do filho passa `--proof-nested` e tem a mesma defesa.
+  if (isNestedDoctorInvocation()) {
+    // O corte continua IMEDIATO (antes do parseArgs, para o ciclo não avançar
+    // nem um passo). O que muda é que a causa passa a sair no canal do
+    // RELATÓRIO (stdout, ou o JSON de `--json`) — antes ela vivia só no stderr,
+    // e o exit 3 (o mesmo de uso inválido) não dizia QUAL dos dois era.
+    console.error(
+      `forge-doctor: DETECTADO RECURSAO — ${NESTED_GUARD_ENV} definido ou ` +
+        `${NESTED_GUARD_FLAG} passado. ` +
+        `O doctor ja esta rodando DENTRO da propria prova. O ciclo ` +
+        `bring-up → doctor → prova → bring-up foi interrompido por este ` +
+        `guard (defesa em profundidade contra o corte via DOCTOR_SCRIPT).`,
+    )
+    const report = nestedGuardReport()
+    if (process.argv.includes("--json")) console.log(JSON.stringify(report, null, 2))
+    else renderReport(report)
+    await exitAfterFlush(NESTED_GUARD_EXIT)
+  }'
 
+info "MUTAÇÃO A — removendo o bloco do guard em main()..."
+mutar "$ANTES_A" '  // MUTACAO A: o bloco do guard removido de main()'
+
+# SEMÂNTICO, não a prova de aplicação (essa é da régua): a metade A é "o guard
+# SUMIU", então a mensagem que o guard imprime tem de ter ido embora com ele.
 if grep -qF "DETECTADO RECURSAO" "$DOCTOR"; then
   fail "MUTAÇÃO A NÃO APLICOU: 'DETECTADO RECURSAO' ainda existe em $DOCTOR"
-  exit 1
-fi
-if ! node --check "$DOCTOR" >/dev/null 2>&1; then
-  fail "MUTAÇÃO A NÃO-CIRÚRGICA: o arquivo mutado não é válido sintaticamente."
   exit 1
 fi
 pass "Bloco do guard removido (sintaxe válida)"
@@ -159,30 +197,14 @@ pass "Guard restaurado — base íntegra para a mutação B"
 # da condição, o caminho sem env voltaria a recursar — e a suíte precisa
 # acender mesmo assim.
 info "MUTAÇÃO B — removendo a metade do argv de isNestedDoctorInvocation..."
-python3 -c "
-import re, sys
-src = open('$DOCTOR').read()
-pat = re.compile(
-    r'return Boolean\(env\[NESTED_GUARD_ENV\]\) \|\| argv\.includes\(NESTED_GUARD_FLAG\)'
-)
-if not pat.search(src):
-    print('MUTACAO B NAO APLICOU: padrao nao encontrado', file=sys.stderr)
-    sys.exit(1)
-src = pat.sub('return Boolean(env[NESTED_GUARD_ENV]) // MUTATION-NESTED-ARGV', src)
-open('$DOCTOR', 'w').write(src)
-"
 
-# A verificação olha o PREDICADO mutado (não a presença da substring no
-# arquivo): `nestedGuardReport` também consulta o argv para NOMEAR o canal no
-# relatório, e essa consulta é reporting, não defesa — ela deve continuar lá.
-if ! grep -qF "return Boolean(env[NESTED_GUARD_ENV]) // MUTATION-NESTED-ARGV" "$DOCTOR"; then
-  fail "MUTAÇÃO B NÃO APLICOU: o predicado mutado não está em $DOCTOR"
-  exit 1
-fi
-if ! node --check "$DOCTOR" >/dev/null 2>&1; then
-  fail "MUTAÇÃO B NÃO-CIRÚRGICA: o arquivo mutado não é válido sintaticamente."
-  exit 1
-fi
+# A LINHA do predicado, literal: é ela — e não a consulta do argv que o
+# `nestedGuardReport` faz para NOMEAR o canal no relatório (reporting, não
+# defesa, e que segue no arquivo) — que a metade B tira do lugar. A cirurgia da
+# régua casa UMA ocorrência deste texto, então a troca não tem como cair na
+# linha de relatório.
+mutar '  return Boolean(env[NESTED_GUARD_ENV]) || argv.includes(NESTED_GUARD_FLAG)' \
+  '  return Boolean(env[NESTED_GUARD_ENV]) // MUTACAO B: a metade do argv neutralizada'
 pass "Metade do argv removida do predicado (sintaxe válida)"
 
 expect_red "B (argv neutralizado)" || exit 1

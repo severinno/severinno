@@ -1095,9 +1095,9 @@ passo, uma fila), e a régua não o inventa.
 
 **HOJE × ATO PASSADO é uma classe DECLARADA, e vale para a forma nua.** O exemplo
 acima sai como FORMULA (`<N>ª`) porque um número escrito aqui seria ele próprio
-uma afirmação de posição — e a régua o julgaria como qualquer outra (medido: a
-primeira redação desta seção usava `a 42.ª entrada` e o guard a acusou, que é
-exatamente o que a régua existe para fazer). Ela é a
+uma afirmação de posição — e a régua o julgaria como qualquer outra (medido em
+27/09/2026: a primeira redação desta seção usava `a 42.ª entrada` e o guard a
+acusou, que é exatamente o que a régua existe para fazer). Ela é a
 única que pode estar narrando um MOMENTO — a matriz daquele ato não é a de hoje, e
 conferir o número contra ela seria a acusação ao que não foi medido —, e a régua a
 **pula** quando a frase carrega um marcador de ato passado: uma data explícita,
@@ -1347,8 +1347,16 @@ por ele (a **M5**) ou a mesma troca passaria sem justificativa nenhuma (a **M6**
 e é isso que as duas metades tiram do lugar, exigindo o ACEITE onde havia recusa.
 
 A biblioteca é mutada PELA PRÓPRIA régua (com a prova de que a escrita entrou) e
-restaurada por checksum entre as metades. **25 suítes** provam a aplicação pela
-régua única, e a lista viva delas é o bloco `PROVA_DE_APLICACAO` do master.
+restaurada por checksum entre as metades. **28 suítes** provam a aplicação pela
+régua única, e a lista viva delas é o bloco `PROVA_DE_APLICACAO` do master. As
+três últimas foram as **PENDENTE** do eixo da árvore: `reconciliation`
+(`issue-publish.mjs`), `nested-guard` (`forge-doctor.mjs`) e `hook-ci-parity` (os
+dois hooks, o guard da paridade, o runner e o workflow) — cada uma trocava o alvo
+por `sed`/`python3` privados, com a lista de exclusões apontando o motivo em vez da
+conversão. O alvo delas continua sendo a ÁRVORE: no `hook-ci-parity` o payload das
+linhas de HOOK/YAML vai pelo caminho **DECLARADO** (o guard da paridade lê esse
+texto CRU — um comentário de marcador entraria no comando medido), e as mutações no
+guard `.mjs` vão pelo caminho ESTRITO.
 
 **O que impede a perda em SILÊNCIO** é o `check-mutation-count` (a regra 4b do
 `run()`), e são três conferências: (1) NENHUMA suíte carrega a cópia PRIVADA do
@@ -3650,6 +3658,13 @@ por não ter medido):
 A árvore é restaurada por backup + `trap` (nunca `git checkout`) e conferida por
 `cksum` contra o hash de origem — um mutation test que deixa o worktree sujo é
 pior que nenhum.
+
+Cada troca é da **régua única** (`scripts/mutacao-prova.sh`): as mutações no guard
+`.mjs` vão pelo caminho ESTRITO (o payload carrega o marcador `MUTACAO`), e os
+payloads que são uma linha de HOOK ou de YAML vão pelo caminho **DECLARADO** —
+com o motivo escrito na chamada, porque o guard da paridade lê esse texto **CRU**
+e um comentário de marcador entraria no comando MEDIDO. É o mesmo argumento do
+`forge-parity`: ali o `run:` do YAML, aqui a linha do hook.
 
 **Onde roda:** pre-commit (~0.05s, node puro, na fase paralela) e as **duas**
 pipelines — job `guards` da forja (dona do merge) e `workflow-refs-guard` do

@@ -100,6 +100,36 @@ mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
   exit 2
 }
 
+# ── A PROVA-DE-APLICAÇÃO: a régua ÚNICA (`scripts/mutacao-prova.sh`) ────────
+# As mutações desta suíte trocam código de arquivos da ÁRVORE (os hooks, o guard
+# da paridade, o runner da pipeline e o workflow). A troca é da régua única, que
+# traz juntas a CIRURGIA (o alvo casa UMA vez), o MARCADOR (`MUTACAO` no payload,
+# a prova de que a escrita entrou) e o CONTEÚDO (o checksum mudou) — uma cópia
+# privada que sumisse não deixava rastro, e a suíte seguiria verde medindo o
+# arquivo ÍNTEGRO.
+#
+# O CAMINHO DECLARADO (`mutacao_aplicar_sem_marcador`) é o dos payloads que são
+# uma linha de HOOK ou de YAML: o guard da paridade lê esse texto CRU, então um
+# comentário de marcador entraria no comando MEDIDO. O mesmo motivo vai escrito
+# na chamada e declarado em `SEM_MARCADOR` (master).
+MOTIVO_SEM_MARCADOR='o payload é uma linha de HOOK/YAML lida CRUA pelo guard da paridade: um comentário de marcador entraria no texto medido'
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
+# mutar <arquivo> <antes> <depois>: o caminho ESTRITO (o payload carrega o
+# marcador) + a sintaxe do alvo — todos os alvos deste caminho são módulos `.mjs`.
+mutar() {
+  mutacao_aplicar "$1" "$2" "$3" "$(cksum <"$1" | cut -d' ' -f1)"
+  mutacao_sintaxe_node "$1"
+}
+
+# sem_marcador <arquivo> <antes> <depois>: o caminho DECLARADO — as MESMAS provas
+# de cirurgia e conteúdo, e a dispensa do marcador POR ESCRITO (o motivo acima).
+sem_marcador() {
+  mutacao_aplicar_sem_marcador "$1" "$2" "$3" "$(cksum <"$1" | cut -d' ' -f1)" \
+    "$MOTIVO_SEM_MARCADOR"
+}
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
@@ -291,11 +321,12 @@ pass "controle verde (exit 0) — violações|linhas|notRun|missing = $CONTROL_M
 # ── MUTAÇÃO A — a divergência REAL volta (segunda régua do typecheck) ────
 
 header "MUTAÇÃO A: os hooks voltam a rodar \`bunx tsc --noEmit\` (segunda régua)"
-sed -i 's/bun run typecheck/bunx tsc --noEmit/g' "$PRE_PUSH" "$PRE_COMMIT"
-if ! grep -Fq 'bunx tsc --noEmit' "$PRE_PUSH" || ! grep -Fq 'bunx tsc --noEmit' "$PRE_COMMIT"; then
-  fail "mutação A não aplicou (o sed não produziu o marcador nos dois hooks)"
-  exit 1
-fi
+# O alvo é a LINHA DE COMANDO (o comentário do hook que CITA `bun run typecheck`
+# fica onde está: o guard ignora comentário, e ele não faz parte da paridade).
+ANTES_TYPECHECK=$'\nbun run typecheck\n'
+DEPOIS_TYPECHECK=$'\nbunx tsc --noEmit\n'
+sem_marcador "$PRE_PUSH" "$ANTES_TYPECHECK" "$DEPOIS_TYPECHECK"
+sem_marcador "$PRE_COMMIT" "$ANTES_TYPECHECK" "$DEPOIS_TYPECHECK"
 run_guard
 assert_exit 1 "MUTAÇÃO A"
 assert_violations 2 "MUTAÇÃO A"
@@ -317,11 +348,11 @@ restore
 # ── MUTAÇÃO B — comando novo no hook sem decisão ────────────────────────
 
 header "MUTAÇÃO B: gate novo no pre-commit sem entrada em HOOK_DECLARED"
-printf '\nnode scripts/check-ghost-guard.mjs &\n' >>"$PRE_COMMIT"
-if ! grep -Fq 'node scripts/check-ghost-guard.mjs' "$PRE_COMMIT"; then
-  fail "mutação B não aplicou"
-  exit 1
-fi
+# O comando novo entra no FIM do hook: o `antes` é o rabo do arquivo, e a régua
+# cobra que a troca entrou (o CONTEÚDO mudou) — o `>>` de antes não provava nada.
+ANTES_FIM_PRECOMMIT=$'  bun test:snapshots\nfi\n'
+sem_marcador "$PRE_COMMIT" "$ANTES_FIM_PRECOMMIT" \
+  "$ANTES_FIM_PRECOMMIT"$'\nnode scripts/check-ghost-guard.mjs &\n'
 run_guard
 assert_exit 1 "MUTAÇÃO B"
 assert_violations 1 "MUTAÇÃO B"
@@ -342,11 +373,9 @@ restore
 # ── MUTAÇÃO C — recorte sem razão escrita ───────────────────────────────
 
 header "MUTAÇÃO C: recorte declarado com o 'why' esvaziado"
-sed -i 's|^    why: "recorte --staged: a ARVORE.*|    why: "curto",|' "$GUARD"
-if ! grep -Fq 'why: "curto",' "$GUARD"; then
-  fail "mutação C não aplicou (o sed não produziu o marcador)"
-  exit 1
-fi
+mutar "$GUARD" \
+  '    why: "recorte --staged: a ARVORE de trabalho pode carregar WIP que NAO faz parte deste commit; o indice e o conteudo do commit. O CI roda o comando inteiro sobre o conteudo mergeado — a diferenca e de ESCOPO, e o comando (mesmo script, mesmos argumentos obrigatorios) e o do CI.",' \
+  '    why: "curto", // MUTACAO C: o `why` do recorte esvaziado'
 run_guard
 assert_exit 1 "MUTAÇÃO C"
 assert_violations 1 "MUTAÇÃO C"
@@ -371,11 +400,9 @@ restore
 # ── MUTAÇÃO D — declaração que envelheceu ───────────────────────────────
 
 header "MUTAÇÃO D: entrada de HOOK_DECLARED que não casa com comando nenhum"
-sed -i 's|^    match: /\^bun run fuzz\$/|    match: /^bun run fuzz-que-nao-existe$/|' "$GUARD"
-if ! grep -Fq 'fuzz-que-nao-existe' "$GUARD"; then
-  fail "mutação D não aplicou (o sed não produziu o marcador)"
-  exit 1
-fi
+mutar "$GUARD" \
+  '    match: /^bun run fuzz$/,' \
+  '    match: /^bun run fuzz-que-nao-existe$/, // MUTACAO D: a declaração que envelheceu'
 run_guard
 assert_exit 1 "MUTAÇÃO D"
 assert_violations 2 "MUTAÇÃO D"
@@ -396,11 +423,8 @@ restore
 # ── MUTAÇÃO E — gate do CORE fora do hook e fora de HOOK_NOT_RUN ────────
 
 header "MUTAÇÃO E: invariante do CORE removido de HOOK_NOT_RUN"
-sed -i 's|^    ids: \["merge-latency"\],$|    ids: [],|' "$GUARD"
-if ! grep -Fq 'ids: [],' "$GUARD"; then
-  fail "mutação E não aplicou (o sed não produziu o marcador)"
-  exit 1
-fi
+mutar "$GUARD" '    ids: ["merge-latency"],' \
+  '    ids: [], // MUTACAO E: o gate do CORE fora de HOOK_NOT_RUN'
 run_guard
 assert_exit 1 "MUTAÇÃO E"
 assert_violations 1 "MUTAÇÃO E"
@@ -430,11 +454,9 @@ restore
 # ── MUTAÇÃO F — hook declarado que não existe (fail-closed) ─────────────
 
 header "MUTAÇÃO F: HOOKS aponta para um arquivo de hook inexistente"
-sed -i 's|^export const HOOKS = \["\.husky/pre-commit", "\.husky/pre-push"\]$|export const HOOKS = [".husky/pre-commit", ".husky/pre-push", ".husky/pre-ghost"]|' "$GUARD"
-if ! grep -Fq '.husky/pre-ghost' "$GUARD"; then
-  fail "mutação F não aplicou (o sed não produziu o marcador)"
-  exit 1
-fi
+mutar "$GUARD" \
+  'export const HOOKS = [".husky/pre-commit", ".husky/pre-push"]' \
+  'export const HOOKS = [".husky/pre-commit", ".husky/pre-push", ".husky/pre-ghost"] // MUTACAO F: o hook declarado que não existe'
 run_guard
 assert_exit 1 "MUTAÇÃO F"
 assert_violations 1 "MUTAÇÃO F"
@@ -450,12 +472,13 @@ restore
 # ── MUTAÇÃO G — sub-guard de um runner sem decisão local ────────────────
 
 header "MUTAÇÃO G: um runner da pipeline passa a executar um guard sem decisão local"
+# A sonda é um arquivo NOVO (criação não é troca: a régua exige alvo existente e
+# não se aplica aqui); a chamada dela entra no runner pela régua, com o rabo do
+# arquivo como `antes`. Comentário de marcador não cabe: o guard lê a linha CRUA.
 printf '// sonda da mutação G: o guard existe para ser ALCANÇADO e ficar sem decisão\nprocess.exit(0)\n' >"$SONDA"
-printf '\nnode scripts/check-subguard-sonda.mjs\n' >>"$RUNNER_PIPELINE"
-if ! grep -Fq 'check-subguard-sonda.mjs' "$RUNNER_PIPELINE"; then
-  fail "mutação G não aplicou (o runner não passou a chamar a sonda)"
-  exit 1
-fi
+ANTES_FIM_RUNNER=$'echo "::endgroup::"\n\nadd_to_path\n'
+sem_marcador "$RUNNER_PIPELINE" "$ANTES_FIM_RUNNER" \
+  "$ANTES_FIM_RUNNER"$'\nnode scripts/check-subguard-sonda.mjs\n'
 run_guard
 assert_exit 1 "MUTAÇÃO G"
 assert_violations 1 "MUTAÇÃO G"
@@ -477,11 +500,8 @@ restore
 # ── MUTAÇÃO H — a descida do lado LOCAL cega ───────────────────────────
 
 header "MUTAÇÃO H: a bateria local deixa de descer nos runners que o hook chama"
-sed -i 's|^  const descida = descendScripts(root, \[\.\.\.new Set(raizes)\])$|  const descida = { alcancados: new Map(), limites: [] }|' "$GUARD"
-if ! grep -Fq 'const descida = { alcancados: new Map(), limites: [] }' "$GUARD"; then
-  fail "mutação H não aplicou (o sed não produziu o marcador)"
-  exit 1
-fi
+mutar "$GUARD" '  const descida = descendScripts(root, [...new Set(raizes)])' \
+  '  const descida = { alcancados: new Map(), limites: [] } // MUTACAO H: a descida do lado local cega'
 run_guard
 assert_exit 1 "MUTAÇÃO H"
 assert_violations 2 "MUTAÇÃO H"
@@ -524,11 +544,11 @@ header "MUTAÇÃO I: a CLASSE do alvo na descida (o runner SEM sufixo .sh)"
 # runner, nem como limite, nem como sub-guard.
 printf '#!/usr/bin/env bash\nset -eu\nnode scripts/check-subguard-sonda.mjs\n' >"$RUNNER_SEM_SUFIXO"
 printf '// sonda da mutação I: o sub-guard que o runner SEM sufixo executa\nprocess.exit(0)\n' >"$SONDA"
-printf '\n      - name: Runner sem sufixo (mutação I)\n        run: bash scripts/runner-sem-sufixo\n' >>"$PIPELINE_WORKFLOW"
-if ! grep -Fq 'runner-sem-sufixo' "$PIPELINE_WORKFLOW"; then
-  fail "mutação I não aplicou (a pipeline não passou a chamar o runner sem sufixo)"
-  exit 1
-fi
+# O passo entra no FIM do workflow pela régua (o YAML é lido CRU pelo guard, então
+# o payload não comporta marcador — caminho declarado, como nos hooks).
+ANTES_FIM_WORKFLOW=$'        run: echo "✅ Nenhum payload cross-user expõe credencial/PII; client do Prisma com fonte única; gate comprovadamente sensível a regressão."\n'
+sem_marcador "$PIPELINE_WORKFLOW" "$ANTES_FIM_WORKFLOW" \
+  "$ANTES_FIM_WORKFLOW"$'\n      - name: Runner sem sufixo (mutação I)\n        run: bash scripts/runner-sem-sufixo\n'
 run_guard
 assert_exit 1 "MUTAÇÃO I"
 assert_violations 1 "MUTAÇÃO I"
@@ -552,27 +572,16 @@ restore
 # INVISÍVEL. O corte é cirúrgico (as duas linhas da classe viram o filtro de
 # forma) e falha ALTO se não casar — uma mutação que não aplicou não mede nada.
 printf '#!/usr/bin/env bash\nset -eu\nnode scripts/check-subguard-sonda.mjs\n' >"$RUNNER_SEM_SUFIXO"
-printf '// sonda da muletação I: o sub-guard que o runner SEM sufixo executa\nprocess.exit(0)\n' >"$SONDA"
-printf '\n      - name: Runner sem sufixo (mutação I)\n        run: bash scripts/runner-sem-sufixo\n' >>"$PIPELINE_WORKFLOW"
-python3 - <<'PY'
-from pathlib import Path
-
-caminho = Path("scripts/check-hook-ci-parity.mjs")
-texto = caminho.read_text(encoding="utf8")
-antes = """      const r = alvoDoLancador(comando)
-      const provavel = r.ok ? alvosProvaveis(comando, vars) : { ok: false, motivo: r.motivo }
-"""
-depois = """      if (!(comando.tokens[0] ?? "").endsWith(".sh")) continue
-      const provavel = alvosProvaveis(comando, vars)
-"""
-if antes not in texto:
-    raise SystemExit("mutação I não aplicou (o corte por forma não casou)")
-caminho.write_text(texto.replace(antes, depois, 1), encoding="utf8")
-PY
-if ! grep -Fq 'endsWith(".sh")) continue' "$GUARD"; then
-  fail "mutação I (forma): o sed não produziu o marcador da leitura por forma"
-  exit 1
-fi
+printf '// sonda da metade oposta I: o sub-guard que o runner SEM sufixo executa\nprocess.exit(0)\n' >"$SONDA"
+sem_marcador "$PIPELINE_WORKFLOW" "$ANTES_FIM_WORKFLOW" \
+  "$ANTES_FIM_WORKFLOW"$'\n      - name: Runner sem sufixo (mutação I)\n        run: bash scripts/runner-sem-sufixo\n'
+# O corte é cirúrgico e pela régua: as DUAS linhas da CLASSE viram o filtro de
+# FORMA, com o marcador da metade no payload.
+mutar "$GUARD" \
+  '      const r = alvoDoLancador(comando)
+      const provavel = r.ok ? alvosProvaveis(comando, vars) : { ok: false, motivo: r.motivo }' \
+  '      if (!(comando.tokens[0] ?? "").endsWith(".sh")) continue // MUTACAO I: a leitura por FORMA de volta
+      const provavel = alvosProvaveis(comando, vars)'
 run_guard
 assert_exit 0 "MUTAÇÃO I (leitura por forma)"
 if violated "scripts/check-subguard-sonda.mjs"; then

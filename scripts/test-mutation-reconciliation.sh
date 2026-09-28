@@ -69,6 +69,15 @@ mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
   exit 2
 }
 
+# ── A PROVA-DE-APLICAÇÃO: a régua ÚNICA (`scripts/mutacao-prova.sh`) ────────
+# As TRÊS mutações trocam código REAL de `scripts/issue-publish.mjs` na ÁRVORE
+# (é o caso da régua): cada troca carrega o marcador `MUTACAO` no payload e o
+# checksum é conferido — sem isso uma mutação que NÃO aplicou mediria a fonte
+# ÍNTEGRA e a suíte passaria em VÁCUO. Quem chama a régua é declarado em
+# `PROVA_DE_APLICACAO` (master).
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
@@ -81,6 +90,10 @@ METADES=(
 REPO_ROOT="$SCRIPT_DIR"
 TARGET="$REPO_ROOT/scripts/issue-publish.mjs"
 TEST_FILE="$REPO_ROOT/src/lib/__tests__/forge-doctor-issue.test.ts"
+# O checksum da fonte ÍNTEGRA: a régua o usa para cobrar que o CONTEÚDO mudou em
+# cada mutação (o `restore_file` entre as três devolve o alvo ao estado de
+# origem).
+TARGET_SUM="$(cksum "$TARGET" | cut -d' ' -f1)"
 
 # Os JSONs do vitest (a testemunha lida por status, não por exit code).
 RESULTS_DIR="$(mktemp -d "$MUT_SCRATCH/mut-XXXXXX")"
@@ -110,22 +123,18 @@ trap 'cp "$BACKUP" "$TARGET"; rm -f "$BACKUP"; rm -rf "$RESULTS_DIR"' EXIT
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
-# apply_mutation: troca uma string por outra, valida que aplicou.
+# apply_mutation: aplica a troca pela RÉGUA ÚNICA e valida que ela aplicou.
+#
+# A cópia privada da prova (o `grep` do padrão + o `sed` + o `grep` de volta +
+# o `node --check`) viveu aqui e em mais dezenove suítes; agora o `mutacao_aplicar`
+# cobra a CIRURGIA (o alvo casa UMA vez — 0 ou 2+ é mutação não-cirúrgica), o
+# MARCADOR (`MUTACAO` no payload, a prova de que a escrita entrou) e o CONTEÚDO
+# (o checksum mudou), e o `mutacao_sintaxe_node` cobra que o alvo mutado continue
+# parseando. Uma cópia que sumisse não deixava rastro: a suíte seguiria verde.
 apply_mutation() {
   local from="$1" to="$2" label="$3"
-  if ! grep -qF "$from" "$TARGET"; then
-    fail "MUTAÇÃO NÃO APLICOU ($label): padrão não encontrado em issue-publish.mjs"
-    exit 1
-  fi
-  sed -i "s|$(printf '%s' "$from" | sed 's|[&/]|\\&|g')|$(printf '%s' "$to" | sed 's|[&/]|\\&|g')|g" "$TARGET"
-  if grep -qF "$from" "$TARGET"; then
-    fail "MUTAÇÃO NÃO APLICOU ($label): o sed não trocou a linha"
-    exit 1
-  fi
-  if ! node --check "$TARGET" >/dev/null 2>&1; then
-    fail "MUTAÇÃO NÃO-CIRÚRGICA ($label): o arquivo mutado não é válido sintaticamente"
-    exit 1
-  fi
+  mutacao_aplicar "$TARGET" "$from" "$to" "$TARGET_SUM"
+  mutacao_sintaxe_node "$TARGET"
   pass "Mutação aplicada ($label)"
 }
 
@@ -217,7 +226,7 @@ mutation_close() {
   info "═══ MUTAÇÃO 1/3 — FECHAR (remove backend.close()) ═══"
 
   local FROM='    await backend.close(issue.number)'
-  local TO='    // [mutation-test] await backend.close(issue.number)'
+  local TO='    // MUTACAO M1: o close removido do loop (a issue fica aberta)'
 
   apply_mutation "$FROM" "$TO" "fechar"
 
@@ -246,38 +255,20 @@ mutation_order() {
   #   await backend.comment(...)
   #   await backend.close(...)
   # Mutado para:
-  #   await backend.close(...)
+  #   await backend.close(...)   ← com o marcador da metade
   #   await backend.comment(...)
-  local FROM='    await backend.comment(\n      issue.number,\n      typeof resolutionBody === "function" ? resolutionBody(issue) : resolutionBody,\n    )\n    await backend.close(issue.number)'
-  local TO='    await backend.close(issue.number)\n    await backend.comment(\n      issue.number,\n      typeof resolutionBody === "function" ? resolutionBody(issue) : resolutionBody,\n    )'
-
-  # Usamos python para trocar o bloco multiline com precisão
-  python3 -c "
-import sys
-src = open('$TARGET').read()
-old = '''    await backend.comment(
+  local FROM='    await backend.comment(
       issue.number,
-      typeof resolutionBody === \"function\" ? resolutionBody(issue) : resolutionBody,
+      typeof resolutionBody === "function" ? resolutionBody(issue) : resolutionBody,
     )
-    await backend.close(issue.number)'''
-new = '''    await backend.close(issue.number)
+    await backend.close(issue.number)'
+  local TO='    await backend.close(issue.number) // MUTACAO M2: o close antes do comentário da prova
     await backend.comment(
       issue.number,
-      typeof resolutionBody === \"function\" ? resolutionBody(issue) : resolutionBody,
-    )'''
-if old not in src:
-    print('MUTACAO NAO APLICOU (ordem): padrao nao encontrado', file=sys.stderr)
-    sys.exit(1)
-src = src.replace(old, new, 1)
-open('$TARGET', 'w').write(src)
-"
+      typeof resolutionBody === "function" ? resolutionBody(issue) : resolutionBody,
+    )'
 
-  if ! node --check "$TARGET" >/dev/null 2>&1; then
-    fail "MUTAÇÃO NÃO-CIRÚRGICA (ordem): sintaxe inválida"
-    restore_file
-    exit 1
-  fi
-  pass "Mutação aplicada (ordem)"
+  apply_mutation "$FROM" "$TO" "ordem"
 
   info "Rodando teste de reconciliação..."
   run_vitest "$RESULTS_MUTATION" "$ANCHOR_CLOSE"
@@ -300,30 +291,38 @@ open('$TARGET', 'w').write(src)
 mutation_stale_verify() {
   info "═══ MUTAÇÃO 3/3 — PROVA COMPARADA (remove stale-closure verification) ═══"
 
-  # Remove o bloco VERIFICAÇÃO PÓS-FECHAMENTO inteiro
-  python3 -c "
-import re, sys
-src = open('$TARGET').read()
-# Encontra o bloco desde o comentário até o return
-pat = re.compile(
-    r'\n  // VERIFICAÇÃO PÓS-FECHAMENTO:.*?return \{ closed, stale,',
-    re.DOTALL,
-)
-m = pat.search(src)
-if not m:
-    print('MUTACAO NAO APLICOU (stale-verify): padrao nao encontrado', file=sys.stderr)
-    sys.exit(1)
-# Substitui por return direto (sem stale verification)
-src = src[:m.start()] + '\n  return { closed, stale,' + src[m.end():]
-open('$TARGET', 'w').write(src)
-"
+  # O bloco VERIFICAÇÃO PÓS-FECHAMENTO inteiro, LITERAL: o alvo é o comentário
+  # até o início da linha do `return` (o resto da linha permanece). A régua casa
+  # este texto UMA vez — o antigo `.*?` de regex era livre para casar outro
+  # trecho do arquivo.
+  local FROM='  // VERIFICAÇÃO PÓS-FECHAMENTO: re-lista as issues abertas e detecta fechamentos
+  // que não pegaram (o backend respondeu sucesso mas a issue continua aberta).
+  // Sem isso, um fechamento silencioso (permissão, race condition, bug do
+  // servidor) deixaria a dívida aberta sem ninguém saber — e o doctor diria
+  // "pronta" quando a dívida ainda vive.
+  const stale = []
+  if (closed.length > 0) {
+    const stillOpen = (await backend.openIssues()).map((i) => i.number)
+    for (const num of closed) {
+      if (stillOpen.includes(num)) {
+        stale.push(num)
+        log(
+          `⚠️  issue #${num} deveria ter sido fechada mas AINDA ESTÁ ABERTA — o fechamento falhou em silêncio. Revise manualmente.`,
+        )
+      }
+    }
+  }
 
-  if ! node --check "$TARGET" >/dev/null 2>&1; then
-    fail "MUTAÇÃO NÃO-CIRÚRGICA (stale-verify): sintaxe inválida"
-    restore_file
-    exit 1
-  fi
-  pass "Mutação aplicada (stale-verify)"
+  // Registra fechamentos silenciosos em arquivo para o doctor surfacear.
+  if (stale.length > 0 && backend.name) {
+    recordStaleClosures(backend.name, stale)
+  }
+
+  return { closed, stale,'
+  local TO='  // MUTACAO M3: a verificação pós-fechamento (stale-closure) removida
+  return { closed, stale,'
+
+  apply_mutation "$FROM" "$TO" "stale-verify"
 
   info "Rodando teste de stale-closure..."
   run_vitest "$RESULTS_MUTATION" "$ANCHOR_STALE"
