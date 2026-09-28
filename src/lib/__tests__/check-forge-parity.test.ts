@@ -74,6 +74,12 @@ const REAL_LINES = [
   "      - run: node scripts/check-github-dependencies.mjs",
   "      - run: node scripts/check-tla-closure.mjs",
   "      - run: node scripts/check-runner-base.mjs",
+  // O PIN da imagem do RUNNER: o `runner-base` julga a BASE do Dockerfile (por
+  // digest) e este julga a TAG declarada no compose. É a invariante que o CORE
+  // ganhou em eacfd9d2 e que ficou sem a linha correspondente aqui — a lista é
+  // golden, ela SEGUE o CORE, e sem a linha o `discoverGates` encontrava 42
+  // gates para 43 invariantes (o buraco que o próprio guard recusa).
+  "      - run: node scripts/check-runner-tag.mjs",
   "      - run: node scripts/check-workflow-refs.mjs --pkg-internal",
   "      - run: node scripts/check-forge-workflow-scope.mjs",
   "      - run: node scripts/check-bun-audit-baseline.mjs",

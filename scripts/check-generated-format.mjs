@@ -161,6 +161,15 @@ export const GERADORES = [
   // Eles gravam fixture/temporário (o alvo sai declarado em `escritasCruas`), e o
   // arquivo versionado que citam é ENTRADA da prova — não saída.
   {
+    script: "scripts/artefatos-do-hook.mjs",
+    leSo: "a derivação copia o fecho de imports para um repo de prova em tmpdir; o `package.json` que cita é LIDO pelos guards do hook",
+    // `LOG` não é escrita DESTE script: ele é o alvo do `appendFileSync` que
+    // vive dentro do TRACEADOR — o fonte que a derivação escreve no fixture e
+    // injeta com `--require`. A varredura o lê do texto, então ele se declara
+    // aqui (e o alvo deixa de parecer uma escrita própria).
+    escritasCruas: ["LOG", "traceador"],
+  },
+  {
     script: "scripts/check-actrc-sync.mjs",
     leSo: "grava o relatório em `--json-out` (caminho do chamador); o compose que cita é lido",
     escritasCruas: ["jsonOutput"],
@@ -246,6 +255,7 @@ export const GERADORES = [
       "ensureLog",
       "traceLog",
       "volumeState",
+      "imageState",
       '→ join(binDir, "docker")',
       '→ join(binDir, "gh")',
       "→ doctorStub",

@@ -18,7 +18,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process"
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -83,6 +83,9 @@ import {
   unsetVariables,
   withoutGitIgnored,
 } from "../../../scripts/check-registry-source.mjs"
+// O DONO da regra do par host × template: a contagem de fases deste teste segue
+// a MESMA descoberta do guard em vez de repetir o nome do arquivo do host.
+import { GITEA_ENV_DEPLOYED } from "../../../scripts/check-actrc-sync.mjs"
 
 /**
  * Linha REAL do compose da forja (deploy/docker-compose.gitea.yml): a imagem do
@@ -1532,11 +1535,20 @@ describe.skipIf(!HAS_COMPOSE)("checkComposeInterpolation — docker real", () =>
     "RUNNER_TOKEN=TOKEN_REAL\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n" +
     "GITEA__registry__ENABLED=true\n"
 
-  it("o compose REAL do repositório é provado (3 fases)", () => {
+  it("o compose REAL do repositório é provado (as fases do host quando ele existe)", () => {
     const r = checkComposeInterpolation({ cwd: REPO_ROOT })
     expect(r.violations, r.violations.join("\n")).toEqual([])
     expect(r.state).toBe("proven")
-    expect(r.phases.length).toBe(3)
+    // A fase do TEMPLATE COMITADO (1b) só existe quando os DOIS arquivos estão
+    // no checkout: `deploy/.env.gitea` é GITIGNORED — ele existe só na máquina
+    // que rodou o `deploy/gitea-up.sh` — e é com ele que o render do template
+    // ganha par ("o que o VPS interpola" × "o que o repositório declara").
+    // Contar 3 fixo fazia este teste passar no clone limpo (o do CI) e reprovar
+    // na máquina de quem USA a forja: a régua passa a ser a MESMA do guard —
+    // com host × template são 4 renderizações e, sem o host, a fase 1 JÁ é o
+    // template.
+    const comHost = GITEA_ENV_DEPLOYED.some((rel) => existsSync(join(REPO_ROOT, rel)))
+    expect(r.phases.length).toBe(comHost ? 4 : 3)
   })
 
   it("default LITERAL na versão (`${BUN_VERSION:-1.4.0}`) → 'violated'", () => {

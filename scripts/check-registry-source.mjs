@@ -1810,8 +1810,12 @@ export function checkComposeInterpolation({
         unique.length > 0
           ? `${unique.length} violacao(oes) na interpolacao`
           : hostState === "in-sync"
-            ? `3 fases ok (${phases.join(" · ")}) via ${GITEA_COMPOSE} · ${hostDetail}`
-            : `3 fases ok (${phases.join(" · ")}) via ${GITEA_COMPOSE}`,
+            ? // O número é o das fases MEDIDAS (3, ou 4 quando o par host ×
+              // template existe): o "3" escrito à mão mentia justamente na
+              // máquina que tem o `deploy/.env.gitea` — listava quatro
+              // renderizações e dizia três.
+              `${phases.length} fase(s) ok (${phases.join(" · ")}) via ${GITEA_COMPOSE} · ${hostDetail}`
+            : `${phases.length} fase(s) ok (${phases.join(" · ")}) via ${GITEA_COMPOSE}`,
     }
   } finally {
     rmSync(dir, { recursive: true, force: true })
