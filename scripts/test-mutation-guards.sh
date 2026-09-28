@@ -82,6 +82,46 @@
 # rodam mesmo se um falhar (fail-CONTINUE, não fail-fast) — o exit final é
 # agregado: 0 se TODOS passarem, 1 se QUALQUER um reprovar (a re-medição do
 # cabeçalho decide isso), 2 se nenhum reprovou e algum ficou INDETERMINADO.
+#
+# O SCRATCH DAS FIXTURES É ESTÁVEL E FORA DO `/tmp` — e FORA DO REPOSITÓRIO.
+#
+# O DEFEITO MEDIDO (28/09/2026): o `/tmp` é limpo por FORA do repositório e a
+# rodada LONGA é a que paga — duas passadas desta matriz caíram com fixture
+# SUMIDA no meio da medição (o diretório da bancada deixou de existir entre dois
+# passos da MESMA suíte), e cada suíte acusada passa sozinha. Cada suíte cria o
+# fixture root em `$MUT_SCRATCH` (`mktemp -d "$MUT_SCRATCH/mut-XXXXXX"`, a MESMA
+# raiz para rodada e suíte), e cada RODADA do master cria a sua PRÓPRIA raiz
+# DENTRO da base (`run-XXXXXX`): o master NUNCA esvazia a base. Esvaziar era o
+# desenho anterior, e ele REINTRODUZIA o mesmo defeito por outra porta — MEDIDO:
+# com a base compartilhada, um segundo master (e há TESTES UNITÁRIOS que sobem o
+# master de verdade, na cópia do ensaio) apagou o fixture de um sub-test EM VOO, e
+# o guard real acusou `--root inexistente: .../mut-mZHkzn/fx`, deixando a matriz
+# com um vermelho que não é da árvore. A sobra de uma rodada MORTA (kill, timeout
+# do CI) é podada por IDADE — `-mtime +0` —, nunca no meio de uma medição viva.
+#
+# POR QUE A RAIZ NÃO É DENTRO DO REPO — MEDIDO, e é o que faz este parágrafo
+# existir: uma fixture dentro da árvore deixa de ser um pedaço de FORA do projeto
+# e passa a ser alcançada por ele. `no-leaked-imports` mede um worktree ANINHADO
+# (e passou a achar o `node_modules` DESTE repo), `lint-guard` mede o
+# prettier/eslint DO PROJETO sobre um arquivo de fixture, e `registry-defaults`
+# roda o guard real sobre a árvore real — que passou a ler fixture de outra suíte
+# como artefato versionado: as TRÊS ficaram vermelhas, e as três voltam verdes com
+# a raiz fora. O corte de escopo dos guards (`scriptsDoRepositorio`) também trata
+# o que o `.gitignore` declara local como NÃO sendo do repositório — a fixture
+# sumiria do escopo —, e o `.tmp/` do repo é declarado scratch de SESSÃO: outra
+# sessão pode limpá-lo, que é o Mesmo defeito de novo. O `GIT_CEILING_DIRECTORIES`
+# consertaria só as fixtures "sem repositório" (a classe dos controles de
+# `doc-hashes` e `act-origin`), nunca as de cima.
+#
+# A raiz BASE é `${XDG_CACHE_HOME:-$HOME/.cache}/severinno-mutacao`: estável e
+# a fixture segue sendo uma árvore de FORA — nenhum guard, nenhum `node_modules`
+# e nenhum prettier do projeto a alcança. O master cria a raiz DA RODADA dentro
+# dela e é ELA que as suítes herdam (o `MUT_SCRATCH` exportado), com a rodada
+# limpando SÓ o que é dela (trap EXIT): sem essa separação, uma rodada qualquer
+# apaga a fixture da outra, e o vermelho que sobra é do instrumento. Um
+# `MUT_SCRATCH` explícito no ambiente continua vencendo (a suíte que roda
+# sozinha usa ele direto); se a raiz não puder ser criada, a suíte sai 2 (INFRA
+# declarada) em vez de um vermelho inventado.
 # =============================================================================
 
 set -euo pipefail
@@ -89,6 +129,37 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── O SCRATCH DAS FIXTURES (o motivo inteiro está no cabeçalho) ────────────
+# A raiz BASE é ESTÁVEL, fora do `/tmp` (que é limpo por fora) e fora do
+# repositório (uma fixture dentro dele muda de semântica). Cada RODADA cria a sua
+# PRÓPRIA raiz dentro da base, e é ELA que as suítes herdam pelo `MUT_SCRATCH`
+# (exportado): o master apaga só o que é da sua rodada, no trap EXIT — um
+# `rm -rf` da BASE apagaria as fixtures de outra rodada em andamento (medido:
+# `--root inexistente` num sub-test em voo, com a base compartilhada). A sobra de
+# uma rodada MORTA é podada por IDADE, nunca por varredura cega.
+MUT_SCRATCH="${MUT_SCRATCH:-${XDG_CACHE_HOME:-${HOME:-}/.cache}/severinno-mutacao}"
+case "$MUT_SCRATCH" in
+  / | "" | "${HOME:-}" | "$SCRIPT_DIR")
+    echo "❌ MUT_SCRATCH aponta para um diretório que não pode ser a raiz do scratch: $MUT_SCRATCH (infra declarada)" >&2
+    exit 2
+    ;;
+esac
+if ! mkdir -p "$MUT_SCRATCH" 2>/dev/null; then
+  echo "❌ o scratch das fixtures não pôde ser criado: $MUT_SCRATCH (infra declarada)" >&2
+  exit 2
+fi
+# A poda é por IDADE: `-mtime +0` exige mais de 24h, então nenhuma rodada VIVA
+# (nem a de outro job no mesmo host) perde fixture por causa dela.
+find "$MUT_SCRATCH" -mindepth 1 -maxdepth 1 -mtime +0 -exec rm -rf {} + 2>/dev/null || true
+MUT_SCRATCH_RUN="$(mktemp -d "$MUT_SCRATCH/run-XXXXXX")" || {
+  echo "❌ a raiz DESTA rodada não pôde ser criada em: $MUT_SCRATCH (infra declarada)" >&2
+  exit 2
+}
+# Daqui para baixo, o `MUT_SCRATCH` que as suítes leem é a raiz DA RODADA.
+MUT_SCRATCH="$MUT_SCRATCH_RUN"
+export MUT_SCRATCH
+trap 'rm -rf "$MUT_SCRATCH_RUN" 2>/dev/null || true' EXIT
 
 # ── A DESCRIÇÃO DE CADA SUB-TEST (derivada, nunca escrita à mão) ──────────
 # A fonte única é o bloco `METADES=(...)` do PRÓPRIO script granular — a mesma
@@ -385,6 +456,7 @@ echo ""
 echo "  ═════════════════════════════════════════════════════════════════"
 echo "   🧪 SEVERINNO — MUTATION TESTS MASTER (guards node-puro)"
 echo "  ═════════════════════════════════════════════════════════════════"
+info "raiz desta rodada (MUT_SCRATCH): $MUT_SCRATCH"
 echo ""
 
 # ── Executa a matriz (fail-CONTINUE: todos rodam, exit agregado) ────────

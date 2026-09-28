@@ -51,9 +51,20 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# O SCRATCH DAS FIXTURES É ESTÁVEL E FORA DO `/tmp`: o `/tmp` é limpo por FORA e a
+# rodada LONGA perdia fixture no meio da medição (o motivo inteiro, com as duas
+# medições, está no cabeçalho do master). A raiz é a MESMA em toda rodada e NÃO
+# fica DENTRO do repositório: uma fixture dentro de um repo muda de semântica —
+# `node_modules`, o prettier e o git do projeto passam a alcançá-la (medido).
+MUT_SCRATCH="${MUT_SCRATCH:-${XDG_CACHE_HOME:-$HOME/.cache}/severinno-mutacao}"
+mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
+  echo "❌ o scratch das fixtures não pôde ser criado: $MUT_SCRATCH (infra declarada)" >&2
+  exit 2
+}
 GUARD="$SCRIPT_DIR/scripts/check-readme-images.mjs"
 
-TMP_DIR="$(mktemp -d)"
+TMP_DIR="$(mktemp -d "$MUT_SCRATCH/mut-XXXXXX")"
 
 # ── Mutações (bugs conhecidos) ────────────────────────────────────────────
 # Cenário 1: count-pin — o guard imprime o count DERIVADO da extração

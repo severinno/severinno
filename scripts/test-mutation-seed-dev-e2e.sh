@@ -51,11 +51,27 @@ set -euo pipefail
 # ── Config ────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# O SCRATCH DAS FIXTURES É ESTÁVEL E FORA DO `/tmp`: o `/tmp` é limpo por FORA e a
+# rodada LONGA perdia fixture no meio da medição (o motivo inteiro, com as duas
+# medições, está no cabeçalho do master). A raiz é a MESMA em toda rodada e NÃO
+# fica DENTRO do repositório: uma fixture dentro de um repo muda de semântica —
+# `node_modules`, o prettier e o git do projeto passam a alcançá-la (medido).
+MUT_SCRATCH="${MUT_SCRATCH:-${XDG_CACHE_HOME:-$HOME/.cache}/severinno-mutacao}"
+mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
+  echo "❌ o scratch das fixtures não pôde ser criado: $MUT_SCRATCH (infra declarada)" >&2
+  exit 2
+}
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.test.yml}"
 DATABASE_URL="${DATABASE_URL:-postgresql://severinno:severinno_test@localhost:5433/severinno_test}"
 
 SEED_FILE="$SCRIPT_DIR/prisma/seed.ts"
-BACKUP_FILE="$(mktemp)"
+# O backup do seed também vive no SCRATCH estável (o bloco acima): no `/tmp` ele
+# sumia com o `/tmp` limpo por fora, e o restore do trap — que só copia o backup
+# se ele for NÃO-VAZIO (`-s`) — pularia o cp em silêncio e deixaria
+# `prisma/seed.ts` MUTADO na árvore. O scratch estável é o que mantém o backup
+# vivo pelo tempo da suíte.
+BACKUP_FILE="$(mktemp "$MUT_SCRATCH/backup-XXXXXX")"
 
 # ── Mutação (bug conhecido) ───────────────────────────────────────────────
 # Padrões do sed. Atenção: o console.log final do seed também imprime o email

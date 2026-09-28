@@ -141,6 +141,17 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# O SCRATCH DAS FIXTURES É ESTÁVEL E FORA DO `/tmp`: o `/tmp` é limpo por FORA e a
+# rodada LONGA perdia fixture no meio da medição (o motivo inteiro, com as duas
+# medições, está no cabeçalho do master). A raiz é a MESMA em toda rodada e NÃO
+# fica DENTRO do repositório: uma fixture dentro de um repo muda de semântica —
+# `node_modules`, o prettier e o git do projeto passam a alcançá-la (medido).
+MUT_SCRATCH="${MUT_SCRATCH:-${XDG_CACHE_HOME:-$HOME/.cache}/severinno-mutacao}"
+mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
+  echo "❌ o scratch das fixtures não pôde ser criado: $MUT_SCRATCH (infra declarada)" >&2
+  exit 2
+}
+
 # A PROVA-DE-APLICAÇÃO — a régua ÚNICA de "a mutação APLICOU" (o gabarito dela é
 # `scripts/test-mutation-mutacao-prova.sh`).
 # shellcheck source=scripts/mutacao-prova.sh
@@ -175,7 +186,7 @@ REQUIRED_GUARD="node $SCRIPT_DIR/scripts/check-required-checks.mjs --root"
 GUARD_SCRIPT="$SCRIPT_DIR/scripts/check-mutation-count.mjs"
 SUITE_ARQUIVO="src/lib/__tests__/check-mutation-count.test.ts"
 
-TMP_DIR="$(mktemp -d)"
+TMP_DIR="$(mktemp -d "$MUT_SCRATCH/mut-XXXXXX")"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -191,7 +202,7 @@ info() { echo -e "  ${YELLOW}ℹ️${NC} $1"; }
 # o CLI executa e que a suíte unitária importa). O backup mora em OUTRO temp: o
 # `repo_git_fixture` recria o `$TMP_DIR` a cada fixture, e um backup lá dentro
 # seria apagado no meio da suíte.
-GUARD_BKP="$(mktemp -d)"
+GUARD_BKP="$(mktemp -d "$MUT_SCRATCH/mut-XXXXXX")"
 guard_backup="$GUARD_BKP/check-mutation-count.original.mjs"
 cp "$GUARD_SCRIPT" "$guard_backup"
 guard_sum="$(cksum "$GUARD_SCRIPT" | cut -d' ' -f1)"

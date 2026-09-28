@@ -78,6 +78,17 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# O SCRATCH DAS FIXTURES É ESTÁVEL E FORA DO `/tmp`: o `/tmp` é limpo por FORA e a
+# rodada LONGA perdia fixture no meio da medição (o motivo inteiro, com as duas
+# medições, está no cabeçalho do master). A raiz é a MESMA em toda rodada e NÃO
+# fica DENTRO do repositório: uma fixture dentro de um repo muda de semântica —
+# `node_modules`, o prettier e o git do projeto passam a alcançá-la (medido).
+MUT_SCRATCH="${MUT_SCRATCH:-${XDG_CACHE_HOME:-$HOME/.cache}/severinno-mutacao}"
+mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
+  echo "❌ o scratch das fixtures não pôde ser criado: $MUT_SCRATCH (infra declarada)" >&2
+  exit 2
+}
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
@@ -101,7 +112,7 @@ ANCORA_FASE_B="a fase que passa na SEGUNDA medição deixa o commit ENTRAR"
 # A âncora que tem de continuar VERDE: o fail-closed (sem terminal, bloqueia).
 ANCORA_FAIL_CLOSED="SEM terminal de controle (sessão própria)"
 
-TMP_DIR="$(mktemp -d)"
+TMP_DIR="$(mktemp -d "$MUT_SCRATCH/mut-XXXXXX")"
 
 # ── Colors ────────────────────────────────────────────────────────────────
 

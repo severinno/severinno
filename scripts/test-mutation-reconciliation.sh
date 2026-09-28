@@ -58,6 +58,17 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# O SCRATCH DAS FIXTURES É ESTÁVEL E FORA DO `/tmp`: o `/tmp` é limpo por FORA e a
+# rodada LONGA perdia fixture no meio da medição (o motivo inteiro, com as duas
+# medições, está no cabeçalho do master). A raiz é a MESMA em toda rodada e NÃO
+# fica DENTRO do repositório: uma fixture dentro de um repo muda de semântica —
+# `node_modules`, o prettier e o git do projeto passam a alcançá-la (medido).
+MUT_SCRATCH="${MUT_SCRATCH:-${XDG_CACHE_HOME:-$HOME/.cache}/severinno-mutacao}"
+mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
+  echo "❌ o scratch das fixtures não pôde ser criado: $MUT_SCRATCH (infra declarada)" >&2
+  exit 2
+}
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
@@ -72,7 +83,7 @@ TARGET="$REPO_ROOT/scripts/issue-publish.mjs"
 TEST_FILE="$REPO_ROOT/src/lib/__tests__/forge-doctor-issue.test.ts"
 
 # Os JSONs do vitest (a testemunha lida por status, não por exit code).
-RESULTS_DIR="$(mktemp -d)"
+RESULTS_DIR="$(mktemp -d "$MUT_SCRATCH/mut-XXXXXX")"
 RESULTS_CONTROL="$RESULTS_DIR/control.json"
 RESULTS_MUTATION="$RESULTS_DIR/mutation.json"
 

@@ -42,6 +42,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# SEM bloco de scratch: esta suíte é um ORQUESTRADOR — ela não cria fixture
+# nenhuma, só roda as três suítes granulares abaixo, e são ELAS que criam as
+# fixtures no `MUT_SCRATCH` (o bloco e o motivo estão em cada uma, e no master).
+# Carregar o `exit 2` do fail-closed aqui daria à suíte um jeito de sair INFRA
+# por um scratch que ela nunca usa.
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
