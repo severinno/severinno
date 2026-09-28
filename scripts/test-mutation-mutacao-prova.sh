@@ -7,9 +7,9 @@
 #   bash scripts/test-mutation-mutacao-prova.sh
 #
 # Exit codes:
-#   0 — as TRÊS metades foram DETECTADAS (a prova do MARCADOR, a prova do
-#       CONTEÚDO e a CIRURGIA saem do lugar, uma por vez, e o veredito vira
-#       ACEITO onde ele recusava) e os controles passaram ✅
+#   0 — as QUATRO metades foram DETECTADAS (a prova do MARCADOR, a prova do
+#       CONTEÚDO, a CIRURGIA e a SINTAXE saem do lugar, uma por vez, e o veredito
+#       vira ACEITO onde ele recusava) e os controles passaram ✅
 #   1 — uma metade NÃO sustentou o veredito (desligar a prova não mudou a
 #       recusa), mutação não-cirúrgica, ou a restauração falhou ❌
 #   2 — infra: a biblioteca não está na árvore / não é bash válido
@@ -39,10 +39,18 @@
 #   · M3 — a CIRURGIA (`conta`, o sítio do python): desligada, um alvo AMBÍGUO
 #     (duas ocorrências com `esperado = 1`) passa a ser aceito — a suíte mediria
 #     os dois lugares sem dizer que o alvo deixou de ser cirúrgico.
+#   · M4 — a SINTAXE (`mutacao_sintaxe_node`, o `node --check`): desligada, um
+#     alvo mutado que NÃO parseia passa a ser aceito — o veredito da suíte
+#     passaria a vir de um `node` que MORREU, e não da regra que a metade dela
+#     tira do lugar.
 #
-# O QUE NÃO ESTÁ AQUI: a checagem de sintaxe (`mutacao_sintaxe_node`) é um
-# wrapper de uma linha sobre o `node --check`; quem a mede são as metades das
-# suítes que a chamam (um alvo mutado que não parseia derruba a medição delas).
+# A SINTAXE ENTRA AQUI (e por que ela NÃO ficava provada): a checagem era medida
+# só de LADO, pelas metades das suítes que a chamam (um alvo mutado que não
+# parseia derruba a medição delas) — acoplamento, nunca um par recusa/aceite DELA.
+# Uma suíte que parasse de chamá-la ficava verde (deixava de haver quem a
+# exercesse) e a checagem que sumisse não deixava rastro. A M4 fecha a mesma
+# direção das outras: tira o `node --check` do lugar e exige o ACEITE do alvo que
+# não parseia, o único veredito que prova que a checagem é load-bearing.
 #
 # A CIRURGIA DESTA SUÍTE: as mutações da biblioteca são aplicadas pela PRÓPRIA
 # biblioteca (`mutacao_aplicar` sobre o arquivo dela), com a prova de que a
@@ -61,6 +69,7 @@ METADES=(
   'M1|a prova do MARCADOR: desligada, a troca que NÃO carrega MUTACAO deixa de ser recusada (o vácuo que ela fecha)'
   'M2|a prova do CONTEÚDO: desligada, a troca que não muda byte nenhum (o depois é igual ao antes) passa a ser aceita'
   'M3|a CIRURGIA (a contagem do alvo): desligada, um alvo AMBÍGUO com duas ocorrências passa a ser aceito'
+  'M4|a SINTAXE (o node --check): desligada, um alvo mutado que NÃO parseia passa a ser aceito'
 )
 
 BIB="$SCRIPT_DIR/scripts/mutacao-prova.sh"
@@ -80,6 +89,11 @@ BIB_SUM="$(cksum "$BIB" | cut -d' ' -f1)"
 
 ALVO_A="$TMP_DIR/alvo-a.txt"
 ALVO_B="$TMP_DIR/alvo-b.txt"
+# Os alvos da checagem de sintaxe têm EXTENSÃO de JavaScript de propósito: o
+# `node --check` recusa por FORMATO um `.txt` (ERR_UNKNOWN_FILE_EXTENSION), e um
+# alvo que não parseia por extensão mediria a extensão, não a sintaxe.
+ALVO_VALIDO="$TMP_DIR/alvo-valido.js"
+ALVO_QUEBRADO="$TMP_DIR/alvo-quebrado.js"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -128,6 +142,22 @@ const artefatos = ["alfa", "beta"] // MUTACAO M0: alvo que já carrega o marcado
 EOF
 }
 
+# Os alvos da SINTAXE: um que PARSEIA (a direção boa da checagem) e um que NÃO
+# parseia (é ele que a M4 mede — com o `node --check` desligado, ele passa).
+cria_alvo_valido() {
+  cat >"$ALVO_VALIDO" <<'EOF'
+// o alvo VÁLIDO da checagem de sintaxe
+const artefatos = ["alfa", "beta"]
+EOF
+}
+
+cria_alvo_quebrado() {
+  cat >"$ALVO_QUEBRADO" <<'EOF'
+// o alvo que NÃO parseia (a checagem de sintaxe tem de recusá-lo)
+const artefatos = ["alfa",
+EOF
+}
+
 ALVO_UNICO='const artefatos = ["alfa", "beta"]'
 TROCA_MARCADA='const artefatos = [] // MUTACAO M1: a lista derivada esvaziada'
 TROCA_SEM_MARCADOR='const artefatos = []'
@@ -164,6 +194,32 @@ exige() {
   pass "$cenario (exit $APLICAR_EXIT)"
 }
 
+# roda_sintaxe: a cópia do ARQUIVO julga a checagem de sintaxe (o subshell
+# RE-SOURCEIA a biblioteca, como no `roda_aplicar`) — é o arquivo mutado que
+# responde, e o `fail` vira no-op porque o que se mede aqui é o EXIT.
+roda_sintaxe() { # <arquivo>
+  set +e
+  (
+    # shellcheck disable=SC1090
+    . "$BIB"
+    fail() { :; }
+    mutacao_sintaxe_node "$1"
+  ) >/dev/null 2>&1
+  SINTAXE_EXIT=$?
+  set -e
+}
+
+# exige_sintaxe <exit esperado> <cenário> <arquivo>
+exige_sintaxe() {
+  local esperado="$1" cenario="$2"
+  roda_sintaxe "$3"
+  if [ "$SINTAXE_EXIT" -ne "$esperado" ]; then
+    fail "$cenario: exit $SINTAXE_EXIT (esperado $esperado)"
+    exit 1
+  fi
+  pass "$cenario (exit $SINTAXE_EXIT)"
+}
+
 # mutar_biblioteca <alvo> <troca>: a mutação da PRÓPRIA biblioteca, aplicada por
 # ela (a prova de que a escrita entrou é a mesma das suítes), com o `bash -n` do
 # instrumento mutado.
@@ -189,7 +245,7 @@ echo "  ════════════════════════
 pass "biblioteca sob medição; checksum inicial $BIB_SUM"
 
 # ── CONTROLE — a biblioteca ÍNTEGRA recusa as três classes e aceita a troca boa ─
-header "CONTROLE — a biblioteca íntegra: a troca boa entra e as três classes saem recusadas"
+header "CONTROLE — a biblioteca íntegra: a troca boa entra, as três classes saem recusadas e a SINTAXE recusa o que não parseia"
 cria_alvo_a
 exige 0 "CONTROLE: a troca COM o marcador sobre um alvo único é ACEITA" \
   "$ALVO_A" "$ALVO_UNICO" "$TROCA_MARCADA"
@@ -214,6 +270,14 @@ exige 1 "CONTROLE: o alvo AMBÍGUO (duas ocorrências) é RECUSADO (a CIRURGIA)"
 cria_alvo_a
 exige 1 "CONTROLE: o alvo que NÃO casa (zero ocorrências) é RECUSADO" \
   "$ALVO_A" "$ALVO_AUSENTE" "$TROCA_SEM_MARCADOR"
+
+# A SINTAXE tem as DUAS direções no controle: o alvo válido PASSA (a checagem
+# não recusa o que é sintaxe boa) e o que não parseia é RECUSADO.
+cria_alvo_valido
+exige_sintaxe 0 "CONTROLE: o alvo VÁLIDO passa pela checagem de sintaxe" "$ALVO_VALIDO"
+
+cria_alvo_quebrado
+exige_sintaxe 1 "CONTROLE: o alvo que NÃO parseia é RECUSADO (a SINTAXE)" "$ALVO_QUEBRADO"
 
 # ── M1 — a prova do MARCADOR ──────────────────────────────────────────────
 header "M1 — a prova do MARCADOR: desligada, a troca sem MUTACAO passa a ser ACEITA"
@@ -254,6 +318,19 @@ fi
 pass "M3 DETECTADA: sem a cirurgia, o alvo AMBÍGUO passa a ser ACEITO"
 restaurar_biblioteca
 
+# ── M4 — a SINTAXE (o `node --check`) ─────────────────────────────────────
+header "M4 — a SINTAXE: desligada, o alvo que NÃO parseia passa a ser ACEITO"
+mutar_biblioteca '  if ! node --check "$1" >/dev/null 2>&1; then' \
+  '  if false; then # MUTACAO M4: a checagem de sintaxe desligada'
+cria_alvo_quebrado
+roda_sintaxe "$ALVO_QUEBRADO"
+if [ "$SINTAXE_EXIT" -ne 0 ]; then
+  fail "M4 NÃO DETECTADA: com a checagem de sintaxe desligada, o alvo que não parseia continuou RECUSADO (exit $SINTAXE_EXIT) — a metade não moveu o veredito"
+  exit 1
+fi
+pass "M4 DETECTADA: sem a checagem, o alvo que NÃO parseia passa a ser ACEITO (o veredito sairia de um node que morreu)"
+restaurar_biblioteca
+
 # ── FECHO ─────────────────────────────────────────────────────────────────
 header "FECHO"
 if [ "$(cksum "$BIB" | cut -d' ' -f1)" != "$BIB_SUM" ]; then
@@ -266,5 +343,7 @@ exige 0 "FECHO: a troca COM o marcador volta a ser ACEITA na biblioteca restaura
 cria_alvo_a
 exige 1 "FECHO: e a troca SEM o marcador volta a ser RECUSADA" \
   "$ALVO_A" "$ALVO_UNICO" "$TROCA_SEM_MARCADOR"
-pass "as metades M1 (a prova do MARCADOR), M2 (a do CONTEÚDO) e M3 (a CIRURGIA) foram detectadas — desligar cada uma faz a recusa virar ACEITE; a biblioteca está restaurada e medindo"
+cria_alvo_quebrado
+exige_sintaxe 1 "FECHO: a SINTAXE volta a RECUSAR o alvo que não parseia" "$ALVO_QUEBRADO"
+pass "as metades M1 (a prova do MARCADOR), M2 (a do CONTEÚDO), M3 (a CIRURGIA) e M4 (a SINTAXE) foram detectadas — desligar cada uma faz a recusa virar ACEITE; a biblioteca está restaurada e medindo"
 echo ""
