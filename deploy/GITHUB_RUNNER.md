@@ -11,6 +11,7 @@ O Self-Hosted Runner permite rodar workflows do GitHub Actions **no seu próprio
 1. **GitHub Personal Access Token (PAT)**
 2. **Docker instalado no VPS**
 3. **Acesso SSH ao VPS**
+4. **Bun no PATH do daemon** (issue #32) — as provas reais das meta-suítes invocam `bun` via `spawnSync` e saem fail-closed (`unavailable`) sem ele; o script de instalação garante o symlink em `/usr/local/bin` (o PATH do daemon é fixado no start do serviço e não relê o `.bashrc`) e falha nomeando a causa se o bun não existir
 
 ---
 
@@ -161,6 +162,20 @@ sudo systemctl stop actions.runner.*.service
 
 - Verifique se o usuário `github-runner` está no grupo docker
 - Reinicie o runner após adicionar ao grupo
+
+### As provas das meta-suítes saem `unavailable` (`spawnSync bun ENOENT`)
+
+- O PATH do daemon é o do PID 1, fixado NO START do serviço — bun instalado/atualizado depois do start não é visto (o `.bashrc` não é relido; o guard interativo do topo o bloqueia em shells não-interativos).
+- O preflight do CI (`scripts/preflight-bun-path.sh`) falha ANTES nomeando a causa e o remédio; no host, o remédio é o symlink no PATH universal de daemons (mesmo mecanismo da imagem `ubuntu-bun`):
+
+  ```bash
+  sudo ln -sf "$(command -v bun)" /usr/local/bin/bun
+  sudo ln -sf /usr/local/bin/bun /usr/local/bin/bunx
+  sudo systemctl restart actions.runner.*.service
+  bash scripts/preflight-bun-path.sh   # deve responder ✅ com a versão
+  ```
+
+- O `deploy/setup-github-runner.sh` aplica isso sozinho entre o `svc.sh install` e o `svc.sh start` (e confere a versão contra `BUN_VERSION` — a fonte única é `vars.BUN_VERSION`, espelhada em `.actrc` / `deploy/env.gitea.example`).
 
 ---
 

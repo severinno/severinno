@@ -14,7 +14,15 @@
 #   1. Cria usuário não-root 'github-runner'
 #   2. Baixa e configura o runner
 #   3. Instala como serviço systemd
-#   4. Inicia o runner
+#   4. Garante o bun no PATH do daemon (symlink em /usr/local/bin — issue #32)
+#   5. Inicia o runner
+#
+# O passo 4 existe porque o PATH do daemon é o do PID 1 e é FIXADO NO START do
+# serviço: bun instalado ou atualizado DEPOIS não é visto pelo runner, e as
+# provas reais das meta-suítes (que invocam `bun` via spawnSync) saem
+# fail-closed ('unavailable') sem nomear a causa. O mecanismo é o mesmo da
+# imagem ubuntu-bun (binário em /usr/local/bin, PATH universal de daemons) e o
+# preflight do CI (scripts/preflight-bun-path.sh) é a segunda metade da garantia.
 # =============================================================================
 
 set -euo pipefail
@@ -63,6 +71,45 @@ fi
 if ! command -v docker &>/dev/null; then
   err "Docker não encontrado. Instale: https://docs.docker.com/engine/install/"
 fi
+
+# ── Bun no PATH do daemon (issue #32) — fonte da versão esperada ───────────
+#
+# FONTE ÚNICA da versão: vars.BUN_VERSION, espelhada no repositório (.actrc /
+# deploy/env.gitea.example, escritos por scripts/bump-bun.sh) e entregue ao CI
+# pelo env do passo. Sem nenhuma das três, o script SEGUE (o symlink é
+# versão-independente) mas perde a ASSERÇÃO — nunca chuta um literal de reserva,
+# que é o defeito que scripts/bun-version.mjs existe para eliminar.
+if [ -n "${BUN_VERSION:-}" ]; then
+  BUN_ESPERADO="${BUN_VERSION}"
+elif [ -s .actrc ] && grep -q '^--var BUN_VERSION=' .actrc 2>/dev/null; then
+  BUN_ESPERADO="$(grep '^--var BUN_VERSION=' .actrc | head -n1 | cut -d= -f2)"
+elif [ -s deploy/env.gitea.example ] && grep -q '^BUN_VERSION=' deploy/env.gitea.example 2>/dev/null; then
+  BUN_ESPERADO="$(grep '^BUN_VERSION=' deploy/env.gitea.example | head -n1 | cut -d= -f2)"
+else
+  BUN_ESPERADO=""
+  warn "BUN_VERSION não declarado (env, .actrc ou deploy/env.gitea.example) — a asserção de versão do bun fica desligada"
+fi
+
+garantirBunNoPath() {
+  local alvo versao
+  alvo="$(command -v bun 2>/dev/null || true)"
+  if [ -z "${alvo}" ]; then
+    err "bun NÃO resolve pelo PATH — as provas reais das meta-suítes (doctor-ci, forge-doctor, pre-push-blocks, prove-runner-image, pre-commit-real-proof) saem fail-closed ('unavailable') sem ele. Instale o bun e rode este script de novo: 'curl -fsSL https://bun.sh/install | bash' (issue #32; preflight do CI: scripts/preflight-bun-path.sh)"
+  fi
+  if [ ! -e /usr/local/bin/bun ]; then
+    log "Bun no PATH do daemon: /usr/local/bin/bun -> ${alvo}"
+    ln -sf "${alvo}" /usr/local/bin/bun
+    ln -sf /usr/local/bin/bun /usr/local/bin/bunx
+  fi
+  if [ ! -x /usr/local/bin/bun ]; then
+    err "/usr/local/bin/bun existe mas não é executável — corrija o alvo do symlink e rode de novo"
+  fi
+  versao="$(/usr/local/bin/bun --version 2>/dev/null || echo '?')"
+  log "bun ${versao} acessível como /usr/local/bin/bun (o PATH do daemon o resolve)"
+  if [ -n "${BUN_ESPERADO}" ] && [ "${versao}" != "${BUN_ESPERADO}" ]; then
+    err "versão do bun em /usr/local/bin (${versao}) ≠ BUN_VERSION declarado (${BUN_ESPERADO}) — atualize o bun no host e rode este script de novo (a fonte única é vars.BUN_VERSION, espelhada em .actrc / deploy/env.gitea.example)"
+  fi
+}
 
 # Solicitar token
 echo ""
@@ -120,6 +167,11 @@ sudo -u "$RUNNER_USER" "${RUNNER_HOME}/config.sh" \
 # ── Instalar como serviço systemd ──────────────────────────────────────────
 log "Instalando como serviço systemd..."
 "${RUNNER_HOME}/svc.sh" install "$RUNNER_USER"
+
+# ── Bun no PATH do daemon (issue #32) ──────────────────────────────────────
+# O PATH do serviço é fixado NO START: o remédio tem de ser aplicado ENTRE o
+# install e o start, como root, antes de o daemon resolver o primeiro job.
+garantirBunNoPath
 
 # ── Iniciar serviço ────────────────────────────────────────────────────────
 log "Iniciando serviço..."
