@@ -332,7 +332,7 @@ make_fixture() {
     # referência posicional aqui, então 0 julgadas e 0 puladas. Sem ela o
     # CONTROLE sai vermelho por uma regra que o fixture não exercita.
     echo ''
-    echo '**A régua do ordinal: 0 referência(s) JULGADA(S) e 0 PULADA(S)**'
+    echo '**A régua do ordinal: 0 referência(s) JULGADA(S) e 0 PULADA(S) — historico 0 · foraDeEscopo 0 · blocoDerivado 0**'
   } > "$TMP_DIR/docs/GUARDS.md"
 
   # pr-check.yml com o job mutation-guards (name COUNT-FREE por default — é o

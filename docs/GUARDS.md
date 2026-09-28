@@ -1114,10 +1114,10 @@ escopo é DECISÃO, nunca omissão.
 
 **A COBERTURA da régua é PUBLICADA e TRAVADA.**
 
-**A régua do ordinal: 9 referência(s) JULGADA(S) e 1 PULADA(S)**
+**A régua do ordinal: 9 referência(s) JULGADA(S) e 1 PULADA(S) — historico 1 · foraDeEscopo 0 · blocoDerivado 0**
 
 Aquela linha é a declaração viva: o `check-mutation-count` a lê, o veredito verde
-publica os dois números com a classe de cada pulo (`historico` · `foraDeEscopo` ·
+publica os números com a classe de cada pulo (`historico` · `foraDeEscopo` ·
 `blocoDerivado`) e o `--json` os leva em `ordinaisCobertura`. O PULO medido tem de
 ser **IGUAL** ao declarado, nas DUAS direções: um pulo que SOBE é a cobertura
 piorando (e a mensagem nomeia a referência e a classe que escaparam — se o pulo é
@@ -1128,6 +1128,20 @@ deixa a próxima piora passar sem vermelho. As JULGADAS entram como **PISO**: a
 régua pode julgar MAIS (uma referência nova na prosa é bem-vinda) e não pode
 julgar menos sem que a perda esteja numa decisão — a referência que saiu da prosa,
 o doc que sumiu, o escopo que alguém estreitou.
+
+**E O TOTAL SOZINHO NÃO BASTA — a declaração carrega a CLASSE de cada pulo.** O
+pulo total e o pulo de cada classe são **duas** afirmações, e a cauda
+(`historico N · foraDeEscopo N · blocoDerivado N`) é parte da linha, não enfeite:
+uma referência que **MIGRA** de classe — o **mesmo total**, outra origem, como a
+forma nua de um ato passado que passa a viver dentro do bloco derivado — mantinha
+o declarado intacto e o veredito **verde**, e a troca muda o que a régua **pode**
+julgar: o que é pulado por `foraDeEscopo` é candidato a voltar para o julgamento, e
+o que é pulado por `historico` nunca vai ser conferido contra a matriz de hoje.
+Cada classe é conferida **sozinha**, nas duas direções, e a mensagem **diz quando o
+total não mudou** — é essa a informação que a declaração antiga não tinha como dar.
+A declaração **sem** a cauda por classe é ela própria uma violação (o total
+continua travado ali, nas duas direções, mas a migração não tem como aparecer), e o
+remédio é a linha inteira com o número de agora — que sai na própria mensagem.
 
 **A mesma posição escrita POR EXTENSO entra na MESMA régua** — `a quadragésima
 entrada da matriz` é a 40.ª, e o número é conferido contra a ordem do `SUBTESTS`

@@ -111,14 +111,23 @@ interface FixtureOpts {
   semMarcadorSuites?: number[]
   /**
    * A COBERTURA da régua do ordinal declarada na doc — a linha
-   * `**A régua do ordinal: N referência(s) JULGADA(S) e M PULADA(S)**`:
+   * `**A régua do ordinal: N referência(s) JULGADA(S) e M PULADA(S) — historico
+   * N · foraDeEscopo N · blocoDerivado N**`:
    *   - `"auto"` (default): a LINHA com o número REAL do próprio fixture (o
    *     teste declara o que escreveu sem contar à mão o que a régua julgou);
-   *   - `{ julgadas, puladas }`: a linha com o número que o teste mandar — é
-   *     assim que os testes da TRAVA declaram o teto/piso errados;
+   *   - `{ julgadas, puladas, porClasse }`: a linha com o número que o teste
+   *     mandar — é assim que os testes da TRAVA declaram o teto/piso errados (e a
+   *     divisão POR CLASSE, que é a outra metade da declaração). Um total de pulos
+   *     que as classes não somam LEVANTA: é fixture incoerente, não caso;
+   *   - `"legada"`: a linha na forma ANTIGA, só os totais — a declaração que não
+   *     carrega a classe de cada pulo (e é violação por isso);
    *   - `"sem-linha"`: a doc SEM a declaração (fail-closed).
    */
-  cobertura?: "auto" | "sem-linha" | { julgadas: number; puladas: number }
+  cobertura?:
+    | "auto"
+    | "legada"
+    | "sem-linha"
+    | { julgadas: number; puladas: number; porClasse?: Record<string, number> }
 }
 
 /**
@@ -284,17 +293,36 @@ ${provaBloco}${foraBloco}${semMarcadorBloco}`
   // o número que quiserem. A ausência da linha é do teste que a pedir.
   const docFixture = join(dir, "docs/GUARDS.md")
   if (cobertura !== "sem-linha" && existsSync(docFixture)) {
-    const real =
-      cobertura === "auto"
-        ? analisaOrdinais(
-            dir,
-            Array.from({ length: count }, (_, i) => ({
-              id: `sub-${i}`,
-              script: `scripts/test-mutation-sub-${i}.sh`,
-            })),
-          ).cobertura
-        : cobertura
-    appendFileSync(docFixture, `\n${linhaDaCobertura(real)}\n`)
+    const medida = analisaOrdinais(
+      dir,
+      Array.from({ length: count }, (_, i) => ({
+        id: `sub-${i}`,
+        script: `scripts/test-mutation-sub-${i}.sh`,
+      })),
+    ).cobertura
+    // A FORMA ANTIGA da linha (só os totais) existe para o teste que mede a
+    // declaração SEM a classe de cada pulo — e ela é escrita com o número REAL,
+    // para o defeito medido ser UM (a classe ausente), e não dois.
+    const legada = (c: { julgadas: number; puladas: number }) =>
+      `**A régua do ordinal: ${c.julgadas} referência(s) JULGADA(S) e ${c.puladas} PULADA(S)**`
+    if (cobertura === "auto" || cobertura === "legada") {
+      appendFileSync(
+        docFixture,
+        `\n${cobertura === "legada" ? legada(medida) : linhaDaCobertura(medida)}\n`,
+      )
+    } else {
+      const porClasse = cobertura.porClasse ?? {}
+      const soma = ["historico", "foraDeEscopo", "blocoDerivado"].reduce(
+        (acc, nome) => acc + (porClasse[nome] ?? 0),
+        0,
+      )
+      if (soma !== cobertura.puladas) {
+        throw new Error(
+          `fixture incoerente: a cobertura declara ${cobertura.puladas} pulo(s) e as classes somam ${soma} — declare a divisão inteira (porClasse)`,
+        )
+      }
+      appendFileSync(docFixture, `\n${linhaDaCobertura({ ...cobertura, porClasse })}\n`)
+    }
   }
   return dir
 }
@@ -1089,12 +1117,16 @@ describe("check-mutation-count — o ORDINAL da suíte × a ordem real do SUBTES
 })
 
 // ────────────────────────────────────────────────────────────────────────────
-// A COBERTURA DA RÉGUA DO ORDINAL — publicada e TRAVADA. A doc declara quantas
-// referências são JULGADAS e quantas são PULADAS, o veredito verde publica os
-// dois números (com a classe de cada pulo) e o pulo só pode DIMINUIR: um pulo
-// que sobe é a cobertura piorando, e um pulo que desce é o teto que envelheceu
-// (a declaração tem de baixar junto). Sem a linha, uma referência que caia no
-// pulo encolhe a régua — e o veredito continua verde sobre uma régua menor.
+// A COBERTURA DA RÉGUA DO ORDINAL — publicada e TRAVADA, e travada POR CLASSE.
+// A doc declara quantas referências são JULGADAS e quantas são PULADAS, e a
+// divisão de cada pulo (`historico` · `foraDeEscopo` · `blocoDerivado`); o
+// veredito verde publica os números e o pulo só pode DIMINUIR: um pulo que sobe é
+// a cobertura piorando, e um pulo que desce é o teto que envelheceu (a declaração
+// tem de baixar junto). O TOTAL sozinho não basta: um pulo que MIGRA de classe
+// mantém o total e mudava o que a régua pode julgar — é o caso que a declaração
+// por classe (e o aviso de TOTAL IGUAL) existe para pegar. Sem a linha, uma
+// referência que caia no pulo encolhe a régua — e o veredito continua verde sobre
+// uma régua menor.
 // ────────────────────────────────────────────────────────────────────────────
 
 describe("check-mutation-count — a COBERTURA da régua do ordinal (publicada e travada)", () => {
@@ -1114,11 +1146,15 @@ describe("check-mutation-count — a COBERTURA da régua do ordinal (publicada e
       julgadas: 1,
       puladas: 0,
       porClasse: { historico: 0, foraDeEscopo: 0, blocoDerivado: 0 },
-      declarado: { julgadas: 1, puladas: 0 },
+      declarado: {
+        julgadas: 1,
+        puladas: 0,
+        porClasse: { historico: 0, foraDeEscopo: 0, blocoDerivado: 0 },
+      },
     })
   })
 
-  it("o PULO que SOBE é a cobertura PIORANDO — e a violação nomeia a referência e a classe", () => {
+  it("o PULO que SOBE é a cobertura PIORANDO — e a violação NOMEIA a classe que ganhou", () => {
     // O defeito: uma referência nova escrita de um jeito que CAI no pulo (a forma
     // nua de um ato passado) encolhe a régua — o veredito seguiria verde se o
     // pulo não fosse conferido contra uma declaração.
@@ -1127,23 +1163,124 @@ describe("check-mutation-count — a COBERTURA da régua do ordinal (publicada e
     )
     expect(r.ok).toBe(false)
     const v = r.violations.find(daCobertura)!
-    expect(v).toContain("PIOROU")
-    expect(v).toContain("1 referência(s) PULADA(S) contra 0 declarada(s)")
+    expect(v).toContain("`historico`")
+    expect(v).toContain("GANHOU 1 pulo(s) — 1 contra 0 declarada(s)")
     expect(v).toContain("docs/GUARDS.md:3 (historico")
     expect(v).toContain("atualize a declaração")
+    // O total MUDOU (0 → 1): o aviso da migração é do outro caso, e não pode
+    // aparecer aqui (a mensagem não acusa o que não aconteceu).
+    expect(v).not.toContain("MIGRAÇÃO")
   })
 
-  it("o PULO que DESCE é o TETO que envelheceu — a declaração tem de BAIXAR", () => {
+  it("o PULO que DESCE é o TETO que envelheceu NAQUELA classe — a declaração tem de BAIXAR", () => {
     // NÃO pode haver folga: um teto declarado acima do medido é exatamente o que
     // deixa a próxima piora passar sem vermelho.
     const r = run(
-      makeFixture({ count: 5, doc: DOC_PULADA, cobertura: { julgadas: 0, puladas: 2 } }),
+      makeFixture({
+        count: 5,
+        doc: DOC_PULADA,
+        cobertura: { julgadas: 0, puladas: 2, porClasse: { historico: 2 } },
+      }),
     )
     expect(r.ok).toBe(false)
     const v = r.violations.find(daCobertura)!
-    expect(v).toContain("ENVELHECEU")
-    expect(v).toContain("o pulo caiu para 1 e a declaração diz 2")
-    expect(v).toContain(linhaDaCobertura({ julgadas: 0, puladas: 1 }))
+    expect(v).toContain("`historico`")
+    expect(v).toContain("PERDEU 1 pulo(s) — 1 contra 2 declarada(s): a declaração ENVELHECEU ali")
+    expect(v).toContain(
+      linhaDaCobertura({
+        julgadas: 0,
+        puladas: 1,
+        porClasse: { historico: 1, foraDeEscopo: 0, blocoDerivado: 0 },
+      }),
+    )
+  })
+
+  it("o TOTAL IGUAL com a classe TROCADA é MIGRAÇÃO — o caso que a declaração antiga não via", () => {
+    // O defeito que a cauda por classe fecha: a MESMA quantidade de pulos, outra
+    // origem. A régua do ORDINAL não muda de tamanho (o total bate), mas o que
+    // ela PODE julgar muda — o que é pulado por `historico` nunca volta para o
+    // julgamento, e o que é pulado por `foraDeEscopo` é candidato a voltar. Com os
+    // totais sozinhos este caso saía VERDE.
+    const dir = makeFixture({
+      count: 3,
+      bench: "completo",
+      docDerivado: true,
+      cobertura: { julgadas: 0, puladas: 1, porClasse: { historico: 1 } },
+    })
+    try {
+      // A referência vive DENTRO do bloco derivado: a régua a pula como
+      // `blocoDerivado` (o ato reescreve aquele bloco do registro).
+      const p = join(dir, "docs/GUARDS.md")
+      writeFileSync(
+        p,
+        readFileSync(p, "utf8").replace(
+          `${BLOCO_GUARDS.abre}\n`,
+          `${BLOCO_GUARDS.abre}\n\nA suíte é a 3.ª entrada da matriz (\`sub-2\`).\n`,
+        ),
+      )
+      const r = run(dir)
+      expect(r.ok).toBe(false)
+      // A classe que RECEBEU o pulo e a que o PERDEU, cada uma pelo nome.
+      const ganhou = r.violations.find((x) => daCobertura(x) && x.includes("`blocoDerivado`"))!
+      const perdeu = r.violations.find((x) => daCobertura(x) && x.includes("`historico`"))!
+      for (const classe of [ganhou, perdeu]) {
+        expect(classe).toBeTruthy()
+        // A informação que a declaração antiga não tinha como dar: o total NÃO
+        // mudou — o pulo migrou.
+        expect(classe).toContain("O TOTAL não mudou")
+        expect(classe).toContain("MIGRAÇÃO")
+      }
+      expect(ganhou).toContain("GANHOU 1 pulo(s) — 1 contra 0 declarada(s)")
+      expect(ganhou).toContain("docs/GUARDS.md:3 (blocoDerivado)")
+      expect(perdeu).toContain("PERDEU 1 pulo(s) — 0 contra 1 declarada(s)")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("FAIL-CLOSED: a declaração SEM a classe de cada pulo é violação (o total sozinho não trava a migração)", () => {
+    // A forma ANTIGA da linha, com o número REAL: o defeito medido é UM (a cauda
+    // ausente), e o remédio sai na própria mensagem. Sem esta metade, uma
+    // referência que passasse a cair numa classe nova manteria o total e o
+    // veredito seguiria verde.
+    const r = run(makeFixture({ count: 5, doc: DOC_JULGADA, cobertura: "legada" }))
+    expect(r.ok).toBe(false)
+    const v = r.violations.find(daCobertura)!
+    expect(v).toContain("NÃO carrega a CLASSE de cada pulo")
+    expect(v).toContain("MIGRA")
+    expect(v).toContain(linhaDaCobertura({ julgadas: 1, puladas: 0, porClasse: {} }))
+    // O declarado lido: os TOTAIS da forma antiga, e nenhuma classe (a cauda
+    // ausente é o defeito — e é por isso que a violação acima tem remédio próprio).
+    expect(r.ordinaisCobertura.declarado).toEqual({
+      julgadas: 1,
+      puladas: 0,
+      porClasse: null,
+    })
+  })
+
+  it("na declaração ANTIGA o TOTAL continua travado nas duas direções", () => {
+    // O outro lado da linha sem a cauda: ela não declara a classe, e ainda assim
+    // o total dela é conferido — a piora não passa enquanto a declaração não for
+    // reescrita na forma inteira.
+    const dir = makeFixture({ count: 5, doc: DOC_PULADA, cobertura: "legada" })
+    try {
+      const p = join(dir, "docs/GUARDS.md")
+      writeFileSync(
+        p,
+        readFileSync(p, "utf8").replace(
+          /\*\*A régua do ordinal:.*\*\*/,
+          "**A régua do ordinal: 0 referência(s) JULGADA(S) e 0 PULADA(S)**",
+        ),
+      )
+      const r = run(dir)
+      expect(r.ok).toBe(false)
+      const v = r.violations.filter(daCobertura).join(" | ")
+      expect(v).toContain("NÃO carrega a CLASSE")
+      expect(v).toContain("PIOROU")
+      expect(v).toContain("1 referência(s) PULADA(S) contra 0 declarada(s)")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it("as JULGADAS são um PISO: julgar MAIS passa, julgar MENOS acusa", () => {
@@ -1154,7 +1291,11 @@ describe("check-mutation-count — a COBERTURA da régua do ordinal (publicada e
     )
     expect(mais.violations.filter(daCobertura)).toEqual([])
     expect(mais.ordinaisCobertura.julgadas).toBe(1)
-    expect(mais.ordinaisCobertura.declarado).toEqual({ julgadas: 0, puladas: 0 })
+    expect(mais.ordinaisCobertura.declarado).toEqual({
+      julgadas: 0,
+      puladas: 0,
+      porClasse: { historico: 0, foraDeEscopo: 0, blocoDerivado: 0 },
+    })
 
     // Menos: perder julgamento é perder cobertura — a perda tem de estar numa
     // decisão (a referência que saiu, o doc que sumiu, o escopo que estreitou).
@@ -1187,7 +1328,7 @@ describe("check-mutation-count — a COBERTURA da régua do ordinal (publicada e
       count: 3,
       bench: "completo",
       docDerivado: true,
-      cobertura: { julgadas: 0, puladas: 1 },
+      cobertura: { julgadas: 0, puladas: 1, porClasse: { blocoDerivado: 1 } },
     })
     try {
       const p = join(dir, "docs/GUARDS.md")
@@ -1205,7 +1346,11 @@ describe("check-mutation-count — a COBERTURA da régua do ordinal (publicada e
         julgadas: 0,
         puladas: 1,
         porClasse: { historico: 0, foraDeEscopo: 0, blocoDerivado: 1 },
-        declarado: { julgadas: 0, puladas: 1 },
+        declarado: {
+          julgadas: 0,
+          puladas: 1,
+          porClasse: { historico: 0, foraDeEscopo: 0, blocoDerivado: 1 },
+        },
       })
     } finally {
       rmSync(dir, { recursive: true, force: true })

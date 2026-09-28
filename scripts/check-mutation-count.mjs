@@ -133,13 +133,17 @@
 //      grafias afirmam o mesmo número, e todas envelhecem igual: o que a régua
 //      PULA sai dito no relatório (`historico` / `foraDeEscopo` /
 //      `blocoDerivado`). E o PULO é DECLARADO e travado: a doc carrega a linha
-//      `**A régua do ordinal: N referência(s) JULGADA(S) e M PULADA(S)**`, o
-//      veredito verde publica os dois números (o `--json` em
-//      `ordinaisCobertura`) e o pulo medido tem de ser IGUAL ao declarado nas
-//      DUAS direções — subir é a cobertura PIORANDO (a mensagem nomeia a
-//      referência e a classe), descer é o teto que ENVELHECEU e a declaração
-//      tem de BAIXAR junto (é a igualdade que faz o pulo só poder DIMINUIR). As
-//      JULGADAS são um PISO: a régua pode julgar mais e não pode julgar menos
+//      `**A régua do ordinal: N referência(s) JULGADA(S) e M PULADA(S) —
+//      historico N · foraDeEscopo N · blocoDerivado N**` (a CAUDA por classe é
+//      PARTE da declaração: com os totais sozinhos, um pulo que MIGRA de classe
+//      — `historico` → `blocoDerivado`, o mesmo total — passava verde, e é a
+//      cobertura que anda com a régua parada), o veredito verde publica os
+//      números (o `--json` em `ordinaisCobertura`) e o pulo medido tem de ser
+//      IGUAL ao declarado nos DOIS recortes e nas DUAS direções — subir é a
+//      cobertura PIORANDO (a mensagem nomeia a referência e a classe), descer é
+//      o teto que ENVELHECEU e a declaração tem de BAIXAR junto (é a igualdade
+//      que faz o pulo só poder DIMINUIR). As JULGADAS são um PISO: a régua pode
+//      julgar mais e não pode julgar menos
 //      sem que a perda esteja numa decisão. O
 //      número tem de bater com a ordem REAL do SUBTESTS, e a referência tem de
 //      NOMEAR a suíte (o `id` entre crases ou o caminho do script) na MESMA
@@ -897,16 +901,36 @@ export function analisaOrdinais(root, entries) {
  * pelas mensagens de violação (o remédio é sempre a MESMA linha, com o número de
  * agora).
  *
- * @param {{julgadas: number, puladas: number}} c
+ * A CAUDA POR CLASSE é parte da declaração, e não um enfeite: o pulo total e o
+ * pulo de cada classe são DUAS afirmações, e sem a segunda uma referência que
+ * MIGRA de classe (a forma nua de um ato passado que vira bloco derivado, por
+ * exemplo) mantém o total e passa verde — a cobertura anda com a régua parada.
+ *
+ * `porClasse` é o que o veredito MEDE (`cobertura.porClasse`); um chamador sem
+ * ele declara zero em cada classe, que é a verdade só quando não há pulo nenhum.
+ *
+ * @param {{julgadas: number, puladas: number, porClasse?: Record<string, number>}} c
  * @returns {string}
  */
-export function linhaDaCobertura({ julgadas, puladas }) {
-  return `**A régua do ordinal: ${julgadas} referência(s) JULGADA(S) e ${puladas} PULADA(S)**`
+export function linhaDaCobertura({ julgadas, puladas, porClasse = {} }) {
+  const classe = (nome) => porClasse[nome] ?? 0
+  return (
+    `**A régua do ordinal: ${julgadas} referência(s) JULGADA(S) e ${puladas} PULADA(S) — ` +
+    `historico ${classe("historico")} · foraDeEscopo ${classe("foraDeEscopo")} · ` +
+    `blocoDerivado ${classe("blocoDerivado")}**`
+  )
 }
 
-/** A forma canônica da linha da cobertura, lida da prosa. */
+/**
+ * A forma canônica da linha da cobertura, lida da prosa.
+ *
+ * O grupo da CAUDA por classe é OPCIONAL de propósito: a linha SEM ele é uma
+ * declaração ANTIGA, e quem a acusa é a mesma régua (com o remédio na mão) — um
+ * regex que exigisse a cauda faria "a declaração não tem classe" e "a declaração
+ * não existe" saírem com a MESMA mensagem, e a primeira tem remédio próprio.
+ */
 export const COBERTURA_ORDINAL_RE =
-  /\*\*A régua do ordinal:\s*(\d+)\s*referência\(s\)\s*JULGADA\(S\)\s*e\s*(\d+)\s*PULADA\(S\)\*\*/
+  /\*\*A régua do ordinal:\s*(\d+)\s*referência\(s\)\s*JULGADA\(S\)\s*e\s*(\d+)\s*PULADA\(S\)(?:\s*—\s*historico\s+(\d+)\s*·\s*foraDeEscopo\s+(\d+)\s*·\s*blocoDerivado\s+(\d+))?\*\*/
 
 /**
  * A COBERTURA da régua do ordinal × a declaração da doc.
@@ -918,6 +942,18 @@ export const COBERTURA_ORDINAL_RE =
  * régua sem deixar rastro: o veredito continuava verde, e a cobertura caía em
  * silêncio. Declarar "quantas são julgadas e quantas são puladas" é o que torna
  * a queda um vermelho.
+ *
+ * E O TOTAL SOZINHO NÃO BASTA: a cobertura é declarada POR CLASSE. O pulo total e
+ * o pulo de cada classe são DUAS afirmações, e a segunda não é um detalhe — uma
+ * referência que MIGRA de classe (o MESMO total, outra origem: a forma nua de um
+ * ato passado que passa a viver dentro do bloco derivado, por exemplo) deixava o
+ * declarado intacto e o veredito verde, e a troca muda o que a régua PODE julgar
+ * (o que é pulado por `foraDeEscopo` é candidato a voltar para o julgamento; o
+ * que é pulado por `historico` nunca vai ser julgado contra a matriz de hoje).
+ * Cada classe é conferida SOZINHA, nas duas direções, e a mensagem diz quando o
+ * total NÃO mudou — é essa a informação que a declaração antiga não tinha como
+ * dar. Uma declaração SEM a cauda por classe é ela própria uma violação (o total
+ * continua travado ali, nas duas direções, mas a migração não tem como aparecer).
  *
  * As DUAS DIREÇÕES do pulo, e a razão de NÃO haver folga:
  *   · o pulo medido SOBE (acima do declarado) → a cobertura PIOROU: a mensagem
@@ -939,7 +975,7 @@ export const COBERTURA_ORDINAL_RE =
  * @param {string | null} docSrc a doc das metades (null = não existe)
  * @param {{julgadas: number, puladas: number, porClasse: Record<string, number>}} cobertura
  * @param {{refs: {arquivo: string, linha: number, forma: string, citada: string, historico?: string, foraDeEscopo?: boolean, blocoDerivado?: boolean}[]}} ordinais
- * @returns {{declarado: {julgadas: number, puladas: number} | null, violations: string[]}}
+ * @returns {{declarado: {julgadas: number, puladas: number, porClasse: {historico: number, foraDeEscopo: number, blocoDerivado: number} | null} | null, violations: string[]}}
  */
 export function analisaCoberturaOrdinal(docSrc, cobertura, ordinais) {
   const violations = []
@@ -951,19 +987,73 @@ export function analisaCoberturaOrdinal(docSrc, cobertura, ordinais) {
     )
     return { declarado: null, violations }
   }
-  const declarado = { julgadas: Number(m[1]), puladas: Number(m[2]) }
-  const classe = (r) =>
+  // A CAUDA POR CLASSE: presente na declaração de agora, ausente na ANTIGA. As
+  // duas formas são julgadas — o que muda é com o que cada uma pode ser comparada.
+  const porClasse =
+    m[3] === undefined
+      ? null
+      : { historico: Number(m[3]), foraDeEscopo: Number(m[4]), blocoDerivado: Number(m[5]) }
+  const declarado = { julgadas: Number(m[1]), puladas: Number(m[2]), porClasse }
+  const nomeDaClasse = (r) =>
+    r.historico ? "historico" : r.foraDeEscopo ? "foraDeEscopo" : "blocoDerivado"
+  const rotulo = (r) =>
     r.historico ? `historico: ${r.historico}` : r.foraDeEscopo ? "foraDeEscopo" : "blocoDerivado"
   const puladas = ordinais.refs.filter((r) => r.historico || r.foraDeEscopo || r.blocoDerivado)
-  if (cobertura.puladas > declarado.puladas) {
-    const listadas = puladas.slice(0, 6).map((r) => `${r.arquivo}:${r.linha} (${classe(r)})`)
+  /** As referências de UMA classe, com o rótulo — até seis, como nas outras listas. */
+  const daClasse = (nome) =>
+    puladas
+      .filter((r) => nomeDaClasse(r) === nome)
+      .slice(0, 6)
+      .map((r) => `${r.arquivo}:${r.linha} (${rotulo(r)})`)
+      .join(" · ") || "—"
+
+  if (porClasse === null) {
+    // A DECLARAÇÃO ANTIGA (só os totais): o pulo medido é travado como sempre foi,
+    // e a ausência da classe é ELA PRÓPRIA a violação — com os totais sozinhos, um
+    // pulo que MIGRA de classe mantém o total e passa verde.
     violations.push(
-      `${DOC_OPCIONAL}: a COBERTURA da régua do ordinal PIOROU — ${cobertura.puladas} referência(s) PULADA(S) contra ${declarado.puladas} declarada(s) (julgadas: ${cobertura.julgadas}). O que saiu do julgamento: ${listadas.join(" · ")}${puladas.length > listadas.length ? ` (+${puladas.length - listadas.length})` : ""} — se o pulo é LEGÍTIMO (um ato passado, um bloco derivado, um número que não é da matriz), atualize a declaração para '${linhaDaCobertura(cobertura)}' e diga por quê; se não é, a referência se ancora na suíte`,
+      `${DOC_OPCIONAL}: a declaração da cobertura da régua do ordinal NÃO carrega a CLASSE de cada pulo — com os totais sozinhos, um pulo que MIGRA de classe (o MESMO total: \`historico\` → \`blocoDerivado\`) passa sem vermelho, e a cobertura anda com a régua parada. Escreva a linha inteira, com o número de AGORA: '${linhaDaCobertura(cobertura)}'`,
     )
-  } else if (cobertura.puladas < declarado.puladas) {
-    violations.push(
-      `${DOC_OPCIONAL}: o TETO da cobertura da régua do ordinal ENVELHECEU — o pulo caiu para ${cobertura.puladas} e a declaração diz ${declarado.puladas}. BAIXE o número ('${linhaDaCobertura(cobertura)}'): a declaração acompanha o pulo para baixo, e uma folga deixada para trás é o que deixa a próxima piora passar sem vermelho`,
-    )
+    if (cobertura.puladas > declarado.puladas) {
+      violations.push(
+        `${DOC_OPCIONAL}: a COBERTURA da régua do ordinal PIOROU — ${cobertura.puladas} referência(s) PULADA(S) contra ${declarado.puladas} declarada(s) (julgadas: ${cobertura.julgadas}). O que saiu do julgamento: ${puladas
+          .slice(0, 6)
+          .map((r) => `${r.arquivo}:${r.linha} (${rotulo(r)})`)
+          .join(
+            " · ",
+          )}${puladas.length > 6 ? ` (+${puladas.length - 6})` : ""} — se o pulo é LEGÍTIMO (um ato passado, um bloco derivado, um número que não é da matriz), atualize a declaração para '${linhaDaCobertura(cobertura)}' e diga por quê; se não é, a referência se ancora na suíte`,
+      )
+    } else if (cobertura.puladas < declarado.puladas) {
+      violations.push(
+        `${DOC_OPCIONAL}: o TETO da cobertura da régua do ordinal ENVELHECEU — o pulo caiu para ${cobertura.puladas} e a declaração diz ${declarado.puladas}. BAIXE o número ('${linhaDaCobertura(cobertura)}'): a declaração acompanha o pulo para baixo, e uma folga deixada para trás é o que deixa a próxima piora passar sem vermelho`,
+      )
+    }
+  } else {
+    // A DECLARAÇÃO DE AGORA: cada classe é conferida sozinha, nas DUAS direções, e
+    // o total NÃO é conferido à parte — ele é a SOMA das classes, e conferir os
+    // dois recortes com a mesma causa seria a mesma violação dita duas vezes.
+    //
+    // A MIGRAÇÃO é o caso que a cauda existe para pegar, e ela só pode aparecer
+    // com o TOTAL IGUAL (uma classe ganhando o que outra perdeu): é aí que a
+    // mensagem DIZ que o total não mudou, porque é essa a informação que a
+    // declaração antiga não tinha como dar.
+    const totalIgual = cobertura.puladas === declarado.puladas
+    const migrou = totalIgual
+      ? " O TOTAL não mudou (o mesmo pulo, outra classe): é a MIGRAÇÃO que a declaração por classe existe para pegar."
+      : ""
+    for (const nome of ["historico", "foraDeEscopo", "blocoDerivado"]) {
+      const medido = cobertura.porClasse[nome] ?? 0
+      const naClasse = declarado.porClasse[nome]
+      if (medido > naClasse) {
+        violations.push(
+          `${DOC_OPCIONAL}: a classe \`${nome}\` da cobertura da régua do ordinal GANHOU ${medido - naClasse} pulo(s) — ${medido} contra ${naClasse} declarada(s). Entrou ali: ${daClasse(nome)}.${migrou} Se o pulo é LEGÍTIMO (um ato passado, um bloco derivado, um número que não é da matriz), atualize a declaração e diga por quê ('${linhaDaCobertura(cobertura)}'); se não é, a referência se ancora na suíte`,
+        )
+      } else if (medido < naClasse) {
+        violations.push(
+          `${DOC_OPCIONAL}: a classe \`${nome}\` da cobertura da régua do ordinal PERDEU ${naClasse - medido} pulo(s) — ${medido} contra ${naClasse} declarada(s): a declaração ENVELHECEU ali.${migrou} BAIXE o número da classe ('${linhaDaCobertura(cobertura)}'), porque uma folga deixada para trás é o que deixa a próxima piora passar sem vermelho`,
+        )
+      }
+    }
   }
   if (cobertura.julgadas < declarado.julgadas) {
     violations.push(
@@ -1677,10 +1767,12 @@ export function run(root) {
   violations.push(...ordinais.violations)
 
   // 4d. A COBERTURA da régua do ordinal — PUBLICADA e TRAVADA: a doc declara
-  //     quantas referências são julgadas e quantas são puladas, e o pulo só pode
-  //     DIMINUIR (uma direção é a cobertura piorando; a outra é o teto que
-  //     envelheceu e tem de baixar). Sem a declaração, uma referência que caia no
-  //     pulo encolhe a régua e o veredito continua verde.
+  //     quantas referências são julgadas e quantas são puladas POR CLASSE, e o
+  //     pulo só pode DIMINUIR (uma direção é a cobertura piorando; a outra é o
+  //     teto que envelheceu e tem de baixar). Sem a declaração, uma referência
+  //     que caia no pulo encolhe a régua e o veredito continua verde; com o total
+  //     sozinho, o pulo que MIGRA de classe fica invisível — os dois recortes são
+  //     conferidos.
   const docDaCobertura = join(root, DOC_OPCIONAL)
   const coberturaOrdinal = analisaCoberturaOrdinal(
     existsSync(docDaCobertura) ? readFileSync(docDaCobertura, "utf8") : null,
@@ -2020,9 +2112,15 @@ function main() {
   // batem" não diz QUANTO da prosa a régua leu, e é a diferença entre a régua
   // inteira e a régua que encolheu que a declaração trava.
   const cob = result.ordinaisCobertura
+  // O DECLARADO publicado com a CLASSE de cada pulo (a declaração antiga, sem a
+  // cauda, é uma violação — daí o ramo sem ela existir só por completude).
+  const declaradoTxt = (d) =>
+    d.porClasse
+      ? `${d.julgadas} / ${d.puladas} (historico ${d.porClasse.historico} · foraDeEscopo ${d.porClasse.foraDeEscopo} · blocoDerivado ${d.porClasse.blocoDerivado})`
+      : `${d.julgadas} / ${d.puladas} (SEM a classe de cada pulo)`
   const cobertura =
     cob && cob.declarado
-      ? ` A RÉGUA DO ORDINAL: ${cob.julgadas} julgada(s) · ${cob.puladas} pulada(s) (historico ${cob.porClasse.historico} · foraDeEscopo ${cob.porClasse.foraDeEscopo} · blocoDerivado ${cob.porClasse.blocoDerivado}) — declarado ${cob.declarado.julgadas} / ${cob.declarado.puladas}.`
+      ? ` A RÉGUA DO ORDINAL: ${cob.julgadas} julgada(s) · ${cob.puladas} pulada(s) (historico ${cob.porClasse.historico} · foraDeEscopo ${cob.porClasse.foraDeEscopo} · blocoDerivado ${cob.porClasse.blocoDerivado}) — declarado ${declaradoTxt(cob.declarado)}.`
       : ""
 
   if (result.ok) {
