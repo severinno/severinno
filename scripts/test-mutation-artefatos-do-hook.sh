@@ -7,10 +7,11 @@
 #   bash scripts/test-mutation-artefatos-do-hook.sh
 #
 # Exit codes:
-#   0 — as TRÊS metades foram DETECTADAS (a lista derivada esvazia e, na
+#   0 — as QUATRO metades foram DETECTADAS (a lista derivada esvazia e, na
 #       segunda, perde UM artefato — em ambas o FIXTURE fica VERMELHO, por
 #       execução e pela suíte —; a terceira exige a RECUSA da troca SEM a
-#       prova-de-aplicação) e o controle passou ✅
+#       prova-de-aplicação; a quarta exige a perda da leitura DELEGADA a um
+#       filho quando o pré-carregador deixa de descer) e o controle passou ✅
 #   1 — uma metade NÃO sustentou o veredito (a mutação não mudou a leitura),
 #       mutação não-cirúrgica, ou a restauração falhou ❌
 #   2 — infra: a leitura por execução não pôde ser montada
@@ -51,6 +52,13 @@
 #     da suíte não diria nada. É a metade que exige o VERMELHO da PRÓPRIA suíte, e
 #     é de propósito: aqui quem é load-bearing é a guarda do harness, não o
 #     veredito do fixture.
+#   · M4 — o RASTREIO DA ÁRVORE: o pré-carregador deixa de DESCER (o
+#     `NODE_OPTIONS` sai do ambiente do comando) e a derivação perde o artefato
+#     de um guard que delega a leitura a um FILHO de node. O root dela é
+#     SINTÉTICO: o hook de hoje não tem leitor delegado que mude a lista (medido:
+#     os mesmos 9 artefatos com e sem o rastreio da árvore), então a metade mede o
+#     MECANISMO — o artefato do filho sai da lista, a do hook real fica intacta e
+#     o fixture real segue verde (a mutação é cirúrgica).
 #
 # DUAS TESTEMUNHAS INDEPENDENTES
 #
@@ -83,7 +91,11 @@
 #     a mede é a suíte da derivação e o `porComando` do `--json`;
 #   · o dublê do hook: os irmãos de fase devolvem 0 por função, e só a guarda que
 #     lê o artefato atravessa (`passthrough`). É a materialização que está em
-#     julgamento, não a bateria inteira do hook.
+#     julgamento, não a bateria inteira do hook;
+#   · o root da M4 é sintético e existe no DRIVER (não no repositório): o que ela
+#     mede é a derivação diante de um leitor DELEGADO, e o hook de verdade não tem
+#     um hoje. A lista do hook real é medida na MESMA rodada e exigida INTACTA —
+#     é isso que separa "a mutação perdeu a árvore" de "a mutação perdeu a coleta".
 #
 # A LEITURA POR EXECUÇÃO É NODE-PURA (e é de propósito): o driver importa a
 # derivação, o fixture e o simulador DESTE checkout (todos resolvem só caminhos
@@ -120,6 +132,7 @@ METADES=(
   'M1|a LISTA DERIVADA esvaziada: o fixture perde os artefatos, o hook cai em INFRA na cópia e o vermelho deixa de falar do defeito (a lista à mão de novo)'
   'M2|a COLETA para de registrar UM leitor: a lista derivada perde o compose, os outros oito ficam e o hook cai no MESMO INFRA — a lista à mão voltando pela metade não passa como lista menor'
   'M3|a PROVA-DE-APLICAÇÃO — a troca SEM o marcador MUTACAO é RECUSADA pela suíte: sem ela a detecção de mutação poderia passar em VÁCUO (medindo o guard íntegro)'
+  'M4|a ÁRVORE deixa de ser rastreada (o pré-carregador não desce pelo NODE_OPTIONS): a leitura que um guard DELEGA a um filho de node sai da lista derivada e o artefato dele falta na cópia, enquanto a lista do hook real fica intacta'
 )
 
 cd "$SCRIPT_DIR"
@@ -193,8 +206,65 @@ try {
   sim.cleanupFixtures()
 }
 
+// ── A DELEGAÇÃO: um guard que lê por um FILHO de node ─────────────────────
+// O root é SINTÉTICO porque o hook de hoje não tem um leitor DELEGADO que mude a
+// lista; o que se mede aqui é o rastreio da ÁRVORE — o filho só aparece porque o
+// pré-carregador desce pelo `NODE_OPTIONS` do ambiente. A fonte do guard NÃO abre
+// o artefato (ela nem importa `node:fs`): quem o abre é o `-e` do filho, que o
+// `fecho-imports` não tem como seguir.
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+
+const CODIGO_FILHO = [
+  'const { existsSync, readFileSync } = require("node:fs")',
+  'const { join } = require("node:path")',
+  'const ALVO = "deploy/artefato-delegado.yml"',
+  "const caminho = join(process.cwd(), ALVO)",
+  "if (!existsSync(caminho)) process.exit(2)",
+  'readFileSync(caminho, "utf8")',
+  "",
+].join("\n")
+
+const raizDeleg = mkdtempSync(join(tmpdir(), "artefatos-deleg-"))
+let delegArtefatos = []
+let delegProblemas = ["a delegação não foi medida"]
+try {
+  mkdirSync(join(raizDeleg, ".husky"), { recursive: true })
+  mkdirSync(join(raizDeleg, "scripts"), { recursive: true })
+  mkdirSync(join(raizDeleg, "deploy"), { recursive: true })
+  writeFileSync(
+    join(raizDeleg, ".husky", "pre-commit"),
+    "set -eu\nnode scripts/check-delegado.mjs &\nwait\n",
+  )
+  writeFileSync(join(raizDeleg, "deploy", "artefato-delegado.yml"), "delegado: sim\n")
+  writeFileSync(
+    join(raizDeleg, "scripts", "check-delegado.mjs"),
+    [
+      'import { spawnSync } from "node:child_process"',
+      `const CODIGO = ${JSON.stringify(CODIGO_FILHO)}`,
+      'const r = spawnSync(process.execPath, ["-e", CODIGO], { stdio: "inherit" })',
+      "process.exit(r.status ?? 2)",
+      "",
+    ].join("\n"),
+  )
+  const d = der.artefatosDoHook({ root: raizDeleg })
+  delegArtefatos = d.artefatos
+  delegProblemas = d.problemas
+} finally {
+  rmSync(raizDeleg, { recursive: true, force: true })
+}
+
 process.stdout.write(
-  JSON.stringify({ artefatos, problemas, doFixture, hookStatus, hookOutput }) + "\n",
+  JSON.stringify({
+    artefatos,
+    problemas,
+    doFixture,
+    hookStatus,
+    hookOutput,
+    delegArtefatos,
+    delegProblemas,
+  }) + "\n",
 )
 JS
 
@@ -443,6 +513,11 @@ exigir_iguais "artefatos" "doFixture" "o fixture usa EXATAMENTE a lista derivada
 exigir_igual "hookStatus" "0" "com o artefato na cópia o hook sai 0 (fixture VERDE)"
 exigir_saida_tem "PINA uma versão" "e a guarda da tag RODOU, cunhando o veredito do pin"
 exigir_saida_tem "HOOK_COMPLETOU" "e o hook atravessa tudo"
+# A DELEGAÇÃO no CONTROLE: o artefato que SÓ o filho abriu entra na lista — é o
+# rastreio da ÁRVORE, e é contra esta leitura que a M4 é julgada.
+exigir_contagem "delegArtefatos" "1" "CONTROLE: o guard que DELEGA tem o artefato do FILHO na lista"
+exigir_contem "delegArtefatos" "deploy/artefato-delegado.yml" "e o que entrou é o que o filho abriu (a fonte do guard não o abre)"
+exigir_igual "delegProblemas" "" "e a derivação da delegação fecha (nenhum problema)"
 exigir_suite_verde "CONTROLE"
 
 # A REFERÊNCIA do controle: M2 é julgada CONTRA ela (a lista menos um item, e mais
@@ -514,13 +589,32 @@ fi
 pass "M3: a suíte RECUSOU a troca sem o marcador MUTACAO (exit $M3_EXIT) — a prova-de-aplicação é load-bearing"
 restaurar_original
 
+# ── M4 — A ÁRVORE: o pré-carregador deixa de DESCER ──────────────────────
+# A cirurgia é na SEGUNDA via do pré-carregador (o `NODE_OPTIONS` do ambiente): ela
+# é o que faz a leitura DELEGADA a um filho de node aparecer. O esperado é a
+# assinatura do rastreio quebrado — o artefato do FILHO sai da lista, a do hook REAL
+# fica INTACTA (a mutação é cirúrgica: ela perde a árvore, não a coleta) e o fixture
+# do hook real segue verde.
+header "M4 — a ÁRVORE: o pré-carregador não desce (a leitura DELEGADA ao filho sai da lista)"
+mutar '  const anterior = typeof base.NODE_OPTIONS === "string" ? base.NODE_OPTIONS.trim() : ""' \
+  '  return { ...base } // MUTACAO M4: o pré-carregador não desce (o NODE_OPTIONS sai do ambiente)'
+rodar_driver_e_checar "M4"
+exigir_igual "delegProblemas" "" "M4: a derivação da delegação 'fecha' (a perda é SILENCIOSA, como na M2)"
+exigir_contagem "delegArtefatos" "0" "M4: a leitura que o guard DELEGA ao filho sai da lista derivada"
+exigir_contagem "artefatos" "$N_CONTROLE" "M4: e a lista do hook REAL fica INTACTA — a mutação perde a ÁRVORE, não a coleta"
+exigir_contem "artefatos" "deploy/docker-compose.gitea.yml" "M4: o compose derivado do processo do guard continua nomeado"
+exigir_igual "hookStatus" "0" "M4: e o fixture do hook real segue VERDE (a mutação não o alcança)"
+exigir_suite_verde "M4 (a mutação é cirúrgica)"
+restaurar_original
+
 # ── FECHO ─────────────────────────────────────────────────────────────────
 header "FECHO"
 rodar_driver_e_checar "FECHO"
 exigir_nao_igual "artefatos" "" "na árvore restaurada, a lista derivada volta a ter os artefatos"
 exigir_contagem "artefatos" "$N_CONTROLE" "e o TAMANHO dela volta ao do CONTROLE"
 exigir_contem "artefatos" "deploy/docker-compose.gitea.yml" "e o artefato que as DUAS metades tiraram está de volta na lista"
+exigir_contagem "delegArtefatos" "1" "e a leitura DELEGADA volta à lista com o rastreio da árvore restaurado"
 exigir_igual "hookStatus" "0" "e o fixture volta a ficar verde"
 exigir_suite_verde "FECHO"
-pass "as metades M1 (a lista derivada esvaziada) e M2 (a lista derivada com UM artefato a menos) foram detectadas (o fixture fica VERMELHO nas duas) e a M3 (a troca SEM a prova-de-aplicação) foi RECUSADA — a guarda do harness é load-bearing; o guard está restaurado e medindo"
+pass "as metades M1 (a lista derivada esvaziada) e M2 (a lista derivada com UM artefato a menos) foram detectadas (o fixture fica VERMELHO nas duas), a M3 (a troca SEM a prova-de-aplicação) foi RECUSADA e a M4 (o rastreio da ÁRVORE desligado) perdeu a leitura DELEGADA sem tocar na lista do hook real — a guarda do harness e o rastreio são load-bearing; o guard está restaurado e medindo"
 echo ""

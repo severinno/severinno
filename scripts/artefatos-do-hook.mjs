@@ -49,16 +49,32 @@
 //   · um guard que não pôde ser EXECUTADO (binário ausente, timeout): sem o
 //     processo não há leitura a medir, e "não mediu" não é "não lê".
 //
+// A ÁRVORE, E NÃO SÓ O PROCESSO (medido em 28/09/2026)
+//
+// O pré-carregador entrava no processo do GUARD e parava ali: o link por argv não
+// DESCE, então um guard que DELEGASSE a leitura a um subprocesso de node não
+// aparecia — o artefato dele ficava fora da lista e a consequência era a de sempre
+// (o guard lia INFRA na cópia). O rastreio passou a ser o da ÁRVORE: além do
+// `--require` no argv do processo que ele mesmo spawna, o pré-carregador vai no
+// `NODE_OPTIONS` do ambiente (`envDaArvore`), e TODO processo de node que herde o
+// ambiente carrega o mesmo módulo — o caminho vai CITADO, para um tmpdir com espaço
+// continuar sendo um argumento só. A carga dupla não acontece: o cache de módulos do
+// node resolve as duas vias para o MESMO arquivo e o corpo roda UMA vez por processo
+// (medido).
+//
 // O QUE ELE NÃO VÊ (limites declarados)
 //
 //   · só comanda processos de NODE. Os comandos `bun`/`bash` do hook operam sobre a
 //     própria cópia (o `bun run` roda o projeto do fixture; o
 //     `run-encoding-guards.sh` julga o ÍNDICE, não o repositório), então um caminho
 //     de repositório aberto por eles não entraria na lista;
-//   · um processo FILHO de um guard não é rastreado (o pré-carregador entra no
-//     comando, não na árvore dele): um guard que delegue a leitura a um subprocesso
-//     de node não aparece. O recorte é declarado, e a consequência é a mesma de
-//     antes — o guard leria INFRA na cópia, o que a prova do hook MEDE.
+//   · um filho que NÃO HERDE o ambiente não é alcançado: um subprocesso lançado com
+//     `env:` próprio (ou com o próprio `NODE_OPTIONS`, que sobrescreve o herdado)
+//     perde o pré-carregador, e a leitura dele não aparece. O recorte é declarado, e
+//     a consequência é a mesma de antes — o guard leria INFRA na cópia, o que a
+//     prova do hook MEDE;
+//   · um filho que morre por SINAL não escreve o buffer (o registro é do `exit`) e a
+//     leitura dele se perde — como já se perdia a do próprio guard.
 // =============================================================================
 
 import { spawnSync } from "node:child_process"
@@ -85,9 +101,13 @@ export const HOOK = ".husky/pre-commit"
 /**
  * O pré-carregador que registra as TENTATIVAS de abertura.
  *
- * Ele é injetado com `--require` (e não por `NODE_OPTIONS`): a flag vai no argv do
- * processo que nós mesmos spawnamos, então o caminho do fixture (que no Windows
- * pode ter espaço) não depende de parsing de variável de ambiente.
+ * Ele entra por DUAS vias, e é a SOMA delas que dá a ÁRVORE: no argv do processo que
+ * nós mesmos spawnamos (`--require <caminho>` — ali a flag não depende de parsing de
+ * ambiente, e o caminho do fixture, que no Windows pode ter espaço, é um argumento
+ * só) e no `NODE_OPTIONS` do ambiente (`envDaArvore`), que TODO processo de node
+ * lançado por um guard HERDA — é esta segunda via que faz a leitura delegada a um
+ * subprocesso aparecer. O cache de módulos resolve as duas para o MESMO arquivo: o
+ * corpo roda uma vez por processo (medido).
  *
  * O registro vai para um BUFFER e só é escrito no `exit`: um `appendFileSync` por
  * tentativa fazia os guards que varrem a árvore pagarem uma syscall por stat — e o
@@ -134,6 +154,31 @@ export const TRACEADOR = [
 
 /** O nome do pré-carregador dentro do fixture. */
 export const TRACEADOR_FILE = "fs-trace.cjs"
+
+/**
+ * O AMBIENTE de um comando — com o pré-carregador no `NODE_OPTIONS`, para que a
+ * ÁRVORE herde o rastreio.
+ *
+ * O `NODE_OPTIONS` é o único canal que DESCE: o `--require` do argv vale para o
+ * processo que nós spawnamos e para mais ninguém, então um guard que delegue a
+ * leitura a um subprocesso de node (`spawnSync(process.execPath, …)`, como o
+ * `pre-commit-remedy` faz com o guard que ele revalida) ficaria invisível. O caminho
+ * vai entre ASPAS porque o tokenizador do `NODE_OPTIONS` respeita aspas e não trata
+ * `\\` como escape — um tmpdir com espaço continua sendo um argumento só, inclusive
+ * num caminho do Windows.
+ *
+ * O que já estivesse no `NODE_OPTIONS` do operador é PRESERVADO (e vem antes): a
+ * derivação não descarta um ajuste de quem a roda.
+ *
+ * @param {string} traceador caminho ABSOLUTO do pré-carregador
+ * @param {Record<string, string|undefined>} [base] o ambiente de origem
+ * @returns {Record<string, string|undefined>}
+ */
+export function envDaArvore(traceador, base = process.env) {
+  const flag = `--require "${traceador}"`
+  const anterior = typeof base.NODE_OPTIONS === "string" ? base.NODE_OPTIONS.trim() : ""
+  return { ...base, NODE_OPTIONS: anterior === "" ? flag : `${anterior} ${flag}` }
+}
 
 /**
  * O que a derivação NÃO leva, com o motivo — e a lista é DECLARADA, como a
@@ -322,7 +367,10 @@ export function artefatosDoHook({ root = REPO_ROOT, hook, staged = [], timeoutMs
           encoding: "utf8",
           timeout: timeoutMs,
           input: "",
-          env: { ...process.env, ARTEFATOS_LOG: log },
+          // `envDaArvore` põe o pré-carregador no `NODE_OPTIONS`: sem isso só o
+          // processo do guard seria rastreado, e a leitura que ele delegue a um
+          // filho sairia da lista (ver o cabeçalho, "a árvore, e não só o processo").
+          env: { ...envDaArvore(traceador), ARTEFATOS_LOG: log },
         },
       )
       if (r.error || r.status === null) {

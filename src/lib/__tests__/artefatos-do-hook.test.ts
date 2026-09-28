@@ -26,7 +26,11 @@
  *      lista parcial — a derivação LEVANTA (a cópia não se monta com meio fecho);
  *   5. a recusa DECLARADA: o que um guard abre e a derivação NÃO leva sai nomeado
  *      (`recusados`), com o motivo e com quem o abriu;
- *   6. a CLI: `--json` publica a derivação inteira, `--root` deriva de outra árvore.
+ *   6. a CLI: `--json` publica a derivação inteira, `--root` deriva de outra árvore;
+ *   7. a ÁRVORE, e não só o processo: um guard que DELEGA a leitura a um filho de
+ *      node entra na lista do mesmo jeito — e o par contra-prova mostra que um filho
+ *      com ambiente PRÓPRIO fica fora (o limite que resta, declarado no cabeçalho da
+ *      derivação).
  *
  * Sem rede e sem docker: o instrumento é o próprio node, e o que se mede são as
  * TENTATIVAS de abertura dos guards.
@@ -45,6 +49,7 @@ import { afterAll, describe, expect, it } from "vitest"
 import {
   EXIT,
   NAO_SAO_ARTEFATOS,
+  envDaArvore,
   extrairComandos,
   artefatosDoHook,
 } from "../../../scripts/artefatos-do-hook.mjs"
@@ -90,21 +95,82 @@ const GUARD_NOVO = [
 const GUARD_SEM_ARTEFATO = ["#!/usr/bin/env node", "process.exit(0)", ""].join("\n")
 
 /**
+ * O CÓDIGO QUE O FILHO executa — a leitura do artefato, e nada mais.
+ *
+ * Ele não mora em arquivo nenhum do fixture: o guard o passa por `-e`, então não há
+ * aresta de import que o `fecho-imports` possa seguir. É o limite que o rastreio da
+ * ÁRVORE fechou — quem lê é um processo SEPARADO.
+ */
+const CODIGO_FILHO = [
+  'const { existsSync, readFileSync } = require("node:fs")',
+  'const { join } = require("node:path")',
+  'const ALVO = "deploy/artefato-delegado.yml"',
+  "const caminho = join(process.cwd(), ALVO)",
+  "if (!existsSync(caminho)) {",
+  "  console.error(`${ALVO} ausente: INFRA (fail-closed)`)",
+  "  process.exit(2)",
+  "}",
+  'readFileSync(caminho, "utf8")',
+  "process.exit(0)",
+  "",
+].join("\n")
+
+/**
+ * O GUARD que DELEGA: ele NÃO abre o artefato (o nome dele não aparece no fonte) e
+ * lança um filho de node que o abre. Rastrear só o processo do guard devolveria
+ * lista vazia — e o artefato dele ficaria fora da cópia, com o guard lendo INFRA.
+ */
+const GUARD_DELEGADO = [
+  "#!/usr/bin/env node",
+  'import { spawnSync } from "node:child_process"',
+  `const CODIGO = ${JSON.stringify(CODIGO_FILHO)}`,
+  'const r = spawnSync(process.execPath, ["-e", CODIGO], { stdio: "inherit" })',
+  "process.exit(r.status ?? 2)",
+  "",
+].join("\n")
+
+/**
+ * O MESMO guard delegado, mas o filho recebe um ambiente PRÓPRIO (`env: {}`): sem o
+ * `NODE_OPTIONS` herdado não há pré-carregador lá, e a leitura dele não é medida —
+ * é o limite que RESTA (declarado no cabeçalho da derivação), e este par o mede.
+ */
+const GUARD_DELEGADO_SEM_ENV = [
+  "#!/usr/bin/env node",
+  'import { spawnSync } from "node:child_process"',
+  `const CODIGO = ${JSON.stringify(CODIGO_FILHO)}`,
+  'const r = spawnSync(process.execPath, ["-e", CODIGO], { stdio: "inherit", env: {} })',
+  "process.exit(r.status ?? 2)",
+  "",
+].join("\n")
+
+/**
  * Uma raiz com o MÍNIMO para a derivação: o hook do TEXTO passado, os guards que
  * ele chama e o artefato que um deles lê. Nada de `scripts/` inteiro: o que a
  * derivação precisa é o fecho dos COMANDOS do hook, e o hook aqui é o do teste.
  *
- * @param {{comando: string, guard: string}} opts
+ * @param {{comando: string, guard: string, arquivo?: string, artefato?: string}} opts
+ *   `arquivo` é o NOME do guard em `scripts/` (o hook cita o caminho, então o nome
+ *   é do teste) e `artefato` é o caminho que ele lê.
  */
-function raizComHook({ comando, guard }: { comando: string; guard: string }): string {
+function raizComHook({
+  comando,
+  guard,
+  arquivo = "check-artefato-novo.mjs",
+  artefato = "deploy/artefato-novo.yml",
+}: {
+  comando: string
+  guard: string
+  arquivo?: string
+  artefato?: string
+}): string {
   const dir = makeDir()
   mkdirSync(join(dir, ".husky"), { recursive: true })
   mkdirSync(join(dir, "scripts"), { recursive: true })
   mkdirSync(join(dir, "deploy"), { recursive: true })
   writeFileSync(join(dir, ".husky", "pre-commit"), `set -eu\n${comando} &\nwait\n`, "utf8")
-  writeFileSync(join(dir, "scripts", "check-artefato-novo.mjs"), guard, "utf8")
+  writeFileSync(join(dir, "scripts", arquivo), guard, "utf8")
   writeFileSync(join(dir, "scripts", "check-sem-artefato.mjs"), GUARD_SEM_ARTEFATO, "utf8")
-  writeFileSync(join(dir, "deploy", "artefato-novo.yml"), "novo: sim\n", "utf8")
+  writeFileSync(join(dir, artefato), "novo: sim\n", "utf8")
   return dir
 }
 
@@ -205,6 +271,45 @@ describe("artefatosDoHook — um artefato novo entra SEM EDIÇÃO", () => {
     expect(existsSync(join(dir, "scripts", "check-artefato-novo.mjs"))).toBe(true)
   }, 60000)
 
+  it("um guard que DELEGA a leitura a um FILHO de node entra na lista (a ÁRVORE, não só o processo)", () => {
+    const dir = raizComHook({
+      comando: "node scripts/check-delegado.mjs",
+      guard: GUARD_DELEGADO,
+      arquivo: "check-delegado.mjs",
+      artefato: "deploy/artefato-delegado.yml",
+    })
+
+    const { artefatos, porComando, problemas } = artefatosDoHook({ root: dir })
+
+    expect(problemas).toEqual([])
+    expect(artefatos).toEqual(["deploy/artefato-delegado.yml"])
+    expect(porComando["scripts/check-delegado.mjs"]).toEqual(["deploy/artefato-delegado.yml"])
+    // E a PROVA de quem abriu: o guard NÃO importa `node:fs` — o processo dele não
+    // tem como abrir o artefato (as chamadas existem só como TEXTO do `-e`, que
+    // outro processo executa). Quem o abriu foi o FILHO, e o rastreio desceu pela
+    // árvore para achá-lo.
+    const imports = GUARD_DELEGADO.split("\n").filter((l) => l.startsWith("import "))
+    expect(imports).toEqual(['import { spawnSync } from "node:child_process"'])
+  }, 60000)
+
+  it("LIMITE declarado: um filho com ambiente PRÓPRIO não é alcançado (e o par o mede)", () => {
+    const dir = raizComHook({
+      comando: "node scripts/check-delegado.mjs",
+      guard: GUARD_DELEGADO_SEM_ENV,
+      arquivo: "check-delegado.mjs",
+      artefato: "deploy/artefato-delegado.yml",
+    })
+
+    const { artefatos, problemas } = artefatosDoHook({ root: dir })
+
+    // A derivação NÃO acusa problema (o guard rodou): o que ela não vê é a leitura
+    // do filho, porque ele nasceu com `env: {}` e sem `NODE_OPTIONS` não há
+    // pré-carregador do outro lado. O limite é este, e ele está escrito.
+    expect(problemas).toEqual([])
+    expect(artefatos).toEqual([])
+    expect(existsSync(join(dir, "deploy", "artefato-delegado.yml"))).toBe(true)
+  }, 60000)
+
   it("FAIL-CLOSED: comando citado pelo hook e ausente do checkout não vira lista parcial", () => {
     const dir = raizComHook({
       comando: "node scripts/check-que-nao-existe.mjs",
@@ -252,6 +357,22 @@ describe("a CLI de artefatos-do-hook", () => {
     expect(invalido.status).toBe(EXIT.USO)
     expect(invalido.out).toContain("desconhecido")
   }, 120000)
+
+  it("envDaArvore põe o pré-carregador CITADO no NODE_OPTIONS e preserva o do operador", () => {
+    // O caminho entre aspas: o tokenizador do `NODE_OPTIONS` respeita aspas, e um
+    // tmpdir com espaço continua sendo um argumento só (a razão de o caminho ser
+    // CITADO em vez de cru).
+    const comAnterior = envDaArvore("/tmp/a b/fs-trace.cjs", {
+      NODE_OPTIONS: "--no-warnings",
+      PATH: "/x",
+    })
+    expect(comAnterior.NODE_OPTIONS).toBe('--no-warnings --require "/tmp/a b/fs-trace.cjs"')
+    expect(comAnterior.PATH).toBe("/x")
+    // Sem nada antes, a flag vai sozinha (e o ambiente de origem não é mutado).
+    const base: Record<string, string> = {}
+    expect(envDaArvore("/tmp/x.cjs", base).NODE_OPTIONS).toBe('--require "/tmp/x.cjs"')
+    expect(base.NODE_OPTIONS).toBeUndefined()
+  })
 
   it("as recusas são uma DECISÃO com motivo escrito (não um filtro mudo)", () => {
     for (const r of NAO_SAO_ARTEFATOS) {

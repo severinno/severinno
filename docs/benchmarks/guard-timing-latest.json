@@ -3,9 +3,9 @@
     "tool": "bench-guard-timing",
     "version": 7,
     "anchor": "carrier",
-    "parentCommit": "390e491f",
-    "commitDate": "2026-09-28 11:53:37 -0300",
-    "timestamp": "2026-09-28T14:55:32.539Z",
+    "parentCommit": "589b8bb8",
+    "commitDate": "2026-09-28 13:13:15 -0300",
+    "timestamp": "2026-09-28T16:40:03.656Z",
     "act": "bench-guard-timing --only mutations --json --baseline --merge",
     "nodeVersion": "v20.20.2",
     "platform": "linux",
@@ -15,86 +15,86 @@
     "reused": {
       "lint": {
         "source": "guard-timing-baseline.json",
-        "commit": "cb5d2948",
-        "commitDate": "2026-09-28 10:00:25 -0300",
-        "timestamp": "2026-09-28T13:05:46.106Z",
+        "commit": "589b8bb8",
+        "commitDate": "2026-09-28 13:13:15 -0300",
+        "timestamp": "2026-09-28T16:14:23.823Z",
         "missingInOrigin": null
       },
       "typecheck": {
         "source": "guard-timing-baseline.json",
-        "commit": "cb5d2948",
-        "commitDate": "2026-09-28 10:00:25 -0300",
-        "timestamp": "2026-09-28T13:05:46.106Z",
+        "commit": "589b8bb8",
+        "commitDate": "2026-09-28 13:13:15 -0300",
+        "timestamp": "2026-09-28T16:14:23.823Z",
         "missingInOrigin": null
       },
       "tests": {
         "source": "guard-timing-baseline.json",
-        "commit": "cb5d2948",
-        "commitDate": "2026-09-28 10:00:25 -0300",
-        "timestamp": "2026-09-28T13:05:46.106Z",
+        "commit": "589b8bb8",
+        "commitDate": "2026-09-28 13:13:15 -0300",
+        "timestamp": "2026-09-28T16:14:23.823Z",
         "missingInOrigin": null
       },
       "hook": {
         "source": "guard-timing-baseline.json",
-        "commit": "cb5d2948",
-        "commitDate": "2026-09-28 10:00:25 -0300",
-        "timestamp": "2026-09-28T13:05:46.106Z",
+        "commit": "589b8bb8",
+        "commitDate": "2026-09-28 13:13:15 -0300",
+        "timestamp": "2026-09-28T16:14:23.823Z",
         "missingInOrigin": null
       },
       "battery": {
         "source": "guard-timing-baseline.json",
-        "commit": "cb5d2948",
-        "commitDate": "2026-09-28 10:00:25 -0300",
-        "timestamp": "2026-09-28T13:05:46.106Z",
+        "commit": "589b8bb8",
+        "commitDate": "2026-09-28 13:13:15 -0300",
+        "timestamp": "2026-09-28T16:14:23.823Z",
         "missingInOrigin": null
       }
     },
     "families": {
       "battery": {
         "act": "reused",
-        "commit": "cb5d2948",
-        "commitDate": "2026-09-28 10:00:25 -0300",
-        "timestamp": "2026-09-28T13:05:46.106Z",
+        "commit": "589b8bb8",
+        "commitDate": "2026-09-28 13:13:15 -0300",
+        "timestamp": "2026-09-28T16:14:23.823Z",
         "source": "guard-timing-baseline.json",
         "missingInOrigin": null
       },
       "lint": {
         "act": "reused",
-        "commit": "cb5d2948",
-        "commitDate": "2026-09-28 10:00:25 -0300",
-        "timestamp": "2026-09-28T13:05:46.106Z",
+        "commit": "589b8bb8",
+        "commitDate": "2026-09-28 13:13:15 -0300",
+        "timestamp": "2026-09-28T16:14:23.823Z",
         "source": "guard-timing-baseline.json",
         "missingInOrigin": null
       },
       "typecheck": {
         "act": "reused",
-        "commit": "cb5d2948",
-        "commitDate": "2026-09-28 10:00:25 -0300",
-        "timestamp": "2026-09-28T13:05:46.106Z",
+        "commit": "589b8bb8",
+        "commitDate": "2026-09-28 13:13:15 -0300",
+        "timestamp": "2026-09-28T16:14:23.823Z",
         "source": "guard-timing-baseline.json",
         "missingInOrigin": null
       },
       "tests": {
         "act": "reused",
-        "commit": "cb5d2948",
-        "commitDate": "2026-09-28 10:00:25 -0300",
-        "timestamp": "2026-09-28T13:05:46.106Z",
+        "commit": "589b8bb8",
+        "commitDate": "2026-09-28 13:13:15 -0300",
+        "timestamp": "2026-09-28T16:14:23.823Z",
         "source": "guard-timing-baseline.json",
         "missingInOrigin": null
       },
       "hook": {
         "act": "reused",
-        "commit": "cb5d2948",
-        "commitDate": "2026-09-28 10:00:25 -0300",
-        "timestamp": "2026-09-28T13:05:46.106Z",
+        "commit": "589b8bb8",
+        "commitDate": "2026-09-28 13:13:15 -0300",
+        "timestamp": "2026-09-28T16:14:23.823Z",
         "source": "guard-timing-baseline.json",
         "missingInOrigin": null
       },
       "mutations": {
         "act": "measured",
         "commit": null,
-        "commitDate": "2026-09-28 11:53:37 -0300",
-        "timestamp": "2026-09-28T14:55:32.539Z",
+        "commitDate": "2026-09-28 13:13:15 -0300",
+        "timestamp": "2026-09-28T16:40:03.656Z",
         "source": null,
         "missingInOrigin": []
       }
@@ -103,7 +103,16 @@
       "state": "measured",
       "clean": false,
       "staged": [],
-      "unstaged": [".github/workflows/pr-check.yml"],
+      "unstaged": [
+        "README.md",
+        "ci/merge-latency.json",
+        "docs/GUARDS.md",
+        "docs/benchmarks/guard-timing-baseline.json",
+        "docs/benchmarks/guard-timing-latest.json",
+        "scripts/artefatos-do-hook.mjs",
+        "scripts/test-mutation-artefatos-do-hook.sh",
+        "src/lib/__tests__/artefatos-do-hook.test.ts"
+      ],
       "declared": [
         {
           "path": ".forge-doctor/",
@@ -166,9 +175,9 @@
     "hookRevalidacaoMs": 68,
     "hookDetectionMs": 318,
     "mutationSubtests": 47,
-    "mutationSubtestsMs": 756011,
-    "mutationHarnessMs": 5914,
-    "mutationTotalMs": 761925
+    "mutationSubtestsMs": 914399,
+    "mutationHarnessMs": 5658,
+    "mutationTotalMs": 920057
   },
   "guards": [
     {
@@ -824,15 +833,15 @@
   "mutations": {
     "measured": true,
     "cmd": "bash scripts/test-mutation-guards.sh --json",
-    "exit": 1,
-    "wallMs": 761960,
+    "exit": 0,
+    "wallMs": 920091,
     "subtests": 47,
-    "metades": 285,
+    "metades": 286,
     "forms": [
       {
         "role": "bun-literal",
         "label": "bun-literal",
-        "ms": 1913,
+        "ms": 1827,
         "exit": 0,
         "metades": 5,
         "ok": true,
@@ -841,12 +850,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 1913,
+        "ms1": 1827,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 1913,
+            "ms": 1827,
             "exit": 0,
             "ok": true
           }
@@ -855,7 +864,7 @@
       {
         "role": "bun-removal",
         "label": "bun-removal",
-        "ms": 122,
+        "ms": 121,
         "exit": 0,
         "metades": 1,
         "ok": true,
@@ -864,12 +873,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 122,
+        "ms1": 121,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 122,
+            "ms": 121,
             "exit": 0,
             "ok": true
           }
@@ -878,7 +887,7 @@
       {
         "role": "hooks-symmetry",
         "label": "hooks-symmetry",
-        "ms": 118,
+        "ms": 110,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -887,12 +896,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 118,
+        "ms1": 110,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 118,
+            "ms": 110,
             "exit": 0,
             "ok": true
           }
@@ -901,7 +910,7 @@
       {
         "role": "readme",
         "label": "readme",
-        "ms": 431,
+        "ms": 414,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -910,12 +919,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 431,
+        "ms1": 414,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 431,
+            "ms": 414,
             "exit": 0,
             "ok": true
           }
@@ -924,7 +933,7 @@
       {
         "role": "readme-reverse",
         "label": "readme-reverse",
-        "ms": 631,
+        "ms": 616,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -933,12 +942,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 631,
+        "ms1": 616,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 631,
+            "ms": 616,
             "exit": 0,
             "ok": true
           }
@@ -947,7 +956,7 @@
       {
         "role": "docs-anchor",
         "label": "docs-anchor",
-        "ms": 77,
+        "ms": 76,
         "exit": 0,
         "metades": 1,
         "ok": true,
@@ -956,12 +965,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 77,
+        "ms1": 76,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 77,
+            "ms": 76,
             "exit": 0,
             "ok": true
           }
@@ -970,7 +979,7 @@
       {
         "role": "producer-sent",
         "label": "producer-sent",
-        "ms": 119,
+        "ms": 114,
         "exit": 0,
         "metades": 1,
         "ok": true,
@@ -979,12 +988,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 119,
+        "ms1": 114,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 119,
+            "ms": 114,
             "exit": 0,
             "ok": true
           }
@@ -993,7 +1002,7 @@
       {
         "role": "mutation-jobs",
         "label": "mutation-jobs",
-        "ms": 461,
+        "ms": 419,
         "exit": 0,
         "metades": 4,
         "ok": true,
@@ -1002,12 +1011,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 461,
+        "ms1": 419,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 461,
+            "ms": 419,
             "exit": 0,
             "ok": true
           }
@@ -1016,7 +1025,7 @@
       {
         "role": "workflow-refs",
         "label": "workflow-refs",
-        "ms": 545,
+        "ms": 515,
         "exit": 0,
         "metades": 4,
         "ok": true,
@@ -1025,12 +1034,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 545,
+        "ms1": 515,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 545,
+            "ms": 515,
             "exit": 0,
             "ok": true
           }
@@ -1039,7 +1048,7 @@
       {
         "role": "utf8-scope",
         "label": "utf8-scope",
-        "ms": 126,
+        "ms": 117,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -1048,12 +1057,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 126,
+        "ms1": 117,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 126,
+            "ms": 117,
             "exit": 0,
             "ok": true
           }
@@ -1062,7 +1071,7 @@
       {
         "role": "timing-budget",
         "label": "timing-budget",
-        "ms": 739,
+        "ms": 716,
         "exit": 0,
         "metades": 5,
         "ok": true,
@@ -1071,12 +1080,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 739,
+        "ms1": 716,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 739,
+            "ms": 716,
             "exit": 0,
             "ok": true
           }
@@ -1108,7 +1117,7 @@
       {
         "role": "lint-guard",
         "label": "lint-guard",
-        "ms": 898,
+        "ms": 863,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1117,12 +1126,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 898,
+        "ms1": 863,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 898,
+            "ms": 863,
             "exit": 0,
             "ok": true
           }
@@ -1131,7 +1140,7 @@
       {
         "role": "mutation-count",
         "label": "mutation-count",
-        "ms": 12866,
+        "ms": 11410,
         "exit": 0,
         "metades": 18,
         "ok": true,
@@ -1140,12 +1149,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 12866,
+        "ms1": 11410,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 12866,
+            "ms": 11410,
             "exit": 0,
             "ok": true
           }
@@ -1154,7 +1163,7 @@
       {
         "role": "no-setup-bun",
         "label": "no-setup-bun",
-        "ms": 281,
+        "ms": 256,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -1163,12 +1172,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 281,
+        "ms1": 256,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 281,
+            "ms": 256,
             "exit": 0,
             "ok": true
           }
@@ -1177,7 +1186,7 @@
       {
         "role": "runner-base",
         "label": "runner-base",
-        "ms": 267,
+        "ms": 235,
         "exit": 0,
         "metades": 4,
         "ok": true,
@@ -1186,12 +1195,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 267,
+        "ms1": 235,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 267,
+            "ms": 235,
             "exit": 0,
             "ok": true
           }
@@ -1200,7 +1209,7 @@
       {
         "role": "runner-labels",
         "label": "runner-labels",
-        "ms": 6413,
+        "ms": 5357,
         "exit": 0,
         "metades": 1,
         "ok": true,
@@ -1209,12 +1218,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 6413,
+        "ms1": 5357,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 6413,
+            "ms": 5357,
             "exit": 0,
             "ok": true
           }
@@ -1223,7 +1232,7 @@
       {
         "role": "no-leaked-imports",
         "label": "no-leaked-imports",
-        "ms": 166,
+        "ms": 141,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1232,12 +1241,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 166,
+        "ms1": 141,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 166,
+            "ms": 141,
             "exit": 0,
             "ok": true
           }
@@ -1246,7 +1255,7 @@
       {
         "role": "reconciliation",
         "label": "reconciliation",
-        "ms": 9971,
+        "ms": 9498,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1255,12 +1264,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 9971,
+        "ms1": 9498,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 9971,
+            "ms": 9498,
             "exit": 0,
             "ok": true
           }
@@ -1269,7 +1278,7 @@
       {
         "role": "nested-guard",
         "label": "nested-guard",
-        "ms": 20215,
+        "ms": 19765,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -1278,12 +1287,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 20215,
+        "ms1": 19765,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 20215,
+            "ms": 19765,
             "exit": 0,
             "ok": true
           }
@@ -1292,7 +1301,7 @@
       {
         "role": "pipefail-sigpipe",
         "label": "pipefail-sigpipe",
-        "ms": 2281,
+        "ms": 2319,
         "exit": 0,
         "metades": 22,
         "ok": true,
@@ -1301,12 +1310,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 2281,
+        "ms1": 2319,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 2281,
+            "ms": 2319,
             "exit": 0,
             "ok": true
           }
@@ -1315,7 +1324,7 @@
       {
         "role": "hook-ci-parity",
         "label": "hook-ci-parity",
-        "ms": 3856,
+        "ms": 3858,
         "exit": 0,
         "metades": 9,
         "ok": true,
@@ -1324,12 +1333,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 3856,
+        "ms1": 3858,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 3856,
+            "ms": 3858,
             "exit": 0,
             "ok": true
           }
@@ -1338,7 +1347,7 @@
       {
         "role": "hook-commands",
         "label": "hook-commands",
-        "ms": 72480,
+        "ms": 66874,
         "exit": 0,
         "metades": 27,
         "ok": true,
@@ -1347,12 +1356,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 72480,
+        "ms1": 66874,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 72480,
+            "ms": 66874,
             "exit": 0,
             "ok": true
           }
@@ -1361,7 +1370,7 @@
       {
         "role": "workflow-defaults",
         "label": "workflow-defaults",
-        "ms": 1091,
+        "ms": 1050,
         "exit": 0,
         "metades": 7,
         "ok": true,
@@ -1370,12 +1379,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 1091,
+        "ms1": 1050,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 1091,
+            "ms": 1050,
             "exit": 0,
             "ok": true
           }
@@ -1384,7 +1393,7 @@
       {
         "role": "workflow-run-syntax",
         "label": "workflow-run-syntax",
-        "ms": 94151,
+        "ms": 81212,
         "exit": 0,
         "metades": 15,
         "ok": true,
@@ -1393,12 +1402,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 94151,
+        "ms1": 81212,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 94151,
+            "ms": 81212,
             "exit": 0,
             "ok": true
           }
@@ -1407,7 +1416,7 @@
       {
         "role": "merge-latency",
         "label": "merge-latency",
-        "ms": 5341,
+        "ms": 4627,
         "exit": 0,
         "metades": 5,
         "ok": true,
@@ -1416,12 +1425,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 5341,
+        "ms1": 4627,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 5341,
+            "ms": 4627,
             "exit": 0,
             "ok": true
           }
@@ -1430,7 +1439,7 @@
       {
         "role": "registry-defaults",
         "label": "registry-defaults",
-        "ms": 32216,
+        "ms": 28095,
         "exit": 0,
         "metades": 9,
         "ok": true,
@@ -1439,12 +1448,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 32216,
+        "ms1": 28095,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 32216,
+            "ms": 28095,
             "exit": 0,
             "ok": true
           }
@@ -1453,35 +1462,30 @@
       {
         "role": "job-deps",
         "label": "job-deps",
-        "ms": 10877,
-        "exit": 1,
+        "ms": 206923,
+        "exit": 0,
         "metades": 12,
-        "ok": false,
+        "ok": true,
         "infra": false,
         "script": "scripts/test-mutation-job-deps.sh",
-        "tentativas": 2,
-        "exit1": 1,
-        "exit2": 1,
-        "ms1": 5481,
-        "ms2": 5396,
+        "tentativas": 1,
+        "exit1": 0,
+        "exit2": null,
+        "ms1": 206923,
+        "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 5481,
-            "exit": 1,
-            "ok": false
-          },
-          {
-            "ms": 5396,
-            "exit": 1,
-            "ok": false
+            "ms": 206923,
+            "exit": 0,
+            "ok": true
           }
         ]
       },
       {
         "role": "remedy-tty",
         "label": "remedy-tty",
-        "ms": 37881,
+        "ms": 36745,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -1490,12 +1494,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 37881,
+        "ms1": 36745,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 37881,
+            "ms": 36745,
             "exit": 0,
             "ok": true
           }
@@ -1504,7 +1508,7 @@
       {
         "role": "canal-fixers",
         "label": "canal-fixers",
-        "ms": 10607,
+        "ms": 9683,
         "exit": 0,
         "metades": 6,
         "ok": true,
@@ -1513,12 +1517,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 10607,
+        "ms1": 9683,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 10607,
+            "ms": 9683,
             "exit": 0,
             "ok": true
           }
@@ -1527,7 +1531,7 @@
       {
         "role": "required-applied",
         "label": "required-applied",
-        "ms": 22300,
+        "ms": 20767,
         "exit": 0,
         "metades": 10,
         "ok": true,
@@ -1536,12 +1540,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 22300,
+        "ms1": 20767,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 22300,
+            "ms": 20767,
             "exit": 0,
             "ok": true
           }
@@ -1550,7 +1554,7 @@
       {
         "role": "gate-registration",
         "label": "gate-registration",
-        "ms": 8634,
+        "ms": 8195,
         "exit": 0,
         "metades": 5,
         "ok": true,
@@ -1559,12 +1563,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 8634,
+        "ms1": 8195,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 8634,
+            "ms": 8195,
             "exit": 0,
             "ok": true
           }
@@ -1573,7 +1577,7 @@
       {
         "role": "archived-pipeline",
         "label": "archived-pipeline",
-        "ms": 795,
+        "ms": 771,
         "exit": 0,
         "metades": 6,
         "ok": true,
@@ -1582,12 +1586,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 795,
+        "ms1": 771,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 795,
+            "ms": 771,
             "exit": 0,
             "ok": true
           }
@@ -1596,7 +1600,7 @@
       {
         "role": "doc-hashes",
         "label": "doc-hashes",
-        "ms": 2286,
+        "ms": 2128,
         "exit": 0,
         "metades": 9,
         "ok": true,
@@ -1605,12 +1609,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 2286,
+        "ms1": 2128,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 2286,
+            "ms": 2128,
             "exit": 0,
             "ok": true
           }
@@ -1619,7 +1623,7 @@
       {
         "role": "github-deps",
         "label": "github-deps",
-        "ms": 14187,
+        "ms": 13417,
         "exit": 0,
         "metades": 9,
         "ok": true,
@@ -1628,12 +1632,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 14187,
+        "ms1": 13417,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 14187,
+            "ms": 13417,
             "exit": 0,
             "ok": true
           }
@@ -1642,7 +1646,7 @@
       {
         "role": "cut-stages",
         "label": "cut-stages",
-        "ms": 19249,
+        "ms": 18510,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1651,12 +1655,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 19249,
+        "ms1": 18510,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 19249,
+            "ms": 18510,
             "exit": 0,
             "ok": true
           }
@@ -1665,7 +1669,7 @@
       {
         "role": "mirror-coverage",
         "label": "mirror-coverage",
-        "ms": 11764,
+        "ms": 11283,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1674,12 +1678,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 11764,
+        "ms1": 11283,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 11764,
+            "ms": 11283,
             "exit": 0,
             "ok": true
           }
@@ -1688,7 +1692,7 @@
       {
         "role": "pre-commit-proof",
         "label": "pre-commit-proof",
-        "ms": 194482,
+        "ms": 189990,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1697,12 +1701,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 194482,
+        "ms1": 189990,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 194482,
+            "ms": 189990,
             "exit": 0,
             "ok": true
           }
@@ -1711,7 +1715,7 @@
       {
         "role": "bench-freshness",
         "label": "bench-freshness",
-        "ms": 50662,
+        "ms": 47636,
         "exit": 0,
         "metades": 12,
         "ok": true,
@@ -1720,12 +1724,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 50662,
+        "ms1": 47636,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 50662,
+            "ms": 47636,
             "exit": 0,
             "ok": true
           }
@@ -1734,7 +1738,7 @@
       {
         "role": "stack-per-commit",
         "label": "stack-per-commit",
-        "ms": 10375,
+        "ms": 10432,
         "exit": 0,
         "metades": 8,
         "ok": true,
@@ -1743,12 +1747,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 10375,
+        "ms1": 10432,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 10375,
+            "ms": 10432,
             "exit": 0,
             "ok": true
           }
@@ -1757,7 +1761,7 @@
       {
         "role": "lint-scope",
         "label": "lint-scope",
-        "ms": 11470,
+        "ms": 10949,
         "exit": 0,
         "metades": 6,
         "ok": true,
@@ -1766,12 +1770,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 11470,
+        "ms1": 10949,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 11470,
+            "ms": 10949,
             "exit": 0,
             "ok": true
           }
@@ -1780,7 +1784,7 @@
       {
         "role": "act-origin",
         "label": "act-origin",
-        "ms": 2512,
+        "ms": 2317,
         "exit": 0,
         "metades": 9,
         "ok": true,
@@ -1789,12 +1793,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 2512,
+        "ms1": 2317,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 2512,
+            "ms": 2317,
             "exit": 0,
             "ok": true
           }
@@ -1803,7 +1807,7 @@
       {
         "role": "commit-import-exports",
         "label": "commit-import-exports",
-        "ms": 580,
+        "ms": 549,
         "exit": 0,
         "metades": 5,
         "ok": true,
@@ -1812,12 +1816,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 580,
+        "ms1": 549,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 580,
+            "ms": 549,
             "exit": 0,
             "ok": true
           }
@@ -1826,7 +1830,7 @@
       {
         "role": "runner-tag",
         "label": "runner-tag",
-        "ms": 3256,
+        "ms": 3208,
         "exit": 0,
         "metades": 1,
         "ok": true,
@@ -1835,12 +1839,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 3256,
+        "ms1": 3208,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 3256,
+            "ms": 3208,
             "exit": 0,
             "ok": true
           }
@@ -1849,7 +1853,7 @@
       {
         "role": "local-image",
         "label": "local-image",
-        "ms": 50701,
+        "ms": 48531,
         "exit": 0,
         "metades": 4,
         "ok": true,
@@ -1858,12 +1862,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 50701,
+        "ms1": 48531,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 50701,
+            "ms": 48531,
             "exit": 0,
             "ok": true
           }
@@ -1872,21 +1876,21 @@
       {
         "role": "artefatos-do-hook",
         "label": "artefatos-do-hook",
-        "ms": 25180,
+        "ms": 31339,
         "exit": 0,
-        "metades": 3,
+        "metades": 4,
         "ok": true,
         "infra": false,
         "script": "scripts/test-mutation-artefatos-do-hook.sh",
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 25180,
+        "ms1": 31339,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 25180,
+            "ms": 31339,
             "exit": 0,
             "ok": true
           }
@@ -1895,7 +1899,7 @@
       {
         "role": "mutacao-prova",
         "label": "mutacao-prova",
-        "ms": 432,
+        "ms": 415,
         "exit": 0,
         "metades": 6,
         "ok": true,
@@ -1904,12 +1908,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 432,
+        "ms1": 415,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 432,
+            "ms": 415,
             "exit": 0,
             "ok": true
           }
@@ -1917,29 +1921,26 @@
       }
     ],
     "deltas": {
-      "subtestsMs": 756011,
-      "harnessMs": 5914,
-      "totalMs": 761925,
-      "wallMs": 761960,
-      "proximoSubtestProjetadoMs": 16211,
-      "maisCaro": "pre-commit-proof",
-      "maisCaroMs": 194482,
-      "medianaMs": 3256
+      "subtestsMs": 914399,
+      "harnessMs": 5658,
+      "totalMs": 920057,
+      "wallMs": 920091,
+      "proximoSubtestProjetadoMs": 19575,
+      "maisCaro": "job-deps",
+      "maisCaroMs": 206923,
+      "medianaMs": 3208
     },
-    "tentativas": 48,
+    "tentativas": 47,
     "flakes": [],
     "infra": [],
-    "violations": [
-      "sub-test(s) que NÃO passaram no master: job-deps (exit 1) — o custo deles não julga nada (um sub-test que morre no meio tem o tempo do pedaço que rodou)"
-    ],
+    "violations": [],
     "whatItAdded": [
-      "MEDIDO, sub-test a sub-test: 47 sub-test(s) · 285 metade(s) · 756.0s de sub-tests + 5.9s de harness = 761.9s",
-      "o mais caro: pre-commit-proof (194.5s) · a mediana: 3.3s",
-      "o PRÓXIMO sub-test acrescenta ~16.2s (PROJEÇÃO: a média dos scripts medidos + o harness por sub-test) — e entra MEDIDO na primeira rodada que o tiver, sem conta à mão",
-      "↺ 1 forma(s) RE-MEDIDA(s): job-deps — o vermelho REPETIU na 2ª tentativa (é da árvore, não do ambiente), e o ms publicado soma as duas"
+      "MEDIDO, sub-test a sub-test: 47 sub-test(s) · 286 metade(s) · 914.4s de sub-tests + 5.7s de harness = 920.1s",
+      "o mais caro: job-deps (206.9s) · a mediana: 3.2s",
+      "o PRÓXIMO sub-test acrescenta ~19.6s (PROJEÇÃO: a média dos scripts medidos + o harness por sub-test) — e entra MEDIDO na primeira rodada que o tiver, sem conta à mão"
     ],
     "metadesDaMatriz": {
-      "total": 285,
+      "total": 286,
       "atualizadas": 0,
       "semDerivacao": [],
       "naoMedidas": []
