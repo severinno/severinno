@@ -266,8 +266,8 @@
       "kind": "lacuna",
       "declaredAt": "2026-09-23",
       "subject": "o COMMIT DE ORIGEM da baseline do bench não contém TODAS as formas que ela mediu: medido em 23/09/2026, a baseline grava `commit: 8e76c9a6` e a forma `doc-hashes` (a 39.ª entrada da matriz, medida naquela rodada com a suíte no ÍNDICE) NÃO existe naquele commit — o `bench-freshness` a aponta como `ausente-do-master`, e a IDADE sozinha dizia 'fresco' porque ela mede a DISTÂNCIA em commits, não o CONTEÚDO deles",
-      "proveWith": "bun run bench:guard-timing:baseline — com a ÁRVORE COMMITADA (é o ato que re-grava o commit de origem, e aí as 39 formas existem nele); a régua fecha por medição: `node scripts/bench-freshness.mjs` (exits 1 enquanto alguma forma medida estiver fora)",
-      "remedy": "commitar a árvore e re-rodar o ato: um número medido sobre uma árvore não commitada descreve uma matriz que o commit de origem não carrega",
+      "proveWith": "bun run bench:guard-timing:baseline — UMA rodada com a ÁRVORE COMMITADA basta: a v7 declara a âncora como o PORTADOR (o commit que CARREGA o registro, resolvido pela história — `meta.anchor = \"carrier\"`), e é na árvore DELE que as 39 formas existem; a régua fecha por medição: `node scripts/bench-freshness.mjs` (exits 1 enquanto alguma forma medida estiver fora)",
+      "remedy": "uma rodada só: medir com a matriz já na árvore e commitar a MESMA rodada (matriz + registro + `meta.anchor = \"carrier\"`) — a re-ancoragem em DOIS commits (um para gravar, outro para re-medir na árvore já commitada) era o preço do esquema v6, em que o registro gravava o PAI porque um commit não pode conter o próprio hash",
       "closedBy": "forma-no-commit-de-origem",
       "matches": [
         "o COMMIT DE ORIGEM não contém",
@@ -293,6 +293,16 @@
     "reviewAfterDays": 90,
     "commits": [
       {
+        "subject": "feat(gates): a classe da pilha vira gate — nenhum módulo importa nome que a ÁRVORE do commit ainda não exporta",
+        "reason": "medido 28/09/2026 (bisseccionamento do push, 2 tentativas repetiram): vitest(15 arquivo(s)) reprova — o gate da classe da pilha recusa módulos que importam nome que a ÁRVORE DESTE commit ainda não exporta; os nomes novos só entram na árvore versionada nos commits SEGUINTES da train, e é lá que o gate volta ao verde (a árvore do TOPO da pilha passa integralmente)",
+        "declaredAt": "2026-09-28"
+      },
+      {
+        "subject": "feat(mutation): a prova-de-aplicação vira UMA régua — o gabarito a mede e nenhuma suíte pode perdê-la em silêncio",
+        "reason": "medido 28/09/2026 (bisseccionamento do push, 2 tentativas repetiram): vitest(9 arquivo(s)) reprova em `bench-guard-timing-mutations.test.ts` — a régua nova da prova-de-aplicação muda a MATRIZ antes de a baseline re-ancorar; a rodada que fecha o registro com a matriz nova é o ato COMMITADO no topo da train (`chore(bench): o ATO re-ancora a matriz em 390e491f…`), o mesmo caminho do caso declarado acima — o vermelho do intermediário é o REGISTRO VELHO (a matriz mudou antes de a âncora ser reescrita), e a v7 fecha a rodada em UM commit: o PORTADOR é a âncora resolvida pela história, sem a re-rodada que o esquema v6 exigia",
+        "declaredAt": "2026-09-28"
+      },
+      {
         "subject": "feat(prova): o pre-commit roda DENTRO da imagem do runner, com a fase A real",
         "reason": "medido 25/09/2026: vitest(5 arquivo(s)) reprova com 12 falhas — as provas que fazem commits REAIS no fixture esperam a recusa do hook real que só a árvore dos commits seguintes arma",
         "declaredAt": "2026-09-25"
@@ -309,7 +319,7 @@
       },
       {
         "subject": "feat(gates): o registro do ato passa a CARREGAR a matriz que ele declara — a origem que não carrega é violação nomeada",
-        "reason": "medido 25/09/2026: o commit INTERMEDIÁRIO da prática do ato é vermelho COMO CONSEQÜÊNCIA da forma do bump — ele carrega a matriz de 42 sub-tests junto com o registro que o `--baseline` mediu sobre a árvore SUJA, então o `vitest` afetado (17 arquivo(s)) reprova em `bench-guard-timing-mutations.test.ts:570`: as formas do meio saem com `exit 1` (`bench-freshness` e `pre-commit-proof` comparam a matriz da árvore com o HEAD, que ainda não a tem) mais o limite declarado de `workflow-run-syntax`, cujo vermelho é do scratch gitignored `.tmp/mineracao/*.sh` e não da árvore versionada. O commit SEGUINTE re-mede na árvore COMITADA e é o que faz os três voltarem ao estado real — e é exatamente essa re-rodada que o `check-act-origin`, o gate que este commit instala, passa a EXIGIR",
+        "reason": "medido 25/09/2026: o commit INTERMEDIÁRIO da prática do ato é vermelho COMO CONSEQÜÊNCIA da forma do bump — ele carrega a matriz de 42 sub-tests junto com o registro que o `--baseline` mediu sobre a árvore SUJA, então o `vitest` afetado (17 arquivo(s)) reprova em `bench-guard-timing-mutations.test.ts:570`: as formas do meio saem com `exit 1` (`bench-freshness` e `pre-commit-proof` comparam a matriz da árvore com o HEAD, que ainda não a tem) mais o limite declarado de `workflow-run-syntax`, cujo vermelho é do scratch gitignored `.tmp/mineracao/*.sh` e não da árvore versionada. O commit SEGUINTE re-mede na árvore COMITADA e é o que faz os três voltarem ao estado real — e é exatamente essa re-rodada que o `check-act-origin`, o gate que este commit instala, passava a EXIGIR NO ESQUEMA v6. A v7 a DISPENSA: o registro declara a REGRA (`meta.anchor = \"carrier\"`) e a PROCEDÊNCIA (`meta.parentCommit`), a âncora é o PORTADOR resolvido pela história (`origemDoRegistro`/`commitQueCarrega`), e a medição cabe em UM commit — o mesmo commit carrega a matriz, o registro e a âncora",
         "declaredAt": "2026-09-25"
       }
     ]
