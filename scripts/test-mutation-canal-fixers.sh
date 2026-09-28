@@ -106,6 +106,20 @@ mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
   exit 2
 }
 
+# ── A PROVA-DE-APLICAÇÃO: a régua ÚNICA (`scripts/mutacao-prova.sh`) ────────
+# A troca NÃO é aplicada por uma cópia privada da cirurgia: ela é da régua única,
+# que traz juntas a CIRURGIA (o alvo casa uma vez), o MARCADOR (`MUTACAO` no
+# payload, a prova de que a escrita entrou) e o CONTEÚDO (o checksum mudou). Uma
+# cópia privada que sumisse não deixava rastro — a suíte seguiria verde medindo o
+# alvo ÍNTEGRO. Quem chama a régua é declarado em `PROVA_DE_APLICACAO` (master).
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
+# A PROVA-DE-APLICAÇÃO — a régua ÚNICA de "a mutação APLICOU" (o gabarito dela é
+# `scripts/test-mutation-mutacao-prova.sh`).
+# shellcheck source=scripts/mutacao-prova.sh
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
@@ -335,22 +349,14 @@ exigir_sem_problema() { # <cenário>
   pass "$cenario: rodada sem problema (problemas == [])"
 }
 
-# ── mutar <alvo> <troca>: substituição LITERAL, cirúrgica ─────────────────
+# ── mutar <arquivo> <alvo> <troca>: a cirurgia, o marcador e o checksum são da
+# régua ÚNICA (`mutacao_aplicar`) — o arquivo é PARÂMETRO porque o alvo pode
+# viver no leitor do canal e não no guard. A sintaxe segue conferida aqui.
 mutar() {
-  local arquivo="$1" alvo="$2" troca="$3"
-  ARQUIVO="$arquivo" ALVO="$alvo" NOVO="$troca" python3 - <<'PY'
-import os
-p = os.environ["ARQUIVO"]
-s = open(p, encoding="utf-8").read()
-n = s.count(os.environ["ALVO"])
-if n != 1:
-    raise SystemExit(f"mutacao nao-cirurgica: {n} ocorrencia(s) do alvo (esperado 1)")
-open(p, "w", encoding="utf-8").write(s.replace(os.environ["ALVO"], os.environ["NOVO"]))
-PY
-  if ! node --check "$arquivo" >/dev/null 2>&1; then
-    fail "MUTAÇÃO NÃO-CIRÚRGICA: o arquivo mutado não é válido sintaticamente."
-    exit 1
-  fi
+  local arquivo="$1" alvo="$2" troca="$3" antes
+  antes="$(cksum "$arquivo" | cut -d' ' -f1)"
+  mutacao_aplicar "$arquivo" "$alvo" "$troca" "$antes"
+  mutacao_sintaxe_node "$arquivo"
 }
 
 # ── A testemunha unitária (âncoras) ───────────────────────────────────────
@@ -438,6 +444,11 @@ echo "  ════════════════════════
 cp "$GUARD" "$BACKUP"
 cp "$LEITOR" "$BACKUP_LEITOR"
 SOMA_INICIAL="$(cat "$GUARD" "$PUBLICADOR" "$LEITOR" | md5sum)"
+# Os checksums (`cksum`) dos DOIS arquivos mutáveis, ÍNTEGROS: é o valor que
+# `mutacao_aplicar` exige que a escrita tenha mudado — e ele volta a valer porque
+# cada metade restaura o backup antes da seguinte.
+GUARD_SUM="$(cksum "$GUARD" | cut -d' ' -f1)"
+LEITOR_SUM="$(cksum "$LEITOR" | cut -d' ' -f1)"
 pass "Backup do registro e do leitor; checksums do registro/publicador/leitor guardados"
 
 # ── CONTROLE A — o registro do REPOSITÓRIO é o dos arquivos declarados ────

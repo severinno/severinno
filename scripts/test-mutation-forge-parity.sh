@@ -90,7 +90,26 @@ mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
   echo "❌ o scratch das fixtures não pôde ser criado: $MUT_SCRATCH (infra declarada)" >&2
   exit 2
 }
+
+# ── A PROVA-DE-APLICAÇÃO: a régua ÚNICA (`scripts/mutacao-prova.sh`), no
+# caminho DECLARADO. As duas mutações desta suíte reescrevem uma linha `run:` de
+# YAML do fixture: a remoção não tem texto novo onde o marcador `MUTACAO` caiba e a
+# troca entra numa linha que a régua da paridade lê CRUA (o comentário mudaria o
+# texto comparado). O que o caminho declarado cobra é a CIRURGIA (a linha casa UMA
+# vez) e o CONTEÚDO (o checksum mudou) — as mesmas provas, sem o marcador.
+# Quem está nele é declarado em `SEM_MARCADOR` (master), conferido nos DOIS sentidos;
+# e a dispensa é JUSTIFICADA na própria chamada, pelo `MOTIVO_SEM_MARCADOR` abaixo,
+# que é o mesmo texto declarado no master (o `check-mutation-count` confere o motivo
+# no FONTE desta suíte — a justificativa não pode viver só na lista).
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
 GUARD="$SCRIPT_DIR/scripts/check-forge-parity.mjs"
+
+# O MOTIVO do caminho DECLARADO (o texto EXATO da linha de `SEM_MARCADOR` no
+# master): estes dois payloads são uma LINHA `run:` de YAML — a remoção não tem
+# texto novo onde o marcador caiba, e o comentário na troca mudaria o texto que a
+# régua da paridade lê CRU.
+MOTIVO_SEM_MARCADOR='os dois payloads entram numa linha run: de YAML do fixture: a remoção não tem texto novo onde o marcador caiba, e o comentário na troca mudaria o texto que a régua da paridade lê CRU'
 
 TMP_DIR="$(mktemp -d "$MUT_SCRATCH/mut-XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -148,20 +167,8 @@ run_guard() {
 # mutação que aplica em dois lugares (ou em nenhum) não mede a regra que ela diz
 # medir — ela mede outra coisa (ou nada) e o harness se declara detetor.
 remover_comando() {
-  WF="$1" CMD="$2" FIXTURE="$FIXTURE" python3 - <<'PY'
-import os
-p = os.path.join(os.environ["FIXTURE"], os.environ["WF"])
-s = open(p).read()
-old = "        run: " + os.environ["CMD"] + "\n"
-n = s.count(old)
-if n != 1:
-    raise SystemExit(f"mutacao nao-cirurgica em {os.environ['WF']}: {n} ocorrencia(s) de {old.strip()!r}")
-open(p, "w").write(s.replace(old, ""))
-PY
-  if grep -qF "        run: $2" "$FIXTURE/$1"; then
-    fail "a remoção não aplicou em $1 (nada a medir)"
-    exit 1
-  fi
+  mutacao_aplicar_sem_marcador "$FIXTURE/$1" "        run: $2"$'\n' "" \
+    "$(cksum "$FIXTURE/$1" | cut -d' ' -f1)" "$MOTIVO_SEM_MARCADOR"
 }
 
 # `trocar_comando <workflow> <comando> <forma-divergente>` — troca a linha exata
@@ -169,21 +176,8 @@ PY
 # RÉGUA (ancorada no comando), não a classificação: a forma divergente continua
 # casando o `matches` do invariante, e o que tem de reprovar é o `command`.
 trocar_comando() {
-  WF="$1" CMD="$2" NOVO="$3" FIXTURE="$FIXTURE" python3 - <<'PY'
-import os
-p = os.path.join(os.environ["FIXTURE"], os.environ["WF"])
-s = open(p).read()
-old = "        run: " + os.environ["CMD"] + "\n"
-new = "        run: " + os.environ["NOVO"] + "\n"
-n = s.count(old)
-if n != 1:
-    raise SystemExit(f"mutacao nao-cirurgica em {os.environ['WF']}: {n} ocorrencia(s) de {old.strip()!r}")
-open(p, "w").write(s.replace(old, new))
-PY
-  if ! grep -qF "        run: $3" "$FIXTURE/$1"; then
-    fail "a troca não aplicou em $1 (nada a medir)"
-    exit 1
-  fi
+  mutacao_aplicar_sem_marcador "$FIXTURE/$1" "        run: $2"$'\n' "        run: $3"$'\n' \
+    "$(cksum "$FIXTURE/$1" | cut -d' ' -f1)" "$MOTIVO_SEM_MARCADOR"
 }
 
 # ── CONTROLE ──────────────────────────────────────────────────────────────

@@ -1272,15 +1272,15 @@ depois: `escreveu: true` é violação da família, não um detalhe do log.
 **O custo do job mais caro do PR não é uma conta à mão** (família `mutations` do
 `bench-guard-timing`). O job `mutation-guards` roda 47 sub-tests, e o que CADA um
 custa é medido pelo próprio master (`--json`) e versionado sub-test a sub-test no
-registro: o ato de 28/09/2026, medido sobre `4486841d` — a âncora é o commit que CARREGA o
+registro: o ato de 28/09/2026, medido sobre `cb5d2948` — a âncora é o commit que CARREGA o
 registro, resolvida pela história —
-mediu **923.7s** de sub-tests + **5.7s** de harness =
-**929.4s**, com `job-deps` (219.9s, 24%), `pre-commit-proof` (186.2s, 20%), `workflow-run-syntax` (78.2s, 8%) e `hook-commands` (66.8s, 7%) no topo — antes disso
+mediu **552.7s** de sub-tests + **5.9s** de harness =
+**558.6s**, com `workflow-run-syntax` (82.2s, 15%), `hook-commands` (69.4s, 13%), `local-image` (50.6s, 9%) e `bench-freshness` (49.1s, 9%) no topo — antes disso
 ninguém sabia QUAL sub-test pagava a conta. A mediana é **3.3s**, dez sub-tests
-pagam **83%** da soma, e o registro guarda **283 metades**.
+pagam **73%** da soma, e o registro guarda **285 metades**.
 Quem entra com um sub-test novo não compõe nada: ele entra **MEDIDO** na rodada seguinte
-(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~19.8s**) é dita
-como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test.
+(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~11.9s**) é dita
+como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test. **LIMITE DECLARADO:** na rodada do ato, 2 sub-test(s) NÃO passaram (`job-deps`, `pre-commit-proof`) — o custo deles não julga nada. E o vermelho foi RE-MEDIDO antes de virar veredito: `job-deps`, `pre-commit-proof` REPETIU o vermelho na 2ª tentativa, então o ms dele é a SOMA das duas (o custo é o que o job pagou).
 
 Esta prosa é **DERIVADA**: quem a reescreve é o ato (o bloco é dele), e o
 `check:mutation-count` recusa o commit em que ela divirja do registro versionado.

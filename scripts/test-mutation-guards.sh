@@ -347,17 +347,87 @@ PROVA_DE_APLICACAO=(
   "hook-commands"
   "workflow-defaults"
   "workflow-run-syntax"
+  "merge-latency"
   "registry-defaults"
   "job-deps"
+  "remedy-tty"
+  "canal-fixers"
+  "required-applied"
+  "gate-registration"
   "github-deps"
   "cut-stages"
   "mirror-coverage"
   "pre-commit-proof"
+  "bench-freshness"
   "stack-per-commit"
   "lint-scope"
   "runner-tag"
   "local-image"
   "artefatos-do-hook"
+  "archived-pipeline"
+)
+
+# ── O CAMINHO DECLARADO (sem marcador): o alvo que o payload não deixa marcar ──
+# `mutacao_aplicar_sem_marcador` existe para o caso em que o texto NOVO não tem
+# onde carregar o marcador `MUTACAO`. O que o caminho declarado cobra é a CIRURGIA
+# (o alvo casa UMA vez) e o CONTEÚDO (o checksum mudou) — as mesmas provas de todo
+# caminho; o que ele NÃO cobra é o marcador, porque não há texto novo para
+# carregá-lo. São CAMINHOS de `scripts/test-mutation-*.sh` (o diretório inteiro,
+# não só a matriz): o `check-mutation-count` exige que quem chama o caminho
+# declarado esteja NESTA lista, e que cada linha daqui realmente o chame.
+#
+# A DISPENSA É JUSTIFICADA NA CHAMADA, e não só aqui: o MOTIVO é argumento
+# obrigatório de `mutacao_aplicar_sem_marcador` (vazio → fail-closed, a metade M6
+# do gabarito), e o TEXTO da linha abaixo é o mesmo que a suíte carrega e passa
+# (o `check-mutation-count` exige o motivo no FONTE da suíte, entre aspas). Sem
+# isso, o atalho seria uma segunda forma de aplicar mutação — declarada numa
+# lista e muda no lugar onde ela acontece. A RECUSA do payload marcado é a outra
+# metade (M5): quem pode carregar o marcador usa `mutacao_aplicar`.
+SEM_MARCADOR=(
+  'scripts/test-mutation-forge-parity.sh|os dois payloads entram numa linha run: de YAML do fixture: a remoção não tem texto novo onde o marcador caiba, e o comentário na troca mudaria o texto que a régua da paridade lê CRU'
+  # O GABARITO também entra: ele chama o caminho declarado PARA MEDI-LO (controle,
+  # M5 e M6), e quem chama é declarado como qualquer outro chamador. A dispensa
+  # aqui não é de uma suíte que muta um alvo: é a do CASO que exercita o caminho.
+  'scripts/test-mutation-mutacao-prova.sh|o caso do gabarito mede o caminho DECLARADO com um payload que não comporta o marcador: a linha é uma remoção, e não há texto novo onde ele caiba'
+)
+
+# ── AS SUÍTES FORA DA RÉGUA: por que cada uma NÃO chama a régua única ───────
+# Formato: "id|motivo". A régua é a cópia ÚNICA da prova-de-aplicação, e uma
+# suíte que fica FORA dela tem de DIZER por quê: `check-mutation-count` confere
+# esta lista nos DOIS sentidos contra a matriz — toda suíte do `SUBTESTS` é da
+# régua (`PROVA_DE_APLICACAO`), ou o gabarito (`mutacao-prova`), ou uma linha
+# daqui; e uma linha daqui cuja suíte passe a CHAMAR a régua é violação (a lista
+# não pode envelhecer). Sem a declaração, "não usa a régua" e "perdeu a régua"
+# seriam a mesma coisa em silêncio.
+#
+# Os motivos vêm em três classes: (a) o alvo mutado é a CÓPIA do fixture no
+# scratch (a régua é a prova do alvo da ÁRVORE, e a cópia já morre com o tmp);
+# (b) a mutação é a CONSTRUÇÃO do fixture (o arquivo mutado nasce escrito, não há
+# troca num alvo); (c) a suíte ORQUESTRA outras suítes e não injeta mutação
+# própria. As três linhas marcadas PENDENTE são troca na ÁRVORE por helper
+# privado — o caso exato da régua, ainda não convertido.
+FORA_DA_REGUA=(
+  'bun-literal|muta a CÓPIA do fixture no scratch (`node -e`/`sed -i`), não a árvore'
+  'bun-removal|a mutação é a CONSTRUÇÃO do fixture (o workflow mutado nasce escrito)'
+  'hooks-symmetry|o hook mutado é o do FIXTURE (`printf`), não o da árvore'
+  'readme|NÃO injeta mutação própria: ela ORQUESTRA as três suítes de README'
+  'readme-reverse|a troca é `sed -i` no fixture COPIADO para o scratch'
+  'docs-anchor|a seção mutada é a do fixture (`$TMP_DIR/docs/api.md`)'
+  'producer-sent|os dois scripts mutados são CÓPIAS em `$MUT_DIR`'
+  'mutation-jobs|o job mutado é o do FIXTURE (`printf`), não o do repositório'
+  'utf8-scope|a troca é `sed -i` no fixture do scratch'
+  'timing-budget|o fixture é quem carrega a mutação (`printf`)'
+  'e2e-cache-budget|a mutação é a CONSTRUÇÃO do fixture (o orçamento mutado nasce escrito)'
+  'lint-guard|o arquivo violador é ESCRITO no fixture (`node -e`), não trocado na árvore'
+  'no-setup-bun|a mutação é a CONSTRUÇÃO do fixture (heredoc), com ajustes de `sed` nele'
+  'runner-base|a troca é `sed -i` no fixture (`$dir`/`$FIXTURE`)'
+  'no-leaked-imports|a mutação é a CONSTRUÇÃO de um worktree ANINHADO no scratch'
+  'commit-import-exports|a mutação é a CONSTRUÇÃO do fixture (`cat >`/`printf`)'
+  'reconciliation|PENDENTE: troca no arquivo da ÁRVORE por `sed`/`python3` privados (o caso da régua)'
+  'nested-guard|PENDENTE: troca no `$DOCTOR` da ÁRVORE por `python3` privado (o caso da régua)'
+  'hook-ci-parity|PENDENTE: troca nos hooks e no guard da ÁRVORE por `sed -i`/`python3` privados'
+  'doc-hashes|o guard mutado é a CÓPIA do fixture (`mutar_linha`: `sed -i` ancorado por marcador)'
+  'act-origin|o gate mutado é a CÓPIA do fixture (`mutar_linha`: linha inteira por `python3`)'
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────

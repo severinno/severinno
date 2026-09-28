@@ -7,9 +7,11 @@
 #   bash scripts/test-mutation-mutacao-prova.sh
 #
 # Exit codes:
-#   0 — as QUATRO metades foram DETECTADAS (a prova do MARCADOR, a prova do
+#   0 — as SEIS metades foram DETECTADAS (a prova do MARCADOR, a prova do
 #       CONTEÚDO, a CIRURGIA e a SINTAXE saem do lugar, uma por vez, e o veredito
-#       vira ACEITO onde ele recusava) e os controles passaram ✅
+#       vira ACEITO onde ele recusava — e o mesmo vale, no caminho DECLARADO, para
+#       a RECUSA do payload marcado e para o MOTIVO obrigatório) e os controles
+#       passaram ✅
 #   1 — uma metade NÃO sustentou o veredito (desligar a prova não mudou a
 #       recusa), mutação não-cirúrgica, ou a restauração falhou ❌
 #   2 — infra: a biblioteca não está na árvore / não é bash válido
@@ -43,6 +45,22 @@
 #     alvo mutado que NÃO parseia passa a ser aceito — o veredito da suíte
 #     passaria a vir de um `node` que MORREU, e não da regra que a metade dela
 #     tira do lugar.
+#   · M5 — a RECUSA do payload marcado no caminho DECLARADO
+#     (`mutacao_payload_carrega_marcador`): desligada, um payload que CARREGA
+#     `MUTACAO` passa pelo atalho `mutacao_aplicar_sem_marcador` — o ACEITE onde
+#     ele recusava, e o atalho do payload que não comporta o marcador viraria o
+#     caminho de sempre.
+#   · M6 — o MOTIVO obrigatório do caminho DECLARADO (o `-z` do argumento):
+#     desligado, a MESMA troca passa SEM justificativa escrita na chamada — a
+#     dispensa da prova do marcador fica MUDA, e é isso que separa um caminho
+#     DECLARADO de uma segunda forma de aplicar mutação sem prova.
+#
+# POR QUE A M5 E A M6 SÃO DESTE GABARITO: o caminho declarado dispensa a prova 2,
+# e o que dispensa uma prova tem de estar provado nos DOIS sítios que o seguram —
+# a recusa do payload marcado (quem pode carregá-lo usa o caminho estrito) e a
+# justificativa escrita (a dispensa não atende quem só não quer o marcador). Cada
+# metade tira UM sítio do lugar e exige o ACEITE; sem elas, o atalho poderia ser
+# alargado em silêncio, e ninguém saberia que a dispensa deixou de ser declarada.
 #
 # A SINTAXE ENTRA AQUI (e por que ela NÃO ficava provada): a checagem era medida
 # só de LADO, pelas metades das suítes que a chamam (um alvo mutado que não
@@ -81,6 +99,8 @@ METADES=(
   'M2|a prova do CONTEÚDO: desligada, a troca que não muda byte nenhum (o depois é igual ao antes) passa a ser aceita'
   'M3|a CIRURGIA (a contagem do alvo): desligada, um alvo AMBÍGUO com duas ocorrências passa a ser aceito'
   'M4|a SINTAXE (o node --check): desligada, um alvo mutado que NÃO parseia passa a ser aceito'
+  'M5|a RECUSA do payload marcado no caminho DECLARADO: desligada, um payload que carrega MUTACAO passa pelo atalho (ACEITE onde ele recusava)'
+  'M6|o MOTIVO obrigatório do caminho DECLARADO: desligado, a mesma troca passa SEM justificativa escrita na chamada'
 )
 
 BIB="$SCRIPT_DIR/scripts/mutacao-prova.sh"
@@ -172,6 +192,10 @@ EOF
 ALVO_UNICO='const artefatos = ["alfa", "beta"]'
 TROCA_MARCADA='const artefatos = [] // MUTACAO M1: a lista derivada esvaziada'
 TROCA_SEM_MARCADOR='const artefatos = []'
+# O MOTIVO do caminho DECLARADO (o mesmo texto vai na chamada da suíte real, no
+# bloco `SEM_MARCADOR` do master e no fonte dela — aqui é só o que a chamada
+# exige para não ser muda).
+MOTIVO_OK='o caso do gabarito mede o caminho DECLARADO com um payload que não comporta o marcador: a linha é uma remoção, e não há texto novo onde ele caiba'
 ALVO_REPETIDO='const repetida = 1'
 TROCA_REPETIDA='const repetida = 2 // MUTACAO M3: o alvo ambíguo mutado'
 ALVO_AUSENTE='const naoExiste = 1'
@@ -229,6 +253,36 @@ exige_sintaxe() {
     exit 1
   fi
   pass "$cenario (exit $SINTAXE_EXIT)"
+}
+
+# roda_sem_marcador: o caminho DECLARADO do ARQUIVO julga a chamada — o MOTIVO é
+# argumento obrigatório dele, e entra aqui por parâmetro (vazio EXPLÍCITO = a
+# chamada sem justificativa, o cenário da M6; ausente = o MOTIVO_OK). Como no
+# `roda_aplicar`, o subshell RE-SOURCEIA a biblioteca: quem responde é o ARQUIVO,
+# mutado ou não.
+roda_sem_marcador() { # <arquivo> <antes> <depois> [<contagem>] [<motivo>]
+  local arquivo="$1" antes="$2" depois="$3" contagem="${4:-1}" motivo="${5-$MOTIVO_OK}" sum
+  sum="$(cksum "$arquivo" | cut -d' ' -f1)"
+  set +e
+  (
+    # shellcheck disable=SC1090
+    . "$BIB"
+    fail() { :; }
+    mutacao_aplicar_sem_marcador "$arquivo" "$antes" "$depois" "$sum" "$motivo" "$contagem"
+  ) >/dev/null 2>&1
+  APLICAR_EXIT=$?
+  set -e
+}
+
+# exige_sem_marcador <exit esperado> <cenário> <arquivo> <antes> <depois> [<contagem>] [<motivo>]
+exige_sem_marcador() {
+  local esperado="$1" cenario="$2" arquivo="$3" antes="$4" depois="$5" contagem="${6:-1}" motivo="${7-$MOTIVO_OK}"
+  roda_sem_marcador "$arquivo" "$antes" "$depois" "$contagem" "$motivo"
+  if [ "$APLICAR_EXIT" -ne "$esperado" ]; then
+    fail "$cenario: exit $APLICAR_EXIT (esperado $esperado)"
+    exit 1
+  fi
+  pass "$cenario (exit $APLICAR_EXIT)"
 }
 
 # mutar_biblioteca <alvo> <troca>: a mutação da PRÓPRIA biblioteca, aplicada por
@@ -290,6 +344,26 @@ exige_sintaxe 0 "CONTROLE: o alvo VÁLIDO passa pela checagem de sintaxe" "$ALVO
 cria_alvo_quebrado
 exige_sintaxe 1 "CONTROLE: o alvo que NÃO parseia é RECUSADO (a SINTAXE)" "$ALVO_QUEBRADO"
 
+# O CAMINHO DECLARADO tem as TRÊS direções no controle: aceita a troca sem
+# marcador COM o motivo escrito (e a escrita entra de verdade), RECUSA o payload
+# que carrega o marcador (a M5) e RECUSA a chamada sem justificativa (a M6).
+cria_alvo_a
+exige_sem_marcador 0 "CONTROLE: o caminho DECLARADO aceita a troca SEM marcador COM o motivo escrito" \
+  "$ALVO_A" "$ALVO_UNICO" "$TROCA_SEM_MARCADOR"
+if ! grep -qF 'const artefatos = []' "$ALVO_A"; then
+  fail "CONTROLE: o caminho declarado aceitou a troca mas o alvo NÃO mudou — a escrita não entrou"
+  exit 1
+fi
+pass "CONTROLE: e o alvo mudou de verdade (a MESMA cirurgia do caminho estrito)"
+
+cria_alvo_a
+exige_sem_marcador 1 "CONTROLE: o caminho DECLARADO RECUSA o payload que CARREGA o marcador (a M5)" \
+  "$ALVO_A" "$ALVO_UNICO" "$TROCA_MARCADA"
+
+cria_alvo_a
+exige_sem_marcador 1 "CONTROLE: o caminho DECLARADO RECUSA a chamada SEM o motivo (a M6)" \
+  "$ALVO_A" "$ALVO_UNICO" "$TROCA_SEM_MARCADOR" 1 ""
+
 # ── M1 — a prova do MARCADOR ──────────────────────────────────────────────
 header "M1 — a prova do MARCADOR: desligada, a troca sem MUTACAO passa a ser ACEITA"
 mutar_biblioteca '  if ! mutacao_carregou_marcador "$arquivo"; then' \
@@ -342,6 +416,32 @@ fi
 pass "M4 DETECTADA: sem a checagem, o alvo que NÃO parseia passa a ser ACEITO (o veredito sairia de um node que morreu)"
 restaurar_biblioteca
 
+# ── M5 — a RECUSA do payload marcado no caminho DECLARADO ────────────────
+header "M5 — a RECUSA do caminho DECLARADO: desligada, um payload com MUTACAO passa pelo atalho"
+mutar_biblioteca '  if mutacao_payload_carrega_marcador "$depois"; then' \
+  '  if false; then # MUTACAO M5: a recusa do payload marcado desligada'
+cria_alvo_a
+roda_sem_marcador "$ALVO_A" "$ALVO_UNICO" "$TROCA_MARCADA"
+if [ "$APLICAR_EXIT" -ne 0 ]; then
+  fail "M5 NÃO DETECTADA: com a recusa do payload marcado desligada, a troca COM o marcador continuou RECUSADA pelo caminho declarado (exit $APLICAR_EXIT) — a metade não moveu o veredito"
+  exit 1
+fi
+pass "M5 DETECTADA: sem a recusa, o payload que CARREGA o marcador passa pelo caminho declarado (o atalho viraria o caminho de sempre)"
+restaurar_biblioteca
+
+# ── M6 — o MOTIVO obrigatório do caminho DECLARADO ────────────────────────
+header "M6 — o MOTIVO: desligado, a troca passa SEM a justificativa escrita na chamada"
+mutar_biblioteca '  if [ -z "${motivo//[[:space:]]/}" ]; then' \
+  '  if false; then # MUTACAO M6: o motivo obrigatório desligado'
+cria_alvo_a
+roda_sem_marcador "$ALVO_A" "$ALVO_UNICO" "$TROCA_SEM_MARCADOR" 1 ""
+if [ "$APLICAR_EXIT" -ne 0 ]; then
+  fail "M6 NÃO DETECTADA: com o motivo obrigatório desligado, a chamada SEM justificativa continuou RECUSADA (exit $APLICAR_EXIT) — a metade não moveu o veredito"
+  exit 1
+fi
+pass "M6 DETECTADA: sem o motivo obrigatório, a mesma troca passa SEM justificativa — a dispensa da prova do marcador ficaria muda"
+restaurar_biblioteca
+
 # ── FECHO ─────────────────────────────────────────────────────────────────
 header "FECHO"
 if [ "$(cksum "$BIB" | cut -d' ' -f1)" != "$BIB_SUM" ]; then
@@ -356,5 +456,14 @@ exige 1 "FECHO: e a troca SEM o marcador volta a ser RECUSADA" \
   "$ALVO_A" "$ALVO_UNICO" "$TROCA_SEM_MARCADOR"
 cria_alvo_quebrado
 exige_sintaxe 1 "FECHO: a SINTAXE volta a RECUSAR o alvo que não parseia" "$ALVO_QUEBRADO"
-pass "as metades M1 (a prova do MARCADOR), M2 (a do CONTEÚDO), M3 (a CIRURGIA) e M4 (a SINTAXE) foram detectadas — desligar cada uma faz a recusa virar ACEITE; a biblioteca está restaurada e medindo"
+cria_alvo_a
+exige_sem_marcador 0 "FECHO: o caminho DECLARADO volta a ACEITAR a troca sem marcador (com o motivo)" \
+  "$ALVO_A" "$ALVO_UNICO" "$TROCA_SEM_MARCADOR"
+cria_alvo_a
+exige_sem_marcador 1 "FECHO: e volta a RECUSAR o payload que carrega o marcador (a M5)" \
+  "$ALVO_A" "$ALVO_UNICO" "$TROCA_MARCADA"
+cria_alvo_a
+exige_sem_marcador 1 "FECHO: e a chamada SEM o motivo volta a ser RECUSADA (a M6)" \
+  "$ALVO_A" "$ALVO_UNICO" "$TROCA_SEM_MARCADOR" 1 ""
+pass "as metades M1 (a prova do MARCADOR), M2 (a do CONTEÚDO), M3 (a CIRURGIA), M4 (a SINTAXE), M5 (a RECUSA do payload marcado no caminho declarado) e M6 (o MOTIVO obrigatório dele) foram detectadas — desligar cada uma faz a recusa virar ACEITE; a biblioteca está restaurada e medindo"
 echo ""

@@ -5,6 +5,7 @@
 # Usage:
 #   . "$SCRIPT_DIR/scripts/mutacao-prova.sh"      # SOURCED, nunca executado
 #   mutacao_aplicar <arquivo> <antes> <depois> <checksum_antes> [<contagem>] [<modo>]
+#   mutacao_aplicar_sem_marcador <arquivo> <antes> <depois> <checksum_antes> <motivo> [<contagem>] [<modo>]
 #   mutacao_sintaxe_node <arquivo>
 #
 # Exit codes:
@@ -56,6 +57,29 @@
 # cobrado é uma linha só — é esse sítio que o gabarito desliga para medir que a
 # prova é load-bearing. Sem o sítio isolado, o gabarito teria de mutar a checagem
 # no meio de outra linha, e a mutação mediria outra coisa.
+#
+# O CAMINHO DECLARADO (o payload que NÃO PODE carregar o marcador)
+#
+# Há mutações cujo payload não comporta o marcador, e nem por isso elas deixam de
+# precisar da prova de que APLICARAM: uma LINHA DELETADA (o `remover_comando` de
+# um fixture de workflow) não tem texto novo onde um comentário caiba, e um
+# payload que vive DENTRO de uma string não aceita `//` (o marcador mudaria o
+# dado que a mutação mede). Para essas existe `mutacao_aplicar_sem_marcador`: as
+# MESMAS provas de CIRURGIA e CONTEÚDO (os MESMOS sítios, compartilhados com o
+# caminho estrito — não há uma segunda cirurgia) e a prova 2 dispensada POR
+# DECLARAÇÃO. Ela não é, portanto, uma segunda FORMA de aplicar mutação sem
+# prova: é a única que dispensa uma das provas, e a dispensa é EXPLÍCITA (o
+# MOTIVO é argumento obrigatório da chamada), JUSTIFICADA (o mesmo texto é
+# declarado no bloco `SEM_MARCADOR` do master, com o motivo, e o
+# `check-mutation-count` confere a lista nos DOIS sentidos — chamada sem
+# declaração e declaração sem chamada são violação — e exige o motivo no FONTE
+# da suíte) e PROVADA (o gabarito mede os dois sítios dela):
+#   · a M5 desliga a RECUSA do payload marcado: com o sítio cego, um payload que
+#     CARREGA `MUTACAO` passa pelo atalho — ACEITE onde ele recusava, e o atalho
+#     viraria o caminho de sempre (quem pode carregá-lo usa `mutacao_aplicar`);
+#   · a M6 desliga o MOTIVO obrigatório: com o sítio cego, a mesma troca passa
+#     SEM justificativa escrita, e a dispensa da prova fica MUDA — o esconderijo
+#     que o master declara deixa de existir.
 # ============================================================================
 
 # A PROVA 2, isolada: o arquivo carrega o marcador? Os dois idiomas entram porque
@@ -72,19 +96,14 @@ mutacao_mudou_conteudo() { # $1 = arquivo, $2 = checksum de antes
 
 # ============================================================================
 
-# mutacao_aplicar <arquivo> <antes> <depois> <checksum_antes> [<contagem>=1] [<modo>=texto]
+# mutacao_cirurgia <arquivo> <antes> <depois> [<contagem>=1] [<modo>=texto]
 #
-# Aplica a mutação e prova que ela aplicou. QUALQUER falha chama `fail` e sai 1 —
-# a suíte nunca segue medindo um alvo que ela não conseguiu mutar.
-mutacao_aplicar() {
-  local arquivo="$1" antes="$2" depois="$3" checksum="$4" contagem="${5:-1}" modo="${6:-texto}"
-
-  if [ ! -f "$arquivo" ]; then
-    fail "a mutação não tem alvo: '$arquivo' não existe (nada a medir)"
-    exit 1
-  fi
-
-  # 1. CIRURGIA — a substituição literal, com a contagem conferida DENTRO do
+# A CIRURGIA (prova 1), isolada. É o SÍTIO desta prova — o gabarito o desliga
+# (M3) para medir que ele é load-bearing — e o caminho DECLARADO o COMPARTILHA:
+# não carregar marcador não dispensa a cirurgia.
+mutacao_cirurgia() {
+  local arquivo="$1" antes="$2" depois="$3" contagem="${4:-1}" modo="${5:-texto}"
+  # A substituição literal, com a contagem conferida DENTRO do
   # python (o texto do alvo pode ter aspas, quebras e acento: montar isso na
   # linha de comando do shell seria uma segunda fonte de defeito).
   MUT_ARQ="$arquivo" MUT_ANTES="$antes" MUT_DEPOIS="$depois" \
@@ -119,18 +138,99 @@ else:
     conta(s, old, p, esperado)
     open(p, "w", encoding="utf-8").write(s.replace(old, new))
 PY
+}
 
-  # 2. APLICAÇÃO — o marcador chegou ao arquivo? (a prova que o gabarito mede)
-  if ! mutacao_carregou_marcador "$arquivo"; then
-    fail "a mutação não aplicou em $arquivo (nada a medir) — a troca tem de carregar o marcador MUTACAO, a prova de que a escrita entrou"
-    exit 1
-  fi
+# mutacao_cirurgia_e_conteudo <arquivo> <antes> <depois> <checksum_antes> [<contagem>] [<modo>]
+#
+# As DUAS provas que TODO caminho cobra: a CIRURGIA (1) e o CONTEÚDO (3). O
+# caminho DECLARADO as compartilha com o estrito — o que ele tem de PRÓPRIO é só
+# a recusa do payload marcado. O sítio do CONTEÚDO é este (um só), e é ele que o
+# gabarito desliga na M2.
+mutacao_cirurgia_e_conteudo() {
+  local arquivo="$1" antes="$2" depois="$3" checksum="$4" contagem="${5:-1}" modo="${6:-texto}"
+  mutacao_cirurgia "$arquivo" "$antes" "$depois" "$contagem" "$modo"
 
   # 3. CONTEÚDO — o checksum mudou?
   if ! mutacao_mudou_conteudo "$arquivo" "$checksum"; then
     fail "a mutação não alterou $arquivo (checksum idêntico) — o alvo casou mas a escrita não mudou o conteúdo"
     exit 1
   fi
+}
+
+# mutacao_aplicar <arquivo> <antes> <depois> <checksum_antes> [<contagem>=1] [<modo>=texto]
+#
+# O CAMINHO ESTRITO. Aplica a mutação e prova que ela aplicou (cirurgia, marcador
+# e conteúdo). QUALQUER falha chama `fail` e sai 1 — a suíte nunca segue medindo um
+# alvo que ela não conseguiu mutar.
+mutacao_aplicar() {
+  local arquivo="$1" antes="$2" depois="$3" checksum="$4" contagem="${5:-1}" modo="${6:-texto}"
+
+  if [ ! -f "$arquivo" ]; then
+    fail "a mutação não tem alvo: '$arquivo' não existe (nada a medir)"
+    exit 1
+  fi
+
+  mutacao_cirurgia_e_conteudo "$arquivo" "$antes" "$depois" "$checksum" "$contagem" "$modo"
+
+  # 2. APLICAÇÃO — o marcador chegou ao arquivo? (a prova que o gabarito mede)
+  if ! mutacao_carregou_marcador "$arquivo"; then
+    fail "a mutação não aplicou em $arquivo (nada a medir) — a troca tem de carregar o marcador MUTACAO, a prova de que a escrita entrou"
+    exit 1
+  fi
+}
+
+# mutacao_payload_carrega_marcador <texto_novo>
+#
+# A RECUSA, isolada num predicado com nome: o texto NOVO carrega o marcador? É o
+# SÍTIO do caminho DECLARADO — o gabarito o desliga (M5) para medir que ele é
+# load-bearing: com o sítio cego, um payload MARCADO passa pelo atalho (ACEITE
+# onde ele recusava) — exatamente o que o atalho não pode virar.
+mutacao_payload_carrega_marcador() { # $1 = o `depois` (o texto que entra)
+  case "$1" in
+    *MUTACAO* | *MUTAÇÃO*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# mutacao_aplicar_sem_marcador <arquivo> <antes> <depois> <checksum_antes> <motivo> [<contagem>] [<modo>]
+#
+# O CAMINHO DECLARADO — para o payload que NÃO PODE carregar o marcador (a linha
+# DELETADA não tem texto novo onde ele caiba; o payload dentro de string não
+# aceita comentário). Ele cobra as MESMAS provas de cirurgia e conteúdo (os
+# mesmos sítios) e a dispensa da prova 2 vem com as duas condições dela:
+#
+#   1. o MOTIVO é argumento OBRIGATÓRIO (vazio → fail): quem dispensa a prova do
+#      marcador DIZ na própria chamada por que aquele payload não a comporta. O
+#      `check-mutation-count` exige o mesmo texto no bloco `SEM_MARCADOR` do
+#      master E no FONTE desta suíte — a justificativa é a mesma nos dois lugares;
+#   2. o payload que CARREGA o marcador é RECUSADO (o sítio da M5): quem pode
+#      carregá-lo usa `mutacao_aplicar` — o atalho não vira o caminho de sempre.
+#
+# Sem as duas, este caminho seria uma segunda forma de aplicar mutação sem prova
+# — o esconderijo da prova que ele dispensa. Com elas, a única coisa dispensada é
+# a prova 2, e por escrito.
+mutacao_aplicar_sem_marcador() {
+  local arquivo="$1" antes="$2" depois="$3" checksum="$4" motivo="${5:-}" contagem="${6:-1}" modo="${7:-texto}"
+
+  if [ ! -f "$arquivo" ]; then
+    fail "a mutação não tem alvo: '$arquivo' não existe (nada a medir)"
+    exit 1
+  fi
+
+  # 1. A JUSTIFICATIVA (o sítio da M6): a dispensa da prova do marcador vem
+  #    ESCRITA na chamada — este caminho não atende quem só não quer o marcador.
+  if [ -z "${motivo//[[:space:]]/}" ]; then
+    fail "o caminho DECLARADO (sem marcador) exige o MOTIVO na chamada, e ele veio vazio em $arquivo — assinatura: mutacao_aplicar_sem_marcador <arquivo> <antes> <depois> <checksum_antes> <motivo> [<contagem>] [<modo>] (o payload que dispensa a prova do marcador diz POR QUE não a comporta)"
+    exit 1
+  fi
+
+  # 2. A RECUSA (o sítio da M5).
+  if mutacao_payload_carrega_marcador "$depois"; then
+    fail "o caminho DECLARADO (sem marcador) recusa um payload que CARREGA o marcador em $arquivo — quem pode carregá-lo usa mutacao_aplicar (o caminho estrito não é opcional)"
+    exit 1
+  fi
+
+  mutacao_cirurgia_e_conteudo "$arquivo" "$antes" "$depois" "$checksum" "$contagem" "$modo"
 }
 
 # mutacao_sintaxe_node <arquivo>

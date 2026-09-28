@@ -89,6 +89,11 @@ mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
   exit 2
 }
 
+# A PROVA-DE-APLICAÇÃO — a régua ÚNICA de "a mutação APLICOU" (o gabarito dela é
+# `scripts/test-mutation-mutacao-prova.sh`).
+# shellcheck source=scripts/mutacao-prova.sh
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
@@ -162,25 +167,13 @@ restaurar_originais() {
   fi
 }
 
-# ── mutar_arquivo: substituição CIRÚRGICA (exatamente 1 ocorrência) ───────
-# Uma mutação que casa 0 ou 2+ vezes não é cirúrgica: o script para em vez de
-# medir outra coisa. A escrita é CONFERIDA pelo checksum — uma mutação que não
-# aplicasse passaria como "suíte imune".
-mutar_arquivo() {
-  ARQ="$1" ALVO="$2" NOVO="$3" REF="$4" python3 - <<'PY'
-import os
-p = os.environ["ARQ"]
-old, new = os.environ["ALVO"], os.environ["NOVO"]
-s = open(p).read()
-n = s.count(old)
-if n != 1:
-    raise SystemExit(f"mutacao nao-cirurgica em {p}: {n} ocorrencia(s) do alvo (esperado 1)")
-open(p, "w").write(s.replace(old, new))
-PY
-  if [ "$(cksum "$1" | cut -d' ' -f1)" = "$4" ]; then
-    fail "a mutação não alterou $1 (checksum idêntico) — o alvo casou mas a escrita não"
-    exit 1
-  fi
+# ── mutar_arquivo: a CIRURGIA, o MARCADOR e o CONTEÚDO são da régua ÚNICA ───
+# (`mutacao_aplicar`): o alvo casa UM lugar (0 ou 2+ não é cirúrgico — a suíte
+# PARA em vez de medir outra coisa), o payload carrega o marcador `MUTACAO` e o
+# checksum confere que a escrita MUDOU o arquivo. O `<checksum>` é o do estado
+# ANTERIOR, que o chamador já mede.
+mutar_arquivo() { # <arquivo> <alvo> <novo> <checksum-antes>
+  mutacao_aplicar "$1" "$2" "$3" "$4"
 }
 
 # ── A testemunha: o pty e a suíte ─────────────────────────────────────────

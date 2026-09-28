@@ -89,6 +89,15 @@ mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
   echo "❌ o scratch das fixtures não pôde ser criado: $MUT_SCRATCH (infra declarada)" >&2
   exit 2
 }
+
+# ── A PROVA-DE-APLICAÇÃO: a régua ÚNICA (`scripts/mutacao-prova.sh`) ────────
+# A troca NÃO é aplicada por uma cópia privada da cirurgia: ela é da régua única,
+# que traz juntas a CIRURGIA (o alvo casa uma vez), o MARCADOR (`MUTACAO` no
+# payload, a prova de que a escrita entrou) e o CONTEÚDO (o checksum mudou). Uma
+# cópia privada que sumisse não deixava rastro — a suíte seguiria verde medindo o
+# alvo ÍNTEGRO. Quem chama a régua é declarado em `PROVA_DE_APLICACAO` (master).
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
 cd "$SCRIPT_DIR"
 
 GUARD="scripts/check-generated-format.mjs"
@@ -301,26 +310,15 @@ exigir_candidato() { # <rel> <cenário>
   pass "$cenario (candidato derivado: $rel)"
 }
 
-# ── mutar <alvo> <troca>: substituição LITERAL, cirúrgica, no GUARD ───────
+# ── mutar <alvo> <troca>: a troca pela RÉGUA ÚNICA, no GUARD ──────────────
+# `mutacao_aplicar` cobra a CIRURGIA (o alvo casa UMA vez), o MARCADOR `MUTACAO`
+# do payload (a prova de que a ESCRITA entrou) e o CONTEÚDO (o checksum mudou,
+# contra o `$GUARD_SUM` do guard ÍNTEGRO); `mutacao_sintaxe_node` cobra o parse.
+# O `python3` privado que fazia a cirurgia saiu — uma cópia que sumisse não
+# deixava rastro e a suíte seguiria verde medindo o alvo ÍNTEGRO.
 mutar() {
-  local alvo="$1" troca="$2"
-  ARQUIVO="$GUARD" ALVO="$alvo" NOVO="$troca" python3 - <<'PY'
-import os
-p = os.environ["ARQUIVO"]
-s = open(p, encoding="utf-8").read()
-n = s.count(os.environ["ALVO"])
-if n != 1:
-    raise SystemExit(f"mutacao nao-cirurgica no guard: {n} ocorrencia(s) do alvo (esperado 1)")
-open(p, "w", encoding="utf-8").write(s.replace(os.environ["ALVO"], os.environ["NOVO"]))
-PY
-  if [ "$(cksum "$GUARD" | cut -d' ' -f1)" = "$GUARD_SUM" ]; then
-    fail "a mutação não alterou o guard (checksum idêntico) — o alvo casou e a escrita não"
-    exit 1
-  fi
-  if ! node --check "$GUARD" >/dev/null 2>&1; then
-    fail "MUTAÇÃO NÃO-CIRÚRGICA: o guard mutado não é válido sintaticamente"
-    exit 1
-  fi
+  mutacao_aplicar "$GUARD" "$1" "$2" "$GUARD_SUM"
+  mutacao_sintaxe_node "$GUARD"
 }
 
 echo ""
@@ -357,7 +355,7 @@ tabela_base
 rodar_e_checar "M1"
 exigir_exit "1" "M1: o guard REPROVA o artefato fora da forma"
 exigir_ancora "NÃO sai como o prettier o deixa" "M1"
-mutar "if (r.status !== 0) {" "if (false && r.status !== 0) {"
+mutar "if (r.status !== 0) {" "if (false && r.status !== 0) { // MUTACAO M1"
 rodar_e_checar "M1 (metade cegada)"
 exigir_exit "0" "M1 cego: a MESMA bancada passa com o --check desligado"
 restaurar_original
@@ -395,7 +393,7 @@ JSON
 rodar_e_checar "M2"
 exigir_exit "1" "M2: o guard REPROVA o gerador sem o formatador"
 exigir_ancora "SEM passar pelo formatador" "M2"
-mutar "if (declara && !usaHelper) {" "if (false && declara && !usaHelper) {"
+mutar "if (declara && !usaHelper) {" "if (false && declara && !usaHelper) { // MUTACAO M2"
 rodar_e_checar "M2 (metade cegada)"
 exigir_exit "0" "M2 cego: a MESMA bancada passa com a regra do formatador desligada"
 restaurar_original
@@ -411,7 +409,7 @@ tabela_base
 rodar_e_checar "M3"
 exigir_exit "1" "M3: o guard REPROVA a saída que não entra no commit"
 exigir_ancora "não é versionada" "M3"
-mutar "if (!versionados.has(rel)) {" "if (false && !versionados.has(rel)) {"
+mutar "if (!versionados.has(rel)) {" "if (false && !versionados.has(rel)) { // MUTACAO M3"
 rodar_e_checar "M3 (metade cegada)"
 exigir_exit "0" "M3 cego: a MESMA bancada passa sem a conferência de git ls-files"
 restaurar_original
@@ -434,7 +432,7 @@ tabela_base
 rodar_e_checar "M4"
 exigir_exit "1" "M4: o guard REPROVA o candidato fora da tabela"
 exigir_ancora "NÃO está na tabela GERADORES" "M4"
-mutar "if (!declarados.has(c)) {" "if (false && !declarados.has(c)) {"
+mutar "if (!declarados.has(c)) {" "if (false && !declarados.has(c)) { // MUTACAO M4"
 rodar_e_checar "M4 (metade cegada)"
 exigir_exit "0" "M4 cego: a MESMA bancada passa com a cobertura desligada"
 restaurar_original
@@ -465,7 +463,7 @@ JSON
 rodar_e_checar "M5"
 exigir_exit "1" "M5: o guard REPROVA a entrada STALE"
 exigir_ancora "entrada STALE" "M5"
-mutar "if (!declara && !base.candidatos.includes(g.script)) {" "if (false && !declara && !base.candidatos.includes(g.script)) {"
+mutar "if (!declara && !base.candidatos.includes(g.script)) {" "if (false && !declara && !base.candidatos.includes(g.script)) { // MUTACAO M5"
 rodar_e_checar "M5 (metade cegada)"
 exigir_exit "0" "M5 cego: a MESMA tabela passa com a regra de STALE desligada"
 restaurar_original
@@ -493,7 +491,7 @@ JSON
 rodar_e_checar "M6"
 exigir_exit "1" "M6: o guard REPROVA o prefixo fora do lint"
 exigir_ancora "que está fora dos globs do" "M6"
-mutar "if (!coveredBy(globs, exemplo)) {" "if (false && !coveredBy(globs, exemplo)) {"
+mutar "if (!coveredBy(globs, exemplo)) {" "if (false && !coveredBy(globs, exemplo)) { // MUTACAO M6"
 rodar_e_checar "M6 (metade cegada)"
 exigir_exit "0" "M6 cego: a MESMA tabela passa com a cobertura do prefixo desligada"
 restaurar_original
@@ -509,7 +507,7 @@ tabela_base
 rodar_e_checar "M7"
 exigir_exit "1" "M7: o guard REPROVA o artefato ignorado pelo prettier"
 exigir_ancora "IGNORADO pelo .prettierignore" "M7"
-mutar "if (info?.ignored) {" "if (false && info?.ignored) {"
+mutar "if (info?.ignored) {" "if (false && info?.ignored) { // MUTACAO M7"
 rodar_e_checar "M7 (metade cegada)"
 exigir_exit "0" "M7 cego: a MESMA bancada passa com a leitura do ignore desligada"
 restaurar_original

@@ -144,7 +144,15 @@
 // =============================================================================
 
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { tmpdir } from "node:os"
 import { pathToFileURL } from "node:url"
@@ -615,6 +623,79 @@ export function deriveProvaDeAplicacao(masterSrc) {
 }
 
 /**
+ * Deriva um bloco DECLARADO do master no formato `MARCA=( "chave|motivo" ... )`.
+ *
+ * Dois blocos usam esta forma: `SEM_MARCADOR` (quem chama o caminho DECLARADO da
+ * régua — o payload não pode carregar o marcador) e `FORA_DA_REGUA` (quem não
+ * chama a régua nenhuma, com o motivo). O `motivo` é o que separa uma DECLARAÇÃO
+ * de um silêncio com aparência de lista: vazio é violação.
+ */
+function derivaBlocoDeMotivos(masterSrc, marca) {
+  const start = masterSrc.indexOf(marca)
+  if (start === -1) return { presente: false, entradas: [] }
+  const bloco = masterSrc.slice(start + marca.length)
+  const fim = bloco.indexOf("\n)")
+  const corpo = fim === -1 ? bloco : bloco.slice(0, fim)
+  const entradas = []
+  for (const linha of corpo.split("\n")) {
+    // ASPAS SIMPLES OU DUPLAS: o master usa SIMPLES nas listas com PROSA (a
+    // prosa cita `sed -i` e `$TMP_DIR`, e dentro de aspas duplas o shell expande
+    // as duas — medido: a matriz morria com "run:: comando não encontrado").
+    const m = /^\s*(?:"([^"]*)"|'([^']*)')\s*$/.exec(linha)
+    if (!m) continue
+    const valor = m[1] ?? m[2]
+    const corte = valor.indexOf("|")
+    entradas.push(
+      corte === -1
+        ? { chave: valor.trim(), motivo: "" }
+        : { chave: valor.slice(0, corte).trim(), motivo: valor.slice(corte + 1).trim() },
+    )
+  }
+  return { presente: true, entradas }
+}
+
+/**
+ * O bloco `SEM_MARCADOR=( "scripts/test-mutation-x.sh|motivo" ... )`: as suítes
+ * que chamam `mutacao_aplicar_sem_marcador`. A chave é o CAMINHO do script (não
+ * o id da matriz): o `forge-parity` é uma suíte de mutação FORA do `SUBTESTS`, e
+ * uma declaração que só olhasse a matriz deixaria metade dele sem conferência.
+ */
+export function deriveSemMarcador(masterSrc) {
+  return derivaBlocoDeMotivos(masterSrc, "SEM_MARCADOR=(")
+}
+
+/**
+ * O bloco `FORA_DA_REGUA=( "id|motivo" ... )`: as suítes da matriz que NÃO
+ * chamam a régua, cada uma com o PORQUÊ. A régua é a cópia única da
+ * prova-de-aplicação; uma suíte fora dela tem de dizer o que a substitui.
+ */
+export function deriveForaDaRegua(masterSrc) {
+  return derivaBlocoDeMotivos(masterSrc, "FORA_DA_REGUA=(")
+}
+
+/**
+ * Os caminhos de `scripts/test-mutation-*.sh` que CHAMAM `<token>` no próprio
+ * fonte (a conferência do caminho declarado é do DIRETÓRIO, não da matriz).
+ */
+function caminhosQueChamam(root, token) {
+  const dir = join(root, "scripts")
+  if (!existsSync(dir)) return []
+  return (
+    readdirSync(dir)
+      .filter((f) => /^test-mutation-.*\.sh$/.test(f))
+      // A CHAMADA, não a prosa: o master (e alguns cabeçalhos) CITAM o nome do
+      // caminho declarado em comentário — citar não é chamar.
+      .filter((f) =>
+        readFileSync(join(dir, f), "utf8")
+          .split("\n")
+          .some((l) => !/^\s*#/.test(l) && new RegExp(`\\b${token}\\b`).test(l)),
+      )
+      .map((f) => `scripts/${f}`)
+      .sort()
+  )
+}
+
+/**
  * A PROVA-DE-APLICAÇÃO — a régua ÚNICA (`PROVA_LIB`) e as suítes que a chamam.
  *
  * O DEFEITO MEDIDO (27/09/2026): a prova de que a mutação APLICOU vivia COPIADA
@@ -722,7 +803,98 @@ export function analisaProvaDeAplicacao(root, masterSrc, entries) {
     }
   }
 
-  return { comProva, declaradas: ordenadas, presente, violations }
+  // 4. AS SUÍTES FORA DA RÉGUA — TODA suíte da matriz DECLARA a sua relação com
+  //    a régua: ou chama `mutacao_aplicar` (`PROVA_DE_APLICACAO`), ou é o
+  //    gabarito, ou está em `FORA_DA_REGUA` COM o motivo. Sem esta metade, "não
+  //    usa a régua" e "perdeu a régua" seriam a mesma coisa em silêncio.
+  const gabaritoId = (entries.find((e) => e.script === PROVA_GABARITO) ?? {}).id
+  const { presente: foraPresente, entradas: fora } = deriveForaDaRegua(masterSrc)
+  const idsFora = fora.map((f) => f.chave)
+  if (foraPresente) {
+    for (const f of fora) {
+      if (f.motivo === "") {
+        violations.push(
+          `test-mutation-guards.sh: FORA_DA_REGUA declara '${f.chave}' e NÃO diz o MOTIVO — a linha sem motivo é um silêncio com aparência de declaração: escreva POR QUE a suíte não chama a régua (o alvo é a CÓPIA do fixture? a mutação é a CONSTRUÇÃO do fixture? a troca é na ÁRVORE por helper privado?)`,
+        )
+      }
+    }
+    for (const id of idsFora) {
+      if (ordenadas.includes(id)) {
+        violations.push(
+          `test-mutation-guards.sh: '${id}' está em PROVA_DE_APLICACAO e em FORA_DA_REGUA — as duas listas dizem coisas opostas sobre a mesma suíte: ou ela chama a régua, ou ela está fora dela`,
+        )
+      }
+      if (derivadas.includes(id)) {
+        violations.push(
+          `test-mutation-guards.sh: FORA_DA_REGUA declara '${id}' e a suíte JÁ chama a régua única — a lista envelheceu: tire a linha de FORA_DA_REGUA (e declare-a em PROVA_DE_APLICACAO se a chamada ficou)`,
+        )
+      }
+    }
+    const declaradasTodas = new Set([...ordenadas, ...idsFora, gabaritoId])
+    for (const { id, script } of entries) {
+      if (!declaradasTodas.has(id)) {
+        violations.push(
+          `${script}: a suíte '${id}' NÃO declara a sua relação com a régua única (${PROVA_LIB}) — toda suíte da matriz é ou da régua (\`PROVA_DE_APLICACAO\`), ou o gabarito, ou uma linha de \`FORA_DA_REGUA\` com o motivo. Sem a declaração, uma suíte que perca a prova-de-aplicação não deixa rastro`,
+        )
+      }
+    }
+  }
+
+  // 5. O CAMINHO DECLARADO (`mutacao_aplicar_sem_marcador`) — nos DOIS sentidos,
+  //    contra o DIRETÓRIO das suítes (não a matriz: o `forge-parity` não é
+  //    sub-test, e a declaração tem de cobri-lo também); e o MOTIVO declarado
+  //    tem de estar no FONTE da suíte (é ele que a chamada passa — a dispensa da
+  //    prova do marcador é justificada onde ela acontece, não só na lista).
+  const semMarcador = deriveSemMarcador(masterSrc)
+  const chamamSemMarcador = caminhosQueChamam(root, "mutacao_aplicar_sem_marcador")
+  const declaradosSemMarcador = semMarcador.entradas.map((e) => e.chave)
+  for (const e of semMarcador.entradas) {
+    if (e.motivo === "") {
+      violations.push(
+        `test-mutation-guards.sh: SEM_MARCADOR declara '${e.chave}' e NÃO diz o MOTIVO — o caminho declarado dispensa a prova do MARCADOR, e o que o dispensa tem de ser DITO (o payload é uma remoção? entra numa linha que o guard lê crua?)`,
+      )
+    } else {
+      // O MOTIVO VIVE NOS DOIS LUGARES: a lista declara a dispensa e a suíte a
+      // JUSTIFICA na própria chamada (o motivo é argumento OBRIGATÓRIO de
+      // `mutacao_aplicar_sem_marcador`, fail-closed). Sem esta conferência, o
+      // texto da lista podia descrever uma razão que o fonte não carrega — a
+      // justificativa envelheceria no lugar onde ela não acontece.
+      const suite = join(root, e.chave)
+      const suiteSrc = existsSync(suite) ? readFileSync(suite, "utf8") : ""
+      if (
+        suiteSrc !== "" &&
+        !suiteSrc.includes(`'${e.motivo}'`) &&
+        !suiteSrc.includes(`"${e.motivo}"`)
+      ) {
+        violations.push(
+          `${e.chave}: SEM_MARCADOR declara a dispensa com um MOTIVO que a suíte NÃO carrega — o mesmo texto tem de estar no FONTE dela (entre aspas), onde a chamada o passa: a justificativa que fica só na lista não é a que o atalho usa, e uma segunda forma de aplicar mutação sem prova nasceria sem que nada acusasse`,
+        )
+      }
+    }
+  }
+  for (const c of chamamSemMarcador) {
+    if (!declaradosSemMarcador.includes(c)) {
+      violations.push(
+        `${c}: chama \`mutacao_aplicar_sem_marcador\` e NÃO está em SEM_MARCADOR — o caminho declarado dispensa a prova do marcador, e quem o usa é declarado no master COM o motivo: sem a linha, o atalho vira o caminho de sempre`,
+      )
+    }
+  }
+  for (const c of declaradosSemMarcador) {
+    if (!chamamSemMarcador.includes(c)) {
+      violations.push(
+        `test-mutation-guards.sh: SEM_MARCADOR declara '${c}' e o script NÃO chama \`mutacao_aplicar_sem_marcador\` — ou a suíte voltou ao caminho estrito (a linha ficou), ou o arquivo não existe`,
+      )
+    }
+  }
+
+  return {
+    comProva,
+    declaradas: ordenadas,
+    presente,
+    fora: { presente: foraPresente, ids: idsFora },
+    semMarcador: { presente: semMarcador.presente, ids: declaradosSemMarcador },
+    violations,
+  }
 }
 
 /** True se a linha tem marcador de contexto HISTÓRICO (não é count atual). */
@@ -1254,6 +1426,14 @@ export function caminhosDoVeredito(masterSrc) {
   const { entries } = deriveSubtestCount(masterSrc)
   const rels = [MASTER, ".github/workflows/pr-check.yml", "README.md", ...CAMINHOS_OPCIONAIS]
   for (const { script } of entries) if (!rels.includes(script)) rels.push(script)
+  // E OS CHAMADORES DO CAMINHO DECLARADO (`SEM_MARCADOR`): a chave do bloco é o
+  // CAMINHO do script, e ele pode NÃO SER sub-test da matriz (o `forge-parity`
+  // não é) — sem materializá-lo, a conferência do índice lê um diretório onde o
+  // arquivo não existe e acusa "o script NÃO chama" sobre um fonte que ela nunca
+  // leu (medido: o pre-commit recusou o commit da régua por isso).
+  for (const { chave } of deriveSemMarcador(masterSrc).entradas) {
+    if (!rels.includes(chave)) rels.push(chave)
+  }
   return rels
 }
 

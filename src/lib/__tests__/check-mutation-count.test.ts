@@ -96,7 +96,24 @@ interface FixtureOpts {
    * bloco NÃO existe (a lista não é julgada); um array = a lista DECLARADA.
    */
   provaLista?: string[] | null
+  /**
+   * O bloco `FORA_DA_REGUA=( "id|motivo" ... )` do master: `null` (default) = o
+   * bloco NÃO existe (a relação com a régua não é julgada); um array = as linhas
+   * DECLARADAS (`id|motivo`).
+   */
+  foraLista?: string[] | null
+  /** O bloco `SEM_MARCADOR=( "caminho|motivo" ... )` — o caminho DECLARADO. */
+  semMarcadorLista?: string[] | null
+  /** Índices das suítes que chamam o CAMINHO DECLARADO da régua. */
+  semMarcadorSuites?: number[]
 }
+
+/**
+ * O MOTIVO do caminho declarado que o fixture escreve no FONTE da suíte — é o
+ * texto que a chamada passa e que o bloco `SEM_MARCADOR` do master tem de
+ * declarar: a justificativa da dispensa vive nos DOIS lugares.
+ */
+const MOTIVO_SEM_MARCADOR = "o payload é uma remoção: não há texto novo onde o marcador caiba"
 
 /** O registro versionado COMPLETO para uma matriz de `count` sub-tests. */
 function benchCompleto(count: number): Record<string, unknown> {
@@ -136,6 +153,9 @@ function makeFixture({
   provaSuites = [],
   provaCopia = null,
   provaLista = null,
+  foraLista = null,
+  semMarcadorLista = null,
+  semMarcadorSuites = [],
 }: FixtureOpts = {}) {
   const dir = mkdtempSync(join(tmpdir(), "mutation-count-"))
   mkdirSync(join(dir, "scripts"), { recursive: true })
@@ -162,23 +182,34 @@ function makeFixture({
     // A PROVA-DE-APLICAÇÃO: a suíte que chama a régua única carrega o SOURCE
     // dela, e a que carrega a cópia privada escreve o `grep` do marcador.
     const chamaRegua = (provaSuites ?? []).includes(i)
+    const chamaSemMarcador = (semMarcadorSuites ?? []).includes(i)
     const prova = chamaRegua
       ? '\n# shellcheck source=scripts/mutacao-prova.sh\n. "$SCRIPT_DIR/scripts/mutacao-prova.sh"\nmutar() { mutacao_aplicar "$1" "$2" "$3" "$4"; }\n'
-      : i === provaCopia
-        ? "\nmutar() { if ! grep -qF 'MUTACAO M' \"$1\"; then exit 1; fi }\n"
-        : ""
+      : chamaSemMarcador
+        ? `\n# shellcheck source=scripts/mutacao-prova.sh\n. "$SCRIPT_DIR/scripts/mutacao-prova.sh"\n# O MOTIVO da dispensa é a JUSTIFICATIVA da chamada (o mesmo texto do master).\nMOTIVO_SEM_MARCADOR='${MOTIVO_SEM_MARCADOR}'\nmutar() { mutacao_aplicar_sem_marcador "$1" "$2" "$3" "$4" "$MOTIVO_SEM_MARCADOR"; }\n`
+        : i === provaCopia
+          ? "\nmutar() { if ! grep -qF 'MUTACAO M' \"$1\"; then exit 1; fi }\n"
+          : ""
     writeFileSync(join(dir, rel), `#!/usr/bin/env bash\nset -euo pipefail\n${corpo}${prova}`)
   }
   const provaBloco =
     provaLista === null || provaLista === undefined
       ? ""
       : `PROVA_DE_APLICACAO=(\n${provaLista.map((id) => `  "${id}"`).join("\n")}\n)\n`
+  const foraBloco =
+    foraLista === null || foraLista === undefined
+      ? ""
+      : `FORA_DA_REGUA=(\n${foraLista.map((l) => `  "${l}"`).join("\n")}\n)\n`
+  const semMarcadorBloco =
+    semMarcadorLista === null || semMarcadorLista === undefined
+      ? ""
+      : `SEM_MARCADOR=(\n${semMarcadorLista.map((l) => `  "${l}"`).join("\n")}\n)\n`
   const master = `#!/usr/bin/env bash
 # Roda os ${masterHeader ?? count} mutation tests node-puro dos guards de CI num ÚNICO script
 SUBTESTS=(
 ${entries.join("\n")}
 )
-${provaBloco}`
+${provaBloco}${foraBloco}${semMarcadorBloco}`
   writeFileSync(join(dir, "scripts/test-mutation-guards.sh"), master)
 
   const prCheck = `jobs:
@@ -1004,6 +1035,28 @@ describe("check-mutation-count --staged (a árvore do índice)", () => {
     ).toBe(true)
   })
 
+  it("materializa o CHAMADOR do caminho declarado que NÃO é sub-test (SEM_MARCADOR)", () => {
+    // O `forge-parity` não é sub-test da matriz: quem o cita é só o bloco
+    // `SEM_MARCADOR`. Sem materializá-lo, a conferência do índice lia um diretório
+    // onde o arquivo não existe e acusava "o script NÃO chama" sobre um fonte que
+    // ela nunca leu — medido: o pre-commit recusou o commit da régua por isso.
+    const motivo = "o payload é uma remoção: não há texto novo onde o marcador caiba"
+    const fora = "scripts/test-mutation-forge-parity.sh"
+    const dir = makeFixture({
+      count: 3,
+      semMarcadorSuites: [1],
+      semMarcadorLista: [`scripts/test-mutation-sub-1.sh|${motivo}`, `${fora}|${motivo}`],
+    })
+    writeFileSync(
+      join(dir, fora),
+      `#!/usr/bin/env bash\nset -euo pipefail\n. "$SCRIPT_DIR/scripts/mutacao-prova.sh"\nMOTIVO_SEM_MARCADOR='${motivo}'\nmutar() { mutacao_aplicar_sem_marcador "$1" "$2" "$3" "$4" "$MOTIVO_SEM_MARCADOR"; }\n`,
+    )
+
+    const masterSrc = readFileSync(join(dir, "scripts/test-mutation-guards.sh"), "utf8")
+    expect(caminhosDoVeredito(masterSrc)).toContain(fora)
+    expect(runStaged(dir, { ler: indiceDe(dir) }).ok).toBe(true)
+  })
+
   it("o master ausente do índice é INFRA (exit 2 pelo CLI), nunca 'nada a julgar'", () => {
     const dir = makeFixture({ count: 13 })
     expect(() =>
@@ -1182,6 +1235,143 @@ describe("a PROSA DERIVADA (a tabela do GUARDS e o parágrafo do README) × o re
     try {
       expect(existsSync(join(dir, "docs/GUARDS.md"))).toBe(false)
       expect(daFamilia(run(dir).violations)).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// A RELAÇÃO COM A RÉGUA É DECLARADA — `FORA_DA_REGUA` (com o MOTIVO) e o
+// `SEM_MARCADOR` (o caminho declarado, o payload que não pode carregar o
+// marcador). Toda suíte da matriz DIZ o que ela é para a régua; e quem dispensa
+// o MARCADOR é declarado com o porquê. Sem estas duas listas, "não usa a régua"
+// e "perdeu a régua" seriam a mesma coisa em silêncio.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("check-mutation-count — a DECLARAÇÃO de quem fica fora da régua", () => {
+  /** O CONTROLE: a sub-0 chama a régua; a sub-1 e a sub-2 estão FORA, com motivo. */
+  const comFora = (over: Partial<FixtureOpts> = {}) =>
+    makeFixture({
+      count: 3,
+      provaSuites: [0],
+      provaLista: ["sub-0"],
+      foraLista: [
+        "sub-1|o alvo é a CÓPIA do fixture no scratch, não a árvore",
+        "sub-2|a mutação é a CONSTRUÇÃO do fixture",
+      ],
+      ...over,
+    })
+
+  it("o CONTROLE: toda suíte da matriz declara a sua relação com a régua", () => {
+    const r = run(comFora())
+    expect(r.violations).toEqual([])
+  })
+
+  it("uma suíte que NÃO está em nenhuma das duas listas é violação", () => {
+    const r = run(comFora({ foraLista: ["sub-1|o alvo é a cópia do fixture"] }))
+    const v = r.violations.find((x) => x.includes("'sub-2'") && x.includes("NÃO declara"))
+    expect(v).toBeDefined()
+    expect(v).toContain("FORA_DA_REGUA")
+    // O CONTROLE na direção oposta: a sub-2 declarada não é acusada.
+    expect(r.violations.some((x) => x.includes("'sub-1'"))).toBe(false)
+  })
+
+  it("uma linha de FORA_DA_REGUA SEM o motivo é violação (a lista sem o porquê)", () => {
+    const r = run(comFora({ foraLista: ["sub-1", "sub-2|a mutação é a CONSTRUÇÃO do fixture"] }))
+    expect(r.violations.some((v) => v.includes("'sub-1'") && v.includes("MOTIVO"))).toBe(true)
+  })
+
+  it("o mesmo id nas DUAS listas é violação (as listas dizem coisas opostas)", () => {
+    const r = run(comFora({ provaLista: ["sub-0", "sub-1"] }))
+    expect(
+      r.violations.some((v) => v.includes("'sub-1'") && v.includes("as duas listas dizem")),
+    ).toBe(true)
+  })
+
+  it("uma suíte declarada FORA que JÁ chama a régua é violação (a lista envelheceu)", () => {
+    const r = run(comFora({ provaSuites: [0, 1] }))
+    expect(r.violations.some((v) => v.includes("'sub-1'") && v.includes("envelheceu"))).toBe(true)
+  })
+
+  it("sem o bloco no master a relação NÃO é julgada (é o master anterior às listas)", () => {
+    const r = run(makeFixture({ count: 3, provaSuites: [0], provaLista: ["sub-0"] }))
+    expect(r.violations).toEqual([])
+  })
+
+  it("quem chama o CAMINHO DECLARADO sem estar em SEM_MARCADOR é violação", () => {
+    const r = run(makeFixture({ count: 3, semMarcadorSuites: [1] }))
+    expect(
+      r.violations.some(
+        (v) => v.includes("scripts/test-mutation-sub-1.sh") && v.includes("SEM_MARCADOR"),
+      ),
+    ).toBe(true)
+  })
+
+  it("SEM_MARCADOR declara o caminho com o motivo — e nos DOIS sentidos", () => {
+    const linha = `scripts/test-mutation-sub-1.sh|${MOTIVO_SEM_MARCADOR}`
+    const ok = run(makeFixture({ count: 3, semMarcadorSuites: [1], semMarcadorLista: [linha] }))
+    expect(ok.violations).toEqual([])
+
+    const semMotivo = run(
+      makeFixture({
+        count: 3,
+        semMarcadorSuites: [1],
+        semMarcadorLista: ["scripts/test-mutation-sub-1.sh"],
+      }),
+    )
+    expect(
+      semMotivo.violations.some((v) => v.includes("SEM_MARCADOR") && v.includes("MOTIVO")),
+    ).toBe(true)
+
+    const orfa = run(
+      makeFixture({
+        count: 3,
+        semMarcadorLista: [`scripts/test-mutation-sub-1.sh|${MOTIVO_SEM_MARCADOR}`],
+      }),
+    )
+    expect(orfa.violations.some((v) => v.includes("NÃO chama"))).toBe(true)
+  })
+
+  it("o MOTIVO declarado tem de estar no FONTE da suíte — a lista não justifica sozinha", () => {
+    // A dispensa da prova do marcador é justificada ONDE ela acontece: o texto
+    // declarado no master é o mesmo que a suíte carrega (entre aspas, é ele que a
+    // chamada passa). Uma declaração que o fonte não carrega é uma razão que
+    // envelhece num lugar onde nada acontece.
+    const r = run(
+      makeFixture({
+        count: 3,
+        semMarcadorSuites: [1],
+        semMarcadorLista: ["scripts/test-mutation-sub-1.sh|o payload é uma remoção"],
+      }),
+    )
+    expect(
+      r.violations.some(
+        (v) => v.includes("scripts/test-mutation-sub-1.sh") && v.includes("NÃO carrega"),
+      ),
+    ).toBe(true)
+    // O CONTROLE: com o motivo que a suíte carrega, nada é acusado.
+    const ok = run(
+      makeFixture({
+        count: 3,
+        semMarcadorSuites: [1],
+        semMarcadorLista: [`scripts/test-mutation-sub-1.sh|${MOTIVO_SEM_MARCADOR}`],
+      }),
+    )
+    expect(ok.violations).toEqual([])
+  })
+
+  it("quem CITA o caminho declarado num comentário não é tomado por quem o chama", () => {
+    // O próprio master CITA `mutacao_aplicar_sem_marcador` na prosa do bloco: a
+    // conferência é da CHAMADA, não da menção.
+    const dir = makeFixture({ count: 3 })
+    try {
+      const p = join(dir, "scripts/test-mutation-sub-0.sh")
+      writeFileSync(
+        p,
+        `${readFileSync(p, "utf8")}\n# o caminho mutacao_aplicar_sem_marcador é declarado no master\n`,
+      )
+      expect(run(dir).violations).toEqual([])
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

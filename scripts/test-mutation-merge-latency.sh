@@ -64,6 +64,11 @@ mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
   exit 2
 }
 
+# A PROVA-DE-APLICAÇÃO — a régua ÚNICA de "a mutação APLICOU" (o gabarito dela é
+# `scripts/test-mutation-mutacao-prova.sh`).
+# shellcheck source=scripts/mutacao-prova.sh
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
@@ -228,23 +233,13 @@ run_suite() {
   return "$code"
 }
 
-# mutar <alvo> <troca>: substituição LITERAL, com o arquivo relido para provar
-# que aplicou e que a sintaxe continua válida.
-mutar() {
-  local alvo="$1" troca="$2"
-  python3 - "$GUARD" "$alvo" "$troca" <<'PY'
-import sys
-path, alvo, troca = sys.argv[1], sys.argv[2], sys.argv[3]
-src = open(path, encoding="utf-8").read()
-if src.count(alvo) != 1:
-    print(f"MUTACAO NAO-CIRURGICA: '{alvo}' aparece {src.count(alvo)}x (esperado 1)", file=sys.stderr)
-    sys.exit(1)
-open(path, "w", encoding="utf-8").write(src.replace(alvo, troca))
-PY
-  if ! node --check "$GUARD" >/dev/null 2>&1; then
-    fail "MUTAÇÃO NÃO-CIRÚRGICA: o arquivo mutado não é válido sintaticamente."
-    exit 1
-  fi
+# mutar <alvo> <troca>: a CIRURGIA, o MARCADOR e o CONTEÚDO são da régua única
+# (`mutacao_aplicar`), e a sintaxe continua sendo conferida aqui.
+mutar() { # <alvo-texto> <troca-texto>
+  local antes
+  antes="$(cksum "$GUARD" | cut -d' ' -f1)"
+  mutacao_aplicar "$GUARD" "$1" "$2" "$antes"
+  mutacao_sintaxe_node "$GUARD"
 }
 
 echo ""

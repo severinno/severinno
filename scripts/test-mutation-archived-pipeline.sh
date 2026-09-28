@@ -72,6 +72,15 @@ mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
   exit 2
 }
 
+# ── A PROVA-DE-APLICAÇÃO: a régua ÚNICA (`scripts/mutacao-prova.sh`) ────────
+# A troca NÃO é aplicada por uma cópia privada da cirurgia: ela é da régua única,
+# que traz juntas a CIRURGIA (o alvo casa uma vez), o MARCADOR (`MUTACAO` no
+# payload, a prova de que a escrita entrou) e o CONTEÚDO (o checksum mudou). Uma
+# cópia privada que sumisse não deixava rastro — a suíte seguiria verde medindo o
+# alvo ÍNTEGRO. Quem chama a régua é declarado em `PROVA_DE_APLICACAO` (master).
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
@@ -118,6 +127,10 @@ trap restore EXIT
 
 cp "$GUARD" "$BACKUP"
 CHECKSUM_ORIGINAL="$(sha256sum "$GUARD" | awk '{print $1}')"
+# O checksum da régua (`cksum`) do arquivo ÍNTEGRO: é ele que `mutacao_aplicar`
+# usa para exigir que a ESCRITA mudou o conteúdo (a restauração por backup volta
+# a este valor entre as metades).
+GUARD_SUM="$(cksum "$GUARD" | cut -d' ' -f1)"
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
 #
@@ -248,24 +261,13 @@ veredito() {
   return "$rc"
 }
 
-# Injeta uma mutação CIRÚRGICA: o alvo tem de existir UMA vez (0 ou 2+ = recusa
-# — mutar o arquivo errado não mede nada) e o arquivo mutado tem de continuar
-# com sintaxe válida.
+# Injeta uma mutação pela RÉGUA ÚNICA: `mutacao_aplicar` cobra a CIRURGIA (o alvo
+# casa UMA vez — 0 ou 2+ é mutação não-cirúrgica e a suíte PARA em vez de medir
+# outra coisa), o MARCADOR (o payload carrega `MUTACAO`) e o CONTEÚDO (o checksum
+# mudou); `mutacao_sintaxe_node` cobra que o alvo mutado continue parseando.
 mutar() {
-  local alvo="$1" novo="$2"
-  GUARD_ALVO="$alvo" GUARD_NOVO="$novo" python3 - "$GUARD" <<'PY'
-import os, sys, pathlib
-p = pathlib.Path(sys.argv[1])
-src = p.read_text()
-alvo = os.environ["GUARD_ALVO"]
-novo = os.environ["GUARD_NOVO"]
-n = src.count(alvo)
-if n != 1:
-    print(f"mutacao nao-cirurgica: {n} ocorrencia(s) de {alvo!r}", file=sys.stderr)
-    sys.exit(3)
-p.write_text(src.replace(alvo, novo))
-PY
-  node --check "$GUARD" >/dev/null || { echo "mutacao deixou sintaxe invalida" >&2; return 4; }
+  mutacao_aplicar "$GUARD" "$1" "$2" "$GUARD_SUM"
+  mutacao_sintaxe_node "$GUARD"
 }
 
 exige() {
@@ -314,7 +316,7 @@ exige "$( [ "$rc_real" = "0" ] && echo 1 || echo 0 )" "o repositório REAL sai 0
 
 # M1 — a EXIGÊNCIA de declarar. Sem ela, o passo sem `when:` passa em silêncio.
 header "M1: passo sem \`when:\` deixa de ser exigido (a classe fica CEGA)"
-mutar '      } else if (whenEfetivo === undefined) {' '      } else if (false) {'
+mutar '      } else if (whenEfetivo === undefined) {' '      } else if (false) { // MUTACAO M1'
 veredito "$FIXTURE" || true
 exige "$(exige_nao_contem 'NÃO declara `when:`')" "CEGO: o passo sem \`when:\` não é mais acusado"
 exige "$(exige_contem '`pipeline.estreita`')" "cirúrgico: a condição divergente segue vermelha"
@@ -325,7 +327,7 @@ cp "$BACKUP" "$GUARD"
 # em main.
 header "M2: o \`if:\` do job deixa de estreitar (a condição da forja fica LARGA)"
 mutar '  const clausulas = []
-  for (const c of base) {' '  return { clausulas: base, indecidivel: null }
+  for (const c of base) {' '  return { clausulas: base, indecidivel: null } // MUTACAO M2
   // eslint-disable-next-line no-unreachable
   const clausulas = []
   for (const c of base) {'
@@ -337,7 +339,7 @@ cp "$BACKUP" "$GUARD"
 # M3 — a contraparte por marcador: a EXISTÊNCIA do alvo. Sem ela, o typo no
 # caminho vira um passo que nunca é julgado — e o guard diz "verde".
 header "M3: o marcador deixa de conferir se o ARQUIVO existe"
-mutar '      if (!existsSync(join(root, arquivo))) {' '      if (false) {'
+mutar '      if (!existsSync(join(root, arquivo))) {' '      if (false) { // MUTACAO M3'
 veredito "$FIXTURE" || true
 exige "$(exige_nao_contem 'aponta para um arquivo que NÃO existe')" "CEGO: o arquivo tipado não é mais acusado"
 exige "$(exige_contem '`pipeline.sem-when`')" "cirúrgico: o passo sem \`when:\` segue vermelho"
@@ -346,7 +348,7 @@ cp "$BACKUP" "$GUARD"
 # M4 — o marcador contra o TRABALHO do alvo. Sem ele, um marcador que aponta
 # para o job que faz outra coisa (e tem a mesma condição) passa como provado.
 header "M4: o marcador deixa de conferir se o job roda o MESMO trabalho"
-mutar '        if (comum.length === 0) {' '        if (false) {'
+mutar '        if (comum.length === 0) {' '        if (false) { // MUTACAO M4'
 veredito "$FIXTURE" || true
 exige "$(exige_nao_contem 'não roda nenhum comando deste passo')" "CEGO: o marcador para o job errado passa"
 exige "$(exige_contem '`pipeline.sem-when`')" "cirúrgico: o passo sem \`when:\` segue vermelho"
@@ -358,7 +360,7 @@ header "M5: o retrato ilegível deixa de ser NÃO JULGÁVEL (vira verde)"
 mutar '  if (!parsed.ok) {
     return { passos: [], violacoes: [], pipelines: [], naoJulgavel: `${rel}: ${parsed.motivo}` }
   }' '  if (!parsed.ok) {
-    return { passos: [], violacoes: [], pipelines: [], naoJulgavel: null }
+    return { passos: [], violacoes: [], pipelines: [], naoJulgavel: null } // MUTACAO M5
   }'
 veredito "$RUIM" || rc_m5=$?
 exige "$(exige_nao_contem 'YAML INVALIDO')" "o motivo do 2 não aparece mais (a classe cegou)"
@@ -369,7 +371,7 @@ exige "$( [ "$rc_voltou" = "2" ] && echo 1 || echo 0 )" "CONTROLE: restaurado, o
 # M6 — o DESEMPATE do casamento ambíguo. Sem ele, o guard escolhe um job
 # qualquer e o retrato passa provado por acidente.
 header "M6: o casamento ambíguo deixa de exigir o desempate"
-mutar '    if (casados.length > 1) {' '    if (false) {'
+mutar '    if (casados.length > 1) {' '    if (false) { // MUTACAO M6'
 veredito "$FIXTURE" || true
 exige "$(exige_nao_contem 'ambíguo: declare a contraparte com `# espelha:`')" "CEGO: o comando em dois jobs passa sem desempate"
 exige "$(exige_contem '`pipeline.sem-when`')" "cirúrgico: o passo sem \`when:\` segue vermelho"
