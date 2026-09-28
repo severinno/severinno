@@ -120,13 +120,11 @@ import {
   FORM_SECTION,
   LATEST_FILE,
   MASTER_DOS_SUBTESTS,
-  commitQueCarrega,
   comMetadesDaMatriz,
   fonteDaForma,
   mapaDoMaster,
   metadesDaMatriz,
   mutationWhatItAdded,
-  origemDoRegistro,
   tentativaNaoMediu,
 } from "./bench-families.mjs"
 

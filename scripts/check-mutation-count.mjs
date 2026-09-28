@@ -742,7 +742,7 @@ export function analisaOrdinais(root, entries) {
     const linhas = texto.split("\n")
     let norm = ""
     const inicios = []
-    for (const [i, l] of linhas.entries()) {
+    for (const [, l] of linhas.entries()) {
       inicios.push(norm.length)
       norm += `${l}\n`
     }
@@ -1303,7 +1303,7 @@ export function analisaProvaDeAplicacao(root, masterSrc, entries) {
       comProva.push({ id, script })
       if (!src.includes(PROVA_LIB)) {
         violations.push(
-          `${script}: chama \`mutacao_aplicar\` e NÃO sourceia ${PROVA_LIB} — a régua tem de estar carregada na suíte (sem o \`. \"$SCRIPT_DIR/${PROVA_LIB}\"\` a chamada sai com 'command not found' e o erro não é o da prova)`,
+          `${script}: chama \`mutacao_aplicar\` e NÃO sourceia ${PROVA_LIB} — a régua tem de estar carregada na suíte (sem o \`. "$SCRIPT_DIR/${PROVA_LIB}"\` a chamada sai com 'command not found' e o erro não é o da prova)`,
         )
       }
     }
@@ -1327,7 +1327,7 @@ export function analisaProvaDeAplicacao(root, masterSrc, entries) {
     }
   } else if (derivadas.length > 0) {
     violations.push(
-      `test-mutation-guards.sh: não DECLARA as suítes da prova-de-aplicação (${derivadas.length} chamam \`mutacao_aplicar\`): o bloco \`PROVA_DE_APLICACAO=( \"id\" ... )\` é a lista viva — sem ele, tirar a chamada de uma suíte não deixa rastro`,
+      `test-mutation-guards.sh: não DECLARA as suítes da prova-de-aplicação (${derivadas.length} chamam \`mutacao_aplicar\`): o bloco \`PROVA_DE_APLICACAO=( "id" ... )\` é a lista viva — sem ele, tirar a chamada de uma suíte não deixa rastro`,
     )
   }
 

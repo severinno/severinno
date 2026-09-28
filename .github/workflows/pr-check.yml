@@ -507,6 +507,22 @@ jobs:
       # terminador sai 0 do bash e o corpo truncado rodaria outra coisa) e todos
       # os scripts de shell versionados (`*.sh`/`*.bash` + hooks do `.husky/`, a
       # mesma lista do check:pipefail-sigpipe), que morrem no PASSO que os executa.
+      #
+      # O `bun install --frozen-lockfile` é CONDIÇÃO do veredito (não um item do
+      # checklist): o guard deriva os parsers que precisa de `node_modules`
+      # (`js-yaml`, medido em 28/09/2026 — num runner recém-provisionado, sem o
+      # leftover do pacote antigo, a saída é exit 2 "YAML NAO VALIDADO — rode
+      # `bun install`" em TODOS os workflows: não é vermelho de código, é o
+      # fail-closed declarado do guard). Instalar antes é o que o próprio
+      # remédio do guard pede — no PAR CANÔNICO dos irmãos (setup-bun-ci +
+      # install), que é o que o check-job-deps cobra.
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
       - name: Workflow run syntax (bash -n)
         run: node scripts/check-workflow-run-syntax.mjs
 
@@ -1145,12 +1161,23 @@ jobs:
       # O PREFLIGHT do bun: parte das suítes da matriz invoca o binário real, e
       # um runner com o bun fora do PATH do daemon produziria um vermelho cuja
       # causa real (`spawnSync bun ENOENT` → prova 'unavailable') só apareceria
-      # enterrada no log do sub-test. É o único job da família SEM o
-      # `setup-bun-ci.sh` (node-puro por desenho) — por isso o preflight é
-      # OBRIGATÓRIO aqui: ele falha cedo com a razão nomeada, e a disciplina
-      # fail-closed fica intacta (nada é stubado, nada é pulado). Ver issue #32.
+      # enterrada no log do sub-test. O preflight falha cedo com a razão nomeada,
+      # e a disciplina fail-closed fica intacta (nada é stubado, nada é pulado).
+      # Ver issue #32.
       - name: Preflight — bun no PATH
         run: bash scripts/preflight-bun-path.sh
+
+      # MEDIDO em 28/09/2026 num runner recém-provisionado (a VPS reprovisionada):
+      # o job é node-puro de VEREDITO, mas as FIXTURES das suítes não carregam
+      # sem `node_modules` (parsers das suítes leitoras) — 17 sub-tests da matriz
+      # saem vermelhos por 'fixture inválida' ao mesmo tempo. O par canônico
+      # (setup-bun-ci + install) é condição da medição, não um item do checklist.
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
 
       - name: Mutation tests — todos os guards devem FALHAR nas mutações
         run: bash scripts/test-mutation-guards.sh

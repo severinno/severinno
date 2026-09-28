@@ -33,7 +33,7 @@
       "stack-per-commit": {
         "ms": 86000,
         "provenance": "declarado (PISO: medido na pilha de 16 commits do #25 — o custo CRESCE com o tamanho da pilha, então o declarado é o piso do que foi medido, não o do pior caso)",
-        "source": "medido neste host (Linux, 2026-09-21, uma execução não-warm): a cadeia de 16 commits entre a base da pilha e o topo custou 86s — ≈5,4s por commit, e o custo de um commit é o worktree + as três invariantes de árvore (~0,3s) + o `vitest` dos testes que o DIFF dele alcança (as maiores rodadas, de 16 arquivos, custam ~15s). A pilha REAL do PR #25 tem 131 commits e NÃO foi medida aqui: 131 × 5,4s ≈ 12 min, e o teto DECLARADO do job é 150 commits (acima dele o veredito é INDETERMINADO, nunca verde). O limite fica nomeado: o próximo ato mede a pilha grande e re-declara.",
+        "source": "medido neste host (Linux, 2026-09-21, uma execução não-warm): a cadeia de 16 commits entre a base da pilha e o topo custou 86s — ≈5,4s por commit, e o custo de um commit é o worktree + as três invariantes de árvore (~0,3s) + o `vitest` dos testes que o DIFF dele alcança (as maiores rodadas, de 16 arquivos, custam ~15s). A pilha REAL do PR #25 tem 131 commits e NÃO foi medida aqui: 131 × 5,4s ≈ 12 min, e o teto DECLARADO do job é 250 commits desde 28/09/2026 (a pilha REAL da feature mediu 228 no job do CI com exit 2 nomeando o número; a promessa de re-declaração fechou: 228 × 5,4s ≈ 21 min, e o teto subiu COM a medição que o justifica — acima dele o veredito é INDETERMINADO, nunca verde).",
         "date": "2026-09-21"
       },
       "pre-commit-in-runner-proof": {
@@ -59,7 +59,7 @@
       "stack-per-commit": {
         "ms": 86000,
         "provenance": "declarado (PISO: medido na pilha de 16 commits do #25 — o custo CRESCE com o tamanho da pilha, então o declarado é o piso do que foi medido, não o do pior caso)",
-        "source": "medido neste host (Linux, 2026-09-21, uma execução não-warm): a cadeia de 16 commits entre a base da pilha e o topo custou 86s — ≈5,4s por commit, e o custo de um commit é o worktree + as três invariantes de árvore (~0,3s) + o `vitest` dos testes que o DIFF dele alcança (as maiores rodadas, de 16 arquivos, custam ~15s). A pilha REAL do PR #25 tem 131 commits e NÃO foi medida aqui: 131 × 5,4s ≈ 12 min, e o teto DECLARADO do job é 150 commits (acima dele o veredito é INDETERMINADO, nunca verde). O limite fica nomeado: o próximo ato mede a pilha grande e re-declara.",
+        "source": "medido neste host (Linux, 2026-09-21, uma execução não-warm): a cadeia de 16 commits entre a base da pilha e o topo custou 86s — ≈5,4s por commit, e o custo de um commit é o worktree + as três invariantes de árvore (~0,3s) + o `vitest` dos testes que o DIFF dele alcança (as maiores rodadas, de 16 arquivos, custam ~15s). A pilha REAL do PR #25 tem 131 commits e NÃO foi medida aqui: 131 × 5,4s ≈ 12 min, e o teto DECLARADO do job é 250 commits desde 28/09/2026 (a pilha REAL da feature mediu 228 no job do CI com exit 2 nomeando o número; a promessa de re-declaração fechou: 228 × 5,4s ≈ 21 min, e o teto subiu COM a medição que o justifica — acima dele o veredito é INDETERMINADO, nunca verde).",
         "date": "2026-09-21"
       },
       "pre-commit-in-runner-proof": {

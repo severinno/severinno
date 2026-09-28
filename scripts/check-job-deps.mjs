@@ -255,13 +255,12 @@ export const JOB_DEPS_ALLOWLIST = [
     reason:
       "os tres comandos julgam YAML (`check-registry-source`, `check-pipefail-sigpipe`, `declared-debt-issue`): sem `js-yaml` eles saem 2 e nenhuma decisao de escopo e publicada — o job depende do node_modules do runner",
   },
-  {
-    job: ".github/workflows/pr-check.yml::workflow-run-syntax",
-    addedAt: "2026-09-17",
-    semDeps: "falha-fechado",
-    reason:
-      "o gate de sintaxe e o publicador do remendo leem YAML, e o sub-test de mutacao roda `vitest` (binario do node_modules): sem as dependencias o job nao prova nem publica nada",
-  },
+  // workflow-run-syntax SAIU desta lista em 28/09/2026: o job ganhou o PAR
+  // CANONICO (setup-bun-ci + `bun install --frozen-lockfile`) — a isencao
+  // virou SEM OBJETO (violacao, medido num runner recem-provisionado onde o
+  // exit 2 "YAML NAO VALIDADO" de todos os workflows era a conta do
+  // `node_modules` faltando, nao de codigo) e a isencao que sobra mente sobre
+  // o presente.
   {
     job: ".github/workflows/utf8-check.yml::utf8-check",
     addedAt: "2026-09-17",

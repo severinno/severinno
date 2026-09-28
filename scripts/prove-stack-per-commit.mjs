@@ -122,7 +122,7 @@
  *      novo que a árvore). O que isso NÃO cobre: um gate que existe mas depende
  *      de um módulo que o commit ainda não tem continua vermelho (a ausência é
  *      medida no ALVO do comando, não no que ele importa);
- *   4. acima do teto (`--max-commits`, default 150) o veredito é INDETERMINADO:
+ *   4. acima do teto (`--max-commits`, default 250) o veredito é INDETERMINADO:
  *      o teto existe para o job não virar uma medição sem fim, e estourá-lo
  *      nunca vale verde;
  *   5. as medições são SEQUENCIAIS (determinismo): o custo é a soma, e o
@@ -178,8 +178,13 @@ export const EXIT = {
  * que o job mede. Acima dele o veredito é INDETERMINADO (exit 2) e o relatório
  * nomeia o número — uma pilha que não cabe nunca sai verde por não ter sido
  * olhada.
+ *
+ * 250 (28/09/2026): a pilha REAL da feature mediu 228 commits no job do CI
+ * (`exit 2` nomeando o número) — com ~5,4s/commit medidos, a medição inteira
+ * cabe no runtime do runner (≈21 min). O teto segue o repositório: pilhas
+ * maiores re-declaram o número com a medição, nunca de olhos fechados.
  */
-export const MAX_COMMITS_PADRAO = 150
+export const MAX_COMMITS_PADRAO = 250
 
 /** O teto de tempo de CADA comando medido (ms). Timeout = indeterminado. */
 export const TIMEOUT_GATE_MS = 300000
