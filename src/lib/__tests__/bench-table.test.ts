@@ -130,6 +130,38 @@ describe("estadoDaMatriz — a leitura do registro (a única entrada)", () => {
     expect(paragrafoCusto(e)).toContain("`quebrada`")
   })
 
+  it("a forma com `infra` NÃO é vermelha: ela não mediu, e a marca é 🚧", () => {
+    // O exit 2 é o "não medi" que a suíte declara no cabeçalho dela — não é uma
+    // reprovação, e por isso NÃO entra nas vermelhas nem na lista das re-medições.
+    const e = estadoDaMatriz(
+      registro({
+        forms: [
+          { role: "ok", ms: 100, metades: 1, exit: 0 },
+          { role: "nao-medido", ms: 80, metades: 1, exit: 2, infra: true, tentativas: 2 },
+        ],
+        wallMs: 200,
+      }),
+    )
+    expect(e!.verdes).toBe(1)
+    expect(e!.vermelhas).toEqual([])
+    expect(e!.naoMedidas.map((f) => f.role)).toEqual(["nao-medido"])
+    // Re-medida, mas de um vermelho NÃO houve medição: ela não é "repetiu".
+    expect(e!.remedidas).toEqual([])
+
+    const tabela = tabelaSubTests(e)!
+    // A marca 🚧 fica AO LADO do tempo (a linha não é verde nem vermelha).
+    expect(tabela).toContain("0.1s 🚧")
+    expect(tabela).toContain("NÃO MEDIDO(S)")
+    // Na tabela a frase é minúscula no meio do período ("isto não é defeito…").
+    expect(tabela).toContain("não é defeito da árvore")
+    expect(tabela).toContain("**🚧** é NÃO MEDIDO")
+
+    const p = paragrafoCusto(e)!
+    expect(p).toContain("`nao-medido`")
+    expect(p).toContain("NÃO MEDIRAM")
+    expect(p).toContain("NÃO é defeito da árvore")
+  })
+
   it("a procedência é o commit de ORIGEM do ato, e a data sai por extenso", () => {
     const e = estadoDaMatriz(registro({ commit: "5ed62379" })) as {
       procedencia: { commit: string; dia: string }

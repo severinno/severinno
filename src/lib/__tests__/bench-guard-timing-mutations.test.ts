@@ -55,6 +55,7 @@ import {
   MASTER_DOS_SUBTESTS,
   mapaDoMaster,
   metadesDaMatriz,
+  origemDoRegistro,
 } from "../../../scripts/bench-families.mjs"
 import { comparaComOAto, run as runCountGuard } from "../../../scripts/check-mutation-count.mjs"
 import { benchIndex, instrumentKey } from "../../../scripts/merge-latency.mjs"
@@ -78,6 +79,12 @@ type Subtest = {
   ms1?: number
   ms2?: number | null
   flake?: boolean
+  /**
+   * A classe INFRA: NENHUMA tentativa mediu (exit 2 declarado pela suíte,
+   * 126/127). O fixture publica o mesmo que o master real, senão o teste mediria
+   * um master que não existe.
+   */
+  infra?: boolean
 }
 
 /**
@@ -99,6 +106,8 @@ type FormaMedida = {
   ms1: number
   ms2: number | null
   flake: boolean
+  /** A suíte NÃO mediu (exit 2/126/127): não é verde nem vermelha. */
+  infra: boolean
   runs: { ms: number; exit: number | null; ok: boolean }[]
 }
 type Deltas = {
@@ -127,6 +136,8 @@ type Medicao = {
   tentativas: number
   /** Os ids das formas que se contradisseram entre duas medições da MESMA árvore. */
   flakes: string[]
+  /** Os ids das formas que NÃO mediram (exit 2/126/127) — a classe INFRA. */
+  infra: string[]
 }
 
 /** A mesma coisa para a comparação (`forms` sai como `object[]` na JSDoc). */
@@ -166,6 +177,9 @@ function masterFalso(subtests: Subtest[], { falha = null as string | null } = {}
     passed: subtests.filter((s) => s.exit === 0 && s.flake !== true).length,
     failed: subtests.filter((s) => s.exit !== 0).map((s) => s.id),
     flakes: subtests.filter((s) => s.flake === true).map((s) => s.id),
+    // A INFRA é a classe que NÃO mediu — publicada à parte dos dois lados (nem
+    // passou nem falhou), como faz o master real.
+    infra: subtests.filter((s) => s.infra === true).map((s) => s.id),
     tentativas: subtests.reduce((acc, s) => acc + (s.tentativas ?? 1), 0),
     metades: subtests.reduce((acc, s) => acc + s.metades, 0),
     subtestsMs,
@@ -260,9 +274,13 @@ describe("bench-guard-timing — a régua da família `mutations`", () => {
     expect(fonte).toContain("roda_tentativa")
     expect(fonte).toContain("RE-MEDINDO uma vez")
     // O registro carrega as DUAS tentativas e a classe, não só o veredito.
-    for (const campo of ["tentativas", "exit1", "exit2", "ms1", "ms2", "flake"])
+    for (const campo of ["tentativas", "exit1", "exit2", "ms1", "ms2", "flake", "infra"])
       expect(fonte).toContain(campo)
     expect(fonte).toContain("FLAKY_LIST")
+    // A INFRA é a TERCEIRA classe: a régua `tentativa_mediu` (exit 2/126/127 não
+    // mede) e o bucket próprio — a não-medição não vira "o vermelho repetiu".
+    expect(fonte).toContain("INFRA_LIST")
+    expect(fonte).toContain("tentativa_mediu")
     // O flake é INDETERMINADO (2) e nunca verde nem reprovado: o 1 é a
     // regressão e o 3 é uso inválido (o `exit 2` que era do uso virou o 3).
     expect(fonte).toContain("exit 2")
@@ -371,6 +389,54 @@ const REPETIDO: Subtest = {
   ms2: 2_600,
   flake: false,
 }
+/**
+ * A classe INFRA: as DUAS tentativas saíram com exit 2 — o "não mediu" que a
+ * suíte declara no cabeçalho dela (git/node/bancada ausentes, fail-closed). Não
+ * é um vermelho (não houve medição que reprovasse) nem um flake (as duas
+ * CONCORDAM: nenhuma mediu).
+ */
+const NAO_MEDIDO: Subtest = {
+  id: "nao-medido",
+  script: "scripts/test-mutation-nao-medido.sh",
+  ms: 4_000,
+  exit: 2,
+  metades: 3,
+  tentativas: 2,
+  exit1: 2,
+  exit2: 2,
+  ms1: 1_700,
+  ms2: 2_300,
+  flake: false,
+  infra: true,
+}
+/** A 1ª NÃO mediu (exit 2) e a 2ª mediu VERMELHO: o veredito é o da que mediu. */
+const MEDIDA_DEPOIS: Subtest = {
+  id: "medida-depois",
+  script: "scripts/test-mutation-medida-depois.sh",
+  ms: 5_500,
+  exit: 1,
+  metades: 2,
+  tentativas: 2,
+  exit1: 2,
+  exit2: 1,
+  ms1: 1_900,
+  ms2: 3_600,
+  flake: false,
+}
+/** A 1ª NÃO mediu (exit 2) e a 2ª PASSOU: VERDE, e NÃO um flake (sem contradição). */
+const MEDIDA_DEPOIS_OK: Subtest = {
+  id: "medida-depois-ok",
+  script: "scripts/test-mutation-medida-depois-ok.sh",
+  ms: 3_200,
+  exit: 0,
+  metades: 2,
+  tentativas: 2,
+  exit1: 2,
+  exit2: 0,
+  ms1: 2_100,
+  ms2: 1_100,
+  flake: false,
+}
 
 describe("bench-guard-timing — a re-medição do vermelho (as tentativas no registro)", () => {
   it("o FLAKE sai com a classe DITA: `flake` + as duas tentativas, nunca só o exit", () => {
@@ -430,6 +496,78 @@ describe("bench-guard-timing — a re-medição do vermelho (as tentativas no re
     // a frase acrescenta o que o exit sozinho não diz: o vermelho REPETIU.
     expect(r.violations.join(" ")).toContain("repetido (exit 1)")
     expect(r.whatItAdded.join(" ")).toContain("↺ 1 forma(s) RE-MEDIDA(s): repetido")
+  })
+
+  it("a INFRA sai com a classe DITA: `infra` + as duas tentativas, NUNCA como vermelho", () => {
+    const r = comFalso([...TRES, NAO_MEDIDO], { falha: "2" })
+
+    const forma = r.forms.find((f) => f.role === "nao-medido")!
+    expect(forma.infra).toBe(true)
+    expect(forma.tentativas).toBe(2)
+    expect(forma.exit1).toBe(2)
+    expect(forma.exit2).toBe(2)
+    // O `exit` publicado é o da última (2) e `ok: false`, MAS a classe vai em
+    // `infra`: é ela que impede a leitura "não passou", porque não houve medição
+    // que reprovasse.
+    expect(forma.exit).toBe(2)
+    expect(forma.ok).toBe(false)
+    expect(forma.runs.map((t) => t.exit)).toEqual([2, 2])
+
+    // A família NOMEIA a não-medição — e NÃO a trata como sub-test que não passou.
+    expect(r.infra).toEqual(["nao-medido"])
+    expect(r.flakes).toEqual([])
+    // A violação "sub-test(s) que NÃO passaram" NÃO existe: o exit 2 é a AUSÊNCIA
+    // de medição, e acusar a árvore por ela seria mandar consertar o que ninguém
+    // mediu (era este o defeito: afirmar "o vermelho REPETIU" sobre um exit 2).
+    expect(r.violations).toEqual([])
+    const frases = r.whatItAdded.join(" ")
+    expect(frases).toContain("🚧 1 forma(s) NÃO MEDIRAM (INFRA): nao-medido")
+    // Nem flake nem "RE-MEDIDA": não houve vermelho para repetir.
+    expect(frases).not.toContain("🌀")
+    expect(frases).not.toContain("RE-MEDIDA")
+  })
+
+  it("a RE-MEDIDA com a 2ª tentativa NÃO MEDINDO não é 'o vermelho repetiu'", () => {
+    // A 1ª não mediu (exit 2) e a 2ª mediu VERMELHO: o vermelho é o da tentativa
+    // que MEDIU, e a prosa não pode dizer que ele "repetiu" — não houve uma 2ª
+    // medição que o confirmasse.
+    const r = comFalso([...TRES, MEDIDA_DEPOIS], { falha: "1" })
+
+    const forma = r.forms.find((f) => f.role === "medida-depois")!
+    expect(forma.infra).toBe(false)
+    expect(forma.flake).toBe(false)
+    expect(forma.ok).toBe(false)
+    expect(forma.exit).toBe(1)
+    expect(forma.runs.map((t) => t.exit)).toEqual([2, 1])
+
+    expect(r.infra).toEqual([])
+    // Ela É um vermelho (a tentativa que mediu reprovou) — por isso entra em
+    // `violations`, ao contrário da INFRA pura.
+    expect(r.violations.join(" ")).toContain("medida-depois (exit 1)")
+    const frases = r.whatItAdded.join(" ")
+    expect(frases).toContain("↺ 1 forma(s) RE-MEDIDA(s) com UMA tentativa que NÃO MEDIU")
+    expect(frases).not.toContain("o vermelho REPETIU")
+  })
+
+  it("a 1ª que NÃO mediu e a 2ª VERDE é VERDE — NÃO é flake (não houve contradição)", () => {
+    // O flake exige as DUAS tentativas MEDINDO: uma 1ª que não mediu não afirmou
+    // nada, então o verde da 2ª é o veredito — e o `flake` NÃO acende.
+    const r = comFalso([...TRES, MEDIDA_DEPOIS_OK], { falha: null })
+
+    const forma = r.forms.find((f) => f.role === "medida-depois-ok")!
+    expect(forma.infra).toBe(false)
+    expect(forma.flake).toBe(false)
+    expect(forma.ok).toBe(true)
+    expect(forma.exit).toBe(0)
+    expect(forma.tentativas).toBe(2)
+    expect(forma.runs.map((t) => t.exit)).toEqual([2, 0])
+
+    expect(r.infra).toEqual([])
+    expect(r.flakes).toEqual([])
+    expect(r.violations).toEqual([])
+    const frases = r.whatItAdded.join(" ")
+    expect(frases).not.toContain("🌀")
+    expect(frases).not.toContain("🚧")
   })
 
   it("um master SEM os campos (de antes da régua) vale 1 tentativa — nunca `undefined`", () => {
@@ -574,7 +712,14 @@ describe("bench-guard-timing — o contrato da família `mutations`", () => {
 
 describe("bench-guard-timing — o sub-test novo e a comparação", () => {
   const familiaMedida = (
-    forms: { role: string; label: string; ms: number; ok: boolean; flake?: boolean }[],
+    forms: {
+      role: string
+      label: string
+      ms: number
+      ok: boolean
+      flake?: boolean
+      infra?: boolean
+    }[],
   ) => ({
     measured: true,
     reason: null,
@@ -583,9 +728,10 @@ describe("bench-guard-timing — o sub-test novo e a comparação", () => {
     forms: forms.map((f) => ({
       ...f,
       flake: f.flake === true,
+      infra: f.infra === true,
       tentativas: f.flake ? 2 : 1,
       metades: 3,
-      exit: f.ok ? 0 : 1,
+      exit: f.ok ? 0 : f.infra ? 2 : 1,
       runs: [],
     })),
     deltas: {
@@ -681,6 +827,24 @@ describe("bench-guard-timing — o sub-test novo e a comparação", () => {
     expect(form.pct).toBeCloseTo(1, 5)
   })
 
+  it("o custo da INFRA também não julga (o ms inclui a tentativa que NÃO mediu)", () => {
+    // Sem isto, a primeira rodada em que a suíte NÃO medisse (exit 2) pareceria
+    // uma regressão de velocidade contra a baseline de uma rodada que mediu.
+    const baseline = relatorio(
+      familiaMedida([{ role: "nao-medido", label: "nao-medido", ms: 1_500, ok: true }]),
+    )
+    const atual = relatorio(
+      familiaMedida([
+        { role: "nao-medido", label: "nao-medido", ms: 3_000, ok: false, infra: true },
+      ]),
+    )
+
+    const form = comparar(atual, baseline).forms.find((f) => f.label === "sub-test nao-medido")!
+
+    expect(form.unmeasured).toBe(true)
+    expect(form.regression).toBe(false)
+  })
+
   it("o sub-test que NÃO passou não julga custo (nem rápido nem lento)", () => {
     const baseline = relatorio(
       familiaMedida([{ role: "hook-commands", label: "hook-commands", ms: 40_000, ok: true }]),
@@ -740,12 +904,19 @@ describe("bench-guard-timing — o sub-test novo e a comparação", () => {
 describe("bench-guard-timing — a baseline versionada carrega CADA sub-test", () => {
   const baseline = jsonDo("docs/benchmarks/guard-timing-baseline.json")
 
-  it("a baseline tem a família `mutations` medida, com o ato e o commit de origem", () => {
+  it("a baseline tem a família `mutations` medida, com o ato e a origem RESOLVIDA", () => {
     expect(baseline.meta.version).toBeGreaterThanOrEqual(6)
     expect(Object.keys(baseline.meta.families).sort()).toEqual(Object.keys(FAMILY_MEASURED).sort())
     // O ATO diz qual comando mediu — sem ele o número não é auditável.
     expect(baseline.meta.families.mutations.act).toBe("measured")
-    expect(baseline.meta.families.mutations.commit).toBe(baseline.meta.commit)
+    // O esquema v7 NÃO grava o hash do PORTADOR (um commit não pode conter o
+    // próprio hash): o registro declara `anchor: "carrier"` e quem lê RESOLVE o
+    // portador pela história (`origemDoRegistro`). O `parentCommit` é a
+    // PROCEDÊNCIA (o topo sobre o qual o ato rodou), não a âncora.
+    const origem = origemDoRegistro(baseline, { cwd: REPO_ROOT })
+    expect(origem.via).toBe("carrier")
+    expect(origem.commit).toMatch(/^[0-9a-f]{40}$/)
+    expect(origem.parent).toBe(baseline.meta.parentCommit)
     expect(baseline.mutations.cmd).toBe(MUTATION_CMD)
   })
 
@@ -1123,6 +1294,25 @@ function ensaioDoMaster(subtests: [string, string][]): string {
     )
   stub("stub-verde.sh", "exit 0\n")
   stub("stub-vermelho.sh", "exit 1\n")
+  // A INFRA: a suíte NÃO mediu — o exit 2 que o cabeçalho dela declara (git/node/
+  // bancada ausentes, fail-closed). As duas tentativas concordam: nenhuma mediu.
+  stub("stub-infra.sh", "exit 2\n")
+  // A 1ª tentativa NÃO mede (exit 2) e a 2ª PASSA: não é flake (não houve
+  // contradição — a 1ª não afirmou nada), é o VERDE da que mediu.
+  stub(
+    "stub-mede-depois.sh",
+    [
+      `conta="${dir}/mede-depois"`,
+      'n=$(cat "$conta" 2>/dev/null || echo 0)',
+      "n=$((n + 1))",
+      'printf "%s" "$n" >"$conta"',
+      'if [ "$n" -le 1 ]; then',
+      "  exit 2",
+      "fi",
+      "exit 0",
+      "",
+    ].join("\n"),
+  )
   // O FLAKE: reprova na 1ª e passa na 2ª. O contador é o estado ENTRE as duas
   // tentativas — do lado do mestre são dois tiros iguais, que é exatamente o
   // caso que só a REPETIÇÃO distingue.
@@ -1159,6 +1349,7 @@ function rodaEnsaio(subtests: [string, string][]) {
         passed: number
         failed: string[]
         flakes: string[]
+        infra: string[]
         tentativas: number
         metades: number
       }
@@ -1227,5 +1418,50 @@ describe("test-mutation-guards — a re-medição no master de VERDADE (matriz d
     expect(exit).toBe(1)
     expect(json.summary.failed).toEqual(["vermelho"])
     expect(json.summary.flakes).toEqual(["flake"])
+  })
+
+  it("INFRA → exit 2 (INDETERMINADO): `infra: true` e o id FORA de `failed`", () => {
+    // O defeito que isto fecha: um exit 2 (git indisponível, bancada que não
+    // monta) NÃO é um vermelho — gravar "não passou" sobre ele acusa a árvore por
+    // uma medição que ninguém fez.
+    const { exit, json } = rodaEnsaio([
+      ["verde", "scripts/stub-verde.sh"],
+      ["infra", "scripts/stub-infra.sh"],
+    ])
+
+    expect(exit).toBe(2)
+    const s = json.subtests.find((x) => x.id === "infra")!
+    expect(s.tentativas).toBe(2)
+    expect(s.exit1).toBe(2)
+    expect(s.exit2).toBe(2)
+    expect(s.exit).toBe(2)
+    expect(s.infra).toBe(true)
+    expect(s.flake).toBe(false)
+    // A não-medição sai à parte dos DOIS lados, com o id NOMEADO.
+    expect(json.summary.failed).toEqual([])
+    expect(json.summary.infra).toEqual(["infra"])
+    expect(json.summary.flakes).toEqual([])
+    expect(json.summary.passed).toBe(1)
+    expect(json.summary.tentativas).toBe(3)
+  })
+
+  it("a 1ª que NÃO mediu (exit 2) e a 2ª que PASSOU → VERDE, NÃO flake", () => {
+    // A classe do flake exige as DUAS tentativas MEDINDO: uma 1ª que não mediu não
+    // contradiz o verde da 2ª — o veredito é o da que mediu, e o `flake` fica
+    // apagado (não houve contradição, houve ausência).
+    const { exit, json } = rodaEnsaio([["mede-depois", "scripts/stub-mede-depois.sh"]])
+
+    expect(exit).toBe(0)
+    const s = json.subtests[0]
+    expect(s.tentativas).toBe(2)
+    expect(s.exit1).toBe(2)
+    expect(s.exit2).toBe(0)
+    expect(s.exit).toBe(0)
+    expect(s.flake).toBe(false)
+    expect(s.infra).toBe(false)
+    expect(json.summary.failed).toEqual([])
+    expect(json.summary.infra).toEqual([])
+    expect(json.summary.flakes).toEqual([])
+    expect(json.summary.passed).toBe(1)
   })
 })

@@ -715,12 +715,16 @@ describe("bench-guard-timing — a procedência de cada família", () => {
     expect(Object.keys(ACT_LABELS).sort()).toEqual(["measured", "not-measured", "reused"])
   })
 
-  it("numa rodada completa, as seis saem `measured` com o commit da rodada", () => {
+  it("numa rodada completa, as seis saem `measured` — a origem é o PORTADOR, resolvida na leitura", () => {
     const p = familyProvenance({ result: completa() })
 
     for (const family of Object.keys(FAMILY_MEASURED)) {
       expect(p[family].act).toBe("measured")
-      expect(p[family].commit).toBe("aaaa1111")
+      // Sob a âncora do portador (v7) a família MEDIDA não grava hash: o commit
+      // que CARREGA o registro é resolvido pela história na LEITURA, e o que fica
+      // aqui é a PROCEDÊNCIA da rodada (`commitDate`) — nunca um hash inventado.
+      expect(p[family].commit).toBeNull()
+      expect(p[family].commitDate).toBe("2026-09-18 09:00:00 -0300")
       expect(p[family].timestamp).toBe("2026-09-18T12:00:00.000Z")
       // Medida nesta rodada não tem FONTE de herança: apontar um arquivo aqui
       // faria o leitor procurar o número onde ele não está.
@@ -738,7 +742,10 @@ describe("bench-guard-timing — a procedência de cada família", () => {
       { source: LATEST_FILE, report: anterior },
     ]) as unknown as {
       meta: {
-        families: Record<string, { act: string; commit: string | null; source: string | null }>
+        families: Record<
+          string,
+          { act: string; commit: string | null; commitDate?: string; source: string | null }
+        >
       }
     }
 
@@ -751,7 +758,10 @@ describe("bench-guard-timing — a procedência de cada família", () => {
     // O que esta rodada MEDIU continua sendo de agora — a herança não contamina
     // a procedência do que foi medido.
     expect(merged.meta.families.battery.act).toBe("measured")
-    expect(merged.meta.families.battery.commit).toBe("aaaa1111")
+    // A rodada de AGORA é a do fixture (`commitDate`); o `commit` é NULO porque a
+    // âncora é o portador (resolvida na leitura) — a herança não o contamina.
+    expect(merged.meta.families.battery.commit).toBeNull()
+    expect(merged.meta.families.battery.commitDate).toBe("2026-09-18 09:00:00 -0300")
   })
 
   it("sem a rodada e sem o arquivo anterior, é `not-measured` e o commit é NULO", () => {
@@ -790,8 +800,9 @@ describe("bench-guard-timing — a procedência de cada família", () => {
       meta: {
         version: number
         act: string | null
-        commit: string
-        families: Record<string, { act: string; commit: string | null }>
+        anchor: string | null
+        parentCommit?: string
+        families: Record<string, { act: string; commit: string | null; commitDate?: string }>
       }
     }
 
@@ -801,12 +812,25 @@ describe("bench-guard-timing — a procedência de cada família", () => {
     expect(baseline.meta.version).toBeGreaterThanOrEqual(5)
     expect(typeof baseline.meta.act).toBe("string")
     expect(Object.keys(baseline.meta.families).sort()).toEqual(Object.keys(FAMILY_MEASURED).sort())
+    // A âncora do esquema v7 é o PORTADOR (`carrier`): o hash do commit que
+    // carrega o registro não é GRAVÁVEL dentro dele (um commit não pode conter o
+    // próprio hash), então a família MEDIDA carrega `commit: null` e quem lê
+    // RESOLVE o portador pela HISTÓRIA (`origemDoRegistro`) — o `parentCommit` é a
+    // PROCEDÊNCIA (o topo sobre o qual o ato rodou), não a âncora.
+    expect(baseline.meta.anchor).toBe("carrier")
     for (const p of Object.values(baseline.meta.families)) {
       expect(Object.keys(ACT_LABELS)).toContain(p.act)
-      // Medida ⇒ o commit é o da rodada que mediu; não medida ⇒ nenhum commit
-      // (nem "0", nem o de hoje por omissão).
-      if (p.act === "measured") expect(p.commit).toBe(baseline.meta.commit)
+      // Medida ⇒ o commit é o da rodada que mediu — mas, sob a âncora do portador,
+      // ele vem NULO no arquivo (resolvido na leitura) e o que identifica a rodada
+      // aqui é a PROCEDÊNCIA (`commitDate`); não medida ⇒ nenhum commit (nem "0",
+      // nem o de hoje por omissão); reusada ⇒ o commit EXISTE (é o de outra
+      // rodada) e continua gravado.
+      if (p.act === "measured") {
+        expect(p.commit).toBeNull()
+        expect(typeof p.commitDate).toBe("string")
+      }
       if (p.act === "not-measured") expect(p.commit).toBeNull()
+      if (p.act === "reused") expect(typeof p.commit).toBe("string")
     }
   })
 })

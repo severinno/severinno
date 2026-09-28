@@ -386,7 +386,7 @@ export function fonteDaForma(family, form, { scripts = null } = {}) {
  * classe de erro que o `measured: false` existe para evitar: um número que não foi
  * medido passando por medido.
  *
- * @param {{forms?: {label?: string, role?: string, flake?: boolean, tentativas?: number}[], deltas?: {subtestsMs?: number, harnessMs?: number, totalMs?: number, proximoSubtestProjetadoMs?: number, maisCaro?: string|null, maisCaroMs?: number|null, medianaMs?: number|null}, subtests?: number, metades?: number}} [opts]
+ * @param {{forms?: {label?: string, role?: string, flake?: boolean, tentativas?: number, infra?: boolean, exit1?: number, exit2?: number|null}[], deltas?: {subtestsMs?: number, harnessMs?: number, totalMs?: number, proximoSubtestProjetadoMs?: number, maisCaro?: string|null, maisCaroMs?: number|null, medianaMs?: number|null}, subtests?: number, metades?: number}} [opts]
  * @returns {string[]}
  */
 export function mutationWhatItAdded({ forms = [], deltas = {}, subtests = 0, metades = 0 } = {}) {
@@ -409,12 +409,71 @@ export function mutationWhatItAdded({ forms = [], deltas = {}, subtests = 0, met
     linhas.push(
       `🌀 ${flaky.length} forma(s) FLAKY: ${flaky.map(nome).join(", ")} — cada uma reprovou na 1ª tentativa e PASSOU na 2ª, na MESMA árvore: o veredito do master vai a 2 (INDETERMINADO, nunca "passou") e o ms dela é a SOMA das duas tentativas`,
     )
-  const remedidas = forms.filter((f) => (f?.tentativas ?? 1) > 1 && f?.flake !== true)
+  // ── A INFRA, dita à parte do vermelho ──────────────────────────────────
+  // A suíte que sai com o exit 2 declarado no cabeçalho NÃO MEDIU (git/node/
+  // bancada ausentes, fail-closed): o que existe não é um defeito da árvore, é o
+  // instrumento que não respondeu. Sem esta linha, a não-medição viraria a
+  // mesma coisa que a regressão — e o registro versionado afirmaria "o
+  // vermelho repetiu" sobre um tiro que nunca foi disparado.
+  const naoMedidas = forms.filter((f) => f?.infra === true)
+  if (naoMedidas.length > 0)
+    linhas.push(
+      `🚧 ${naoMedidas.length} forma(s) NÃO MEDIRAM (INFRA): ${naoMedidas.map(nome).join(", ")} — a suíte saiu com o exit 2 que ela declara como INFRA (git/node/bancada ausentes, fail-closed), então NÃO HÁ veredito a publicar: o veredito do master vai a 2 (INDETERMINADO) e o registro NÃO grava isto como defeito da árvore — re-rode onde o instrumento responde`,
+    )
+  // ── As RE-MEDIDAS, com a repetição MEDIDA nas duas tentativas ──────────
+  // A frase original afirmava "o vermelho REPETIU na 2ª tentativa (é da árvore,
+  // não do ambiente)" para toda forma com duas tentativas — e um exit 2 na 2ª
+  // não repete nada: ele diz que a medição não aconteceu. A classe vai à parte.
+  const remedidas = forms.filter(
+    (f) =>
+      (f?.tentativas ?? 1) > 1 &&
+      f?.flake !== true &&
+      f?.infra !== true &&
+      !tentativaNaoMediu(f?.exit1) &&
+      !tentativaNaoMediu(f?.exit2),
+  )
   if (remedidas.length > 0)
     linhas.push(
       `↺ ${remedidas.length} forma(s) RE-MEDIDA(s): ${remedidas.map(nome).join(", ")} — o vermelho REPETIU na 2ª tentativa (é da árvore, não do ambiente), e o ms publicado soma as duas`,
     )
+  const remedidasSemMedicao = forms.filter(
+    (f) =>
+      (f?.tentativas ?? 1) > 1 &&
+      f?.flake !== true &&
+      f?.infra !== true &&
+      (tentativaNaoMediu(f?.exit1) || tentativaNaoMediu(f?.exit2)),
+  )
+  if (remedidasSemMedicao.length > 0)
+    linhas.push(
+      `↺ ${remedidasSemMedicao.length} forma(s) RE-MEDIDA(s) com UMA tentativa que NÃO MEDIU (exit 2/126/127): ${remedidasSemMedicao.map(nome).join(", ")} — o veredito é o da tentativa que MEDIU e o ms é a soma das duas; a não-medição NÃO conta como repetição do vermelho`,
+    )
   return linhas
+}
+
+/**
+ * OS EXITS QUE DIZEM "ESTA TENTATIVA NÃO MEDIU".
+ *
+ * O contrato é do CÁBEÇALHO de cada suíte da matriz: **exit 2 = INFRA** — a
+ * suíte não conseguiu medir e sai fail-closed (`git`/`node`/`python3` ausentes,
+ * o checkout contendido, a bancada que não monta). Os dois últimos são os que
+ * NEM RODARAM (126 = não executável, 127 = comando não encontrado).
+ *
+ * A DISTINÇÃO É O PONTO: um vermelho é uma MEDIÇÃO (a régua não viu a mutação);
+ * um exit 2 é a AUSÊNCIA dela. Tratar os dois como o mesmo veredito grava "o
+ * vermelho REPETIU — é da árvore" sobre o instrumento que não respondeu, que é
+ * a acusação ao que não foi medido.
+ */
+export const EXITS_NAO_MEDIDOS = new Set([2, 126, 127])
+
+/**
+ * A tentativa MEDIU? (`exit` de uma tentativa que ACONTECEU — `null`, de uma
+ * re-medição que não houve, não é "não mediu", é "não houve tentativa").
+ *
+ * @param {unknown} exit
+ * @returns {boolean} true quando o exit declara que a suíte NÃO mediu
+ */
+export function tentativaNaoMediu(exit) {
+  return exit !== null && exit !== undefined && EXITS_NAO_MEDIDOS.has(Number(exit))
 }
 
 /**

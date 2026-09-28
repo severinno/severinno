@@ -18,10 +18,11 @@
 #
 # Exit codes:
 #   0 — todos os sub-tests passaram (mutações detectadas) ✅
-#   1 — pelo menos um sub-test REPROVOU depois de re-medido (guard cego /
-#       asserção / infra) ❌
-#   2 — nenhum reprovou, mas ≥1 ficou INDETERMINADO (FLAKE: a 1ª tentativa
-#       reprovou e a re-medição PASSOU na MESMA árvore) ◐
+#   1 — pelo menos um sub-test REPROVOU numa MEDIÇÃO depois de re-medido (guard
+#       cego / asserção quebrada) ❌
+#   2 — nenhum reprovou, mas ≥1 ficou INDETERMINADO — FLAKE 🌀 (a 1ª tentativa
+#       reprovou e a re-medição PASSOU na MESMA árvore) ou INFRA 🚧 (nenhuma
+#       tentativa MEDIU: ver abaixo) ◐
 #   3 — uso inválido (--scenario com id desconhecido, flag desconhecida)
 #
 # A RE-MEDIÇÃO DO VERMELHO (a mesma disciplina do prover da pilha): um sub-test
@@ -37,14 +38,32 @@
 #     exit 2 é o único que diz isso (um 1 aqui seria uma regressão inventada);
 #   · vermelho + tentativa que nem rodou (exit 126/127) → VERMELHO: a 2ª não
 #     contradisse a 1ª.
-# O que foi repetido é DITO nos dois lugares: no `--json` cada sub-test leva
-# `tentativas`, `exit1`, `exit2`, `ms1`, `ms2` e `flake` — e o `ms` publicado é a
-# SOMA das tentativas, porque o custo do job é o que ele pagou —, e o log marca
-# o flake com 🌀, com `Flaky: N` no resumo.
+#
+# O QUE **NÃO** É MEDIÇÃO — a classe INFRA 🚧. Um `exit 2` de suíte é o INFRA que
+# o CABEÇALHO dela declara: ela NÃO conseguiu medir e saiu fail-closed (`git`/
+# `node`/`python3` ausentes do PATH, o checkout compartilhado contendido, a
+# bancada que não monta). 126/127 é a tentativa que nem rodou. A tentativa que não
+# mediu NÃO é vermelho (não houve medição que reprovasse) e NÃO é verde (não houve
+# medição que aprovasse) — e o veredito segue as tentativas que MEDIRAM:
+#   · nenhuma mediu             → INFRA (exit 2, `infra: true`): NÃO é defeito da
+#     árvore, e a prosa não pode dizer "o vermelho repetiu" sobre um tiro que
+#     nunca foi disparado — é a acusação ao que não foi medido, e ela manda
+#     consertar o que não quebrou;
+#   · uma mediu (verde)         → VERDE, com `tentativas: 2` e o `exit1`/`exit2`
+#     publicando QUAL tentativa não mediu (o `flake` NÃO acende: não houve
+#     contradição, houve ausência);
+#   · uma mediu (vermelho)      → VERMELHO pela tentativa que MEDIU, e a prosa diz
+#     que a outra NÃO MEDIU (nunca que "repetiu").
+# O que foi MEDIDO/RE-MEDIDO é DITO nos dois lugares: no `--json` cada sub-test
+# leva `tentativas`, `exit1`, `exit2`, `ms1`, `ms2`, `flake` e `infra` — e o `ms`
+# publicado é a SOMA das tentativas, porque o custo do job é o que ele pagou —, e
+# o log marca o flake com 🌀 e a não-medição com 🚧, com `Flaky: N` e `Infra: N`
+# no resumo.
 #
 # O CUSTO DE CADA SUB-TEST (`--json`): o modo máquina mede o wall time de CADA
 # sub-test e do TOTAL, junto com os sub-tests que falharam, os que ficaram
-# INDETERMINADOS (FLAKES) e as TENTATIVAS de cada um (1 ou 2, pela re-medição).
+# INDETERMINADOS (FLAKES 🌀 ou INFRA 🚧) e as TENTATIVAS de cada um (1 ou 2, pela
+# re-medição).
 # Ele existe para o
 # custo do job `mutation-guards` não ser composto à mão: quem entra com um
 # sub-test novo (ou paga o job no modelo de latência) lê o custo MEDIDO, com o
@@ -121,11 +140,11 @@ agora_ms() {
 imprime_json() {
   [ "$JSON_OUT" = true ] || return 0
   printf '%s\n' "${REGISTROS[@]}" | {
-    CUSTO_MS="$CUSTO_TOTAL_MS" PASSED="$PASSED" METADES="$TOTAL_METADES" FALHAS="${FAILED_LIST[*]:-}" FLAKES="${FLAKY_LIST[*]:-}" node -e '
+    CUSTO_MS="$CUSTO_TOTAL_MS" PASSED="$PASSED" METADES="$TOTAL_METADES" FALHAS="${FAILED_LIST[*]:-}" FLAKES="${FLAKY_LIST[*]:-}" INFRA="${INFRA_LIST[*]:-}" node -e '
 const fs = require("node:fs")
 const linhas = fs.readFileSync(0, "utf8").split("\n").filter((l) => l.trim() !== "")
 const subtests = linhas.map((linha) => {
-  const [id, script, ms, exit, metades, tentativas, exit1, exit2, ms1, ms2, flake] = linha.split("|")
+  const [id, script, ms, exit, metades, tentativas, exit1, exit2, ms1, ms2, flake, infra] = linha.split("|")
   return {
     id,
     script,
@@ -143,6 +162,10 @@ const subtests = linhas.map((linha) => {
     ms1: Number(ms1),
     ms2: ms2 === "" ? null : Number(ms2),
     flake: flake === "true",
+    // A INFRA é a classe que o EXIT NÃO carrega sozinho com honestidade: a suíte
+    // saiu 2 porque NÃO MEDIU (o INFRA declarado no cabeçalho dela), e quem lê o
+    // registro não pode confundir a ausência de medição com uma reprovação.
+    infra: infra === "true",
   }
 })
 // O custo dos sub-tests e o SOBRANTE do harness sao separados: o proximo
@@ -158,6 +181,10 @@ const summary = {
   // passou) nem "passou" (a 1ª reprovou) — somá-los a qualquer um dos dois é
   // a mentira que a re-medição existe para não publicar.
   flakes: (process.env.FLAKES || "").split(/\s+/).filter(Boolean),
+  // A INFRA conta à parte dos DOIS lados, pela mesma razão do flake — e com mais
+  // força: somá-la a `failed` seria afirmar que a árvore tem um defeito que
+  // ninguém mediu.
+  infra: (process.env.INFRA || "").split(/\s+/).filter(Boolean),
   // Quantas tentativas a matriz pagou no total (uma re-medição por vermelho):
   // o custo do job cresce com isso, e o número fica dito em vez de deduzido.
   tentativas: subtests.reduce((acc, s) => acc + (s.tentativas || 1), 0),
@@ -384,14 +411,26 @@ roda_tentativa() { # $1 = script granular, $2 = rótulo da tentativa
   info "$rotulo: exit $TENTATIVA_EXIT em ${TENTATIVA_MS}ms"
 }
 
-# O rótulo da 2ª tentativa. A que NEM RODOU (126 = não executável, 127 = comando
-# não encontrado) não contradisse a 1ª: o veredito é o mesmo vermelho, mas a
-# prosa não pode afirmar que ela "repetiu" — ela não mediu nada.
-rotulo_da_repeticao() { # $1 = exit da 1ª tentativa, $2 = exit da 2ª
-  case "$2" in
-    126 | 127) printf 'a 2ª tentativa NÃO MEDIU (exit %s) — o vermelho não foi contradito' "$2" ;;
-    *) printf 'a 2ª tentativa REPETIU o vermelho (exit %s → %s)' "$1" "$2" ;;
+# A tentativa MEDIU? Esta é a régua da CLASSE INFRA (ver o cabeçalho): um `exit
+# 2` é o INFRA que o cabeçalho da suíte declara (git/node/bancada ausentes,
+# fail-closed) e 126/127 é a tentativa que nem rodou — nenhum dos três é uma
+# medição, então nenhum deles pode virar "o vermelho repetiu".
+tentativa_mediu() { # $1 = exit de uma tentativa
+  case "$1" in
+    2 | 126 | 127) return 1 ;;
+    *) return 0 ;;
   esac
+}
+
+# O rótulo da 2ª tentativa. A que NÃO MEDIU não contradisse a 1ª: o veredito é o
+# da tentativa que mediu, mas a prosa não pode afirmar que ela "repetiu" — ela
+# não mediu nada.
+rotulo_da_repeticao() { # $1 = exit da 1ª tentativa, $2 = exit da 2ª
+  if tentativa_mediu "$2"; then
+    printf 'a 2ª tentativa REPETIU o vermelho (exit %s → %s)' "$1" "$2"
+  else
+    printf 'a 2ª tentativa NÃO MEDIU (exit %s) — o vermelho não foi contradito' "$2"
+  fi
 }
 
 TOTAL=0
@@ -400,7 +439,12 @@ FAILED_LIST=()
 # Os FLAKES (a 1ª reprovou e a 2ª PASSOU na MESMA árvore) ficam À PARTE dos dois
 # lados: não são "não passou" e não são "passou" — ver o cabeçalho.
 FLAKY_LIST=()
-# Os registros do `--json`: `id|script|ms|exit|metades|tentativas|exit1|exit2|ms1|ms2|flake`
+# A INFRA (nenhuma tentativa MEDIU — exit 2 declarado pela suíte, 126/127) fica à
+# parte dos mesmos dois lados, e por um motivo mais forte: o que existe não é uma
+# medição, é a AUSÊNCIA dela. Chamar isso de vermelho da árvore acusa o que
+# ninguém mediu.
+INFRA_LIST=()
+# Os registros do `--json`: `id|script|ms|exit|metades|tentativas|exit1|exit2|ms1|ms2|flake|infra`
 # por sub-test, na ordem da matriz (`ms` = SOMA das tentativas, `exit` = o da
 # última). O esquema é montado pelo node no fim (um JSON montado à mão em bash
 # escapa errado no dia em que um id tiver aspas).
@@ -443,6 +487,7 @@ for entry in "${SUBTESTS[@]}"; do
   EXIT2=""
   MS2=""
   FLAKE=false
+  INFRA=false
   SUBTEST_EXIT="$EXIT1"
   SUBTEST_MS="$MS1"
 
@@ -461,14 +506,27 @@ for entry in "${SUBTESTS[@]}"; do
     # um flake sai com `exit: 0` MAIS `flake: true` — a classe não se esconde
     # dentro do exit, e quem lê o registro sabe qual dos dois casos é.
     SUBTEST_EXIT="$EXIT2"
-    if [ "$EXIT2" -eq 0 ]; then
+    # O FLAKE exige as DUAS tentativas MEDINDO: a 1ª reprovou e a 2ª passou na
+    # MESMA árvore. Uma 1ª que NÃO mediu (exit 2) e uma 2ª verde não são uma
+    # contradição — a 1ª não afirmou nada: o veredito é o VERDE da que mediu.
+    if [ "$EXIT2" -eq 0 ] && tentativa_mediu "$EXIT1"; then
       FLAKE=true
+    fi
+    # NENHUMA das duas mediu: a classe é INFRA, e ela NÃO é vermelho.
+    if ! tentativa_mediu "$EXIT1" && ! tentativa_mediu "$EXIT2"; then
+      INFRA=true
     fi
   fi
 
-  REGISTROS+=("$id|$script|$SUBTEST_MS|$SUBTEST_EXIT|$(contagem_de "$script")|$TENTATIVAS|$EXIT1|$EXIT2|$MS1|$MS2|$FLAKE")
+  REGISTROS+=("$id|$script|$SUBTEST_MS|$SUBTEST_EXIT|$(contagem_de "$script")|$TENTATIVAS|$EXIT1|$EXIT2|$MS1|$MS2|$FLAKE|$INFRA")
 
-  if [ "$FLAKE" = true ]; then
+  if [ "$INFRA" = true ]; then
+    fail "Sub-test [$id] INDETERMINADO (🚧 INFRA): NENHUMA das $TENTATIVAS tentativa(s) MEDIU"
+    fail "  (exit $EXIT1 → ${EXIT2:-—}) — exit 2 é o INFRA que a suíte declara (git/node/bancada ausentes, fail-closed)"
+    fail "  e 126/127 é a tentativa que nem rodou. Isto NÃO é defeito da árvore: o vermelho NÃO existe,"
+    fail "  o que existe é o instrumento que não respondeu. Re-rode a matriz onde ele responde."
+    INFRA_LIST+=("$id")
+  elif [ "$FLAKE" = true ]; then
     fail "Sub-test [$id] INDETERMINADO (🌀 FLAKE): a 1ª tentativa reprovou (exit $EXIT1) e a 2ª"
     fail "  PASSOU na MESMA árvore — as duas se CONTRADIZEM: não vale verde (a regressão"
     fail "  existiu) nem reprovação (ela não repetiu). Repita a suíte [$id] para decidir."
@@ -482,6 +540,12 @@ for entry in "${SUBTESTS[@]}"; do
     FAILED_LIST+=("$id")
   elif [ "$BLOCO_OK" = true ]; then
     pass "Sub-test [$id] PASS (exit 0)"
+    # PASS depois de uma tentativa que NÃO MEDIU: o veredito é o da que mediu, e
+    # a ausência fica DITA (sem ela, o `tentativas: 2` do registro pareceria uma
+    # re-medição de vermelho).
+    if [ "$TENTATIVAS" -eq 2 ] && ! tentativa_mediu "$EXIT1"; then
+      info "  (a 1ª tentativa NÃO MEDIU — exit $EXIT1: o veredito é o da tentativa que mediu, e o ms soma as duas)"
+    fi
     PASSED=$((PASSED + 1))
   else
     fail "Sub-test [$id] FALHOU: a suíte passou, mas ela não DECLARA as metades"
@@ -510,7 +574,9 @@ for entry in "${SUBTESTS[@]}"; do
   # (ela não repetiu) — quem lê a tabela precisa distinguir os dois de longe.
   # Herestring (não pipe): sob `set -o pipefail`, `printf | grep -qx` pode
   # falhar por SIGPIPE (o grep -q fecha o stdin cedo) — flaky pelo tamanho.
-  if grep -qx "$id" <<<"$(printf '%s\n' "${FLAKY_LIST[@]:-}")"; then
+  if grep -qx "$id" <<<"$(printf '%s\n' "${INFRA_LIST[@]:-}")"; then
+    printf "   %-10s ${YELLOW}%-6s${NC} 🚧\n" "$id" "INFRA"
+  elif grep -qx "$id" <<<"$(printf '%s\n' "${FLAKY_LIST[@]:-}")"; then
     printf "   %-10s ${YELLOW}%-6s${NC} 🌀\n" "$id" "FLAKE"
   elif grep -qx "$id" <<<"$(printf '%s\n' "${FAILED_LIST[@]}")"; then
     printf "   %-10s ${RED}%-6s${NC} ❌\n" "$id" "FAIL"
@@ -519,8 +585,8 @@ for entry in "${SUBTESTS[@]}"; do
   fi
 done
 echo ""
-printf "   Total: %d | Passed: %d | Failed: %d | Flaky: %d\n" \
-  "$TOTAL" "$PASSED" "${#FAILED_LIST[@]}" "${#FLAKY_LIST[@]}"
+printf "   Total: %d | Passed: %d | Failed: %d | Flaky: %d | Infra: %d\n" \
+  "$TOTAL" "$PASSED" "${#FAILED_LIST[@]}" "${#FLAKY_LIST[@]}" "${#INFRA_LIST[@]}"
 echo ""
 
 # ── As METADES declaradas por cada sub-test (derivadas, uma a uma) ────────
@@ -559,22 +625,39 @@ imprime_json
 
 if [ "${#FAILED_LIST[@]}" -gt 0 ]; then
   fail "MUTATION TESTS FALHARAM: ${FAILED_LIST[*]} — um sub-test não detectou a"
-  fail "mutação (guard cego / asserção quebrada) ou o script granular falhou — e a"
-  fail "re-medição REPETIU o vermelho (ou não mediu: a 1ª tentativa não foi contradita)."
+  fail "mutação (guard cego / asserção quebrada) numa MEDIÇÃO, e a re-medição a"
+  fail "confirmou (ou ela não mediu: o vermelho que existe é o da que mediu)."
   if [ "${#FLAKY_LIST[@]}" -gt 0 ]; then
     fail "${#FLAKY_LIST[@]} sub-test(s) ficaram INDETERMINADOS (FLAKE 🌀) e seguem NOMEADOS:"
     fail "  ${FLAKY_LIST[*]} — o veredito da matriz é o dos vermelhos, o flake não vira verde nem"
     fail "  some dentro deles: repita a suíte de cada um para decidir o que ele é."
   fi
+  if [ "${#INFRA_LIST[@]}" -gt 0 ]; then
+    fail "${#INFRA_LIST[@]} sub-test(s) NÃO MEDIRAM (🚧 INFRA) e NÃO entram neste vermelho:"
+    fail "  ${INFRA_LIST[*]} — exit 2/126/127 é a AUSÊNCIA de medição (git/node/bancada), e acusar"
+    fail "  a árvore por ela seria mandar consertar o que ninguém mediu."
+  fi
   exit 1
 fi
 
-if [ "${#FLAKY_LIST[@]}" -gt 0 ]; then
-  fail "MUTATION TESTS INDETERMINADOS (exit 2): ${FLAKY_LIST[*]} — a 1ª tentativa reprovou"
-  fail "e a 2ª PASSOU na MESMA árvore (FLAKE 🌀). As duas se CONTRADIZEM: não é regressão"
-  fail "(o vermelho não repetiu) e não é verde (ele existiu). Repita a suíte para decidir —"
-  fail "a matriz não publica veredito sobre UM tiro, e é este exit 2 que separa o flake"
-  fail "da regressão de verdade."
+# INDETERMINADO (exit 2): nada foi reprovado por uma MEDIÇÃO, e há um dos dois
+# casos em que a matriz NÃO publica veredito — a contradição (FLAKE 🌀) ou a
+# ausência de medição (INFRA 🚧).
+if [ "${#FLAKY_LIST[@]}" -gt 0 ] || [ "${#INFRA_LIST[@]}" -gt 0 ]; then
+  if [ "${#FLAKY_LIST[@]}" -gt 0 ]; then
+    fail "MUTATION TESTS INDETERMINADOS (exit 2): ${FLAKY_LIST[*]} — a 1ª tentativa reprovou"
+    fail "e a 2ª PASSOU na MESMA árvore (FLAKE 🌀). As duas se CONTRADIZEM: não é regressão"
+    fail "(o vermelho não repetiu) e não é verde (ele existiu). Repita a suíte para decidir —"
+    fail "a matriz não publica veredito sobre UM tiro, e é este exit 2 que separa o flake"
+    fail "da regressão de verdade."
+  fi
+  if [ "${#INFRA_LIST[@]}" -gt 0 ]; then
+    fail "MUTATION TESTS NÃO MEDIDOS (exit 2, 🚧 INFRA): ${INFRA_LIST[*]} — a(s) tentativa(s)"
+    fail "saíram com o exit 2 que a suíte declara como INFRA (git/node/bancada ausentes,"
+    fail "fail-closed) ou nem rodaram (126/127). Isto NÃO é defeito da árvore: o vermelho"
+    fail "não existe, o que existe é o instrumento que não respondeu — e é por isso que a"
+    fail "matriz não publica veredito sobre a AUSÊNCIA de medição. Re-rode onde ele responde."
+  fi
   exit 2
 fi
 

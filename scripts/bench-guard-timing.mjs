@@ -122,6 +122,7 @@ import {
   metadesDaMatriz,
   mutationWhatItAdded,
   origemDoRegistro,
+  tentativaNaoMediu,
 } from "./bench-families.mjs"
 
 // `comMetadesDaMatriz` e `mutationWhatItAdded` são REPASSADOS: as duas são a régua
@@ -1987,6 +1988,11 @@ export function measureMutationCost({ cmd = MUTATION_CMD, timeoutMs = 30 * 60_00
       exit: s.exit,
       metades: s.metades,
       ok: s.exit === 0,
+      // A INFRA é a classe que o EXIT carrega e que NÃO é veredito: a suíte sai 2
+      // quando não conseguiu medir (git/node/bancada ausentes, fail-closed). Aqui
+      // ela vem NOMEADA do master — quem lê o registro não confunde a ausência de
+      // medição com uma reprovação da árvore.
+      infra: s.infra === true,
       // O SCRIPT que esta forma mede — o `--json` do master já o publica, e é ele
       // que responde "de qual arquivo veio esta forma?" sem depender de convenção
       // de nome (o id `readme` mede `test-mutation-readme-guards.sh`).
@@ -2050,6 +2056,11 @@ export function measureMutationCost({ cmd = MUTATION_CMD, timeoutMs = 30 * 60_00
       ? summary.tentativas
       : forms.reduce((acc, f) => acc + f.tentativas, 0),
     flakes: forms.filter((f) => f.flake).map((f) => f.label),
+    // A NON-MEDIÇÃO tem bucket PRÓPRIO, ao lado do flake e do vermelho: ela não é
+    // reprovação (não houve medição que reprovasse) nem verde (não houve medição
+    // que aprovasse) — e o registro versionado precisa poder dizer isso sem
+    // chamar o instrumento que não respondeu de defeito da árvore.
+    infra: forms.filter((f) => f.infra).map((f) => f.label),
     violations: mutationCostViolations({ forms, summary, harnessMs }),
     whatItAdded: mutationWhatItAdded({
       forms,
@@ -2075,12 +2086,23 @@ export function measureMutationCost({ cmd = MUTATION_CMD, timeoutMs = 30 * 60_00
  * regressão inventada, e engolir o flake numa violação de custo o esconderia no
  * lugar onde ele mais importa — o registro versionado.
  *
+ * A INFRA também não entra — e por um motivo ainda mais forte que a do flake: a
+ * forma com `infra` NÃO MEDIU (o exit 2 é o "não consegui medir" declarado pela
+ * suíte), então "não passou" seria uma REPROVAÇÃO INVENTADA sobre um tiro que
+ * nunca foi disparado. Ela sai pelos campos próprios da família (`infra`) e pela
+ * linha 🚧 da frase.
+ *
  * @param {{forms?: {label?: string, ms?: number, ok?: boolean, exit?: number, metades?: number}[], summary?: {totalMs?: number, subtestsMs?: number}, harnessMs?: number}} [opts]
  * @returns {string[]}
  */
 export function mutationCostViolations({ forms = [], summary = {}, harnessMs = 0 } = {}) {
   const violations = []
-  const falhas = forms.filter((f) => f.ok === false)
+  // A forma com `infra` fica FORA do vermelho, e a ausência é deliberada: ela não
+  // mediram (o exit 2 é o "não mediu" declarado pela suíte), então listá-la como
+  // "NÃO passou no master" GRAVARIA o instrumento que não respondeu como defeito
+  // da árvore. Quem a publica são os campos próprios da família (`infra`) e a
+  // frase dela (a linha 🚧), do mesmo jeito que o flake.
+  const falhas = forms.filter((f) => f.ok === false && f.infra !== true)
   if (falhas.length > 0)
     violations.push(
       `sub-test(s) que NÃO passaram no master: ${falhas.map((f) => `${f.label} (exit ${f.exit})`).join(", ")} — o custo deles não julga nada (um sub-test que morre no meio tem o tempo do pedaço que rodou)`,
@@ -2659,17 +2681,33 @@ function printMutationReport(mutations) {
       console.log(
         `        🌀 e ele é INDETERMINADO (exit 2): ${flaky.join(", ")} reprovou na 1ª tentativa e PASSOU na 2ª, na MESMA árvore — não é regressão e não é verde`,
       )
+    // A INFRA é a OUTRA metade do exit 2: ela também não é vermelho, e o motivo é
+    // mais forte — a suíte NÃO mediu (o exit 2 declarado no cabeçalho dela), então
+    // não há veredito a publicar e não há defeito da árvore a consertar.
+    const naoMedidas = mutations.infra ?? []
+    if (naoMedidas.length > 0)
+      console.log(
+        `        🚧 e ele é INDETERMINADO (exit 2): ${naoMedidas.join(", ")} NÃO MEDIU (exit 2/126/127 — git/node/bancada ausentes, fail-closed) — não é regressão, não é verde e NÃO é defeito da árvore`,
+      )
   }
   const total = mutations.deltas.subtestsMs || 1
+  // A marca de UMA tentativa: o veredito (✅/❌) ou a AUSÊNCIA dele (🚧 = não
+  // mediu). Usa a MESMA régua do master (`tentativaNaoMediu`), nunca uma lista de
+  // exits reescrita aqui — duas noções de "mediu" divergiriam.
+  const marcaDaTentativa = (exit) => (tentativaNaoMediu(exit) ? "🚧" : exit === 0 ? "✅" : "❌")
   for (const form of [...mutations.forms].sort((a, b) => b.ms - a.ms)) {
-    // A marca: ✅/❌ são o veredito, 🌀 é a classe que o veredito não carrega.
-    const mark = form.flake ? "🌀" : form.ok ? "✅" : "❌"
+    // A marca: ✅/❌ são o veredito e 🚧 (não mediu)/🌀 (contradisse) são as
+    // classes que o veredito NÃO carrega — a forma com `infra` não é ❌, porque
+    // não houve medição que reprovasse.
+    const mark = form.infra ? "🚧" : form.flake ? "🌀" : form.ok ? "✅" : "❌"
     const share = ((form.ms / total) * 100).toFixed(0).padStart(3)
     // As TENTATIVAS ao lado do custo: o ms publicado é a SOMA delas, e uma forma
-    // re-medida sem esta marca faria o número parecer o de um tiro só.
+    // re-medida sem esta marca faria o número parecer o de um tiro só. O desfecho
+    // é tentativa a tentativa (❌→✅ no flake, 🚧→✅ quando a 1ª não mediu e a 2ª
+    // passou, 🚧→🚧 na INFRA): "repetiu" só vale se as DUAS medirem.
     const tentativas =
       (form.tentativas ?? 1) > 1
-        ? ` · ${form.tentativas} TENTATIVAS: ❌→${form.flake ? "✅" : "❌"}`
+        ? ` · ${form.tentativas} TENTATIVAS: ${marcaDaTentativa(form.exit1)}→${marcaDaTentativa(form.exit2 ?? form.exit)}`
         : ""
     console.log(
       `    ${mark} ${String(form.label).padEnd(22)} ${(form.ms / 1000).toFixed(1).padStart(6)}s  ${share}%  (${form.metades} metade(s)${tentativas})`,
@@ -3182,7 +3220,11 @@ export function compareTimings(
         // delta existiria, o trabalho extra também, e o número não diria que o
         // GUARD ficou mais lento. Quem decide se ele voltou ao normal é a
         // rodada seguinte (limpa) — aqui, ele sai como não julgável e com 🌀.
-        ok: form.ok !== false && form.flake !== true,
+        // A INFRA também não é julgável, pelo mesmo motivo: o `ms` dela inclui a
+        // tentativa que NÃO mediu, e compará-lo com o de uma rodada limpa
+        // publicaria como "ficou mais lento" o custo de um instrumento que não
+        // respondeu. Ela sai como não julgável e com 🚧.
+        ok: form.ok !== false && form.flake !== true && form.infra !== true,
       })
     }
   }

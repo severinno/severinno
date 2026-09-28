@@ -948,28 +948,48 @@ quebrou).
 
 A régua é a **repetição**, nunca a segunda tentativa sozinha:
 
-| 1ª tentativa | 2ª tentativa        | veredito                                                                           |
-| ------------ | ------------------- | ---------------------------------------------------------------------------------- |
-| verde        | (não roda)          | **VERDE** — o verde não é re-medido, e o custo fica de um tiro                     |
-| vermelho     | vermelho            | **VERMELHO** (exit 1) — o vermelho é da ÁRVORE: repetiu                            |
-| vermelho     | verde               | **INDETERMINADO** (exit 2, `flake: true`) — as duas se contradizem na MESMA árvore |
-| vermelho     | não rodou (126/127) | **VERMELHO** — a 2ª não contradisse a 1ª                                           |
+| 1ª tentativa          | 2ª tentativa          | veredito                                                                                |
+| --------------------- | --------------------- | --------------------------------------------------------------------------------------- |
+| verde                 | (não roda)            | **VERDE** — o verde não é re-medido, e o custo fica de um tiro                          |
+| vermelho              | vermelho              | **VERMELHO** (exit 1) — o vermelho é da ÁRVORE: repetiu                                 |
+| vermelho              | verde                 | **INDETERMINADO** (exit 2, `flake: true`) — as duas se contradizem na MESMA árvore      |
+| vermelho              | não mediu (2/126/127) | **VERMELHO** — a 2ª não mediu, então não contradisse a 1ª                               |
+| não mediu (2/126/127) | não mediu (2/126/127) | **INDETERMINADO** (exit 2, `infra: true`) — NENHUMA tentativa mediu                     |
+| não mediu (2/126/127) | verde                 | **VERDE** — a única que mediu passou; não houve contradição, então o `flake` não acende |
+| não mediu (2/126/127) | vermelho              | **VERMELHO** pela tentativa que mediu — a outra NÃO mediu (nunca "o vermelho repetiu")  |
 
 O flake **não vale verde nem reprovação**: publicar "verde" sobre um tiro esconde
 uma regressão intermitente, e publicar "reprovado" sobre um flake manda consertar
-o que passou na segunda tentativa. Por isso o exit da matriz distingue os três
-desfechos — 0 todos verdes, 1 algum REPROVOU (depois de re-medido), 2 nenhum
-reprovou e algum ficou indeterminado, 3 uso inválido — e o flake tem marca própria
-(🌀) na tabela e no resumo (`Flaky: N`).
+o que passou na segunda tentativa.
 
-E o que foi repetido é **DITO** nos dois lugares: no `--json` cada sub-test leva
-`tentativas`, `exit1`/`exit2`, `ms1`/`ms2` e `flake` (o `ms` publicado é a SOMA das
-tentativas — o custo é o que o job pagou), e a família `mutations` do benchmark
-versiona os mesmos campos na baseline, com a frase da família nomeando o flake
-(`🌀 … FLAKY: …`) ou a re-medição que repetiu (`↺ … RE-MEDIDA(s)`). Um flake
-também **não julga custo** na comparação: o `ms` dele são duas tentativas, e
-chamar isso de "o sub-test ficou mais lento" seria vender a re-medição como
-regressão.
+A **não-medição** é a classe à parte — a INFRA 🚧. Um `exit 2` de uma suíte é o
+INFRA que o **cabeçalho dela** declara: ela não conseguiu medir e saiu fail-closed
+(`git`/`node`/`python3` ausentes do PATH, o checkout compartilhado contendido, a
+bancada que não monta); `126`/`127` é a tentativa que nem rodou. A tentativa que
+não mediu **não é vermelho** (não houve medição que reprovasse) nem **verde** (não
+houve medição que aprovasse), e o veredito segue **as tentativas que MEDIRAM**:
+nenhuma mediu → INFRA (exit 2, `infra: true`); uma mediu verde → VERDE; uma mediu
+vermelho → VERMELHO pela que mediu. Chamar a INFRA de _"o vermelho repetiu — é da
+árvore"_ seria gravar um defeito **que ninguém mediu**: a árvore não tem o que o
+instrumento não respondeu, e o remédio é **re-rodar onde ele responde**, não
+consertar o que não quebrou.
+
+Por isso o exit da matriz distingue os desfechos — 0 todos verdes; 1 algum
+REPROVOU numa MEDIÇÃO (depois de re-medido); 2 nenhum reprovou e algum ficou
+indeterminado, seja FLAKE 🌀 (as duas tentativas se CONTRADIZEM) ou INFRA 🚧
+(NENHUMA mediu); 3 uso inválido — e cada classe tem marca própria na tabela e no
+resumo (`Flaky: N`, `Infra: N`).
+
+E o que foi medido/não medido é **DITO** nos dois lugares: no `--json` cada
+sub-test leva `tentativas`, `exit1`/`exit2`, `ms1`/`ms2`, `flake` e `infra` (o `ms`
+publicado é a SOMA das tentativas — o custo é o que o job pagou), e a família
+`mutations` do benchmark versiona os mesmos campos na baseline, com a frase da
+família nomeando o flake (`🌀 … FLAKY: …`), a re-medição que repetiu
+(`↺ … RE-MEDIDA(s)`), a re-medição com uma tentativa que não mediu
+(`↺ … RE-MEDIDA(s) com UMA tentativa que NÃO MEDIU`) ou as formas que não mediram
+(`🚧 … NÃO MEDIRAM (INFRA)`). Um flake (ou uma não-medição) também **não julga
+custo** na comparação: o `ms` dele são duas tentativas, e chamar isso de "o
+sub-test ficou mais lento" seria vender a re-medição como regressão.
 
 #### O `name:` do job é o CONTEXTO do required check — o count NÃO mora nele
 
@@ -3809,7 +3829,7 @@ Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 27/09/2026, medido sob
 | harness (parse das metades, tabelas, subida do master)                    |       5.4s |       |         |
 | **total do master**                                                       | **875.2s** |       |         |
 
-**Dez** sub-tests pagam **83%** da conta e a mediana é **3.1s**: a cauda é barata, e o harness sai da DIFERENÇA entre o total e a soma dos sub-tests, não de uma constante. O sub-test NOVO entra na rodada seguinte **MEDIDO**, e o PRÓXIMO acrescenta **~18.6s** (PROJEÇÃO: a média dos scripts medidos mais o harness por sub-test). A marca **↺** na linha é sub-test RE-MEDIDO (a régua é a REPETIÇÃO: o ms é a soma das tentativas) e **🌀** é FLAKE (não vale verde nem reprovação). A coluna de metades é DERIVADA da matriz (§ acima) — o ato a reescreve depois da herança e diz o que fez (`metadesDaMatriz`). Esta TABELA (e esta leitura) é **DERIVADA do registro**: quem a reescreve é o ATO, e o `check:mutation-count` recusa o commit em que ela divirja dele — a prosa não tem número próprio.
+**Dez** sub-tests pagam **83%** da conta e a mediana é **3.1s**: a cauda é barata, e o harness sai da DIFERENÇA entre o total e a soma dos sub-tests, não de uma constante. O sub-test NOVO entra na rodada seguinte **MEDIDO**, e o PRÓXIMO acrescenta **~18.6s** (PROJEÇÃO: a média dos scripts medidos mais o harness por sub-test). A marca **↺** na linha é sub-test RE-MEDIDO (a régua é a REPETIÇÃO: o ms é a soma das tentativas), **🌀** é FLAKE (não vale verde nem reprovação) e **🚧** é NÃO MEDIDO (INFRA: o instrumento não respondeu — a linha não é verde nem vermelha, e o veredito do master vai a 2). A coluna de metades é DERIVADA da matriz (§ acima) — o ato a reescreve depois da herança e diz o que fez (`metadesDaMatriz`). Esta TABELA (e esta leitura) é **DERIVADA do registro**: quem a reescreve é o ATO, e o `check:mutation-count` recusa o commit em que ela divirja dele — a prosa não tem número próprio.
 <!-- /bench:mutations:tabela -->
 
 **E a derivação desceu ao PASSO.** O mesmo mecanismo, um nível abaixo: o job

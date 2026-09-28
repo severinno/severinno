@@ -1008,14 +1008,21 @@ ela passa.
 com a régua de repetição que o prover da pilha já aplicava a um commit: vermelho
 que REPETE é vermelho da árvore (exit 1), vermelho que PASSA na segunda medição é
 **INDETERMINADO** (exit 2, `flake: true` — não vale verde, e não vale reprovação),
-e a tentativa que nem rodou não contradiz a primeira. O que foi repetido não fica
-só no log: o `--json` do master publica `tentativas`, `exit1`/`exit2`,
-`ms1`/`ms2` e `flake` por sub-test (o `ms` publicado é a SOMA das tentativas — o
-custo é o que o job pagou), a tabela marca o flake com 🌀 (`Flaky: N` no resumo), e
-a família `mutations` do benchmark versiona os mesmos campos no registro, com a
-frase dela nomeando o flake ou a re-medição que repetiu. Um flake também não julga
-custo na comparação: o número dele são duas tentativas, e publicá-lo como "o
-sub-test ficou mais lento" seria vender a re-medição como regressão.
+e a tentativa que nem rodou não contradiz a primeira. A **não-medição** vai à
+parte: um `exit 2` é o INFRA que a suíte declara no cabeçalho (git/node/bancada
+ausentes, fail-closed) — NÃO é um vermelho, é a AUSÊNCIA de medição, então o
+veredito do master vai a 2 (`infra: true`, 🚧) e o registro **não grava isso como
+defeito da árvore** (chamar isso de "o vermelho repetiu" acusaria o que ninguém
+mediu); o remédio é re-rodar onde o instrumento responde. O que foi repetido/não
+medido não fica só no log: o `--json` do master publica `tentativas`,
+`exit1`/`exit2`, `ms1`/`ms2`, `flake` e `infra` por sub-test (o `ms` publicado é a
+SOMA das tentativas — o custo é o que o job pagou), a tabela marca o flake com 🌀
+(`Flaky: N` no resumo) e a não-medição com 🚧 (`Infra: N`), e a família `mutations`
+do benchmark versiona os mesmos campos no registro, com a frase dela nomeando o
+flake, a re-medição que repetiu ou as formas que não mediram. Um flake (ou uma
+não-medição) também não julga custo na comparação: o número dele são duas
+tentativas, e publicá-lo como "o sub-test ficou mais lento" seria vender a
+re-medição como regressão.
 
 A prova da
 CLASSIFICAÇÃO do `check-forge-parity` também é um job próprio

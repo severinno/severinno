@@ -85,9 +85,10 @@ export function mediana(valores) {
  * @param {object | null} registro  o `docs/benchmarks/guard-timing-baseline.json` lido
  * @returns {null | {subtests: number, metades: number, somaSubTestsMs: number, harnessMs: number,
  *   wallMs: number, medianaMs: number, projecaoMs: number, concentracaoPct: number, verdes: number,
- *   formas: Array<{role: string, glosa: string | null, ms: number, metades: number, exit: number, tentativas: number, flake: boolean}>,
- *   vermelhas: Array<{role: string, glosa: string | null, ms: number, metades: number, exit: number, tentativas: number, flake: boolean}>,
+ *   formas: Array<{role: string, glosa: string | null, ms: number, metades: number, exit: number, tentativas: number, flake: boolean, infra: boolean}>,
+ *   vermelhas: Array<{role: string, glosa: string | null, ms: number, metades: number, exit: number, tentativas: number, flake: boolean, infra: boolean}>,
  *   remedidas: Array<{role: string}>, flakes: Array<{role: string}>,
+ *   naoMedidas: Array<{role: string}>,
  *   procedencia: {commit: string, dia: string, treeState: unknown, versao: unknown}}}
  *   `null` quando a família não foi medida (nada a renderizar)
  */
@@ -108,6 +109,10 @@ export function estadoDaMatriz(registro) {
       // "o guard ficou mais lento" — a classe de mentira que este repo persegue.
       tentativas: Number(f.tentativas ?? 1) || 1,
       flake: f.flake === true,
+      // A INFRA (a suíte NÃO mediu: exit 2 declarado no cabeçalho dela) tem
+      // bucket próprio — ela não é verde nem vermelha, e a doc não pode dizer
+      // "NÃO passou" sobre uma medição que não aconteceu.
+      infra: f.infra === true,
     }
   })
   const caros = [...forms].sort((a, b) => b.ms - a.ms || a.role.localeCompare(b.role))
@@ -129,12 +134,16 @@ export function estadoDaMatriz(registro) {
     projecaoMs: Math.round(somaSubTestsMs / n + harnessMs / n),
     concentracaoPct: pct(dez, somaSubTestsMs),
     verdes: forms.filter((f) => f.exit === 0).length,
-    vermelhas: forms.filter((f) => f.exit !== 0),
-    // As duas CLASSES da re-medição, ditas à parte: quem REPETIU o vermelho (o ms
-    // é a soma de duas tentativas) e quem se CONTRADISSEU (flake: não vale verde
-    // nem reprovação, e o custo dele também não julga).
-    remedidas: forms.filter((f) => f.tentativas > 1 && !f.flake),
+    // O VERMELHO é a MEDIÇÃO que reprovou: a forma com `infra` sai daqui, porque
+    // o exit 2 dela não é reprovação (não houve medição) e a prosa derivada
+    // diria "NÃO passou" sobre o instrumento que não respondeu.
+    vermelhas: forms.filter((f) => f.exit !== 0 && !f.infra),
+    // As três CLASSES da re-medição, ditas à parte: quem REPETIU o vermelho (o ms
+    // é a soma de duas tentativas), quem se CONTRADISSEU (flake: não vale verde
+    // nem reprovação) e quem NÃO MEDIU (infra: não há veredito a publicar).
+    remedidas: forms.filter((f) => f.tentativas > 1 && !f.flake && !f.infra),
     flakes: forms.filter((f) => f.flake),
+    naoMedidas: forms.filter((f) => f.infra),
     procedencia: procedenciaDe(registro),
   }
 }
@@ -172,9 +181,16 @@ export function tabelaSubTests(estado) {
   const cabecalho = ["sub-test", "wall time", "fatia", "metades"]
   const corpo = estado.formas.map((f) => [
     f.glosa ? `\`${f.role}\` (${f.glosa})` : `\`${f.role}\``,
-    // A marca da re-medição ao lado do ms: 🌀 quando as duas tentativas se
-    // contradisseram, ↺ quando o vermelho repetiu (o ms é a SOMA das duas).
-    f.flake ? `${s(f.ms)} 🌀` : f.tentativas > 1 ? `${s(f.ms)} ↺` : s(f.ms),
+    // A marca da classe ao lado do ms: 🚧 quando a suíte NÃO mediu (exit 2), 🌀
+    // quando as duas tentativas se contradisseram, ↺ quando o vermelho repetiu
+    // (o ms é a SOMA das duas).
+    f.infra
+      ? `${s(f.ms)} 🚧`
+      : f.flake
+        ? `${s(f.ms)} 🌀`
+        : f.tentativas > 1
+          ? `${s(f.ms)} ↺`
+          : s(f.ms),
     `${pct(f.ms, estado.somaSubTestsMs)}%`,
     String(f.metades),
   ])
@@ -211,18 +227,28 @@ export function tabelaSubTests(estado) {
     ? ` 🌀 ${estado.flakes.length} FLAKY (reprovou e passou na MESMA árvore — o veredito do master vai a 2, ` +
       `INDETERMINADO): ${estado.flakes.map((f) => `\`${f.role}\``).join(", ")}.`
     : ""
+  // A NON-MEDIÇÃO é dita com o nome da CLASSE e com o que ela NÃO é: sem esta
+  // frase, uma forma com exit 2 apareceria como "não passou" (o defeito da
+  // árvore que ninguém mediu).
+  const naoMedidas = estado.naoMedidas.length
+    ? ` 🚧 ${estado.naoMedidas.length} NÃO MEDIDO(S) (INFRA: a suíte saiu com o exit 2 que ela declara ` +
+      `como "não consegui medir" — git/node/bancada ausentes, fail-closed — ou nem rodou): ` +
+      `${estado.naoMedidas.map((f) => `\`${f.role}\``).join(", ")}. O veredito do master vai a 2 ` +
+      `(INDETERMINADO) e isto **não é defeito da árvore**: re-rode onde o instrumento responde.`
+    : ""
   const legenda =
     `Cada sub-test do master, MEDIDO e VERSIONADO — o ato de ${dia}, medido sobre \`${commit}\` ` +
     `(a âncora é o commit que CARREGA este registro, resolvida pela história): ` +
-    `**${estado.verdes}/${estado.subtests} verdes**, **${estado.metades} metades**.${feridas}${remedidas}${flaky}`
+    `**${estado.verdes}/${estado.subtests} verdes**, **${estado.metades} metades**.${feridas}${remedidas}${flaky}${naoMedidas}`
 
   const leitura =
     `**Dez** sub-tests pagam **${estado.concentracaoPct}%** da conta e a mediana é **${s(estado.medianaMs)}**: ` +
     `a cauda é barata, e o harness sai da DIFERENÇA entre o total e a soma dos sub-tests, não de uma constante. ` +
     `O sub-test NOVO entra na rodada seguinte **MEDIDO**, e o PRÓXIMO acrescenta **~${s(estado.projecaoMs)}** ` +
     `(PROJEÇÃO: a média dos scripts medidos mais o harness por sub-test). A marca **↺** na linha é sub-test ` +
-    `RE-MEDIDO (a régua é a REPETIÇÃO: o ms é a soma das tentativas) e **🌀** é FLAKE (não vale verde nem ` +
-    `reprovação). A coluna de metades é DERIVADA da ` +
+    `RE-MEDIDO (a régua é a REPETIÇÃO: o ms é a soma das tentativas), **🌀** é FLAKE (não vale verde nem ` +
+    `reprovação) e **🚧** é NÃO MEDIDO (INFRA: o instrumento não respondeu — a linha não é verde nem ` +
+    `vermelha, e o veredito do master vai a 2). A coluna de metades é DERIVADA da ` +
     `matriz (§ acima) — o ato a reescreve depois da herança e diz o que fez (\`metadesDaMatriz\`). ` +
     `Esta TABELA (e esta leitura) é **DERIVADA do registro**: quem a reescreve é o ATO, e o ` +
     `\`check:mutation-count\` recusa o commit em que ela divirja dele — a prosa não tem número próprio.`
@@ -259,6 +285,15 @@ export function paragrafoCusto(estado) {
     ? ` E o vermelho foi RE-MEDIDO antes de virar veredito: ${estado.remedidas.map((f) => `\`${f.role}\``).join(", ")} ` +
       `REPETIU o vermelho na 2ª tentativa, então o ms dele é a SOMA das duas (o custo é o que o job pagou).`
     : ""
+  // A classe INFRA no parágrafo: a suíte saiu 2 (o "não consegui medir" declarado
+  // no cabeçalho dela) e o registro NÃO a grava como defeito da árvore.
+  const naoMedidas = estado.naoMedidas.length
+    ? ` **E ${estado.naoMedidas.length} sub-test(s) NÃO MEDIRAM** ` +
+      `(${estado.naoMedidas.map((f) => `\`${f.role}\``).join(", ")}): a suíte saiu com o exit 2 que ela declara ` +
+      `como INFRA (git/node/bancada ausentes, fail-closed), então o veredito do master vai a 2 (INDETERMINADO) ` +
+      `e isto NÃO é defeito da árvore — o custo deles também não julga nada, e re-rodar onde o instrumento ` +
+      `responde é o remédio.`
+    : ""
 
   return [
     `**O custo do job mais caro do PR não é uma conta à mão** (família \`mutations\` do`,
@@ -272,7 +307,7 @@ export function paragrafoCusto(estado) {
     `pagam **${estado.concentracaoPct}%** da soma, e o registro guarda **${estado.metades} metades**.`,
     `Quem entra com um sub-test novo não compõe nada: ele entra **MEDIDO** na rodada seguinte`,
     `(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~${s(estado.projecaoMs)}**) é dita`,
-    `como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test.${feridas}${remedidas}`,
+    `como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test.${feridas}${remedidas}${naoMedidas}`,
     "",
     // Sem ESPAÇO no fim da linha: o prettier da doc o removeria e o bloco vivo
     // deixaria de bater com o renderizado (o defeito que a régua pega).
