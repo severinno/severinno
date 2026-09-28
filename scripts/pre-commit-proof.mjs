@@ -1158,7 +1158,7 @@ export function proveRemedyOffered({ root = REPO_ROOT, deps = /** @type {any} */
 //   4. os DEFEITOS de FASE B (um byte 0x97 num `.ts` NOVO e um link interno
 //      quebrado num `.md` NOVO) têm de ser RECUSADOS, com o HEAD intacto — a
 //      metade 3 só media a fase B pelo lado que PASSA (o controle entrava);
-//   5. a ATRIBUIÇÃO da fase B: os DEZ membros rodados DIRETO sobre o MESMO
+//   5. a ATRIBUIÇÃO da fase B: os ONZE membros rodados DIRETO sobre o MESMO
 //      índice (veredito por exit code) e a DESCIDA do runner nomeando o guard de
 //      cada classe (`check-utf8.sh`, `check-readme-anchors.mjs`) — com o
 //      conjunto medido igual ao DECLARADO nos dois sentidos (é o que impede a
@@ -1311,6 +1311,13 @@ export const FASE_B_MEMBROS = [
   { id: "hook-ci-parity", cmd: "node", args: ["scripts/check-hook-ci-parity.mjs"] },
   { id: "hook-commands", cmd: "node", args: ["scripts/check-hook-commands.mjs"] },
   { id: "pipefail-sigpipe", cmd: "node", args: ["scripts/check-pipefail-sigpipe.mjs"] },
+  // A LISTA DERIVADA dos artefatos do hook: o membro que faz a derivação valer no
+  // COMMIT (lista vazia ou derivação aberta = recusa). Ele entra aqui como os
+  // outros: o veredito dele sobre o índice do defeito tem de ser 0 (o artefato é
+  // do REPOSITÓRIO, não do índice), e a recusa que ele cunha — a lista vazia — não
+  // é do índice nenhum. Quem a mede por MUTAÇÃO é o sub-test `artefatos-do-hook`
+  // (a metade M1 no fixture), não esta atribuição.
+  { id: "artefatos-do-hook", cmd: "node", args: ["scripts/check-artefatos-do-hook.mjs"] },
   {
     id: "prettier-format",
     cmd: "bun",

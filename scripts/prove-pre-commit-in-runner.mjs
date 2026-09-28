@@ -75,7 +75,7 @@
 //     do projeto, e a fase C real (`lint-staged`, `typecheck`) não caberia nele;
 //   - `--sem-duble` — o hook REAL sobre uma CÓPIA do checkout (`proveRealHookBlocks`):
 //     as DUAS fases rodam de VERDADE (sem wrapper, sem dublê) — os SEIS guards
-//     de fase A, o gate e os DEZ membros da fase B —, e a fase C roda real,
+//     de fase A, o gate e os ONZE membros da fase B —, e a fase C roda real,
 //     porque a cópia tem o `package.json` e o `node_modules`. É o que fecha o
 //     limite que a forma padrão declara, e responde "quem recusa" nas duas
 //     fases: na fase A o refutador tem de ser ÚNICO, e tem de ser o GATE, com os
@@ -207,7 +207,7 @@ export const IMAGE_REF_ENV = "PROVA_IMAGE_REF"
 
 /** O que NÃO é negociável: o hook, o guard que ele executa e o fixture. */
 export const LIMITS = [
-  "os guards IRMÃOS do hook rodam no DUBLÊ DECLARADO do simulador (`bun`/`bash`/`node` deles devolvem 0): quem roda de verdade é o guard do defeito, com o `node` REAL do runtime. Quem roda os irmãos DE VERDADE é o `--sem-duble`, que mede os SEIS guards de fase A com o mesmo `--staged`, os dez membros da fase B e o bump de matriz sem o ato — o limite desta forma, não do comando",
+  "os guards IRMÃOS do hook rodam no DUBLÊ DECLARADO do simulador (`bun`/`bash`/`node` deles devolvem 0): quem roda de verdade é o guard do defeito, com o `node` REAL do runtime. Quem roda os irmãos DE VERDADE é o `--sem-duble`, que mede os SEIS guards de fase A com o mesmo `--staged`, os onze membros da fase B e o bump de matriz sem o ato — o limite desta forma, não do comando",
   "o repositório da prova é o FIXTURE do simulador (o mesmo da suíte e do doctor), não o checkout do PR",
   "a ref é a DECLARADA pelo repositório (IMAGE_REGISTRY/IMAGE_NAMESPACE/BUN_VERSION): o digest sai como proveniência medida, mas quem prova qual imagem o runner registrou é o `check-runner-labels`/o smoke",
   "a metade do REMÉDIO (a classe `bun-mirror-removal`) roda no MESMO fixture do simulador, com o guard DONO real e os irmãos de fase no dublê: ela mede a OFERTA e o fecho daquele defeito, não o resto da fase — quem mede a fase inteira é o `--sem-duble`",
@@ -218,7 +218,7 @@ export const LIMITS = [
  * O escopo declarado da forma `--sem-duble` — o que ela NÃO promete.
  *
  * A primeira entrada do `LIMITS` acima (o dublê dos irmãos) sai daqui: nesta
- * forma os seis guards de fase A e os dez membros da fase B rodam de verdade, e
+ * forma os seis guards de fase A e os onze membros da fase B rodam de verdade, e
  * o refutador da fase A tem de ser o gate. O que sobra é o que ela realmente não
  * cobre: o RECORTE do defeito, a origem da árvore e o teto de tempo por comando.
  */
@@ -824,7 +824,7 @@ export function main({ argv = process.argv.slice(2), env = process.env, deps = {
         "Usage:\n" +
         "  node scripts/prove-pre-commit-in-runner.mjs [--sem-duble] [--in-image] [--image <ref>] [--docker <cli>] [--root <dir>] [--json]\n\n" +
         "  (sem --sem-duble) o hook do checkout é somado ao dublê dos guards irmãos (o fixture)\n" +
-        "  (--sem-duble)     o hook REAL sobre uma cópia do checkout — as duas fases rodam de verdade (os CINCO guards de fase A, o gate e os dez membros da fase B)\n\n" +
+        "  (--sem-duble)     o hook REAL sobre uma cópia do checkout — as duas fases rodam de verdade (os CINCO guards de fase A, o gate e os onze membros da fase B)\n\n" +
         "Exit codes: 0 provado · 1 violado · 2 indeterminado · 3 uso inválido",
     )
     return EXIT.PROVEN

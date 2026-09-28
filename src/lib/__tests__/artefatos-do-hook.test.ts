@@ -53,6 +53,10 @@ import {
   extrairComandos,
   artefatosDoHook,
 } from "../../../scripts/artefatos-do-hook.mjs"
+import {
+  EXIT as EXIT_DO_GUARD,
+  julgaArtefatosDoHook,
+} from "../../../scripts/check-artefatos-do-hook.mjs"
 import { GITEA_COMPOSE } from "../../../scripts/check-bun-mirror.mjs"
 import { REPO_ROOT } from "../../../scripts/hook-simulator.mjs"
 import { artefatosDoFixture } from "../../../scripts/pre-commit-proof.mjs"
@@ -385,4 +389,65 @@ describe("a CLI de artefatos-do-hook", () => {
     const fonte = readFileSync(join(REPO_ROOT, "scripts", "pre-commit-proof.mjs"), "utf8")
     expect(fonte).not.toContain("ARTEFATOS_DO_FIXTURE =")
   })
+})
+
+// ── o guard do COMMIT: lista vazia é RECUSA ───────────────────────────────
+
+/**
+ * O vínculo da derivação com o HOOK (fase B do `.husky/pre-commit`).
+ *
+ * Até ele, a lista vazia só era medida pela MATRIZ de mutação — no CI, no PR,
+ * DEPOIS do commit. O que este bloco mede é a decisão do CHAMADOR: a derivação
+ * devolve `{artefatos: [], problemas: []}` (a resposta honesta dela para uma raiz
+ * em que ninguém lê artefato, e é o que as contra-provas acima fixam) e o guard
+ * RECUSA — porque, neste repositório, o fixture do pre-commit depende da lista.
+ */
+describe("check-artefatos-do-hook — a lista vazia RECUSA o commit", () => {
+  const SCRIPT = join(REPO_ROOT, "scripts", "check-artefatos-do-hook.mjs")
+
+  function roda(args: string[]) {
+    const r = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8", timeout: 120000 })
+    return { status: r.status, out: r.stdout ?? "", err: r.stderr ?? "" }
+  }
+
+  it("a raiz REAL passa: a lista tem artefato e a derivação fechou", () => {
+    const r = julgaArtefatosDoHook()
+    expect(r.recusas).toEqual([])
+    expect(r.artefatos).toContain(GITEA_COMPOSE)
+  }, 120000)
+
+  it("a lista vazia é recusa — e a derivação, sozinha, não acusa problema nenhum", () => {
+    const dir = raizComHook({ comando: "node scripts/check-sem-artefato.mjs", guard: GUARD_NOVO })
+
+    // O que a derivação devolve aqui: lista vazia e NENHUM problema (a contra-prova
+    // dela, medida acima). É por isso que o julgamento tem de existir no CHAMADOR.
+    expect(artefatosDoHook({ root: dir }).problemas).toEqual([])
+
+    const r = julgaArtefatosDoHook({ root: dir })
+    expect(r.recusas).toHaveLength(1)
+    expect(r.recusas[0]).toContain("VAZIA")
+    // A consequência nomeada: sem artefato o fixture não materializa nada.
+    expect(r.recusas[0]).toContain("FIXTURE")
+  }, 120000)
+
+  it("a derivação ABERTA é recusa nomeada — e a lista vazia não esconde a causa", () => {
+    const dir = raizComHook({ comando: "node scripts/check-que-nao-existe.mjs", guard: GUARD_NOVO })
+
+    const r = julgaArtefatosDoHook({ root: dir })
+    expect(r.recusas.join(" | ")).toContain("ausente do checkout")
+    // A lista sai vazia TAMBÉM aqui — recusar pelo TAMANHO esconderia o problema
+    // que explica a lista vazia (a ordem das recusas é a decisão).
+    expect(r.recusas.join(" | ")).not.toContain("VAZIA")
+  }, 120000)
+
+  it("a CLI: exit 1 na árvore da lista vazia, exit 0 no checkout", () => {
+    const dir = raizComHook({ comando: "node scripts/check-sem-artefato.mjs", guard: GUARD_NOVO })
+    const recusa = roda(["--root", dir])
+    expect(recusa.status).toBe(EXIT_DO_GUARD.LISTA_VAZIA)
+    expect(recusa.err).toContain("VAZIA")
+
+    const ok = roda(["--json"])
+    expect(ok.status).toBe(EXIT_DO_GUARD.OK)
+    expect(JSON.parse(ok.out).artefatos).toContain(GITEA_COMPOSE)
+  }, 120000)
 })

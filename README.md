@@ -918,6 +918,7 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 | Fecho de TLA do remédio (`check-tla-closure.mjs`)                               |     ✅     |       —       |
 | Hash citado na prosa (`check-doc-hashes.mjs`)                                   |     ✅     |       —       |
 | Tag do runner pinada no compose (`check-runner-tag.mjs`)                        |     ✅     |       —       |
+| Lista derivada de artefatos do hook (`check-artefatos-do-hook.mjs`)             |     ✅     |       —       |
 | Contagem da matriz no índice (`check-mutation-count.mjs --staged`)              |     ✅     |       —       |
 | Mutation jobs CI (`check-mutation-jobs.mjs`)                                    |     ✅     |      ✅       |
 | Mutation jobs staged diff (`check-mutation-jobs.mjs --staged`)                  |     ✅     |       —       |

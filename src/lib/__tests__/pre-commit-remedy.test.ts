@@ -661,8 +661,9 @@ describe("a premissa: o hook chama o remédio, e de dentro do bloco do gate", ()
       "node scripts/check-hook-ci-parity.mjs &",
       "node scripts/check-hook-commands.mjs &",
       "node scripts/check-pipefail-sigpipe.mjs &",
+      "node scripts/check-artefatos-do-hook.mjs &",
       "bun x prettier --check --ignore-unknown $STAGED_FORMAT",
-      "wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY $PID_HOOKCMD $PID_PIPEFAIL",
+      "wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY $PID_HOOKCMD $PID_PIPEFAIL $PID_ARQUIVO $PID_TLA $PID_DOCHASH $PID_RUNNERTAG $PID_ARTEFATOS",
     ]) {
       expect(corpo, `${cmd} ficou fora da função fase_b`).toContain(cmd)
     }

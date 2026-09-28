@@ -191,6 +191,12 @@ export const HOOK_DECLARED = [
     why: "LOCAL: e o runner compartilhado dos dois hooks (fonte unica da lista). Os guards que ele executa rodam no CI pelo reusable utf8-check.yml; o RUNNER nao existe no CI porque la cada guard e um step com o seu proprio nome.",
   },
   {
+    match: /^node scripts\/check-artefatos-do-hook\.mjs$/,
+    of: null,
+    ciMirror: null,
+    why: "LOCAL: o VINCULO da DERIVACAO dos artefatos do hook com o commit. O `artefatos-do-hook.mjs` responde por EXECUCAO quais arquivos do repositorio os guards DESTE hook leem, e e essa lista que o fixture do pre-commit MATERIALIZA: com ela VAZIA, um guard fail-closed sobre um artefato le INFRA na copia e o vermelho passa a ser do FIXTURE — o defeito que a derivacao existe para fechar, de volta pela porta de tras e EM SILENCIO, porque uma lista vazia nao tem entrada para nomear. O CI mede a MESMA derivacao por outros caminhos (o sub-test `artefatos-do-hook` da matriz, com as metades da lista esvaziada, da coleta que perde um leitor e do rastreio da arvore; e a suite unitaria da derivacao), mas nenhum deles roda no caminho do COMMIT: a lista podia sair `[]` e o commit saia, com a unica testemunha no PR. Quem decide que a lista vazia e DEFEITO neste repositorio e este chamador — a derivacao e um mecanismo que devolve `{artefatos, problemas}` sem julgar o TAMANHO, e as raizes sinteticas das duas contra-provas da suite dela devolvem `[]` com `problemas` vazio DE PROPOSITO.",
+  },
+  {
     match: /^bun run barrel-lint$/,
     of: null,
     ciMirror: "node scripts/barrel-lint.mjs",

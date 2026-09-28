@@ -324,6 +324,30 @@ fase_b() {
   node scripts/check-runner-tag.mjs &
   PID_RUNNERTAG=$!
 
+  # A LISTA DERIVADA dos artefatos do hook: a derivação responde QUAIS arquivos do
+  # repositório os guards DESTE arquivo leem (`scripts/artefatos-do-hook.mjs`, por
+  # execução) e o fixture do pre-commit MATERIALIZA essa lista — sem ela, um guard
+  # fail-closed sobre um artefato lê INFRA na cópia e o vermelho passa a ser do
+  # FIXTURE. Uma lista VAZIA é esse defeito de volta — e EM SILÊNCIO, porque uma
+  # lista vazia não tem entrada para nomear.
+  #
+  # POR QUE ELE ESTA AQUI: até esta linha, quem pegava a lista vazia era só a
+  # MATRIZ DE MUTAÇÃO (`test-mutation-artefatos-do-hook.sh`, a metade M1) — que
+  # roda no CI, no PR, DEPOIS do commit. No caminho do commit nada a recusava: a
+  # derivação podia devolver `[]` e o commit saía. Este comando roda a MESMA
+  # derivação e recusa o commit quando a lista sai vazia (ou quando a derivação não
+  # fecha): é o VÍNCULO da derivação com o hook, e não o substituto da matriz — as
+  # outras formas da derivação (a coleta que perde UM leitor, o rastreio da árvore)
+  # continuam sendo medidas lá.
+  #
+  # POR QUE O COMANDO É LOCAL (declarado em HOOK_DECLARED): o CI mede a derivação
+  # pelos outros caminhos (a matriz e a suíte unitária), e o veredito daqui é do
+  # COMMIT: o fixture que ele materializa é o fixture do pre-commit. Custo MEDIDO
+  # neste host: **1,4s** (monta o fixture e comanda os guards de node do hook), em
+  # paralelo com o resto da fase.
+  node scripts/check-artefatos-do-hook.mjs &
+  PID_ARTEFATOS=$!
+
   # Prettier check STAGED — feedback de formatação ANTES do lint-staged
   (
     STAGED_FORMAT=$(git diff --cached --name-only --diff-filter=ACMR | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
@@ -333,7 +357,7 @@ fase_b() {
   ) &
   PID_PRETTIER=$!
 
-  wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY $PID_HOOKCMD $PID_PIPEFAIL $PID_ARQUIVO $PID_TLA $PID_DOCHASH $PID_RUNNERTAG
+  wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY $PID_HOOKCMD $PID_PIPEFAIL $PID_ARQUIVO $PID_TLA $PID_DOCHASH $PID_RUNNERTAG $PID_ARTEFATOS
 }
 
 FASE_B=0

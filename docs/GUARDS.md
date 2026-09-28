@@ -1731,6 +1731,32 @@ O que ela prova: sem a segunda via (`envDaArvore`) a leitura delegada é invisí
 o artefato dela volta a faltar na cópia — o defeito de sempre, agora pelo caminho
 que a `M1` e a `M2` não alcançam.
 
+**E ela vale no COMMIT, não só no PR** — quem cobra isso é o
+`scripts/check-artefatos-do-hook.mjs`, na **fase B** do hook (comando LOCAL, declarado
+em `HOOK_DECLARED` do `check-hook-ci-parity`). O defeito que ele fecha é o mesmo da
+`M1`, medido um tempo depois e mais caro: até ele, a lista vazia só era pega pela
+matriz — que roda no CI **depois** do commit —, e no caminho do commit nada a
+recusava (a derivação podia devolver `[]` e o commit saía, com a única testemunha no
+PR). O guard roda a MESMA derivação e **recusa o commit** quando a lista sai vazia,
+e também quando a derivação NÃO FECHA (problema nomeado, lista pela metade).
+
+A recusa mora no CHAMADOR, e não no `artefatosDoHook`, e isso é decisão declarada: a
+lista vazia não é um problema da derivação — as raízes SINTÉTICAS das duas
+contra-provas da suíte dela (`artefatos-do-hook.test.ts`: o hook que não chama a
+guarda e o filho com ambiente próprio) devolvem `[]` com `problemas` VAZIO de
+propósito, porque ali "nenhum artefato" é a resposta honesta. Quem sabe que, NESTE
+repositório, o fixture do pre-commit depende da lista é o hook. A derivação continua
+sendo o MECANISMO (ela mede); o guard é o CHAMADOR que decide.
+
+Custo MEDIDO neste host, já com o próprio comando no hook: **1,4s** (a derivação
+monta o fixture e comanda os guards de node do hook; dentro da cópia dela o guard
+roda de novo e sai no fecho que não resolve — `.husky/pre-commit` não existe na
+cópia —, o que custa ~0,05s), em paralelo com o resto da fase B. O que ele **não**
+mede está no cabeçalho dele: a CORREÇÃO da derivação (perder um artefato e ainda
+devolver uma lista não-vazia é da `M2` e do `porComando` do `--json`) e o CONTEÚDO
+esperado da lista (fixar "9 artefatos" faria remover um leitor legítimo reprovar pelo
+motivo errado).
+
 #### Mutation tests que precisam de `node_modules` (fora da matriz node-pura)
 
 A matriz do master é **node-pura** (não instala deps). Cinco mutation tests
@@ -7657,8 +7683,8 @@ UNIÃO com a atribuição do filho, o `source` sem `export` e o `export VAR` soz
 de linha, `$( )`, `case`, função, continuação). E o repositório REAL é julgado com
 um **PISO de cobertura** (`comandos >= 200`, os três hooks e os scripts descidos nomeados): se a extração
 ou a descida pararem de funcionar, a contagem cai e o guard "passa" — o piso é o
-que impede o verde por vazio. Em produção: **273 comandos** (128 nos 3 hooks +
-145 dentro dos 5 scripts chamados), **267 resolvidos** e **6 indeterminados
+que impede o verde por vazio. Em produção: **274 comandos** (129 nos 3 hooks +
+145 dentro dos 5 scripts chamados), **268 resolvidos** e **6 indeterminados
 DECLARADOS** (as quatro decisões de caminho viraram prova; sobraram os payloads de
 `-c`).
 
@@ -7847,7 +7873,7 @@ fase C real, `lint-staged`/`typecheck`, não caberia nele).
 
 Com `--sem-duble`, o hook é o **REAL** sobre uma **CÓPIA do checkout**
 (`proveRealHookBlocks`): sem wrapper e sem dublê, as **DUAS fases** rodam de
-VERDADE — os seis guards de fase A, o gate e os **dez membros da fase B**
+VERDADE — os seis guards de fase A, o gate e os **onze membros da fase B**
 (inclusive o runner de encoding, que a fase A nem toca) —, e a fase C
 (lint-staged, typecheck) roda real, porque a cópia tem o `package.json` e o
 `node_modules` (LINKADO, não copiado).
@@ -7911,8 +7937,8 @@ feliz não distingue "a oferta existe" de "a oferta aconteceu por acaso".
    intacto. Até aqui a fase B só era medida pelo lado que PASSA (o controle da
    metade 3 entrava); a metade nova é a que diz **quem recusa** um defeito da
    classe dela;
-5. a **ATRIBUIÇÃO da fase B**: os **dez membros** da fase B (o runner de encoding,
-   os oito `bun`/`node` e o `prettier --check` sobre a lista do índice) rodados
+5. a **ATRIBUIÇÃO da fase B**: os **onze membros** da fase B (o runner de encoding,
+   os nove `bun`/`node` e o `prettier --check` sobre a lista do índice) rodados
    DIRETO sobre o MESMO índice, com o veredito por exit code, e a **DESCIDA** do
    runner — os comandos que o PRÓPRIO `run-encoding-guards.sh` declara, rodados um
    a um — **nomeando o guard** que recusou (`check-utf8.sh` para o encoding,
@@ -7934,7 +7960,7 @@ feliz não distingue "a oferta existe" de "a oferta aconteceu por acaso".
    suíte nova sem cabeçalho (`Usage:`/`Exit code:`) o `barrel-lint` da fase B
    reprovava o MESMO índice, e como a fase A recusa ANTES de a fase B rodar, a
    recusa teria ficado atribuída ao guard da contagem sem ser dele — então os
-   **cinco irmãos** (os de fase A SEM o dono), os **dez membros de fase B** e o
+   **cinco irmãos** (os de fase A SEM o dono), os **onze membros de fase B** e o
    **gate** entram todos verdes no MESMO índice, além do guard dono vermelho; e o CONTROLE — o
    MESMO índice com o **ato versionado** (a forma nova na família `mutations` do
    `guard-timing-baseline.json`) — ENTRA, com a forma conferida em HEAD.
