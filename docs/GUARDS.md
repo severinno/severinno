@@ -5602,13 +5602,14 @@ nos dois lados da pergunta nova (o M10) o repositório de hoje mostra o caminho
 FELIZ (o master daquela origem é legível: `semResposta` zero). Cada mutação é CIRÚRGICA (o alvo tem de
 aparecer UMA vez, e o arquivo mutado tem de seguir com sintaxe válida) e a régua é
 RESTAURADA entre as medições, com o CONTROLE final medindo o mesmo fato (412
-commits, e a mesma forma fora da origem) de novo. A suíte é a **37.ª** da matriz do master:
-custava **23.7s** sozinha (as oito metades) no ato versionado — a MESMA ordem de grandeza que os **17.7s**
-medidos pelo `--scenario` isolado antes de ela entrar na matriz — e com as DEZ metades
-custa **36.9s** medidos nesta árvore (uma execução, `real 0m36,905s`); esse número
-entra na coluna de custo no PRÓXIMO ato, e até lá ele é dito com a procedência
-DELE — medição à parte, não a do registro versionado (que ainda carrega os 23.7s
-das oito).
+commits, e a mesma forma fora da origem) de novo. A suíte é a **39.ª** da matriz do master:
+custava **23.7s** sozinha (as oito metades) no ato de então — a MESMA ordem de grandeza que os **17.7s**
+medidos pelo `--scenario` isolado antes de ela entrar na matriz — e, com as DEZ metades,
+media **36.9s** (uma execução, `real 0m36,905s`). Aquele número era dito com a
+procedência DELE — medição à parte — porque o registro versionado ainda carregava os
+23.7s das oito. **O ato JÁ RE-MEDIU**: a suíte declara hoje doze metades e a coluna
+de custo do registro versionado carrega **46.6s** com elas — o número deixou de ser
+uma medição à parte e é o que o job paga.
 
 **LIMITE DECLARADO:** a régua mede **frescor**, não exatidão. Um commit a mais
 pode não mudar nada do que a família mede, e o teto é um contrato de RITMO, não
