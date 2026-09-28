@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 46 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 47 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -225,6 +225,41 @@ SUBTESTS=(
   "runner-tag|scripts/test-mutation-runner-tag.sh"
   "local-image|scripts/test-mutation-local-image.sh"
   "artefatos-do-hook|scripts/test-mutation-artefatos-do-hook.sh"
+  "mutacao-prova|scripts/test-mutation-mutacao-prova.sh"
+)
+
+# ── A PROVA-DE-APLICAÇÃO: as suítes que chamam a RÉGUA ÚNICA ──────────────
+# A prova de que uma mutação APLICOU (o `grep` do marcador MUTACAO, a cirurgia
+# literal e a conferência do checksum) vivia COPIADA em cada suíte — dezenove
+# cópias com uma variação a cada uma, e uma cópia que simplesmente SUMISSE não
+# deixava rastro: a suíte seguia verde, medindo o alvo ÍNTEGRO (o verde em
+# VÁCUO). Hoje ela é UMA (`scripts/mutacao-prova.sh`, com o gabarito próprio na
+# suíte `mutacao-prova` da matriz), e esta lista é a DECLARAÇÃO viva de quem a
+# chama. O `check-mutation-count` a confere nos DOIS sentidos contra as suítes
+# que chamam `mutacao_aplicar` — tirar a chamada de uma suíte sem tirar a linha
+# daqui (ou o contrário) é violação, nunca silêncio — e o NÚMERO de entradas
+# está declarado na doc (`**N suítes** provam a aplicação pela régua única`).
+# As que NÃO estão aqui são as que injetam mutação por conta própria, sem
+# reivindicar a prova do marcador (payload que não é comentável, por exemplo).
+PROVA_DE_APLICACAO=(
+  "workflow-refs"
+  "mutation-count"
+  "runner-labels"
+  "pipefail-sigpipe"
+  "hook-commands"
+  "workflow-defaults"
+  "workflow-run-syntax"
+  "registry-defaults"
+  "job-deps"
+  "github-deps"
+  "cut-stages"
+  "mirror-coverage"
+  "pre-commit-proof"
+  "stack-per-commit"
+  "lint-scope"
+  "runner-tag"
+  "local-image"
+  "artefatos-do-hook"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────

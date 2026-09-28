@@ -246,6 +246,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# A PROVA-DE-APLICAÇÃO — a régua ÚNICA de "a mutação APLICOU" (o gabarito dela é
+# `scripts/test-mutation-mutacao-prova.sh`).
+# shellcheck source=scripts/mutacao-prova.sh
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
@@ -345,25 +350,9 @@ restaurar_original() {
 # Uma mutação que casa 0 ou 2+ vezes não é cirúrgica: o script para em vez de
 # medir outra coisa. O marcador "MUTACAO M" no texto novo é o que prova que a
 # mutação APLICOU (o alvo pode existir e a escrita falhar).
-mutar_guard() {
-  GUARD="$GUARD" ALVO="$1" NOVO="$2" python3 - <<'PY'
-import os
-p = os.environ["GUARD"]
-old, new = os.environ["ALVO"], os.environ["NOVO"]
-s = open(p).read()
-n = s.count(old)
-if n != 1:
-    raise SystemExit(f"mutacao nao-cirurgica no guard: {n} ocorrencia(s) do alvo (esperado 1)")
-open(p, "w").write(s.replace(old, new))
-PY
-  if ! grep -qF 'MUTACAO M' "$GUARD"; then
-    fail "a mutação não aplicou no guard (nada a medir)"
-    exit 1
-  fi
-  if [ "$(cksum "$GUARD" | cut -d' ' -f1)" = "$guard_sum" ]; then
-    fail "a mutação não alterou o guard (checksum idêntico) — o alvo casou mas a escrita não"
-    exit 1
-  fi
+mutar_guard() { # <alvo> <troca>: a cirurgia, o marcador e o checksum são da régua
+  # COMPARTILHADA (`mutacao_aplicar`).
+  mutacao_aplicar "$GUARD" "$1" "$2" "$guard_sum"
 }
 
 # ── mkfixture: um mini-repo com UM hook e um package.json mínimo ──────────
@@ -1100,21 +1089,11 @@ exigir_aprovado "M25 (antes da mutação)" "$SCRIPT_DIR"
 pass "CONTROLE: com a prosa batendo com o medido o guard no repositório REAL sai VERDE"
 
 TOTAL_ATUAL="$(node "$GUARD" --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["numeros"]["comandos"][0])')"
-DOC="$DOC" TOTAL="$TOTAL_ATUAL" python3 - <<'PY'
-import os
-p = os.environ["DOC"]
-total = int(os.environ["TOTAL"])
-old = f"**{total} comandos**"
-new = f"**{total - 1} comandos**<!-- MUTACAO M25 -->"
-s = open(p).read()
-if s.count(old) != 1:
-    raise SystemExit(f"mutacao nao-cirurgica na doc: {s.count(old)} ocorrencia(s) de {old!r} (esperado 1)")
-open(p, "w").write(s.replace(old, new))
-PY
-if ! grep -qF 'MUTACAO M25' "$DOC"; then
-  fail "a mutação não aplicou na doc (nada a medir)"
-  exit 1
-fi
+# A troca NA DOC (não num guard) — a régua COMPARTILHADA prova a cirurgia, o
+# marcador e o conteúdo, e o "antes" é lido agora.
+mutacao_aplicar "$DOC" "**${TOTAL_ATUAL} comandos**" \
+  "**$((TOTAL_ATUAL - 1)) comandos**<!-- MUTACAO M25 -->" \
+  "$(cksum "$DOC" | cut -d' ' -f1)"
 
 rodar_guard "$SCRIPT_DIR"
 if [ "$GUARD_EXIT" -ne 1 ]; then

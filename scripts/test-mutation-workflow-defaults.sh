@@ -75,6 +75,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# A PROVA-DE-APLICAÇÃO — a régua ÚNICA de "a mutação APLICOU" (o gabarito dela é
+# `scripts/test-mutation-mutacao-prova.sh`).
+# shellcheck source=scripts/mutacao-prova.sh
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
@@ -162,22 +167,12 @@ trap cleanup EXIT
 # mesmo literal vive em mais de um call site (ex.: `runCommands` E
 # `discoverGates` consultam a leitura): mutar metade deixaria a outra metade
 # protegendo o guard, e o caso passaria por cirurgia, não por leitura.
-mutar() {
-  MUT_FILE="$1" MUT_OLD="$2" MUT_NEW="$3" MUT_COUNT="${4:-1}" python3 - <<'PY'
-import os
-p = os.environ["MUT_FILE"]
-old, new = os.environ["MUT_OLD"], os.environ["MUT_NEW"]
-esperado = int(os.environ["MUT_COUNT"])
-s = open(p).read()
-n = s.count(old)
-if n != esperado:
-    raise SystemExit(f"mutacao nao-cirurgica em {p}: {n} ocorrencia(s) do alvo (esperado {esperado})")
-open(p, "w").write(s.replace(old, new))
-PY
-  if ! grep -qF 'MUTACAO' "$1"; then
-    fail "a mutação não aplicou em $1 (nada a medir)"
-    exit 1
-  fi
+mutar() { # <arquivo> <alvo> <troca> [<contagem>]: a cirurgia, o marcador e o
+  # checksum são da régua COMPARTILHADA (`mutacao_aplicar`) — o "antes" é lido
+  # AGORA, porque um alvo pode ser mutado mais de uma vez na mesma metade.
+  local antes
+  antes="$(cksum "$1" | cut -d' ' -f1)"
+  mutacao_aplicar "$1" "$2" "$3" "$antes" "${4:-1}"
 }
 
 # `paridade <raiz-do-fixture> <saida>` → exit code do GUARD real contra o fixture.

@@ -84,6 +84,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# A PROVA-DE-APLICAÇÃO — a régua ÚNICA de "a mutação APLICOU" (o gabarito dela é
+# `scripts/test-mutation-mutacao-prova.sh`).
+# shellcheck source=scripts/mutacao-prova.sh
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
@@ -272,27 +277,9 @@ sintaxe_ok() { # <arquivo>
   esac
 }
 
-mutar() { # <alvo-texto> <troca-texto>
-  local alvo="$1" troca="$2"
-  ARQUIVO="$ARQUIVO_MUTADO" ALVO="$alvo" NOVO="$troca" python3 - <<'PY'
-import os
-p = os.environ["ARQUIVO"]
-s = open(p, encoding="utf-8").read()
-n = s.count(os.environ["ALVO"])
-if n != 1:
-    raise SystemExit(
-        f"mutacao nao-cirurgica em {p}: {n} ocorrencia(s) do alvo (esperado 1)"
-    )
-open(p, "w", encoding="utf-8").write(s.replace(os.environ["ALVO"], os.environ["NOVO"]))
-PY
-  if ! grep -qF 'MUTACAO M' "$ARQUIVO_MUTADO"; then
-    fail "a mutação não aplicou em $ARQUIVO_MUTADO (nada a medir)"
-    exit 1
-  fi
-  if [ "$(cksum "$ARQUIVO_MUTADO" | cut -d' ' -f1)" = "$SUM_ALVO" ]; then
-    fail "a mutação não alterou $ARQUIVO_MUTADO (checksum idêntico) — o alvo casou e a escrita não"
-    exit 1
-  fi
+mutar() { # <alvo-texto> <troca-texto>: a cirurgia, o marcador e o checksum são da
+  # régua COMPARTILHADA (`mutacao_aplicar`); aqui fica a sintaxe do alvo mutado.
+  mutacao_aplicar "$ARQUIVO_MUTADO" "$1" "$2" "$SUM_ALVO"
   if ! sintaxe_ok "$ARQUIVO_MUTADO"; then
     fail "MUTAÇÃO NÃO-CIRÚRGICA: $ARQUIVO_MUTADO mutado não é válido sintaticamente."
     exit 1

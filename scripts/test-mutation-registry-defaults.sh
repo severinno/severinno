@@ -105,6 +105,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# A PROVA-DE-APLICAÇÃO — a régua ÚNICA de "a mutação APLICOU" (o gabarito dela é
+# `scripts/test-mutation-mutacao-prova.sh`).
+# shellcheck source=scripts/mutacao-prova.sh
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
@@ -187,27 +192,10 @@ restaurar_original() {
 # Uma mutação que casa 0 ou 2+ vezes não é cirúrgica: o script para em vez de
 # medir outra coisa. O marcador `MUTACAO M` no texto novo é o que prova que a
 # mutação APLICOU (o alvo pode existir e a escrita falhar).
-mutar() {
-  local arquivo="$1" alvo="$2" novo="$3"
-  ARQUIVO="$arquivo" ALVO="$alvo" NOVO="$novo" python3 - <<'PY'
-import os
-p = os.environ["ARQUIVO"]
-old, new = os.environ["ALVO"], os.environ["NOVO"]
-s = open(p).read()
-n = s.count(old)
-if n != 1:
-    raise SystemExit(f"mutacao nao-cirurgica em {p}: {n} ocorrencia(s) do alvo (esperado 1)")
-open(p, "w").write(s.replace(old, new))
-PY
-  if ! grep -qF 'MUTACAO M' "$arquivo"; then
-    fail "a mutação não aplicou em $arquivo (nada a medir)"
-    exit 1
-  fi
-  local antes="$TMP_DIR/$(basename "$arquivo").original"
-  if [ "$(soma_de "$arquivo")" = "$(soma_de "$antes")" ]; then
-    fail "a mutação não alterou $arquivo (checksum idêntico) — o alvo casou mas a escrita não"
-    exit 1
-  fi
+mutar() { # <arquivo> <alvo> <novo>: a cirurgia, o marcador e o checksum são da
+  # régua COMPARTILHADA (`mutacao_aplicar`); o "antes" é o backup da própria suíte.
+  local antes="$TMP_DIR/$(basename "$1").original"
+  mutacao_aplicar "$1" "$2" "$3" "$(cksum "$antes" | cut -d' ' -f1)"
 }
 
 # ── soma_da_regua: o corpo da COMPARAÇÃO de valor, byte a byte ────────────

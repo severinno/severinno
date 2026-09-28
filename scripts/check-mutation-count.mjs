@@ -416,6 +416,161 @@ function analisaMetades(root, entries) {
   return { metades, violations }
 }
 
+// ── A PROVA-DE-APLICAÇÃO (a régua única × as suítes que a chamam) ─────────
+
+/** A régua ÚNICA de "a mutação APLICOU" — a biblioteca SOURCED pelas suítes. */
+export const PROVA_LIB = "scripts/mutacao-prova.sh"
+
+/**
+ * O GABARITO da régua: a suíte que MEDE a prova-de-aplicação (o marcador, o
+ * conteúdo e a cirurgia desligados um por vez). Ela é do bloco SUBTESTS como
+ * qualquer outra, mas fica FORA desta regra — a cópia que se muta ali é o
+ * OBJETO da medição, não uma cópia privada da prova.
+ */
+export const PROVA_GABARITO = "scripts/test-mutation-mutacao-prova.sh"
+
+/**
+ * O bloco DECLARADO no master — as suítes que chamam a régua única:
+ *
+ *   PROVA_DE_APLICACAO=(
+ *     "artefatos-do-hook"
+ *     ...
+ *   )
+ *
+ * A lista é conferida NOS DOIS SENTIDOS (uma entrada sem a chamada e uma
+ * chamada sem a entrada são violação) e o número dela é declarado na doc. O
+ * que ela NÃO pode ser é dispensável: sem uma declaração viva, tirar a chamada
+ * de uma suíte não deixa rastro.
+ *
+ * @param {string} masterSrc
+ * @returns {{presente: boolean, ids: string[]}}
+ */
+export function deriveProvaDeAplicacao(masterSrc) {
+  const marca = "PROVA_DE_APLICACAO=("
+  const start = masterSrc.indexOf(marca)
+  if (start === -1) return { presente: false, ids: [] }
+  const bloco = masterSrc.slice(start + marca.length)
+  const end = bloco.indexOf("\n)")
+  const corpo = end === -1 ? bloco : bloco.slice(0, end)
+  const ids = []
+  for (const linha of corpo.split("\n")) {
+    const m = linha.match(/^\s*"([^"]+)"\s*$/)
+    if (m) ids.push(m[1])
+  }
+  return { presente: true, ids }
+}
+
+/**
+ * A PROVA-DE-APLICAÇÃO — a régua ÚNICA (`PROVA_LIB`) e as suítes que a chamam.
+ *
+ * O DEFEITO MEDIDO (27/09/2026): a prova de que a mutação APLICOU vivia COPIADA
+ * em cada suíte — a mesma dezena de linhas (`mutar` com a cirurgia em python, o
+ * `grep` do marcador `MUTACAO` e a conferência do checksum) reimplementada
+ * dezenove vezes, com uma variação a cada cópia. Das 44 suítes que injetam uma
+ * mutação cujo payload CARREGA o marcador, só 18 verificavam que ele chegou ao
+ * arquivo; e uma cópia que simplesmente SUMISSE não deixava rastro: a suíte
+ * seguia verde, medindo o alvo ÍNTEGRO — o verde em VÁCUO.
+ *
+ * A prova foi HOISTED para `scripts/mutacao-prova.sh` (uma cópia só, com um
+ * sítio único para cada uma das três provas) e quem mede a régua é o gabarito
+ * (`PROVA_GABARITO`, com as três metades dele). Esta regra fecha o outro lado,
+ * e são três as conferências:
+ *
+ *   1. NENHUMA cópia PRIVADA: uma linha com `grep` e o marcador `MUTACAO` numa
+ *      suíte é a prova reimplementada — e uma cópia que nasce não é medida por
+ *      gabarito nenhum;
+ *   2. A LISTA DECLARADA está NO MASTER (`PROVA_DE_APLICACAO`), conferida nos
+ *      DOIS sentidos contra as suítes que chamam `mutacao_aplicar`;
+ *   3. O NÚMERO DECLARADO na doc — `**N suítes** provam a aplicação pela régua
+ *      única` — bate com o tamanho da lista.
+ *
+ * Sem (2) e (3), tirar a chamada de uma suíte (e a prova com ela) seria um
+ * verde: a suíte deixaria de provar que a mutação aplicou, e nada diria.
+ *
+ * @param {string} root
+ * @param {string} masterSrc
+ * @param {{id: string, script: string}[]} entries
+ * @returns {{comProva: {id: string, script: string}[], declaradas: string[], presente: boolean,
+ *            violations: string[]}}
+ */
+export function analisaProvaDeAplicacao(root, masterSrc, entries) {
+  const violations = []
+  const comProva = []
+  const { presente, ids: declaradas } = deriveProvaDeAplicacao(masterSrc)
+
+  for (const { id, script } of entries) {
+    // O gabarito muta a PRÓPRIA régua: a "cópia" que ele desliga é o objeto da
+    // medição dele, e a régua o mede por outro caminho (o checksum do arquivo).
+    if (script === PROVA_GABARITO) continue
+    const p = join(root, script)
+    if (!existsSync(p)) continue // ausente = violação da regra das metades
+    const src = readFileSync(p, "utf8")
+
+    // 1. a cópia PRIVADA da prova do marcador: um `grep` cujo PRIMEIRO argumento
+    //    citado é o próprio marcador (`grep -qF 'MUTACAO M' "$GUARD"`). A forma
+    //    é a do `mutacao_carregou_marcador`; a prosa que CITA o marcador (um
+    //    `header`, um comentário do cabeçalho) não é prova de nada e não entra.
+    for (const [i, linha] of src.split("\n").entries()) {
+      if (/^\s*#/.test(linha)) continue
+      const copia = /\bgrep\b[^\n]*?(["'])(MUTACAO|MUTAÇÃO)[^"']*\1/.exec(linha)
+      if (copia) {
+        violations.push(
+          `${script}:${i + 1}: cópia PRIVADA da prova-de-aplicação (o \`grep\` do marcador MUTACAO) — a prova é da régua ÚNICA (${PROVA_LIB}): chame \`mutacao_aplicar\`, que traz a cirurgia, o MARCADOR e o CONTEÚDO juntos; uma cópia que nasce não é medida por gabarito nenhum, e uma que some não deixa rastro (a suíte passaria a medir o alvo íntegro)`,
+        )
+      }
+    }
+
+    if (/\bmutacao_aplicar\b/.test(src)) {
+      comProva.push({ id, script })
+      if (!src.includes(PROVA_LIB)) {
+        violations.push(
+          `${script}: chama \`mutacao_aplicar\` e NÃO sourceia ${PROVA_LIB} — a régua tem de estar carregada na suíte (sem o \`. \"$SCRIPT_DIR/${PROVA_LIB}\"\` a chamada sai com 'command not found' e o erro não é o da prova)`,
+        )
+      }
+    }
+  }
+
+  // 2. a LISTA DECLARADA × as suítes que chamam a régua (nos DOIS sentidos).
+  const derivadas = comProva.map((c) => c.id).sort()
+  const ordenadas = [...declaradas].sort()
+  if (presente) {
+    const faltando = derivadas.filter((id) => !ordenadas.includes(id))
+    const sobrando = ordenadas.filter((id) => !derivadas.includes(id))
+    for (const id of faltando) {
+      violations.push(
+        `test-mutation-guards.sh: a suíte '${id}' CHAMA a régua única (\`mutacao_aplicar\`) e NÃO está em PROVA_DE_APLICACAO — a prova-de-aplicação que ninguém declara é a que some em silêncio: acrescente a linha lá`,
+      )
+    }
+    for (const id of sobrando) {
+      violations.push(
+        `test-mutation-guards.sh: PROVA_DE_APLICACAO declara '${id}' e a suíte NÃO chama \`mutacao_aplicar\` — ou a suíte perdeu a prova-de-aplicação (o \`mutar\` voltou a escrever por conta própria), ou a linha da lista ficou. A régua única é a única cópia da prova: ${PROVA_LIB}`,
+      )
+    }
+  } else if (derivadas.length > 0) {
+    violations.push(
+      `test-mutation-guards.sh: não DECLARA as suítes da prova-de-aplicação (${derivadas.length} chamam \`mutacao_aplicar\`): o bloco \`PROVA_DE_APLICACAO=( \"id\" ... )\` é a lista viva — sem ele, tirar a chamada de uma suíte não deixa rastro`,
+    )
+  }
+
+  // 3. o NÚMERO declarado na doc — só quando há lista a declarar.
+  const docPath = join(root, DOC_OPCIONAL)
+  if (presente && existsSync(docPath)) {
+    const docSrc = readFileSync(docPath, "utf8")
+    const m = /\*\*(\d+)\s+suítes\*\*\s+provam\s+a\s+aplicação\s+pela\s+régua\s+única/.exec(docSrc)
+    if (!m) {
+      violations.push(
+        `${DOC_OPCIONAL}: não declara quantas suítes provam a aplicação pela régua única — a linha \`**N suítes** provam a aplicação pela régua única\` é a declaração histórica do tamanho desta lista (o que uma suíte que perde a prova derruba)`,
+      )
+    } else if (Number(m[1]) !== declaradas.length) {
+      violations.push(
+        `${DOC_OPCIONAL}: a doc declara ${m[1]} suíte(s) provando a aplicação pela régua única e PROVA_DE_APLICACAO declara ${declaradas.length} (${ordenadas.join(", ")}) — a contagem envelheceu com a lista`,
+      )
+    }
+  }
+
+  return { comProva, declaradas: ordenadas, presente, violations }
+}
+
 /** True se a linha tem marcador de contexto HISTÓRICO (não é count atual). */
 function isHistoricalLine(line) {
   return /era de\b|após a medição|foi adicionado após|medição de \d/.test(line)
@@ -736,6 +891,14 @@ export function run(root) {
   const metades = analisaMetades(root, entries)
   violations.push(...metades.violations)
 
+  // 4b. A PROVA-DE-APLICAÇÃO — a régua ÚNICA da prova de que a mutação aplicou:
+  //     nenhuma cópia privada do `grep` do marcador, a lista DECLARADA no master
+  //     conferida nos dois sentidos, e o número dela declarado na doc. É o que
+  //     impede uma suíte de perder a prova (e passar a medir o alvo íntegro) em
+  //     silêncio.
+  const prova = analisaProvaDeAplicacao(root, masterSrc, entries)
+  violations.push(...prova.violations)
+
   // 5. A MATRIZ × O ATO QUE A VERSIONA (a defasagem que o count sozinho não vê).
   //    O registro é LIDO, não exigido: um fixture (ou um checkout sem o bench)
   //    não tem a ligação a julgar, e é o `present: false` que o diz.
@@ -756,6 +919,10 @@ export function run(root) {
     derivedCount: N,
     derivedMetades: metades.metades.reduce((s, m) => s + m.count, 0),
     metades: metades.metades,
+    prova: {
+      comProva: prova.comProva.map((c) => c.id),
+      declaradas: prova.declaradas,
+    },
     bench,
     refs: {
       prCheck: {

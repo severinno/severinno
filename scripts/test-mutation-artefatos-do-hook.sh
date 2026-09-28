@@ -96,6 +96,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# A PROVA-DE-APLICAÇÃO — a régua ÚNICA de "a mutação APLICOU" (o gabarito dela é
+# `scripts/test-mutation-mutacao-prova.sh`).
+# shellcheck source=scripts/mutacao-prova.sh
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
@@ -324,31 +329,10 @@ exigir_saida_sem() { # <trecho> <cenário>
 }
 
 # ── mutar <alvo> <troca>: substituição LITERAL, cirúrgica ─────────────────
-mutar() {
-  local alvo="$1" troca="$2"
-  ARQUIVO="$GUARD" ALVO="$alvo" NOVO="$troca" python3 - <<'PY'
-import os
-p = os.environ["ARQUIVO"]
-s = open(p, encoding="utf-8").read()
-n = s.count(os.environ["ALVO"])
-if n != 1:
-    raise SystemExit(
-        f"mutacao nao-cirurgica no guard: {n} ocorrencia(s) do alvo (esperado 1)"
-    )
-open(p, "w", encoding="utf-8").write(s.replace(os.environ["ALVO"], os.environ["NOVO"]))
-PY
-  if ! grep -qF 'MUTACAO M' "$GUARD"; then
-    fail "a mutação não aplicou no guard (nada a medir)"
-    exit 1
-  fi
-  if [ "$(cksum "$GUARD" | cut -d' ' -f1)" = "$GUARD_SUM" ]; then
-    fail "a mutação não alterou o guard (checksum idêntico) — o alvo casou e a escrita não"
-    exit 1
-  fi
-  if ! node --check "$GUARD" >/dev/null 2>&1; then
-    fail "MUTAÇÃO NÃO-CIRÚRGICA: o guard mutado não é válido sintaticamente."
-    exit 1
-  fi
+mutar() { # <alvo-texto> <troca-texto>: a cirurgia, o marcador e o checksum são da
+  # régua COMPARTILHADA (`mutacao_aplicar`); aqui só o alvo e a sintaxe do guard.
+  mutacao_aplicar "$GUARD" "$1" "$2" "$GUARD_SUM"
+  mutacao_sintaxe_node "$GUARD"
 }
 
 # ── A testemunha unitária (o FIXTURE) ─────────────────────────────────────
@@ -511,7 +495,7 @@ if [ "$M3_EXIT" -eq 0 ]; then
   echo "$M3_SAIDA" | sed 's/^/      /'
   exit 1
 fi
-if ! grep -qF "a mutação não aplicou no guard" <<<"$M3_SAIDA"; then
+if ! grep -qF "a mutação não aplicou em" <<<"$M3_SAIDA"; then
   fail "M3: o vermelho veio de OUTRO motivo, não da guarda do marcador — o que se mede é a PROVA-DE-APLICAÇÃO:"
   echo "$M3_SAIDA" | sed 's/^/      /'
   exit 1

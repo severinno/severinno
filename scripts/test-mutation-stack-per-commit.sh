@@ -111,6 +111,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# A PROVA-DE-APLICAÇÃO — a régua ÚNICA de "a mutação APLICOU" (o gabarito dela é
+# `scripts/test-mutation-mutacao-prova.sh`).
+# shellcheck source=scripts/mutacao-prova.sh
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa.
@@ -168,29 +173,10 @@ restaurar_original() {
 # medir outra coisa. O marcador "MUTACAO M" no texto novo prova que ela APLICOU,
 # o checksum prova que o arquivo MUDOU, e o `node --check` prova que ela é
 # sintaticamente válida (mutação que não compila não mede régua nenhuma).
-mutar() {
-  ALVO="$ALVO" ANTES="$1" DEPOIS="$2" python3 - <<'PY'
-import os
-p = os.environ["ALVO"]
-old, new = os.environ["ANTES"], os.environ["DEPOIS"]
-s = open(p).read()
-n = s.count(old)
-if n != 1:
-    raise SystemExit(f"mutacao nao-cirurgica no harness: {n} ocorrencia(s) do alvo (esperado 1)")
-open(p, "w").write(s.replace(old, new))
-PY
-  if ! grep -qF 'MUTACAO M' "$ALVO"; then
-    fail "a mutação não aplicou no harness (nada a medir)"
-    exit 1
-  fi
-  if [ "$(cksum "$ALVO" | cut -d' ' -f1)" = "$alvo_sum" ]; then
-    fail "a mutação não alterou o harness (checksum idêntico) — o alvo casou mas a escrita não"
-    exit 1
-  fi
-  if ! node --check "$ALVO" >/dev/null 2>&1; then
-    fail "a mutação deixou o harness com sintaxe INVÁLIDA (o vermelho viria da sintaxe, não da régua)"
-    exit 1
-  fi
+mutar() { # <antes> <depois>: a cirurgia, o marcador e o checksum são da régua
+  # COMPARTILHADA (`mutacao_aplicar`); aqui só o alvo e a sintaxe do harness.
+  mutacao_aplicar "$ALVO" "$1" "$2" "$alvo_sum"
+  mutacao_sintaxe_node "$ALVO"
 }
 
 # ── O FIXTURE: um repositório git de verdade, com a pilha de três commits ──

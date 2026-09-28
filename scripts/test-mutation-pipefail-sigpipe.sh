@@ -83,6 +83,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# A PROVA-DE-APLICAÇÃO — a régua ÚNICA de "a mutação APLICOU" (o gabarito dela é
+# `scripts/test-mutation-mutacao-prova.sh`).
+# shellcheck source=scripts/mutacao-prova.sh
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa — a descrição do
@@ -1165,44 +1170,16 @@ PY
     exit 1
   fi
 }
-mutar_guard() {
-  GUARD="$GUARD" ALVO="$1" NOVO="$2" python3 - <<'PY'
-import os
-p = os.environ["GUARD"]
-old, new = os.environ["ALVO"], os.environ["NOVO"]
-s = open(p).read()
-n = s.count(old)
-if n != 1:
-    raise SystemExit(f"mutacao nao-cirurgica no guard: {n} ocorrencia(s) do alvo (esperado 1)")
-open(p, "w").write(s.replace(old, new))
-PY
-  if ! grep -qF 'MUTACAO H' "$GUARD"; then
-    fail "a mutação não aplicou no guard (nada a medir)"
-    exit 1
-  fi
+mutar_guard() { # <alvo> <troca>: a cirurgia, o marcador e o checksum são da régua
+  # COMPARTILHADA (`mutacao_aplicar`).
+  mutacao_aplicar "$GUARD" "$1" "$2" "$guard_sum"
 }
 # ── mutar_regua: o mesmo contrato, mas sobre a RÉGUA (fonte única) ────────
 # Usado pelo H3: o alvo é a LINHA DA RÉGUA, e o checksum de referência é o DELA
 # — sem isso, uma mutação que não aplicasse passaria como "guard imune".
-mutar_regua() {
-  ARQ="$RULER" ALVO="$1" NOVO="$2" python3 - <<'PY'
-import os
-p = os.environ["ARQ"]
-old, new = os.environ["ALVO"], os.environ["NOVO"]
-s = open(p).read()
-n = s.count(old)
-if n != 1:
-    raise SystemExit(f"mutacao nao-cirurgica na regua: {n} ocorrencia(s) do alvo (esperado 1)")
-open(p, "w").write(s.replace(old, new))
-PY
-  if ! grep -qF 'MUTACAO H' "$RULER"; then
-    fail "a mutação não aplicou na régua (nada a medir)"
-    exit 1
-  fi
-  if [ "$(cksum "$RULER" | cut -d' ' -f1)" = "$ruler_sum" ]; then
-    fail "a mutação não alterou a régua (checksum idêntico) — o alvo casou mas a escrita não"
-    exit 1
-  fi
+mutar_regua() { # <alvo> <troca>: a cirurgia, o marcador e o checksum são da régua
+  # COMPARTILHADA (`mutacao_aplicar`).
+  mutacao_aplicar "$RULER" "$1" "$2" "$ruler_sum"
 }
 
 header "MUTAÇÃO H2: sem a conta do corpo vazio o passo SOME do relatório"

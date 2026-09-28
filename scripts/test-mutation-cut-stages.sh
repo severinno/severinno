@@ -71,6 +71,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# A PROVA-DE-APLICAÇÃO — a régua ÚNICA de "a mutação APLICOU" (o gabarito dela é
+# `scripts/test-mutation-mutacao-prova.sh`).
+# shellcheck source=scripts/mutacao-prova.sh
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 # ── METADES DESTA SUÍTE (a fonte única: o master e a doc leem daqui) ───────
 # Uma linha por metade: "id|o que ela tira do lugar". Acrescentar uma mutação
 # SEM a linha aqui é o que o `check-mutation-count` recusa.
@@ -124,25 +129,9 @@ restaurar_original() {
 # Uma mutação que casa 0 ou 2+ vezes não é cirúrgica: o script para em vez de
 # medir outra coisa. O marcador "MUTACAO M" no texto novo é o que prova que a
 # mutação APLICOU (o alvo pode existir e a escrita falhar).
-mutar() {
-  ALVO="$ALVO" ANTES="$1" DEPOIS="$2" python3 - <<'PY'
-import os
-p = os.environ["ALVO"]
-old, new = os.environ["ANTES"], os.environ["DEPOIS"]
-s = open(p).read()
-n = s.count(old)
-if n != 1:
-    raise SystemExit(f"mutacao nao-cirurgica no harness: {n} ocorrencia(s) do alvo (esperado 1)")
-open(p, "w").write(s.replace(old, new))
-PY
-  if ! grep -qF 'MUTACAO M' "$ALVO"; then
-    fail "a mutação não aplicou no harness (nada a medir)"
-    exit 1
-  fi
-  if [ "$(cksum "$ALVO" | cut -d' ' -f1)" = "$alvo_sum" ]; then
-    fail "a mutação não alterou o harness (checksum idêntico) — o alvo casou mas a escrita não"
-    exit 1
-  fi
+mutar() { # <antes> <depois>: a cirurgia, o marcador e o checksum são da régua
+  # COMPARTILHADA (`mutacao_aplicar`).
+  mutacao_aplicar "$ALVO" "$1" "$2" "$alvo_sum"
 }
 
 # ── rodar: o harness REAL (o mesmo CLI de `bun run cut-stages:prove`) ─────

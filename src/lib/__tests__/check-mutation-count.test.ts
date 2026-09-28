@@ -83,6 +83,19 @@ interface FixtureOpts {
    * mandar (ou nenhuma), e a regra nova não julga a que não existe.
    */
   docDerivado?: boolean
+  /**
+   * Índices das suítes que CHAMAM a régua única da prova-de-aplicação: o corpo
+   * da suíte ganha o `. "$SCRIPT_DIR/scripts/mutacao-prova.sh"` e um `mutar`
+   * que chama `mutacao_aplicar`.
+   */
+  provaSuites?: number[]
+  /** Índice da suíte que carrega a CÓPIA PRIVADA do `grep` do marcador. */
+  provaCopia?: number | null
+  /**
+   * O bloco `PROVA_DE_APLICACAO=( "id" ... )` do master: `null` (default) = o
+   * bloco NÃO existe (a lista não é julgada); um array = a lista DECLARADA.
+   */
+  provaLista?: string[] | null
 }
 
 /** O registro versionado COMPLETO para uma matriz de `count` sub-tests. */
@@ -120,6 +133,9 @@ function makeFixture({
   entradaComDescricao = false,
   bench = null,
   docDerivado = false,
+  provaSuites = [],
+  provaCopia = null,
+  provaLista = null,
 }: FixtureOpts = {}) {
   const dir = mkdtempSync(join(tmpdir(), "mutation-count-"))
   mkdirSync(join(dir, "scripts"), { recursive: true })
@@ -143,14 +159,26 @@ function makeFixture({
     }
     if (i === suiteIlegivel) linhas.push("  linha sem o formato do bloco")
     const corpo = i === suiteSemBloco ? "" : `\nMETADES=(\n${linhas.join("\n")}\n)\n`
-    writeFileSync(join(dir, rel), `#!/usr/bin/env bash\nset -euo pipefail\n${corpo}`)
+    // A PROVA-DE-APLICAÇÃO: a suíte que chama a régua única carrega o SOURCE
+    // dela, e a que carrega a cópia privada escreve o `grep` do marcador.
+    const chamaRegua = (provaSuites ?? []).includes(i)
+    const prova = chamaRegua
+      ? '\n# shellcheck source=scripts/mutacao-prova.sh\n. "$SCRIPT_DIR/scripts/mutacao-prova.sh"\nmutar() { mutacao_aplicar "$1" "$2" "$3" "$4"; }\n'
+      : i === provaCopia
+        ? "\nmutar() { if ! grep -qF 'MUTACAO M' \"$1\"; then exit 1; fi }\n"
+        : ""
+    writeFileSync(join(dir, rel), `#!/usr/bin/env bash\nset -euo pipefail\n${corpo}${prova}`)
   }
+  const provaBloco =
+    provaLista === null || provaLista === undefined
+      ? ""
+      : `PROVA_DE_APLICACAO=(\n${provaLista.map((id) => `  "${id}"`).join("\n")}\n)\n`
   const master = `#!/usr/bin/env bash
 # Roda os ${masterHeader ?? count} mutation tests node-puro dos guards de CI num ÚNICO script
 SUBTESTS=(
 ${entries.join("\n")}
 )
-`
+${provaBloco}`
   writeFileSync(join(dir, "scripts/test-mutation-guards.sh"), master)
 
   const prCheck = `jobs:
@@ -716,6 +744,77 @@ describe("check-mutation-count — as METADES de cada suíte (a descrição deri
     })
     const r = run(dir)
     expect(r.ok).toBe(true)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// A PROVA-DE-APLICAÇÃO — a régua ÚNICA (`scripts/mutacao-prova.sh`) e a lista
+// DECLARADA das suítes que a chamam. O que estes testes medem é o que impede a
+// suíte de PERDER a prova (e passar a medir o alvo íntegro) em silêncio: a cópia
+// privada do `grep` do marcador, a lista conferida nos DOIS sentidos e o número
+// declarado na doc. O CONTROLE (o fixture coerente) passa com `violations: []`.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("check-mutation-count — a PROVA-DE-APLICAÇÃO (a régua única × a lista)", () => {
+  /** O fixture COERENTE: duas suítes chamam a régua, a lista e a doc as declaram. */
+  const comProva = (over: Partial<FixtureOpts> = {}) =>
+    makeFixture({
+      provaSuites: [0, 1],
+      provaLista: ["sub-0", "sub-1"],
+      doc: `# Guards\n\n**2 suítes** provam a aplicação pela régua única (\`scripts/mutacao-prova.sh\`).\n`,
+      ...over,
+    })
+
+  it("o CONTROLE: a lista declarada, a doc e as suítes que chamam a régua batem", () => {
+    const r = run(comProva())
+    expect(r.violations).toEqual([])
+    expect(r.prova.comProva).toEqual(["sub-0", "sub-1"])
+  })
+
+  it("a cópia PRIVADA do `grep` do marcador é violação, com a linha e o remédio", () => {
+    const dir = comProva({ provaCopia: 2 })
+    const r = run(dir)
+    const v = r.violations.find((x) => x.includes("cópia PRIVADA"))
+    expect(v).toContain("scripts/test-mutation-sub-2.sh")
+    expect(v).toContain("mutacao_aplicar")
+    // E o CONTROLE na direção oposta: sem a cópia, o MESMO fixture não a acusa.
+    expect(run(comProva()).violations.some((x) => x.includes("cópia PRIVADA"))).toBe(false)
+  })
+
+  it("uma suíte que CHAMA a régua e não está na lista é violação (a prova que ninguém declara)", () => {
+    const r = run(comProva({ provaSuites: [0, 1, 2] }))
+    expect(
+      r.violations.some((v) => v.includes("'sub-2'") && v.includes("PROVA_DE_APLICACAO")),
+    ).toBe(true)
+  })
+
+  it("uma entrada da lista cuja suíte NÃO chama a régua é violação (a prova que se perdeu)", () => {
+    // É a metade que pega a suíte que VOLTOU a mutar por conta própria: a linha
+    // da lista fica órfã, e a suíte perdeu a prova sem que nada o dissesse.
+    const r = run(comProva({ provaSuites: [0] }))
+    expect(r.violations.some((v) => v.includes("'sub-1'") && v.includes("NÃO chama"))).toBe(true)
+  })
+
+  it("o NÚMERO declarado na doc tem de bater com a lista (a contagem que envelhece)", () => {
+    const r = run(
+      comProva({
+        doc: `# Guards\n\n**3 suítes** provam a aplicação pela régua única.\n`,
+      }),
+    )
+    expect(r.violations.some((v) => v.includes("declara 3 suíte") && v.includes("2"))).toBe(true)
+  })
+
+  it("a doc que NÃO declara o número é violação (fail-closed), nunca omissão", () => {
+    const r = run(comProva({ doc: `# Guards\n\nA prova-de-aplicação é uma só.\n` }))
+    expect(r.violations.some((v) => v.includes("não declara quantas suítes"))).toBe(true)
+  })
+
+  it("sem o bloco no master e com suíte chamando a régua: a lista ausente é violação", () => {
+    const r = run(comProva({ provaLista: null }))
+    expect(r.violations.some((v) => v.includes("não DECLARA as suítes"))).toBe(true)
+    // O CONTROLE: sem o bloco e SEM ninguém chamando a régua, não há lista a
+    // exigir (é o caso das suítes que mutam por conta própria).
+    expect(run(makeFixture()).violations.some((v) => v.includes("não DECLARA"))).toBe(false)
   })
 })
 
