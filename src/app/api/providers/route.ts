@@ -4,8 +4,13 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import {
   createCachedRadiusCountFn,
+  createCachedMinDistanceFn,
   DEFAULT_COUNT_CACHE_TTL,
+  EMPTY_COUNT_CACHE_TTL,
   findEffectiveRadius,
+  findEffectiveRadiusSinglePass,
+  MAX_EXPANSION_KM,
+  quantizeRadiusUp,
 } from "@/lib/radius-expansion"
 import { fetchProvidersData, type FetchProvidersDataDeps } from "@/lib/fetch-providers-data"
 import { fetchUnrestrictedResults } from "@/lib/fetch-unrestricted-results"
@@ -14,6 +19,7 @@ import {
   cacheControlPublic,
   getCategoryDescendants,
   handleError,
+  noStoreJson,
   parsePagination,
 } from "@/lib/api-server"
 import { isPostGISAvailable } from "@/lib/postgis"
@@ -29,12 +35,16 @@ import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
  *             Uses full-text GIN index, PostGIS GiST, composite B-tree.
  *   Phase 2 — Fetch full data for the current page in parallel.
  *
- * RADIUS EXPANSION:
- *   When PostGIS is available and the user's radius returns 0 providers,
- *   the search expands progressively: 5km → 10km → 25km → 50km → 100km.
- *   The response includes `expandedRadius` (number | null) indicating
- *   which radius was actually used. null means no expansion needed.
- *   -1 means providers exist but beyond 100km (no radius filter applied).
+ * RADIUS EXPANSION (single-pass KNN):
+ *   When PostGIS is available, the count at the (quantized) user radius is
+ *   tried first. On 0, ONE MIN(ST_Distance) query finds the closest eligible
+ *   provider and `findEffectiveRadiusSinglePass` derives the effective radius
+ *   (5km → 10km → 25km → 50km → 100km steps) — 1 round trip instead of up to
+ *   5 sequential COUNTs. The sequential loop remains as a fallback for the
+ *   "no located providers" case. The response includes `expandedRadius`
+ *   (number | null) indicating which radius was actually used. null means no
+ *   expansion needed. -1 means providers exist but beyond 100km (no radius
+ *   filter applied).
  *
  * Denormalized avgRating + favoriteCount on User avoid expensive JOINs.
  */
@@ -61,9 +71,28 @@ export async function GET(request: Request) {
       latNum !== null && lngNum !== null && Number.isFinite(latNum) && Number.isFinite(lngNum)
     const radiusKm = radius ? Number(radius) : null
 
+    // Validate radius: negative and non-finite values are rejected, and
+    // anything above the largest expansion step is clamped to it (searching
+    // "beyond 100km" is what the unrestricted fallback path already does).
+    const radiusInvalid = radiusKm !== null && (!Number.isFinite(radiusKm) || radiusKm < 0)
+    if (radiusInvalid) {
+      return noStoreJson(
+        { error: "'radius' deve ser um número de km maior ou igual a 0" },
+        { status: 400 },
+      )
+    }
+    const effectiveRequestedRadiusKm =
+      radiusKm !== null ? Math.min(radiusKm, MAX_EXPANSION_KM) : null
+
+    // Quantize the user radius UP to the next canonical expansion step so
+    // arbitrary values (7km, 13km…) reuse the shared cache levels instead of
+    // fragmenting the cache with one-off radii.
+    const quantizedRadiusKm =
+      effectiveRequestedRadiusKm !== null ? quantizeRadiusUp(effectiveRequestedRadiusKm) : null
+
     // Validate sort=distance requires coordinates
     if (sort === "distance" && !hasGeo) {
-      return NextResponse.json(
+      return noStoreJson(
         { error: "Sort por distância requer as coordenadas 'lat' e 'lng'" },
         { status: 400 },
       )
@@ -89,8 +118,8 @@ export async function GET(request: Request) {
 
     // When PostGIS is available AND user has geo, build PostGIS-filtered SQL
     let usePostGisInSql = false
-    if (pgAvailable && hasGeo && radiusKm !== null) {
-      centerGeo = { lat: latNum!, lng: lngNum!, radiusKm }
+    if (pgAvailable && hasGeo && quantizedRadiusKm !== null) {
+      centerGeo = { lat: latNum!, lng: lngNum!, radiusKm: quantizedRadiusKm }
       usePostGisInSql = true
     }
 
@@ -102,7 +131,6 @@ export async function GET(request: Request) {
     let expandedRadius: number | null = null
 
     if (usePostGisInSql) {
-      // ---- Phase 1a: Count with progressive radius expansion -------------
       const countFn = createCachedRadiusCountFn({
         lat: latNum!,
         lng: lngNum!,
@@ -114,12 +142,65 @@ export async function GET(request: Request) {
         buildWhereClause: buildProviderWhereClause,
       })
 
-      const { effectiveRadius, matchCount } = await findEffectiveRadius(radiusKm!, countFn)
+      // ---- Phase 1a (fast path): count at the quantized user radius ------
+      // 1 cached COUNT resolves the common case (providers within the
+      // requested area) with a single round trip — no expansion machinery.
+      const initialCount = await countFn(quantizedRadiusKm!)
+
+      let effectiveRadius: number | null = null
+      let matchCount = 0
+
+      if (initialCount > 0) {
+        effectiveRadius = quantizedRadiusKm!
+        matchCount = initialCount
+      } else {
+        // ---- Phase 1a (single-pass KNN): one MIN-distance query ------------
+        // Instead of issuing up to 5 sequential COUNTs (5→10→25→50→100km),
+        // ask once for the closest eligible provider and derive the smallest
+        // expansion step that encloses that distance.
+        const minDistanceFn = createCachedMinDistanceFn({
+          lat: latNum!,
+          lng: lngNum!,
+          categoryIds,
+          q,
+          queryRawUnsafe: db.$queryRawUnsafe.bind(db),
+          withCache,
+          buildWhereClause: buildProviderWhereClause,
+        })
+        const { minDistanceKm, locatedCount } = await minDistanceFn()
+
+        // locatedCount === 0 means providers matching the non-spatial
+        // filters either do not exist or have no location — the KNN answer
+        // cannot be trusted, so fall through to the legacy loop below.
+        if (locatedCount > 0) {
+          effectiveRadius = findEffectiveRadiusSinglePass(quantizedRadiusKm!, minDistanceKm)
+          if (effectiveRadius !== null) {
+            // Count at the derived radius (usually cached alongside the other
+            // canonical levels) to report an accurate `total`.
+            matchCount = await countFn(effectiveRadius)
+          }
+          // effectiveRadius === null (closest provider beyond MAX_EXPANSION_KM)
+          // → fall through to the unrestricted path below.
+        }
+
+        if (effectiveRadius === null) {
+          // ---- Legacy loop (fallback): covers the locatedCount === 0 case
+          // (no located providers — a provider without a location column is
+          // invisible to the KNN query but real for the count) and any cache
+          // inconsistency. At most this reproduces the old sequential cost.
+          const legacy = await findEffectiveRadius(quantizedRadiusKm!, countFn)
+          effectiveRadius = legacy.effectiveRadius
+          matchCount = legacy.matchCount
+        }
+      }
 
       if (effectiveRadius !== null) {
-        // Providers found at the effective radius
+        // Providers found at the effective radius. `expandedRadius` is honest
+        // about what the user asked for: the quantization (0→5, 7→10) and the
+        // clamp (>100→100) are normalizations, but when the effective radius
+        // is larger than the requested one, the client learns about it.
         total = matchCount
-        if (effectiveRadius !== radiusKm) expandedRadius = effectiveRadius
+        if (effectiveRadius !== effectiveRequestedRadiusKm) expandedRadius = effectiveRadius
         centerGeo = { lat: latNum!, lng: lngNum!, radiusKm: effectiveRadius }
 
         // ---- Phase 1b: Resolve paginated provider IDs --------------------
@@ -190,14 +271,19 @@ export async function GET(request: Request) {
           )
         }
 
-        // No providers at all
-        return NextResponse.json({
-          items: [],
-          total: 0,
-          page,
-          limit,
-          expandedRadius: null,
-        })
+        // No providers at all — cacheable for a SHORT TTL (same value as the
+        // Redis empty-count TTL): absorbs repeated hits on empty regions
+        // without pinning "empty" for the full 60s.
+        return cacheControlPublic(
+          NextResponse.json({
+            items: [],
+            total: 0,
+            page,
+            limit,
+            expandedRadius: null,
+          }),
+          EMPTY_COUNT_CACHE_TTL,
+        )
       }
     } else {
       // ---- Non-PostGIS path: count without spatial filter -----------------
@@ -214,13 +300,17 @@ export async function GET(request: Request) {
       total = Number(countResult[0]?.total ?? 0)
 
       if (total === 0) {
-        return NextResponse.json({
-          items: [],
-          total: 0,
-          page,
-          limit,
-          expandedRadius: null,
-        })
+        // Short-TTL cache for empty results (see unrestricted-path comment).
+        return cacheControlPublic(
+          NextResponse.json({
+            items: [],
+            total: 0,
+            page,
+            limit,
+            expandedRadius: null,
+          }),
+          EMPTY_COUNT_CACHE_TTL,
+        )
       }
 
       // ---- Phase 1b: Resolve paginated provider IDs (non-PostGIS) --------

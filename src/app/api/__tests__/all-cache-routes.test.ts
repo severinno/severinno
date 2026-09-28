@@ -136,38 +136,38 @@ describe("cacheControlPrivate — all TTL combos used in routes", () => {
 // ---------------------------------------------------------------------------
 
 describe("no cache headers on non-200 responses", () => {
-  it("handleError produces 500 for generic errors without Cache-Control", async () => {
+  // House rule (RFC 7234 §4.2.2): sem header explícito, 404s são
+  // heuristicamente cacheáveis — por isso TODO erro carrega `no-store`.
+  it("handleError produces 500 for generic errors with no-store", async () => {
     const res = handleError(new Error("Bad Request"))
     expect(res.status).toBe(500) // generic error → 500
-    expect(res.headers.get("Cache-Control")).toBeNull()
-    expect(res.headers.get("Vary")).toBeNull()
+    expect(res.headers.get("Cache-Control")).toBe("no-store")
   })
 
-  it("handleError HttpError 400 without Cache-Control", async () => {
+  it("handleError HttpError 400 with no-store", async () => {
     const { HttpError } = await import("@/lib/api-server")
     const res = handleError(new HttpError(400, "Invalid input"))
     expect(res.status).toBe(400)
-    expect(res.headers.get("Cache-Control")).toBeNull()
-    expect(res.headers.get("Vary")).toBeNull()
+    expect(res.headers.get("Cache-Control")).toBe("no-store")
   })
 
-  it("handleError HttpError 404 without Cache-Control", async () => {
+  it("handleError HttpError 404 with no-store", async () => {
     const { HttpError } = await import("@/lib/api-server")
     const res = handleError(new HttpError(404, "Not found"))
     expect(res.status).toBe(404)
-    expect(res.headers.get("Cache-Control")).toBeNull()
+    expect(res.headers.get("Cache-Control")).toBe("no-store")
   })
 
-  it("handleError UNAUTHORIZED (401) without Cache-Control", async () => {
+  it("handleError UNAUTHORIZED (401) with no-store", async () => {
     const res = handleError(new Error("UNAUTHORIZED"))
     expect(res.status).toBe(401)
-    expect(res.headers.get("Cache-Control")).toBeNull()
+    expect(res.headers.get("Cache-Control")).toBe("no-store")
   })
 
-  it("handleError FORBIDDEN (403) without Cache-Control", async () => {
+  it("handleError FORBIDDEN (403) with no-store", async () => {
     const res = handleError(new Error("FORBIDDEN"))
     expect(res.status).toBe(403)
-    expect(res.headers.get("Cache-Control")).toBeNull()
+    expect(res.headers.get("Cache-Control")).toBe("no-store")
   })
 })
 

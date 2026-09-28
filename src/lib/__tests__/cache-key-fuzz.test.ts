@@ -106,14 +106,15 @@ describe("radiusCountCacheKey fuzzing", () => {
 
   it("handles all-undefined inputs without crashing", () => {
     const key = radiusCountCacheKey(0, 0, 0, undefined, undefined)
-    expect(key).toBe("providers:count:0.000:0.000:0:all:")
+    // (0,0) falls in the s000000 geohash cell (lat>0, lng=0 boundary)
+    expect(key).toBe("providers:count:s000000:0:all:")
   })
 
   it("handles NaN coordinates without crashing", () => {
     const key = radiusCountCacheKey(NaN, NaN, 10, undefined, undefined)
     expect(key).toContain("providers:count:")
-    // NaN.toFixed(3) → "NaN"
-    expect(key).toContain("NaN")
+    // NaN fails every range comparison → all-zero bits → cell 0000000
+    expect(key).toContain("0000000")
   })
 
   it("handles Infinity coordinates without crashing", () => {
@@ -149,11 +150,11 @@ describe("radiusCountCacheKey fuzzing", () => {
   it("produces keys with 5 colon-separated segments", () => {
     const key = radiusCountCacheKey(-23.551, -46.633, 10, ["cat-1"], "eletricista")
     const parts = key.split(":")
-    // providers:count:{lat}:{lng}:{radius}:{cats}:{query} = 7 parts via split
-    // ["providers", "count", "lat", "lng", "radius", "cats", "query"]
+    // providers:count:{geohash}:{radius}:{cats}:{query} = 6 parts via split
+    // ["providers", "count", "geohash", "radius", "cats", "query"]
     expect(parts[0]).toBe("providers")
     expect(parts[1]).toBe("count")
-    // At least 7 parts
-    expect(parts.length).toBeGreaterThanOrEqual(7)
+    // At least 6 parts
+    expect(parts.length).toBeGreaterThanOrEqual(6)
   })
 })

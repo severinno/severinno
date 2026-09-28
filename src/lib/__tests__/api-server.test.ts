@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { NextResponse } from "next/server"
+import { ZodError } from "zod"
 import {
   HttpError,
   badRequest,
@@ -8,6 +9,7 @@ import {
   notFound,
   conflict,
   handleError,
+  noStoreJson,
   parsePagination,
   toPublicProvider,
   PUBLIC_PROVIDER_SELECT,
@@ -107,6 +109,31 @@ describe("handleError", () => {
     const res = handleError("string error")
     const _body = await res.json()
     expect(res.status).toBe(500)
+  })
+
+  // ── House rule: error responses are NEVER cacheable ──────────────────
+
+  it.each([
+    ["HttpError 400", handleError(new HttpError(400, "Bad request")), 400],
+    ["HttpError 404", handleError(notFound()), 404],
+    ["ZodError", handleError(new ZodError([])), 400],
+    ["UNAUTHORIZED", handleError(new Error("UNAUTHORIZED")), 401],
+    ["FORBIDDEN", handleError(new Error("FORBIDDEN")), 403],
+    ["unknown 500", handleError(new Error("boom")), 500],
+  ])("%s carries Cache-Control: no-store", (_name, res: Response, _status) => {
+    expect(res.headers.get("Cache-Control")).toBe("no-store")
+  })
+
+  it("preserves custom HttpError headers alongside no-store", () => {
+    const res = handleError(new HttpError(429, "Rate limited", { "Retry-After": "10" }))
+    expect(res.headers.get("Cache-Control")).toBe("no-store")
+    expect(res.headers.get("Retry-After")).toBe("10")
+  })
+
+  it("noStoreJson sets no-store and default status 500", () => {
+    const res = noStoreJson({ error: "x" })
+    expect(res.status).toBe(500)
+    expect(res.headers.get("Cache-Control")).toBe("no-store")
   })
 })
 

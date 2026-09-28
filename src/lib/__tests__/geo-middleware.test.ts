@@ -73,10 +73,8 @@ describe("withGeoMiddleware", () => {
     const wrapped = withGeoMiddleware(handler)
     const response = await wrapped(makeRequest())
 
-    expect(response.headers.get("Cache-Control")).toBe(
-      "public, s-maxage=120, stale-while-revalidate=600",
-    )
-    expect(response.headers.get("Vary")).toBe("Accept-Encoding")
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=120, s-maxage=120")
+    expect(response.headers.get("Vary")).toBe("Accept-Encoding, Accept, Origin")
     expect(response.headers.get("Content-Type")).toBe("application/json")
   })
 
@@ -85,9 +83,7 @@ describe("withGeoMiddleware", () => {
     const wrapped = withGeoMiddleware(handler, { defaultCacheSeconds: 30 })
     const response = await wrapped(makeRequest())
 
-    expect(response.headers.get("Cache-Control")).toBe(
-      "public, s-maxage=30, stale-while-revalidate=150",
-    )
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=30, s-maxage=30")
   })
 
   it("falls back to 60 when neither handler nor options specify cache", async () => {
@@ -95,9 +91,7 @@ describe("withGeoMiddleware", () => {
     const wrapped = withGeoMiddleware(handler)
     const response = await wrapped(makeRequest())
 
-    expect(response.headers.get("Cache-Control")).toBe(
-      "public, s-maxage=60, stale-while-revalidate=300",
-    )
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=60, s-maxage=60")
   })
 
   it("merges custom headers from handler result", async () => {

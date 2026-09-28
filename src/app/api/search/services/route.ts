@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { searchServices } from "@/lib/search"
-import { cacheControlPublic, handleError } from "@/lib/api-server"
+import { cacheControlPublic, handleError, noStoreJson } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     const limit = Math.min(50, Math.max(1, Number(searchParams.get("limit") ?? "20") || 20))
 
     if (!q) {
-      return NextResponse.json({ error: "Parâmetro 'q' é obrigatório" }, { status: 400 })
+      return noStoreJson({ error: "Parâmetro 'q' é obrigatório" }, { status: 400 })
     }
 
     const result = await searchServices(q, page, limit)

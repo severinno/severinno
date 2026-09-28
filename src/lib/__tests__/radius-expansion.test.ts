@@ -16,9 +16,13 @@
 import { describe, it, expect } from "vitest"
 import {
   EXPANSION_STEPS,
+  MAX_EXPANSION_KM,
   buildRadiiToTry,
   findEffectiveRadius,
   findEffectiveRadiusSinglePass,
+  quantizeRadiusUp,
+  radiusCountCacheKey,
+  minDistanceCacheKey,
 } from "../radius-expansion"
 
 // ---------------------------------------------------------------------------
@@ -205,5 +209,91 @@ describe("findEffectiveRadiusSinglePass", () => {
   it("returns null when min distance is null or NaN", () => {
     expect(findEffectiveRadiusSinglePass(5, null)).toBeNull()
     expect(findEffectiveRadiusSinglePass(5, NaN)).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// MAX_EXPANSION_KM
+// ---------------------------------------------------------------------------
+
+describe("MAX_EXPANSION_KM", () => {
+  it("is the last expansion step (derived, not hardcoded)", () => {
+    expect(MAX_EXPANSION_KM).toBe(EXPANSION_STEPS[EXPANSION_STEPS.length - 1])
+    expect(MAX_EXPANSION_KM).toBe(100)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// quantizeRadiusUp
+// ---------------------------------------------------------------------------
+
+describe("quantizeRadiusUp", () => {
+  it("rounds an arbitrary radius UP to the next canonical step", () => {
+    expect(quantizeRadiusUp(7)).toBe(10)
+    expect(quantizeRadiusUp(13)).toBe(25)
+    expect(quantizeRadiusUp(51)).toBe(100)
+  })
+
+  it("keeps canonical radii unchanged", () => {
+    for (const step of EXPANSION_STEPS) {
+      expect(quantizeRadiusUp(step)).toBe(step)
+    }
+  })
+
+  it("quantizes 0 to the smallest step (exact-location searches share the 5km level)", () => {
+    expect(quantizeRadiusUp(0)).toBe(5)
+  })
+
+  it("returns radii above the max unchanged (no canonical step applies)", () => {
+    expect(quantizeRadiusUp(200)).toBe(200)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Cache keys — geohash + normalized query
+// ---------------------------------------------------------------------------
+
+describe("radiusCountCacheKey / minDistanceCacheKey", () => {
+  it("uses geohash-7 so nearby coordinates share the same key", () => {
+    // Two points within the same ~153m geohash-7 cell
+    const k1 = radiusCountCacheKey(-23.5505, -46.6333, 10, undefined, undefined)
+    const k2 = radiusCountCacheKey(-23.5505, -46.6332, 10, undefined, undefined)
+    expect(k1).toBe(k2)
+  })
+
+  it("normalizes the query — case and inner whitespace do not fragment the cache", () => {
+    const k1 = radiusCountCacheKey(-23.5505, -46.6333, 10, undefined, "  Eletricista   Premium ")
+    const k2 = radiusCountCacheKey(-23.5505, -46.6333, 10, undefined, "eletricista premium")
+    expect(k1).toBe(k2)
+  })
+
+  it("does NOT confuse two different queries", () => {
+    const k1 = radiusCountCacheKey(-23.5505, -46.6333, 10, undefined, "eletricista")
+    const k2 = radiusCountCacheKey(-23.5505, -46.6333, 10, undefined, "encanador")
+    expect(k1).not.toBe(k2)
+  })
+
+  it("keeps different radius levels in distinct keys", () => {
+    const k1 = radiusCountCacheKey(-23.5505, -46.6333, 5, undefined, undefined)
+    const k2 = radiusCountCacheKey(-23.5505, -46.6333, 10, undefined, undefined)
+    expect(k1).not.toBe(k2)
+  })
+
+  it("keeps different category sets in distinct keys", () => {
+    const k1 = radiusCountCacheKey(-23.5505, -46.6333, 10, ["cat-1"], undefined)
+    const k2 = radiusCountCacheKey(-23.5505, -46.6333, 10, ["cat-2"], undefined)
+    expect(k1).not.toBe(k2)
+  })
+
+  it("min-distance key is radius-independent", () => {
+    const k1 = minDistanceCacheKey(-23.5505, -46.6333, undefined, "eletricista")
+    const k2 = minDistanceCacheKey(-23.5505, -46.6333, undefined, "Eletricista")
+    expect(k1).toBe(k2)
+    expect(k1).toContain("providers:mindist:")
+  })
+
+  it("handles NaN/Infinity coordinates without crashing", () => {
+    expect(() => radiusCountCacheKey(NaN, NaN, 10, undefined, undefined)).not.toThrow()
+    expect(() => minDistanceCacheKey(Infinity, -Infinity, undefined, undefined)).not.toThrow()
   })
 })

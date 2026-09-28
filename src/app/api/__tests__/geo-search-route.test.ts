@@ -84,6 +84,8 @@ describe("GET /api/geo/search", () => {
 
     expect(parsed.status).toBe(400)
     expect((parsed.body as any).error).toContain("obrigatório")
+    // Regra da casa: erros nunca são cacheáveis
+    expect(res.headers.get("cache-control")).toBe("no-store")
   })
 
   it("rejects limit above maximum (10) with 400", async () => {
@@ -100,6 +102,8 @@ describe("GET /api/geo/search", () => {
     // rejeitado pelo Zod (400), não clampado pela rota.
     expect(parsed.status).toBe(400)
     expect(geocodeSearch).not.toHaveBeenCalled()
+    // Regra da casa: erros nunca são cacheáveis (Zod path)
+    expect(res.headers.get("cache-control")).toBe("no-store")
   })
 
   it("rejects limit below minimum (1) with 400", async () => {

@@ -60,7 +60,7 @@ User provides lat/lng
 
 | `radius-expansion.ts`
 | Pure + Factory
-| Progressive radius expansion loop (`findEffectiveRadius`, `buildRadiiToTry`, `createCachedRadiusCountFn`)
+| Single-pass KNN radius resolution (`findEffectiveRadiusSinglePass`, `createCachedMinDistanceFn`), legacy progressive loop (`findEffectiveRadius`, `buildRadiiToTry`, `createCachedRadiusCountFn`), cache-key builders (geohash-7 + normalized query), `quantizeRadiusUp`, TTL constants (`DEFAULT_COUNT_CACHE_TTL`, `EMPTY_COUNT_CACHE_TTL`)
 
 | `fetch-providers-data.ts`
 | Orchestration
@@ -76,11 +76,15 @@ User provides lat/lng
 
 | `postgis.ts`
 | Data access
-| Legacy `findProvidersWithinRadius`, `getDistanceBetween`, `isPostGISAvailable`
+| Legacy `findProvidersWithinRadius`, `getDistanceBetween`, `isPostGISAvailable`; geohash cache keys via shared `geohash.ts`
 
 | `geo-shared.ts`
 | Pure
 | `haversineKm`, `formatDistance` — safe for server + client
+
+| `geohash.ts`
+| Pure
+| `encodeGeohash` — single source of truth for the geohash-7 cache-key cells (used by `postgis.ts` and `radius-expansion.ts`)
 
 | `geo-server.ts`
 | Barrel
@@ -111,16 +115,26 @@ The route handler at `GET /api/providers` follows a two-phase architecture:
 ==== Phase 1 — Resolve matching provider IDs
 
 . Parse query params: `lat`, `lng`, `q`, `categoryId`, `radius`, `sort`, `page`, `limit`
+. Validate `radius`: rejects negative/non-finite with 400; clamps above `MAX_EXPANSION_KM` (100km)
+. Quantize the radius UP to the next canonical step (`quantizeRadiusUp`: 7→10, 13→25, 0→5) so arbitrary values reuse shared cache levels
 . Check PostGIS availability via `isPostGISAvailable()` (Redis-cached, 5 min TTL)
 . Build `centerGeo` when PostGIS + user geo + radius are all available
 
-If **PostGIS path**:
-.... Create `cachedRadiusCountFn` via `createCachedRadiusCountFn` — wraps Redis + raw SQL COUNT
-.... Call `findEffectiveRadius(radiusKm, countFn)` — tries [userRadius, 5, 10, 25, 50, 100] km
-.... If providers found: resolve paginated IDs with ST_DWithin + ORDER BY
-.... If not found: try unrestricted fallback (`fetchUnrestrictedResults`)
+If **PostGIS path** (single-pass KNN):
+.... Create `cachedRadiusCountFn` via `createCachedRadiusCountFn` — wraps Redis + raw SQL COUNT (short 15s TTL for zero counts, stale-while-revalidate grace)
+.... Fast path: ONE COUNT at the quantized radius — when > 0, done (the common case)
+.... On 0: create `cachedMinDistanceFn` via `createCachedMinDistanceFn` — ONE `MIN(ST_Distance)` query (radius-independent, geohash-keyed) returns the closest eligible provider's distance + `locatedCount`
+.... Derive the effective radius with `findEffectiveRadiusSinglePass(quantizedRadius, minDistanceKm)` — no sequential 5→10→25→50→100 COUNTs (1 round trip instead of up to 5)
+.... Count once more at the derived radius (usually cached) for an accurate `total`
+.... If `locatedCount === 0` (no providers with a location column) or min distance exceeds 100km: legacy loop `findEffectiveRadius` as fallback, then unrestricted fallback (`fetchUnrestrictedResults`, `expandedRadius: -1`)
 If **non-PostGIS path**:
 .... Count without spatial filter, resolve IDs, skip radius expansion
+
+NOTE: Cache keys for counts and min-distance use geohash-7 cells (~153m —
+same scheme as `postgis.ts` proximity keys) and a normalized query
+(trim + lowercase + collapsed whitespace), so nearby users and case-variant
+searches share cache entries. Empty results (total=0) are returned with a
+short 15s HTTP TTL mirroring the Redis `EMPTY_COUNT_CACHE_TTL`.
 
 ==== Phase 2 — Fetch full data
 
@@ -604,8 +618,16 @@ export function createCachedRadiusCountFn(
   opts: CreateCachedRadiusCountFnOptions  // ← contains withCache, queryRawUnsafe, etc.
 ): RadiusCountFn                           // ← returned function is pure logic
 
+// Single-pass KNN factory — 1 MIN(ST_Distance) query replaces the
+// sequential COUNT expansion loop
+export function createCachedMinDistanceFn(
+  opts: CreateCachedMinDistanceFnOptions  // ← same DI shape as the count factory
+): () => Promise<MinDistanceResult>        // ← { minDistanceKm, locatedCount }
+
 // Pure function — no I/O, no dependencies
 export function buildRadiiToTry(userRadiusKm: number): number[]
+export function quantizeRadiusUp(userRadiusKm: number): number
+export function findEffectiveRadiusSinglePass(userRadiusKm: number, minDistanceKm: number | null): number | null
 ----
 
 This pattern makes every module testable in isolation without database or

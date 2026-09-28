@@ -68,6 +68,7 @@ vi.mock("@/lib/api-server", async (importOriginal) => {
 
 import { db } from "@/lib/db"
 import { isPostGISAvailable } from "@/lib/postgis"
+import { cacheControlPublic } from "@/lib/api-server"
 
 // ---------------------------------------------------------------------------
 // Mock data
@@ -198,10 +199,14 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
   // -----------------------------------------------------------------------
 
   it("expands to 25km when 10km finds no providers (expandedRadius = 25)", async () => {
-    // Phase 1a: COUNT with 10km → 0, with 25km → 3
+    // Phase 1a: COUNT with 10km → 0 → single-pass KNN (min distance 15.2km
+    // → derived radius 25km) → COUNT at 25km → 3
     // Phase 1b: IDs with 25km
     // Phase 2: full data
     ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
+      if (sql.includes("MIN(ST_Distance")) {
+        return Promise.resolve([{ min_distance_km: 15.2, located: BigInt(3) }])
+      }
       if (sql.includes("COUNT")) {
         // 10 000m = 10km → 0 providers
         if (sql.includes("10000")) {
@@ -242,9 +247,13 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
   // -----------------------------------------------------------------------
 
   it("sets expandedRadius = -1 when no providers within 100km but unrestricted exists", async () => {
-    // Phase 1a: all radius COUNT queries (10, 25, 50, 100km) → 0
+    // Phase 1a: COUNT at 10km → 0; single-pass: min distance 120km → null
+    // (beyond max step); legacy loop also 0 (all spatial counts → 0).
     // Then: unrestricted COUNT → 1, unrestricted IDs → 1
     ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
+      if (sql.includes("MIN(ST_Distance")) {
+        return Promise.resolve([{ min_distance_km: 120.0, located: BigInt(1) }])
+      }
       if (sql.includes("COUNT")) {
         // All expansion radii → 0
         if (
@@ -278,7 +287,14 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
   // -----------------------------------------------------------------------
 
   it("returns empty result when no providers exist at all", async () => {
-    ;(db.$queryRawUnsafe as any).mockImplementation(() => Promise.resolve([{ total: BigInt(0) }]))
+    ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
+      // Single-pass KNN: no providers match the non-spatial filters at all
+      if (sql.includes("MIN(ST_Distance")) {
+        return Promise.resolve([{ min_distance_km: null, located: BigInt(0) }])
+      }
+      // Legacy loop + unrestricted COUNT → 0
+      return Promise.resolve([{ total: BigInt(0) }])
+    })
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
@@ -290,6 +306,11 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     expect((parsed.body as any)!.items).toEqual([])
     expect((parsed.body as any)!.total).toBe(0)
     expect((parsed.body as any)!.expandedRadius).toBeNull()
+
+    // Empty responses are publicly cacheable for a SHORT TTL (15s —
+    // mirrors the Redis EMPTY_COUNT_CACHE_TTL) instead of no-store.
+    const emptyCall = vi.mocked(cacheControlPublic).mock.calls.find(([, ttl]) => ttl === 15)
+    expect(emptyCall).toBeDefined()
   })
 
   // -----------------------------------------------------------------------
@@ -297,16 +318,13 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
   // -----------------------------------------------------------------------
 
   it("expands from radius=0 to 5km when no providers at exact location", async () => {
-    // radiiToTry: [0, 5, 10, 25, 50, 100]
-    // Phase 1a: COUNT with 0km (ST_DWithin 0m) → 0, with 5km → 3
+    // radius=0 is quantized UP to 5km (quantizeRadiusUp) → the initial count
+    // runs at 5km. 3 providers within 5km → no expansion needed.
+    // Phase 1a: COUNT with 5km → 3
     // Phase 1b: IDs with 5km
     // Phase 2: full data
     ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
       if (sql.includes("COUNT")) {
-        // ST_DWithin with 0 meters (radius=0km) → no matches
-        if (sql.includes(", 0)")) {
-          return Promise.resolve([{ total: BigInt(0) }])
-        }
         // ST_DWithin with 5000 meters (5km) → 3 providers
         if (sql.includes("5000")) {
           return Promise.resolve([{ total: BigInt(3) }])
@@ -333,7 +351,8 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
 
     expect(parsed.status).toBe(200)
     expect((parsed.body as any)!.items).toHaveLength(3)
-    // Expanded from 0km to 5km
+    // Quantized from 0km to the 5km cache level — same semantic as the
+    // old expansion (closest canonical radius that returns providers).
     expect((parsed.body as any)!.expandedRadius).toBe(5)
   })
 
@@ -479,21 +498,20 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
   // -----------------------------------------------------------------------
 
   it("falls back to Haversine in unrestricted path — ST_Distance not called when centerGeo is null", async () => {
-    // Phase 1a: all expansion radii → 0
+    // Phase 1a: COUNT at 10km → 0; single-pass: min distance 150km → null
+    // (beyond max step); legacy loop all 0 → unrestricted path.
     // Unrestricted COUNT → 1, unrestricted IDs → [prov-1]
     // fetchUnrestrictedResults calls fetchProvidersData WITHOUT centerGeo
     // computeDistanceMap skips PostGIS → Haversine fallback
     ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
+      if (sql.includes("MIN(ST_Distance")) {
+        return Promise.resolve([{ min_distance_km: 150.0, located: BigInt(1) }])
+      }
       if (sql.includes("COUNT")) {
-        if (
-          sql.includes("10000") ||
-          sql.includes("25000") ||
-          sql.includes("50000") ||
-          sql.includes("100000")
-        ) {
+        // All spatial counts → 0; unrestricted COUNT (no ST_DWithin) → 1
+        if (sql.includes("ST_DWithin")) {
           return Promise.resolve([{ total: BigInt(0) }])
         }
-        // Unrestricted COUNT → 1
         return Promise.resolve([{ total: BigInt(1) }])
       }
       // ST_Distance mock REJECTS — but should NOT be called in this path
@@ -536,10 +554,13 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     // Haversine fallback (no ST_Distance attempted because centerGeo is null)
     expect((parsed.body as any)!.items[0].distanceKm).toBe(0)
 
-    // Prove ST_Distance was NEVER called (not even attempted)
+    // Prove the Phase-2 batch ST_Distance query was NEVER called — the
+    // only allowed ST_Distance occurrences are inside the MIN(...) wrapper
+    // of the single-pass query (which never returns per-provider rows).
     const rawCalls = vi.mocked(db.$queryRawUnsafe).mock.calls
     const distanceCalls = rawCalls.filter(
-      ([sql]) => typeof sql === "string" && sql.includes("ST_Distance"),
+      ([sql]) =>
+        typeof sql === "string" && sql.includes("ST_Distance") && !sql.includes("MIN(ST_Distance"),
     )
     expect(distanceCalls).toHaveLength(0)
   })
@@ -549,11 +570,10 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
   // -----------------------------------------------------------------------
 
   it("calls withCache for each radius level attempted", async () => {
-    // Expansion: 10km → 0, 25km → 3
+    // Fast path: count at 10km (quantized from the requested 10) → 3
     ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
       if (sql.includes("COUNT")) {
-        if (sql.includes("10000")) return Promise.resolve([{ total: BigInt(0) }])
-        if (sql.includes("25000")) return Promise.resolve([{ total: BigInt(3) }])
+        if (sql.includes("10000")) return Promise.resolve([{ total: BigInt(3) }])
         return Promise.resolve([{ total: BigInt(0) }])
       }
       if (sql.includes("ST_Distance")) {
@@ -571,9 +591,135 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const cacheKeys = mockWithCache.mock.calls.map((c: unknown[]) => c[0] as string)
     const countCacheKeys = cacheKeys.filter((k: string) => k.startsWith("providers:count:"))
 
-    // At least the 10km and 25km levels were cached
+    // The 10km level was cached (fast path resolves in ONE count)
     expect(countCacheKeys.some((k: string) => k.includes(":10:"))).toBe(true)
-    expect(countCacheKeys.some((k: string) => k.includes(":25:"))).toBe(true)
+  })
+
+  it("expands via single-pass KNN: ONE min-distance query instead of sequential counts", async () => {
+    // Phase 1a fast path: COUNT at 10km → 0
+    // Single-pass: MIN(ST_Distance) → 15.2km → effective radius = 25km
+    // Phase 1a follow-up: COUNT at 25km → 3 (for an accurate total)
+    ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
+      if (sql.includes("MIN(ST_Distance")) {
+        return Promise.resolve([{ min_distance_km: 15.2, located: BigInt(3) }])
+      }
+      if (sql.includes("COUNT")) {
+        if (sql.includes("10000")) return Promise.resolve([{ total: BigInt(0) }])
+        if (sql.includes("25000")) return Promise.resolve([{ total: BigInt(3) }])
+        return Promise.resolve([{ total: BigInt(0) }])
+      }
+      if (sql.includes("ST_Distance")) {
+        return Promise.resolve([
+          { id: "prov-1", distance_km: 15.2 },
+          { id: "prov-2", distance_km: 18.7 },
+          { id: "prov-3", distance_km: 22.1 },
+        ])
+      }
+      return Promise.resolve([{ id: "prov-1" }, { id: "prov-2" }, { id: "prov-3" }])
+    })
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider, provider2, provider3])
+
+    const req = createMockRequest({
+      searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
+    })
+    const res = await GET(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect((parsed.body as any)!.items).toHaveLength(3)
+    expect((parsed.body as any)!.expandedRadius).toBe(25)
+
+    // The min-distance query ran EXACTLY ONCE (single pass)
+    const rawCalls = vi.mocked(db.$queryRawUnsafe).mock.calls
+    const minDistCalls = rawCalls.filter(
+      ([sql]) => typeof sql === "string" && sql.includes("MIN(ST_Distance"),
+    )
+    expect(minDistCalls).toHaveLength(1)
+
+    // Sequential COUNT expansion did NOT happen: only the initial 10km count
+    // plus the derived 25km count — no 50km/100km attempts.
+    const countSqls = rawCalls
+      .filter(([sql]) => typeof sql === "string" && sql.includes("COUNT"))
+      .map(([sql]) => sql as string)
+    expect(countSqls.some((s) => s.includes("50000"))).toBe(false)
+    expect(countSqls.some((s) => s.includes("100000"))).toBe(false)
+
+    // The min-distance query was cached under providers:mindist:
+    const cacheKeys = mockWithCache.mock.calls.map((c: unknown[]) => c[0] as string)
+    expect(cacheKeys.some((k: string) => k.startsWith("providers:mindist:"))).toBe(true)
+  })
+
+  it("rejects a negative radius with 400", async () => {
+    const req = createMockRequest({
+      searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "-5" },
+    })
+    const res = await GET(req)
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toBeDefined()
+  })
+
+  it("clamps a radius above the max expansion step to 100km", async () => {
+    // radius=1e6 → clamped to MAX (100km). COUNT at 100km → 3.
+    ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
+      if (sql.includes("COUNT")) {
+        if (sql.includes("100000")) return Promise.resolve([{ total: BigInt(3) }])
+        return Promise.resolve([{ total: BigInt(0) }])
+      }
+      if (sql.includes("ST_Distance")) {
+        return Promise.resolve([{ id: "prov-1", distance_km: 15.2 }])
+      }
+      return Promise.resolve([{ id: "prov-1" }])
+    })
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider, provider2, provider3])
+
+    const req = createMockRequest({
+      searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "1000000" },
+    })
+    const res = await GET(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect((parsed.body as any)!.items).toHaveLength(3)
+    // No expansion — the requested (clamped) radius found providers
+    expect((parsed.body as any)!.expandedRadius).toBeNull()
+
+    // Only the 100km count ran — no 1e6 ST_DWithin attempt
+    const countSqls = vi
+      .mocked(db.$queryRawUnsafe)
+      .mock.calls.map(([sql]) => sql as string)
+      .filter((s) => s.includes("COUNT"))
+    expect(countSqls).toHaveLength(1)
+    expect(countSqls[0]).toContain("100000")
+  })
+
+  it("falls to the unrestricted path via single-pass when the closest provider is beyond 100km", async () => {
+    // Fast path: COUNT at 10km → 0. Single-pass: min distance 150km → null
+    // (beyond max step) → legacy loop ALSO 0 (all counts 0) → unrestricted.
+    ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
+      if (sql.includes("MIN(ST_Distance")) {
+        return Promise.resolve([{ min_distance_km: 150.0, located: BigInt(1) }])
+      }
+      if (sql.includes("COUNT")) {
+        // All spatial counts → 0; unrestricted COUNT (no ST_DWithin) → 1
+        if (sql.includes("ST_DWithin")) {
+          return Promise.resolve([{ total: BigInt(0) }])
+        }
+        return Promise.resolve([{ total: BigInt(1) }])
+      }
+      // ID query (unrestricted)
+      return Promise.resolve([{ id: "prov-1" }])
+    })
+
+    const req = createMockRequest({
+      searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
+    })
+    const res = await GET(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect((parsed.body as any)!.expandedRadius).toBe(-1)
+    expect((parsed.body as any)!.items).toHaveLength(1)
   })
 
   // -----------------------------------------------------------------------
@@ -645,7 +791,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
         lat: "-23.5505123",
         lng: "-46.6333789",
         radius: "10",
-        q: "eletricista",
+        q: "Eletricista",
         categoryId: "cat-1",
       },
     })
@@ -654,10 +800,11 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const cacheKeys = mockWithCache.mock.calls.map((c: unknown[]) => c[0] as string)
     const countKey = cacheKeys.find((k: string) => k.startsWith("providers:count:"))
 
-    // Key should contain rounded coords (3 decimal places)
-    expect(countKey).toContain("-23.551")
-    expect(countKey).toContain("-46.633")
-    // Should contain the search query
+    // Key uses geohash-7 (same ~153m cell for the given coordinates) —
+    // asserted via the shared encoder, not a hardcoded cell string.
+    const { encodeGeohash } = await import("@/lib/geohash")
+    expect(countKey).toContain(encodeGeohash(-23.5505123, -46.6333789, 7))
+    // Query is normalized (lowercase) in the key
     expect(countKey).toContain("eletricista")
     // Should contain the category
     expect(countKey).toContain("cat-1")

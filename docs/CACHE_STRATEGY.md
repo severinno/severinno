@@ -128,12 +128,22 @@ Vary: Cookie, Accept-Encoding, Accept
 
 ### Common Rules
 
-| Rule                                                     | Applies To        | Reason                                          |
-| -------------------------------------------------------- | ----------------- | ----------------------------------------------- |
-| Never apply cache headers to error responses             | All routes        | `handleError` paths are excluded from caching   |
-| Always apply cache headers on 200, even if data is empty | Public routes     | CDN should cache "empty" to avoid DDoS on DB    |
-| Apply cache headers only on 200 for personalized routes  | Private routes    | 404 errors go through `handleError` — no cache  |
-| `s-maxage` >= `max-age` for public routes                | All public routes | CDN should be at least as permissive as browser |
+| Rule                                                     | Applies To        | Reason                                                          |
+| -------------------------------------------------------- | ----------------- | --------------------------------------------------------------- |
+| Every error response carries `Cache-Control: no-store`   | All routes        | RFC 7234 §4.2.2: sem header, 404s são cacheados heurísticamente |
+| Never apply cache headers to error responses             | All routes        | `handleError` + retornos inline via `noStoreJson`               |
+| Always apply cache headers on 200, even if data is empty | Public routes     | CDN should cache "empty" to avoid DDoS on DB                    |
+| Empty listings get a SHORT TTL (see note below)          | Listing routes    | Cache "empty" briefly — don't pin it for long                   |
+| Apply cache headers only on 200 for personalized routes  | Private routes    | 404 errors go through `handleError` — no cache                  |
+| `s-maxage` >= `max-age` for public routes                | All public routes | CDN should be at least as permissive as browser                 |
+
+> **Empty-listing TTL (`/api/providers`):** respostas com `total=0` usam
+> `max-age=15` — o mesmo valor do `EMPTY_COUNT_CACHE_TTL` do Redis
+> (`src/lib/radius-expansion.ts`). Cacheia "vazio" só o suficiente para
+> absorver rajadas na mesma região sem manter uma área vazia por 60s depois
+> que um prestador ativa ali. O manifest continua declarando 60/60 (o caso
+> com dados); o gate `validate-cache-manifest` lê o primeiro TTL literal da
+> rota, que é o principal.
 
 ---
 
@@ -175,19 +185,23 @@ max-age=60                  staleTime: 30s
 
 ### Public Routes (11) — `cacheControlPublic`
 
-| Route                       | max-age  | s-maxage |               Vary                |
-| --------------------------- | :------: | :------: | :-------------------------------: |
-| `GET /api/categories`       | **120s** | **600s** | `Accept-Encoding, Accept, Origin` |
-| `GET /api/geo/cep`          | **60s**  | **60s**  | `Accept-Encoding, Accept, Origin` |
-| `GET /api/geo/reverse`      | **60s**  | **60s**  | `Accept-Encoding, Accept, Origin` |
-| `GET /api/geo/search`       | **60s**  | **60s**  | `Accept-Encoding, Accept, Origin` |
-| `GET /api/providers`        | **60s**  | **60s**  | `Accept-Encoding, Accept, Origin` |
-| `GET /api/reviews/recent`   | **60s**  | **300s** | `Accept-Encoding, Accept, Origin` |
-| `GET /api/search`           | **30s**  | **30s**  | `Accept-Encoding, Accept, Origin` |
-| `GET /api/search/providers` | **30s**  | **30s**  | `Accept-Encoding, Accept, Origin` |
-| `GET /api/search/services`  | **30s**  | **30s**  | `Accept-Encoding, Accept, Origin` |
-| `GET /api/services`         | **30s**  | **120s** | `Accept-Encoding, Accept, Origin` |
-| `GET /api/stats/public`     | **30s**  | **120s** | `Accept-Encoding, Accept, Origin` |
+| Route                  | max-age  | s-maxage |               Vary                |
+| ---------------------- | :------: | :------: | :-------------------------------: |
+| `GET /api/categories`  | **120s** | **600s** | `Accept-Encoding, Accept, Origin` |
+| `GET /api/geo/cep` ¹   | **60s**  | **60s**  | `Accept-Encoding, Accept, Origin` |
+| `GET /api/geo/reverse` | **60s**  | **60s**  | `Accept-Encoding, Accept, Origin` |
+
+> ¹ Emitido via `withGeoMiddleware`, que delega ao `cacheControlPublic` —
+> mesmo contrato (`public, max-age=N, s-maxage=N` + Vary completo) das rotas
+> que chamam o helper diretamente. Erros (status ≠ 200) recebem `no-store`.
+> | `GET /api/geo/search` | **60s** | **60s** | `Accept-Encoding, Accept, Origin` |
+> | `GET /api/providers` | **60s** | **60s** | `Accept-Encoding, Accept, Origin` |
+> | `GET /api/reviews/recent` | **60s** | **300s** | `Accept-Encoding, Accept, Origin` |
+> | `GET /api/search` | **30s** | **30s** | `Accept-Encoding, Accept, Origin` |
+> | `GET /api/search/providers` | **30s** | **30s** | `Accept-Encoding, Accept, Origin` |
+> | `GET /api/search/services` | **30s** | **30s** | `Accept-Encoding, Accept, Origin` |
+> | `GET /api/services` | **30s** | **120s** | `Accept-Encoding, Accept, Origin` |
+> | `GET /api/stats/public` | **30s** | **120s** | `Accept-Encoding, Accept, Origin` |
 
 ### Private Route (1) — `cacheControlPrivate`
 
@@ -197,20 +211,19 @@ max-age=60                  staleTime: 30s
 
 ### Rationale Per Route
 
-| Route                   | Why This TTL                                                                      | Notes                                            |
-| ----------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `/api/categories`       | Category tree changes rarely (admins only). Highest TTL.                          | 404 on empty tree — no cache                     |
-| `/api/geo/cep`          | CEP → address is stable. Conservative 60s.                                        | 404 on unknown CEP — no cache                    |
-| `/api/geo/reverse`      | lat/lng → address via external API. 60s absorbs repeated lookups.                 | 400/502 errors — no cache                        |
-| `/api/geo/search`       | Geolocated search (bounding box + categories). Same TTL as other geo lookups.     | All errors via `handleError`                     |
-| `/api/providers`        | Provider listing with geo + filters. 60s is a good balance.                       | 400 on `sort=distance` without coords — no cache |
-| `/api/providers/[id]`   | **Private** — contains `favorited` flag per user. Vary:Cookie separates sessions. | 404 — no cache                                   |
-| `/api/reviews/recent`   | Reviews change slowly. s-maxage=300s for CDN resilience.                          | —                                                |
-| `/api/search`           | Text search results. Short TTL for freshness.                                     | 400 on missing `q` — no cache                    |
-| `/api/search/providers` | Geolocated provider search. Same TTL as `/api/search`.                            | All errors via `handleError`                     |
-| `/api/search/services`  | Textual service search. Short TTL.                                                | 400 on missing `q` — no cache                    |
-| `/api/services`         | Service listing. s-maxage=120s longer than max-age=30s for CDN resilience.        | —                                                |
-| `/api/stats/public`     | Aggregate counters (providers, bookings, etc.). s-maxage=120s.                    | Fallback returns zeros on error (no cache)       |
+| Route                   | Why This TTL                                                                                                                                           | Notes                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| `/api/categories`       | Category tree changes rarely (admins only). Highest TTL.                                                                                               | 404 on empty tree — no cache                   |     | `/api/geo/cep` | CEP → address is stable. Conservative 60s. Applied by `withGeoMiddleware` (delegates to `cacheControlPublic`). | 400 on unknown/invalid CEP — `no-store` |
+| `/api/geo/reverse`      | lat/lng → address via external API. 60s absorbs repeated lookups.                                                                                      | 400/502 errors — no cache                      |
+| `/api/geo/search`       | Geolocated search (bounding box + categories). Same TTL as other geo lookups.                                                                          | All errors via `handleError`                   |
+| `/api/providers`        | Provider listing with geo + filters. 60s is a good balance. Empty results (`total=0`) get a short 15s TTL mirroring the Redis `EMPTY_COUNT_CACHE_TTL`. | 400 on `sort=distance`/bad `radius` — no cache |
+| `/api/providers/[id]`   | **Private** — contains `favorited` flag per user. Vary:Cookie separates sessions.                                                                      | 404 — no cache                                 |
+| `/api/reviews/recent`   | Reviews change slowly. s-maxage=300s for CDN resilience.                                                                                               | —                                              |
+| `/api/search`           | Text search results. Short TTL for freshness.                                                                                                          | 400 on missing `q` — no cache                  |
+| `/api/search/providers` | Geolocated provider search. Same TTL as `/api/search`.                                                                                                 | All errors via `handleError`                   |
+| `/api/search/services`  | Textual service search. Short TTL.                                                                                                                     | 400 on missing `q` — no cache                  |
+| `/api/services`         | Service listing. s-maxage=120s longer than max-age=30s for CDN resilience.                                                                             | —                                              |
+| `/api/stats/public`     | Aggregate counters (providers, bookings, etc.). s-maxage=120s.                                                                                         | Fallback returns zeros on error (no cache)     |
 
 ---
 

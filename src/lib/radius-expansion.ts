@@ -12,12 +12,25 @@
  * same dependency injection pattern as `computeDistanceMap` in
  * distance-fallback.ts.
  *
- * Strategy:
+ * Single-pass optimization (KNN):
+ *   Instead of issuing up to 5 sequential COUNT queries for
+ *   [5, 10, 25, 50, 100], the route can ask once for the MIN distance to the
+ *   closest eligible provider and derive the effective radius with
+ *   `findEffectiveRadiusSinglePass` — 1 round trip instead of 5.
+ *   `createCachedMinDistanceFn` is the factory for that cached query.
+ *
+ * Cache keys use geohash-7 (~153m cells, same as postgis.ts proximity keys)
+ * and a normalized query so nearby users and case-variant searches share
+ * cache entries instead of fragmenting them.
+ *
+ * Strategy (legacy loop, still used as fallback):
  *   1. Build the list of radii to try: user's radius first, then
  *      the predefined expansion steps that are larger than it.
  *   2. For each radius, call the injected count function.
  *   3. Return the first radius that finds ≥1 provider, or `null`.
  */
+
+import { encodeGeohash } from "./geohash"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -45,6 +58,23 @@ export const EXPANSION_STEPS: readonly number[] = (() => {
 
 /** Default TTL for Redis-cached radius count queries (seconds). */
 export const DEFAULT_COUNT_CACHE_TTL = 120
+
+/**
+ * Shorter TTL for "0 providers at this radius" counts (seconds).
+ *
+ * Caching a zero for the full TTL keeps a region empty for minutes after a
+ * provider activates there. A short TTL bounds staleness cheaply while still
+ * absorbing bursts.
+ */
+export const EMPTY_COUNT_CACHE_TTL = 15
+
+/**
+ * TTL for the cached MIN-distance (KNN single-pass) query (seconds).
+ *
+ * Same reasoning as the count TTLs: this value derives from provider
+ * locations, which change rarely.
+ */
+export const DEFAULT_MIN_DISTANCE_CACHE_TTL = 120
 
 // ---------------------------------------------------------------------------
 // Types
@@ -179,19 +209,63 @@ export function findEffectiveRadiusSinglePass(
 }
 
 // ---------------------------------------------------------------------------
+// Pure helpers — max radius, quantization, normalized query
+// ---------------------------------------------------------------------------
+
+/**
+ * Largest expansion step (km) — derived from EXPANSION_STEPS, never hardcoded.
+ */
+export const MAX_EXPANSION_KM: number = EXPANSION_STEPS[EXPANSION_STEPS.length - 1]!
+
+/**
+ * Quantize a user radius UP to the next canonical expansion step.
+ *
+ * Keeps arbitrary user radii (7km, 13km…) from fragmenting the cache: every
+ * search is evaluated at a canonical radius that other users also hit.
+ * Over-searching slightly (7 → 10) matches the expansion semantics already
+ * reported to the client via `expandedRadius`.
+ *
+ * @example
+ * ```ts
+ * quantizeRadiusUp(7)   // → 10
+ * quantizeRadiusUp(10)  // → 10
+ * quantizeRadiusUp(0)   // → 5  (0 keeps its own level: exact-location search)
+ * quantizeRadiusUp(200) // → 200 (above max: no canonical step applies)
+ * ```
+ */
+export function quantizeRadiusUp(userRadiusKm: number): number {
+  const step = EXPANSION_STEPS.find((s) => s >= userRadiusKm)
+  return step ?? userRadiusKm
+}
+
+/**
+ * Normalize a free-text query for cache-key purposes.
+ * Mirrors geo-nominatim.ts: trim, lowercase, collapse inner whitespace.
+ */
+function normalizeQueryForCacheKey(q: string | undefined): string {
+  return (q ?? "").trim().toLowerCase().replace(/\s+/g, " ")
+}
+
+// ---------------------------------------------------------------------------
 // Cache-key helper
 // ---------------------------------------------------------------------------
 
 /**
  * Build a Redis cache key for a radius-level provider count query.
  *
+ * Coordinates use geohash-7 (~153m cells — postgis.ts's proximity keys use
+ * the same scheme) so nearby users share cache entries instead of
+ * fragmenting them at `toFixed(3)` cell borders.
+ *
+ * The text query is normalized (trim + lowercase + collapsed whitespace) so
+ * "Eletricista" and "eletricista" share the same entry.
+ *
  * Exported separately so tests can verify key structure without invoking
  * the full factory.
  *
  * @example
- * ```ts
- * radiusCountCacheKey(-23.551, -46.633, 10, ["cat-1"], "eletricista")
- * // → "providers:count:-23.551:-46.633:10:cat-1:eletricista"
+ * ```ts   * radiusCountCacheKey(-23.551, -46.633, 10, ["cat-1"], "eletricista")
+ * // → "providers:count:6gyf4bf:10:cat-1:eletricista"
  * ```
  */
 export function radiusCountCacheKey(
@@ -201,18 +275,33 @@ export function radiusCountCacheKey(
   categoryIds: string[] | undefined,
   q: string | undefined,
 ): string {
-  const rLat = lat.toFixed(3)
-  const rLng = lng.toFixed(3)
+  const gh = encodeGeohash(lat, lng, 7)
   const cats = categoryIds?.length ? categoryIds.sort().join(",") : "all"
-  const query = q?.trim() || ""
-  return `providers:count:${rLat}:${rLng}:${radiusKm}:${cats}:${query}`
+  const query = normalizeQueryForCacheKey(q)
+  return `providers:count:${gh}:${radiusKm}:${cats}:${query}`
+}
+
+/**
+ * Build a Redis cache key for the MIN-distance (single-pass KNN) query.
+ *
+ * No radius component — the min distance over the filtered set is
+ * radius-independent; the expansion steps are derived from it afterwards.
+ */
+export function minDistanceCacheKey(
+  lat: number,
+  lng: number,
+  categoryIds: string[] | undefined,
+  q: string | undefined,
+): string {
+  const gh = encodeGeohash(lat, lng, 7)
+  const cats = categoryIds?.length ? categoryIds.sort().join(",") : "all"
+  const query = normalizeQueryForCacheKey(q)
+  return `providers:mindist:${gh}:${cats}:${query}`
 }
 
 // ---------------------------------------------------------------------------
 // Factory — cached radius-count function
-// ---------------------------------------------------------------------------
-
-/** Options for {@link createCachedRadiusCountFn}. */
+// ---------------------------------------------------------------------------/** Options for {@link createCachedRadiusCountFn}. */
 export interface CreateCachedRadiusCountFnOptions {
   /** User's latitude. */
   lat: number
@@ -224,7 +313,8 @@ export interface CreateCachedRadiusCountFnOptions {
   q?: string
   /**
    * Redis cache TTL in seconds.  Defaults to {@link DEFAULT_COUNT_CACHE_TTL}
-   * (120 s = 2 min).
+   * (120 s = 2 min). Zero counts get {@link EMPTY_COUNT_CACHE_TTL} (15 s)
+   * so a region does not stay empty for minutes after a provider activates.
    */
   cacheTtl?: number
   /**
@@ -235,8 +325,15 @@ export interface CreateCachedRadiusCountFnOptions {
   /**
    * Injected Redis cache wrapper.
    * Expected signature matches `withCache` from `@/lib/redis`.
+   * The 4th `opts` argument (staleGraceSeconds) is optional — factories pass
+   * it when supported so the count keys get stale-while-revalidate.
    */
-  withCache: <T>(key: string, fn: () => Promise<T>, ttl: number) => Promise<T>
+  withCache: <T>(
+    key: string,
+    fn: () => Promise<T>,
+    ttl: number,
+    opts?: { staleGraceSeconds?: number },
+  ) => Promise<T>
   /**
    * Injected SQL WHERE clause builder.
    * The route passes its internal `buildProviderWhereClause`.
@@ -298,6 +395,119 @@ export function createCachedRadiusCountFn(opts: CreateCachedRadiusCountFnOptions
         return Number(result[0]?.total ?? 0)
       },
       ttl,
+      // Stale-while-revalidate: absorb TTL expiry bursts with a slightly
+      // stale count while the fresh one is computed in the background.
+      { staleGraceSeconds: Math.round(ttl * 0.1) },
+    )
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Factory — cached MIN-distance (single-pass KNN) function
+// ---------------------------------------------------------------------------
+
+/** Options for {@link createCachedMinDistanceFn}. */
+export interface CreateCachedMinDistanceFnOptions {
+  /** User's latitude. */
+  lat: number
+  /** User's longitude. */
+  lng: number
+  /** Optional category filter IDs. */
+  categoryIds?: string[]
+  /** Optional full-text search query. */
+  q?: string
+  /**
+   * Redis cache TTL in seconds. Defaults to
+   * {@link DEFAULT_MIN_DISTANCE_CACHE_TTL} (120 s).
+   */
+  cacheTtl?: number
+  /** Injected Prisma raw-query executor (`db.$queryRawUnsafe`). */
+  queryRawUnsafe: <T>(sql: string, ...params: unknown[]) => Promise<T>
+  /** Injected Redis cache wrapper (same contract as the count factory). */
+  withCache: <T>(
+    key: string,
+    fn: () => Promise<T>,
+    ttl: number,
+    opts?: { staleGraceSeconds?: number },
+  ) => Promise<T>
+  /** Injected SQL WHERE clause builder (`buildProviderWhereClause`). */
+  buildWhereClause: WhereClauseBuilder
+}
+
+/**
+ * Result of the cached MIN-distance query.
+ */
+export interface MinDistanceResult {
+  /**
+   * Distance in km to the closest eligible provider, or `null` when no
+   * provider matches the non-spatial filters (or none has a location).
+   */
+  minDistanceKm: number | null
+  /**
+   * Number of eligible providers that HAVE a location column (any distance).
+   * Lets the caller distinguish "no providers at all" from "providers exist
+   * but PostGIS location is missing" — the latter means the KNN answer is
+   * unreliable and the legacy loop should decide.
+   */
+  locatedCount: number
+}
+
+/**
+ * Factory that creates a cached MIN-distance resolver for the single-pass
+ * KNN path — 1 round trip replaces the legacy sequential COUNT expansion.
+ *
+ * The query filters by the SAME non-spatial conditions (role/active/verified/
+ * deleted, category, full-text) as the count query, then takes
+ * `MIN(ST_Distance(...))` over all providers that have a location. The
+ * effective radius is derived with {@link findEffectiveRadiusSinglePass}.
+ */
+export function createCachedMinDistanceFn(
+  opts: CreateCachedMinDistanceFnOptions,
+): () => Promise<MinDistanceResult> {
+  const { lat, lng, categoryIds, q, cacheTtl, queryRawUnsafe, withCache, buildWhereClause } = opts
+  const ttl = cacheTtl ?? DEFAULT_MIN_DISTANCE_CACHE_TTL
+  const cacheKey = minDistanceCacheKey(lat, lng, categoryIds, q)
+
+  return () => {
+    // Non-spatial conditions only — MIN distance is radius-independent.
+    const [where, params] = buildWhereClause({ categoryIds, q, centerGeo: null })
+
+    return withCache<MinDistanceResult>(
+      cacheKey,
+      async () => {
+        const result = await queryRawUnsafe<
+          Array<{
+            min_distance_km: number | null
+            located: bigint
+          }>
+        >(
+          // ⚠️ Placeholder indexing: the WHERE clause (built with
+          // centerGeo: null) numbers its placeholders from $1 — so the
+          // ST_MakePoint coordinates must come AFTER `params`, never before.
+          // (Binding $1/$2 to lng/lat with `q` present fed a numeric into
+          // to_tsquery() → "function to_tsquery(unknown, numeric) does not
+          // exist" — caught by the E2E cache validation against real Postgres.)
+          `SELECT
+            MIN(ST_Distance(u.location, ST_SetSRID(ST_MakePoint($${params.length + 1}, $${params.length + 2}), 4326)::geography)) / 1000
+              AS min_distance_km,
+            COUNT(*)::bigint AS located
+          FROM "User" u
+          WHERE u.location IS NOT NULL AND ${where}`,
+          ...params,
+          lng,
+          lat,
+        )
+        const row = result[0]
+        return {
+          minDistanceKm:
+            row?.min_distance_km !== null && row?.min_distance_km !== undefined
+              ? Number(row.min_distance_km)
+              : null,
+          locatedCount: Number(row?.located ?? 0),
+        }
+      },
+      ttl,
+      { staleGraceSeconds: Math.round(ttl * 0.1) },
     )
   }
 }

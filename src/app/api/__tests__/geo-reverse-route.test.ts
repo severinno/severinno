@@ -65,6 +65,8 @@ describe("GET /api/geo/reverse", () => {
     // Headers de rate limit preservados (não caindo no 502 genérico)
     expect(res.headers.get("x-ratelimit-limit")).toBe("30")
     expect(res.headers.get("retry-after")).toBe("10")
+    // Regra da casa: erros nunca são cacheáveis
+    expect(res.headers.get("cache-control")).toBe("no-store")
   })
 
   it("returns address for valid lat/lng", async () => {
@@ -82,6 +84,8 @@ describe("GET /api/geo/reverse", () => {
       state: "SP",
       cep: "01310-100",
     })
+    // Contrato da casa nos 200 (via cacheControlPublic)
+    expect(res.headers.get("cache-control")).toBe("public, max-age=60, s-maxage=60")
   })
 
   it("returns 400 when lat is missing", async () => {
@@ -91,6 +95,8 @@ describe("GET /api/geo/reverse", () => {
 
     expect(parsed.status).toBe(400)
     expect(parsed.body).toHaveProperty("error")
+    // Regra da casa: erros nunca são cacheáveis
+    expect(res.headers.get("cache-control")).toBe("no-store")
   })
 
   it("returns 400 when lng is missing", async () => {
@@ -109,6 +115,8 @@ describe("GET /api/geo/reverse", () => {
 
     expect(parsed.status).toBe(400)
     expect(parsed.body).toHaveProperty("error")
+    // Regra da casa: erros nunca são cacheáveis
+    expect(res.headers.get("cache-control")).toBe("no-store")
   })
 
   it("returns 502 when Nominatim fails", async () => {
@@ -120,5 +128,7 @@ describe("GET /api/geo/reverse", () => {
 
     expect(parsed.status).toBe(502)
     expect(parsed.body).toHaveProperty("error")
+    // Regra da casa: erros nunca são cacheáveis
+    expect(res.headers.get("cache-control")).toBe("no-store")
   })
 })

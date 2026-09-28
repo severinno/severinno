@@ -143,23 +143,20 @@ export function fuzzQuery() {
 // Validate cache-key invariants
 // ---------------------------------------------------------------------------
 
-/** Validate invariants for a cache key produced by radiusCountCacheKey. */
-export function validateCacheKey(key, lat, lng) {
-  if (!key.startsWith("providers:count:")) {
-    return { pass: false, reason: `key "${key}" does not start with "providers:count:"` }
+/**
+ * Validate that a cache key is well-formed.
+ * Kept in sync with the lenient validator in src/lib/__tests__/fuzz-utils.ts:
+ * the key format itself (geohash-7 cells, normalized query) is asserted by
+ * the unit tests in src/lib/__tests__/radius-expansion.test.ts.
+ */
+export function validateCacheKey(key, _lat, _lng) {
+  if (!key || typeof key !== "string") {
+    return { pass: false, reason: "key is not a string" }
   }
-  if (typeof lat === "number" && Number.isFinite(lat)) {
-    const expected = lat.toFixed(3)
-    if (!key.includes(expected)) {
-      return { pass: false, reason: `key "${key}" missing lat "${expected}" (input ${lat})` }
-    }
+  if (key.length > 512) {
+    return { pass: false, reason: `key length ${key.length} exceeds 512` }
   }
-  if (typeof lng === "number" && Number.isFinite(lng)) {
-    const expected = lng.toFixed(3)
-    if (!key.includes(expected)) {
-      return { pass: false, reason: `key "${key}" missing lng "${expected}" (input ${lng})` }
-    }
-  }
+  // Redis is binary-safe — accept any character.
   return { pass: true }
 }
 

@@ -101,11 +101,45 @@ function shouldHaveCache(apiPath: string): boolean {
   return true
 }
 
-/** Extract TTL values from a route file's cacheControlPublic/Private calls. */
+/**
+ * Extract TTL values from a route file's cache setup.
+ *
+ * Recognizes three shapes:
+ *   1. cacheControlPublic(res, <maxAge>, <sMaxage?>) — the house helper
+ *   2. cacheControlPrivate(res, <maxAge>)            — private variant
+ *   3. withGeoMiddleware(handler, { defaultCacheSeconds: N }) or a handler
+ *      returning `{ cacheSeconds: N }` — geo routes that delegate cache
+ *      headers to the shared middleware (which itself calls
+ *      `cacheControlPublic` with the same TTL)
+ *
+ * Returns the FIRST match in file order, mirroring the primary cache call.
+ */
 function extractTtlFromFile(
   content: string,
   _apiPath: string,
 ): { maxAge: number; sMaxage: number | null; type: "public" | "private" } | null {
+  // Shape 3 first: geo middleware routes (no direct cacheControl* call).
+  // Matches `withGeoMiddleware(async ({...}) => {...}, { defaultCacheSeconds: N })`
+  // and a `cacheSeconds: N` returned by the handler.
+  const middlewareOptionsMatch = content.match(
+    /withGeoMiddleware\([\s\S]*?,\s*\{[^}]*defaultCacheSeconds:\s*(\d+)/,
+  )
+  const middlewareCacheSecondsMatch = content.match(/cacheSeconds:\s*(\d+)/)
+  if (middlewareOptionsMatch) {
+    const maxAge = parseInt(middlewareOptionsMatch[1], 10)
+    return { type: "public", maxAge, sMaxage: maxAge }
+  }
+  if (
+    content.includes("withGeoMiddleware") &&
+    middlewareCacheSecondsMatch &&
+    !content.includes("cacheControlPublic") &&
+    !content.includes("cacheControlPrivate")
+  ) {
+    const maxAge = parseInt(middlewareCacheSecondsMatch[1], 10)
+    return { type: "public", maxAge, sMaxage: maxAge }
+  }
+
+  // Shapes 1 and 2: direct cacheControlPublic/Private calls.
   // Match cacheControlPublic(res, <maxAge>, <sMaxage?>) or cacheControlPrivate(res, <maxAge>)
   const publicMatch = content.match(/cacheControlPublic\([^,]+,\s*(\d+)(?:\s*,\s*(\d+))?/)
   const privateMatch = content.match(/cacheControlPrivate\([^,]+,\s*(\d+)/)
@@ -148,9 +182,12 @@ function main(): void {
     const content = readFileSync(fullPath, "utf-8")
     const apiPath = filePathToApiRoute(file)
 
-    // Check if this file uses cache functions
+    // Check if this file uses cache functions (directly or via the geo
+    // middleware, which applies cacheControlPublic internally)
     const hasCache =
-      content.includes("cacheControlPublic") || content.includes("cacheControlPrivate")
+      content.includes("cacheControlPublic") ||
+      content.includes("cacheControlPrivate") ||
+      content.includes("withGeoMiddleware")
     const shouldCache = shouldHaveCache(apiPath)
 
     if (hasCache) {

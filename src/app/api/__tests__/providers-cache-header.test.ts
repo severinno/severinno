@@ -11,7 +11,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { createMockRequest } from "@/lib/__tests__/helpers/api-test-utils"
-import { expectCacheHeaders, expectNoCacheHeaders } from "@/lib/__tests__/helpers/cache-test-utils"
+import { expectCacheHeaders } from "@/lib/__tests__/helpers/cache-test-utils"
 
 vi.mock("@/lib/logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -105,27 +105,38 @@ describe("Cache-Control headers on GET /api/providers", () => {
     expectCacheHeaders(res, 60)
   })
 
-  // ── 400 error (no cache headers) ───────────────────────────────────────
+  // ── 400 error (no-store) ───────────────────────────────────────────────
 
-  it("does NOT set cache headers on 400 sort=distance without coordinates", async () => {
+  it("sets no-store on 400 sort=distance without coordinates", async () => {
     const req = createMockRequest({ searchParams: { sort: "distance" } })
     const res = await listProviders(req)
 
     expect(res.status).toBe(400)
-    expectNoCacheHeaders(res)
+    // House rule (RFC 7234 §4.2.2): erros NUNCA são cacheáveis — sem header
+    // explícito, 4xx são heurísticamente cacheáveis por CDNs.
+    expect(res.headers.get("Cache-Control")).toBe("no-store")
   })
 
-  // ── 200 empty results (no cache headers) ───────────────────────────────
+  // ── 200 empty results (SHORT cache TTL) ────────────────────────────────
 
-  it("does NOT set cache headers on 200 when no providers match (total=0)", async () => {
+  it("sets SHORT cache headers on 200 when no providers match (total=0)", async () => {
     vi.mocked(db.$queryRawUnsafe as any).mockReset()
     vi.mocked(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
-      if (sql.includes("COUNT")) return Promise.resolve([{ total: BigInt(0) }])
+      // Empty-region path: all spatial counts → 0, unrestricted COUNT → 0
+      if (sql.includes("MIN(ST_Distance")) {
+        return Promise.resolve([{ min_distance_km: null, located: BigInt(0) }])
+      }
+      if (sql.includes("COUNT")) {
+        if (sql.includes("ST_DWithin")) return Promise.resolve([{ total: BigInt(0) }])
+        return Promise.resolve([{ total: BigInt(0) }])
+      }
       return Promise.resolve([])
     })
 
     const res = await listProviders(createMockRequest())
     expect(res.status).toBe(200)
-    expectNoCacheHeaders(res)
+    // 15s — mirrors the Redis EMPTY_COUNT_CACHE_TTL: caches "empty" briefly
+    // to absorb repeated hits without pinning it for the full 60s.
+    expectCacheHeaders(res, 15)
   })
 })

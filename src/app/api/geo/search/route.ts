@@ -71,9 +71,9 @@ export async function GET(request: Request) {
     // Free-form query with Zod validation
     const raw = searchParams.get("q") || ""
     if (!raw.trim()) {
-      return NextResponse.json(
+      return noStoreJson(
         { error: 'Parâmetro "q" é obrigatório (endereço textual) ou informe street/city/state' },
-        { status: 400 },
+        400,
       )
     }
     // `searchParams.get()` retorna null quando o param está ausente; o schema
@@ -87,10 +87,21 @@ export async function GET(request: Request) {
     return await handleFreeForm(parsed.q, parsed.limit)
   } catch (e) {
     if (e instanceof ZodError) {
-      return NextResponse.json({ error: "Dados inválidos", details: e.issues }, { status: 400 })
+      return noStoreJson({ error: "Dados inválidos", details: e.issues }, 400)
     }
     return handleError(e)
   }
+}
+
+/**
+ * JSON error response that must NEVER be cached (house rule: errors carry
+ * `Cache-Control: no-store`). Same contract as geo-middleware and all other
+ * routes — a cached 4xx would pin an invalid request result for the TTL.
+ */
+function noStoreJson(body: unknown, status: number): NextResponse {
+  const response = NextResponse.json(body, { status })
+  response.headers.set("Cache-Control", "no-store")
+  return response
 }
 
 // ---------------------------------------------------------------------------

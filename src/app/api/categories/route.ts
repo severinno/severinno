@@ -9,6 +9,7 @@ import { parseBody } from "@/lib/api-middleware"
 import {
   notFound,
   handleError,
+  noStoreJson,
   cacheControlPublic,
   syncEntitySearch,
   invalidateCategoryCache,
@@ -50,7 +51,7 @@ export async function GET(request?: Request) {
     )
     return cacheControlPublic(NextResponse.json(categories), 120, 600)
   } catch {
-    return NextResponse.json({ error: "Erro interno" }, { status: 500 })
+    return noStoreJson({ error: "Erro interno" }, { status: 500 })
   }
 }
 

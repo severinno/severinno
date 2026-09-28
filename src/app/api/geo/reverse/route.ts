@@ -21,7 +21,7 @@ export async function GET(request: Request) {
       !Number.isFinite(Number(latRaw)) ||
       !Number.isFinite(Number(lngRaw))
     ) {
-      return NextResponse.json({ error: "Lat/lng inválidos" }, { status: 400 })
+      return noStoreJson({ error: "Lat/lng inválidos" }, 400)
     }
 
     // Cache é gerenciado internamente por reverseGeocode (via withCachedGeo, 24h TTL)
@@ -44,9 +44,24 @@ export async function GET(request: Request) {
     // Rate limit (429) precisa preservar status + headers — o catch genérico
     // abaixo mapearia para 502.
     if (isGeoRateLimitError(e)) {
-      return NextResponse.json({ error: e.message }, { status: 429, headers: e.headers })
+      return noStoreJson({ error: e.message }, 429, e.headers)
     }
     const msg = e instanceof Error ? e.message : "Erro ao geocodificar"
-    return NextResponse.json({ error: msg }, { status: 502 })
+    return noStoreJson({ error: msg }, 502)
   }
+}
+
+/**
+ * JSON error response that must NEVER be cached (house rule: errors carry
+ * `Cache-Control: no-store`). Same contract as geo-middleware and all other
+ * routes — a cached 4xx/5xx would pin a failure for the cache TTL.
+ */
+function noStoreJson(
+  body: unknown,
+  status: number,
+  headers?: Record<string, string>,
+): NextResponse {
+  const response = NextResponse.json(body, { status, headers })
+  response.headers.set("Cache-Control", "no-store")
+  return response
 }

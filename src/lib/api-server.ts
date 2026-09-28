@@ -282,13 +282,37 @@ export const notFound = (msg = "Recurso não encontrado") => new HttpError(404, 
 export const conflict = (msg = "Conflito de estado") => new HttpError(409, msg)
 
 /**
+ * JSON error response carrying `Cache-Control: no-store`.
+ *
+ * House rule: error responses are NEVER cacheable. Sem header, caches
+ * heuristically cache 404s (RFC 7234 §4.2.2) — "prestador não encontrado"
+ * ficaria preso no CDN/browser depois de o cadastro existir. Aplicado em
+ * TODAS as saídas do handleError; rotas com retornos inline de erro usam o
+ * mesmo contrato.
+ */
+export function noStoreJson(
+  body: unknown,
+  init?: { status?: number; headers?: Record<string, string> },
+): NextResponse {
+  const response = NextResponse.json(body, {
+    status: init?.status ?? 500,
+    headers: init?.headers,
+  })
+  response.headers.set("Cache-Control", "no-store")
+  return response
+}
+
+/**
  * Map any thrown error to a JSON response. Domain errors (`AuthError`,
  * `BookingError`, `PaymentError`) and `HttpError` are mapped to their
  * respective status codes and messages. Zod errors → 400 with issue details.
+ *
+ * Every response carries `Cache-Control: no-store` (custom `HttpError`
+ * headers like rate-limit `Retry-After` are preserved).
  */
 export function handleError(e: unknown) {
   if (e instanceof HttpError) {
-    return NextResponse.json({ error: e.message }, { status: e.status, headers: e.headers })
+    return noStoreJson({ error: e.message }, { status: e.status, headers: e.headers })
   }
   // Duck-type domain errors instead of instanceof: route tests mock domain modules
   // without exporting class definitions, which breaks instanceof across isolated contexts.
@@ -298,24 +322,24 @@ export function handleError(e: unknown) {
     domainErr?.name === "BookingError" ||
     domainErr?.name === "PaymentError"
   ) {
-    return NextResponse.json(
+    return noStoreJson(
       { error: e instanceof Error ? e.message : "", code: domainErr.code },
       { status: domainErr.status ?? 500 },
     )
   }
   if (e instanceof ZodError) {
-    return NextResponse.json({ error: "Dados inválidos", details: e.issues }, { status: 400 })
+    return noStoreJson({ error: "Dados inválidos", details: e.issues }, { status: 400 })
   }
   if (e instanceof Error) {
     if (e.message === "UNAUTHORIZED") {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
+      return noStoreJson({ error: "Não autorizado" }, { status: 401 })
     }
     if (e.message === "FORBIDDEN") {
-      return NextResponse.json({ error: "Acesso proibido" }, { status: 403 })
+      return noStoreJson({ error: "Acesso proibido" }, { status: 403 })
     }
   }
   logger.error({ err: e, requestId: getRequestId() }, "unhandled api error")
-  return NextResponse.json(
+  return noStoreJson(
     { error: "Erro interno do servidor", requestId: getRequestId() },
     { status: 500 },
   )

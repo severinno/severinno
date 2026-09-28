@@ -16,6 +16,7 @@
 import { NextResponse } from "next/server"
 import { ZodError, type ZodSchema } from "zod"
 import { assertGeoRateLimit, isGeoRateLimitError, type GeoEndpoint } from "./geo-rate-limit"
+import { cacheControlPublic } from "./api-server"
 import { captureError } from "./sentry"
 import logger from "./logger"
 
@@ -68,14 +69,12 @@ export function withGeoMiddleware<T>(
       await assertGeoRateLimit(request, rateLimitType)
     } catch (err) {
       if (isGeoRateLimitError(err)) {
-        return NextResponse.json(
+        return noStoreJson(
           { error: "Muitas requisições. Tente novamente em alguns segundos." },
+          429,
           {
-            status: 429,
-            headers: {
-              ...err.headers,
-              "Content-Type": "application/json",
-            },
+            ...err.headers,
+            "Content-Type": "application/json",
           },
         )
       }
@@ -87,18 +86,30 @@ export function withGeoMiddleware<T>(
       const result = await handler({ request, searchParams, pathname })
 
       // 3. Build response with cache headers
+      const status = result.status ?? 200
       const cacheSeconds = result.cacheSeconds ?? options.defaultCacheSeconds ?? 60
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        "Cache-Control": `public, s-maxage=${cacheSeconds}, stale-while-revalidate=${cacheSeconds * 5}`,
-        Vary: "Accept-Encoding",
-        ...result.headers,
+      const response = NextResponse.json(result.data, { status })
+      // NextResponse.json does not reliably set Content-Type across runtimes —
+      // the previous implementation always sent application/json explicitly.
+      response.headers.set("Content-Type", "application/json")
+
+      // Cache ONLY successful responses (house rule: never cache errors).
+      // Use the house cache helper so middleware routes emit the SAME
+      // Cache-Control/Vary contract as every other cached route
+      // (`public, max-age=N, s-maxage=N` + `Vary: Accept-Encoding, Accept,
+      // Origin`) — previously this emitted a divergent format that the
+      // cache manifest, the all-cache-routes E2E and docs/CACHE_STRATEGY.md
+      // did not describe. Extra handler headers are merged on top.
+      if (status === 200) {
+        cacheControlPublic(response, cacheSeconds)
+      } else {
+        response.headers.set("Cache-Control", "no-store")
+      }
+      for (const [key, value] of Object.entries(result.headers ?? {})) {
+        response.headers.set(key, value)
       }
 
-      return NextResponse.json(result.data, {
-        status: result.status ?? 200,
-        headers,
-      })
+      return response
     } catch (err) {
       return handleGeoError(err, pathname)
     }
@@ -107,10 +118,26 @@ export function withGeoMiddleware<T>(
 
 // ── Error handling ────────────────────────────────────────────────────────
 
+/**
+ * JSON error response that must NEVER be cached (house rule: errors carry
+ * `Cache-Control: no-store`). Used by every error exit of the middleware,
+ * including the Zod 400 path — a cached 400 would pin an invalid request
+ * result for the cache TTL.
+ */
+function noStoreJson(
+  body: unknown,
+  status: number,
+  headers?: Record<string, string>,
+): NextResponse {
+  const response = NextResponse.json(body, { status, headers })
+  response.headers.set("Cache-Control", "no-store")
+  return response
+}
+
 function handleGeoError(err: unknown, pathname: string): NextResponse {
   // Zod validation errors → 400
   if (err instanceof ZodError) {
-    return NextResponse.json(
+    return noStoreJson(
       {
         error: "Parâmetros inválidos",
         details: err.issues.map((i) => ({
@@ -118,7 +145,7 @@ function handleGeoError(err: unknown, pathname: string): NextResponse {
           message: i.message,
         })),
       },
-      { status: 400 },
+      400,
     )
   }
 
@@ -127,13 +154,13 @@ function handleGeoError(err: unknown, pathname: string): NextResponse {
     const msg = err.message.toLowerCase()
 
     if (msg.includes("inválido") || msg.includes("invalid")) {
-      return NextResponse.json({ error: err.message }, { status: 400 })
+      return noStoreJson({ error: err.message }, 400)
     }
     if (msg.includes("não encontrado") || msg.includes("not found")) {
-      return NextResponse.json({ error: err.message }, { status: 404 })
+      return noStoreJson({ error: err.message }, 404)
     }
     if (msg.includes("não autorizado") || msg.includes("unauthorized")) {
-      return NextResponse.json({ error: err.message }, { status: 401 })
+      return noStoreJson({ error: err.message }, 401)
     }
 
     // Generic error — don't leak internals in production
@@ -142,12 +169,12 @@ function handleGeoError(err: unknown, pathname: string): NextResponse {
 
     const message = process.env.NODE_ENV === "production" ? "Erro interno do servidor" : err.message
 
-    return NextResponse.json({ error: message }, { status: 500 })
+    return noStoreJson({ error: message }, 500)
   }
 
   // Unknown error
   logger.error({ err, pathname }, "geo middleware: unknown error")
-  return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })
+  return noStoreJson({ error: "Erro interno do servidor" }, 500)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────

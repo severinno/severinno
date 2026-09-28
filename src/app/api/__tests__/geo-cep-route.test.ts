@@ -79,4 +79,30 @@ describe("GET /api/geo/cep", () => {
     expect(parsed.status).toBe(400)
     expect((parsed.body as any).error).toContain("ViaCEP")
   })
+
+  // ── Cache contract (withGeoMiddleware → cacheControlPublic) ────────────
+
+  it("sets house cache headers on 200 (max-age=60, s-maxage=60 + full Vary)", async () => {
+    vi.mocked(geocodeCEP).mockResolvedValue(validAddress)
+
+    const req = createMockRequest({ searchParams: { cep: "01310100" } })
+    const response = await GET(req)
+
+    expect(response.status).toBe(200)
+    // Same contract as routes that call cacheControlPublic directly —
+    // asserted here to lock the alignment (see docs/CACHE_STRATEGY.md).
+    expect(response.headers.get("Cache-Control")).toBe("public, max-age=60, s-maxage=60")
+    expect(response.headers.get("Vary")).toBe("Accept-Encoding, Accept, Origin")
+    expect(response.headers.get("Content-Type")).toBe("application/json")
+  })
+
+  it("never caches errors — 400 responses carry no-store", async () => {
+    vi.mocked(geocodeCEP).mockRejectedValue(new Error("CEP inválido"))
+
+    const req = createMockRequest({ searchParams: { cep: "123" } })
+    const response = await GET(req)
+
+    expect(response.status).toBe(400)
+    expect(response.headers.get("Cache-Control")).toBe("no-store")
+  })
 })
