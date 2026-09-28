@@ -1103,14 +1103,29 @@ o `da matriz` que a régua ancora. A prosa é hard-wrapped e a LINHA não é a
 unidade: uma referência partida entre duas linhas (o `<N>ª` de uma e o `entrada
 da matriz` da seguinte) é lida como uma frase só.
 
-**Como é provado:** dez casos em `check-mutation-count.test.ts` — o ordinal certo
+**O escopo é DERIVADO, nunca uma dupla escrita no fonte.** A prosa julgada é o
+`README.md` mais **todos os `.md` da árvore de `docs/`** (recursivo, ordenado) —
+enquanto o escopo era um par hardcoded (`docs/GUARDS.md` e `README.md`), uma
+referência posicional em qualquer TERCEIRO doc era invisível, e uma referência que
+a régua não lê envelhece exatamente como a que ela lê: em silêncio. Com a
+varredura, um doc novo entra na régua sozinho (e o recorte `--staged`
+**materializa** essa prosa junto, senão o índice julgaria num diretório onde os
+docs não estão — "nenhum doc a ler" disfarçado de "nenhuma referência a
+conferir"). Fica de fora, por DECLARAÇÃO: os `.md` da raiz que não são o README
+(notas de sessão) e os registros de `ci/`, que são narrativa DATADA de medições
+— história do instrumento, não afirmação da posição de hoje.
+
+**Como é provado:** treze casos em `check-mutation-count.test.ts` — o ordinal certo
 passa (e o relatório publica a suíte que a frase nomeia), o errado acusa nomeando
 a posição real, o ordinal SEM a suíte acusa o fail-closed, o POR EXTENSO certo
 passa (`quadragésima primeira` = 41, com a dezena composta), o extenso errado
 acusa nomeando a posição real, o extenso SEM a suíte também acusa, uma palavra que
 não é ordinal não é referência, o caminho do script também ancora, o histórico de
-custo fica fora, e a MESMA prosa fica errada quando uma entrada nasce ANTES (o
-`sub-2` que era a 3.ª vira a 4.ª).
+custo fica fora, a MESMA prosa fica errada quando uma entrada nasce ANTES (o
+`sub-2` que era a 3.ª vira a 4.ª), uma referência num TERCEIRO doc da árvore é
+julgada (e o `.md` da raiz fora do escopo não é), o recorte `--staged` materializa
+essa prosa, e a varredura de `docsDaProsa` é recursiva, ordenada e ignora o que
+não é markdown.
 
 #### O count não pode ser PARTIDO entre dois commits locais — o recorte `--staged`
 

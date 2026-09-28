@@ -17,6 +17,7 @@ import {
   BENCH_PATH,
   caminhosDoVeredito,
   comparaComOAto,
+  docsDaProsa,
   run,
   runStaged,
 } from "../../../scripts/check-mutation-count.mjs"
@@ -882,6 +883,57 @@ describe("check-mutation-count — o ORDINAL da suíte × a ordem real do SUBTES
     const r = run(dir)
     expect(r.violations.filter(daMatriz)).toEqual([])
     expect(r.ordinais).toEqual([])
+  })
+
+  it("o ESCOPO é a PROSA: uma referência num TERCEIRO doc entra na régua", () => {
+    // Enquanto o escopo era um par escrito no fonte (`docs/GUARDS.md` e
+    // `README.md`), uma referência posicional em qualquer OUTRO doc era
+    // invisível — e uma referência que a régua não lê envelhece como a que ela
+    // lê: em silêncio.
+    const dir = makeFixture({ count: 5, doc: "# Guards\n\nnada aqui.\n" })
+    const outro = join(dir, "docs/TESTING.md")
+    writeFileSync(outro, "# Testes\n\nA régua é a 3.ª entrada da matriz (`sub-2`).\n")
+    expect(run(dir).violations.filter(daMatriz)).toEqual([])
+
+    writeFileSync(outro, "# Testes\n\nA régua é a 9.ª entrada da matriz (`sub-2`).\n")
+    const v = run(dir).violations.find((x) => x.includes("docs/TESTING.md"))!
+    expect(v).toContain("9.ª entrada da matriz")
+    expect(v).toContain("`sub-2` é a 3.ª")
+  })
+
+  it("o recorte --staged materializa a PROSA da árvore (e o doc fora dela não é julgado)", () => {
+    const dir = makeFixture({ count: 5, doc: "# Guards\n\nnada aqui.\n" })
+    writeFileSync(
+      join(dir, "docs/TESTING.md"),
+      "# Testes\n\nA régua é a 9.ª entrada da matriz (`sub-2`).\n",
+    )
+    // O `.md` da RAIZ que não é o README fica fora: o escopo é a árvore de docs
+    // mais o README, e ele é DECLARADO — não o que a varredura alcançar por acaso.
+    writeFileSync(
+      join(dir, "NOTAS.md"),
+      "# Notas\n\nA régua é a 9.ª entrada da matriz (`sub-2`).\n",
+    )
+
+    const r = runStaged(dir, { ler: indiceDe(dir) })
+    expect(r.violations.some((v) => v.includes("docs/TESTING.md"))).toBe(true)
+    expect(r.violations.some((v) => v.includes("NOTAS.md"))).toBe(false)
+  })
+
+  it("docsDaProsa varre a árvore de docs, ordenada, e ignora o que não é prosa", () => {
+    const dir = makeFixture({ count: 3, doc: "# Guards\n" })
+    mkdirSync(join(dir, "docs/audit"), { recursive: true })
+    writeFileSync(join(dir, "docs/audit/nota.md"), "# nota\n")
+    writeFileSync(join(dir, "docs/ignorado.txt"), "não é markdown\n")
+    mkdirSync(join(dir, "docs/.oculto"), { recursive: true })
+    writeFileSync(join(dir, "docs/.oculto/x.md"), "# oculto\n")
+
+    const rels = docsDaProsa(dir)
+    expect(rels).toContain("README.md")
+    expect(rels).toContain("docs/GUARDS.md")
+    expect(rels).toContain("docs/audit/nota.md")
+    expect(rels).not.toContain("docs/ignorado.txt")
+    expect(rels).not.toContain("docs/.oculto/x.md")
+    expect([...rels].sort()).toEqual(rels)
   })
 
   it("o CAMINHO do script também ancora (não só o `id` entre crases)", () => {

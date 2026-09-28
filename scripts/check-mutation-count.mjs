@@ -134,6 +134,10 @@
 //      ANTES (o caso medido: a `stack-per-commit` era a 38.ª e é a 40.ª). O
 //      escopo é a posição de HOJE — as ordens do histórico de custo do README
 //      (o tamanho da matriz daquele ato) não trazem o `da matriz`.
+//      A PROSA julgada é DERIVADA (o README mais todos os `.md` da árvore de
+//      docs, recursivo): uma referência num terceiro doc era invisível enquanto
+//      o escopo era um par escrito no fonte, e o que a régua não lê envelhece
+//      igual ao que ela lê.
 //
 // --json: { ok, derivedCount, derivedMetades, metades, prova, ordinais, bench,
 // refs: { prCheck: [...] }, violations: [...] } — exit 0 mesmo com violações
@@ -155,7 +159,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs"
-import { dirname, join, resolve } from "node:path"
+import { dirname, join, relative, resolve } from "node:path"
 import { tmpdir } from "node:os"
 import { pathToFileURL } from "node:url"
 
@@ -558,14 +562,48 @@ export function ordinalDeExtenso(trecho) {
  * NORMALIZADO (a quebra vira espaço) e a janela de conferência é a FRASE — o id
  * no parágrafo inteiro validaria por engano um número citado longe dele.
  *
+ * O ESCOPO É DERIVADO, NUNCA UMA DUPLA À MÃO: a prosa julgada é a ÁRVORE DE
+ * DOCS (todos os `.md` sob `docs/`, recursivo) mais o README. Enquanto era um par
+ * escrito no fonte (`docs/GUARDS.md` e `README.md`), uma referência posicional
+ * num TERCEIRO doc era invisível — e uma referência que a régua não lê
+ * envelhece exatamente como a que ela lê: em silêncio. Com a varredura, o doc
+ * novo entra na régua sozinho.
+ *
  * @param {string} root
  * @param {{id: string, script: string}[]} entries
  * @returns {{refs: {arquivo: string, linha: number, ordinal: number, citada: string, candidatos: string[]}[], violations: string[]}}
  */
+/**
+ * A PROSA que a régua do ordinal lê: o README e TODOS os `.md` da árvore de
+ * docs (recursivo) — ordenados, para o relatório ser estável.
+ *
+ * Diretório oculto e `node_modules` ficam de fora (scratch e dependência não são
+ * a prosa do repositório), e o MESMO conjunto é o que o recorte `--staged`
+ * materializa — a régua lê o que o commit carrega, doc a doc.
+ *
+ * @param {string} root
+ * @returns {string[]} caminhos relativos à raiz
+ */
+export function docsDaProsa(root) {
+  const rels = ["README.md"]
+  const dir = join(root, "docs")
+  const anda = (d) => {
+    if (!existsSync(d)) return
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.name.startsWith(".") || e.name === "node_modules") continue
+      const p = join(d, e.name)
+      if (e.isDirectory()) anda(p)
+      else if (e.name.endsWith(".md")) rels.push(relative(root, p))
+    }
+  }
+  anda(dir)
+  return rels.sort()
+}
+
 export function analisaOrdinais(root, entries) {
   const posicao = new Map(entries.map((e, i) => [e.id, i + 1]))
   const idDoScript = new Map(entries.map((e) => [e.script, e.id]))
-  const docs = ["docs/GUARDS.md", "README.md"]
+  const docs = docsDaProsa(root)
   // O `da matriz` no fim é o que separa esta referência (a posição de HOJE) da
   // ordem de um ato do PASSADO — o histórico de custo do README não o carrega.
   const ORDINAL =
@@ -1525,9 +1563,10 @@ export const DOC_OPCIONAL = "docs/GUARDS.md"
 
 /**
  * Os caminhos que o recorte `--staged` materializa mas NÃO exige: os que o
- * veredito lê com `existsSync` (a doc das metades e o registro do ato). Ausente
- * do índice = ausente da árvore (não há veredito a dar sobre ele), e o `run()`
- * o DIZ (`present: false` / sem doc) em vez de o inventar.
+ * veredito lê com `existsSync` (a doc das metades, o registro do ato e a PROSA
+ * que a régua do ordinal varre). Ausente do índice = ausente da árvore (não há
+ * veredito a dar sobre ele), e o `run()` o DIZ (`present: false` / sem doc) em
+ * vez de o inventar.
  */
 export const CAMINHOS_OPCIONAIS = [DOC_OPCIONAL, BENCH_PATH]
 
@@ -1574,6 +1613,13 @@ export function runStaged(root, { ler = lerDoIndice } = {}) {
   }
 
   const rels = caminhosDoVeredito(master.conteudo)
+  // A PROSA julgada pela régua do ordinal entra na materialização: o escopo dela
+  // é DERIVADO (a árvore de docs + README), e sem isto o recorte julgaria a prosa
+  // num diretório onde os docs não estão — "nenhum doc a ler" disfarçado de
+  // "nenhuma referência a conferir". Ausente do índice = ausente da árvore: só a
+  // doc das metades é obrigatória.
+  const docs = docsDaProsa(root)
+  for (const d of docs) if (!rels.includes(d)) rels.push(d)
   const dir = mkdtempSync(join(tmpdir(), "mutation-count-indice-"))
   const ausentes = []
   try {
@@ -1583,8 +1629,10 @@ export function runStaged(root, { ler = lerDoIndice } = {}) {
       const r = rel === MASTER ? master : ler(root, rel)
       if (!r.ok) {
         // O caminho OPCIONAL ausente do índice é o ausente da árvore (o `run()`
-        // o lê com existsSync): não é violação, é não haver o que conferir.
-        if (CAMINHOS_OPCIONAIS.includes(rel)) continue
+        // o lê com existsSync): não é violação, é não haver o que conferir. A
+        // PROSA entra aqui pelo mesmo motivo — cada `.md` é opcional, e um deles
+        // ausente do índice é um doc que o commit não carrega (nada a julgar).
+        if (CAMINHOS_OPCIONAIS.includes(rel) || docs.includes(rel)) continue
         ausentes.push(`${rel}: ${r.motivo}`)
         continue
       }
