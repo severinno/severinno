@@ -1884,7 +1884,7 @@ já registravam deriva de HOST. O que domina o job segue sendo UMA sub-test — 
 prova de mutação do gate de sintaxe custa ≈58.5s sozinha, e a `hook-commands`
 ≈41.5s. A 28ª (a prova da RESPOSTA do
 remédio no TTY, mediana de 3 pelo caminho do master: 27.2 · 27.1 · 27.1) segue
-dentro do total. A suíte do Bun (a 1ª da matriz) custa **≈1.8s inteira** hoje
+dentro do total. A suíte do Bun (`bun-literal`, a 1.ª da matriz) custa **≈1.8s inteira** hoje
 (1.76 · 1.77 · 1.75, 3 runs warm, todas verdes, medidos neste host em 09/2026) —
 é o TETO do que as três metades novas do REMENDO (`M5g`/`M5h`/`M5i`: o `--fix`
 real + o ciclo com o estágio, a chave-pai devolvida junto e a âncora única que

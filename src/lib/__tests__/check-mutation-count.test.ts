@@ -748,6 +748,99 @@ describe("check-mutation-count — as METADES de cada suíte (a descrição deri
 })
 
 // ────────────────────────────────────────────────────────────────────────────
+// OS ORDINAIS DA MATRIZ — a suíte identificada pela POSIÇÃO na prosa. O guard
+// confere o número contra a ORDEM real do SUBTESTS (a posição de HOJE) e é
+// FAIL-CLOSED quando a referência não NOMEIA a suíte. O CONTROLE (a ordem de um
+// ato passado, que não diz `da matriz`) passa com `violations: []`.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("check-mutation-count — o ORDINAL da suíte × a ordem real do SUBTESTS", () => {
+  const daMatriz = (v: string) => /ordinal|entrada da matriz|matriz tem \d+ entradas/.test(v)
+
+  it("o ordinal que BATE com a ordem passa (a suíte é nomeada ao lado do número)", () => {
+    const dir = makeFixture({
+      count: 5,
+      doc: "# Guards\n\nA suíte é a 3.ª entrada da matriz (`sub-2`), e por isso roda em job próprio.\n",
+    })
+    const r = run(dir)
+    expect(r.violations.filter(daMatriz)).toEqual([])
+    expect(r.ok).toBe(true)
+    // O relatório PUBLICA a referência e o que a régua derivou dela (a suíte que
+    // a frase nomeia), para o drift ser auditável sem reler a doc.
+    expect(r.ordinais).toEqual([
+      expect.objectContaining({ arquivo: "docs/GUARDS.md", ordinal: 3, candidatos: ["sub-2"] }),
+    ])
+  })
+
+  it("o ordinal ERRADO acusa, nomeando a posição REAL da suíte citada", () => {
+    // O defeito medido: a `stack-per-commit` era a 38.ª quando a doc a escreveu e
+    // é a 40.ª hoje — a prosa identificava a suíte errada e nada acusava.
+    const dir = makeFixture({
+      count: 5,
+      doc: "# Guards\n\nA suíte é a 9.ª entrada da matriz (`sub-2`).\n",
+    })
+    const r = run(dir)
+    expect(r.ok).toBe(false)
+    const v = r.violations.find((x) => x.includes("9.ª entrada da matriz"))!
+    expect(v).toContain("`sub-2` é a 3.ª")
+  })
+
+  it("FAIL-CLOSED: um ordinal SEM a suíte ao lado é violação, nunca omissão", () => {
+    // Um número que ninguém consegue conferir é assim que ele envelhece: o guard
+    // exige a âncora (o `id` ou o caminho do script) na mesma frase.
+    const dir = makeFixture({
+      count: 5,
+      doc: "# Guards\n\nA suíte é a 3.ª entrada da matriz.\n",
+    })
+    const r = run(dir)
+    expect(r.ok).toBe(false)
+    expect(r.violations.some((v) => v.includes("NÃO nomeia a suíte"))).toBe(true)
+  })
+
+  it("o CAMINHO do script também ancora (não só o `id` entre crases)", () => {
+    const dir = makeFixture({
+      count: 5,
+      doc: "# Guards\n\n(`scripts/test-mutation-sub-2.sh`) é a 3.ª sub-test da matriz.\n",
+    })
+    expect(run(dir).violations.filter(daMatriz)).toEqual([])
+  })
+
+  it("o CONTROLE: a ordem de um ATO passado (sem o `da matriz`) NÃO é julgada", () => {
+    // O histórico de custo do README descreve o TAMANHO da matriz daquele ato
+    // ("a 33ª custava 9.0s", num ato de 33 sub-tests): é um instantâneo daquele
+    // momento, não a posição de hoje — e a régua não o cobra.
+    const dir = makeFixture({
+      count: 5,
+      doc: "# Guards\n\nNo ato de 33, a 33ª custava 9.0s sozinha (`canal-fixers`) — um instantâneo.\n",
+    })
+    expect(run(dir).violations.filter(daMatriz)).toEqual([])
+  })
+
+  it("a MESMA prosa fica ERRADA quando uma entrada nasce ANTES da suíte", () => {
+    // A prova do defeito, medida: o número era verdadeiro e deixa de ser sem que
+    // a prosa mude uma vírgula — o `sub-2` era a 3.ª e passa a ser a 4.ª quando
+    // um sub-test entra ANTES dele na matriz.
+    const doc = "# Guards\n\nA suíte é a 3.ª entrada da matriz (`sub-2`).\n"
+    expect(run(makeFixture({ count: 5, doc })).violations.filter(daMatriz)).toEqual([])
+
+    const depois = makeFixture({ count: 5, doc })
+    const master = join(depois, "scripts/test-mutation-guards.sh")
+    writeFileSync(
+      master,
+      readFileSync(master, "utf8").replace(
+        "SUBTESTS=(\n",
+        'SUBTESTS=(\n  "nova|scripts/test-mutation-nova.sh"\n',
+      ),
+    )
+    writeFileSync(
+      join(depois, "scripts/test-mutation-nova.sh"),
+      "#!/usr/bin/env bash\nset -euo pipefail\n\nMETADES=(\n  'M1|a metade de ensaio'\n)\n",
+    )
+    expect(run(depois).violations.some((v) => v.includes("`sub-2` é a 4.ª"))).toBe(true)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
 // A PROVA-DE-APLICAÇÃO — a régua ÚNICA (`scripts/mutacao-prova.sh`) e a lista
 // DECLARADA das suítes que a chamam. O que estes testes medem é o que impede a
 // suíte de PERDER a prova (e passar a medir o alvo íntegro) em silêncio: a cópia

@@ -1065,8 +1065,38 @@ propósito — cobrar toda ocorrência daria falso positivo em texto correto.
 sem o bloco falha nomeando a falta; H: bloco ilegível; I: a doc declarando um
 total que não bate, com o delta na mensagem; J: a entrada em **aspas duplas** — a
 forma que o shell expandiria e que mataria a suíte — é recusada nomeando a
-expansão e o remédio) e `check-mutation-count.test.ts` (42 testes, cada regra com
+expansão e o remédio) e `check-mutation-count.test.ts` (cada regra com
 o seu CONTROLE na direção oposta).
+
+#### A suíte identificada pela POSIÇÃO — o ordinal conferido contra a ordem do `SUBTESTS`
+
+A prosa identifica uma suíte pela posição que ela ocupa na matriz (`a <N>ª entrada
+da matriz`), e a posição **não é um identificador estável**: cada entrada inserida
+ANTES empurra o número de todas as seguintes. O defeito medido (27/09/2026): a
+`stack-per-commit` era a **38.ª** quando a doc a escreveu e é a **40.ª** hoje — a
+prosa seguiu dizendo 38, apontando para a suíte errada, sem que nada acusasse (o
+count derivado vê o TAMANHO da matriz, não a posição de cada entrada).
+
+O `check:mutation-count` passa a conferir esse ordinal: uma referência da forma
+`<N>ª entrada da matriz` / `<N>ª sub-test da matriz` / `<N>ª da matriz` tem de
+bater com a **posição (1-based) do `id`** — e a referência tem de **NOMEAR a
+suíte** (o `id` entre crases ou o caminho do script) na MESMA frase. É FAIL-CLOSED
+na direção que o defeito exige: um ordinal que não nomeia a suíte é **violação**,
+não omissão — um número sem a suíte ao lado é exatamente o que ninguém consegue
+conferir, e é assim que ele envelhece.
+
+O escopo é a posição de **hoje**: as ordens do histórico de custo do README (`a
+33ª custando 9.0s`, num ato de 33 sub-tests) descrevem o TAMANHO da matriz daquele
+ato — são instantâneos do momento, não a posição de agora —, e por isso não trazem
+o `da matriz` que a régua ancora. A prosa é hard-wrapped e a LINHA não é a
+unidade: uma referência partida entre duas linhas (o `<N>ª` de uma e o `entrada
+da matriz` da seguinte) é lida como uma frase só.
+
+**Como é provado:** seis casos em `check-mutation-count.test.ts` — o ordinal certo
+passa (e o relatório publica a suíte que a frase nomeia), o errado acusa nomeando
+a posição real, o ordinal SEM a suíte acusa o fail-closed, o caminho do script
+também ancora, o histórico de custo fica fora, e a MESMA prosa fica errada quando
+uma entrada nasce ANTES (o `sub-2` que era a 3.ª vira a 4.ª).
 
 #### O count não pode ser PARTIDO entre dois commits locais — o recorte `--staged`
 
@@ -5667,7 +5697,8 @@ nos dois lados da pergunta nova (o M10) o repositório de hoje mostra o caminho
 FELIZ (o master daquela origem é legível: `semResposta` zero). Cada mutação é CIRÚRGICA (o alvo tem de
 aparecer UMA vez, e o arquivo mutado tem de seguir com sintaxe válida) e a régua é
 RESTAURADA entre as medições, com o CONTROLE final medindo o mesmo fato (412
-commits, e a mesma forma fora da origem) de novo. A suíte é a **39.ª** da matriz do master:
+commits, e a mesma forma fora da origem) de novo. A suíte é a **39.ª** da matriz do master
+(`bench-freshness`):
 custava **23.7s** sozinha (as oito metades) no ato de então — a MESMA ordem de grandeza que os **17.7s**
 medidos pelo `--scenario` isolado antes de ela entrar na matriz — e, com as DEZ metades,
 media **36.9s** (uma execução, `real 0m36,905s`). Aquele número era dito com a
@@ -8096,7 +8127,8 @@ verde escondendo o vermelho do meio. A detecção é o **CONJUNTO de commits ver
 recebeu. O fixture DECLARA o próprio `vitest` (um script no `package.json` dele que
 importa os arquivos e reprova se algum levantar): o sujeito é o veredito do gate sobre o
 exit code do runner, e um fixture que exigisse `node_modules` iria a vermelho por
-AMBIENTE num job sem dependências. A suíte é a **40.ª sub-test** da matriz do master, e
+AMBIENTE num job sem dependências. A suíte é a **40.ª sub-test** da matriz do master
+(`stack-per-commit`), e
 por isso roda com o MESMO comando nas DUAS forjas (o job `guards` da dona do merge e o
 `mutation-guards` do espelho).
 

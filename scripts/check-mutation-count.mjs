@@ -123,8 +123,19 @@
 //      entra na materialização do índice, então o que o commit carrega é o que é
 //      julgado.
 //
-// --json: { ok, derivedCount, derivedMetades, metades, bench, refs: { prCheck:
-// [...] }, violations: [...] } — exit 0 mesmo com violações (modo report).
+//   5. OS ORDINAIS DA MATRIZ — a suíte identificada pela POSIÇÃO na prosa
+//      (`N.ª entrada da matriz`, `N.ª sub-test da matriz`, `N.ª da matriz`). O
+//      número tem de bater com a ordem REAL do SUBTESTS, e a referência tem de
+//      NOMEAR a suíte (o `id` entre crases ou o caminho do script) na MESMA
+//      frase — um ordinal sem a suíte ao lado é VIOLAÇÃO, nunca omissão: é o
+//      número que ninguém confere, e ele envelhece quando uma entrada nasce
+//      ANTES (o caso medido: a `stack-per-commit` era a 38.ª e é a 40.ª). O
+//      escopo é a posição de HOJE — as ordens do histórico de custo do README
+//      (o tamanho da matriz daquele ato) não trazem o `da matriz`.
+//
+// --json: { ok, derivedCount, derivedMetades, metades, prova, ordinais, bench,
+// refs: { prCheck: [...] }, violations: [...] } — exit 0 mesmo com violações
+// (modo report).
 //
 // CONTRATO DE FRASE: o guard exige a string EXATA "Roda os N mutation tests
 // node-puro" no header do master E no comentário do job do pr-check.yml —
@@ -414,6 +425,149 @@ function analisaMetades(root, entries) {
     }
   }
   return { metades, violations }
+}
+
+// ── OS ORDINAIS DA MATRIZ (a suíte identificada pela POSIÇÃO) ─────────────
+
+/**
+ * O ORDINAL da suíte × a ORDEM real do `SUBTESTS` (a posição de HOJE).
+ *
+ * O DEFEITO MEDIDO (27/09/2026): a prosa identifica uma suíte pela POSIÇÃO que
+ * ela ocupa na matriz (`a 38.ª entrada da matriz`, `a 40.ª sub-test da matriz`),
+ * e a posição NÃO é um identificador estável — cada entrada inserida ANTES
+ * empurra o número de todas as seguintes. A `stack-per-commit` era a 38.ª quando
+ * a doc a escreveu e é a 40.ª hoje, e a prosa seguiu dizendo 38, apontando para a
+ * suíte errada: o count derivado não vê posição, e o drift passou em silêncio.
+ *
+ * A RÉGUA: uma referência da forma `<N>ª entrada da matriz` / `<N>ª sub-test da
+ * matriz` / `<N>ª da matriz` tem de bater com a POSIÇÃO (1-based) do id que a
+ * PRÓPRIA FRASE nomeia (o `id` entre crases ou o caminho do script). E ela é
+ * FAIL-CLOSED na direção que o defeito exige: uma referência posicional que NÃO
+ * nomeia a suíte é VIOLAÇÃO, não omissão — um número sem a suíte ao lado é
+ * exatamente o que ninguém consegue conferir, e é assim que ele envelhece.
+ *
+ * O ESCOPO: as menções que identificam a suíte na matriz de HOJE. As ordens do
+ * histórico de custo do README (`a 33ª custando 9.0s`, num ato de 33 sub-tests)
+ * descrevem o TAMANHO da matriz daquele ato — são instantâneos do momento, não a
+ * posição de agora, e por isso não trazem o `da matriz` que esta régua ancora.
+ *
+ * A prosa é hard-wrapped e a linha NÃO é a unidade: uma referência partida
+ * (`42ª entrada da\nmatriz`) tem de ser lida como uma frase, então o texto é
+ * NORMALIZADO (a quebra vira espaço) e a janela de conferência é a FRASE — o id
+ * no parágrafo inteiro validaria por engano um número citado longe dele.
+ *
+ * @param {string} root
+ * @param {{id: string, script: string}[]} entries
+ * @returns {{refs: {arquivo: string, linha: number, ordinal: number, citada: string, candidatos: string[]}[], violations: string[]}}
+ */
+export function analisaOrdinais(root, entries) {
+  const posicao = new Map(entries.map((e, i) => [e.id, i + 1]))
+  const idDoScript = new Map(entries.map((e) => [e.script, e.id]))
+  const docs = ["docs/GUARDS.md", "README.md"]
+  // O `da matriz` no fim é o que separa esta referência (a posição de HOJE) da
+  // ordem de um ato do PASSADO — o histórico de custo do README não o carrega.
+  const ORDINAL =
+    /(\d{1,3})\s*\.?ª\s+(?:entrada\s+da\s+matriz|sub-tests?\s+da\s+matriz|da\s+matriz)\b/gi
+  const refs = []
+  const violations = []
+
+  for (const rel of docs) {
+    const p = join(root, rel)
+    if (!existsSync(p)) continue
+    const texto = readFileSync(p, "utf8")
+    // Os BLOCOS DERIVADOS ficam FORA: a régua deles é a da derivação (regra 6) e
+    // o ato os reescreve — cobrá-los aqui seria uma segunda opinião sobre a mesma
+    // prosa.
+    // A lista dos blocos derivados vem de `DOCS` (a fonte única da folha): cada
+    // um diz o ARQUIVO e o par de marcadores, e aqui se usa a parte do arquivo.
+    const blocos = []
+    for (const { arquivo, bloco: marcadores } of DOCS) {
+      if (arquivo !== rel) continue
+      const bloco = blocoDoTexto(texto, marcadores)
+      if (bloco) blocos.push([bloco.linhaDoInicio, bloco.linhaDoFim])
+    }
+    const dentroDoBloco = (n) => blocos.some(([i, f]) => n >= i && n <= f)
+
+    // O texto NORMALIZADO (a quebra de linha vira espaço) com o mapa de
+    // offset → linha, para a mensagem apontar a linha ORIGINAL da referência.
+    const linhas = texto.split("\n")
+    let norm = ""
+    const inicios = []
+    for (const [i, l] of linhas.entries()) {
+      inicios.push(norm.length)
+      norm += `${l}\n`
+    }
+    // A ÊNFASE sai SEM MUDAR O COMPRIMENTO (`**` vira dois espaços): `**40.ª**
+    // da matriz` é uma referência quebrada pela marcação de negrito, e manter os
+    // offsets é o que permite usar o ÍNDICE do casamento sobre o texto SEM os
+    // `*` e ainda assim achar a linha original exata.
+    const limpo = norm.replace(/\*\*/g, "  ")
+    const linhaDe = (idx) => {
+      let lo = 0
+      let hi = inicios.length - 1
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2)
+        if (inicios[mid] <= idx) lo = mid
+        else hi = mid - 1
+      }
+      return lo + 1
+    }
+    // A FRASE que contém a referência — os limites saem da pontuação (`[.!?]`
+    // seguida de espaço ou do fim).
+    const fraseEm = (idx) => {
+      let ini = 0
+      for (let i = idx - 1; i > 0; i--) {
+        if (/[.!?]/.test(limpo[i]) && /\s/.test(limpo[i + 1])) {
+          ini = i + 1
+          break
+        }
+      }
+      let fim = limpo.length
+      for (let i = idx; i < limpo.length; i++) {
+        if (/[.!?]/.test(limpo[i]) && (i + 1 >= limpo.length || /\s/.test(limpo[i + 1]))) {
+          fim = i + 1
+          break
+        }
+      }
+      return limpo.slice(ini, fim)
+    }
+
+    ORDINAL.lastIndex = 0
+    let m
+    while ((m = ORDINAL.exec(limpo)) !== null) {
+      const linha = linhaDe(m.index)
+      if (dentroDoBloco(linha)) continue
+      const ordinal = Number(m[1])
+      const frase = fraseEm(m.index)
+      // Os CANDIDATOS: as suítes que a própria frase nomeia — o `id` entre crases
+      // ou o caminho do script dela. É assim que a régua sabe DE QUEM é o número.
+      const candidatos = []
+      for (const c of frase.matchAll(/`([^`]+)`/g)) {
+        const nome = c[1].trim()
+        if (posicao.has(nome)) candidatos.push(nome)
+        else if (idDoScript.has(nome)) candidatos.push(idDoScript.get(nome))
+      }
+      for (const [script, id] of idDoScript) {
+        if (!candidatos.includes(id) && frase.includes(script)) candidatos.push(id)
+      }
+      const citada = m[0].replace(/\s+/g, " ")
+      refs.push({ arquivo: rel, linha, ordinal, citada, candidatos })
+
+      if (candidatos.length === 0) {
+        violations.push(
+          `${rel}:${linha}: o ordinal '${citada}' NÃO nomeia a suíte — um número sozinho não é conferível contra a matriz, e é assim que ele envelhece em silêncio. Ancore-o no \`id\` do sub-test (ou no caminho do script): a matriz tem ${entries.length} entradas hoje`,
+        )
+        continue
+      }
+      if (!candidatos.some((id) => posicao.get(id) === ordinal)) {
+        const real = candidatos.map((id) => `\`${id}\` é a ${posicao.get(id)}.ª`).join(", ")
+        violations.push(
+          `${rel}:${linha}: o ordinal '${citada}' NÃO bate com a ordem do SUBTESTS (${real}) — uma entrada inserida ANTES move a suíte, e a prosa passa a identificar a errada. O número é a POSIÇÃO de hoje; ou cite a suíte só pelo \`id\``,
+        )
+      }
+    }
+  }
+  return { refs, violations }
 }
 
 // ── A PROVA-DE-APLICAÇÃO (a régua única × as suítes que a chamam) ─────────
@@ -899,6 +1053,14 @@ export function run(root) {
   const prova = analisaProvaDeAplicacao(root, masterSrc, entries)
   violations.push(...prova.violations)
 
+  // 4c. OS ORDINAIS DA MATRIZ — a suíte identificada pela POSIÇÃO (`a N.ª
+  //     entrada da matriz`). Um número que ninguém confere envelhece em silêncio
+  //     quando uma entrada nasce ANTES dele, e a prosa passa a apontar para a
+  //     suíte errada: aqui o ordinal bate com a ordem do SUBTESTS (ou a suíte é
+  //     nomeada ao lado dele).
+  const ordinais = analisaOrdinais(root, entries)
+  violations.push(...ordinais.violations)
+
   // 5. A MATRIZ × O ATO QUE A VERSIONA (a defasagem que o count sozinho não vê).
   //    O registro é LIDO, não exigido: um fixture (ou um checkout sem o bench)
   //    não tem a ligação a julgar, e é o `present: false` que o diz.
@@ -923,6 +1085,7 @@ export function run(root) {
       comProva: prova.comProva.map((c) => c.id),
       declaradas: prova.declaradas,
     },
+    ordinais: ordinais.refs,
     bench,
     refs: {
       prCheck: {
