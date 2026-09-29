@@ -789,6 +789,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # História completa: os testes desta suíte percorrem a história do
+          # repo (check-doc-hashes, bench-freshness, check-commit-import-exports
+          # fazem git show/percorrem registros) — checkout raso os mata com
+          # "não reproduz" (a mesma classe do sub-test bench-freshness).
+          fetch-depth: 0
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.
