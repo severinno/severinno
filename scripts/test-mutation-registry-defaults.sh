@@ -278,7 +278,17 @@ declare -a FX_NOMES=(
 # do ambiente junto faria o script medir a máquina, não a mutação).
 rodar_guard() {
   set +e
-  GUARD_OUT="$(cd "$1" && node "$GUARD" --no-compose-render --no-registry-probe 2>&1)"
+  # A MEDIÇÃO É DE FIXTURE: o valor LIVE da forja no ambiente do processo não
+  # entra (o espelho exporta `IMAGE_REGISTRY` com fallback no env de workflow,
+  # e o daemon do runner carrega o seu). Com valor live, a comparação de
+  # variável viva do guard acusa o FIXTURE (que declara ghcr.io) FORA do
+  # mecanismo mutado — e o sub-test mede o AMBIENTE, não a mutação (medido no
+  # CI em 28/09/2026: M1 "não cegou" com IMAGE_REGISTRY='git.severinno.cloud'
+  # × fixture 'ghcr.io'; reproduzido localmente com o env exportado). O que o
+  # guard lê do ambiente ao vivo no repositório REAL continua medido — é o
+  # CONTROLE A, onde a variável ausente sai INDETERMINADA nomeada, nunca verde
+  # presumido.
+  GUARD_OUT="$(cd "$1" && env -u IMAGE_REGISTRY -u IMAGE_NAMESPACE node "$GUARD" --no-compose-render --no-registry-probe 2>&1)"
   GUARD_EXIT=$?
   set -e
 }

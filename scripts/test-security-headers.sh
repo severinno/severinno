@@ -216,7 +216,8 @@ test_security_headers() {
     warn "X-XSS-Protection ausente — navegadores antigos não bloqueiam XSS refletido"
   fi
 
-  # Referrer-Policy    rp=$(get_header "Referrer-Policy")
+  # Referrer-Policy
+  rp=$(get_header "Referrer-Policy")
   if grep -qi "strict-origin-when-cross-origin" <<< "$rp"; then
     assert "Referrer-Policy: strict-origin-when-cross-origin ✓" "true"
   else

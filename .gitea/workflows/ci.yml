@@ -94,7 +94,13 @@ jobs:
     name: Repo Guards
     runs-on: ubuntu-latest
     steps:
+      # Histórico completo é CONDIÇÃO da matriz de mutação que este job roda:
+      # o sub-test [bench-freshness] deriva a idade do commit de origem — em
+      # clone raso ela sai `unknown` e o CONTROLE reprova o próprio relógio
+      # (mesma causa raiz do espelho, medida no CI em 28/09/2026).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.

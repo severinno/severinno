@@ -1156,7 +1156,15 @@ jobs:
     name: Mutation guards master
     runs-on: self-hosted
     steps:
+      # O histórico completo é CONDIÇÃO do sub-test [bench-freshness] da matriz:
+      # a régua da idade deriva a origem do commit que carrega cada declaração —
+      # em clone raso a idade sai `unknown` (o `bench-freshness.mjs` NOMEIA:
+      # "clone raso/sem a história"), o `behindMax` colapsa a 0 e o CONTROLE
+      # reprova o próprio relógio (medido no CI em 28/09/2026: "CONTROLE
+      # FALHOU: behindMax saiu '0'" — 2 tentativas, exit 1 em ~580ms).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # O PREFLIGHT do bun: parte das suítes da matriz invoca o binário real, e
       # um runner com o bun fora do PATH do daemon produziria um vermelho cuja

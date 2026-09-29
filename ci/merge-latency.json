@@ -2,7 +2,7 @@
   "meta": {
     "tool": "merge-latency",
     "version": 1,
-    "date": "2026-09-17",
+    "date": "2026-09-29",
     "why": "O custo dos gates em LATÊNCIA DE MERGE. A tabela de overhead do repositório lista o custo de cada gate e convida a somar — mas o PR não paga a soma: ele paga o caminho crítico e a FILA. Este arquivo é o que não dá para derivar da pipeline (grafo e comandos saem de lá); o que ele declara carrega FONTE e DATA, e o benchmark confronta o que ele cobre. O `provenance` de cada job diz QUE TIPO de número ele carrega: `declarado (MEDIDO)` (medido neste repositório, com os comandos na fonte), `declarado (PISO: passo não medido)` (soma dos passos medidos, com o passo de fora NOMEADO) e `declarado (TETO: timeout-minutes)` (o LIMITE que a própria pipeline declara no job — para custo que não se mede fora do runner)."
   },
   "overhead": {
@@ -37,10 +37,10 @@
         "date": "2026-09-21"
       },
       "pre-commit-in-runner-proof": {
-        "ms": 800,
-        "provenance": "declarado (PISO: passo não medido)",
-        "source": "medido neste host (Linux, 2026-09-18, mediana de 3 runs WARM): a prova EM LUGAR dentro da imagem (o modo que a forja paga, sem docker e sem socket) 0,67-0,69s — 0,67 · 0,67 · 0,69 — somada ao `bun install --frozen-lockfile` com o node_modules presente (≈60ms). O que fica FORA da soma, e é por isso que o número é um PISO, é o checkout, o `bash scripts/setup-bun-ci.sh` (tier-1: a imagem JÁ embarca o Bun, então o fast path responde em ~0-2s) e o cache do Bun.",
-        "date": "2026-09-18"
+        "ms": 3446,
+        "provenance": "declarado (PISO: passo não medido em isolamento)",
+        "source": "RE-MEDIDO em 29/09/2026 (Linux, mediana de 3 runs, imagem ubuntu-bun LOCAL 1.3.14): a prova `prove-pre-commit-in-runner.mjs` dentro do container custou 3446ms de docker-run wall (a prova cresceu com a matriz v7 — 76 refutadores, a forma com dublê); a forja paga o modo EM-LUGAR (sem o overhead do docker run), então este número é CONSERVADOR. Ficam FORA da soma: checkout, setup-bun, cache e o `bun install` (≈61ms quente)",
+        "date": "2026-09-29"
       },
       "build": {
         "ms": 246000,
@@ -63,10 +63,10 @@
         "date": "2026-09-21"
       },
       "pre-commit-in-runner-proof": {
-        "ms": 900,
+        "ms": 3507,
         "provenance": "declarado (PISO: passo não medido)",
-        "source": "medido neste host (Linux, 2026-09-18, mediana de 3 runs WARM, imagem do runner LOCAL): o comando INTEIRO no modo `docker run` 0,79-0,82s — 0,79 · 0,80 · 0,82 — somado ao `bun install --frozen-lockfile` com o node_modules presente (≈60ms). Ficam FORA da soma, e é por isso que ele é um PISO: o checkout, o `bash scripts/setup-bun-ci.sh`, o cache do Bun, o restore do cache de node_modules e o PULL da imagem (que num runner que ainda não a tem custa a camada baixada; nos jobs atuais ela já está local porque o act/tier-1 a puxa).",
-        "date": "2026-09-18"
+        "source": "RE-MEDIDO em 29/09/2026 (Linux, mediana de 3 runs, imagem ubuntu-bun LOCAL 1.3.14): docker run wall da prova 3446ms (3392/3446/3469 — a prova cresceu com a matriz v7: 76 refutadores) + `bun install --frozen-lockfile` 61ms quente. Ficam FORA (PISO): checkout, setup-bun, caches e o PULL (imagem já local; num runner frio, a camada)",
+        "date": "2026-09-29"
       },
       "actionlint": {
         "ms": 750,
@@ -87,58 +87,58 @@
         "date": "2026-09-28"
       },
       "blob-crlf-history-audit": {
-        "ms": 160,
+        "ms": 188,
         "provenance": "declarado (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/audit-blob-crlf-history.sh` 121ms + `python3 scripts/test_audit_blob_crlf_history.py -v` 39ms; o job não roda setup-bun nem install",
-        "date": "2026-09-17"
+        "source": "RE-MEDIDO em 29/09/2026 (Linux, 16 cpus, mediana de 3): `bash scripts/audit-blob-crlf-history.sh` 146ms + `python3 scripts/test_audit_blob_crlf_history.py -v` 42ms; o job não roda setup-bun nem install",
+        "date": "2026-09-29"
       },
       "all-text-alert-validation": {
-        "ms": 122,
+        "ms": 116,
         "provenance": "declarado (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/validate-all-text-alert.sh` 122ms",
-        "date": "2026-09-17"
+        "source": "RE-MEDIDO em 29/09/2026 (Linux, 16 cpus, mediana de 3): `bash scripts/validate-all-text-alert.sh` 116ms (110/116/118)",
+        "date": "2026-09-29"
       },
       "workflow-run-syntax": {
-        "ms": 60950,
+        "ms": 83375,
         "provenance": "declarado (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17, mediana de 3 runs: `node scripts/check-workflow-run-syntax.mjs` 2496ms + `bash scripts/test-mutation-workflow-run-syntax.sh` 58457ms (era 30817ms: as metades subiram de 13 para 14, e a nova é o pulo nomeado do ARQUIVO de shebang não-bash — o espelho do M8 no outro lado da régua, com as MESMAS duas testemunhas: o gate por execução e a suíte unitária). O mutation test é o custo dominante (96% do job) e o que o move agora é o número de INVOCAÇÕES da suíte (2 por metade com testemunha unitária — 4 no total, 13,3s cada neste host), não o programa a julgar: o guard segue julgando 482 corpos, 124 arquivos de shell e 33 textos de shell embutido, e o custo dele ficou parado (2280 → 2464 → 2496ms).",
-        "date": "2026-09-17"
+        "source": "RE-MEDIDO em 29/09/2026 (Linux, 16 cpus, mediana de 3): `node scripts/check-workflow-run-syntax.mjs` 3332ms + `bash scripts/test-mutation-workflow-run-syntax.sh` 80043ms (79791/80043/80278 — era 58457ms em 09-17: a matriz v7 subiu para 47 formas e as metades do run-syntax herdaram os fixtures novos; o custo é da MATRIZ, não do guard)",
+        "date": "2026-09-29"
       },
       "mutation-jobs-staged-guard": {
-        "ms": 144,
+        "ms": 210,
         "provenance": "declarado (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `node scripts/check-mutation-jobs.mjs --staged --base origin/main` 144ms (no CI a base é o PR)",
-        "date": "2026-09-17"
+        "source": "RE-MEDIDO em 29/09/2026 (Linux, 16 cpus, mediana de 3): `node scripts/check-mutation-jobs.mjs --staged --base origin/main` 210ms (208/210/210) (no CI a base é o PR)",
+        "date": "2026-09-29"
       },
       "forge-parity-mutation": {
-        "ms": 524,
+        "ms": 1142,
         "provenance": "declarado (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/test-mutation-forge-parity.sh` 524ms",
-        "date": "2026-09-17"
+        "source": "RE-MEDIDO em 29/09/2026 (Linux, 16 cpus, mediana de 3): `bash scripts/test-mutation-forge-parity.sh` 1142ms (1141/1142/1154 — era 524ms: as 3 regras ganhou metades com a matriz v7)",
+        "date": "2026-09-29"
       },
       "mutation-jobs-guard": {
-        "ms": 91,
+        "ms": 99,
         "provenance": "declarado (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `node scripts/check-mutation-jobs.mjs` 91ms",
-        "date": "2026-09-17"
+        "source": "RE-MEDIDO em 29/09/2026 (Linux, 16 cpus, mediana de 3): `node scripts/check-mutation-jobs.mjs` 99ms (97/99/100)",
+        "date": "2026-09-29"
       },
       "e2e-counts-guard": {
-        "ms": 17236,
+        "ms": 18421,
         "provenance": "declarado (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/setup-bun-ci.sh 1.3.14` 17175ms (SEM cache — no CI com cache-hit é ~1-2s) + `node scripts/check-e2e-counts.mjs` 61ms",
-        "date": "2026-09-17"
+        "source": "RE-MEDIDO em 29/09/2026: bash scripts/setup-bun-ci.sh 1.3.14 18360ms (FRIO, re-medido 29/09 — mirror OCI indisponível até o flip do registry; com cache-hit no CI é ~1-2s) + `node scripts/check-e2e-counts.mjs` 61ms",
+        "date": "2026-09-29"
       },
       "seed-count-literals-guard": {
-        "ms": 17322,
+        "ms": 18572,
         "provenance": "declarado (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/setup-bun-ci.sh 1.3.14` 17175ms (SEM cache — no CI com cache-hit é ~1-2s) + `node scripts/check-seed-count-literals.mjs` 147ms",
-        "date": "2026-09-17"
+        "source": "RE-MEDIDO em 29/09/2026: bash scripts/setup-bun-ci.sh 1.3.14 18360ms (FRIO, re-medido 29/09 — mirror OCI indisponível até o flip do registry; com cache-hit no CI é ~1-2s) + `node scripts/check-seed-count-literals.mjs` 212ms (212/212/217)",
+        "date": "2026-09-29"
       },
       "jsdom-drift-guard": {
-        "ms": 34574,
+        "ms": 36577,
         "provenance": "declarado (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/setup-bun-ci.sh 1.3.14` 17175ms (SEM cache — no CI com cache-hit é ~1-2s) + `bun install --frozen-lockfile` 61ms + `bash scripts/test-mutation-jsdom-baseline.sh` 117ms (fixture: NÃO roda a suíte) + `node scripts/check-jsdom-baseline.mjs` 17221ms (esse roda a suíte jsdom real — é o custo dominante)",
-        "date": "2026-09-17"
+        "source": "RE-MEDIDO em 29/09/2026: bash scripts/setup-bun-ci.sh 1.3.14 18360ms (FRIO, re-medido 29/09 — mirror OCI indisponível até o flip do registry; com cache-hit no CI é ~1-2s) + `bun install --frozen-lockfile` 61ms + `bash scripts/test-mutation-jsdom-baseline.sh` 127ms (fixture: NÃO roda a suíte) + `node scripts/check-jsdom-baseline.mjs` 18029ms (18012/18029/18176 — roda a suíte jsdom real; era 17221ms em 09-17, o custo é da SUÍTE)",
+        "date": "2026-09-29"
       },
       "mutation-count-guard": {
         "provenance": "declarado + derivado (benchmark)",
@@ -147,9 +147,9 @@
         "steps": [
           {
             "run": "bash scripts/setup-bun-ci.sh \"${{ vars.BUN_VERSION }}\"",
-            "ms": 17175,
-            "date": "2026-09-17",
-            "source": "medido neste host (Linux, 16 cpus) SEM cache — no CI com cache-hit é ~1-2s (a cache key carrega a versão do Bun)"
+            "ms": 18360,
+            "date": "2026-09-29",
+            "source": "medido neste host (Linux, 16 cpus) FRIO, re-medido 29/09/2026 (18360ms — mirror OCI indisponível até o flip; no CI com cache-hit é ~1-2s)"
           },
           {
             "run": "bun install --frozen-lockfile",
@@ -179,34 +179,34 @@
         ]
       },
       "fuzz": {
-        "ms": 29943,
+        "ms": 31529,
         "provenance": "declarado (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/setup-bun-ci.sh 1.3.14` 17175ms (SEM cache — no CI com cache-hit é ~1-2s) + `bun install --frozen-lockfile` 61ms + `bun run fuzz:ci` 12707ms",
-        "date": "2026-09-17"
+        "source": "RE-MEDIDO em 29/09/2026: bash scripts/setup-bun-ci.sh 1.3.14 18360ms (FRIO, re-medido 29/09 — mirror OCI indisponível até o flip do registry; com cache-hit no CI é ~1-2s) + `bun install --frozen-lockfile` 61ms + `bun run fuzz:ci` 13108ms (13089/13108/13149 — era 12707ms)",
+        "date": "2026-09-29"
       },
       "benchmark": {
-        "ms": 23205,
+        "ms": 24624,
         "provenance": "declarado (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/setup-bun-ci.sh 1.3.14` 17175ms (SEM cache — no CI com cache-hit é ~1-2s) + `bun install --frozen-lockfile` 61ms + `node scripts/run-benchmark.mjs --type geo --json` 5940ms FRIO (o cache do benchmark é por commit: com ele quente o passo custa 31ms) + `node scripts/compare-benchmarks.mjs …` 29ms (roda só quando há baseline em main)",
-        "date": "2026-09-17"
+        "source": "RE-MEDIDO em 29/09/2026: bash scripts/setup-bun-ci.sh 1.3.14 18360ms (FRIO, re-medido 29/09 — mirror OCI indisponível até o flip do registry; com cache-hit no CI é ~1-2s) + `bun install --frozen-lockfile` 61ms + `node scripts/run-benchmark.mjs --type geo --json` 6174ms FRIO (o cache do benchmark é por commit: com ele quente o passo custa 31ms) + `node scripts/compare-benchmarks.mjs …` 29ms (roda só quando há baseline em main)",
+        "date": "2026-09-29"
       },
       "pii-allowlist-guard": {
-        "ms": 23581,
+        "ms": 25633,
         "provenance": "declarado (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/setup-bun-ci.sh 1.3.14` 17175ms (SEM cache — no CI com cache-hit é ~1-2s) + `bun install --frozen-lockfile` 61ms + `bunx prisma generate` 1005ms + `bun run check:pii-allowlist` 1274ms + `bun run check:pii-gate` 4066ms",
-        "date": "2026-09-17"
+        "source": "RE-MEDIDO em 29/09/2026: bash scripts/setup-bun-ci.sh 1.3.14 18360ms (FRIO, re-medido 29/09 — mirror OCI indisponível até o flip do registry; com cache-hit no CI é ~1-2s) + `bun install --frozen-lockfile` 61ms + `bunx prisma generate` 975ms + `bun run check:pii-allowlist` 1303ms + `bun run check:pii-gate` 4934ms (4736/4934/4939)",
+        "date": "2026-09-29"
       },
       "security-headers": {
-        "ms": 60,
+        "ms": 70,
         "provenance": "declarado (PISO: passo não medido)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/test-security-headers.sh --ci` 60ms contra um servidor LOCAL (o default do script, http://localhost:3000) — o alvo do CI é `secrets.BASE_URL` (produção por default) e as requisições WAN até ele NÃO estão neste número; medir contra produção não se faz daqui",
-        "date": "2026-09-17"
+        "source": "RE-MEDIDO em 29/09/2026 (Linux, 3 runs): `bash scripts/test-security-headers.sh --ci` ≈70ms de parede contra um servidor LOCAL com o bloco de headers do Caddyfile.prod (o custo é o do script, independente do veredito); o alvo do CI é `secrets.BASE_URL` (produção por default) e as requisições WAN até ele NÃO estão neste número; medir contra produção não se faz daqui. 29/09: corrigido o bug em que o comentário engolia `rp=$(get_header …)` (set -u matava o script)",
+        "date": "2026-09-29"
       },
       "benchmark-gist": {
-        "ms": 23205,
+        "ms": 24624,
         "provenance": "declarado (PISO: passo não medido)",
-        "source": "o job roda o MESMO sweep do `benchmark` (500/2000 providers × 5 raios) contra PostGIS com índice GiST + `validate-gist-crossover.mjs`; NÃO medido aqui: `src/lib/geo-shared.mjs` não existe NESTE branch (o trabalho de geo vive em PR próprio) e o passo exige PostGIS — declarado o valor MEDIDO do job irmão `benchmark` SEM o passo de PostGIS",
-        "date": "2026-09-17"
+        "source": "o job roda o MESMO sweep do `benchmark` (500/2000 providers × 5 raios) contra PostGIS com índice GiST + `validate-gist-crossover.mjs`; NÃO medido aqui: `src/lib/geo-shared.mjs` não existe NESTE branch (o trabalho de geo vive em PR próprio) e o passo exige PostGIS — declarado o valor RE-MEDIDO do job irmão `benchmark` (29/09) SEM o passo de PostGIS",
+        "date": "2026-09-29"
       },
       "seed-guards": {
         "ms": 7200000,
