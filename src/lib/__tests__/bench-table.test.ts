@@ -241,6 +241,57 @@ describe("paragrafoCusto — o parágrafo do README (os mesmos fatos, em prosa)"
     expect(p).toContain("o ato")
   })
 
+  // A RÉGUA ÚNICA — a MESMA classificação que o guard deriva do master (as
+  // listas `PROVA_DE_APLICACAO` / `FORA_DA_REGUA`), publicada em prosa no README:
+  // quantas suítes PROVAM a aplicação e quantas mutam por conta própria.
+  const regua = {
+    provam: ["a", "b", "c"],
+    isentas: [
+      { id: "d", motivo: "o alvo é a CÓPIA do fixture" },
+      { id: "e", motivo: "a troca é na ÁRVORE por helper privado" },
+    ],
+    declaradas: ["b"],
+    gabarito: "caro",
+    lib: "scripts/mutacao-prova.sh",
+  }
+  /** A matriz do fixture: as três classes somam os SEIS sub-tests (sem buraco). */
+  const forms = ["caro", "a", "b", "c", "d", "e"].map((role, i) => ({
+    role,
+    ms: 900 - i * 100,
+    metades: 1,
+    exit: 0,
+  }))
+
+  it("publica a CONTAGEM da régua única: quem PROVA, quem muta por conta própria e o gabarito", () => {
+    const p = paragrafoCusto(estadoDaMatriz(registro({ forms }), regua))!
+    expect(p).toContain("das 6 suítes da matriz")
+    expect(p).toContain("3 **PROVAM** a aplicação")
+    expect(p).toContain("`scripts/mutacao-prova.sh`")
+    expect(p).toContain("E 1 delas usam TAMBÉM o caminho DECLARADO")
+    expect(p).toContain("E 2 **mutam por conta própria**")
+    expect(p).toContain("`FORA_DA_REGUA` do master")
+    expect(p).toContain("E o **GABARITO** (`caro`)")
+    // De ONDE a contagem sai (é a do master, não a da rodada medida) — e sem o
+    // aviso do buraco, que só existe quando as classes não fecham a matriz.
+    expect(p).toContain("sai do MASTER")
+    expect(p).not.toContain("buraco")
+  })
+
+  it("sem a classificação a contagem NÃO sai — e nunca como zero", () => {
+    const p = paragrafoCusto(estadoDaMatriz(registro({ forms })))!
+    expect(p).toContain("roda 6 sub-tests")
+    expect(p).not.toContain("PROVAM")
+    expect(p).not.toContain("mutam por conta própria")
+    expect(p).not.toContain("GABARITO")
+  })
+
+  it("quando as classes não somam a matriz, o BURACO é dito com as duas contas", () => {
+    const p = paragrafoCusto(estadoDaMatriz(registro({ forms }), { ...regua, provam: ["a"] }))!
+    expect(p).toContain("as três classes somam 4")
+    expect(p).toContain("a matriz tem 6")
+    expect(p).toContain("aparece aqui como buraco")
+  })
+
   it("é determinístico: o mesmo registro renderiza byte a byte o mesmo texto", () => {
     const a = paragrafoCusto(estadoDaMatriz(registro()))
     const b = paragrafoCusto(estadoDaMatriz(registro()))

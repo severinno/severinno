@@ -1305,6 +1305,20 @@ Quem entra com um sub-test novo não compõe nada: ele entra **MEDIDO** na rodad
 (forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~19.6s**) é dita
 como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test.
 
+**E a régua única tem contagem, não estimativa**: das 47 suítes da matriz,
+28 **PROVAM** a aplicação — chamam `mutacao_aplicar`, a cópia única
+`scripts/mutacao-prova.sh` (a CIRURGIA, o MARCADOR e o CONTEÚDO na mesma régua).
+E 3 delas usam TAMBÉM o caminho DECLARADO (`mutacao_aplicar_sem_marcador`,
+para o payload que não comporta o marcador).
+E 18 **mutam por conta própria** — cada uma com o PORQUÊ na linha
+`FORA_DA_REGUA` do master, publicada em `docs/GUARDS.md`.
+E o **GABARITO** (`mutacao-prova`) mede a própria régua: ele não prova nem é
+isento — ele muta a régua para medir que as provas dela são load-bearing.
+A classificação sai do MASTER (as listas `PROVA_DE_APLICACAO` e `FORA_DA_REGUA` do
+`test-mutation-guards.sh`), não da rodada: a relação de uma suíte com a régua é o que ela
+É, não quanto ela custa. Um sub-test que entre ou saia da régua sem declaração não entra em
+classe nenhuma.
+
 Esta prosa é **DERIVADA**: quem a reescreve é o ato (o bloco é dele), e o
 `check:mutation-count` recusa o commit em que ela divirja do registro versionado.
 <!-- /bench:mutations:custo -->

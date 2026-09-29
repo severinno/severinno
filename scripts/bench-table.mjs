@@ -83,6 +83,10 @@ export function mediana(valores) {
  * sub-test — dita como projeção, nunca como medição.
  *
  * @param {object | null} registro  o `docs/benchmarks/guard-timing-baseline.json` lido
+ * @param {null | {provam: string[], isentas: {id: string, motivo: string}[], declaradas: string[],
+ *   gabarito: string | null, lib: string}} [regua]
+ *   a classificação das suítes na régua única — derivada do MASTER pelo
+ *   `classificacaoDaRegua`; `null` num fixture sem as listas declaradas
  * @returns {null | {subtests: number, metades: number, somaSubTestsMs: number, harnessMs: number,
  *   wallMs: number, medianaMs: number, projecaoMs: number, concentracaoPct: number, verdes: number,
  *   formas: Array<{role: string, glosa: string | null, ms: number, metades: number, exit: number, tentativas: number, flake: boolean, infra: boolean}>,
@@ -368,6 +372,51 @@ export function paragrafoCusto(estado) {
       `e isto NÃO é defeito da árvore — o custo deles também não julga nada, e re-rodar onde o instrumento ` +
       `responde é o remédio.`
     : ""
+  // A OUTRA METADE do mesmo registro: a CONTAGEM DA RÉGUA ÚNICA — quantas
+  // suítes da matriz PROVAM a aplicação e quantas mutam por conta própria (com
+  // o gabarito fora das duas). Ela sai do MASTER, não da rodada: a relação de
+  // uma suíte com a régua é o que ela É, não quanto ela custa. Sem a
+  // classificação (um master que ainda não declara as listas) o parágrafo sai
+  // SEM esta contagem — nunca com um zero, que diria que ninguém prova nada.
+  const regua = estado.regua
+  const somaClasses = regua
+    ? regua.provam.length + regua.isentas.length + (regua.gabarito ? 1 : 0)
+    : 0
+  // O BURACO: um sub-test que não declara a sua relação com a régua não entra
+  // em classe nenhuma, e a soma menor é dita em voz alta — a mesma conta que a
+  // seção da régua publica no `docs/GUARDS.md`.
+  const buraco =
+    regua && somaClasses !== estado.subtests
+      ? ` ⚠️ as três classes somam ${somaClasses} e a matriz tem ${estado.subtests} ` +
+        `sub-test(s): a suíte que não declara a sua relação com a régua aparece aqui como buraco.`
+      : ""
+  const declaradas = regua?.declaradas.length
+    ? [
+        `E ${regua.declaradas.length} delas usam TAMBÉM o caminho DECLARADO (\`mutacao_aplicar_sem_marcador\`,`,
+        `para o payload que não comporta o marcador).`,
+      ]
+    : []
+  const reguaTxt = regua
+    ? [
+        "",
+        `**E a régua única tem contagem, não estimativa**: das ${estado.subtests} suítes da matriz,`,
+        `${regua.provam.length} **PROVAM** a aplicação — chamam \`mutacao_aplicar\`, a cópia única`,
+        `\`${regua.lib}\` (a CIRURGIA, o MARCADOR e o CONTEÚDO na mesma régua).`,
+        ...declaradas,
+        `E ${regua.isentas.length} **mutam por conta própria** — cada uma com o PORQUÊ na linha`,
+        `\`FORA_DA_REGUA\` do master, publicada em \`docs/GUARDS.md\`.`,
+        ...(regua.gabarito
+          ? [
+              `E o **GABARITO** (\`${regua.gabarito}\`) mede a própria régua: ele não prova nem é`,
+              `isento — ele muta a régua para medir que as provas dela são load-bearing.`,
+            ]
+          : []),
+        `A classificação sai do MASTER (as listas \`PROVA_DE_APLICACAO\` e \`FORA_DA_REGUA\` do`,
+        `\`test-mutation-guards.sh\`), não da rodada: a relação de uma suíte com a régua é o que ela`,
+        `É, não quanto ela custa. Um sub-test que entre ou saia da régua sem declaração não entra em`,
+        `classe nenhuma.${buraco}`,
+      ]
+    : []
 
   return [
     `**O custo do job mais caro do PR não é uma conta à mão** (família \`mutations\` do`,
@@ -382,6 +431,7 @@ export function paragrafoCusto(estado) {
     `Quem entra com um sub-test novo não compõe nada: ele entra **MEDIDO** na rodada seguinte`,
     `(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~${s(estado.projecaoMs)}**) é dita`,
     `como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test.${feridas}${remedidas}${naoMedidas}`,
+    ...reguaTxt,
     "",
     // Sem ESPAÇO no fim da linha: o prettier da doc o removeria e o bloco vivo
     // deixaria de bater com o renderizado (o defeito que a régua pega).
