@@ -74,6 +74,42 @@ _Destino:_ `/backups/postgres_YYYYMMDD_HHMMSS.sql.gz`
 
 ---
 
+### 3.3 Backup da Forja (Gitea) — diário, com verificação e off-site
+
+> A forja (git + registry OCI) vive no volume docker `gitea-data` da VPS. O backup dela tem DUAS famílias de artefato: o export oficial (`gitea dump`) para restauração e um `git bundle` por repositório (formato git puro, sobrevive a qualquer forja). Forja vazia é estado declarado no manifest, não falha.
+
+**Na VPS (`/root/forge-backup.sh`, cron 04:30 — sincronizado com `scripts/forge-backup.sh` do repo):**
+
+```bash
+# manual: bash /root/forge-backup.sh
+# artefatos: /root/backups-forja/<dia>/{forge-dump.zip, git-*.bundle, manifest.txt, sha256sums.txt}
+# retenção local: 14 dias
+```
+
+**Off-site (na máquina local, `scripts/forge-backup-pull.sh`, cron 05:15):**
+
+```bash
+# puxa o dia, confere sha256 contra o manifest DA VPS e verifica cada bundle (git bundle verify)
+bash scripts/forge-backup-pull.sh [dia]
+# destino: ~/backups-forja/<dia>/ — retenção local: 30 dias
+```
+
+**Por que o pull e não o push:** a VPS não guarda credencial do destino off-site — uma VPS comprometida não apaga nem corrompe a cópia que fica fora dela. Um backup sem verificação é esperança, não backup: o `sha256sum -c` local e o `git bundle verify` são o que tornam o artefato confiável no dia do desastre.
+
+**Restauração da forja a partir do dump** (mesma série do gitea, volume novo):
+
+```bash
+# 1. sobe a stack parada do app e do runner
+docker compose -f deploy/docker-compose.gitea.yml up -d gitea
+# 2. restaura o dump oficial (o zip contém app.ini, gitea-db.sql, anexos e repos)
+docker exec -i gitea su git -c 'unzip -o /tmp/forge-dump.zip -d /tmp/restore && gitea restore -f /tmp/restore'
+# 3. sobe o resto: docker compose -f deploy/docker-compose.gitea.yml up -d
+```
+
+**Pré-requisito do 100% self-hosted (verificado em 29/09):** a forja de bring-up novo nasce SEM `/data/git/repositories` — o `forge-backup.sh` cria o dir antes do dump. Forja vazia (`bundles: 0`) é estado normal, não erro.
+
+---
+
 ## 🛡️ 4. Monitoramento & Alertas
 
 ### 4.1 Health Check Endpoints
