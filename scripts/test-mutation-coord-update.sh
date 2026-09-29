@@ -154,13 +154,26 @@ SCAN_FILES=(
 )
 
 TEST_FILE="src/lib/__tests__/seed-e2e-count.test.ts"
-# --reporter=basic é OBRIGATÓRIO: com GITHUB_ACTIONS=true (CI/act/container), o
-# reporter padrão do vitest vira o github-actions, que URL-encodea o TITLE do
-# ::error (espaços → %20) — e o EXPECTED_FAILURE_DERIVATION é o NOME do teste
-# ('cada count documentado bate', no title), não uma asserção no body. O
-# reporter basic imprime o nome literalmente em qualquer ambiente, tornando o
-# expect_failure determinístico (bug real pego pelo run do act no cenário C).
-VITEST_CMD=(bun x vitest run --config vitest.config.unit.ts --reporter=basic "$TEST_FILE")
+# O REPORTER TEM DE SER EXPLÍCITO — e o `basic` NÃO EXISTE MAIS: o vitest 4 (o
+# bump que trouxe 4.1.11) o removeu do ReportersMap, e a suíte morria no
+# CONTROLE com `Failed to load url basic` (o nome passa a ser resolvido como
+# CAMINHO de reporter custom). O equivalente é o `default` — o reporter humano
+# não-interativo, que imprime o BLOCO DA FALHA com o nome do teste.
+#
+# O que a suíte precisa dele NÃO é a estética: com GITHUB_ACTIONS=true
+# (CI/act/container), o vitest acrescenta o reporter `github-actions`, que
+# URL-encodea o TITLE do ::error (espaços → %20) — e o
+# EXPECTED_FAILURE_DERIVATION é o NOME do teste ('cada count documentado bate'),
+# não uma asserção no body. O `expect_failure` faz grep -Fq no output, então o
+# encode o deixaria sem casamento (bug real pego pelo run do act no cenário C).
+#
+# E O EXPLÍCITO JÁ BASTA, sem desligar o GITHUB_ACTIONS do ambiente: no
+# resolveReporters do vitest o `github-actions` só entra quando NENHUM reporter
+# vem pela CLI (`if (!resolved.reporters.length)`, DEPOIS do mapeamento dos
+# reporters da CLI — lido em node_modules/vitest/dist/chunks/coverage.DM_a_rWm.js),
+# então passar `--reporter=default` suprime o automático em QUALQUER ambiente.
+# Medido com a suíte rodada inteira sob GITHUB_ACTIONS=true.
+VITEST_CMD=(bun x vitest run --config vitest.config.unit.ts --reporter=default "$TEST_FILE")
 
 # O GUARD ESTÁTICO da cadeia — o 2º elo além do vitest. Ele valida os counts
 # DOCUMENTADOS nos SCAN_FILES contra a derivação (fonte da verdade). Com o
