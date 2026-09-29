@@ -89,13 +89,16 @@
 //     DECLARAÇÃO do total e ignora o id de um controle, de propósito — cobrar
 //     toda ocorrência daria falso positivo em texto correto.
 //
-//   - a CIRURGIA PRIVADA NA ÁRVORE: nenhuma suíte da MATRIZ escreve num arquivo
-//     do REPOSITÓRIO por fora da régua única — `sed -i`/`--in-place`, um
+//   - a CIRURGIA PRIVADA NA ÁRVORE: NENHUMA suíte de mutação
+//     (`scripts/test-mutation-*.sh`, da matriz ou de job próprio) escreve num
+//     arquivo do REPOSITÓRIO por fora da régua única — `sed -i`/`--in-place`, um
 //     redirecionamento `>`/`>>` ou um heredoc (`python3`) cujo CORPO GRAVA. Quem
 //     escreve na árvore é a régua (`scripts/mutacao-prova.sh`), que PROVA que a
 //     escrita entrou (a cirurgia, o marcador e o conteúdo); a cirurgia privada
 //     mede o alvo SEM prova nenhuma, e uma escrita que não entrou deixa a suíte
-//     verde sobre a árvore ÍNTEGRA (o verde em VÁCUO). A cópia do fixture no
+//     verde sobre a árvore ÍNTEGRA (o verde em VÁCUO). O que a régua NÃO
+//     expressa é DECLARADO no bloco `CIRURGIA_NA_ARVORE` do master (alvo, tipo e
+//     motivo por linha, conferido nos dois sentidos). A cópia do fixture no
 //     scratch (`$TMP_DIR`/`$MUT_DIR` de um `mktemp`) NÃO é a árvore: é o que
 //     separa esta regra da classe legítima de `FORA_DA_REGUA`.
 //
@@ -1443,7 +1446,7 @@ export function analisaProvaDeAplicacao(root, masterSrc, entries) {
 
 // ── A CIRURGIA PRIVADA NA ÁRVORE (o caminho que a régua não vê) ─────────────
 //
-// O DEFEITO que esta regra existe para impedir: uma suíte da matriz volta a
+// O DEFEITO que esta regra existe para impedir: uma suíte de mutação volta a
 // ESCREVER num arquivo do REPOSITÓRIO por conta própria — `sed -i`, um
 // redirecionamento (`>`/`>>`) ou um heredoc de `python3` que dá `open(path, "w")`
 // — em vez de passar a troca pela régua única. A régua é o ÚNICO caminho que
@@ -1451,6 +1454,12 @@ export function analisaProvaDeAplicacao(root, masterSrc, entries) {
 // MARCADOR, o CONTEÚDO que mudou); a cirurgia privada mede o alvo sem prova
 // nenhuma, e uma escrita que não aplicou deixa a suíte verde sobre a árvore
 // ÍNTEGRA — o verde em VÁCUO, que é o que ninguém vê.
+//
+// A JURISDIÇÃO ERA A MATRIZ, e a classe sobrevivia FORA dela: as suítes de job
+// próprio (`coord-update`, `doctor-mirrors`, `env-mirror`, `gate-contracts`,
+// `seed-dev-e2e`) trocam o mesmo tipo de arquivo do repositório, e nenhuma
+// metade as mede. O escopo é o DIRETÓRIO — todas as `scripts/test-mutation-*.sh`
+// presentes na árvore julgada.
 //
 // O QUE É A ÁRVORE, e por que a régua NÃO flagra o scratch: o alvo é um arquivo
 // que EXISTE no repositório (resolvido contra a raiz julgada). A cópia do
@@ -1525,6 +1534,83 @@ function expandeVariaveis(token, vars) {
  * raiz e caminho relativo — sempre conferido contra a raiz julgada: só o que
  * EXISTE no repositório é a árvore, e a cópia do fixture no scratch nunca casa.
  */
+/**
+ * Os ARRAYS declarados no fonte (`NOME=( "a" "b" )`) — a LISTA de alvos que um
+ * laço pode iterar. Sem ela, a troca dentro de um `for` seria invisível: o token
+ * do alvo é `"$file"`, e `$file` não vale nada fora do laço que o preenche.
+ */
+function arraysDoFonte(src) {
+  const arrays = new Map()
+  const re = /^[ \t]*(?:declare[ \t]+-a[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)=\(/gm
+  let m
+  while ((m = re.exec(src)) !== null) {
+    const resto = src.slice(m.index + m[0].length)
+    const fim = /^[ \t]*\)[ \t]*$/m.exec(resto)
+    const corpo = fim ? resto.slice(0, fim.index) : resto
+    const itens = []
+    for (const t of corpo.split(/\s+/)) {
+      const v = t.replace(/^["']|["']$/g, "")
+      if (v === "" || v.startsWith("#")) continue
+      itens.push(v)
+    }
+    arrays.set(m[1], itens)
+    re.lastIndex = m.index + m[0].length
+  }
+  return arrays
+}
+
+/**
+ * Os LAÇOS do fonte (`for VAR in ...`) → os alvos que o corpo deles pode tocar.
+ *
+ * Três formas, as que o repositório usa: `"${ARR[@]}"` (os ELEMENTOS do array
+ * declarado), `"${ARR[$i]}"` (o laço pelos ÍNDICES — todos os elementos são
+ * candidatos) e a lista literal (`for f in "a.sh" "b.sh"`).
+ */
+function lacosDoFonte(src, arrays, vars) {
+  const lacos = new Map()
+  const re = /for[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]+in[ \t]+([^\n;]+)/g
+  let m
+  while ((m = re.exec(src)) !== null) {
+    const alvos = []
+    for (const a of m[2].matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\[[^\]]*\]/g)) {
+      for (const it of arrays.get(a[1]) ?? []) alvos.push(it)
+    }
+    for (const t of tokensDaLinha(m[2])) {
+      if (t.includes("$") || t.startsWith("-")) continue
+      alvos.push(t)
+    }
+    if (alvos.length)
+      lacos.set(
+        m[1],
+        alvos.map((a) => expandeVariaveis(a, vars) ?? a),
+      )
+  }
+  return lacos
+}
+
+/**
+ * Os CAMINHOS candidatos de um token-ALVO: o valor literal quando ele resolve, e
+ * os alvos do LAÇO quando o token é a variável de um `for`.
+ *
+ * É esta resolução que fecha a fenda do laço: `sed -i "$pat" "$file"` dentro de
+ * um `for file in "${SCAN_FILES[@]}"` trocava TRÊS arquivos do repositório sem
+ * que a régua visse nenhum (o token não resolvia, e o silêncio parecia limpeza).
+ */
+function caminhosDoToken(token, vars, arrays, lacos) {
+  const literal = expandeVariaveis(token, vars)
+  if (literal !== null) return [literal]
+  const nome = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/.exec(token)
+  if (nome) return lacos.get(nome[1]) ?? []
+  const porIndice = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\[/.exec(token)
+  if (porIndice) return arrays.get(porIndice[1]) ?? []
+  return []
+}
+
+/**
+ * O caminho de um token É um arquivo da ÁRVORE? Aceita caminho absoluto sob a
+ * raiz e caminho relativo — sempre conferido contra a raiz julgada: só o que
+ * EXISTE no repositório é a árvore, e a cópia do fixture no scratch nunca casa.
+ */
 function ehArquivoDaArvore(raiz, caminho) {
   if (caminho === null || caminho === "") return null
   let rel = caminho
@@ -1563,6 +1649,8 @@ const ASSINATURA_ESCRITA =
 export function cirurgiasPrivadasNaArvore(src, raiz) {
   const achados = []
   const vars = variaveisDoFonte(src, raiz)
+  const arrays = arraysDoFonte(src)
+  const lacos = lacosDoFonte(src, arrays, vars)
   const linhas = src.split("\n")
 
   for (const [i, linha] of linhas.entries()) {
@@ -1573,17 +1661,22 @@ export function cirurgiasPrivadasNaArvore(src, raiz) {
       const alvoTok = [...tokensDaLinha(linha)]
         .reverse()
         .find((t) => !t.startsWith("-") && !/^[0-9,]*[sy]?[/|]/.test(t))
-      const alvo = alvoTok ? ehArquivoDaArvore(raiz, expandeVariaveis(alvoTok, vars)) : null
-      if (alvo) achados.push({ linha: i + 1, tipo: "sed -i", alvo })
+      for (const c of alvoTok ? caminhosDoToken(alvoTok, vars, arrays, lacos) : []) {
+        const alvo = ehArquivoDaArvore(raiz, c)
+        if (alvo) achados.push({ linha: i + 1, tipo: "sed -i", alvo })
+      }
     }
 
     // (B) o redirecionamento `>`/`>>` para um arquivo.
-    const red = /(?:>>?)\s*("[^"]+"|'[^']+'|\$[A-Za-z_][A-Za-z0-9_]*)/g
+    const red =
+      /(?:>>?)\s*("[^"]+"|'[^']+'|\$\{[A-Za-z_][A-Za-z0-9_]*\[[^\]]*\]\}|\$[A-Za-z_][A-Za-z0-9_]*)/g
     let mm
     while ((mm = red.exec(linha)) !== null) {
       const token = mm[1].replace(/^["']|["']$/g, "")
-      const alvo = ehArquivoDaArvore(raiz, expandeVariaveis(token, vars))
-      if (alvo) achados.push({ linha: i + 1, tipo: "> / >>", alvo })
+      for (const c of caminhosDoToken(token, vars, arrays, lacos)) {
+        const alvo = ehArquivoDaArvore(raiz, c)
+        if (alvo) achados.push({ linha: i + 1, tipo: "> / >>", alvo })
+      }
     }
   }
 
@@ -1616,40 +1709,145 @@ export function cirurgiasPrivadasNaArvore(src, raiz) {
       }
     }
   }
-  return achados
+  // DEDUPLICADO por (linha, tipo, alvo): o laço pelos ÍNDICES pode apontar para
+  // o mesmo alvo de um laço pelos elementos, e a violação é UMA.
+  const vistos = new Set()
+  return achados.filter((a) => {
+    const k = `${a.linha}|${a.tipo}|${a.alvo}`
+    if (vistos.has(k)) return false
+    vistos.add(k)
+    return true
+  })
 }
 
 /**
- * A REGRA: uma suíte da MATRIZ não troca um arquivo da ÁRVORE por cirurgia
- * PRIVADA. Quem escreve na árvore é a régua única (`PROVA_LIB`) — e a razão de a
- * regra existir é que a cirurgia privada mede o alvo SEM a prova de que a troca
- * aplicou (o verde em VÁCUO).
+ * AS SUÍTES DE MUTAÇÃO DA ÁRVORE — `scripts/test-mutation-*.sh`, TODAS.
  *
- * O ESCOPO é a MATRIZ (as suítes do `SUBTESTS`): são elas as que declaram a
- * relação com a régua, e é nelas que "voltar à cirurgia de fora da régua" é uma
- * regressão — uma suíte que nunca esteve na régua está fora desta jurisdição.
+ * O ESCOPO da regra da cirurgia é o DIRETÓRIO, não a matriz: uma suíte que roda
+ * em job próprio (o `coord-update`, o `doctor-mirrors`, o `env-mirror`, o
+ * `gate-contracts`, o `seed-dev-e2e`) troca o MESMO tipo de arquivo do
+ * repositório, e não tem nem a matriz nem as metades que a julguem. Era ali que
+ * a classe sobrevivia: cinco suítes e dez LINHAS com troca privada (dezesseis
+ * achados, alvo a alvo), todas fora do alcance da régua (medido em 29/09/2026,
+ * com a regra da matriz já no ar).
+ *
+ * @param {string} root a raiz julgada (a árvore, ou o ÍNDICE no recorte)
+ * @returns {string[]} os caminhos `scripts/test-mutation-*.sh` presentes, ordenados
+ */
+export function suitesDeMutacao(root) {
+  const dir = join(root, "scripts")
+  if (!existsSync(dir)) return []
+  return readdirSync(dir)
+    .filter((f) => /^test-mutation-.*\.sh$/.test(f))
+    .sort()
+    .map((f) => `scripts/${f}`)
+}
+
+/**
+ * O bloco DECLARADO no master — as trocas na ÁRVORE que continuam PRIVADAS:
+ *
+ *   CIRURGIA_NA_ARVORE=(
+ *     "scripts/test-mutation-x.sh|scripts/alvo.mjs|sed -i|o MOTIVO"
+ *   )
+ *
+ * A chave é o CAMINHO do script (não o id da matriz: quem declara aqui pode não
+ * estar na matriz), o ALVO e o TIPO são os da troca, e o MOTIVO é a razão de ela
+ * não passar pela régua única. A lista é conferida NOS DOIS SENTIDOS — uma troca
+ * sem declaração e uma declaração sem troca são violação — e é isso que impede a
+ * declaração de virar guarda-chuva: ela nomeia o alvo e o MECANISMO, então uma
+ * troca NOVA (outro arquivo, ou o mesmo por outro mecanismo) não se abriga sob a
+ * linha antiga.
+ *
+ * @param {string} masterSrc
+ * @returns {{presente: boolean, entradas: {chave: string, alvo: string, tipo: string, motivo: string}[]}}
+ */
+export function deriveCirurgiaNaArvore(masterSrc) {
+  const bruto = derivaBlocoDeMotivos(masterSrc, "CIRURGIA_NA_ARVORE=(")
+  const entradas = bruto.entradas.map((e) => {
+    const [alvo = "", tipo = "", ...resto] = e.motivo.split("|")
+    return {
+      chave: e.chave,
+      alvo: alvo.trim(),
+      tipo: tipo.trim(),
+      motivo: resto.join("|").trim(),
+    }
+  })
+  return { presente: bruto.presente, entradas }
+}
+
+/**
+ * A REGRA: NENHUMA suíte de mutação (`scripts/test-mutation-*.sh`, da matriz ou
+ * não) troca um arquivo da ÁRVORE por cirurgia PRIVADA. Quem escreve na árvore é
+ * a régua única (`PROVA_LIB`) — e a razão de a regra existir é que a cirurgia
+ * privada mede o alvo SEM a prova de que a troca aplicou (o verde em VÁCUO).
+ *
+ * A JURISDIÇÃO era a matriz, e é na matriz que "voltar à cirurgia de fora da
+ * régua" é regressão declarada; o que ela deixava de fora não era menos: as
+ * suítes de job próprio trocam arquivo do repositório com o MESMO `sed -i`, e
+ * nenhuma metade as mede. O que NÃO é a árvore (a cópia do fixture no scratch de
+ * um `mktemp`) segue fora do julgamento — é o que separa a regra da classe
+ * legítima.
+ *
+ * O caminho legítimo é a régua (o caminho ESTRITO, ou o DECLARADO com o motivo
+ * obrigatório). O que a régua NÃO expressa (a troca POSICIONAL do `sed`
+ * `0,/re/s//`, a prosa contada em vários arquivos, o payload que é o próprio dado
+ * da doc) continua possível — DECLARADO no bloco `CIRURGIA_NA_ARVORE` do master,
+ * com o alvo, o tipo e o porquê.
  *
  * @param {string} root a raiz julgada (o fixture, ou a árvore do ÍNDICE)
- * @param {{id: string, script: string}[]} entries
- * @param {{arvore?: string}} [opts] `arvore` é a raiz do REPOSITÓRIO de verdade:
- *   no recorte `--staged` o que se julga é o ÍNDICE, e é contra a árvore de
- *   verdade que o TARGET tem de existir para ser reconhecido como nosso (sem
- *   isso o guard não veria a cirurgia antes do commit). Sem ela, `root`.
- * @returns {{violations: string[]}}
+ * @param {{arvore?: string, masterSrc?: string}} [opts] `arvore` é a raiz do
+ *   REPOSITÓRIO de verdade: no recorte `--staged` o que se julga é o ÍNDICE, e é
+ *   contra a árvore de verdade que o ALVO tem de existir para ser reconhecido
+ *   como nosso (sem isso o guard não veria a cirurgia antes do commit). Sem ela,
+ *   `root`. `masterSrc` é o master julgado — dele saem as DECLARAÇÕES.
+ * @returns {{violations: string[], achados: {script: string, linha: number, tipo: string, alvo: string}[],
+ *            declaradas: string[], suites: number}}
  */
-export function analisaCirurgiaNaArvore(root, entries, { arvore = root } = {}) {
+export function analisaCirurgiaNaArvore(root, { arvore = root, masterSrc = "" } = {}) {
   const violations = []
-  for (const { script } of entries) {
+  const suites = suitesDeMutacao(root)
+  const declaradas = new Map()
+  for (const e of deriveCirurgiaNaArvore(masterSrc).entradas) {
+    if (!e.motivo || !e.alvo || !e.tipo) {
+      violations.push(
+        `test-mutation-guards.sh: CIRURGIA_NA_ARVORE declara '${e.chave}' e a linha está INCOMPLETA ('${e.chave}|${e.alvo}|${e.tipo}|${e.motivo}') — a declaração nomeia o ALVO, o TIPO (o mecanismo que a régua não cobre) e o MOTIVO; sem os três ela não diz o que está dispensado nem por quê`,
+      )
+      continue
+    }
+    declaradas.set(`${e.chave}|${e.alvo}|${e.tipo}`, e.motivo)
+  }
+
+  const achados = []
+  for (const script of suites) {
     const p = join(root, script)
-    if (!existsSync(p)) continue // ausente = violação da regra das metades
+    if (!existsSync(p)) continue
     const src = readFileSync(p, "utf8")
     for (const { linha, tipo, alvo } of cirurgiasPrivadasNaArvore(src, arvore)) {
+      achados.push({ script, linha, tipo, alvo })
+      if (declaradas.has(`${script}|${alvo}|${tipo}`)) continue
       violations.push(
-        `${script}:${linha}: troca na ÁRVORE por cirurgia PRIVADA (${tipo} em '${alvo}') — a régua ÚNICA (${PROVA_LIB}) é o ÚNICO caminho que escreve num arquivo do repositório e PROVA que a escrita entrou: use \`mutacao_aplicar\` (o payload carrega o marcador MUTACAO) ou \`mutacao_aplicar_sem_marcador\` (o payload que não o comporta, com o MOTIVO declarado). Uma suíte que volta a \`${tipo}\` por conta própria mede o alvo SEM a prova de aplicação — e uma escrita que não entrou deixa a suíte verde sobre a árvore ÍNTEGRA (o verde em VÁCUO)`,
+        `${script}:${linha}: troca na ÁRVORE por cirurgia PRIVADA (${tipo} em '${alvo}') — a régua ÚNICA (${PROVA_LIB}) é o ÚNICO caminho que escreve num arquivo do repositório e PROVA que a escrita entrou: use \`mutacao_aplicar\` (o payload carrega o marcador MUTACAO) ou \`mutacao_aplicar_sem_marcador\` (o payload que não o comporta, com o MOTIVO declarado). Uma suíte que volta a \`${tipo}\` por conta própria mede o alvo SEM a prova de aplicação — e uma escrita que não entrou deixa a suíte verde sobre a árvore ÍNTEGRA (o verde em VÁCUO). Se a troca NÃO é expressável pela régua, declare-a em CIRURGIA_NA_ARVORE com o alvo, o tipo e o motivo`,
       )
     }
   }
-  return { violations }
+
+  // A DECLARAÇÃO SEM TROCA: a troca converteu para a régua e a linha ficou. É a
+  // outra direção da mesma conferência, e é ela que impede a declaração de
+  // sobreviver à conversão (uma folga no master é a próxima troca passando).
+  for (const [chave, motivo] of declaradas) {
+    const [script, alvo, tipo] = chave.split("|")
+    // UMA SUÍTE QUE O JULGADO NÃO CARREGA não é declaração velha: no recorte
+    // `--staged` o que se julga é o que o COMMIT tem, e uma suíte que ele não
+    // carrega não tem troca para conferir aqui. A AUSÊNCIA da suíte é julgada
+    // pelo veredito da ÁRVORE (que lista o diretório inteiro) — este `continue`
+    // só vale para o arquivo que não está no julgado.
+    if (!suites.includes(script)) continue
+    if (achados.some((a) => `${a.script}|${a.alvo}|${a.tipo}` === chave)) continue
+    violations.push(
+      `test-mutation-guards.sh: CIRURGIA_NA_ARVORE declara '${script}' trocando '${alvo}' por ${tipo} e NÃO há mais essa troca — a declaração ENVELHECEU (o motivo escrito foi: '${motivo}'). Tire a linha, ou nomeie a troca que existe agora`,
+    )
+  }
+  return { violations, achados, declaradas: [...declaradas.keys()], suites: suites.length }
 }
 
 /** True se a linha tem marcador de contexto HISTÓRICO (não é count atual). */
@@ -1980,12 +2178,16 @@ export function run(root, { arvore = root } = {}) {
   const prova = analisaProvaDeAplicacao(root, masterSrc, entries)
   violations.push(...prova.violations)
 
-  // 4b-bis. A CIRURGIA PRIVADA NA ÁRVORE — a suíte da matriz que volta a
+  // 4b-bis. A CIRURGIA PRIVADA NA ÁRVORE — a suíte de mutação que volta a
   //        `sed -i`/`python3` privado para escrever num arquivo do repositório,
-  //        em vez de passar a troca pela régua única. `arvore` é a raiz de
-  //        verdade: no recorte `--staged` o alvo tem de existir LÁ para ser
-  //        reconhecido como nosso (o índice materializa só o que o veredito lê).
-  const cirurgia = analisaCirurgiaNaArvore(root, entries, { arvore })
+  //        em vez de passar a troca pela régua única. O ESCOPO é TODO o
+  //        `scripts/test-mutation-*.sh` (a jurisdição da matriz deixava de fora
+  //        as cinco suítes de job próprio, e a classe sobrevivia lá): o que não
+  //        é expressável pela régua é DECLARADO no `CIRURGIA_NA_ARVORE` do
+  //        master, com o alvo, o tipo e o motivo. `arvore` é a raiz de verdade:
+  //        no recorte `--staged` o alvo tem de existir LÁ para ser reconhecido
+  //        como nosso (o índice materializa só o que o veredito lê).
+  const cirurgia = analisaCirurgiaNaArvore(root, { arvore, masterSrc })
   violations.push(...cirurgia.violations)
 
   // 4c. OS ORDINAIS DA MATRIZ — a suíte identificada pela POSIÇÃO (`a N.ª
@@ -2036,6 +2238,12 @@ export function run(root, { arvore = root } = {}) {
       declaradas: prova.declaradas,
     },
     cirurgiaNaArvore: cirurgia.violations.length,
+    // A COBERTURA da regra da cirurgia no veredito VERDE: quantas suítes foram
+    // julgadas, quantas trocas na árvore existem e quantas delas são
+    // DECLARADAS (o resto passa pela régua).
+    cirurgiaSuites: cirurgia.suites,
+    cirurgiaAchados: cirurgia.achados.length,
+    cirurgiaDeclaradas: cirurgia.declaradas.length,
     arvore,
     ordinais: ordinais.refs,
     // A COBERTURA publicada: o que a régua julga, o que ela pula (com a classe) e
@@ -2257,6 +2465,19 @@ export function runStaged(root, { ler = lerDoIndice } = {}) {
   // doc das metades é obrigatória.
   const docs = docsDaProsa(root)
   for (const d of docs) if (!rels.includes(d)) rels.push(d)
+  // AS SUÍTES DE MUTAÇÃO entram TODAS na materialização (as da árvore, não só as
+  // citadas pelo master): a regra da cirurgia julga o DIRETÓRIO
+  // (`scripts/test-mutation-*.sh`), e um recorte que materializasse apenas as
+  // citadas julgaria um diretório onde as suítes de job próprio não existem — a
+  // troca nova passaria no commit e só apareceria no CI. A suíte que o índice não
+  // tem é a que o commit não carrega: ela fica de fora do julgamento (por isso
+  // entra como caminho OPCIONAL), nunca como violação.
+  // OPCIONAIS são só as que ESTE recorte acrescentou: uma suíte que o master
+  // CITA e o índice não tem segue sendo violação nomeada (o commit apontaria para
+  // um arquivo que ele não carrega) — o `opcionais` não pode afrouxar isso.
+  const extras = suitesDeMutacao(root).filter((s) => !rels.includes(s))
+  for (const s of extras) rels.push(s)
+  const opcionais = new Set([...CAMINHOS_OPCIONAIS, ...docs, ...extras])
   const dir = mkdtempSync(join(tmpdir(), "mutation-count-indice-"))
   const ausentes = []
   try {
@@ -2268,8 +2489,10 @@ export function runStaged(root, { ler = lerDoIndice } = {}) {
         // O caminho OPCIONAL ausente do índice é o ausente da árvore (o `run()`
         // o lê com existsSync): não é violação, é não haver o que conferir. A
         // PROSA entra aqui pelo mesmo motivo — cada `.md` é opcional, e um deles
-        // ausente do índice é um doc que o commit não carrega (nada a julgar).
-        if (CAMINHOS_OPCIONAIS.includes(rel) || docs.includes(rel)) continue
+        // ausente do índice é um doc que o commit não carrega (nada a julgar) —,
+        // e as SUÍTES DE MUTAÇÃO pelo mesmo: o commit que não as carrega não tem
+        // cirurgia delas a julgar (o veredito da árvore é quem julga a falta).
+        if (opcionais.has(rel)) continue
         ausentes.push(`${rel}: ${r.motivo}`)
         continue
       }
@@ -2359,9 +2582,17 @@ function main() {
       ? ` A RÉGUA DO ORDINAL: ${cob.julgadas} julgada(s) · ${cob.puladas} pulada(s) (historico ${cob.porClasse.historico} · foraDeEscopo ${cob.porClasse.foraDeEscopo} · blocoDerivado ${cob.porClasse.blocoDerivado}) — declarado ${declaradoTxt(cob.declarado)}.`
       : ""
 
+  // A CIRURGIA NA ÁRVORE entra no veredito VERDE como a cobertura do ordinal: o
+  // que se julga e o que está declarado são números, e é a diferença entre eles
+  // (o que passa pela régua) que a regra existe para manter.
+  const cirurgiaTxt =
+    result.cirurgiaSuites > 0
+      ? ` A CIRURGIA NA ÁRVORE: ${result.cirurgiaSuites} suíte(s) de mutação julgada(s) · ${result.cirurgiaAchados} troca(s) no repositório, ${result.cirurgiaDeclaradas} declarada(s) no CIRURGIA_NA_ARVORE do master (o resto passa pela régua única).`
+      : ""
+
   if (result.ok) {
     console.log(
-      `✅ check-mutation-count: ${result.derivedCount} sub-tests da matriz (${result.derivedMetades} metades declaradas) ${escopo} — pr-check.yml, master, README e a doc das metades consistentes.${ato}${cobertura}`,
+      `✅ check-mutation-count: ${result.derivedCount} sub-tests da matriz (${result.derivedMetades} metades declaradas) ${escopo} — pr-check.yml, master, README e a doc das metades consistentes.${ato}${cobertura}${cirurgiaTxt}`,
     )
     process.exit(0)
   }

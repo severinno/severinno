@@ -117,6 +117,11 @@ interface FixtureOpts {
    */
   cirurgiaNaArvore?: Record<number, string>
   /**
+   * O bloco `CIRURGIA_NA_ARVORE=( "script|alvo|tipo|motivo" ... )` do master — as
+   * trocas na árvore que continuam PRIVADAS, declaradas uma a uma.
+   */
+  cirurgiaLista?: string[] | null
+  /**
    * A COBERTURA da régua do ordinal declarada na doc — a linha
    * `**A régua do ordinal: N referência(s) JULGADA(S) e M PULADA(S) — historico
    * N · foraDeEscopo N · blocoDerivado N**`:
@@ -186,6 +191,7 @@ function makeFixture({
   semMarcadorLista = null,
   semMarcadorSuites = [],
   cirurgiaNaArvore = {},
+  cirurgiaLista = null,
   cobertura = "auto",
 }: FixtureOpts = {}) {
   const dir = mkdtempSync(join(tmpdir(), "mutation-count-"))
@@ -237,6 +243,10 @@ function makeFixture({
     foraLista === null || foraLista === undefined
       ? ""
       : `FORA_DA_REGUA=(\n${foraLista.map((l) => `  "${l}"`).join("\n")}\n)\n`
+  const cirurgiaBloco =
+    cirurgiaLista === null || cirurgiaLista === undefined
+      ? ""
+      : `CIRURGIA_NA_ARVORE=(\n${cirurgiaLista.map((l) => `  '${l}'`).join("\n")}\n)\n`
   const semMarcadorBloco =
     semMarcadorLista === null || semMarcadorLista === undefined
       ? ""
@@ -246,7 +256,7 @@ function makeFixture({
 SUBTESTS=(
 ${entries.join("\n")}
 )
-${provaBloco}${foraBloco}${semMarcadorBloco}`
+${provaBloco}${foraBloco}${semMarcadorBloco}${cirurgiaBloco}`
   writeFileSync(join(dir, "scripts/test-mutation-guards.sh"), master)
 
   const prCheck = `jobs:
@@ -1511,6 +1521,108 @@ describe("check-mutation-count — a CIRURGIA PRIVADA NA ÁRVORE (a régua é o 
       doc: `# Guards\n\n**1 suítes** provam a aplicação pela régua única.\n`,
     })
     expect(run(dir).violations.filter(daCirurgia)).toEqual([])
+  })
+
+  it("a suíte FORA da matriz também é julgada: a jurisdição é o DIRETÓRIO", () => {
+    // O DEFEITO MEDIDO: a regra nasceu com o escopo da matriz, e as cinco suítes
+    // de job próprio (que trocam arquivo do repositório com o mesmo `sed -i`)
+    // ficavam fora — nenhuma metade as mede.
+    const dir = makeFixture({ count: 3 })
+    writeFileSync(join(dir, "scripts/check-y.mjs"), "export const valor = 1\n")
+    writeFileSync(
+      join(dir, "scripts/test-mutation-fora-da-matriz.sh"),
+      "#!/usr/bin/env bash\nset -euo pipefail\nsed -i 's/valor = 1/valor = 2/' \"$SCRIPT_DIR/scripts/check-y.mjs\"\n",
+    )
+    const v = run(dir).violations.find(daCirurgia)
+    expect(v).toContain("scripts/test-mutation-fora-da-matriz.sh")
+    expect(v).toContain("(sed -i em 'scripts/check-y.mjs')")
+  })
+
+  it('o alvo por VARIÁVEL DE LAÇO é resolvido: o `sed -i "$pat" "$file"` do `for` não se esconde', () => {
+    // A OUTRA FENDA: o token do alvo é `"$file"`, e `$file` não vale nada fora
+    // do laço que o preenche — as TRÊS trocas por laço desta árvore passavam sem
+    // julgamento por isso.
+    const dir = makeFixture({
+      count: 3,
+      cirurgiaNaArvore: {
+        0: '\nARQUIVOS=(\n  "scripts/check-x.mjs"\n  "scripts/check-y.mjs"\n)\nfor file in "${ARQUIVOS[@]}"; do\n  for pat in "s/a/b/"; do\n    sed -i "$pat" "$file"\n  done\ndone\n',
+      },
+    })
+    writeFileSync(join(dir, "scripts/check-x.mjs"), "export const valor = 1\n")
+    writeFileSync(join(dir, "scripts/check-y.mjs"), "export const valor = 1\n")
+    const vs = run(dir).violations.filter(daCirurgia)
+    expect(vs.length).toBe(2)
+    expect(vs.join("\n")).toContain("(sed -i em 'scripts/check-x.mjs')")
+    expect(vs.join("\n")).toContain("(sed -i em 'scripts/check-y.mjs')")
+  })
+
+  it("o laço sobre arquivos do SCRATCH não é a árvore: não é violação", () => {
+    const dir = makeFixture({
+      count: 3,
+      cirurgiaNaArvore: {
+        0: '\nTMP_DIR="$(mktemp -d)"\nARQUIVOS=(\n  "$TMP_DIR/a.mjs"\n  "$TMP_DIR/b.mjs"\n)\nfor file in "${ARQUIVOS[@]}"; do\n  sed -i "s/a/b/" "$file"\ndone\n',
+      },
+    })
+    expect(run(dir).violations.filter(daCirurgia)).toEqual([])
+  })
+
+  it("a troca DECLARADA no `CIRURGIA_NA_ARVORE` passa — e a declaração é conferida NOS DOIS SENTIDOS", () => {
+    const declara = (alvo: string) => [
+      `scripts/test-mutation-sub-0.sh|${alvo}|sed -i|o alvo é POSICIONAL: a régua exige um alvo literal e cirúrgico`,
+    ]
+    const trecho = `sed -i 's/valor = 1/valor = 2/' "$SCRIPT_DIR/scripts/check-x.mjs"`
+    // DECLARADA: a troca existe, o alvo e o mecanismo são os da linha → passa.
+    const ok = run(
+      comCirurgia(trecho, "scripts/check-x.mjs", { cirurgiaLista: declara("scripts/check-x.mjs") }),
+    )
+    expect(ok.violations.filter(daCirurgia)).toEqual([])
+    expect(ok.violations.some((v) => v.includes("ENVELHECEU"))).toBe(false)
+    // A LINHA SEM A TROCA: a declaração que sobreviveu à conversão é violação.
+    const velha = run(makeFixture({ count: 3, cirurgiaLista: declara("scripts/check-x.mjs") }))
+    expect(velha.violations.some((v) => v.includes("ENVELHECEU"))).toBe(true)
+    // OUTRO ALVO: a declaração nomeia o alvo, então não abriga a troca nova.
+    const outro = run(
+      comCirurgia(trecho, "scripts/check-x.mjs", { cirurgiaLista: declara("scripts/check-y.mjs") }),
+    )
+    expect(outro.violations.filter(daCirurgia).length).toBe(1)
+    expect(outro.violations.some((v) => v.includes("ENVELHECEU"))).toBe(true)
+  })
+
+  it("a declaração INCOMPLETA (sem o alvo, o tipo ou o motivo) é violação", () => {
+    const r = run(
+      makeFixture({ count: 3, cirurgiaLista: ["scripts/test-mutation-sub-0.sh|só o motivo"] }),
+    )
+    expect(r.violations.some((v) => v.includes("está INCOMPLETA"))).toBe(true)
+  })
+
+  it("o recorte `--staged` materializa TODA suíte de mutação: a declaração não envelhece pelo recorte", () => {
+    // O DEFEITO MEDIDO (o pre-commit recusou o commit desta regra): o índice
+    // materializava só o que o master CITA, e as suítes de job próprio — que a
+    // regra julga pelo DIRETÓRIO — ficavam fora dele. Sem a troca à vista, cada
+    // declaração delas virava "ENVELHECEU" sobre um fonte que o veredito nunca
+    // leu. Aqui a suíte declarada está no índice (com a troca) e uma SEGUNDA
+    // suíte, só na árvore, fica fora do julgamento — o commit não a carrega.
+    const trecho = `sed -i 's/valor = 1/valor = 2/' "$SCRIPT_DIR/scripts/check-x.mjs"`
+    const declara = ["scripts/test-mutation-sub-0.sh|scripts/check-x.mjs|sed -i|o motivo"]
+    const arvore = makeFixture({
+      count: 3,
+      cirurgiaNaArvore: { 0: trecho },
+      cirurgiaLista: declara,
+    })
+    writeFileSync(join(arvore, "scripts/check-x.mjs"), "export const valor = 1\n")
+    writeFileSync(
+      join(arvore, "scripts/test-mutation-so-na-arvore.sh"),
+      `#!/usr/bin/env bash\nset -euo pipefail\n${trecho}\n`,
+    )
+    const indice = makeFixture({
+      count: 3,
+      cirurgiaNaArvore: { 0: trecho },
+      cirurgiaLista: declara,
+    })
+    writeFileSync(join(indice, "scripts/check-x.mjs"), "export const valor = 1\n")
+    const r = runStaged(arvore, { ler: indiceDe(indice) })
+    expect(r.violations.filter(daCirurgia)).toEqual([])
+    expect(r.violations.some((v) => v.includes("ENVELHECEU"))).toBe(false)
   })
 
   it("o recorte `--staged` também recusa: o FONTE vem do índice, o ALVO da árvore", () => {

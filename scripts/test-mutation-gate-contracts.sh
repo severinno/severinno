@@ -60,7 +60,7 @@
 #     • as âncoras INTACTAS PASSING — a prova de que a mutação é CIRÚRGICA: a
 #       OUTRA regra deste mesmo fato e o veredito seguem medindo.
 #
-# ⚠️ Source-coupled (como os demais test-mutation-*.sh): o sed ancora em linhas
+# ⚠️ Source-coupled (como os demais test-mutation-*.sh): a troca ancora em linhas
 # literais (`const declaring = declared.filter`, `expectedCommand: inv.command`
 # e `const key = \`${inv.id}|${jid}\``) e as asserções nos TÍTULOS dos testes de
 # `src/lib/__tests__/forge-doctor.test.ts`. Reformular qualquer uma delas ou
@@ -86,6 +86,14 @@ mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
 }
 cd "$SCRIPT_DIR"
 
+# A RÉGUA ÚNICA da prova-de-aplicação (`mutacao_aplicar`): a troca num arquivo do
+# REPOSITÓRIO passa por ela — o `check-mutation-count` recusa a cirurgia privada
+# (`sed -i`) em QUALQUER `scripts/test-mutation-*.sh`, e uma troca sem a prova de
+# que aplicou mede o alvo ÍNTEGRO (o verde em VÁCUO). O gabarito dela é
+# `scripts/test-mutation-mutacao-prova.sh`.
+# shellcheck source=scripts/mutacao-prova.sh
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 DOCTOR="scripts/forge-doctor.mjs"
 TEST_FILE="src/lib/__tests__/forge-doctor.test.ts"
 
@@ -99,8 +107,11 @@ RESULTS_CONTROL="$TMP_DIR/control.json"
 # existe para proteger): a Gitea passa a ser cobrada por um job que ela não
 # declara, e o fato produz a violação que ele existe para NÃO produzir.
 C1_ANCHOR_DOC="const declaring = declared.filter"
-C1_SED='/const declaring = declared\.filter/ s/.*/    const declaring = declared.filter((df) => (df.jobIds ?? []).includes(c.jobId) || (c.jobId === "lint-guard" \&\& df.forge === "gitea")) \/\/ MUTATION-GATE-DECLARING/'
-C1_MARKER="// MUTATION-GATE-DECLARING"
+# A troca é o par LITERAL (a linha inteira) que a régua única aplica: o alvo
+# casa UM sítio só, e o payload carrega o marcador `MUTACAO` (a prova de que a
+# escrita entrou).
+C1_LINHA='    const declaring = declared.filter((df) => (df.jobIds ?? []).includes(c.jobId))'
+C1_MARKER='    const declaring = declared.filter((df) => (df.jobIds ?? []).includes(c.jobId) || (c.jobId === "lint-guard" && df.forge === "gitea")) // MUTACAO M1: MUTATION-GATE-DECLARING'
 # O recorte tem de continuar existindo UMA vez: a mutação ACRESCENTA uma
 # condição ao mesmo filtro (não cria um segundo), e o `?? []` do original
 # continua no lugar.
@@ -112,8 +123,8 @@ C1_LEFTOVER_EXPECTED="1"
 # contrato, então a régua para de ser medida — o furo que deixava o merge ser
 # liberado pelo lado mais fraco.
 C2_ANCHOR_DOC="expectedCommand: inv.command,"
-C2_SED='/expectedCommand: inv\.command,/ s/.*/        expectedCommand: \/.\/, \/\/ MUTATION-GATE-RULER/'
-C2_MARKER="// MUTATION-GATE-RULER"
+C2_LINHA='        expectedCommand: inv.command,'
+C2_MARKER='        expectedCommand: /./, // MUTACAO M2: MUTATION-GATE-RULER'
 C2_LEFTOVER=""
 C2_LEFTOVER_EXPECTED="0"
 
@@ -122,9 +133,9 @@ C2_LEFTOVER_EXPECTED="0"
 # `guards` da Gitea somem da lista de contratos e passam a "cobertas" sem
 # medição — a mutação é CIRÚRGICA por desenho (um único teste mede a chave).
 C3_ANCHOR_DOC="const key = \`\${inv.id}|\${jid}\`"
-C3_SED='/const key = `/ s/.*/      const key = jid \/\/ MUTATION-GATE-CONTRACT-KEY/'
-C3_MARKER="// MUTATION-GATE-CONTRACT-KEY"
-C3_LEFTOVER='const key = `${inv.id}|${jid}`'
+C3_LINHA='      const key = `${inv.id}|${jid}`'
+C3_MARKER='      const key = jid // MUTACAO M3: MUTATION-GATE-CONTRACT-KEY'
+C3_LEFTOVER="$C3_LINHA"
 C3_LEFTOVER_EXPECTED="0"
 
 # ── Âncoras — UMA REGRA, AS SUAS TESTEMUNHAS ─────────────────────────────
@@ -320,16 +331,16 @@ assert_mutation_detected() {
   local results="$TMP_DIR/mutation.json"
   info "MUTAÇÃO $name — suíte deve ficar VERMELHA..."
 
-  # Fail-fast da mutação: aplicar, conferir o MARCADOR (o sed não trocou nada é
+  # Fail-fast da mutação: aplicar, conferir o MARCADOR (a régua não trocou nada é
   # um caso próprio) e a sintaxe.
   if ! grep -Fq "$CASE_ANCHOR_DOC" "$DOCTOR"; then
     fail "MUTAÇÃO NÃO APLICOU: a âncora '$CASE_ANCHOR_DOC' não existe em $DOCTOR"
     fail "O doctor foi refatorado? Atualize a mutação DESTE script junto."
     exit 1
   fi
-  sed -i "$CASE_SED" "$DOCTOR"
+  mutacao_aplicar "$DOCTOR" "$CASE_LINHA" "$CASE_MARKER" "$(cksum "$DOCTOR" | cut -d' ' -f1)"
   if ! grep -Fq "$CASE_MARKER" "$DOCTOR"; then
-    fail "MUTAÇÃO NÃO APLICOU (o sed não produziu o marcador)."
+    fail "MUTAÇÃO NÃO APLICOU (a régua não produziu o marcador)."
     exit 1
   fi
   # Não-cirúrgica por SINTAXE: um arquivo inválido derrubaria a suíte inteira
@@ -435,7 +446,7 @@ assert_control_pass
 echo ""
 info "Caso A — cortando o recorte da FORJA DECLARANTE (job exigido por uma forja só)..."
 CASE_ANCHOR_DOC="$C1_ANCHOR_DOC"
-CASE_SED="$C1_SED"
+CASE_LINHA="$C1_LINHA"
 CASE_MARKER="$C1_MARKER"
 CASE_LEFTOVER="$C1_LEFTOVER"
 CASE_LEFTOVER_EXPECTED="$C1_LEFTOVER_EXPECTED"
@@ -446,7 +457,7 @@ assert_mutation_detected "A (a forja declarante)"
 echo ""
 info "Caso B — cortando a RÉGUA da invariante (qualquer comando satisfaz)..."
 CASE_ANCHOR_DOC="$C2_ANCHOR_DOC"
-CASE_SED="$C2_SED"
+CASE_LINHA="$C2_LINHA"
 CASE_MARKER="$C2_MARKER"
 CASE_LEFTOVER="$C2_LEFTOVER"
 CASE_LEFTOVER_EXPECTED="$C2_LEFTOVER_EXPECTED"
@@ -457,7 +468,7 @@ assert_mutation_detected "B (a régua da invariante)"
 echo ""
 info "Caso C — cortando o CONTRATO por invariante×job (a chave volta a ser o job)..."
 CASE_ANCHOR_DOC="$C3_ANCHOR_DOC"
-CASE_SED="$C3_SED"
+CASE_LINHA="$C3_LINHA"
 CASE_MARKER="$C3_MARKER"
 CASE_LEFTOVER="$C3_LEFTOVER"
 CASE_LEFTOVER_EXPECTED="$C3_LEFTOVER_EXPECTED"

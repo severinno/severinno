@@ -57,8 +57,8 @@
 # direções: qualquer lado mutado sozinho trava o PR.
 #
 # PROVA DE INDEPENDÊNCIA (cenário D): além da doc 128→N (como em A),
-# NEUTRALIZA o piso do guard estático (MIN_DOCUMENTED_SITES prod:8→0 via sed
-# no check-e2e-counts.mjs). Sem piso e sem sites de prod documentados para
+# NEUTRALIZA o piso do guard estático (MIN_DOCUMENTED_SITES prod:8→0, pela
+# régua única, no check-e2e-counts.mjs). Sem piso e sem sites de prod para
 # divergir, o guard fica CEGO (exit 0). O vitest CONTINUA falhando ('piso prod
 # violado') porque o piso do TESTE é próprio (hardcoded ≥ 8 no
 # seed-e2e-count.test.ts), não herdado do guard — o teste de integração NÃO
@@ -81,8 +81,9 @@
 #      verificação de que aplicou → vitest → deve FALHAR com a mensagem
 #      do piso (prodSites < 8) E guard estático → deve FALHAR com o piso
 #      do guard (exit 1) → restaura a doc do backup;
-#   3. CENÁRIO B — backup do TEST_FILE + mutação da âncora (sed) +
-#      verificação de que a doc segue intacta → vitest → deve FALHAR com a
+#   3. CENÁRIO B — backup do TEST_FILE + mutação da âncora (pela RÉGUA
+#      ÚNICA, com o marcador no payload) + verificação de que a doc segue
+#      intacta → vitest → deve FALHAR com a
 #      mensagem da sanidade (anchor prod desatualizado) → guard estático →
 #      deve PASSAR (doc íntegra, falha isolada na âncora) → restaura;
 #   4. CENÁRIO C — backup do DERIVATION_FILE + mutação do source (sed
@@ -128,6 +129,21 @@ mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
   exit 2
 }
 cd "$SCRIPT_DIR"
+
+# A RÉGUA ÚNICA da prova-de-aplicação (`mutacao_aplicar`): a troca num arquivo do
+# REPOSITÓRIO passa por ela — o `check-mutation-count` recusa a cirurgia privada
+# (`sed -i`) em QUALQUER `scripts/test-mutation-*.sh`, e uma troca sem a prova de
+# que aplicou mede o alvo ÍNTEGRO (o verde em VÁCUO). O gabarito dela é
+# `scripts/test-mutation-mutacao-prova.sh`.
+#
+# AS TRÊS TROCAS QUE NÃO PASSAM POR ELA — a prosa CONTADA da doc nos SCAN_FILES
+# (os cenários A/D/E) e a asserção POSICIONAL do source (o cenário C) — estão
+# DECLARADAS no `CIRURGIA_NA_ARVORE` do master, cada uma com o motivo: o payload
+# ali é o PRÓPRIO dado que a mutação mede (a `N checks` inválida da doc, o
+# `expect(` comentado), e um marcador ou uma contagem por arquivo mudaria o que
+# a mutação afirma.
+# shellcheck source=scripts/mutacao-prova.sh
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
 
 # Os MESMOS arquivos que o check-e2e-counts.mjs escaneia (SCAN_FILES) — a
 # mutação ataca exatamente onde a doc vive. Fonte única da lista: o guard.
@@ -181,6 +197,10 @@ EXPECTED_FAILURE_DOC="piso prod violado"
 # isolando a falha em prod, como no cenário A.)
 ANCHOR_PATTERN=').toBe(127)'
 ANCHOR_REPLACEMENT=').toBe(128)'
+# O PAYLOAD da régua única: a mesma troca com o marcador `MUTACAO` (a prova de
+# que a escrita entrou). O valor da âncora é o de `ANCHOR_REPLACEMENT`, então as
+# asserções deste script seguem lendo o mesmo texto.
+ANCHOR_PAYLOAD="$ANCHOR_REPLACEMENT /* MUTACAO M1: a âncora de sanidade de prod aponta para o valor VIZINHO */"
 
 # Asserção que o teste DEVE emitir quando a âncora é mutada (sanidade prod).
 EXPECTED_FAILURE_ANCHOR="anchor prod desatualizado"
@@ -209,13 +229,16 @@ EXPECTED_GUARD_FAILURE_DERIVATION="divergente(s) entre workflows e derivação"
 # ── Cenário D — doc MUTADA + piso do GUARD neutralizado (independência) ──
 # O 4º cenário prova que o teste de integração NÃO depende do guard estático:
 # além da doc 128→N (como no cenário A), NEUTRALIZA o piso do guard
-# (MIN_DOCUMENTED_SITES prod:8→0 via sed no check-e2e-counts.mjs). Com o piso
+# (MIN_DOCUMENTED_SITES prod:8→0, pela régua única). Com o piso
 # zero e sem sites de prod para divergir, o guard fica CEGO (exit 0) — mas o
 # vitest CONTINUA falhando ('piso prod violado') porque o piso do TESTE é
 # próprio (hardcoded ≥ 8 no seed-e2e-count.test.ts), não herdado do guard.
 GUARD_FILE="scripts/check-e2e-counts.mjs"
 GUARD_PISO_PATTERN="{ prod: 8, dev: 6 }"
 GUARD_PISO_REPLACEMENT="{ prod: 0, dev: 6 }"
+# O PAYLOAD da régua: o piso zerado com o marcador `MUTACAO` ao lado (o guard
+# segue lendo o objeto; o que muda é o piso, que é o defeito medido).
+GUARD_PISO_PAYLOAD="$GUARD_PISO_REPLACEMENT /* MUTACAO M2: o piso de sites do guard vai a ZERO — o guard fica CEGO */"
 
 # Asserção que o teste DEVE emitir com a doc mutada mesmo com o guard cego
 # (o MESMO piso do cenário A — mas aqui provando que ele é do teste, não do guard).
@@ -445,27 +468,28 @@ info "CENÁRIO B: backup + mutação da âncora no TEST_FILE..."
 
 cp "$TEST_FILE" "$BACKUP_DIR/anchor"
 
-# Fail-fast: se o padrão da âncora não existir (teste refatorado), o sed vira
-# no-op silencioso → pare com mensagem clara em vez de acusar "guard cego".
+# Fail-fast: se o padrão da âncora não existir (teste refatorado), a régua
+# RECUSA a troca (o alvo deixa de ser cirúrgico) — pare com mensagem clara em
+# vez de acusar "guard cego".
 if ! grep -Fq "$ANCHOR_PATTERN" "$TEST_FILE"; then
   fail "Padrão da âncora '$ANCHOR_PATTERN' não encontrado em $TEST_FILE."
   fail "O seed-e2e-count.test.ts mudou? Atualize ANCHOR_PATTERN neste script."
   exit 1
 fi
 
-sed -i "s/${ANCHOR_PATTERN}/${ANCHOR_REPLACEMENT}/" "$TEST_FILE"
+mutacao_aplicar "$TEST_FILE" "$ANCHOR_PATTERN" "$ANCHOR_PAYLOAD" "$(cksum "$TEST_FILE" | cut -d' ' -f1)"
 
 # Verifica que a mutação realmente aplicou (novo presente + antigo ausente).
 if grep -Fq "$ANCHOR_REPLACEMENT" "$TEST_FILE" && ! grep -Fq "$ANCHOR_PATTERN" "$TEST_FILE"; then
-  pass "Mutação B aplicada: '.toBe(128)' → '.toBe(129)' (dev=162 intocado)"
+  pass "Mutação B aplicada: '.toBe(127)' → '.toBe(128)' (dev=162 intocado)"
 else
-  fail "Mutação B não aplicou corretamente (sed falhou?)."
+  fail "Mutação B não aplicou corretamente (a régua falhou?)."
   exit 1
 fi
 
 # Prova o isolamento: a doc dos workflows DEVE estar intacta — a falha do
 # teste neste cenário tem que vir SÓ da âncora, não de uma doc mutada
-# sobrando do cenário A (ou de um leak do sed).
+# sobrando do cenário A (ou de um leak da troca).
 if ! grep -Fq "127 checks" "${SCAN_FILES[@]}"; then
   fail "Doc dos workflows NÃO está íntegra ('127 checks' ausente)."
   fail "O cenário A não foi restaurado? Verifique antes de prosseguir."
@@ -590,7 +614,7 @@ for file in "${SCAN_FILES[@]}"; do
     sed -i "$pat" "$file"
   done
 done
-sed -i "s/${GUARD_PISO_PATTERN}/${GUARD_PISO_REPLACEMENT}/" "$GUARD_FILE"
+mutacao_aplicar "$GUARD_FILE" "$GUARD_PISO_PATTERN" "$GUARD_PISO_PAYLOAD" "$(cksum "$GUARD_FILE" | cut -d' ' -f1)"
 
 # Verifica que AMBAS as mutações aplicaram + âncora intacta
 if grep -Fq "N checks" "${SCAN_FILES[@]}" && ! grep -Fq "127 checks" "${SCAN_FILES[@]}"; then

@@ -61,9 +61,10 @@
 #       morreu foi a defesa nomeada e não o comando inteiro. O nº total de
 #       testes também tem de bater com o do controle (o arquivo rodou INTEIRO).
 #
-# ⚠️ Source-coupled (como os demais test-mutation-*.sh): os sed ancoram em
+# ⚠️ Source-coupled (como os demais test-mutation-*.sh): as trocas ancoram em
 # linhas literais do guard (o portão da conta, o filtro do segredo, o retorno da
-# máscara e o desvio do segredo-ausente) e as asserções nos títulos dos testes.
+# máscara e o desvio do segredo-ausente — este último pela JANELA de três linhas,
+# porque o alvo se repete no arquivo) e as asserções nos títulos dos testes.
 # Reformular qualquer uma delas ou renomear um teste exige atualizar ESTE script
 # junto — e ele FALHA (exit 1) em vez de passar em silêncio quando isso acontece.
 # =============================================================================
@@ -86,6 +87,14 @@ mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
 }
 cd "$SCRIPT_DIR"
 
+# A RÉGUA ÚNICA da prova-de-aplicação (`mutacao_aplicar`): a troca num arquivo do
+# REPOSITÓRIO passa por ela — o `check-mutation-count` recusa a cirurgia privada
+# (`sed -i`) em QUALQUER `scripts/test-mutation-*.sh`, e uma troca sem a prova de
+# que aplicou mede o alvo ÍNTEGRO (o verde em VÁCUO). O gabarito dela é
+# `scripts/test-mutation-mutacao-prova.sh`.
+# shellcheck source=scripts/mutacao-prova.sh
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 GUARD="scripts/check-env-mirror.mjs"
 TEST_FILE="src/lib/__tests__/check-env-mirror.test.ts"
 
@@ -98,22 +107,25 @@ RESULTS_CONTROL="$TMP_DIR/control.json"
 # (o `write(plan.reconciled)` do fim). A linha mutada é condicional: o caminho
 # que FECHA a conta (unexplained === 0) segue intacto — é a âncora cirúrgica.
 C1_ANCHOR_DOC="  if (unexplained !== 0) {"
-C1_SED='/^  if (unexplained !== 0) {$/ s/^  if (unexplained !== 0) {$/  if (false) { \/\/ MUTATION-ENV-MIRROR-A/'
-C1_MARKER="  if (false) { // MUTATION-ENV-MIRROR-A"
+# A troca é o par LITERAL que a régua única aplica (o alvo casa UM sítio só, e o
+# payload carrega o marcador `MUTACAO`): o `sed -i` da forma antiga trocava a
+# linha sem PROVAR que a escrita entrou.
+C1_LINHA="$C1_ANCHOR_DOC"
+C1_MARKER="  if (false) { // MUTACAO M1: MUTATION-ENV-MIRROR-A"
 
 # ── Caso B — a DEFESA DO SEGREDO vira no-op ──────────────────────────────
 # O filtro passa a devolver [] e o plano com um SEGREDO é escrito.
 C2_ANCHOR_DOC="  const forbidden = plan.edits.filter((e) => classifyEnvVariable(e.name) === \"secret\")"
-C2_SED='/^  const forbidden = plan.edits.filter((e) => classifyEnvVariable(e.name) === "secret")$/ s/^  const forbidden = plan.edits.filter((e) => classifyEnvVariable(e.name) === "secret")$/  const forbidden = [] \/\/ MUTATION-ENV-MIRROR-B/'
-C2_MARKER="  const forbidden = [] // MUTATION-ENV-MIRROR-B"
+C2_LINHA="$C2_ANCHOR_DOC"
+C2_MARKER="  const forbidden = [] // MUTACAO M2: MUTATION-ENV-MIRROR-B"
 
 # ── Caso C — `maskSecrets` vira no-op ────────────────────────────────────
 # O patch volta a sair com o valor REAL no contexto (e o relatório passa a
 # dizê-lo "byte-exato", que é a mentira perigosa: `git apply` funcionaria e o
 # segredo iria junto).
 C3_ANCHOR_DOC='      return `${m[1]}${assign[1]}${assign[2]}=${MASK}`'
-C3_SED='/^      return `\${m\[1\]}\${assign\[1\]}\${assign\[2\]}=\${MASK}`$/ s/^      return .*$/      return line \/\/ MUTATION-ENV-MIRROR-C/'
-C3_MARKER="      return line // MUTATION-ENV-MIRROR-C"
+C3_LINHA="$C3_ANCHOR_DOC"
+C3_MARKER='      return line // MUTACAO M3: MUTATION-ENV-MIRROR-C'
 
 # ── Caso D — o SEGREDO AUSENTE vira `add` ───────────────────────────────
 # O desvio do passo 2 (nome declarado no template e ausente no host) deixa de
@@ -121,8 +133,17 @@ C3_MARKER="      return line // MUTATION-ENV-MIRROR-C"
 # template — o placeholder comitado gravado no host. A mutação é ESCOPADA ao
 # laço (a outra ocorrência da mesma linha, no passo 4, tem de SOBREVIVER).
 C4_ANCHOR_DOC="  for (const name of [...template.keys()].sort()) {"
-C4_SED='/^  for (const name of \[\.\.\.template\.keys()\]\.sort()) {$/,+2 s/^    if (classifyEnvVariable(name) === "secret") {$/    if (false) { \/\/ MUTATION-ENV-MIRROR-D/'
-C4_MARKER="    if (false) { // MUTATION-ENV-MIRROR-D"
+# Aqui o alvo NÃO é único: `if (classifyEnvVariable(name) === "secret") {`
+# aparece DUAS vezes no guard (o passo 2 e o passo 4), e a régua exige um alvo
+# CIRÚRGICO. A janela LITERAL de três linhas (o `ADDR,+2` da forma antiga) é o
+# que dá o sítio: a mutação atinge o passo 2 e o passo 4 SOBREVIVE — o CONTROLE
+# que o LEFTOVER conta.
+C4_LINHA='  for (const name of [...template.keys()].sort()) {
+    if (host.has(name)) continue
+    if (classifyEnvVariable(name) === "secret") {'
+C4_MARKER='  for (const name of [...template.keys()].sort()) {
+    if (host.has(name)) continue
+    if (false) { // MUTACAO M4: MUTATION-ENV-MIRROR-D'
 C4_LEFTOVER='    if (classifyEnvVariable(name) === "secret") {'
 C4_LEFTOVER_EXPECTED="1"
 
@@ -300,9 +321,9 @@ assert_mutation_detected() {
     fail "O guard foi refatorado? Atualize a mutação DESTE script junto."
     exit 1
   fi
-  sed -i "$CASE_SED" "$GUARD"
+  mutacao_aplicar "$GUARD" "$CASE_LINHA" "$CASE_MARKER" "$(cksum "$GUARD" | cut -d' ' -f1)"
   if ! grep -Fq "$CASE_MARKER" "$GUARD"; then
-    fail "MUTAÇÃO NÃO APLICOU (o sed não produziu o marcador)."
+    fail "MUTAÇÃO NÃO APLICOU (a régua não produziu o marcador)."
     exit 1
   fi
   if [ -n "$CASE_LEFTOVER" ]; then
@@ -386,7 +407,7 @@ assert_control_pass
 echo ""
 info "Caso A — cortando o portão da conta..."
 CASE_ANCHOR_DOC="$C1_ANCHOR_DOC"
-CASE_SED="$C1_SED"
+CASE_LINHA="$C1_LINHA"
 CASE_MARKER="$C1_MARKER"
 CASE_LEFTOVER=""
 CASE_LEFTOVER_EXPECTED="0"
@@ -397,7 +418,7 @@ assert_mutation_detected "A (portão da conta)"
 echo ""
 info "Caso B — cortando a defesa do segredo..."
 CASE_ANCHOR_DOC="$C2_ANCHOR_DOC"
-CASE_SED="$C2_SED"
+CASE_LINHA="$C2_LINHA"
 CASE_MARKER="$C2_MARKER"
 CASE_LEFTOVER=""
 CASE_LEFTOVER_EXPECTED="0"
@@ -408,7 +429,7 @@ assert_mutation_detected "B (defesa do segredo)"
 echo ""
 info "Caso C — tornando maskSecrets um no-op..."
 CASE_ANCHOR_DOC="$C3_ANCHOR_DOC"
-CASE_SED="$C3_SED"
+CASE_LINHA="$C3_LINHA"
 CASE_MARKER="$C3_MARKER"
 CASE_LEFTOVER=""
 CASE_LEFTOVER_EXPECTED="0"
@@ -419,7 +440,7 @@ assert_mutation_detected "C (maskSecrets)"
 echo ""
 info "Caso D — fazendo o segredo ausente virar add..."
 CASE_ANCHOR_DOC="$C4_ANCHOR_DOC"
-CASE_SED="$C4_SED"
+CASE_LINHA="$C4_LINHA"
 CASE_MARKER="$C4_MARKER"
 CASE_LEFTOVER="$C4_LEFTOVER"
 CASE_LEFTOVER_EXPECTED="$C4_LEFTOVER_EXPECTED"

@@ -33,8 +33,9 @@
 #   MUTAÇÃO  — troca
 #       const comparable = MIRROR_VARIABLES.some((name) => wanted[name] !== null && wanted[name] !== "")
 #     por
-#       const comparable = false
-#     (o doctor deixa de perguntar o valor e cai no ramo "sem régua") →
+#       const comparable = false // MUTACAO M1: MUTATION-DOCTOR-MIRRORS
+#     (o doctor deixa de perguntar o valor e cai no ramo "sem régua"; a troca
+#     entra pela régua única, que PROVA que ela aplicou) →
 #     suíte VERMELHA (success=false) com:
 #       • 'TEMPLATE divergente do valor declarado' FAILING — a asserção que
 #         prova a comparação; e
@@ -42,7 +43,7 @@
 #         CIRÚRGICA: o caminho de EXISTÊNCIA (que não é o comparado) segue
 #         de pé e o arquivo roda INTEIRO (mesmo nº de testes do controle).
 #
-# ⚠️ Source-coupled: o sed ancora na linha `const comparable = MIRROR_VARIABLES.some`
+# ⚠️ Source-coupled: a régua ancora na linha `const comparable = MIRROR_VARIABLES.some`
 # e as asserções nos títulos dos testes ('TEMPLATE divergente do valor
 # declarado' / 'env da forja ausente'). Reformular a linha ou renomear os
 # testes exige atualizar ESTE script junto (não é guard cego — é o
@@ -67,6 +68,14 @@ mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
 }
 cd "$SCRIPT_DIR"
 
+# A RÉGUA ÚNICA da prova-de-aplicação (`mutacao_aplicar`): a troca num arquivo do
+# REPOSITÓRIO passa por ela — o `check-mutation-count` recusa a cirurgia privada
+# (`sed -i`) em QUALQUER `scripts/test-mutation-*.sh`, e uma troca sem a prova de
+# que aplicou mede o alvo ÍNTEGRO (o verde em VÁCUO). O gabarito dela é
+# `scripts/test-mutation-mutacao-prova.sh`.
+# shellcheck source=scripts/mutacao-prova.sh
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
+
 DOCTOR="scripts/forge-doctor.mjs"
 TEST_FILE="src/lib/__tests__/forge-doctor.test.ts"
 
@@ -78,10 +87,14 @@ RESULTS_MUTATION="$TMP_DIR/mutation.json"
 
 # ── Mutação (o bug conhecido) ─────────────────────────────────────────────
 # A linha real decide se a régua (o valor declarado) está disponível; a
-# mutação a neutraliza, e o doctor passa a NUNCA comparar o valor.
+# mutação a neutraliza, e o doctor passa a NUNCA comparar o valor. A troca é o
+# par LITERAL (a linha inteira) que a régua única aplica — o `sed` da forma
+# antiga (`s|^  const comparable.*|`) casava a linha por PADRÃO e escrevia sem
+# prova: aqui o alvo tem de casar UM sítio só, e a régua confere o marcador e o
+# checksum (a linha mutada carrega `MUTACAO`, a identidade da mutação).
 ORIGINAL_MARKER="const comparable = MIRROR_VARIABLES.some"
-MUTATED_MARKER="const comparable = false // MUTATION-DOCTOR-MIRRORS"
-MUTATION_SED="s|^  const comparable = MIRROR_VARIABLES\\.some.*|  const comparable = false // MUTATION-DOCTOR-MIRRORS|"
+ORIGINAL_LINHA='  const comparable = MIRROR_VARIABLES.some((name) => wanted[name] !== null && wanted[name] !== "")'
+MUTATED_MARKER='  const comparable = false // MUTACAO M1: MUTATION-DOCTOR-MIRRORS'
 
 # Asserções — títulos de teste (fonte: src/lib/__tests__/forge-doctor.test.ts,
 # describe "readMirrors — os espelhos, contra o valor DECLARADO").
@@ -288,14 +301,14 @@ info "Aplicando mutação: neutralizando a régua da comparação de valor..."
 if ! grep -Fq "$ORIGINAL_MARKER" "$DOCTOR"; then
   fail "MUTAÇÃO NÃO APLICOU: a linha original não existe em $DOCTOR"
   fail "  esperava:  $ORIGINAL_MARKER"
-  fail "O doctor foi refatorado? Atualize o sed DESTE script junto."
+  fail "O doctor foi refatorado? Atualize a régua (o par literal) DESTE script junto."
   exit 1
 fi
 
-sed -i "$MUTATION_SED" "$DOCTOR"
+mutacao_aplicar "$DOCTOR" "$ORIGINAL_LINHA" "$MUTATED_MARKER" "$(cksum "$DOCTOR" | cut -d' ' -f1)"
 
 if grep -Fq "$ORIGINAL_MARKER" "$DOCTOR" || ! grep -Fq "$MUTATED_MARKER" "$DOCTOR"; then
-  fail "MUTAÇÃO NÃO APLICOU (o sed não trocou a linha)."
+  fail "MUTAÇÃO NÃO APLICOU (a régua não trocou a linha)."
   exit 1
 fi
 if ! node --check "$DOCTOR" >/dev/null 2>&1; then

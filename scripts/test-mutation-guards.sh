@@ -424,13 +424,16 @@ SEM_MARCADOR=(
 # própria.
 #
 # A CIRURGIA PRIVADA NA ÁRVORE É VIOLAÇÃO, e quem a recusa é a regra do
-# `check-mutation-count`: uma suíte da MATRIZ que escreve num arquivo do
-# repositório por `sed -i`/`python3` privado (em vez da régua única) faz o guard
-# FALHAR. A nota antiga de "três linhas PENDENTE" ficou obsoleta: as suítes que
-# trocavam na árvore por helper privado foram convertidas para a régua
+# `check-mutation-count`: QUALQUER `scripts/test-mutation-*.sh` que escreve num
+# arquivo do repositório por `sed -i`/`python3` privado (em vez da régua única)
+# faz o guard FALHAR — a jurisdição era a MATRIZ, e as suítes de job próprio (que
+# trocam o mesmo tipo de arquivo e não têm metade que as meça) ficavam FORA dela.
+# A nota antiga de "três linhas PENDENTE" ficou obsoleta: as suítes que trocavam
+# na árvore por helper privado foram convertidas para a régua
 # (`reconciliation`, `nested-guard`, `hook-ci-parity`) e o `registry-defaults`
-# fechou o caso do remendo da tabela. O caso desta lista é a cirurgia na CÓPIA do
-# fixture, nunca na árvore.
+# fechou o caso do remendo da tabela. O que sobra fora da régua é DECLARADO no
+# bloco `CIRURGIA_NA_ARVORE` (abaixo, com o alvo, o tipo e o motivo), e o caso
+# DESTA lista segue sendo a cirurgia na CÓPIA do fixture, nunca na árvore.
 FORA_DA_REGUA=(
   'bun-literal|muta a CÓPIA do fixture no scratch (`node -e`/`sed -i`), não a árvore'
   'bun-removal|a mutação é a CONSTRUÇÃO do fixture (o workflow mutado nasce escrito)'
@@ -450,6 +453,32 @@ FORA_DA_REGUA=(
   'commit-import-exports|a mutação é a CONSTRUÇÃO do fixture (`cat >`/`printf`)'
   'doc-hashes|o guard mutado é a CÓPIA do fixture (`mutar_linha`: `sed -i` ancorado por marcador)'
   'act-origin|o gate mutado é a CÓPIA do fixture (`mutar_linha`: linha inteira por `python3`)'
+)
+
+# ── A CIRURGIA NA ÁRVORE: as trocas PRIVADAS que ficam, cada uma com o porquê ──
+#
+# Formato: "script|alvo|tipo|motivo". A régua única é o caminho de quem TROCA um
+# arquivo do REPOSITÓRIO, e a regra do `check-mutation-count` recusa o `sed -i`
+# privado em QUALQUER `scripts/test-mutation-*.sh` — a matriz e as suítes de job
+# próprio, que ninguém media. O que a régua NÃO expressa (o alvo que NÃO é único
+# no arquivo, a troca POSICIONAL, a prosa CONTADA que é o próprio dado da
+# mutação) continua possível — DECLARADO aqui, e o guard confere a lista nos
+# DOIS sentidos: uma troca sem linha e uma linha sem troca são violação.
+#
+# A linha nomeia o ALVO e o TIPO de propósito: uma troca NOVA (outro arquivo, ou
+# o mesmo por outro mecanismo) não se abriga sob a linha antiga.
+CIRURGIA_NA_ARVORE=(
+  # O `coord-update` muta a PROSA CONTADA da doc em TRÊS arquivos (o `s///g` dos
+  # cenários A/D/E) e a 1ª asserção REAL do source (o POSICIONAL do cenário C).
+  # Nas duas, o payload é o PRÓPRIO DADO que a mutação mede — a `N checks`
+  # inválida que o guard da doc lê, o `expect(` comentado que a derivação conta —
+  # e nem o marcador nem uma contagem por arquivo cabem ali sem mudar o que a
+  # mutação afirma. As outras DUAS trocas da mesma suíte (a âncora do teste e o
+  # piso do guard) PASSAM pela régua: são pares literais de uma linha.
+  'scripts/test-mutation-coord-update.sh|.github/workflows/pr-check.yml|sed -i|a troca é o TEXTO CONTADO da doc (`127 checks` → `N checks`): o payload é o dado que a mutação mede, e o `s///g` não declara a contagem por arquivo que a régua exige'
+  'scripts/test-mutation-coord-update.sh|.github/workflows/seed-guards.yml|sed -i|a troca é o TEXTO CONTADO da doc (`127 checks` → `N checks`), pelo mesmo motivo de pr-check.yml'
+  'scripts/test-mutation-coord-update.sh|scripts/validate-seed-guards-matrix-local.sh|sed -i|a troca é o TEXTO CONTADO da doc (`127 checks` → `N checks`), pelo mesmo motivo de pr-check.yml'
+  'scripts/test-mutation-coord-update.sh|scripts/test-seed-prod-e2e.ts|sed -i|a troca é POSICIONAL (`0,/^[[:space:]]*expect(/s//`): o alvo é a PRIMEIRA asserção real do source, e o `expect(` não é literal único — a régua exige um alvo CIRÚRGICO'
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────

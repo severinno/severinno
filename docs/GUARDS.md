@@ -1404,31 +1404,60 @@ por conta própria, sem reivindicar a prova do marcador (o payload que não é
 comentável, por exemplo): elas ficam ditas pelo que **não** declaram, nunca por
 omissão.
 
-**E A TROCA NA ÁRVORE POR CIRURGIA PRIVADA PASSOU A SER RECUSADA — o outro lado
-do mesmo eixo.** As três conferências acima julgam a prova _declarada_; nenhuma
-delas olhava o que uma suíte da MATRIZ **escreve** na árvore. Medido: o
+**E A TROCA NA ÁRVORE POR CIRURGIA PRIVADA É RECUSADA EM QUALQUER SUÍTE DE
+MUTAÇÃO — o outro lado do mesmo eixo.** As três conferências acima julgam a prova
+_declarada_; nenhuma delas olhava o que uma suíte **escreve** na árvore. Medido: o
 `registry-defaults` remendava a TABELA do tipo novo com um `python3 - <<'PY'`
 privado que dava `open(path, "w")` DIRETO em `scripts/check-registry-source.mjs`
 e `scripts/registry-source.mjs` — a troca na ÁRVORE, por fora da régua, ao lado
 das mutações que a régua provava. Uma escrita que não entrou não deixa rastro: a
-suíte mede o alvo ÍNTEGRO, e o verde é o de sempre. A regra nova
-(`analisaCirurgiaNaArvore`, 4b-bis do `run()`) varre cada suíte do `SUBTESTS` e
-recusa três primitivas — o `sed -i`/`--in-place`, o redirecionamento `>`/`>>` e o
-heredoc cujo corpo GRAVA (o `open(..., "w")`, o `write_text`) — **quando o alvo
-existe na árvore**. O que NÃO é a árvore não é julgado: a cópia do fixture no
-scratch nasce de um `mktemp` e o seu valor não resolve (a classe legítima das
-suítes de `FORA_DA_REGUA`), e um caminho relativo que não existe no repositório
-(nem o da cópia sob `cd "$FIXTURE_DIR"`) também não. O alvo é reconhecido contra
-a árvore **de verdade** mesmo no recorte `--staged` — senão a cirurgia só
-apareceria no CI, e não no commit. O `registry-defaults` converteu para o caminho
-**DECLARADO** (`mutacao_aplicar_sem_marcador`, com o motivo), e é o quarto nome de
-`SEM_MARCADOR`: o remendo da tabela não é uma mutação (não cega nada) e o payload
-entra SEM o marcador de propósito — a M7 lê a AUSÊNCIA dele para saber que a
-própria escrita aplicou. A cobertura viva da regra são os casos unitários de
-`check-mutation-count.test.ts` (o `sed -i`, o heredoc, o redirecionamento, o
-scratch que NÃO é a árvore e o `--staged`); a metade que a desligaria no gabarito
-da matriz é LACUNA DECLARADA — acrescentá-la mexeria na coluna de metades do
-registro versionado, que é reescrita pelo ATO.
+suíte mede o alvo ÍNTEGRO, e o verde é o de sempre. A regra
+(`analisaCirurgiaNaArvore`, 4b-bis do `run()`) varre **todas as
+`scripts/test-mutation-*.sh`** — a matriz e as suítes de job próprio, que rodam
+fora dela e que metade nenhuma media — e recusa três primitivas — o
+`sed -i`/`--in-place`, o redirecionamento `>`/`>>` e o heredoc cujo corpo GRAVA (o
+`open(..., "w")`, o `write_text`) — **quando o alvo existe na árvore**.
+
+**A JURISDIÇÃO ERA A MATRIZ, E A CLASSE SOBREVIVIA FORA DELA.** Medido em
+29/09/2026, com a regra da matriz já no ar: **cinco suítes e dez LINHAS com troca
+privada** fora do `SUBTESTS` (**dezesseis achados**, contando alvo a alvo) — o
+`coord-update` (a prosa CONTADA da doc em três arquivos × três cenários, a âncora
+do teste, o piso do guard e a asserção POSICIONAL do source), o `doctor-mirrors`
+e o `gate-contracts` (o `forge-doctor.mjs`), o `env-mirror` (o
+`check-env-mirror.mjs`) e o `seed-dev-e2e` (o `prisma/seed.ts`).
+
+**Seis dessas linhas convergiram para a régua única** (onze mutações, contando as
+quatro provas do `env-mirror` e as três regras do `gate-contracts`, que dividem
+uma linha cada): a troca passou a carregar o marcador `MUTACAO` no payload — que
+é o que ela passa a PROVAR —, e duas delas trocam a linha INTEIRA (a janela
+literal de três linhas do `env-mirror D` é o que dá o sítio único que o alvo
+repetido não dava). **Quatro ficaram DECLARADAS** no bloco
+`CIRURGIA_NA_ARVORE` do master, uma linha por (suíte, alvo, tipo): três são a
+prosa CONTADA (`127 checks` → `N checks`), cujo payload é o PRÓPRIO dado que a
+mutação mede, e uma é a troca POSICIONAL (`0,/^[[:space:]]*expect(/s//`), cujo
+alvo é a primeira asserção real do source — nenhuma delas cabe numa régua que
+exige um alvo LITERAL e cirúrgico. A lista é conferida **nos DOIS sentidos**: uma
+troca sem linha e uma linha sem troca são violação, e como a linha nomeia o ALVO e
+o TIPO, uma troca NOVA (outro arquivo, ou o mesmo por outro mecanismo) não se
+abriga sob a declaração antiga.
+
+O ALVO POR VARIÁVEL DE LAÇO também é reconhecido (`sed -i "$pat" "$file"` dentro
+de um `for file in "${ARQUIVOS[@]}"`): era por essa fenda que nove dos dezesseis
+achados desta árvore passavam sem julgamento. O que NÃO é a árvore não é julgado: a cópia
+do fixture no scratch nasce de um `mktemp` e o seu valor não resolve (a classe
+legítima das suítes de `FORA_DA_REGUA`), e um caminho relativo que não existe no
+repositório (nem o da cópia sob `cd "$FIXTURE_DIR"`) também não. O alvo é
+reconhecido contra a árvore **de verdade** mesmo no recorte `--staged` — senão a
+cirurgia só apareceria no CI, e não no commit. O `registry-defaults` converteu
+para o caminho **DECLARADO** (`mutacao_aplicar_sem_marcador`, com o motivo), e é o
+quarto nome de `SEM_MARCADOR`: o remendo da tabela não é uma mutação (não cega
+nada) e o payload entra SEM o marcador de propósito — a M7 lê a AUSÊNCIA dele para
+saber que a própria escrita aplicou. A cobertura viva da regra são os casos
+unitários de `check-mutation-count.test.ts` (o `sed -i`, o heredoc, o
+redirecionamento, o scratch que NÃO é a árvore, a suíte FORA da matriz, o laço, a
+declaração conferida nos dois sentidos e o `--staged`); a metade que a desligaria
+no gabarito da matriz é LACUNA DECLARADA — acrescentá-la mexeria na coluna de
+metades do registro versionado, que é reescrita pelo ATO.
 
 #### O ATO × A ÁRVORE QUE ELE DECLARA TER MEDIDO — o instrumento que se cobra
 

@@ -8,7 +8,7 @@
 # seed mutado (exit 0), o guard está CEGO — uma asserção foi removida ou
 # enfraquecida — e o script falha (exit 1), bloqueando o CI.
 #
-# Mutação aplicada (sed em prisma/seed.ts):
+# Mutação aplicada (pela RÉGUA ÚNICA, em prisma/seed.ts):
 #   email: "admin@severinno.com"  →  email: "admin-mutated@severinno.com"
 # O EXPECTED_EMAILS do E2E é HARDCODED no teste (scripts/test-seed-dev-e2e.ts),
 # então o admin criado com email mutado não satisfaz:
@@ -25,7 +25,8 @@
 #   1. Start PostGIS via docker-compose.test.yml (tmpfs — dados descartáveis)
 #   2. Wait for container healthy
 #   3. Push Prisma schema (cria as tabelas)
-#   4. Backup prisma/seed.ts + aplicar mutação (sed) + verificar aplicada
+#   4. Backup prisma/seed.ts + mutação (pela régua única) + verificação de que
+#      ela aplicou
 #   5. Run scripts/test-seed-dev-e2e.ts contra o seed MUTADO (captura exit)
 #   6. Verificar que o E2E FALHOU com a asserção esperada (mutation detected)
 #   7. Restaurar prisma/seed.ts do backup (trap EXIT — cp, NUNCA git checkout)
@@ -66,6 +67,9 @@ COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.test.yml}"
 DATABASE_URL="${DATABASE_URL:-postgresql://severinno:severinno_test@localhost:5433/severinno_test}"
 
 SEED_FILE="$SCRIPT_DIR/prisma/seed.ts"
+
+# shellcheck source=scripts/mutacao-prova.sh
+. "$SCRIPT_DIR/scripts/mutacao-prova.sh"
 # O backup do seed também vive no SCRATCH estável (o bloco acima): no `/tmp` ele
 # sumia com o `/tmp` limpo por fora, e o restore do trap — que só copia o backup
 # se ele for NÃO-VAZIO (`-s`) — pularia o cp em silêncio e deixaria
@@ -74,12 +78,17 @@ SEED_FILE="$SCRIPT_DIR/prisma/seed.ts"
 BACKUP_FILE="$(mktemp "$MUT_SCRATCH/backup-XXXXXX")"
 
 # ── Mutação (bug conhecido) ───────────────────────────────────────────────
-# Padrões do sed. Atenção: o console.log final do seed também imprime o email
-# admin, MAS sem o prefixo `email: ` — o sed abaixo só casa o CREATE (linha
-# com `email: "admin@severinno.com"`), preservando o output de credenciais
-# (que o E2E checa com "Login credentials").
+# O par LITERAL da troca. Atenção: o console.log final do seed também imprime o
+# email admin, MAS sem o prefixo `email: ` — a troca só casa o CREATE (o literal
+# com `email: "admin@severinno.com"`), preservando o output de credenciais (que
+# o E2E checa com "Login credentials"). A troca passa pela RÉGUA ÚNICA
+# (`mutacao_aplicar`): o `sed -i` da forma antiga escrevia sem provar que
+# aplicou, e o `check-mutation-count` recusa a cirurgia privada na árvore em
+# qualquer `scripts/test-mutation-*.sh`. O payload carrega o marcador `MUTACAO`
+# (a prova de que a escrita entrou) — o e-mail mutado, que é o que o E2E mede,
+# segue idêntico.
 MUTATION_OLD='email: "admin@severinno.com"'
-MUTATION_NEW='email: "admin-mutated@severinno.com"'
+MUTATION_NEW='email: "admin-mutated@severinno.com" /* MUTACAO M1: o admin do seed ganha um e-mail SENTINELA (o E2E tem de ver o defeito) */'
 
 # Asserção que o E2E DEVE emitir quando o guard detecta a mutação.
 # Fonte: validateUsers() em scripts/test-seed-dev-e2e.ts (EXPECTED_EMAILS).
@@ -216,22 +225,22 @@ info "STEP 3: Aplicando mutação em prisma/seed.ts..."
 # Backup ANTES da mutação (cp para temp — restauração segura em trap).
 cp "$SEED_FILE" "$BACKUP_FILE"
 
-# Fail-fast: se o padrão não existir (seed refatorado), o sed viraria um
-# no-op silencioso → o E2E passaria e o script acusaria "guard cego" sendo
-# que o problema é o padrão do mutation test. Pare com mensagem clara.
+# Fail-fast: se o padrão não existir (seed refatorado), a régua RECUSA a troca
+# (o alvo deixa de ser cirúrgico) → pare com mensagem clara em vez de acusar
+# "guard cego" sendo que o problema é o padrão do mutation test.
 if ! grep -Fq "$MUTATION_OLD" "$SEED_FILE"; then
   fail "Padrão de mutação não encontrado em prisma/seed.ts: $MUTATION_OLD"
   fail "O seed mudou? Atualize MUTATION_OLD/MUTATION_NEW neste script."
   exit 1
 fi
 
-sed -i "s/$MUTATION_OLD/$MUTATION_NEW/" "$SEED_FILE"
+mutacao_aplicar "$SEED_FILE" "$MUTATION_OLD" "$MUTATION_NEW" "$(cksum "$SEED_FILE" | cut -d' ' -f1)"
 
 # Verifica que a mutação realmente aplicou (novo presente + antigo ausente).
 if grep -Fq "$MUTATION_NEW" "$SEED_FILE" && ! grep -Fq "$MUTATION_OLD" "$SEED_FILE"; then
   pass "Mutação aplicada: $MUTATION_OLD → $MUTATION_NEW"
 else
-  fail "Mutação não aplicou corretamente (sed falhou?)."
+  fail "Mutação não aplicou corretamente (a régua falhou?)."
   exit 1
 fi
 
