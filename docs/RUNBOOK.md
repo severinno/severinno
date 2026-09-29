@@ -96,15 +96,23 @@ bash scripts/forge-backup-pull.sh [dia]
 
 **Por que o pull e não o push:** a VPS não guarda credencial do destino off-site — uma VPS comprometida não apaga nem corrompe a cópia que fica fora dela. Um backup sem verificação é esperança, não backup: o `sha256sum -c` local e o `git bundle verify` são o que tornam o artefato confiável no dia do desastre.
 
-**Restauração da forja a partir do dump** (mesma série do gitea, volume novo):
+**Restauração da forja a partir do dump** — PROVADA em desastre simulado (29/09/2026, stack efêmera: o Gitea restaurado bootou e serviu a API). O Gitea 1.22 NÃO tem comando `restore` completo (só `dump`/`dump-repo`/`restore-repo`): o caminho é repor o volume a partir do zip:
 
 ```bash
-# 1. sobe a stack parada do app e do runner
-docker compose -f deploy/docker-compose.gitea.yml up -d gitea
-# 2. restaura o dump oficial (o zip contém app.ini, gitea-db.sql, anexos e repos)
-docker exec -i gitea su git -c 'unzip -o /tmp/forge-dump.zip -d /tmp/restore && gitea restore -f /tmp/restore'
-# 3. sobe o resto: docker compose -f deploy/docker-compose.gitea.yml up -d
+# 1. para o app e o runner (o gitea para no passo 3)
+docker compose -f deploy/docker-compose.gitea.yml stop runner
+# 2. unzip do dump do dia (contém data/, app.ini e gitea-db.sql)
+rm -rf /tmp/restore && mkdir -p /tmp/restore && cd /tmp/restore
+unzip -q /root/backups-forja/<dia>/forge-dump.zip
+# 3. para a forja e REPÕE o volume (data/ + conf do app.ini)
+docker compose -f deploy/docker-compose.gitea.yml stop gitea
+docker run --rm -v <volume-do-gitea>:/data -v /tmp/restore:/backup alpine sh -c \
+  'cp -a /backup/data/. /data/ && mkdir -p /data/gitea/conf && cp /backup/app.ini /data/gitea/conf/app.ini'
+docker compose -f deploy/docker-compose.gitea.yml up -d
+# 4. a prova: curl https://git.severinno.com/api/v1/version → 200
 ```
+
+**Alerta de falha (`scripts/forge-backup-alert.mjs`, cron local 05:20):** lê o manifest do dia e sai fail-closed — sem manifest (cron não rodou), sem "FIM OK" (morreu no meio) ou artefato do sha256sums ausente abrem issue com o marcador canônico (`issue-publish.mjs`); o dia com FIM OK reconcilia (fecha) as issues que o próprio alerta abriu. Issue com o label mas sem marcador NÃO é fechada por automatismo. Hoje o backend é o GitHub; pós-restore vira `--backend gitea` (a forja dona).
 
 **Pré-requisito do 100% self-hosted (verificado em 29/09):** a forja de bring-up novo nasce SEM `/data/git/repositories` — o `forge-backup.sh` cria o dir antes do dump. Forja vazia (`bundles: 0`) é estado normal, não erro.
 
