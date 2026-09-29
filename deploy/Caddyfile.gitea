@@ -11,14 +11,18 @@
 {
   email admin@severinno.cloud
   admin 0.0.0.0:2019
-  ocsp_stapling on
+  # ocsp_stapling removido (28/09/2026): a diretiva não existe mais no Caddy 2.8+
+  # (stapling automático) e o parse dela crasha o container no arranque.
   storage file:///data/caddy
 }
 
 # =============================================================================
-# DOMINIO PRINCIPAL — git.severinno.cloud (Gitea Web UI)
+# DOMINIO PRINCIPAL — git.severinno.com (Gitea Web UI)
+# (28/09/2026: o domínio severinno.cloud EXPIROU e foi liberado — a forja
+# migra para o subdomínio do domínio VIVO; o A record git.severinno.com →
+# 187.127.16.136 é condição do HTTPS automático)
 # =============================================================================
-git.severinno.cloud {
+git.severinno.com {
   encode zstd gzip
 
   header {

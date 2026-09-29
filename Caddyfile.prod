@@ -19,7 +19,9 @@
   admin 0.0.0.0:2019
 
   # OCSP stapling: mantém certificados frescos sem viagens extras de ida/volta
-  ocsp_stapling on
+  # (medido em 28/09/2026: `ocsp_stapling` foi REMOVIDO do Caddy 2.8+ — a
+  # stapling passou a ser automática/incondicional, e a diretiva crasha o
+  # container no parse: `invalid argument 'on'`)
 
   # ZeroSSL como CA (mais confiável que Let's Encrypt em alguns cenários)
   # Remova esta linha para usar Let's Encrypt

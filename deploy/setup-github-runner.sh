@@ -12,10 +12,11 @@
 #
 # O script:
 #   1. Cria usuário não-root 'github-runner'
-#   2. Baixa e configura o runner
-#   3. Instala como serviço systemd
-#   4. Garante o bun no PATH do daemon (symlink em /usr/local/bin — issue #32)
-#   5. Inicia o runner
+#   2. Garante a TOOLCHAIN do runner (bun pinado, node do .nvmrc, gh, python)
+#   3. Baixa e configura o runner
+#   4. Instala como serviço systemd
+#   5. Garante o bun no PATH do daemon (symlink em /usr/local/bin — issue #32)
+#   6. Inicia o runner
 #
 # O passo 4 existe porque o PATH do daemon é o do PID 1 e é FIXADO NO START do
 # serviço: bun instalado ou atualizado DEPOIS não é visto pelo runner, e as
@@ -71,6 +72,87 @@ fi
 if ! command -v docker &>/dev/null; then
   err "Docker não encontrado. Instale: https://docs.docker.com/engine/install/"
 fi
+
+# ── Toolchain do runner (medido em 28/09/2026) ─────────────────────────────
+#
+# POR QUE AQUI: um runner recém-provisionado SEM toolchain produz vermelhos
+# que não são do código — `node: command not found` derrubou 26 jobs, `spawnSync
+# gh ENOENT` derrubou o guard que consulta a API, e a ausência do `python`
+# (alias do python3) quebrou os guards de encoding que o chamam pelo nome curto.
+# O provisionamento é o lugar da garantia: cada ferramenta tem FONTE ÚNICA de
+# versão (nunca latest), instalação idempotente (pula o que já existe) e
+# verificação no fim.
+
+instalarBun() {
+  if command -v bun >/dev/null 2>&1; then
+    log "bun já presente: $(bun --version)"
+    return 0
+  fi
+  [ -n "${BUN_ESPERADO}" ] || err "bun ausente e sem BUN_VERSION declarado (env, .actrc ou deploy/env.gitea.example) — o pin da fonte única é obrigatório"
+  log "Instalando bun v${BUN_ESPERADO} (pin da fonte única) em /opt/bun"
+  BUN_INSTALL=/opt/bun curl -fsSL https://bun.sh/install | BUN_INSTALL=/opt/bun bash -s "bun-v${BUN_ESPERADO}" >/dev/null
+  ln -sf /opt/bun/bin/bun /usr/local/bin/bun
+  ln -sf /opt/bun/bin/bunx /usr/local/bin/bunx
+  [ "$(/usr/local/bin/bun --version)" = "${BUN_ESPERADO}" ] || err "bun instalado não bate com o pin ${BUN_ESPERADO}"
+}
+
+instalarNode() {
+  if command -v node >/dev/null 2>&1; then
+    log "node já presente: $(node -v)"
+    return 0
+  fi
+  local pin=""
+  if [ -n "${NODE_VERSION:-}" ]; then
+    pin="${NODE_VERSION}"
+  elif [ -s .nvmrc ]; then
+    pin="$(head -n1 .nvmrc | tr -d '[:space:]')"
+  else
+    warn "node ausente e sem NODE_VERSION/.nvmrc no diretório corrente — instale o node do pin do repo antes de rodar jobs de leitura"
+    return 0
+  fi
+  log "Instalando node v${pin} (pin do .nvmrc/NODE_VERSION)"
+  curl -fsSLo /tmp/node.tar.xz "https://nodejs.org/dist/v${pin}/node-v${pin}-linux-x64.tar.xz"
+  mkdir -p /usr/local/lib/nodejs
+  tar -xJf /tmp/node.tar.xz -C /usr/local/lib/nodejs
+  rm -f /tmp/node.tar.xz
+  ln -sf "/usr/local/lib/nodejs/node-v${pin}-linux-x64/bin/node" /usr/local/bin/node
+  ln -sf "/usr/local/lib/nodejs/node-v${pin}-linux-x64/bin/npm" /usr/local/bin/npm
+  ln -sf "/usr/local/lib/nodejs/node-v${pin}-linux-x64/bin/npx" /usr/local/bin/npx
+  [ "$(node -v)" = "v${pin}" ] || err "node instalado não bate com o pin v${pin}"
+}
+
+instalarGh() {
+  if command -v gh >/dev/null 2>&1; then
+    log "gh já presente: $(gh --version | head -1)"
+    return 0
+  fi
+  if command -v apt-get >/dev/null 2>&1; then
+    log "Instalando gh (apt)"
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /usr/share/keyrings/githubcli-archive-keyring.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
+    apt-get update -qq && apt-get install -y -qq gh >/dev/null
+  else
+    warn "gh ausente e apt-get indisponível — instale manualmente (https://cli.github.com)"
+  fi
+}
+
+instalarPythonAlias() {
+  if command -v python >/dev/null 2>&1; then
+    log "python já presente: $(python --version 2>&1)"
+    return 0
+  fi
+  if command -v apt-get >/dev/null 2>&1; then
+    log "Instalando python-is-python3 (os guards chamam `python` pelo nome curto)"
+    apt-get install -y -qq python-is-python3 >/dev/null
+  else
+    warn "python ausente e apt-get indisponível — os guards de encoding que chamam 'python' vão falhar"
+  fi
+}
+
+instalarBun
+instalarNode
+instalarGh
+instalarPythonAlias
 
 # ── Bun no PATH do daemon (issue #32) — fonte da versão esperada ───────────
 #
