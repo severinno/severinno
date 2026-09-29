@@ -1295,15 +1295,15 @@ depois: `escreveu: true` é violação da família, não um detalhe do log.
 **O custo do job mais caro do PR não é uma conta à mão** (família `mutations` do
 `bench-guard-timing`). O job `mutation-guards` roda 47 sub-tests, e o que CADA um
 custa é medido pelo próprio master (`--json`) e versionado sub-test a sub-test no
-registro: o ato de 28/09/2026, medido sobre `589b8bb8` — a âncora é o commit que CARREGA o
+registro: o ato de 29/09/2026, medido sobre `13eedba1` — a âncora é o commit que CARREGA o
 registro, resolvida pela história —
-mediu **914.4s** de sub-tests + **5.7s** de harness =
-**920.1s**, com `job-deps` (206.9s, 23%), `pre-commit-proof` (190.0s, 21%), `workflow-run-syntax` (81.2s, 9%) e `hook-commands` (66.9s, 7%) no topo — antes disso
-ninguém sabia QUAL sub-test pagava a conta. A mediana é **3.2s**, dez sub-tests
-pagam **83%** da soma, e o registro guarda **286 metades**.
+mediu **784.0s** de sub-tests + **5.9s** de harness =
+**789.9s**, com `job-deps` (214.8s, 27%), `workflow-run-syntax` (83.9s, 11%), `hook-commands` (69.6s, 9%) e `local-image` (50.4s, 6%) no topo — antes disso
+ninguém sabia QUAL sub-test pagava a conta. A mediana é **3.3s**, dez sub-tests
+pagam **80%** da soma, e o registro guarda **287 metades**.
 Quem entra com um sub-test novo não compõe nada: ele entra **MEDIDO** na rodada seguinte
-(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~19.6s**) é dita
-como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test.
+(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~16.8s**) é dita
+como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test. **LIMITE DECLARADO:** na rodada do ato, 2 sub-test(s) NÃO passaram (`nested-guard`, `pre-commit-proof`) — o custo deles não julga nada. E o vermelho foi RE-MEDIDO antes de virar veredito: `nested-guard`, `pre-commit-proof` REPETIU o vermelho na 2ª tentativa, então o ms dele é a SOMA das duas (o custo é o que o job pagou).
 
 **E a régua única tem contagem, não estimativa**: das 47 suítes da matriz,
 28 **PROVAM** a aplicação — chamam `mutacao_aplicar`, a cópia única

@@ -88,7 +88,10 @@
 #      matriz — a unidade que entrou na suíte DEPOIS da medição → DEVE FALHAR
 #      nomeando a forma e o delta; sem a derivação passada à régua, PASSA
 #  17. MUTAÇÃO R: o TOTAL da família que não soma a própria coluna → DEVE FALHAR
-#  18. Cleanup (trap EXIT — restaura o guard e rm -rf dos temps)
+#  18. CONTROLE S + MUTAÇÃO S: a CIRURGIA PRIVADA NA ÁRVORE — a suíte do fixture
+#      que troca um arquivo do repositório por `sed -i` privado → DEVE FALHAR
+#      nomeando o alvo; com a regra DESLIGADA, a MESMA troca PASSA
+#  19. Cleanup (trap EXIT — restaura o guard e rm -rf dos temps)
 #
 # Usage:
 #   ./scripts/test-mutation-mutation-count.sh
@@ -129,7 +132,20 @@
 #                           duas leituras da MESMA medição) → DEVE FALHAR com os
 #                           dois números.
 #
-# N/O/Q/R mutam o GUARD (no lugar, com backup + restauração verificada por
+# A QUINTA METADE DESTA SUÍTE (a CIRURGIA PRIVADA NA ÁRVORE × a régua única):
+#
+#   CONTROLE S:             a suíte do fixture que troca um arquivo da ÁRVORE por
+#                           `sed -i` PRIVADO (em vez da régua única) é RECUSADA,
+#                           nomeando o alvo e o mecanismo.
+#   Cenário S (A REGRA):    desligada a regra no guard, a MESMA troca PASSA (exit
+#                           0) — o par recusa/aceite que prova que ela é
+#                           load-bearing no VEREDITO do CLI. A unidade já a
+#                           cobria (os casos de `check-mutation-count.test.ts`),
+#                           e era por isso que a lacuna era do GABARITO: sem
+#                           esta metade, desligar a regra inteira não deixava
+#                           rastro em nenhum par recusa/aceite do gabarito.
+#
+# N/O/Q/R/S mutam o GUARD (no lugar, com backup + restauração verificada por
 # checksum no trap EXIT) e exigem a suíte unitária VERMELHA.
 #
 #   1 — guard CEGO (alguma mutação passou) OU controle falso-positivo ❌
@@ -180,6 +196,7 @@ METADES=(
   'P|o registro do ATO AUSENTE não é violação — e a ligação NÃO julgada fica DITA no veredito'
   'Q|a COLUNA de metades herdada do ato: a unidade entrou na suíte depois da medição e o guard FALHA nomeando a forma (e, sem a derivação passada, PASSA)'
   'R|o TOTAL da família que não fecha com a coluna do MESMO registro → o guard FALHA'
+  'S|a CIRURGIA PRIVADA NA ÁRVORE desligada: a suíte que troca um arquivo do repositório por sed -i privado passa a ser ACEITA (o vácuo que a régua única fecha)'
 )
 GUARD="node $SCRIPT_DIR/scripts/check-mutation-count.mjs --root"
 REQUIRED_GUARD="node $SCRIPT_DIR/scripts/check-required-checks.mjs --root"
@@ -391,6 +408,21 @@ suite_extra() { # $1 = número do sub-test
     echo "  'M2|a metade dois da suite sub-$1'"
     echo ')'
   } > "$TMP_DIR/scripts/test-mutation-sub-$1.sh"
+}
+
+# ── cirurgia_privada_no_fixture: a suíte do SUB-1 troca um arquivo da ÁRVORE ──
+# O alvo nasce na RAIZ do fixture de propósito: é contra a árvore de verdade que
+# um alvo é reconhecido como arquivo nosso (`ehArquivoDaArvore` exige que ele
+# EXISTA) — sem o arquivo, a troca não seria uma escrita no repositório, e a
+# metade mediria o reconhecimento do alvo, não a regra.
+cirurgia_privada_no_fixture() {
+  echo 'const alvo = 1' > "$TMP_DIR/scripts/alvo-do-fixture.mjs"
+  cat >> "$TMP_DIR/scripts/test-mutation-sub-1.sh" <<'EOF'
+
+# a troca PRIVADA na árvore (o mecanismo que a regra recusa): sem a régua única,
+# a suíte mediria o alvo SEM a prova de que a escrita entrou
+sed -i 's/const alvo = 1/const alvo = 2/' scripts/alvo-do-fixture.mjs
+EOF
 }
 
 # ── master_com: um master com N entradas, FORA da árvore (o blob do commit) ─
@@ -1350,6 +1382,54 @@ pass "R: sem a régua do total o MESMO fixture PASSA (exit 0) — a conferência
 exigir_suite_vermelha "R"
 restaurar_guard
 
+# ── CONTROLE S (a regra RECUSA) e MUTAÇÃO S (a regra DESLIGADA) ───────────
+# A REGRA DA CIRURGIA PRIVADA NA ÁRVORE fecha o vácuo estrutural: nenhuma suíte de
+# mutação escreve num arquivo do REPOSITÓRIO por conta própria — quem escreve é a
+# régua única, e ela PROVA que a escrita entrou. A cobertura viva da regra são os
+# casos de `check-mutation-count.test.ts` (o `sed -i`, o heredoc, o
+# redirecionamento, o `tee`, o `cp`/`mv` da árvore sobre a árvore, o
+# `node -e`/`python3 -c` que GRAVA); o que faltava era o par recusa/aceite NO
+# GABARITO — sem ele, desligar a regra inteira não deixava rastro em veredito
+# nenhum deste lado.
+info "STEP 38: CONTROLE S — a suíte do fixture troca um arquivo da ÁRVORE por sed -i privado..."
+make_fixture 13 "" 13 13
+cirurgia_privada_no_fixture
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+echo "$OUTPUT" | grep -E '^   - ' | head -2
+
+if [ "$EXIT" -eq 0 ]; then
+  fail "GUARD CEGO (cirurgia privada): a suíte que troca um arquivo da ÁRVORE por"
+  fail "sed -i privado passou (exit 0) — o vácuo estrutural está aberto."
+  exit 1
+fi
+if ! grep -Fq "troca na ÁRVORE por cirurgia PRIVADA (sed -i em 'scripts/alvo-do-fixture.mjs')" <<<"$OUTPUT"; then
+  fail "O guard falhou (exit $EXIT) mas NÃO nomeou o alvo e o mecanismo da troca privada."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+pass "Controle S OK: a cirurgia privada na árvore é RECUSADA nomeando o alvo e o sed -i (exit $EXIT)"
+
+info "STEP 39: MUTAÇÃO S — a regra da cirurgia privada DESLIGADA..."
+mutar_guard \
+  '    for (const { linha, tipo, alvo } of cirurgiasPrivadasNaArvore(src, arvore)) {' \
+  '    for (const { linha, tipo, alvo } of [] /* MUTACAO M-S: a cirurgia privada na arvore desligada */) {'
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -ne 0 ]; then
+  fail "S: com a regra DESLIGADA a MESMA troca privada ainda reprovou (exit $EXIT) —"
+  fail "outra coisa sustentava o vermelho, não a regra da cirurgia privada."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+pass "S: com a regra desligada a MESMA troca privada PASSA (exit 0) — a regra é load-bearing"
+exigir_suite_vermelha "S"
+restaurar_guard
+
 echo ""
 pass "do job (o contexto do required check não pode depender da matriz), no"
 pass "summary e no README; check-required-checks recusa a CONTAGEM no name de"
@@ -1369,5 +1449,8 @@ pass "E A COLUNA de metades, que é DERIVADA da matriz e não herdada do ato: a"
 pass "unidade que entrou na suíte DEPOIS da medição FALHA nomeando a forma e o"
 pass "delta (e o ato como remédio), sem a derivação passada à régua ela PASSA, e o"
 pass "TOTAL que não soma a própria coluna FALHA com os dois números — fora da"
-pass "régua, o mesmo fixture passa."
+pass "régua, o mesmo fixture passa. E A CIRURGIA PRIVADA NA ÁRVORE: a suíte que"
+pass "troca um arquivo do repositório por sed -i privado é RECUSADA nomeando o alvo,"
+pass "e com a regra DESLIGADA a MESMA troca PASSA — o par recusa/aceite que a"
+pass "unidade já cobria e faltava no veredito do gabarito."
 exit 0

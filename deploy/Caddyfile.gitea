@@ -9,11 +9,13 @@
 # =============================================================================
 
 {
-  email admin@severinno.cloud
+  email admin@severinno.com
   admin 0.0.0.0:2019
   # ocsp_stapling removido (28/09/2026): a diretiva não existe mais no Caddy 2.8+
   # (stapling automático) e o parse dela crasha o container no arranque.
-  storage file:///data/caddy
+  # storage removido (29/09/2026): `storage file:///data/caddy` não é sintaxe
+  # válida de Caddyfile (o módulo seria file_system) e é redundante — /data/caddy
+  # já é o default da imagem oficial; o parse dela crasha o arranque.
 }
 
 # =============================================================================
@@ -38,6 +40,18 @@ git.severinno.com {
   handle /health {
     respond "OK" 200 {
       close
+    }
+  }
+
+  # Registry OCI (imagens das actions) — leitura pública, escrita só via
+  # 127.0.0.1:5000 na VPS (o registry NÃO publica porta de escrita).
+  # `route` garante a ordem escrita: o bloqueio de escrita roda ANTES do proxy
+  # (o `respond` solto era atropelado pela ordenação de diretivas do Caddy).
+  handle /v2/* {
+    route {
+      @v2escrita method PUT POST DELETE PATCH
+      respond @v2escrita "Forbidden" 403
+      reverse_proxy registry:5000
     }
   }
 
@@ -73,7 +87,8 @@ git.severinno.com {
       roll_keep 3
       roll_keep_for 720h
     }
-    format transform "{request>remote_ip} - {request>user_id} [{ts}] \"{request>method} {request>uri} {request>proto}\" {status} {size} \"{request>headers>Referer}\" \"{request>headers>User-Agent}\""
+    # `transform` não existe no Caddy 2.8 (era plugin): json é o formato canônico
+    format json
     level INFO
   }
 
