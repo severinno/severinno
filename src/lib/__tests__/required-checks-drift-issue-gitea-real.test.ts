@@ -181,7 +181,7 @@ describeReal("required-checks-drift-issue Gitea — Gitea real em Docker (integr
 
   beforeAll(async () => {
     gitea = await makeEphemeralGitea()
-  }, 30_000)
+  }, 120_000)
 
   /**
    * 60s de orçamento: quando o daemon nega o kill, o teardown gasta o timeout de
