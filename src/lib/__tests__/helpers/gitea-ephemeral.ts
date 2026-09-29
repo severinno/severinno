@@ -39,7 +39,7 @@
 
 import { spawnSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 
 export interface EphemeralGitea {
   /** URL base do Gitea (ex.: http://127.0.0.1:32789) */
@@ -514,11 +514,23 @@ export async function makeEphemeralGitea(
   // o caminho até a porta publicada é o GATEWAY da rede do container (medido
   // em 29/09: 'Gitea not ready' para todos os testes gitea-real só na forja).
   const emContainer = existsSync("/.dockerenv") || existsSync("/run/.containerenv")
-  const host = emContainer
-    ? spawnSync("sh", ["-c", "ip route | awk '/default/ {print $3}'"], {
-        encoding: "utf8",
-      }).stdout.trim() || "172.17.0.1"
-    : "127.0.0.1"
+  // O gateway lido de /proc/net/route (a imagem do job NÃO tem `ip`/iproute2 —
+  // medido): a linha default é `eth0<TAB>00000000<TAB><GW hex LE>` — 010012AC =
+  // 172.18.0.1. Sem binário externo, sem shell.
+  let host = "127.0.0.1"
+  if (emContainer) {
+    try {
+      const rota = readFileSync("/proc/net/route", "utf8")
+        .split("\n")
+        .find((l) => l.split("\t")[1] === "00000000")
+      const hex = rota?.split("\t")[2]
+      if (hex && hex.length === 8) {
+        host = [3, 2, 1, 0].map((i) => parseInt(hex.slice(i * 2, i * 2 + 2), 16)).join(".")
+      }
+    } catch {
+      // sem /proc/net/route — segue 127.0.0.1 (host direto)
+    }
+  }
   const baseUrl = `http://${host}:${hostPort}`
 
   try {
