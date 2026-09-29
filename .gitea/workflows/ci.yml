@@ -766,7 +766,12 @@ jobs:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: severinno_test
         ports:
-          - 5432:5432
+          # Portas de host ALTERNATIVAS (medido em 29/09): os services publicam
+          # 5432/6379 no HOST, e um container de serviço órfão de rodada anterior
+          # (runner morto no meio de um job) segura as portas e mata toda rodada
+          # seguinte de Tests com "driver failed programming external
+          # connectivity". 55432/56379 decolam de qualquer outro serviço do host.
+          - 55432:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -775,7 +780,7 @@ jobs:
       redis:
         image: redis:7-alpine
         ports:
-          - 6379:6379
+          - 56379:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
@@ -811,7 +816,7 @@ jobs:
 
       - run: bun run test:run
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:55432/severinno_test
 
   # ── Build ─────────────────────────────────────────────────────────────────
   build:

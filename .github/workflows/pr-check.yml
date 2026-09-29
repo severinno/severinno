@@ -18,7 +18,7 @@ concurrency:
 
 env:
   NODE_ENV: test
-  DATABASE_URL: postgresql://localhost:5432/test
+  DATABASE_URL: postgresql://localhost:55432/test
   REDIS_URL: redis://localhost:6379
   RABBITMQ_URL: amqp://localhost:5672
   # Origem dos mirrors OCI (bun/ubuntu-bun/postgis) — FONTE ÚNICA.
@@ -2085,7 +2085,9 @@ jobs:
           POSTGRES_USER: severinno
           POSTGRES_PASSWORD: severinno_dev
         ports:
-          - 5432:5432
+          # 55432: mesma lição da forja (29/09) — services publicam porta no HOST;
+          # porta alternativa evita colisão com qualquer serviço do runner.
+          - 55432:5432
         options: >-
           --health-cmd "pg_isready -U severinno -d severinno"
           --health-interval 3s
