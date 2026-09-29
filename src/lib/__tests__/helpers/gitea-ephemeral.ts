@@ -39,6 +39,7 @@
 
 import { spawnSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
+import { existsSync } from "node:fs"
 
 export interface EphemeralGitea {
   /** URL base do Gitea (ex.: http://127.0.0.1:32789) */
@@ -489,7 +490,18 @@ export async function makeEphemeralGitea(
     throw new Error(`Não conseguiu resolver a porta do container: ${portRes.stdout}`)
   }
   const hostPort = match[1]
-  const baseUrl = `http://127.0.0.1:${hostPort}`
+  // ONDE O GITEA RESPONDE: com `-p` a porta é publicada NO HOST. Rodando direto
+  // na máquina (GitHub runner, dev), `127.0.0.1` chega lá. Dentro de um JOB
+  // CONTAINER da forja (label `docker://`), 127.0.0.1 é o PRÓPRIO container —
+  // o caminho até a porta publicada é o GATEWAY da rede do container (medido
+  // em 29/09: 'Gitea not ready' para todos os testes gitea-real só na forja).
+  const emContainer = existsSync("/.dockerenv") || existsSync("/run/.containerenv")
+  const host = emContainer
+    ? spawnSync("sh", ["-c", "ip route | awk '/default/ {print $3}'"], {
+        encoding: "utf8",
+      }).stdout.trim() || "172.17.0.1"
+    : "127.0.0.1"
+  const baseUrl = `http://${host}:${hostPort}`
 
   try {
     // Espera o Gitea ficar pronto
