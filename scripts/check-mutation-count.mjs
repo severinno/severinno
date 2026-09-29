@@ -92,7 +92,9 @@
 //   - a CIRURGIA PRIVADA NA ÁRVORE: NENHUMA suíte de mutação
 //     (`scripts/test-mutation-*.sh`, da matriz ou de job próprio) escreve num
 //     arquivo do REPOSITÓRIO por fora da régua única — `sed -i`/`--in-place`, um
-//     redirecionamento `>`/`>>` ou um heredoc (`python3`) cujo CORPO GRAVA. Quem
+//     redirecionamento `>`/`>>`, um heredoc (`python3`) cujo CORPO GRAVA, o
+//     `tee` (a escrita por um CANO), o `cp`/`mv` cuja ORIGEM não nasce do
+//     scratch e o `python3 -c`/`node -e` INLINE cujo corpo GRAVA. Quem
 //     escreve na árvore é a régua (`scripts/mutacao-prova.sh`), que PROVA que a
 //     escrita entrou (a cirurgia, o marcador e o conteúdo); a cirurgia privada
 //     mede o alvo SEM prova nenhuma, e uma escrita que não entrou deixa a suíte
@@ -1448,8 +1450,10 @@ export function analisaProvaDeAplicacao(root, masterSrc, entries) {
 //
 // O DEFEITO que esta regra existe para impedir: uma suíte de mutação volta a
 // ESCREVER num arquivo do REPOSITÓRIO por conta própria — `sed -i`, um
-// redirecionamento (`>`/`>>`) ou um heredoc de `python3` que dá `open(path, "w")`
-// — em vez de passar a troca pela régua única. A régua é o ÚNICO caminho que
+// redirecionamento (`>`/`>>`), um heredoc de `python3` que dá `open(path, "w")`,
+// o `tee` de um cano, o `cp`/`mv` da árvore sobre a árvore e o
+// `python3 -c`/`node -e` inline cujo corpo grava — em vez de passar a troca pela
+// régua única. A régua é o ÚNICO caminho que
 // escreve na árvore e PROVA que a escrita entrou (a CIRURGIA que casa uma vez, o
 // MARCADOR, o CONTEÚDO que mudou); a cirurgia privada mede o alvo sem prova
 // nenhuma, e uma escrita que não aplicou deixa a suíte verde sobre a árvore
@@ -1470,9 +1474,11 @@ export function analisaProvaDeAplicacao(root, masterSrc, entries) {
 //
 // LIMITE DECLARADO (fail-closed onde dá, honesto onde não dá):
 //   - a detecção é ESTÁTICA, sobre o fonte da suíte — um alvo montado em tempo de
-//     execução (`"$dir/$nome"` num laço, um caminho lido de um arquivo) NÃO é
-//     julgado; a régua prefere o silêncio falso-negativo à violação falsa, e o
-//     caminho que ela cobre é o que as suítes de fato usam;
+//     execução pelo PARÂMETRO de uma função, por um LAÇO sobre um array ou pela
+//     ALTERNATIVA de um `${VAR:-default}` É julgado (é o que as suítes de fato
+//     usam); o que NÃO é julgado é o alvo que só existe em RUNTIME (um caminho
+//     lido de um arquivo, uma concatenação de pedaços que não resolve). A régua
+//     prefere o silêncio falso-negativo à violação falsa;
 //   - a SEGUNDA testemunha (uma metade que desliga esta regra no gabarito da
 //     matriz) está DECLARADA como lacuna: acrescentar a metade mudaria a coluna
 //     de metades do registro versionado, que é REESCRITA pelo ato (e o ato exige
@@ -1489,51 +1495,144 @@ function tokensDaLinha(linha) {
 }
 
 /**
- * As atribuições `VAR=valor` do fonte, com expansão de `$VAR`/`${VAR}` em
- * passadas sucessivas. `SCRIPT_DIR`/`ROOT`/`PWD` nascem com a RAIZ da árvore — é
- * o que as suítes usam para apontar para o repositório.
- *
- * Uma atribuição cujo valor é um COMANDO (`$(mktemp -d)`, crase) fica de FORA: o
- * scratch das suítes nasce de um `mktemp` e o que ele vale não é estável. O que
- * não resolve é o que a régua NÃO julga — uma variável de scratch não pode virar
- * um alvo da árvore só porque o seu valor é desconhecido.
+ * A UNIÃO de dois conjuntos de candidatos, com teto: uma expansão combinatória
+ * (`${A:-$B}` onde os dois têm vários valores) não pode virar uma explosão — o
+ * que passa do teto é o que NÃO se sabe, e o que não se sabe não vira alvo.
  */
-function variaveisDoFonte(src, raiz) {
-  const vars = { SCRIPT_DIR: raiz, ROOT: raiz, PWD: raiz }
+function uniao(a, b) {
+  const s = [...new Set([...(a ?? []), ...b])]
+  return s.length > 8 ? [] : s
+}
+
+/**
+ * Expande UM valor em TODOS os caminhos que ele PODE valer — vazio quando ele
+ * NÃO resolve.
+ *
+ * A diferença para expandir um valor SÓ está no `${NOME:-alternativa}`: a suíte
+ * do doctor monta o alvo em tempo de execução (`local alvo="${CASO_ARQUIVO:-
+ * $DOCTOR}"`), e os DOIS lados do `:-` são alvos POSSÍVEIS — quem escolhe é o
+ * caso que roda. Resolver um lado só mediria METADE da cirurgia, e foi assim que
+ * o `sed -i` do `doctor-facts` ficou fora do julgamento: a expansão antiga
+ * colava os dois lados num caminho só (`…/forge-doctor.mjs:-/…}`), o `statSync`
+ * falhava, e o silêncio parecia limpeza.
+ *
+ * O valor que NASCE de um COMANDO (`$(mktemp -d)`, crase) não resolve — o
+ * scratch das suítes não é um caminho do repositório. É o que separa a CIRURGIA
+ * NA ÁRVORE da escrita no scratch, e é o que faz o `cp` de RESTAURAÇÃO
+ * (`cp "$BACKUP" "$GUARD"`) não ser confundido com a troca.
+ */
+function expandeValor(valor, cand) {
+  if (valor.includes("$(") || valor.includes("`")) return []
+  let atual = [valor]
+  for (let volta = 0; volta < 5; volta++) {
+    const proximo = new Set()
+    let mudou = false
+    for (const s of atual) {
+      const m = /\$\{([A-Za-z_][A-Za-z0-9_]*):[-=]([^}]*)\}|\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/.exec(
+        s,
+      )
+      if (!m) {
+        proximo.add(s)
+        continue
+      }
+      mudou = true
+      const alternativas = m[1]
+        ? [...(cand.get(m[1]) ?? []), ...expandeValor(m[2], cand)]
+        : (cand.get(m[3]) ?? [])
+      if (!alternativas.length) return []
+      for (const a of alternativas) proximo.add(s.replace(m[0], a))
+    }
+    atual = [...proximo]
+    if (!mudou) break
+    if (atual.length > 8) return []
+  }
+  return atual.some((s) => s.includes("$")) ? [] : atual
+}
+
+/**
+ * As ATRIBUIÇÕES `VAR=valor` do fonte como um MAPA DE CANDIDATOS: cada nome
+ * aponta para os valores POSSÍVEIS dele. `SCRIPT_DIR`/`ROOT`/`PWD` nascem com a
+ * RAIZ da árvore — é o que as suítes usam para apontar para o repositório.
+ *
+ * Duas informações saem daqui, e as duas são sobre ORIGEM:
+ *
+ *   · `cand` — os VALORES que o nome pode ter (a união de todas as atribuições:
+ *     `CASO_ARQUIVO` é "o doctor" em quatro casos e "a fila" no quinto, e os
+ *     dois são alvos de verdade);
+ *   · `fora` — os nomes cuja origem NÃO é a árvore: o valor deles nasce de um
+ *     COMANDO (`TMP_DIR="$(mktemp -d)"`, `GUARD_BKP="$(mktemp -d)"`) ou de uma
+ *     CADEIA que passa por um deles (`BACKUP="$TMP_DIR/guard.backup"`). É o
+ *     scratch da suíte, e é ele que distingue a cópia que RESTAURA a que TROCA.
+ */
+function candidatosDoFonte(src, raiz) {
+  const cand = new Map()
+  const fora = new Set()
+  for (const [n, v] of [
+    ["SCRIPT_DIR", raiz],
+    ["ROOT", raiz],
+    ["PWD", raiz],
+  ]) {
+    cand.set(n, [v])
+  }
   const atrib = [
     ...src.matchAll(
       /^[ \t]*(?:export[ \t]+|local[ \t]+|declare[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S*)/gm,
     ),
   ]
+  const valores = (m) => {
+    const v = m[2].replace(/^["']|["']$/g, "")
+    if (/\$\(|`/.test(v)) return null
+    return expandeValor(v, cand)
+  }
+  // As passadas sucessivas: uma atribuição pode citar a que vem depois dela, e o
+  // conjunto CRESCE (cada atribuição do MESMO nome é um candidato a mais).
   for (let volta = 0; volta < 5; volta++) {
     for (const m of atrib) {
-      let v = m[2].replace(/^["']|["']$/g, "")
-      if (v.includes("$(") || v.includes("`")) continue
-      for (const [n, val] of Object.entries(vars)) {
-        v = v.replace(new RegExp(`\\$\\{?${n}\\}?`, "g"), val)
+      const v = valores(m)
+      if (v === null) {
+        fora.add(m[1])
+        continue
       }
-      vars[m[1]] = v
+      if (v.length) cand.set(m[1], uniao(cand.get(m[1]), v))
     }
   }
-  return vars
-}
-
-/** Expande `$VAR`/`${VAR}` de um token. `null` quando sobra `$` (não resolvido). */
-function expandeVariaveis(token, vars) {
-  if (!token.includes("$")) return token
-  if (token.includes("$(") || token.includes("`")) return null
-  let v = token
-  for (const [n, val] of Object.entries(vars)) {
-    v = v.replace(new RegExp(`\\$\\{?${n}\\}?`, "g"), val)
+  // A CADEIA do scratch: quem cita uma origem-comando também nasce fora dela.
+  for (let volta = 0; volta < 5; volta++) {
+    for (const m of atrib) {
+      if (fora.has(m[1])) continue
+      for (const n of fora) {
+        if (new RegExp(`\\$\\{?${n}(?![A-Za-z0-9_])`).test(m[2])) {
+          fora.add(m[1])
+          break
+        }
+      }
+    }
   }
-  return v.includes("$") ? null : v
+  return { cand, fora }
 }
 
 /**
- * O caminho de um token É um arquivo da ÁRVORE? Aceita caminho absoluto sob a
- * raiz e caminho relativo — sempre conferido contra a raiz julgada: só o que
- * EXISTE no repositório é a árvore, e a cópia do fixture no scratch nunca casa.
+ * O token NASCE FORA da árvore? A pergunta é da RESTAURAÇÃO: `cp "$BACKUP"
+ * "$GUARD"` devolve o arquivo ao estado íntegro, e chamar isso de cirurgia
+ * privada seria transformar o remédio em violação — são dezenas de linhas.
+ *
+ * Nasce fora o token cujo valor é um COMANDO, o que cita uma variável de
+ * scratch, e o PARÂMETRO de função cujos sítios de chamada passam todos um valor
+ * que não vem da árvore.
  */
+function nasceForaDaArvore(token, { fora, params }) {
+  if (/\$\(|`/.test(token)) return true
+  for (const n of fora) {
+    if (new RegExp(`\\$\\{?${n}(?![A-Za-z0-9_])`).test(token)) return true
+  }
+  const nome = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?(?:[/$].*)?$/.exec(token)
+  if (nome) {
+    const p = params?.get(nome[1])
+    if (p) return p.fora
+  }
+  return false
+}
+
 /**
  * Os ARRAYS declarados no fonte (`NOME=( "a" "b" )`) — a LISTA de alvos que um
  * laço pode iterar. Sem ela, a troca dentro de um `for` seria invisível: o token
@@ -1566,14 +1665,27 @@ function arraysDoFonte(src) {
  * declarado), `"${ARR[$i]}"` (o laço pelos ÍNDICES — todos os elementos são
  * candidatos) e a lista literal (`for f in "a.sh" "b.sh"`).
  */
-function lacosDoFonte(src, arrays, vars) {
+/**
+ * Os ELEMENTOS de um array declarado, já EXPANDIDOS: `SCAN_FILES=("$SCRIPT_DIR/a")`
+ * vale o caminho de verdade, e é ele que o laço visita.
+ */
+function itensDoArray(nome, arrays, cand) {
+  const itens = []
+  for (const it of arrays.get(nome) ?? []) {
+    const v = expandeValor(it, cand)
+    itens.push(...(v.length ? v : [it]))
+  }
+  return itens
+}
+
+function lacosDoFonte(src, arrays, cand) {
   const lacos = new Map()
   const re = /for[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]+in[ \t]+([^\n;]+)/g
   let m
   while ((m = re.exec(src)) !== null) {
     const alvos = []
     for (const a of m[2].matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\[[^\]]*\]/g)) {
-      for (const it of arrays.get(a[1]) ?? []) alvos.push(it)
+      for (const it of itensDoArray(a[1], arrays, cand)) alvos.push(it)
     }
     for (const t of tokensDaLinha(m[2])) {
       if (t.includes("$") || t.startsWith("-")) continue
@@ -1582,27 +1694,152 @@ function lacosDoFonte(src, arrays, vars) {
     if (alvos.length)
       lacos.set(
         m[1],
-        alvos.map((a) => expandeVariaveis(a, vars) ?? a),
+        alvos.flatMap((a) => {
+          const v = expandeValor(a, cand)
+          return v.length ? v : [a]
+        }),
       )
   }
   return lacos
 }
 
 /**
+ * As FUNÇÕES do fonte: o corpo de cada uma e o BIND dos parâmetros POSICIONAIS.
+ *
+ * POR QUE ISTO EXISTE: o alvo pode ser montado em TEMPO DE EXECUÇÃO. A suíte
+ * chama `apply_mutation "$M3_FILE" …` e o `sed -i` de DENTRO da função usa
+ * `"$file"` — que na linha do `sed` não vale nada: quem o liga é o `local
+ * file="$1"` do CABEÇALHO e o sítio de chamada, longe dali. Sem o bind, a
+ * cirurgia que passa por parâmetro é invisível — e era: o `sed -i` do
+ * `doctor-ci` trocava TRÊS arquivos do repositório com o guard VERDE, porque o
+ * token do alvo (`$file`) não resolvia nem como variável nem como laço.
+ *
+ * O corpo é delimitado pela convenção do repositório (função abre em `() {`,
+ * fecha num `}` sozinho na coluna 0). Um corpo lido a MENOS só perde parâmetros —
+ * e perder parâmetro é perder achado, nunca inventar um.
+ */
+function funcoesDoFonte(src) {
+  const linhas = src.split("\n")
+  const funcoes = []
+  const re = /^(?:function[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*\(\)[ \t]*\{/
+  for (let i = 0; i < linhas.length; i++) {
+    const m = re.exec(linhas[i])
+    if (!m) continue
+    let fim = i
+    while (fim + 1 < linhas.length && linhas[fim + 1].trim() !== "}") fim++
+    const params = new Map()
+    const corpo = linhas.slice(i, fim + 1).join("\n")
+    for (const p of corpo.matchAll(/([A-Za-z_][A-Za-z0-9_]*)=["']?\$([0-9]+)["']?/g)) {
+      params.set(p[1], Number(p[2]))
+    }
+    funcoes.push({ nome: m[1], inicio: i, fim, params })
+  }
+  return funcoes
+}
+
+/** OS SÍTIOS DE CHAMADA de cada função: os argumentos de cada um, na ordem. */
+function chamadasDoFonte(src, funcoes) {
+  const nomes = new Set(funcoes.map((f) => f.nome))
+  const chamadas = new Map()
+  const re =
+    /^[ \t]*(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]+(.*)$/
+  for (const [i, linha] of src.split("\n").entries()) {
+    const m = re.exec(linha)
+    if (!m || !nomes.has(m[1])) continue
+    if (!chamadas.has(m[1])) chamadas.set(m[1], [])
+    chamadas.get(m[1]).push({ linha: i + 1, args: tokensDaLinha(m[2]) })
+  }
+  return chamadas
+}
+
+/**
+ * O BIND dos parâmetros NA LINHA julgada: nome → `{caminhos, fora}`.
+ *
+ * `caminhos` são os alvos possíveis (um por sítio de chamada); `fora` só é true
+ * quando TODOS os sítios passam um valor que não nasce da árvore — é o que
+ * distingue a RESTAURAÇÃO (`cp "$backup" "$file"`, com o `$backup` vindo do
+ * `$BACKUP_DIR`) da CÓPIA que SOBRESCREVE (`cp mutado.mjs guard.mjs`).
+ */
+function parametrosDaLinha(linhaIdx, funcoes, chamadas, base) {
+  const params = new Map()
+  for (const f of funcoes) {
+    if (linhaIdx < f.inicio || linhaIdx > f.fim) continue
+    for (const [nome, idx] of f.params) {
+      const caminhos = []
+      let fora = true
+      for (const { args } of chamadas.get(f.nome) ?? []) {
+        // `$1` é o PRIMEIRO argumento: o índice do shell é 1-based, o do array não.
+        const tok = args[idx - 1]
+        if (tok === undefined) continue
+        caminhos.push(...caminhosDoToken(tok, { ...base, params: new Map() }))
+        if (!nasceForaDaArvore(tok, { ...base, params: new Map() })) fora = false
+      }
+      params.set(nome, { caminhos, fora })
+    }
+  }
+  return params
+}
+
+/**
+ * As INVOCAÇÕES `python3 -c '…'`/`node -e '…'` do fonte: o CORPO (delimitado pelo
+ * mesmo tipo de aspas que o abriu, com o escape respeitado) e os ARGUMENTOS
+ * posicionais que vêm depois dele.
+ *
+ * O corpo pode atravessar LINHAS (as suítes usam heredoc de uma aspa só), então
+ * a varredura é caractere a caractere e não um regex de linha. Ler o corpo junto
+ * com os argumentos é o que permite casar `open(sys.argv[1], "w")` com o
+ * `"$GUARD"` da linha de invocação: sem os dois, uma escrita inline seria
+ * invisível — a mesma fenda que o heredoc fechou, na forma que não tem heredoc.
+ */
+function invocacoesInline(src) {
+  const invocacoes = []
+  const re = /\b(python3|python|node)[ \t]+-(c|e)[ \t]+/g
+  let m
+  while ((m = re.exec(src)) !== null) {
+    const abre = src[re.lastIndex]
+    if (abre !== '"' && abre !== "'") continue
+    let i = re.lastIndex + 1
+    while (i < src.length && src[i] !== abre) {
+      if (src[i] === "\\") i++
+      i++
+    }
+    if (i >= src.length) continue
+    const fimLinha = src.indexOf("\n", i)
+    const resto = src.slice(i + 1, fimLinha === -1 ? src.length : fimLinha)
+    const linhaIdx = src.slice(0, m.index).split("\n").length - 1
+    invocacoes.push({
+      linha: linhaIdx + 1,
+      linhaIdx,
+      tipo: `${m[1]} -${m[2]}`,
+      corpo: src.slice(re.lastIndex + 1, i),
+      args: tokensDaLinha(resto).filter((t) => !/^[0-9]?>/.test(t)),
+    })
+    re.lastIndex = i + 1
+  }
+  return invocacoes
+}
+
+/**
  * Os CAMINHOS candidatos de um token-ALVO: o valor literal quando ele resolve, e
  * os alvos do LAÇO quando o token é a variável de um `for`.
  *
- * É esta resolução que fecha a fenda do laço: `sed -i "$pat" "$file"` dentro de
- * um `for file in "${SCAN_FILES[@]}"` trocava TRÊS arquivos do repositório sem
- * que a régua visse nenhum (o token não resolvia, e o silêncio parecia limpeza).
+ * É esta resolução que fecha as três fendas por onde a cirurgia privada passava:
+ * o LAÇO (`sed -i "$pat" "$file"` dentro de um `for file in "${SCAN_FILES[@]}"`
+ * trocava TRÊS arquivos sem que a régua visse nenhum), o PARÂMETRO (`"$file"` do
+ * `apply_mutation`, ligado pelo sítio de chamada) e o ALVO COM ALTERNATIVA
+ * (`"${CASO_ARQUIVO:-$DOCTOR}"`).
  */
-function caminhosDoToken(token, vars, arrays, lacos) {
-  const literal = expandeVariaveis(token, vars)
-  if (literal !== null) return [literal]
+function caminhosDoToken(token, { cand, arrays, lacos, params }) {
+  const literal = expandeValor(token, cand)
+  if (literal.length) return literal
   const nome = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/.exec(token)
-  if (nome) return lacos.get(nome[1]) ?? []
+  if (nome) {
+    const p = params?.get(nome[1])
+    if (p) return p.caminhos
+    return lacos.get(nome[1]) ?? []
+  }
   const porIndice = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\[/.exec(token)
-  if (porIndice) return arrays.get(porIndice[1]) ?? []
+  if (porIndice) return itensDoArray(porIndice[1], arrays, cand)
   return []
 }
 
@@ -1612,7 +1849,7 @@ function caminhosDoToken(token, vars, arrays, lacos) {
  * EXISTE no repositório é a árvore, e a cópia do fixture no scratch nunca casa.
  */
 function ehArquivoDaArvore(raiz, caminho) {
-  if (caminho === null || caminho === "") return null
+  if (caminho === null || caminho === "" || caminho === undefined) return null
   let rel = caminho
   if (rel.startsWith("/")) {
     if (!rel.startsWith(`${raiz}/`)) return null
@@ -1633,14 +1870,29 @@ const ASSINATURA_ESCRITA =
 /**
  * As CIRURGIAS PRIVADAS NA ÁRVORE de UMA suíte: cada achado é `{linha, tipo, alvo}`.
  *
- * Três primitivas, as que o repositório usa de verdade:
+ * SEIS primitivas, as que o repositório usa de verdade:
  *   (A) `sed -i`/`--in-place` — o alvo é o último token que não é flag nem
  *       expressão `s/.../.../`;
  *   (B) redirecionamento `>`/`>>` para um arquivo — o token da direita;
  *   (C) um heredoc (`python3 - <<'PY'`, `cat > arq <<'EOF'`) cujo CORPO tem
  *       assinatura de escrita: o alvo é o literal que a escrita abre, ou a
  *       variável de ambiente que a linha de invocação associa a um arquivo da
- *       árvore.
+ *       árvore;
+ *   (D) `tee` — a escrita que passa por um CANO (`… | tee -a "$GUARD"`); o alvo é
+ *       CADA argumento de arquivo (escrever num arquivo da árvore por um cano é a
+ *       mesma troca, sem a prova de aplicação);
+ *   (E) `cp`/`mv` que SOBRESCREVEM um arquivo da árvore — desde que a ORIGEM não
+ *       NASÇA do scratch. A cópia da árvore SOBRE a árvore é a cirurgia; a
+ *       RESTAURAÇÃO (`cp "$BACKUP" "$GUARD"`, com o backup em `$(mktemp -d)`)
+ *       devolve o arquivo ao estado íntegro, e chamá-la de cirurgia seria
+ *       transformar o remédio em violação — são dezenas de linhas;
+ *   (F) `python3 -c '…'`/`node -e '…'` INLINE cujo CORPO grava: o alvo é o literal
+ *       que a escrita abre, ou o ARGUMENTO posicional que o corpo lê
+ *       (`sys.argv[1]`/`process.argv[1]`).
+ *
+ * São TODAS as formas que o repositório usa para escrever num arquivo — e o que
+ * as une é a pergunta certa: quem escreve no REPOSITÓRIO sem passar pela régua
+ * única. As que ficam de fora são as que NÃO escrevem na árvore: o scratch.
  *
  * @param {string} src o fonte da suíte
  * @param {string} raiz a raiz da árvore julgada
@@ -1648,22 +1900,30 @@ const ASSINATURA_ESCRITA =
  */
 export function cirurgiasPrivadasNaArvore(src, raiz) {
   const achados = []
-  const vars = variaveisDoFonte(src, raiz)
+  const { cand, fora } = candidatosDoFonte(src, raiz)
   const arrays = arraysDoFonte(src)
-  const lacos = lacosDoFonte(src, arrays, vars)
+  const lacos = lacosDoFonte(src, arrays, cand)
+  const funcoes = funcoesDoFonte(src)
+  const chamadas = chamadasDoFonte(src, funcoes)
+  const base = { cand, fora, arrays, lacos }
+  const ctxDa = (idx) => ({ ...base, params: parametrosDaLinha(idx, funcoes, chamadas, base) })
+  const alvosDe = (token, ctx) =>
+    caminhosDoToken(token, ctx)
+      .map((c) => ehArquivoDaArvore(raiz, c))
+      .filter((c) => c !== null)
   const linhas = src.split("\n")
 
   for (const [i, linha] of linhas.entries()) {
     if (/^\s*#/.test(linha)) continue
+    const ctx = ctxDa(i)
 
     // (A) `sed -i` — a troca no lugar sobre um arquivo.
     if (/\bsed\s+(?:-[A-Za-z]*i[A-Za-z]*|--in-place)\b/.test(linha)) {
       const alvoTok = [...tokensDaLinha(linha)]
         .reverse()
         .find((t) => !t.startsWith("-") && !/^[0-9,]*[sy]?[/|]/.test(t))
-      for (const c of alvoTok ? caminhosDoToken(alvoTok, vars, arrays, lacos) : []) {
-        const alvo = ehArquivoDaArvore(raiz, c)
-        if (alvo) achados.push({ linha: i + 1, tipo: "sed -i", alvo })
+      for (const alvo of alvoTok ? alvosDe(alvoTok, ctx) : []) {
+        achados.push({ linha: i + 1, tipo: "sed -i", alvo })
       }
     }
 
@@ -1673,9 +1933,26 @@ export function cirurgiasPrivadasNaArvore(src, raiz) {
     let mm
     while ((mm = red.exec(linha)) !== null) {
       const token = mm[1].replace(/^["']|["']$/g, "")
-      for (const c of caminhosDoToken(token, vars, arrays, lacos)) {
-        const alvo = ehArquivoDaArvore(raiz, c)
-        if (alvo) achados.push({ linha: i + 1, tipo: "> / >>", alvo })
+      for (const alvo of alvosDe(token, ctx)) achados.push({ linha: i + 1, tipo: "> / >>", alvo })
+    }
+
+    // (D) `tee` — a escrita por um cano. Cada argumento de arquivo conta.
+    const cano = /(?:^|[|;&(]\s*)tee\b[ \t]*([^;&|]*)/.exec(linha)
+    if (cano) {
+      for (const tok of tokensDaLinha(cano[1]).filter((t) => !t.startsWith("-"))) {
+        for (const alvo of alvosDe(tok, ctx)) achados.push({ linha: i + 1, tipo: "tee", alvo })
+      }
+    }
+
+    // (E) o `cp`/`mv` cuja ORIGEM não nasce do scratch e cujo destino é a árvore.
+    const copia = /(?:^|[;&|(]\s*)(cp|mv)[ \t]+([^;&|]*)/.exec(linha)
+    if (copia) {
+      const toks = tokensDaLinha(copia[2]).filter((t) => !t.startsWith("-") && !/^[0-9]?>/.test(t))
+      const destino = toks[toks.length - 1]
+      if (toks.length >= 2 && !nasceForaDaArvore(toks[0], ctx)) {
+        for (const alvo of alvosDe(destino, ctx)) {
+          achados.push({ linha: i + 1, tipo: copia[1], alvo })
+        }
       }
     }
   }
@@ -1686,16 +1963,18 @@ export function cirurgiasPrivadasNaArvore(src, raiz) {
     if (!ASSINATURA_ESCRITA.test(corpo)) continue
     const linhaInvoc = src.slice(0, m.index).split("\n").length
     const invocLinha = linhas[linhaInvoc - 1] ?? ""
+    const ctx = ctxDa(linhaInvoc - 1)
     // (C1) as variáveis de ambiente da linha de invocação que apontam p/ a árvore.
     for (const e of invocLinha.matchAll(/([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S+)/g)) {
       const nome = e[1]
-      const alvo = ehArquivoDaArvore(raiz, expandeVariaveis(`$${nome}`, vars))
-      if (!alvo) continue
       if (
-        corpo.includes(`"${nome}"`) ||
-        corpo.includes(`'${nome}'`) ||
-        corpo.includes(`$${nome}`)
+        !corpo.includes(`"${nome}"`) &&
+        !corpo.includes(`'${nome}'`) &&
+        !corpo.includes(`$${nome}`)
       ) {
+        continue
+      }
+      for (const alvo of alvosDe(`$${nome}`, ctx)) {
         achados.push({ linha: linhaInvoc, tipo: `heredoc/env ${nome}`, alvo })
       }
     }
@@ -1709,6 +1988,24 @@ export function cirurgiasPrivadasNaArvore(src, raiz) {
       }
     }
   }
+
+  // (F) as invocações INLINE cujo corpo GRAVA.
+  for (const inv of invocacoesInline(src)) {
+    if (!ASSINATURA_ESCRITA.test(inv.corpo)) continue
+    const ctx = ctxDa(inv.linhaIdx)
+    for (const lit of inv.corpo.matchAll(/["']([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)["']/g)) {
+      const alvo = ehArquivoDaArvore(raiz, lit[1])
+      if (alvo) achados.push({ linha: inv.linha, tipo: inv.tipo, alvo })
+    }
+    // O alvo pode chegar por ARGUMENTO posicional: `sys.argv[1]` é o primeiro
+    // token depois do corpo (o `-c`/`-e` ocupa o argv[0] nos dois idiomas).
+    for (const a of inv.corpo.matchAll(/\b(?:sys|process)\.argv\[([0-9]+)\]/g)) {
+      const tok = inv.args[Number(a[1]) - 1]
+      if (tok === undefined) continue
+      for (const alvo of alvosDe(tok, ctx)) achados.push({ linha: inv.linha, tipo: inv.tipo, alvo })
+    }
+  }
+
   // DEDUPLICADO por (linha, tipo, alvo): o laço pelos ÍNDICES pode apontar para
   // o mesmo alvo de um laço pelos elementos, e a violação é UMA.
   const vistos = new Set()

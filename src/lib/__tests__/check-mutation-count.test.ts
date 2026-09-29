@@ -1566,6 +1566,111 @@ describe("check-mutation-count — a CIRURGIA PRIVADA NA ÁRVORE (a régua é o 
     expect(run(dir).violations.filter(daCirurgia)).toEqual([])
   })
 
+  it("o alvo por PARÂMETRO POSICIONAL de função é resolvido pelo SÍTIO DE CHAMADA", () => {
+    // A TERCEIRA FENDA (a que o guard VERDE escondia): a suíte chama
+    // `apply_mutation "$M3_FILE" …` e o `sed -i` de DENTRO da função usa `"$file"`
+    // — um token que, na linha do `sed`, não vale nada. Quem o liga é o
+    // `local file="$1"` do cabeçalho e o sítio de chamada, longe dali.
+    const dir = makeFixture({
+      count: 3,
+      cirurgiaNaArvore: {
+        0: '\nM1_FILE="$SCRIPT_DIR/scripts/check-x.mjs"\nM2_FILE="$SCRIPT_DIR/scripts/check-y.mjs"\napply_mutation() {\n  local file="$1" expr="$2"\n  sed -i "$expr" "$file"\n}\napply_mutation "$M1_FILE" "s/a/b/"\napply_mutation "$M2_FILE" "s/a/b/"\n',
+      },
+    })
+    writeFileSync(join(dir, "scripts/check-x.mjs"), "export const valor = 1\n")
+    writeFileSync(join(dir, "scripts/check-y.mjs"), "export const valor = 1\n")
+    const vs = run(dir).violations.filter(daCirurgia)
+    expect(vs.length).toBe(2)
+    expect(vs.join("\n")).toContain("(sed -i em 'scripts/check-x.mjs')")
+    expect(vs.join("\n")).toContain("(sed -i em 'scripts/check-y.mjs')")
+  })
+
+  it("o alvo com ALTERNATIVA (`${CASO_ARQUIVO:-$DOCTOR}`) julga os DOIS lados", () => {
+    // O defeito medido (`doctor-facts`): a expansão antiga colava os dois lados
+    // do `:-` num caminho só, o `statSync` falhava e o `sed -i` ficava invisível
+    // — ora o alvo é o doctor, ora a fila, e o conjunto é que é o alvo.
+    const dir = makeFixture({
+      count: 3,
+      cirurgiaNaArvore: {
+        0: '\nDOCTOR="$SCRIPT_DIR/scripts/check-x.mjs"\nFILA="$SCRIPT_DIR/scripts/check-y.mjs"\nCASO_ARQUIVO="$DOCTOR"\nCASO_ARQUIVO="$FILA"\nalvo="${CASO_ARQUIVO:-$DOCTOR}"\nsed -i "s/a/b/" "$alvo"\n',
+      },
+    })
+    writeFileSync(join(dir, "scripts/check-x.mjs"), "export const valor = 1\n")
+    writeFileSync(join(dir, "scripts/check-y.mjs"), "export const valor = 1\n")
+    const vs = run(dir).violations.filter(daCirurgia)
+    expect(vs.length).toBe(2)
+    expect(vs.join("\n")).toContain("check-x.mjs")
+    expect(vs.join("\n")).toContain("check-y.mjs")
+  })
+
+  it("o `node -e`/`python3 -c` INLINE que GRAVA por ARGUMENTO é violação", () => {
+    // A escrita inline não é a mesma forma do heredoc: o corpo atravessa linhas
+    // e o alvo chega por `process.argv[1]`/`sys.argv[1]`.
+    const node = comCirurgia(
+      `node -e 'const fs=require("fs");fs.writeFileSync(process.argv[1],"x")' "$SCRIPT_DIR/scripts/check-x.mjs"`,
+    )
+    expect(run(node).violations.find(daCirurgia)).toContain("(node -e em 'scripts/check-x.mjs')")
+    const py = comCirurgia(`python3 -c 'open("scripts/check-x.mjs", "w").write("x")'`)
+    expect(run(py).violations.find(daCirurgia)).toContain("(python3 -c em 'scripts/check-x.mjs')")
+  })
+
+  it("o `-e`/`-c` que só LÊ o alvo da árvore NÃO é violação (o CONTROLE)", () => {
+    const r = run(
+      comCirurgia(
+        `node -e 'process.stdout.write(require("fs").readFileSync(process.argv[1],"utf8"))' "$SCRIPT_DIR/scripts/check-x.mjs"`,
+      ),
+    )
+    expect(r.violations.filter(daCirurgia)).toEqual([])
+  })
+
+  it("o `tee` para um arquivo da árvore é violação (a escrita por CANO)", () => {
+    const r = run(
+      comCirurgia(`printf 'x\\n' | tee -a "$SCRIPT_DIR/scripts/check-x.mjs" >/dev/null`),
+    )
+    expect(r.violations.find(daCirurgia)).toContain("(tee em 'scripts/check-x.mjs')")
+  })
+
+  it("o `cp`/`mv` da ÁRVORE sobre a ÁRVORE é violação (a troca por cópia)", () => {
+    const dir = makeFixture({
+      count: 3,
+      cirurgiaNaArvore: {
+        0: '\ncp "$SCRIPT_DIR/scripts/check-y.mjs" "$SCRIPT_DIR/scripts/check-x.mjs"\nmv "$SCRIPT_DIR/scripts/check-z.mjs" "$SCRIPT_DIR/scripts/check-x.mjs"\n',
+      },
+    })
+    writeFileSync(join(dir, "scripts/check-x.mjs"), "export const valor = 1\n")
+    writeFileSync(join(dir, "scripts/check-y.mjs"), "export const valor = 2\n")
+    writeFileSync(join(dir, "scripts/check-z.mjs"), "export const valor = 3\n")
+    const vs = run(dir).violations.filter(daCirurgia).join("\n")
+    expect(vs).toContain("(cp em 'scripts/check-x.mjs')")
+    expect(vs).toContain("(mv em 'scripts/check-x.mjs')")
+  })
+
+  it("o CONTROLE: a RESTAURAÇÃO e as cópias de FIXTURE do `cp` NÃO são violação", () => {
+    // As dezenas de `cp` desta árvore são o remédio: o backup nasce de um
+    // `mktemp` e a cópia devolve o arquivo ao estado íntegro (ou leva a árvore
+    // PARA o fixture). Um detector de `cp` sem a ORIGEM daria falso positivo em
+    // massa — e transformaria a restauração em violação.
+    const dir = makeFixture({
+      count: 3,
+      cirurgiaNaArvore: {
+        0: '\nTMP_DIR="$(mktemp -d)"\nBACKUP="$TMP_DIR/guard.backup"\ncp "$SCRIPT_DIR/scripts/check-x.mjs" "$BACKUP"\ncp "$BACKUP" "$SCRIPT_DIR/scripts/check-x.mjs"\ncp "$SCRIPT_DIR/scripts/check-x.mjs" "$TMP_DIR/scripts/check-x.mjs"\n',
+      },
+    })
+    writeFileSync(join(dir, "scripts/check-x.mjs"), "export const valor = 1\n")
+    expect(run(dir).violations.filter(daCirurgia)).toEqual([])
+  })
+
+  it("o CONTROLE: o `cp` do PARÂMETRO que nasce do scratch (`restore_file`) NÃO é violação", () => {
+    const dir = makeFixture({
+      count: 3,
+      cirurgiaNaArvore: {
+        0: '\nTMP_DIR="$(mktemp -d)"\nBACKUP_DIR="$TMP_DIR/backup"\nM1_FILE="$SCRIPT_DIR/scripts/check-x.mjs"\nrestore_file() {\n  local backup="$1" file="$2"\n  cp "$backup" "$file"\n}\nrestore_file "$BACKUP_DIR/gate" "$M1_FILE"\n',
+      },
+    })
+    writeFileSync(join(dir, "scripts/check-x.mjs"), "export const valor = 1\n")
+    expect(run(dir).violations.filter(daCirurgia)).toEqual([])
+  })
+
   it("a troca DECLARADA no `CIRURGIA_NA_ARVORE` passa — e a declaração é conferida NOS DOIS SENTIDOS", () => {
     const declara = (alvo: string) => [
       `scripts/test-mutation-sub-0.sh|${alvo}|sed -i|o alvo é POSICIONAL: a régua exige um alvo literal e cirúrgico`,

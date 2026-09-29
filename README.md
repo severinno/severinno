@@ -1308,7 +1308,7 @@ como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-
 **E a régua única tem contagem, não estimativa**: das 47 suítes da matriz,
 28 **PROVAM** a aplicação — chamam `mutacao_aplicar`, a cópia única
 `scripts/mutacao-prova.sh` (a CIRURGIA, o MARCADOR e o CONTEÚDO na mesma régua).
-E 3 delas usam TAMBÉM o caminho DECLARADO (`mutacao_aplicar_sem_marcador`,
+E 4 delas usam TAMBÉM o caminho DECLARADO (`mutacao_aplicar_sem_marcador`,
 para o payload que não comporta o marcador).
 E 18 **mutam por conta própria** — cada uma com o PORQUÊ na linha
 `FORA_DA_REGUA` do master, publicada em `docs/GUARDS.md`.

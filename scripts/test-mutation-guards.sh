@@ -406,6 +406,13 @@ SEM_MARCADOR=(
   # chamada (`$MOTIVO_PATCH`). A cirurgia privada que ele fazia (`python3` sobre a
   # árvore) é o que a regra da CIRURGIA PRIVADA do `check-mutation-count` recusa.
   'scripts/test-mutation-registry-defaults.sh|o remendo da TABELA não é uma mutação (não cega nada): o payload entra SEM o marcador MUTACAO de propósito, e a M7 usa a AUSÊNCIA dele para saber que a própria escrita aplicou'
+  # O `pipefail-sigpipe` muta TRÊS fontes do canal do remédio (o patch unificado,
+  # o guard do passo e o publicador do canal) e agora vai pela RÉGUA, no caminho
+  # DECLARADO — a cópia local que ele mantinha (um `python3` privado escrevendo na
+  # ÁRVORE) tinha as provas de CIRURGIA e CONTEÚDO e dispensava a do marcador,
+  # exatamente como este atalho. O MOTIVO é o MESMO texto que a suíte passa na
+  # chamada (`$MOTIVO_SEM_MARCADOR`): o payload é um fragmento no MEIO da linha.
+  'scripts/test-mutation-pipefail-sigpipe.sh|o payload é um FRAGMENTO no MEIO da linha do alvo (a assinatura do `fixAll`): um comentário de marcador engoliria o resto da linha, e a troca — LITERAL, com CIRURGIA e CONTEÚDO provados pela régua — não o comporta'
 )
 
 # ── AS SUÍTES FORA DA RÉGUA: por que cada uma NÃO chama a régua única ───────
@@ -479,6 +486,23 @@ CIRURGIA_NA_ARVORE=(
   'scripts/test-mutation-coord-update.sh|.github/workflows/seed-guards.yml|sed -i|a troca é o TEXTO CONTADO da doc (`127 checks` → `N checks`), pelo mesmo motivo de pr-check.yml'
   'scripts/test-mutation-coord-update.sh|scripts/validate-seed-guards-matrix-local.sh|sed -i|a troca é o TEXTO CONTADO da doc (`127 checks` → `N checks`), pelo mesmo motivo de pr-check.yml'
   'scripts/test-mutation-coord-update.sh|scripts/test-seed-prod-e2e.ts|sed -i|a troca é POSICIONAL (`0,/^[[:space:]]*expect(/s//`): o alvo é a PRIMEIRA asserção real do source, e o `expect(` não é literal único — a régua exige um alvo CIRÚRGICO'
+  # O `doctor-ci` muta TRÊS fontes (o gate, a comparação compartilhada e o
+  # doctor) por UMA função, `apply_mutation`, cuja escrita é uma EXPRESSÃO sed
+  # ANCORADA que reescreve a LINHA INTEIRA (`s|^  return { flags, missing }$|…|`).
+  # São três linhas porque o ALVO chega por PARÂMETRO posicional (`apply_mutation
+  # "$M3_FILE" …` → o `"$file"` de dentro) e a regra nomeia o alvo: um alvo novo
+  # não se abriga sob a linha antiga. A troca NÃO é da régua porque ela substitui
+  # um LITERAL pelos argumentos e deixaria o RESTO da linha de pé — a troca seria
+  # outra, e mediria outra coisa.
+  'scripts/test-mutation-doctor-ci.sh|scripts/check-doctor-ci.mjs|sed -i|a escrita é por EXPRESSÃO sed ANCORADA que reescreve a LINHA INTEIRA (`s|^  return { flags, missing }$|…|`) e o alvo chega por PARÂMETRO posicional: a régua substitui um LITERAL e deixaria o resto da linha de pé — a troca seria outra'
+  'scripts/test-mutation-doctor-ci.sh|scripts/check-actrc-sync.mjs|sed -i|a escrita é por EXPRESSÃO sed ANCORADA que reescreve a LINHA INTEIRA (`s|^  const unproven = MIRROR_VARIABLES\.filter.*|…|`) e o alvo chega por PARÂMETRO posicional, pelo mesmo motivo de check-doctor-ci.mjs'
+  'scripts/test-mutation-doctor-ci.sh|scripts/forge-doctor.mjs|sed -i|a escrita é por EXPRESSÃO sed ANCORADA que reescreve a LINHA INTEIRA (`s|^  const report = mirrorDriftReport({$|…|`) e o alvo chega por PARÂMETRO posicional, pelo mesmo motivo de check-doctor-ci.mjs'
+  # O `doctor-facts` muta o doctor E a fila (o `$CASO_ARQUIVO` de cada caso) com
+  # uma EXPRESSÃO sed com ENDEREçO (uma por caso: `/^export function summarize(facts)
+  # {$/,+1 s/…/`, `/^export function channelEnv(…)$/,+2 s/…/`) — o alvo é a LINHA
+  # INTEIRA (ou DUAS), e o que a régua casa é um literal com contagem por arquivo.
+  'scripts/test-mutation-doctor-facts.sh|scripts/forge-doctor.mjs|sed -i|a escrita é por EXPRESSÃO sed com ENDEREÇO que reescreve a LINHA INTEIRA (uma por caso, `/^export function summarize(facts) {$/,+1 s/…/`): a régua casa um LITERAL com a contagem, e o alvo deste caso é a linha toda — a troca seria outra'
+  'scripts/test-mutation-doctor-facts.sh|scripts/runner-queue.mjs|sed -i|a escrita é por EXPRESSÃO sed com ENDEREÇO que reescreve a LINHA INTEIRA (o caso E, um por caso), e o ALVO é o do CASO (`${CASO_ARQUIVO:-$DOCTOR}` — ora o doctor, ora a fila): pelo mesmo motivo de forge-doctor.mjs neste bloco'
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────

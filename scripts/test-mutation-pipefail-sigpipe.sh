@@ -1162,24 +1162,22 @@ restaurar_originais() {
   fi
 }
 # ── mutar_arquivo: o mesmo contrato do `mutar_guard`, para as OUTRAS fontes
-# que o canal do remédio usa (a construção do patch e o publicador). O alvo é
-# conferido (exatamente 1 ocorrência) e a escrita é CONFERIDA pelo checksum: uma
-# mutação que não aplicasse passaria como "arquivo imune".
+# que o canal do remédio usa (a construção do patch e o publicador).
+#
+# A troca vai pela RÉGUA (`mutacao_aplicar_sem_marcador`): a CIRURGIA (exatamente
+# 1 ocorrência do alvo) e o CONTEÚDO (o checksum mudou) são as MESMAS provas do
+# caminho estrito, no MESMO sítio. O que este caminho DISPENSA é a prova do
+# MARCADOR, e ele a dispensa POR DECLARAÇÃO — o payload é um FRAGMENTO no MEIO da
+# linha do alvo, e um comentário de marcador engoliria o que vem depois dele (a
+# dispensa é a mesma que o `SEM_MARCADOR` do master declara).
+#
+# A cópia LOCAL desta prova (um `python3` privado escrevendo na ÁRVORE) é o que a
+# regra da cirurgia privada do `check-mutation-count` recusa: a checagem que mora
+# dentro da suíte mede o alvo SEM a régua única — e uma escrita que não entrasse
+# deixaria a suíte verde sobre o arquivo ÍNTEGRO.
+MOTIVO_SEM_MARCADOR='o payload é um FRAGMENTO no MEIO da linha do alvo (a assinatura do `fixAll`): um comentário de marcador engoliria o resto da linha, e a troca — LITERAL, com CIRURGIA e CONTEÚDO provados pela régua — não o comporta'
 mutar_arquivo() {
-  ARQ="$1" ALVO="$2" NOVO="$3" REF="$4" python3 - <<'PY'
-import os
-p = os.environ["ARQ"]
-old, new = os.environ["ALVO"], os.environ["NOVO"]
-s = open(p).read()
-n = s.count(old)
-if n != 1:
-    raise SystemExit(f"mutacao nao-cirurgica em {p}: {n} ocorrencia(s) do alvo (esperado 1)")
-open(p, "w").write(s.replace(old, new))
-PY
-  if [ "$(cksum "$1" | cut -d' ' -f1)" = "$4" ]; then
-    fail "a mutação não alterou $1 (checksum idêntico) — o alvo casou mas a escrita não"
-    exit 1
-  fi
+  mutacao_aplicar_sem_marcador "$1" "$2" "$3" "$4" "$MOTIVO_SEM_MARCADOR"
 }
 mutar_guard() { # <alvo> <troca>: a cirurgia, o marcador e o checksum são da régua
   # COMPARTILHADA (`mutacao_aplicar`).

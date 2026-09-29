@@ -1414,9 +1414,12 @@ das mutações que a régua provava. Uma escrita que não entrou não deixa rast
 suíte mede o alvo ÍNTEGRO, e o verde é o de sempre. A regra
 (`analisaCirurgiaNaArvore`, 4b-bis do `run()`) varre **todas as
 `scripts/test-mutation-*.sh`** — a matriz e as suítes de job próprio, que rodam
-fora dela e que metade nenhuma media — e recusa três primitivas — o
-`sed -i`/`--in-place`, o redirecionamento `>`/`>>` e o heredoc cujo corpo GRAVA (o
-`open(..., "w")`, o `write_text`) — **quando o alvo existe na árvore**.
+fora dela e que metade nenhuma media — e recusa **seis** primitivas — o
+`sed -i`/`--in-place`, o redirecionamento `>`/`>>`, o heredoc cujo corpo GRAVA (o
+`open(..., "w")`, o `write_text`), o `tee` (a escrita por um CANO), o `cp`/`mv`
+**cuja origem NÃO nasce do scratch** (a cópia da árvore SOBRE a árvore) e o
+`python3 -c`/`node -e` INLINE cujo corpo GRAVA — **quando o alvo existe na
+árvore**.
 
 **A JURISDIÇÃO ERA A MATRIZ, E A CLASSE SOBREVIVIA FORA DELA.** Medido em
 29/09/2026, com a regra da matriz já no ar: **cinco suítes e dez LINHAS com troca
@@ -1443,18 +1446,67 @@ abriga sob a declaração antiga.
 
 O ALVO POR VARIÁVEL DE LAÇO também é reconhecido (`sed -i "$pat" "$file"` dentro
 de um `for file in "${ARQUIVOS[@]}"`): era por essa fenda que nove dos dezesseis
-achados desta árvore passavam sem julgamento. O que NÃO é a árvore não é julgado: a cópia
+achados desta árvore passavam sem julgamento.
+
+**E O ALVO MONTADO EM TEMPO DE EXECUÇÃO — a fenda seguinte, medida com a regra
+do laço já no ar.** O token do alvo pode não valer nada no lugar onde ele aparece.
+O `sed -i "$sedexpr" "$file"` do `doctor-ci` mora dentro de `apply_mutation`, e
+quem liga aquele `$file` é o `local file="$1"` do CABEÇALHO e o sítio de chamada
+(`apply_mutation "$M3_FILE" …`), longe dali; o `sed -i "$CASE_SED" "$alvo"` do
+`doctor-facts` monta o alvo a CADA caso (`alvo="${CASO_ARQUIVO:-$DOCTOR}"` — ora
+o doctor, ora a fila). As duas formas passam a ser resolvidas — o PARÂMETRO
+POSICIONAL pelo sítio de chamada, a ALTERNATIVA pelos **dois** lados do `:-` (a
+expansão antiga colava os dois num caminho só, o `statSync` falhava, e o silêncio
+parecia limpeza) — e com elas a regra viu mais **cinco trocas**: as TRÊS fontes
+que o `apply_mutation` muta por uma função só (o gate, a comparação compartilhada
+e o doctor) e os DOIS alvos do caso do `doctor-facts`. Todas as cinco ficaram
+DECLARADAS, com o motivo: a escrita é uma EXPRESSÃO sed — ancorada na linha
+inteira (`s|^  return { flags, missing }$|…|`) ou com ENDEREÇO (`/^export function
+summarize(facts) {$/,+1 s/…/`) —, e a régua casa um LITERAL com a CONTAGEM: a
+substituição deixaria o RESTO da linha de pé, e mediria outra coisa.
+
+**A ESCRITA POR CANO, POR CÓPIA E POR `-c`/`-e` fecha o resto da classe.** O
+`tee` (`… | tee -a "$GUARD"`) escreve num arquivo da árvore pelo mesmo cano que
+escreveria no scratch; o `cp`/`mv` da árvore SOBRE a árvore troca um guard por
+outro arquivo; e o `python3 -c '…'`/`node -e '…'` INLINE grava lendo o alvo do
+próprio ARGUMENTO posicional (`open(sys.argv[1], "w")` casado com o `"$GUARD"`
+que vem depois do corpo). O `CP` É O QUE EXIGE A EXCEÇÃO MAIS CUIDADOSA: esta
+árvore tem **mais de 180 linhas** de `cp`/`mv`, e a esmagadora maioria é o
+REMÉDIO — o backup (que nasce de um `mktemp -d`) copiado PARA a árvore restaura o
+arquivo íntegro, e a cópia da árvore PARA o fixture leva o alvo para o scratch.
+Por isso a regra não olha só o DESTINO: ela exige que a **origem não nasça do
+scratch**, e a ORIGEM é lida da CADEIA (`TMP_DIR="$(mktemp -d)"` →
+`BACKUP="$TMP_DIR/guard.backup"` → `cp "$BACKUP" "$GUARD"`), que atravessa até o
+PARÂMETRO de uma função de restauração. Sem a cadeia, um detector de `cp`
+transformaria o remédio em violação — em dezenas de linhas.
+
+O que NÃO é a árvore não é julgado: a cópia
 do fixture no scratch nasce de um `mktemp` e o seu valor não resolve (a classe
 legítima das suítes de `FORA_DA_REGUA`), e um caminho relativo que não existe no
 repositório (nem o da cópia sob `cd "$FIXTURE_DIR"`) também não. O alvo é
 reconhecido contra a árvore **de verdade** mesmo no recorte `--staged` — senão a
 cirurgia só apareceria no CI, e não no commit. O `registry-defaults` converteu
-para o caminho **DECLARADO** (`mutacao_aplicar_sem_marcador`, com o motivo), e é o
-quarto nome de `SEM_MARCADOR`: o remendo da tabela não é uma mutação (não cega
-nada) e o payload entra SEM o marcador de propósito — a M7 lê a AUSÊNCIA dele para
-saber que a própria escrita aplicou. A cobertura viva da regra são os casos
+para o caminho **DECLARADO** (`mutacao_aplicar_sem_marcador`, com o motivo): o
+remendo da tabela não é uma mutação (não cega nada) e o payload entra SEM o
+marcador de propósito — a M7 lê a AUSÊNCIA dele para
+saber que a própria escrita aplicou.
+
+**E UMA SUÍTE QUE MANTINHA A PRÓPRIA CÓPIA DA PROVA CONVERGIU PARA A RÉGUA.** O
+`pipefail-sigpipe` mutava três fontes do canal do remédio (o patch unificado, o
+guard do passo e o publicador do canal) com um `python3` PRIVADO que replicava as
+provas de CIRURGIA e CONTEÚDO da régua — as mesmas provas, no lugar errado: uma
+cópia que sumisse não deixaria rastro. Ele passou a chamar
+`mutacao_aplicar_sem_marcador`, o caminho DECLARADO, e é o **quinto** nome de
+`SEM_MARCADOR`: a troca é LITERAL (e é por isso que a régua a expressa), e o que
+ela dispensa é a prova do MARCADOR — o payload é um FRAGMENTO no MEIO da linha do
+alvo, e um comentário engoliria o resto dela.
+
+A cobertura viva da regra são os casos
 unitários de `check-mutation-count.test.ts` (o `sed -i`, o heredoc, o
-redirecionamento, o scratch que NÃO é a árvore, a suíte FORA da matriz, o laço, a
+redirecionamento, o `tee`, o `cp`/`mv` da árvore sobre a árvore com os DOIS
+CONTROLES — a restauração e a cópia para o fixture —, o `node -e`/`python3 -c`
+que GRAVA com o `-e` que só LÊ, o scratch que NÃO é a árvore, a suíte FORA da
+matriz, o laço, o PARÂMETRO POSICIONAL, a ALTERNATIVA do `:-`, a
 declaração conferida nos dois sentidos e o `--staged`); a metade que a desligaria
 no gabarito da matriz é LACUNA DECLARADA — acrescentá-la mexeria na coluna de
 metades do registro versionado, que é reescrita pelo ATO.
@@ -4063,7 +4115,7 @@ Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 28/09/2026, medido sob
 | `merge-latency`                                                           |       4.6s |    1% |       5 |           prova |
 | `hook-ci-parity`                                                          |       3.9s |    0% |       9 | prova·declarado |
 | `runner-tag`                                                              |       3.2s |    0% |       1 |           prova |
-| `pipefail-sigpipe`                                                        |       2.3s |    0% |      22 |           prova |
+| `pipefail-sigpipe`                                                        |       2.3s |    0% |      22 | prova·declarado |
 | `act-origin`                                                              |       2.3s |    0% |       9 |          isenta |
 | `doc-hashes` (a régua do hash citado na prosa)                            |       2.1s |    0% |       9 |          isenta |
 | `bun-literal`                                                             |       1.8s |    0% |       5 |          isenta |
@@ -4094,7 +4146,7 @@ Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 28/09/2026, medido sob
 
 **A RÉGUA ÚNICA, sub-test a sub-test: 28 PROVAM a aplicação, 18 mutam por conta própria e o GABARITO (`mutacao-prova`) mede a régua.**
 
-Os 28 que PROVAM chamam `mutacao_aplicar` (a cópia única, `scripts/mutacao-prova.sh`): a CIRURGIA (o alvo casa uma vez), o MARCADOR (o payload carrega `MUTACAO`) e o CONTEÚDO (o checksum mudou) vêm da MESMA régua — uma cópia privada que sumisse não deixaria rastro. 3 deles usam TAMBÉM o caminho DECLARADO (`mutacao_aplicar_sem_marcador`, para o payload que não comporta o marcador): `hook-ci-parity`, `mutacao-prova`, `registry-defaults`. E o GABARITO é `mutacao-prova`: ele MUTA a régua para medir que as provas dela são load-bearing — não é isento nem conta como quem muta por conta própria. As três classes somam os 47 sub-tests da matriz.
+Os 28 que PROVAM chamam `mutacao_aplicar` (a cópia única, `scripts/mutacao-prova.sh`): a CIRURGIA (o alvo casa uma vez), o MARCADOR (o payload carrega `MUTACAO`) e o CONTEÚDO (o checksum mudou) vêm da MESMA régua — uma cópia privada que sumisse não deixaria rastro. 4 deles usam TAMBÉM o caminho DECLARADO (`mutacao_aplicar_sem_marcador`, para o payload que não comporta o marcador): `hook-ci-parity`, `mutacao-prova`, `pipefail-sigpipe`, `registry-defaults`. E o GABARITO é `mutacao-prova`: ele MUTA a régua para medir que as provas dela são load-bearing — não é isento nem conta como quem muta por conta própria. As três classes somam os 47 sub-tests da matriz.
 
 **Os 18 que mutam por conta própria — o PORQUÊ de cada um** (a linha do `FORA_DA_REGUA` no master, declarada lá e publicada aqui):
 
