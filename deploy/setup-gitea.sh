@@ -31,7 +31,7 @@ fi
 
 # ── Configuracoes ─────────────────────────────────────────────────────────
 GITEA_DIR="/opt/gitea"
-DOMAIN="git.severinno.cloud"
+DOMAIN="git.severinno.com"
 
 # ── Passo 1: Verificar Docker ─────────────────────────────────────────────
 info "Verificando Docker..."

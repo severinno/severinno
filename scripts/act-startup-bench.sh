@@ -97,7 +97,7 @@ IMG_ID=("default" "custom")
 # FONTE ÚNICA do host (invariante 1 do check:registry-source): o registry sai de
 # IMAGE_REGISTRY/IMAGE_NAMESPACE (repo variable; no act local, `--var` do .actrc)
 # — NUNCA de um `ghcr.io` cravado aqui. O default acompanha o do compose.
-REGISTRY="${IMAGE_REGISTRY:-git.severinno.cloud}"
+REGISTRY="${IMAGE_REGISTRY:-git.severinno.com}"
 NAMESPACE="${IMAGE_NAMESPACE:-severinno}"
 IMG_TAG=("catthehacker/ubuntu:act-latest" "$REGISTRY/$NAMESPACE/ubuntu-bun:$ACTRC_BUN")
 IMG_ARGS=()   # --image 'label|tag' repetível — substitui a lista acima (1ª = baseline)

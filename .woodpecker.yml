@@ -246,7 +246,7 @@ deploy:
         - latest
         - ${CI_COMMIT_SHA:0:7}
       # FONTE ÚNICA do registry: secret `image_registry`
-      # (ex.: ghcr.io ou git.severinno.cloud).
+      # (ex.: ghcr.io ou git.severinno.com).
       registry:
         from_secret: image_registry
       username:

@@ -53,8 +53,8 @@ env:
   # Para o registry OCI do Gitea/Forgejo: defina IMAGE_REGISTRY e os secrets
   # IMAGE_REGISTRY_USER / IMAGE_REGISTRY_TOKEN (o GITHUB_TOKEN do run não
   # autentica em outra forja).
-  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'git.severinno.cloud' }}
-  MIRROR_PREFIX: ${{ vars.IMAGE_REGISTRY || 'git.severinno.cloud' }}/${{ github.repository_owner }}
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'git.severinno.com' }}
+  MIRROR_PREFIX: ${{ vars.IMAGE_REGISTRY || 'git.severinno.com' }}/${{ github.repository_owner }}
 
 jobs:
   mirror:

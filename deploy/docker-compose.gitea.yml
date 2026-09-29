@@ -7,13 +7,13 @@
 #   docker compose -f deploy/docker-compose.gitea.yml --env-file deploy/.env.gitea up -d
 #
 # Pre-requisitos:
-#   1. DNS git.severinno.cloud apontando para o IP do VPS
+#   1. DNS git.severinno.com apontando para o IP do VPS
 #   2. Arquivo deploy/.env.gitea configurado
 #   3. Portas 80 e 443 abertas no firewall
 #
 # Acesso:
-#   Web UI: https://git.severinno.cloud
-#   SSH:    ssh -p 2222 git@git.severinno.cloud
+#   Web UI: https://git.severinno.com
+#   SSH:    ssh -p 2222 git@git.severinno.com
 # =============================================================================
 
 services:
@@ -66,10 +66,10 @@ services:
       - GITEA__database__PATH=/data/gitea/gitea.db
 
       # ── Server ────────────────────────────────────────────────────────
-      - GITEA__server__DOMAIN=git.severinno.cloud
+      - GITEA__server__DOMAIN=git.severinno.com
       - GITEA__server__SSH_PORT=2222
       - GITEA__server__HTTP_PORT=3000
-      - GITEA__server__ROOT_URL=https://git.severinno.cloud/
+      - GITEA__server__ROOT_URL=https://git.severinno.com/
       - GITEA__server__DISABLE_SSH=true
       - GITEA__server__START_SSH_SERVER=false
 
@@ -187,7 +187,7 @@ services:
       # Ele garante a imagem, apaga o container E o registro gravado, e so
       # entao sobe — sem apagar o volume o runner voltaria com os labels ANTIGOS
       # e o tier-1 seguiria desligado, sem nenhum sintoma.
-      - GITEA_RUNNER_LABELS=ubuntu-latest:docker://${IMAGE_REGISTRY:-git.severinno.cloud}/${IMAGE_NAMESPACE:-severinno}/ubuntu-bun:${BUN_VERSION},ubuntu-22.04:docker://${IMAGE_REGISTRY:-git.severinno.cloud}/${IMAGE_NAMESPACE:-severinno}/ubuntu-bun:${BUN_VERSION}
+      - GITEA_RUNNER_LABELS=ubuntu-latest:docker://${IMAGE_REGISTRY:-git.severinno.com}/${IMAGE_NAMESPACE:-severinno}/ubuntu-bun:${BUN_VERSION},ubuntu-22.04:docker://${IMAGE_REGISTRY:-git.severinno.com}/${IMAGE_NAMESPACE:-severinno}/ubuntu-bun:${BUN_VERSION}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - runner-data:/data

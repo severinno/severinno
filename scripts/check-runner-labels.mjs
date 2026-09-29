@@ -1672,7 +1672,7 @@ export function checkRunnerLabels({
       ? []
       : declaredEntries.length === 0
         ? [
-            `Remédio: declare GITEA_RUNNER_LABELS no serviço '${RUNNER_SERVICE}' de ${GITEA_COMPOSE} (o invariante 6 já exige a imagem da VARIÁVEL: \`ubuntu-latest:docker://\${IMAGE_REGISTRY:-git.severinno.cloud}/\${IMAGE_NAMESPACE:-severinno}/ubuntu-bun:\${BUN_VERSION}\`) e só então re-registre — o registro só pega os labels na SUBIDA.`,
+            `Remédio: declare GITEA_RUNNER_LABELS no serviço '${RUNNER_SERVICE}' de ${GITEA_COMPOSE} (o invariante 6 já exige a imagem da VARIÁVEL: \`ubuntu-latest:docker://\${IMAGE_REGISTRY:-git.severinno.com}/\${IMAGE_NAMESPACE:-severinno}/ubuntu-bun:\${BUN_VERSION}\`) e só então re-registre — o registro só pega os labels na SUBIDA.`,
             reRegister,
             `Se o compose do host for outro arquivo, confirme COMPOSE_FILE: a comparação é contra ${GITEA_COMPOSE} deste checkout.`,
           ]

@@ -5,8 +5,8 @@
 #   docker compose -f docker-compose.gitea.yml --env-file deploy/.env.gitea up -d
 #
 # Acesso:
-#   Web UI: https://git.severinno.cloud
-#   SSH:    ssh -p 2222 git@git.severinno.cloud
+#   Web UI: https://git.severinno.com
+#   SSH:    ssh -p 2222 git@git.severinno.com
 #
 # NOTA: Este arquivo e o mesmo que deploy/docker-compose.gitea.yml.
 #       Mantido na raiz para conveniencia.
@@ -59,10 +59,10 @@ services:
     environment:
       - GITEA__database__DB_TYPE=sqlite3
       - GITEA__database__PATH=/data/gitea/gitea.db
-      - GITEA__server__DOMAIN=git.severinno.cloud
+      - GITEA__server__DOMAIN=git.severinno.com
       - GITEA__server__SSH_PORT=2222
       - GITEA__server__HTTP_PORT=3000
-      - GITEA__server__ROOT_URL=https://git.severinno.cloud/
+      - GITEA__server__ROOT_URL=https://git.severinno.com/
       - GITEA__server__DISABLE_SSH=true
       - GITEA__server__START_SSH_SERVER=false
       - GITEA__actions__ENABLED=true

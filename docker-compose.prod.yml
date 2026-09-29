@@ -13,18 +13,18 @@
 #   S3_SECRET_KEY        — segredo do MinIO/S3
 #
 # ── Origem das imagens (FONTE UNICA) ─────────────────────────────────────
-#   IMAGE_REGISTRY   — host do registry OCI (default: git.severinno.cloud)
+#   IMAGE_REGISTRY   — host do registry OCI (default: git.severinno.com)
 #   IMAGE_NAMESPACE  — namespace/owner das imagens (default: severinno)
 #
 # As imagens da aplicacao NUNCA sao referenciadas com um host literal: trocar
 # registry = mudar UMA variavel aqui (e a repo variable IMAGE_REGISTRY nos
 # workflows, que e o mesmo valor para o lado de CI). Sem as variaveis o
-# default aponta para o registry proprio (git.severinno.cloud/severinno).
+# default aponta para o registry proprio (git.severinno.com/severinno).
 #
 # Para o registry OCI embutido do Gitea/Forgejo (sem custo de GHCR):
-#   IMAGE_REGISTRY=git.severinno.cloud
+#   IMAGE_REGISTRY=git.severinno.com
 #   IMAGE_NAMESPACE=severinno
-#   docker compose ... login git.severinno.cloud   (uma vez, na VPS)
+#   docker compose ... login git.severinno.com   (uma vez, na VPS)
 #
 # Guard: `bun run check:registry-source` falha se um host de registry voltar
 # a ser hardcoded em compose/workflow/script.
@@ -509,7 +509,7 @@ services:
       dockerfile: Dockerfile
       args:
         BUN_VERSION: ${BUN_VERSION:-1.3.14}
-    image: ${IMAGE_REGISTRY:-git.severinno.cloud}/${IMAGE_NAMESPACE:-severinno}/realtime:latest
+    image: ${IMAGE_REGISTRY:-git.severinno.com}/${IMAGE_NAMESPACE:-severinno}/realtime:latest
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -567,7 +567,7 @@ services:
   # scripts/docker-entrypoint.sh. As env vars publicas permanecem
   # via environment: ou .env.production.
   app:
-    image: ${IMAGE_REGISTRY:-git.severinno.cloud}/${IMAGE_NAMESPACE:-severinno}/severinno:latest
+    image: ${IMAGE_REGISTRY:-git.severinno.com}/${IMAGE_NAMESPACE:-severinno}/severinno:latest
     entrypoint: ["./scripts/docker-entrypoint.sh"]
     restart: unless-stopped
     security_opt:
@@ -750,7 +750,7 @@ services:
   # que retorna 200 OK se o nó está saudável. Se falhar, o worker não
   # conseguirá consumir mensagens da fila.
   email-worker:
-    image: ${IMAGE_REGISTRY:-git.severinno.cloud}/${IMAGE_NAMESPACE:-severinno}/severinno:worker-latest
+    image: ${IMAGE_REGISTRY:-git.severinno.com}/${IMAGE_NAMESPACE:-severinno}/severinno:worker-latest
     entrypoint: ["./scripts/docker-entrypoint.sh"]
     restart: unless-stopped
     security_opt:
@@ -823,7 +823,7 @@ services:
   # email-worker). O worker de notificação consome da fila de push e
   # precisa do RabbitMQ para receber eventos.
   notification-worker:
-    image: ${IMAGE_REGISTRY:-git.severinno.cloud}/${IMAGE_NAMESPACE:-severinno}/severinno:worker-latest
+    image: ${IMAGE_REGISTRY:-git.severinno.com}/${IMAGE_NAMESPACE:-severinno}/severinno:worker-latest
     entrypoint: ["./scripts/docker-entrypoint.sh"]
     restart: unless-stopped
     security_opt:
@@ -899,7 +899,7 @@ services:
   # diretamente e indexa no OpenSearch). O healthcheck verifica se o
   # worker consegue conectar no PostgreSQL via PgBouncer.
   search-index-worker:
-    image: ${IMAGE_REGISTRY:-git.severinno.cloud}/${IMAGE_NAMESPACE:-severinno}/severinno:worker-latest
+    image: ${IMAGE_REGISTRY:-git.severinno.com}/${IMAGE_NAMESPACE:-severinno}/severinno:worker-latest
     entrypoint: ["./scripts/docker-entrypoint.sh"]
     restart: unless-stopped
     security_opt:

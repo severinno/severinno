@@ -283,7 +283,7 @@ rodar_guard() {
   # e o daemon do runner carrega o seu). Com valor live, a comparação de
   # variável viva do guard acusa o FIXTURE (que declara ghcr.io) FORA do
   # mecanismo mutado — e o sub-test mede o AMBIENTE, não a mutação (medido no
-  # CI em 28/09/2026: M1 "não cegou" com IMAGE_REGISTRY='git.severinno.cloud'
+  # CI em 28/09/2026: M1 "não cegou" com IMAGE_REGISTRY='git.severinno.com'
   # × fixture 'ghcr.io'; reproduzido localmente com o env exportado). O que o
   # guard lê do ambiente ao vivo no repositório REAL continua medido — é o
   # CONTROLE A, onde a variável ausente sai INDETERMINADA nomeada, nunca verde

@@ -356,7 +356,7 @@ jobs:
       - name: Doctor Ci (o VALOR das repository variables nos espelhos)
         # BUN_VERSION já vem do env do workflow (a MESMA variável que o
         # setup-bun usou); as outras duas são declaradas aqui, sem fallback: um
-        # `|| 'git.severinno.cloud'` no YAML é intenção declarada, nunca o valor.
+        # `|| 'git.severinno.com'` no YAML é intenção declarada, nunca o valor.
         env:
           IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
           IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}

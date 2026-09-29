@@ -405,7 +405,7 @@ export function checkLiteralImageTag(file, lineNo, line) {
 /**
  * Invariante 4: todo `image:` de compose cujo path e o NOSSO precisa vir da
  * variavel. Pega o caso em que alguem mantem o caminho mas troca o host por
- * outro literal (`quay.io/severinno/...`, `git.severinno.cloud` cravado).
+ * outro literal (`quay.io/severinno/...`, `git.severinno.com` cravado).
  */
 export function checkComposeImageLine(file, lineNo, line) {
   if (!/^\s*image:\s*\S/.test(line)) return null
@@ -2096,7 +2096,7 @@ export function composeEnvDefaults(content) {
  * O DEFAULT embutido do compose x o valor que o TEMPLATE declara.
  *
  * POR QUE ISSO E UMA INVARIANTE, e nao um detalhe de estilo: o default e o que
- * vale onde a variavel NAO existe. Se o template declara `git.severinno.cloud`
+ * vale onde a variavel NAO existe. Se o template declara `git.severinno.com`
  * e a linha do compose continua `${IMAGE_REGISTRY:-ghcr.io}`, entao o host que
  * nao declarar a variavel (o caso comum: `.env` sem a variavel) puxa do GHCR
  * enquanto o repositorio "declara" o registry do Gitea — os dois arquivos
@@ -2465,7 +2465,7 @@ export function sweepImageDefaultValues(root = ROOT) {
  * com o template da forja (todas as variaveis que o compose da forja consome).
  * Ninguem compara o env da APLICACAO com `.env.production.example` — e e ali
  * que vive o `IMAGE_REGISTRY` que decide de ONDE a app puxa as imagens. Um VPS
- * com `IMAGE_REGISTRY=git.severinno.cloud` no `.env.production.local` e
+ * com `IMAGE_REGISTRY=git.severinno.com` no `.env.production.local` e
  * `ghcr.io` no template comitado tem os dois lados verdes: a app puxa de um
  * registry e o runner do outro, e trocar o template nao muda o que roda.
  *

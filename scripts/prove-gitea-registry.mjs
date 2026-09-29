@@ -29,7 +29,7 @@
 // **Ato 1b** (a publicação dos dois artefatos) — mas o Ato 1b foi medido num
 // registry `registry:2` LOCAL, e o próprio documento declara o limite: *"a
 // publicação acima aconteceu num registry local"*. A etapa 1 promete outra
-// coisa: as duas imagens no registry **OCI embutido da Gitea** (`git.severinno.cloud`),
+// coisa: as duas imagens no registry **OCI embutido da Gitea** (`git.severinno.com`),
 // que é o que o runner da forja e o tier-3 do `setup-bun-ci.sh` consomem. Um
 // `registry:2` local prova a MECÂNICA do OCI e deixa de fora exatamente o que o
 // Gitea acrescenta — o registry embutido, com TOKEN (realm do `/v2/`), com o
@@ -79,7 +79,7 @@
 //     porta local (bind em 127.0.0.1), volumes próprios e DUAS chaves de
 //     `environment` do serviço `gitea` — o `ROOT_URL` e o `DOMAIN` (o realm do
 //     token sai do ROOT_URL: apontando para a produção, o `docker login` do
-//     ensaio iria para `git.severinno.cloud`). Os desvios são listados no
+//     ensaio iria para `git.severinno.com`). Os desvios são listados no
 //     relatório, com o valor de origem;
 //   - o env sai do template comitado (`deploy/env.gitea.example`) — é dele que
 //     saem o DONO do pacote (`IMAGE_NAMESPACE`), a VERSÃO (`BUN_VERSION`) e o
@@ -102,7 +102,7 @@
 //
 // O QUE NÃO COBRE (dito, não escondido)
 //
-//   - a VPS (`git.severinno.cloud`): publicar lá e definir as repository
+//   - a VPS (`git.severinno.com`): publicar lá e definir as repository
 //     variables nas duas forjas continuam sendo os dois atos de OPERAÇÃO da
 //     etapa 1 (o ensaio prova a mecânica, com o mesmo Gitea da série 1.22);
 //   - TLS/Caddy, DNS e firewall: a stack sobe só o serviço `gitea`, em HTTP no
@@ -394,7 +394,7 @@ export function registryDeviations({ baseEnv = {}, host }) {
       key: "GITEA__server__ROOT_URL",
       from: baseEnv.GITEA__server__ROOT_URL ?? null,
       to: `http://${host}/`,
-      why: "o realm do token do registry sai do ROOT_URL: apontando para a produção, o `docker login` do ensaio iria para git.severinno.cloud",
+      why: "o realm do token do registry sai do ROOT_URL: apontando para a produção, o `docker login` do ensaio iria para git.severinno.com",
     },
     {
       key: "GITEA__server__DOMAIN",
@@ -1929,7 +1929,7 @@ export function renderReport(result, { emit = console.log } = {}) {
   line("")
   line("  Limites declarados (o que este ensaio NÃO prova):")
   line(
-    "   • a VPS (git.severinno.cloud): publicar lá e definir as repository variables nas duas forjas seguem sendo os dois atos de operação da etapa 1",
+    "   • a VPS (git.severinno.com): publicar lá e definir as repository variables nas duas forjas seguem sendo os dois atos de operação da etapa 1",
   )
   line("   • TLS/Caddy, DNS e firewall: a stack sobe só o serviço gitea, em HTTP no loopback")
   line("   • o act_runner: quem puxa a imagem do job é o DAEMON do host, com a credencial DELE")

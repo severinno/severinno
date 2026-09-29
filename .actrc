@@ -19,9 +19,9 @@
 # variables → Actions) e este arquivo é apenas o espelho local do act.
 # Sem o --var, o act local resolveria a variável vazia e cairia no default do
 # workflow — que, desde a virada do registry (etapa 1 do corte do GitHub), já é
-# o próprio `git.severinno.cloud`; o --var existe para o act provar o caminho
+# o próprio `git.severinno.com`; o --var existe para o act provar o caminho
 # DECLARADO, não para corrigir um valor diferente. Mantenha em sincronia: o
 # guard semanal check-actrc-sync.mjs compara o VALOR desta linha com
 # vars.IMAGE_REGISTRY (o guard estático check-registry-source só exige que a
 # flag EXISTA).
---var IMAGE_REGISTRY=git.severinno.cloud
+--var IMAGE_REGISTRY=git.severinno.com

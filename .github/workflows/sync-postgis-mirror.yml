@@ -40,8 +40,8 @@ permissions:
 env:
   # Registry de destino do mirror — FONTE ÚNICA (repo variable IMAGE_REGISTRY).
   # Default = o registry OCI próprio.
-  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'git.severinno.cloud' }}
-  MIRROR_PREFIX: ${{ vars.IMAGE_REGISTRY || 'git.severinno.cloud' }}/${{ github.repository_owner }}
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'git.severinno.com' }}
+  MIRROR_PREFIX: ${{ vars.IMAGE_REGISTRY || 'git.severinno.com' }}/${{ github.repository_owner }}
 
 jobs:
   mirror:

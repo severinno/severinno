@@ -127,7 +127,7 @@ mkdir -p "$HOME/.bun/bin"
 # O host do mirror vem de IMAGE_REGISTRY (fonte única do registry de imagens).
 if [ "$OS" = "linux" ] && [ "$ARCH" = "x64" ] && command -v docker >/dev/null 2>&1; then
   OWNER="${GITHUB_REPOSITORY_OWNER:-severinno}"
-  MIRROR="${IMAGE_REGISTRY:-git.severinno.cloud}/${OWNER}/bun:${VERSION}"
+  MIRROR="${IMAGE_REGISTRY:-git.severinno.com}/${OWNER}/bun:${VERSION}"
   echo "::group::Puxando Bun ${VERSION} do mirror OCI (${MIRROR})"
   if docker pull "$MIRROR" >/dev/null 2>&1; then
     CID="$(docker create "$MIRROR" 2>/dev/null || true)"

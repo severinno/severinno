@@ -16,7 +16,7 @@ env:
   # <namespace>/<repo>, então vars.IMAGE_NAME cobre o caso de o path não ser
   # <owner>/<repo>.
   # Guard: `bun run check:registry-source`.
-  REGISTRY: ${{ vars.IMAGE_REGISTRY || 'git.severinno.cloud' }}
+  REGISTRY: ${{ vars.IMAGE_REGISTRY || 'git.severinno.com' }}
   IMAGE_NAME: ${{ vars.IMAGE_NAME || github.repository }}
 
 jobs:

@@ -76,7 +76,7 @@
 //
 // Usage:
 //   node scripts/check-actrc-sync.mjs --expected 1.3.14 \
-//     --expected-var IMAGE_REGISTRY=git.severinno.cloud --expected-var IMAGE_NAMESPACE=severinno
+//     --expected-var IMAGE_REGISTRY=git.severinno.com --expected-var IMAGE_NAMESPACE=severinno
 //   node scripts/check-actrc-sync.mjs --expected "${{ vars.BUN_VERSION }}" --fail
 //   node scripts/check-actrc-sync.mjs --expected 1.3.14 --actrc /tmp/.actrc
 //   node scripts/check-actrc-sync.mjs --expected 1.3.14 --gitea-env /tmp/env.gitea

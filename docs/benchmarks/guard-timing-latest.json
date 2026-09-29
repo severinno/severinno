@@ -306,7 +306,7 @@
   ],
   "doctor": {
     "label": "doctor --ci",
-    "cmd": "node scripts/forge-doctor.mjs --ci --json --expected 1.3.14 --expected-var IMAGE_REGISTRY=git.severinno.cloud --expected-var IMAGE_NAMESPACE=severinno",
+    "cmd": "node scripts/forge-doctor.mjs --ci --json --expected 1.3.14 --expected-var IMAGE_REGISTRY=git.severinno.com --expected-var IMAGE_NAMESPACE=severinno",
     "ms": 4167,
     "exit": 2,
     "ok": true

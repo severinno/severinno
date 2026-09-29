@@ -17,11 +17,11 @@ concurrency:
 
 env:
   # Origem das imagens — FONTE ÚNICA (variable IMAGE_REGISTRY da forja).
-  # Aqui é onde o registry open source (git.severinno.cloud) entra: defina a
+  # Aqui é onde o registry open source (git.severinno.com) entra: defina a
   # variable IMAGE_REGISTRY no repositório do Gitea/Forgejo e as imagens
   # param de sair do GHCR sem tocar em nenhum outro arquivo.
   # O contexto `vars` exige Gitea >= 1.22 (o compose fixa 1.22).
-  REGISTRY: ${{ vars.IMAGE_REGISTRY || 'git.severinno.cloud' }}
+  REGISTRY: ${{ vars.IMAGE_REGISTRY || 'git.severinno.com' }}
   IMAGE_NAME: ${{ vars.IMAGE_NAME || github.repository }}
   # FONTE ÚNICA da versão do Bun (era o literal 1.4.0 nos build-args).
   BUN_VERSION: ${{ vars.BUN_VERSION }}

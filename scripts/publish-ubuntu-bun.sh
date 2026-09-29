@@ -50,7 +50,7 @@
 #   IMAGE_REGISTRY=127.0.0.1:5000 BUN_VERSION=1.3.14 ./scripts/publish-ubuntu-bun.sh
 #
 # Environment:
-#   IMAGE_REGISTRY   Host do registry OCI (default: git.severinno.cloud — o
+#   IMAGE_REGISTRY   Host do registry OCI (default: git.severinno.com — o
 #                    MESMO default do compose; o valor declarado é a variável)
 #   IMAGE_NAMESPACE  Namespace no registry (default: severinno — o declarado)
 #   OWNER        Owner do remote — usado SÓ nas etapas gh (visibilidade, act)
@@ -85,7 +85,7 @@ if [ -z "$VERSION" ]; then
   echo "  Declare em .actrc ou passe BUN_VERSION=<X.Y.Z> no comando." >&2
   exit 2
 fi
-REGISTRY="${IMAGE_REGISTRY:-git.severinno.cloud}"
+REGISTRY="${IMAGE_REGISTRY:-git.severinno.com}"
 # O default ACOMPANHA o valor declarado (`deploy/env.gitea.example`): o guard da
 # invariante 9 compara default x declarado POR VALOR, e um default que ninguém
 # declara faria a imagem que roda não ser a que o repositório diz.

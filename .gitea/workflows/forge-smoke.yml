@@ -85,7 +85,7 @@ env:
   # Registry de imagens (fonte unica). O fallback preserva o comportamento
   # historico e permite reportar QUAL registry esta forja vai usar — resposta
   # direta para "a variable IMAGE_REGISTRY foi criada ou ainda e o default?".
-  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'git.severinno.cloud' }}
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'git.severinno.com' }}
 
 jobs:
   smoke:
