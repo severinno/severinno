@@ -112,7 +112,18 @@ docker compose -f deploy/docker-compose.gitea.yml up -d
 # 4. a prova: curl https://git.severinno.com/api/v1/version → 200
 ```
 
-**Alerta de falha (`scripts/forge-backup-alert.mjs`, cron local 05:20):** lê o manifest do dia e sai fail-closed — sem manifest (cron não rodou), sem "FIM OK" (morreu no meio) ou artefato do sha256sums ausente abrem issue com o marcador canônico (`issue-publish.mjs`); o dia com FIM OK reconcilia (fecha) as issues que o próprio alerta abriu. Issue com o label mas sem marcador NÃO é fechada por automatismo. Hoje o backend é o GitHub; pós-restore vira `--backend gitea` (a forja dona).
+**Alerta de falha (`scripts/forge-backup-alert.mjs`, cron local 05:20):** lê o manifest do dia e sai fail-closed — sem manifest (cron não rodou), sem "FIM OK" (morreu no meio) ou artefato do sha256sums ausente abrem issue com o marcador canônico (`issue-publish.mjs`); o dia com FIM OK reconcilia (fecha) as issues que o próprio alerta abriu. Issue com o label mas sem marcador NÃO é fechada por automatismo.
+
+**Backend gitea — PROVADO E2E contra a forja real (29/09, stack de bring-up):** FALHA → issue criada; OK → reconciliação FECHOU a issue (`state=closed` verificado pela API). Pós-restore, o cron local 05:20 vira:
+
+```bash
+GITEA_URL=https://git.severinno.com \
+GITEA_TOKEN=<token do usuário de serviço> \
+GITEA_REPOSITORY=<owner>/<repo-de-alertas> \
+node scripts/forge-backup-alert.mjs --backend gitea
+```
+
+Lições da prova: o token precisa dos escopos **`write:user,write:issue,write:repository`** (sem `write:user` a API recusa a criação de repo com "token does not have at least one of required scope(s)"); e o usuário criado via CLI nasce com must-change-password — desligar com `--must-change-password=false` no `change-password`. Na VPS, o alerta alcança a forja pela rede bridge (`http://172.18.0.3:3000` ou o IP do container) sem expor a porta ao host; off-site, só via `https://git.severinno.com` (DNS pendente).
 
 **Pré-requisito do 100% self-hosted (verificado em 29/09):** a forja de bring-up novo nasce SEM `/data/git/repositories` — o `forge-backup.sh` cria o dir antes do dump. Forja vazia (`bundles: 0`) é estado normal, não erro.
 
