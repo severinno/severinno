@@ -43,6 +43,7 @@
 //       que seja o fato medido; um backup falhado PUBLICADO é um alerta de pé)
 //   1 — o alerta não conseguiu cumprir (backend de issues falhou, uso errado)
 import { existsSync, readFileSync } from "node:fs"
+import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { issueHasAnyMarker, markerOf } from "./issue-publish.mjs"
@@ -57,11 +58,12 @@ const ISSUES = {
   markerId: "forge-backup-alert",
 }
 
-const USO = `uso: node scripts/forge-backup-alert.mjs [--root /root/backups-forja] [--dia AAAA-MM-DD] [--backend gitea|github] [--repo owner/name] [--dry-run] [-h]`
+const USO = `uso: node scripts/forge-backup-alert.mjs [--root ~/backups-forja] [--dia AAAA-MM-DD] [--backend gitea|github] [--repo owner/name] [--dry-run] [-h]`
 
 function parseArgs(argv) {
   const o = {
-    root: process.env.FORGE_BACKUP_ROOT || "/root/backups-forja",
+    // ~/backups-forja é o layout nos DOIS lados (local: /home/<user>, VPS: /root)
+    root: process.env.FORGE_BACKUP_ROOT || join(homedir(), "backups-forja"),
     dia: new Date().toLocaleDateString("sv-SE"), // YYYY-MM-DD local
     backend: "github",
     repo: null,
