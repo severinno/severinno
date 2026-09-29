@@ -346,6 +346,24 @@ function copiaMaterialDoCount(root: string, { countGuardCego = false } = {}): Se
   const suites = [
     ...new Set([...master.matchAll(/scripts\/test-mutation-[a-z0-9-]+\.sh/g)].map((m) => m[0])),
   ]
+  // OS ALVOS DAS TROCAS DECLARADAS (`CIRURGIA_NA_ARVORE`) entram na cópia pelo
+  // mesmo motivo das suítes — e a ausência deles é MEDIDA: a regra da cirurgia
+  // privada julga os dois sentidos, e o lado da TROCA reconhece o alvo contra a
+  // árvore (`ehArquivoDaArvore` exige o arquivo EXISTIR). Numa cópia sem o alvo,
+  // nenhuma troca é reconhecida e a DECLARAÇÃO vira "ENVELHECEU" sobre uma troca
+  // que existe: o guard da contagem refutava junto com o gate e os onze casos da
+  // prova saíam `unavailable` — o fixture medindo o fixture. A lista sai do
+  // MASTER (um alvo novo entra com a linha), como a das suítes.
+  const alvosDeclarados = [
+    ...new Set(
+      (/CIRURGIA_NA_ARVORE=\(([\s\S]*?)\n\)/.exec(master)?.[1] ?? "")
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.startsWith("'"))
+        .map((l) => l.replace(/^'|'$/g, "").split("|")[1])
+        .filter(Boolean),
+    ),
+  ]
   for (const rel of [
     "scripts/test-mutation-guards.sh",
     "scripts/metades.mjs",
@@ -357,6 +375,7 @@ function copiaMaterialDoCount(root: string, { countGuardCego = false } = {}): Se
     // inteiro, e o guard inteiro é ele mais o que ele importa.
     ...modulosImportados(`scripts/${DONO_DO_COUNT}`),
     ...suites,
+    ...alvosDeclarados,
   ]) {
     const origem = join(REPO_ROOT, rel)
     if (!existsSync(origem)) continue
