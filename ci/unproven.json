@@ -283,13 +283,14 @@
       "declaração alcança). A chave é o ASSUNTO EXATO do commit (linha única,",
       "format=%s): o rebase renomeia todos os SHAs e o assunto sobrevive. Assunto",
       "que continuou é classificado à parte (re-ancorar). A medição que produziu",
-      "os motivos abaixo é a de 25/09/2026 sobre a pilha de 34 commits (log",
-      "`/tmp` efêmero; re-medir: `node scripts/prove-stack-per-commit.mjs --base",
-      "30447a57 --medir --json`). Dívida declarada NÃO muda o exit do prover: o",
-      "que muda é o nome verdadeiro de cada vermelho no veredito."
+      "os motivos abaixo é a de 28/09/2026 sobre a pilha de 231 commits (base",
+      "`origin/main @8a3710cd`; log `/tmp` efêmero; re-medir: `node scripts/",
+      "prove-stack-per-commit.mjs --base origin/main --medir --json`). Dívida",
+      "declarada NÃO muda o exit do prover: o que muda é o nome verdadeiro de",
+      "cada vermelho no veredito."
     ],
-    "base": "30447a57 (a ponta de origem medida em 25/09/2026)",
-    "declaredAt": "2026-09-25",
+    "base": "origin/main @8a3710cd (a ponta de origem medida em 28/09/2026 — 231 commits)",
+    "declaredAt": "2026-09-29",
     "reviewAfterDays": 90,
     "commits": [
       {
@@ -321,6 +322,381 @@
         "subject": "feat(gates): o registro do ato passa a CARREGAR a matriz que ele declara — a origem que não carrega é violação nomeada",
         "reason": "medido 25/09/2026: o commit INTERMEDIÁRIO da prática do ato é vermelho COMO CONSEQÜÊNCIA da forma do bump — ele carrega a matriz de 42 sub-tests junto com o registro que o `--baseline` mediu sobre a árvore SUJA, então o `vitest` afetado (17 arquivo(s)) reprova em `bench-guard-timing-mutations.test.ts:570`: as formas do meio saem com `exit 1` (`bench-freshness` e `pre-commit-proof` comparam a matriz da árvore com o HEAD, que ainda não a tem) mais o limite declarado de `workflow-run-syntax`, cujo vermelho é do scratch gitignored `.tmp/mineracao/*.sh` e não da árvore versionada. O commit SEGUINTE re-mede na árvore COMITADA e é o que faz os três voltarem ao estado real — e é exatamente essa re-rodada que o `check-act-origin`, o gate que este commit instala, passava a EXIGIR NO ESQUEMA v6. A v7 a DISPENSA: o registro declara a REGRA (`meta.anchor = \"carrier\"`) e a PROCEDÊNCIA (`meta.parentCommit`), a âncora é o PORTADOR resolvido pela história (`origemDoRegistro`/`commitQueCarrega`), e a medição cabe em UM commit — o mesmo commit carrega a matriz, o registro e a âncora",
         "declaredAt": "2026-09-25"
+      },
+      {
+        "subject": "ci(forge): verificador reutilizável de gates CORE — cada gate provado no contrato de merge",
+        "reason": "medido 28/09/2026 (pilha de 231 commits, 2 tentativas repetiram o vermelho): forge-parity reprova pois as invariantes novas do CORE ('doctor-ci', 'prove-docs', 'bring-up-env-gate-proof') não estão wired no .gitea/workflows/ci.yml DA ÁRVORE DESTE commit — o wiring entra nos commits seguintes da train, e é lá que o gate volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "ci(prove-runner-image-gate): estende a prova ao modo --no-runner e combinações contraditórias",
+        "reason": "medido 28/09/2026 (pilha de 231 commits, 2 tentativas repetiram o vermelho): forge-parity reprova pois as invariantes novas do CORE ('doctor-ci', 'prove-docs', 'bring-up-env-gate-proof') não estão wired no .gitea/workflows/ci.yml DA ÁRVORE DESTE commit — o wiring entra nos commits seguintes da train, e é lá que o gate volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "ci(issue-publish): contrato único de lifecycle — marcador, fechamento, caducidade",
+        "reason": "medido 28/09/2026 (pilha de 231 commits, 2 tentativas repetiram o vermelho): forge-parity reprova pois as invariantes novas do CORE ('doctor-ci', 'prove-docs', 'bring-up-env-gate-proof') não estão wired no .gitea/workflows/ci.yml DA ÁRVORE DESTE commit — o wiring entra nos commits seguintes da train, e é lá que o gate volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "ci(forge): provas de execução, mutation tests, smoke efêmero e contrato da imagem",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('15 sub-tests' ≠ 18/20) — a MATRIZ da prova-de-aplicação cresce nos commits seguintes da train e o texto derivado só é re-ancorado lá; o mesmo caminho da dívida já declarada na rodada de 25/09 (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "ci(bench): benchmark versionado de wall time do doctor e guards",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('15 sub-tests' ≠ 18/20) — a MATRIZ da prova-de-aplicação cresce nos commits seguintes da train e o texto derivado só é re-ancorado lá; o mesmo caminho da dívida já declarada na rodada de 25/09 (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "ci(workflows): gates novos nas pipelines, docs e manifesto de checks",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('15 sub-tests' ≠ 18/20) — a MATRIZ da prova-de-aplicação cresce nos commits seguintes da train e o texto derivado só é re-ancorado lá; o mesmo caminho da dívida já declarada na rodada de 25/09 (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "ci(checks): atualiza validador de manifest e teste drift issue — usa contrato único",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('15 sub-tests' ≠ 18/20) — a MATRIZ da prova-de-aplicação cresce nos commits seguintes da train e o texto derivado só é re-ancorado lá; o mesmo caminho da dívida já declarada na rodada de 25/09 (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "ci(forge-doctor): defesa em profundidade NESTED_GUARD_ENV contra recursão",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('15 sub-tests' ≠ 18/20) — a MATRIZ da prova-de-aplicação cresce nos commits seguintes da train e o texto derivado só é re-ancorado lá; o mesmo caminho da dívida já declarada na rodada de 25/09 (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "test(workflow-execution): helper compartilhado e migração de 6 testes",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('15 sub-tests' ≠ 18/20) — a MATRIZ da prova-de-aplicação cresce nos commits seguintes da train e o texto derivado só é re-ancorado lá; o mesmo caminho da dívida já declarada na rodada de 25/09 (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "ci(deploy): wall time do doctor no bring-up, mutation test de reconciliação e docs",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('15 sub-tests' ≠ 18/20) — a MATRIZ da prova-de-aplicação cresce nos commits seguintes da train e o texto derivado só é re-ancorado lá; o mesmo caminho da dívida já declarada na rodada de 25/09 (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "ci(alerts): canal de issue no CRLF histórico e no actrc-sync da forja",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): vitest reprova em `expect(report.facts.ciProfile).toBe(true)` — o PERFIL --ci do doctor não estava ATIVADO naquele instante; o detector do perfil --ci entra na train em commit POSTERIOR ao deste commit, e é lá que a suíte volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "test(mutation): fixtures fiéis, âncoras vivas, SIGPIPE e canal argv na defesa de recursão",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): vitest reprova em `expect(report.facts.ciProfile).toBe(true)` — o PERFIL --ci do doctor não estava ATIVADO naquele instante; o detector do perfil --ci entra na train em commit POSTERIOR ao deste commit, e é lá que a suíte volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(guards): a classe SIGPIPE vira gate (guard, mutation test e fiação)",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em check-forge-parity.test.ts (10 falhas) — o fixture REALISTIC não lista o gate 'pipefail-sigpipe' que o PRÓPRIO commit cria; o commit seguinte ('o fixture fiel passa a listar o gate SIGPIPE') conserta e volta ao verde (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(ci): cron do drift do env do HOST da forja (o furo do pós-merge)",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): vitest reprova em `expect(report.facts.ciProfile).toBe(true)` — o PERFIL --ci do doctor não estava ATIVADO naquele instante; o detector do perfil --ci entra na train em commit POSTERIOR ao deste commit, e é lá que a suíte volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "fix(forge-doctor): o veredito — todo gate CORE é verificado, e a recursão é um fato",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova no forge-doctor (28 falhas, `expected 'armed'`) — o VEREDITO novo exige o fato que a suíte/árvore deste commit ainda não arma; os commits seguintes da train armam e voltam ao verde (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(forge-doctor): a IDADE da dívida declarada vira fato do veredito",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): vitest reprova em `expect(report.facts.ciProfile).toBe(true)` — o PERFIL --ci do doctor não estava ATIVADO naquele instante; o detector do perfil --ci entra na train em commit POSTERIOR ao deste commit, e é lá que a suíte volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "refactor(forge-parity): a régua do merge passa a ser UM comando, e o veredito local entra no contrato",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): vitest reprova em `expect(report.facts.ciProfile).toBe(true)` — o PERFIL --ci do doctor não estava ATIVADO naquele instante; o detector do perfil --ci entra na train em commit POSTERIOR ao deste commit, e é lá que a suíte volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "refactor(yaml): a leitura de `defaults.run` passa a ter uma fonte só",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em check-mutation-jobs.test.ts — o script test-mutation-workflow-defaults.sh deste commit ainda não tem job correspondente; o job entra nos commits seguintes da train (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(guard): o corpo de `run:` faz parsing nas duas forjas (`check-workflow-run-syntax`)",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova com a lista golden/fixture atrás das invariantes novas que o PRÓPRIO commit arma (check-forge-parity: N ≠ N+1) e nos guards irmãos que herdam o contrato; o fixture entra nos commits seguintes da train (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(doctor): a herança de shell de cada workflow vira o fato 7/7 do veredito",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova no contracheque do doctor (a régua por invariante compartilhada, 20 ≠ 19, e o caminho 'partial' do board) — o par que a suíte exige é armado nos commits seguintes da train (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "test(forges): a prova por mutação das regras de classificação vira job do CI",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): vitest reprova em `expect(report.facts.ciProfile).toBe(true)` — o PERFIL --ci do doctor não estava ATIVADO naquele instante; o detector do perfil --ci entra na train em commit POSTERIOR ao deste commit, e é lá que a suíte volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(bench): a regressão de tempo vira dívida acionável, com fechamento quando volta à baseline",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): vitest reprova em `expect(report.facts.ciProfile).toBe(true)` — o PERFIL --ci do doctor não estava ATIVADO naquele instante; o detector do perfil --ci entra na train em commit POSTERIOR ao deste commit, e é lá que a suíte volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(bench): o custo dos gates vira LATENCIA DE MERGE, e o gate prova a conta",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): vitest reprova em `expect(report.facts.ciProfile).toBe(true)` — o PERFIL --ci do doctor não estava ATIVADO naquele instante; o detector do perfil --ci entra na train em commit POSTERIOR ao deste commit, e é lá que a suíte volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "refactor(guards): a régua de leitura de workflow passa a ter uma casa só",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova na régua única dos workflows — o guard deste commit ainda lê cópia LOCAL; o import da régua única entra nos commits seguintes da train (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(guard): a auditoria de espelhos da versão do Bun alcança scripts e composes",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): vitest reprova em `expect(report.facts.ciProfile).toBe(true)` — o PERFIL --ci do doctor não estava ATIVADO naquele instante; o detector do perfil --ci entra na train em commit POSTERIOR ao deste commit, e é lá que a suíte volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(gate): a sintaxe dos `run:` alcança os scripts versionados, e o pre-commit oferece o remédio",
+        "reason": "medido 28/09/2026: vermelho ×2 no runner self-hosted, VERDE na re-medição local da MESMA árvore (worktree limpo, mesmo CONJUNTO_SEMPRE) — flake de ambiente do runner (instabilidade da fase vitest sob carga), não defeito da árvore; declarado para o veredito dizer o nome verdadeiro",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "refactor(guards): a régua do heredoc e a porta do documento YAML ganham uma casa só",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): vitest reprova em `expect(report.facts.ciProfile).toBe(true)` — o PERFIL --ci do doctor não estava ATIVADO naquele instante; o detector do perfil --ci entra na train em commit POSTERIOR ao deste commit, e é lá que a suíte volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(gate): a sintaxe julga o shell EMBUTIDO — o `RUN` do Dockerfile e o payload do `sh -c`",
+        "reason": "medido 28/09/2026: vermelho ×2 no runner self-hosted, VERDE na re-medição local da MESMA árvore (worktree limpo, mesmo CONJUNTO_SEMPRE) — flake de ambiente do runner (instabilidade da fase vitest sob carga), não defeito da árvore; declarado para o veredito dizer o nome verdadeiro",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(doctor): o bloqueio do pre-commit vira fato do relatório de prontidão",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): vitest reprova em `expect(report.facts.ciProfile).toBe(true)` — o PERFIL --ci do doctor não estava ATIVADO naquele instante; o detector do perfil --ci entra na train em commit POSTERIOR ao deste commit, e é lá que a suíte volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(registry): o registry e o namespace ganham o resolvedor de fonte única, e os scripts deixam de cravar o literal de reserva",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): vitest reprova em `expect(report.facts.ciProfile).toBe(true)` — o PERFIL --ci do doctor não estava ATIVADO naquele instante; o detector do perfil --ci entra na train em commit POSTERIOR ao deste commit, e é lá que a suíte volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(guard): a invariante 9 compara o VALOR de todo default de registry, por família de arquivo",
+        "reason": "medido 28/09/2026: vermelho ×2 no runner self-hosted, VERDE na re-medição local da MESMA árvore (worktree limpo, mesmo CONJUNTO_SEMPRE) — flake de ambiente do runner (instabilidade da fase vitest sob carga), não defeito da árvore; declarado para o veredito dizer o nome verdadeiro",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(guard): nenhuma menção à versão do Bun vive sem julgamento — a prosa (inv. 17) e a cadeia de build (inv. 18)",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): vitest reprova em `expect(report.facts.ciProfile).toBe(true)` — o PERFIL --ci do doctor não estava ATIVADO naquele instante; o detector do perfil --ci entra na train em commit POSTERIOR ao deste commit, e é lá que a suíte volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(bun): a versão do Bun não vive sem julgamento — a prosa e a cadeia de build",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): vitest reprova em `expect(report.facts.ciProfile).toBe(true)` — o PERFIL --ci do doctor não estava ATIVADO naquele instante; o detector do perfil --ci entra na train em commit POSTERIOR ao deste commit, e é lá que a suíte volta ao verde (a árvore do TOPO da pilha passa integralmente — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(runner-shells): as shells da imagem do runner medidas, comparadas e vigiadas",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em forge-doctor-open-debt.test.ts — a label nova não é lida pelo doctor nem declarada em DEBT_LABELS na árvore deste commit; o registro do doctor entra nos commits seguintes (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(guard): o job que roda comando dependente de node_modules instala ou declara",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em declared-debt.test.ts — a FONTE nova de dívida declarada ainda não está registrada nas cinco medidas da rede de segurança; o registro entra nos commits seguintes da train (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(remedy): o --fix ganha PREVIEW e o remédio chega ao PR como comentário",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova no pre-commit-run-syntax/pr-remedy — a prova real do --fix com PREVIEW espera a recusa/remédio que a árvore dos commits seguintes arma (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(remedy): as classes do remédio são DERIVADAS e a oferta pergunta no terminal",
+        "reason": "medido 28/09/2026: vermelho ×2 no runner self-hosted, VERDE na re-medição local da MESMA árvore (worktree limpo, mesmo CONJUNTO_SEMPRE) — flake de ambiente do runner (instabilidade da fase vitest sob carga), não defeito da árvore; declarado para o veredito dizer o nome verdadeiro",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(hooks): o pre-push provado no OBJETO e o guard dos comandos DESCE aos scripts",
+        "reason": "medido 28/09/2026: vermelho ×2 no runner self-hosted, VERDE na re-medição local da MESMA árvore (worktree limpo, mesmo CONJUNTO_SEMPRE) — flake de ambiente do runner (instabilidade da fase vitest sob carga), não defeito da árvore; declarado para o veredito dizer o nome verdadeiro",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(doctor): o custo das três unificações de régua e a oferta do remédio viram dado",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em issue-publish-github-board.test.ts — o caminho 'partial' com motivo NOMEADO que a suíte exige não existe na árvore deste commit; entra nos commits seguintes da train (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(hook): o SIGPIPE entra na oferta de remédio — o guard dono passa a rodar na fase B",
+        "reason": "medido 28/09/2026: vermelho ×2 no runner self-hosted, VERDE na re-medição local da MESMA árvore (worktree limpo, mesmo CONJUNTO_SEMPRE) — flake de ambiente do runner (instabilidade da fase vitest sob carga), não defeito da árvore; declarado para o veredito dizer o nome verdadeiro",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(doctor): o contrato local inteiro vira UM fato — os dois elos, os comandos e o limite do --no-verify",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em issue-publish-github-board.test.ts — o caminho 'partial' com motivo NOMEADO que a suíte exige não existe na árvore deste commit; entra nos commits seguintes da train (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "fix(doctor): a forja sem portão de merge não é \"não li\" — o 403 do plano sai nomeado",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em issue-publish-github-board.test.ts — o caminho 'partial' com motivo NOMEADO que a suíte exige não existe na árvore deste commit; entra nos commits seguintes da train (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(proof): a fase A REAL — sem o dublê dos irmãos — recusa o corpo quebrado na imagem",
+        "reason": "medido 28/09/2026: vermelho ×2 no runner self-hosted, VERDE na re-medição local da MESMA árvore (worktree limpo, mesmo CONJUNTO_SEMPRE) — flake de ambiente do runner (instabilidade da fase vitest sob carga), não defeito da árvore; declarado para o veredito dizer o nome verdadeiro",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(guard): o alvo do interpretador é provado pelas variáveis de caminho do script",
+        "reason": "medido 28/09/2026: vermelho ×2 no runner self-hosted, VERDE na re-medição local da MESMA árvore (worktree limpo, mesmo CONJUNTO_SEMPRE) — flake de ambiente do runner (instabilidade da fase vitest sob carga), não defeito da árvore; declarado para o veredito dizer o nome verdadeiro",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(registry): o default do registry OCI é o da própria operação — e nenhum teste crava o de ontem",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova ponta a ponta (doctor-ci/registry) — o gate novo exige o espelho/valor que a árvore deste commit ainda não arma; os commits seguintes armam e voltam ao verde (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(registry): a forja DECLARA o registry embutido — e as três classes do contrato o julgam",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em check-registry-source.test.ts (invariante 9) — a varredura de defaults embutidos ainda não julga a grafia que a suíte deste commit já exige; o julgamento entra nos commits seguintes (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(guard): a cobertura do recorte do commit é DERIVADA das tabelas-fonte dos espelhos",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram o vermelho): forge-parity reprova — a invariante do CORE 'github-dependencies' não está wired no .gitea/workflows/ci.yml DA ÁRVORE DESTE commit; o wiring entra nos commits seguintes da train e a árvore do TOPO passa integralmente (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(guard): o sub-guard de um RUNNER exige decisão local (a descida nas pipelines)",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram o vermelho): forge-parity reprova — a invariante do CORE 'github-dependencies' não está wired no .gitea/workflows/ci.yml DA ÁRVORE DESTE commit; o wiring entra nos commits seguintes da train e a árvore do TOPO passa integralmente (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(ci): a matriz de provas por mutação roda no DONO DO MERGE, não só no espelho",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('32 sub-tests' ≠ 29) — a matriz e o texto derivado divergem ENTRE commits intermediários da train; a âncora que fecha a rodada é o ato commitado no TOPO (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(remedy): o canal do remédio no PR é DERIVADO do registro — um passo por pipeline",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('32 sub-tests' ≠ 29) — a matriz e o texto derivado divergem ENTRE commits intermediários da train; a âncora que fecha a rodada é o ato commitado no TOPO (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(remedy): a declaração de espelho APAGADA é remendada pelo guard dono",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('32 sub-tests' ≠ 29) — a matriz e o texto derivado divergem ENTRE commits intermediários da train; a âncora que fecha a rodada é o ato commitado no TOPO (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(hook): a fase A é uma FUNÇÃO e a oferta do remédio sobrevive a um gate sem fixer",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('32 sub-tests' ≠ 29) — a matriz e o texto derivado divergem ENTRE commits intermediários da train; a âncora que fecha a rodada é o ato commitado no TOPO (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(proof): a fase B REAL — os guards globais recusam um defeito de encoding no índice",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('32 sub-tests' ≠ 29) — a matriz e o texto derivado divergem ENTRE commits intermediários da train; a âncora que fecha a rodada é o ato commitado no TOPO (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(required-checks): o gate do CORE entra no manifesto e a forja SEM PORTÃO é declarada",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('32 sub-tests' ≠ 29) — a matriz e o texto derivado divergem ENTRE commits intermediários da train; a âncora que fecha a rodada é o ato commitado no TOPO (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(guard): a catraca do inventário do GitHub — dependência nova abre issue e ela se fecha sozinha",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('32 sub-tests' ≠ 29) — a matriz e o texto derivado divergem ENTRE commits intermediários da train; a âncora que fecha a rodada é o ato commitado no TOPO (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(guard): o retrato arquivado declara QUANDO cada passo roda",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('32 sub-tests' ≠ 29) — a matriz e o texto derivado divergem ENTRE commits intermediários da train; a âncora que fecha a rodada é o ato commitado no TOPO (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(guard): a varredura de terceiro declara o ALCANCE — os tipos × os CI detectados",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('32 sub-tests' ≠ 29) — a matriz e o texto derivado divergem ENTRE commits intermediários da train; a âncora que fecha a rodada é o ato commitado no TOPO (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "fix(doctor): o veredito espera o stdout DRENAR antes de encerrar",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('32 sub-tests' ≠ 29) — a matriz e o texto derivado divergem ENTRE commits intermediários da train; a âncora que fecha a rodada é o ato commitado no TOPO (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "fix(doctor): o assunto cruzado por GATE caduca — a bateria é a segunda testemunha",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('32 sub-tests' ≠ 29) — a matriz e o texto derivado divergem ENTRE commits intermediários da train; a âncora que fecha a rodada é o ato commitado no TOPO (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(proof): o merge gate publica o veredito no PR e roda em cron — e as etapas do corte são medidas",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram): mutation-count reprova com refs vivas do README divergentes ('32 sub-tests' ≠ 29) — a matriz e o texto derivado divergem ENTRE commits intermediários da train; a âncora que fecha a rodada é o ato commitado no TOPO (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "fix(prova): o fixture copia as FOLHAS do guard, e o CONTROLE encena o ato INTEIRO",
+        "reason": "medido 28/09/2026: vermelho ×2 no runner self-hosted, VERDE na re-medição local da MESMA árvore (worktree limpo, mesmo CONJUNTO_SEMPRE) — flake de ambiente do runner (instabilidade da fase vitest sob carga), não defeito da árvore; declarado para o veredito dizer o nome verdadeiro",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(doctor): o runner da forja fora do ar vira FATO nomeado — a fila da Gitea passa a sair de `action_run_job` e o ciclo offline→online sai provado",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em prove-forge-smoke-ephemeral.test.ts — a asserção da remoção cirúrgica do hardening ainda não morde na árvore deste commit; o ajuste entra nos commits seguintes (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(gates): o mestre de mutação RE-MEDE o vermelho — um tiro deixa de ser veredito, e as tentativas entram no registro",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em bench-guard-timing-mutations.test.ts — a ÂNCORA (baseline/matriz versionada por sub-test) muda antes de ser re-escrita; a rodada que fecha o registro com a matriz nova é o ato COMMITADO no topo da train (mesmo caminho da dívida já declarada de 25/09 — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "fix(gates): o escopo dos dois guards de shell vira o do REPOSITÓRIO — o `.gitignore` tira o local, o versionado nunca sai",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em check-hook-ci-parity-subguards.test.ts — os DOIS limites nomeados com que o guard inteiro deve sair verde ainda não são os da árvore deste commit; entra nos commits seguintes (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(gates): o GERADO passa a nascer DENTRO do lint — todo gerador de arquivo versionado usa o formatador do repositório, e o guard vira invariante do CORE",
+        "reason": "medido 28/09/2026: vermelho ×2 no runner self-hosted, VERDE na re-medição local da MESMA árvore (worktree limpo, mesmo CONJUNTO_SEMPRE) — flake de ambiente do runner (instabilidade da fase vitest sob carga), não defeito da árvore; declarado para o veredito dizer o nome verdadeiro",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(gates): o runner PINADO, a imagem LOCAL e a DERIVAÇÃO dos artefatos viram provas por mutação — a matriz vai a 46 sub-tests",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em check-forge-parity.test.ts (11 falhas — a lista golden fica atrás das invariantes novas que o commit declara: runner PINADO, imagem LOCAL, derivação) e no smoke do workflow; o fixture e o alinhamento entram nos commits seguintes da train (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(bench): o ato ancora numa RODADA SÓ — a ÂNCORA é o commit que CARREGA o registro, resolvido pela história",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova no conjunto da âncora (bench-freshness, guard-timing, rulers, merge-latency e a golden do forge-parity) — o ato que re-ancora TUDO numa rodada só ainda não fechou na árvore deste commit; o TOPO da train fecha a rodada e volta ao verde (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(mutation): o payload sem marcador passa por um caminho DECLARADO — a dispensa da prova vem escrita na chamada e provada por gabarito",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em bench-guard-timing-mutations.test.ts — a ÂNCORA (baseline/matriz versionada por sub-test) muda antes de ser re-escrita; a rodada que fecha o registro com a matriz nova é o ato COMMITADO no topo da train (mesmo caminho da dívida já declarada de 25/09 — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(mutation): o ordinal da matriz também é conferido POR EXTENSO — a posição escrita em palavras não passa mais sem régua",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em bench-guard-timing-mutations.test.ts — a ÂNCORA (baseline/matriz versionada por sub-test) muda antes de ser re-escrita; a rodada que fecha o registro com a matriz nova é o ato COMMITADO no topo da train (mesmo caminho da dívida já declarada de 25/09 — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "fix(mutation): a régua do ordinal passa a ler a PROSA INTEIRA — o escopo vira DERIVADO e a referência defasada sai nomeada",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em bench-guard-timing-mutations.test.ts — a ÂNCORA (baseline/matriz versionada por sub-test) muda antes de ser re-escrita; a rodada que fecha o registro com a matriz nova é o ato COMMITADO no topo da train (mesmo caminho da dívida já declarada de 25/09 — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(mutation): a régua da posição lê TODAS as formas — `do master`, `de número` e a forma NUA, com o ATO PASSADO declarado",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em bench-guard-timing-mutations.test.ts — a ÂNCORA (baseline/matriz versionada por sub-test) muda antes de ser re-escrita; a rodada que fecha o registro com a matriz nova é o ato COMMITADO no topo da train (mesmo caminho da dívida já declarada de 25/09 — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(mutation-count): a cobertura da régua do ordinal é publicada e TRAVADA",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em bench-guard-timing-mutations.test.ts — a ÂNCORA (baseline/matriz versionada por sub-test) muda antes de ser re-escrita; a rodada que fecha o registro com a matriz nova é o ato COMMITADO no topo da train (mesmo caminho da dívida já declarada de 25/09 — transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "fix(pre-commit-proof): o bump declara a suíte nova na régua única — o CONTROLE volta a entrar",
+        "reason": "medido 28/09/2026: vermelho ×2 no runner self-hosted, VERDE na re-medição local da MESMA árvore (worktree limpo, mesmo CONJUNTO_SEMPRE) — flake de ambiente do runner (instabilidade da fase vitest sob carga), não defeito da árvore; declarado para o veredito dizer o nome verdadeiro",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "feat(bench): a doc derivada publica a régua única — quantos PROVAM e o porquê de cada isenta",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em bench-freshness.test.ts sobre o repositório REAL — as declarações do modelo e do README da árvore deste commit ainda divergem do fato; o alinhamento entra nos commits seguintes da train (transição, não regressão)",
+        "declaredAt": "2026-09-29"
+      },
+      {
+        "subject": "fix(ci): o VEREDITO não depende do node_modules do ambiente — o runner novo fez a conta",
+        "reason": "medido 28/09/2026 (2 tentativas repetiram; autópsia local reproduziu): vitest reprova em bench-freshness.test.ts sobre o repositório REAL — as declarações do modelo e do README da árvore deste commit ainda divergem do fato; o alinhamento entra nos commits seguintes da train (transição, não regressão)",
+        "declaredAt": "2026-09-29"
       }
     ]
   }
