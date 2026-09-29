@@ -58,7 +58,25 @@ const GITEA_IMAGE = "gitea/gitea:1.22"
 const CONTAINER_PREFIX = "gitea-ephemeral-test"
 
 function dockerRun(args: string[]): string {
-  const res = spawnSync("docker", ["run", "-d", ...args], { encoding: "utf8" })
+  // MESMA REDE do container que roda o teste (medido em 29/09): sem isso o
+  // efêmero nasce na bridge DEFAULT (172.17) e o gateway dela não é alcançável
+  // de um job container da forja (que vive em outra rede, ex. gitea_gitea-net,
+  // 172.18) — 'Gitea not ready' em TODO gitea-real só dentro do job. O env
+  // HOSTNAME de um container Docker é o próprio ID (curto); fora de container
+  // o env não existe e a flag não é passada.
+  const rede =
+    process.env.HOSTNAME && existsSync("/.dockerenv")
+      ? spawnSync(
+          "sh",
+          [
+            "-c",
+            "docker inspect $HOSTNAME --format '{{range $k,$_ := .NetworkSettings.Networks}}{{$k}}{{end}}'",
+          ],
+          { encoding: "utf8" },
+        ).stdout.trim()
+      : ""
+  const redeArgs = rede ? ["--network", rede] : []
+  const res = spawnSync("docker", ["run", "-d", ...redeArgs, ...args], { encoding: "utf8" })
   if (res.status !== 0) throw new Error(`docker run failed: ${res.stderr}`)
   return res.stdout.trim()
 }
