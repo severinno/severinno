@@ -152,7 +152,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs"
-import { hostname, tmpdir } from "node:os"
+import { hostname, tmpdir, availableParallelism } from "node:os"
 import { basename, dirname, extname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -233,6 +233,22 @@ export const DIRS_DE_TESTE = [
 
 /** Extensões de teste consideradas pela convenção de nome. */
 const SUFIXO_TESTE = /\.[jt]sx?$/
+
+/**
+ * O TETO DE WORKERS do vitest da medição — a decisão de CARGA é da medição, e
+ * por isso é declarada aqui, não herdada do silêncio da ferramenta.
+ *
+ * POR QUE ISTO EXISTE (medido em 28-29/09/2026 na pilha de 231 commits): na
+ * caixa de 4 vCPU do runner self-hosted, o default do vitest (= nº de CPUs)
+ * fez a fase de testes rodar com load ≥ núcleos — e 11 commits vermelhos ×2 no
+ * CI ficaram VERDES na re-medição da MESMA árvore (o vermelho era do AMBIENTE:
+ * saturação de CPU, não da árvore; o journal do runner não registra um OOM só
+ * na janela). O cap deixa uma fração de CPU para os gates e para o próprio
+ * runner, trocando um pouco de velocidade por vereditos que não oscilam com a
+ * carga da máquina. Com 4+ núcleos o teto vale 4; caixas menores usam
+ * max(núcleos − 1, 2).
+ */
+export const TETO_WORKERS_VITEST = Math.max(Math.min(availableParallelism(), 4), 2)
 
 /**
  * Resolve a BASE da pilha: `--base`, o env do CI, ou `origin/main`.
@@ -943,10 +959,21 @@ export function medirCommit({
     if (veredito === "verde")
       motivo = "escopo SEMPRE (--sem-afetados): os testes afetados não foram medidos"
   } else if (veredito !== "vermelho" && afetados.testes.length > 0) {
-    const r = roda(["bun", "run", "vitest", "run", "--reporter=dot", ...afetados.testes], {
-      cwd: dir,
-      timeout,
-    })
+    const r = roda(
+      [
+        "bun",
+        "run",
+        "vitest",
+        "run",
+        "--reporter=dot",
+        `--max-workers=${TETO_WORKERS_VITEST}`,
+        ...afetados.testes,
+      ],
+      {
+        cwd: dir,
+        timeout,
+      },
+    )
     const id = `vitest(${afetados.testes.length} arquivo(s))`
     resultadosSempre.push({ id, ok: r.ok, ms: r.ms, motivo: r.motivo })
     if (!r.ok) {
