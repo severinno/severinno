@@ -39,7 +39,7 @@
 
 import { spawnSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync } from "node:fs"
 
 export interface EphemeralGitea {
   /** URL base do Gitea (ex.: http://127.0.0.1:32789) */
@@ -65,28 +65,44 @@ const CONTAINER_PREFIX = "gitea-ephemeral-test"
  * `dockerRun` — extraído para o endereço do efêmero (IP direto na rede) usar a
  * MESMA fonte, nunca uma segunda implementação.
  */
-function redeDoJob(): string {
-  if (!process.env.HOSTNAME || !existsSync("/.dockerenv")) return ""
-  return spawnSync(
-    "sh",
-    [
-      "-c",
-      "docker inspect $HOSTNAME --format '{{range $k,$_ := .NetworkSettings.Networks}}{{$k}}{{end}}'",
-    ],
-    { encoding: "utf8" },
-  ).stdout.trim()
-}
-
 function dockerRun(args: string[]): string {
-  // MESMA REDE do container que roda o teste (medido em 29/09): sem isso o
-  // efêmero nasce na bridge DEFAULT (172.17) e o gateway dela não é alcançável
-  // de um job container da forja (que vive em outra rede, ex. gitea_gitea-net,
-  // 172.18) — 'Gitea not ready' em TODO gitea-real só dentro do job. O env
-  // HOSTNAME de um container Docker é o próprio ID (curto); fora de container
-  // o env não existe e a flag não é passada.
-  const rede = redeDoJob()
-  const redeArgs = rede ? ["--network", rede] : []
-  const res = spawnSync("docker", ["run", "-d", ...redeArgs, ...args], { encoding: "utf8" })
+  // DENTRO de um JOB CONTAINER da forja (label `docker://`), o efêmero nasce em
+  // `--network container:<job>` — o MESMO namespace de rede do job — e o teste
+  // fala com ele em `127.0.0.1` (a porta INTERNA, 3000). Os dois caminhos
+  // anteriores foram medidos e NEGADOS no host da forja (30/09/2026):
+  //   - a porta publicada (`-p` + gateway do job): o DNAT do host não atravessa
+  //     para o job ('Gitea not ready' em gateway:porta);
+  //   - o IP DIRETO do efêmero na rede compartilhada (L2, mesma bridge): também
+  //     negado — 4/4 testes morreram em 90-120s contra 192.168.112.x:3000.
+  // Só o netns COMPARTILHADO passa: o loopback do job É o loopback do efêmero
+  // (medido: `wget http://127.0.0.1:3000/api/v1/version` responde DENTRO do job
+  // 75s após o run, sob a carga da forja — é o MESMO mecanismo dos services do
+  // act, que os testes já consomem em localhost:55432/localhost:56379).
+  // O env HOSTNAME de um container Docker é o próprio ID (curto) — a mesma
+  // referência que o `docker inspect` da rede já resolvia. `-p` é ILEGAL junto
+  // de `container:` (o netns não tem IP próprio para publicar): os pares são
+  // descartados — a porta interna já é a do endereço, nada a publicar.
+  const emContainer = process.env.HOSTNAME && existsSync("/.dockerenv")
+  if (emContainer) {
+    const filtrados: string[] = []
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === "-p") {
+        i += 1
+        continue
+      }
+      filtrados.push(args[i])
+    }
+    const res = spawnSync(
+      "docker",
+      ["run", "-d", "--network", `container:${process.env.HOSTNAME}`, ...filtrados],
+      { encoding: "utf8" },
+    )
+    if (res.status !== 0) throw new Error(`docker run failed: ${res.stderr}`)
+    return res.stdout.trim()
+  }
+  // FORA de container (GitHub runner, dev): o `docker run` cru — a porta
+  // publicada é alcançável por 127.0.0.1 do próprio host.
+  const res = spawnSync("docker", ["run", "-d", ...args], { encoding: "utf8" })
   if (res.status !== 0) throw new Error(`docker run failed: ${res.stderr}`)
   return res.stdout.trim()
 }
@@ -522,81 +538,36 @@ export async function makeEphemeralGitea(
   liveContainers.add(container)
   registrarSweepDeTeardown()
 
-  // Resolve a porta real
-  const portRes = spawnSync("docker", ["port", container, "3000/tcp"], { encoding: "utf8" })
-  // docker port pode retornar múltiplas linhas; pegamos a primeira com IP:port
-  const portLine = portRes.stdout.trim().split("\n")[0] ?? ""
-  const match = portLine.match(/:(\d+)$/)
-  if (!match) {
-    liveContainers.delete(container)
-    removerRegistrandoFalha(container)
-    throw new Error(`Não conseguiu resolver a porta do container: ${portRes.stdout}`)
-  }
-  const hostPort = match[1]
-  // ONDE O GITEA RESPONDE — três caminhos, e a ORDEM importa (medido em
-  // 30/09/2026 na forja):
-  //   1. IP DIRETO DO CONTAINER na rede compartilhada (dentro de job container):
-  //      o `dockerRun` já sobe o efêmero na MESMA rede do job; falar com o IP do
-  //      container NESSA rede é tráfego L2 puro — passa onde o NAT da porta
-  //      publicada é negado (o caminho 2 falhou assim: gateway do job em
-  //      192.168.64.1 — o pool do 172.18 esgotou — e o DNAT da porta publicada
-  //      não atravessa a bridge). A porta é a INTERNA (3000).
-  //   2. GATEWAY da rede do job (dentro de container, sem rede compartilhada):
-  //      com `-p` a porta é publicada NO HOST; o gateway é o caminho até ela.
-  //      Lido de /proc/net/route (a imagem do job NÃO tem `ip`/iproute2 —
-  //      medido): a linha default é `eth0<TAB>00000000<TAB><GW hex LE>` —
-  //      010012AC = 172.18.0.1. Sem binário externo, sem shell.
-  //   3. 127.0.0.1:porta-publicada — máquina do GitHub runner / dev.
-  // O `waitForGitea` tenta a porta do endereço dado primeiro e a publicada
-  // junto — então o endereço direto sai com as duas portas vivas.
+  // ONDE O GITEA RESPONDE (ver `dockerRun`): DENTRO do job container, o efêmero
+  // compartilha o NETNS do job — o endereço é `127.0.0.1` e a porta é a INTERNA
+  // (3000); sem `-p` não há porta publicada para resolver. FORA, a porta
+  // publicada é o caminho (127.0.0.1 do próprio host). O orçamento de prontidão
+  // (90s) cobre o cold start medido sob a carga da forja (75s no pior caso).
   const emContainer = existsSync("/.dockerenv") || existsSync("/run/.containerenv")
-  let host = "127.0.0.1"
-  let portaAlvo = hostPort
-  if (emContainer) {
-    // Caminho 1: o efêmero compartilha a rede do job (o `dockerRun` sobe com
-    // `--network` de `redeDoJob()`) — o IP dele NESSA rede é L2 puro e passa
-    // onde o NAT da porta publicada é negado entre bridges (medido na forja).
-    const rede = redeDoJob()
-    const ipDoContainer = rede
-      ? (spawnSync(
-          "docker",
-          ["inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", container],
-          { encoding: "utf8" },
-        )
-          .stdout.trim()
-          .split(/\s+/)
-          .filter(Boolean)[0] ?? "")
-      : ""
-    if (ipDoContainer) {
-      host = ipDoContainer
-      portaAlvo = "3000"
-    } else {
-      // Caminho 2: gateway:porta-publicada (rede não compartilhada).
-      try {
-        const rota = readFileSync("/proc/net/route", "utf8")
-          .split("\n")
-          .find((l) => l.split("\t")[1] === "00000000")
-        const hex = rota?.split("\t")[2]
-        if (hex && hex.length === 8) {
-          host = [3, 2, 1, 0].map((i) => parseInt(hex.slice(i * 2, i * 2 + 2), 16)).join(".")
-        }
-      } catch {
-        // sem /proc/net/route — segue 127.0.0.1 (host direto)
-      }
+  const host = "127.0.0.1"
+  let portaAlvo = "3000"
+  if (!emContainer) {
+    const portRes = spawnSync("docker", ["port", container, "3000/tcp"], { encoding: "utf8" })
+    // docker port pode retornar múltiplas linhas; pegamos a primeira com IP:port
+    const portLine = portRes.stdout.trim().split("\n")[0] ?? ""
+    const match = portLine.match(/:(\d+)$/)
+    if (!match) {
+      liveContainers.delete(container)
+      removerRegistrandoFalha(container)
+      throw new Error(`Não conseguiu resolver a porta do container: ${portRes.stdout}`)
     }
+    portaAlvo = match[1]
   }
   const baseUrl = `http://${host}:${portaAlvo}`
 
   try {
-    // Espera o Gitea ficar pronto. O ORÇAMENTO de 90s (medido em 30/09/2026): o
-    // cold start do Gitea sob a carga da forja — a suíte INTEIRA em paralelo
-    // sobre poucas vCPUs, com NINE containers de serviços e efêmeros nascendo
-    // junto — passa de 30s (o default anterior): os QUATRO testes gitea-real
-    // morreram em 'Gitea not ready after 30000ms' enquanto o teste que pede
-    // explicitamente 120s (gitea-ephemeral-signal) PASSOU no mesmo host. O
-    // prontidão lenta é do AMBIENTE, não do Gitea — e o default tem de cobrir
-    // o pior orçamento dos seus chamadores (o beforeAll deles é de 120s).
-    await waitForGitea(baseUrl, opts.timeoutMs ?? 90_000)
+    // Espera o Gitea ficar pronto. O ORÇAMENTO de 150s (medido em 30/09/2026 na
+    // forja, sob carga): o cold start do Gitea no netns do job levou 99s no pior
+    // caso (a suíte INTEIRA em paralelo sobre 4 vCPU) — os 30s/90s anteriores
+    // eram menores que o custo REAL do ambiente. 150s deixa folga sobre o pior
+    // caso medido e cabe nos beforeAll de 120s dos chamadores? NÃO cabe — por
+    // isso os chamadores subiram para 180s no mesmo commit.
+    await waitForGitea(baseUrl, opts.timeoutMs ?? 150_000)
 
     // Cria o admin via CLI do container — como o user `git` (UID 1000),
     // pois o gitea recusa rodar como root.

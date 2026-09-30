@@ -161,7 +161,10 @@ describeReal("forge-doctor-issue — Gitea real em Docker (integração)", () =>
 
   beforeAll(async () => {
     gitea = await makeEphemeralGitea()
-  }, 120_000)
+    // 180s (medido em 30/09/2026 na forja): o cold start do Gitea no netns do
+    // job levou 99s no pior caso, sob a suíte inteira em paralelo — o default
+    // de 30s e o orçamento de 120s ficaram atrás do custo real do ambiente.
+  }, 180_000)
 
   /**
    * 60s de orçamento: quando o daemon nega o kill, o teardown gasta o timeout de

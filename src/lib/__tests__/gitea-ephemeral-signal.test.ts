@@ -134,7 +134,7 @@ function subirFilho(): FilhoEmPe {
   const saiu = once(proc, "close") as Promise<[number | null, NodeJS.Signals | null]>
   void saiu.then(() => rl.close())
 
-  const esperarFase = async (fase: Fase["fase"], timeoutMs = 120_000): Promise<Fase> => {
+  const esperarFase = async (fase: Fase["fase"], timeoutMs = 180_000): Promise<Fase> => {
     const fim = Date.now() + timeoutMs
     while (Date.now() < fim) {
       const visto = vistos.get(fase)
@@ -287,5 +287,5 @@ describeReal("gitea-ephemeral — o sweep sobrevive a um sinal no meio do teste"
       exitCode: code,
       signalCode: signal,
     })
-  }, 120_000)
+  }, 180_000)
 })
