@@ -40,6 +40,7 @@
 import { spawnSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
 import { existsSync } from "node:fs"
+import { createConnection } from "node:net"
 
 export interface EphemeralGitea {
   /** URL base do Gitea (ex.: http://127.0.0.1:32789) */
@@ -480,6 +481,47 @@ async function waitForGitea(url: string, timeoutMs = 30_000): Promise<void> {
 }
 
 /**
+ * A porta está OCUPADA no netns onde o processo roda?
+ *
+ * `createConnection` em 127.0.0.1: a conexão aceita ⇒ ocupada; ECONNREFUSED ⇒
+ * livre. Qualquer OUTRO desfecho (outro errno, timeout de 1s) é tratado como
+ * OCUPADO — um falso "ocupado" custa uma porta a mais, um falso "livre" custa
+ * um efêmero em crash-loop.
+ */
+function portaOcupada(porta: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = createConnection({ host: "127.0.0.1", port: porta })
+    const decidir = (ocupada: boolean) => {
+      socket.destroy()
+      resolve(ocupada)
+    }
+    socket.once("connect", () => decidir(true))
+    socket.once("error", (err: NodeJS.ErrnoException) => decidir(err.code !== "ECONNREFUSED"))
+    socket.setTimeout(1_000, () => decidir(true))
+  })
+}
+
+/**
+ * Escolhe uma porta INTERNA LIVRE para o efêmero.
+ *
+ * DENTRO do job container (netns compartilhado, ver `dockerRun`) a porta 3000
+ * era um SINGLETON: N efêmeros nascidos em paralelo (o vitest roda os arquivos
+ * em paralelo) brigavam pelo bind — só um Gitea subia; os perdedores ficavam em
+ * crash-loop e o `admin user create` do vencedor recebia `database is locked`
+ * (o vermelho da rodada 2f80f372, com containers `Dead`/`Created` vistos na
+ * VPS). O processo de teste COMPARTILHA esse netns: sondear o próprio loopback
+ * é sondear o das máquinas — a porta sai LIVRE de verdade, por instância.
+ * FORA do job não se chama: o `-p 0:3000` já deixa o kernel escolher.
+ */
+async function escolherPortaInterna(): Promise<number> {
+  for (let tentativa = 0; tentativa < 20; tentativa++) {
+    const porta = 21000 + (randomBytes(2).readUInt16BE(0) % 30000)
+    if (!(await portaOcupada(porta))) return porta
+  }
+  throw new Error("nenhuma porta livre encontrada no netns do job (20 tentativas)")
+}
+
+/**
  * Sobe um Gitea efêmero em Docker.
  *
  * O container é nomeado com um sufixo aleatório para evitar colisão entre
@@ -504,48 +546,48 @@ export async function makeEphemeralGitea(
     )
   }
 
-  // Porta aleatória (o kernel escolhe)
-  const port = "0"
+  // ONDE O GITEA RESPONDE (ver `dockerRun`): DENTRO do job container, o efêmero
+  // compartilha o NETNS do job — o endereço é `127.0.0.1` e a porta é a INTERNA,
+  // escolhida LIVRE por instância (`escolherPortaInterna`); sem `-p` não há
+  // porta publicada para resolver. FORA, a porta publicada (`-p 0:3000`, o
+  // kernel escolhe) é o caminho (127.0.0.1 do próprio host).
+  const emContainer = existsSync("/.dockerenv") || existsSync("/run/.containerenv")
+  const portaInterna = emContainer ? await escolherPortaInterna() : 3000
 
-  // Sobe o Gitea
-  dockerRun([
-    "--name",
-    container,
-    "-e",
-    "GITEA__database__DB_TYPE=sqlite3",
-    "-e",
-    "GITEA__server__ROOT_URL=http://127.0.0.1:3000/",
-    "-e",
-    "GITEA__server__HTTP_PORT=3000",
-    "-e",
-    "GITEA__security__INSTALL_LOCK=true",
-    "-e",
-    "GITEA__service__DISABLE_REGISTRATION=false",
-    "-e",
-    "GITEA__service__REQUIRE_SIGNIN_VIEW=false",
-    "-e",
-    "GITEA__repository__DEFAULT_BRANCH=main",
-    "-e",
-    "USER_UID=1000",
-    "-e",
-    "USER_GID=1000",
-    "-p",
-    `${port}:3000`,
-    image,
-  ])
+  // Sobe o Gitea (o mesmo `docker run` na subida e na RE-SUBIDA — ver abaixo)
+  const subirGitea = () =>
+    dockerRun([
+      "--name",
+      container,
+      "-e",
+      "GITEA__database__DB_TYPE=sqlite3",
+      "-e",
+      `GITEA__server__ROOT_URL=http://127.0.0.1:${portaInterna}/`,
+      "-e",
+      `GITEA__server__HTTP_PORT=${portaInterna}`,
+      "-e",
+      "GITEA__security__INSTALL_LOCK=true",
+      "-e",
+      "GITEA__service__DISABLE_REGISTRATION=false",
+      "-e",
+      "GITEA__service__REQUIRE_SIGNIN_VIEW=false",
+      "-e",
+      "GITEA__repository__DEFAULT_BRANCH=main",
+      "-e",
+      "USER_UID=1000",
+      "-e",
+      "USER_GID=1000",
+      ...(emContainer ? [] : ["-p", "0:3000"]),
+      image,
+    ])
+  subirGitea()
   // A partir daqui o container EXISTE: registrar o sweep antes do 1º passo que
   // pode falhar garante que um erro no meio do setup também não vaze.
   liveContainers.add(container)
   registrarSweepDeTeardown()
 
-  // ONDE O GITEA RESPONDE (ver `dockerRun`): DENTRO do job container, o efêmero
-  // compartilha o NETNS do job — o endereço é `127.0.0.1` e a porta é a INTERNA
-  // (3000); sem `-p` não há porta publicada para resolver. FORA, a porta
-  // publicada é o caminho (127.0.0.1 do próprio host). O orçamento de prontidão
-  // (90s) cobre o cold start medido sob a carga da forja (75s no pior caso).
-  const emContainer = existsSync("/.dockerenv") || existsSync("/run/.containerenv")
   const host = "127.0.0.1"
-  let portaAlvo = "3000"
+  let portaAlvo = String(portaInterna)
   if (!emContainer) {
     const portRes = spawnSync("docker", ["port", container, "3000/tcp"], { encoding: "utf8" })
     // docker port pode retornar múltiplas linhas; pegamos a primeira com IP:port
@@ -567,7 +609,23 @@ export async function makeEphemeralGitea(
     // eram menores que o custo REAL do ambiente. 150s deixa folga sobre o pior
     // caso medido e cabe nos beforeAll de 120s dos chamadores? NÃO cabe — por
     // isso os chamadores subiram para 180s no mesmo commit.
-    await waitForGitea(baseUrl, opts.timeoutMs ?? 150_000)
+    //
+    // RE-SUBIDA com OUTRA porta (uma vez, dentro do mesmo orçamento): se a porta
+    // sondada foi tomada ENTRE a sondagem e o bind (ou outro efêmero nascido no
+    // mesmo instância escolheu a mesma), o container entra em crash-loop e a
+    // prontidão nunca chega — remover e re-subir com nova porta sonda de novo,
+    // em vez de reprovar com um falso 'Gitea not ready'.
+    const inicioProntidao = Date.now()
+    const orcamentoProntidao = opts.timeoutMs ?? 150_000
+    try {
+      await waitForGitea(baseUrl, orcamentoProntidao)
+    } catch (primeiroErro) {
+      const restante = orcamentoProntidao - (Date.now() - inicioProntidao)
+      if (!emContainer || restante <= 5_000) throw primeiroErro
+      removerRegistrandoFalha(container)
+      subirGitea()
+      await waitForGitea(baseUrl, restante)
+    }
 
     // Cria o admin via CLI do container — como o user `git` (UID 1000),
     // pois o gitea recusa rodar como root. O RETRY com backoff (3 tiros, 2s/5s)
