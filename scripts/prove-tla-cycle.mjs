@@ -20,7 +20,10 @@
  *      conservadora está escrita na cabeça do guard, e aqui ela é medida).
  *   3. CICLO pela CLASSE — a declaração importa o loader das classes: o
  *      `await import()` do loader espera a declaração que espera o loader.
- *      MEDIDO: rc=13, stdout 0B, stderr 0B. O guard tem de NOMEAR a cadeia.
+ *      MEDIDO: rc=13, stdout 0B — e o stderr é ZERO bytes no node 20 (a morte
+ *      muda) e ~180B no node ≥ 22 (`unsettled top-level await`: o runtime
+ *      passou a ENUNCIAR a razão antes de matar; o rc é o mesmo 13). O guard
+ *      tem de NOMEAR a cadeia.
  *   4. CICLO pelo CANAL — o mesmo pelo loader do canal (a outra metade da
  *      régua: as declarações de `remedy-canal/`).
  *
@@ -49,7 +52,8 @@
  *   node scripts/prove-tla-cycle.mjs -h         # esta ajuda
  *
  * Exit codes:
- *   0 — os quatro casos ficaram no que DECLARAM (inclui o rc=13 de morte muda)
+ *   0 — os quatro casos ficaram no que DECLARAM (inclui o rc=13 da morte do
+ *       ciclo: muda no node ≤ 20, enunciada no stderr pelo node ≥ 22)
  *   1 — algum caso REFUTADO (a régua ou a premissa não se sustenta)
  *   2 — não foi possível medir (INDETERMINADO — nunca verde por não saber)
  *   3 — uso
@@ -83,6 +87,21 @@ const RAIZ = dirname(dirname(fileURLToPath(import.meta.url)))
 const GUARD = join(RAIZ, "scripts", "check-tla-closure.mjs")
 
 const EXIT = { OK: 0, REFUTED: 1, UNAVAILABLE: 2, USAGE: 3 }
+
+/**
+ * O runtime sob o qual os loaders são executados. A morte do ciclo é um fato do
+ * RUNTIME, não do repositório: no node 20 (GitHub runner, medido em 09/2026) o
+ * processo morre com rc=13 e ZERO bytes; no node ≥ 22 (medido na imagem do
+ * runner, v24.19.0, em 30/09/2026) o runtime passou a ENUNCIAR a razão — um
+ * aviso de ~180B no stderr (`unsettled top-level await`) antes do mesmo rc=13.
+ * A asserção dos casos de ciclo aceita os DOIS desfechos (a asserção dos BYTES
+ * no stdout é invariante: ZERO nos dois runtimes — a morte nunca fala no canal
+ * do relatório).
+ */
+const NODE_MAJOR = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10)
+
+/** O aviso que o node ≥ 22 imprime no stderr quando mata um TLA pendente. */
+const TLA_AVISO = "unsettled top-level await"
 
 /** A LINHA do achado de ciclo no relatório do guard (`       CICLO · a → b`). */
 const LINHA_CICLO = /^\s+(?:CICLO · )/m
@@ -253,13 +272,20 @@ function montarCasos() {
       alvo: classe.arquivo,
       modulo: join(RAIZ, LOADER_CLASSES),
       esperado:
-        "o node MATA a carga: rc=13 com stderr E stdout em ZERO bytes (a morte muda) — e o guard RECUSA nomeando a cadeia com CICLO",
+        "o node MATA a carga: rc=13 com stdout em ZERO bytes (a morte nunca fala no canal do relatório) — o stderr é ZERO bytes no node 20 e o aviso 'unsettled top-level await' no node ≥ 22 (mesma morte, enunciada) — e o guard RECUSA nomeando a cadeia com CICLO",
       checar: ({ node, guard, linhas }) => {
         const falhas = []
         if (node.rc !== 13) falhas.push(`node rc=${node.rc} (esperado 13)`)
-        if (node.err !== "")
-          falhas.push(`stderr com ${node.err.length}B (esperado 0B: a morte é MUDA)`)
         if (node.out !== "") falhas.push(`stdout com ${node.out.length}B (esperado 0B)`)
+        if (node.err === "") {
+          // node ≤ 20: a morte é MUDA — o desfecho canônico.
+        } else if (NODE_MAJOR >= 22 && node.err.includes(TLA_AVISO)) {
+          // node ≥ 22: a mesma morte, ENUNCIADA — o aviso é o fato, não ruído.
+        } else {
+          falhas.push(
+            `stderr com ${node.err.length}B sem o aviso de TLA pendente (esperado 0B no node ≤ 20, ou '${TLA_AVISO}' no node ≥ 22)`,
+          )
+        }
         if (guard.rc !== 1) falhas.push(`guard rc=${guard.rc} (esperado 1: a régua recusa)`)
         if (!LINHA_CICLO.test(guard.saida)) falhas.push("o guard não marcou CICLO na cadeia")
         if (!guard.saida.includes(linhas.declaracaoRel))
@@ -274,13 +300,20 @@ function montarCasos() {
       alvo: canal.arquivo,
       modulo: join(RAIZ, LOADER_CANAL),
       esperado:
-        "o node MATA a carga: rc=13 com ZERO bytes nos dois fluxos — e o guard RECUSA nomeando a cadeia com CICLO (a outra metade da régua, por execução)",
+        "o node MATA a carga: rc=13 com stdout em ZERO bytes — o stderr é ZERO bytes no node 20 e o aviso 'unsettled top-level await' no node ≥ 22 (mesma morte, enunciada) — e o guard RECUSA nomeando a cadeia com CICLO (a outra metade da régua, por execução)",
       checar: ({ node, guard, linhas }) => {
         const falhas = []
         if (node.rc !== 13) falhas.push(`node rc=${node.rc} (esperado 13)`)
-        if (node.err !== "")
-          falhas.push(`stderr com ${node.err.length}B (esperado 0B: a morte é MUDA)`)
         if (node.out !== "") falhas.push(`stdout com ${node.out.length}B (esperado 0B)`)
+        if (node.err === "") {
+          // node ≤ 20: a morte é MUDA — o desfecho canônico.
+        } else if (NODE_MAJOR >= 22 && node.err.includes(TLA_AVISO)) {
+          // node ≥ 22: a mesma morte, ENUNCIADA — o aviso é o fato, não ruído.
+        } else {
+          falhas.push(
+            `stderr com ${node.err.length}B sem o aviso de TLA pendente (esperado 0B no node ≤ 20, ou '${TLA_AVISO}' no node ≥ 22)`,
+          )
+        }
         if (guard.rc !== 1) falhas.push(`guard rc=${guard.rc} (esperado 1: a régua recusa)`)
         if (!LINHA_CICLO.test(guard.saida)) falhas.push("o guard não marcou CICLO na cadeia")
         if (!guard.saida.includes(linhas.declaracaoRel))
@@ -364,7 +397,7 @@ function imprimir(r) {
   console.log()
   if (provados === r.casos.length) {
     console.log(
-      `✅ os ${provados} casos ficaram no que declaram: o CICLO mata com rc=13 e ZERO bytes (classe e canal), o TLA sem volta carrega mas é recusado, e a árvore intacta fica verde.`,
+      `✅ os ${provados} casos ficaram no que declaram: o CICLO mata com rc=13 (stdout 0B; a morte muda no node ≤ 20, enunciada no stderr pelo node ≥ 22), o TLA sem volta carrega mas é recusado, e a árvore intacta fica verde.`,
     )
   } else {
     console.log(`❌ ${r.casos.length - provados} de ${r.casos.length} casos REFUTADOS:`)

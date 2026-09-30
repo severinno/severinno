@@ -692,6 +692,13 @@ jobs:
       # `node_modules` é o que o fixture precisa (o guard importa o parser): o
       # job INSTALA em vez de contar com o cache do runner.
       - run: bun install --frozen-lockfile
+      # O CLIENT do Prisma tem de EXISTIR antes da prova: a fase C da cópia roda
+      # o typecheck DE VERDADE, e sem o `prisma generate` o `@prisma/client` não
+      # exporta `PrismaClient` — o CONTROLE da prova (o commit que tem de ENTRAR)
+      # morre em erro de tipo e a prova sai INDETERMINADO acusando o ambiente.
+      # Medido na forja (30/09/2026): TS2305 em scripts/*.ts, exit 1 no controle.
+      # Os jobs typecheck/test/build já geram; este job agora também.
+      - run: bun run db:generate
 
       - name: A prova do bloqueio do pre-commit (dentro da imagem do runner)
         env:

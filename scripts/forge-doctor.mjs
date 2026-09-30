@@ -7340,6 +7340,19 @@ export async function diagnose({
  * inteiro no pipe ANTES do exit. É a mesma defesa do guard de recursão, num
  * canal diferente — o do transporte do relatório.
  *
+ * A promessa é CUMPRIDA, e a forma importa: este módulo tem top-level await na
+ * entrada CLI (`if (IS_DIRECT_RUN) await main()`), e a régua do fecho de TLA
+ * mantém a entrada no TOPO do runtime por desenho. Sob o node ≥ 22 (medido na
+ * imagem do runner, v24.19.0, em 30/09/2026), um top-level await pendente é uma
+ * razão de ENCERRAMENTO do runtime: quando o event loop drena, o node mata o
+ * processo com exit 13 e um aviso no stderr (`unsettled top-level await`) — e
+ * um `return` aqui deixaria o promise de `main()` NUNCA se estabelecendo, com o
+ * relatório intacto e o job do doctor MORRENDO de TLA (exit 13) em vez de sair
+ * com o veredito. `process.exit()` dentro da função resolvida encerra ANTES de
+ * o runtime reavaliar o await pendente: o veredito sai completo e o exit code é
+ * o declarado (o mesmo encerramento imediato dos CLIs da família, agora
+ * obrigatório aqui — medido no node 24 da imagem do runner).
+ *
  * @param {number} code
  * @returns {Promise<never>}
  */

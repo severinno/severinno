@@ -6709,9 +6709,9 @@ verdade (e não contra um `run` dublado). Exige docker e a imagem do runner.
 sem docker
 ```
 
-### `cenario: docker-ausente` — por que sete blocos o declaram
+### `cenario: docker-ausente` — por que seis blocos o declaram
 
-Sete provas da família exigem docker, imagem do runner ou um Gitea efêmero —
+Seis provas da família exigem docker, imagem do runner ou um Gitea efêmero —
 não são reproduzíveis num runner de PR. O guard **não finge** que são: ele as
 EXECUTA com um `docker` de mentira (exit 127) no começo do PATH e exige o
 desfecho `indeterminado` que elas declaram ter nesse cenário. A invariante
@@ -6719,8 +6719,7 @@ verificada é a que este repositório mais trata como regra: **ausência de prov
 NUNCA vira sucesso**. Um comando que passe a sair `0` sem ter provado nada é pego
 AQUI, de forma hermética e em ~1s. O caminho PROVADO dessas sete exige docker e
 é do operador (`bun run forge-runtime:prove`, `bun run smoke-render:prove`,
-`bun run image-contract:prove`, `bun run merge-gate:prove`,
-`bun run forge-smoke:prove`, `bun run pre-commit-in-runner:prove` e
+`bun run image-contract:prove`,`bun run merge-gate:prove`, `bun run forge-smoke:prove` e
 `bun run gitea-registry:prove`) — a doc de cada uma diz o que ele exige.
 O número não é decorativo: ele é o tamanho do conjunto que o `check:prove-docs`
 EXECUTA a cada PR, e um bloco que troque de cenário muda essa conta.
@@ -8228,17 +8227,31 @@ typecheck do repositório de verdade — o que, na primeira
 execução, reprovou o CONTROLE por um erro de tipo real introduzido no mesmo
 turno (JSDoc sem o campo novo), e o pegou antes de qualquer outra rede.
 
+**O bloco documenta os DOIS desfechos medidos do comando `--json` — um por
+ambiente, na lista do `exit:` (o mesmo precedente do bloco `doctor`, que admite
+`1|2`):** na FORJA, dona do merge, o job roda DENTRO da imagem do runner (os
+marcadores `/.dockerenv` + `/opt/acttoolcache` presentes, medido em 30/09/2026):
+a prova roda EM LUGAR e sai `exit 0` com `"state": "proven"` — um 'git commit'
+de verdade recusado e o CONTROLE entrando, medidos no runtime que julga o merge
+(node v24.19.0, git 2.55.0). Sem docker nem imagem (a máquina do operador), o
+comando RECUSA provar no lugar errado: `exit 2`, `"state": "unavailable"`
+(medido no mesmo dia, com o docker ausente do PATH). A cerca prende as linhas
+COMUNS aos dois ambientes — `"variante": "com-duble"` no JSON e
+`PROVA-VARIANTE=com-duble` na saída plana — para o confronto bater onde o
+comando é executado. E o bloco saiu do cenário `docker-ausente` (a conta do
+§18 passou de SETE para SEIS): esse cenário existe para as provas que NÃO têm
+runtime próprio de merge — esta tem, e é o job que o carrega.
+
 <!-- prove-doc: pre-commit-in-runner:prove
      run: --json
-     exit: 2
-     cenario: docker-ausente
-     desfecho: indeterminado
+     exit: 0|2
+     cenario: ambiente
+     desfecho: provado
 -->
 
 ```text
-"state": "unavailable"
-não dá para provar o bloqueio dentro do runtime do CI
-o docker não respondeu
+"variante": "com-duble"
+PROVA-VARIANTE=com-duble
 ```
 
 **`stack-per-commit:prove`** — cada commit da pilha passa SOZINHO? O PR mede o TOPO, e

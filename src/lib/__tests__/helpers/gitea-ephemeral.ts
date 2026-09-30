@@ -57,6 +57,26 @@ export interface EphemeralGitea {
 const GITEA_IMAGE = "gitea/gitea:1.22"
 const CONTAINER_PREFIX = "gitea-ephemeral-test"
 
+/**
+ * A rede do container que roda ESTE processo (a do job, na forja).
+ *
+ * O env HOSTNAME de um container Docker é o próprio ID (curto); fora de
+ * container o env não existe e o retorno é vazio. É o MESMO critério do
+ * `dockerRun` — extraído para o endereço do efêmero (IP direto na rede) usar a
+ * MESMA fonte, nunca uma segunda implementação.
+ */
+function redeDoJob(): string {
+  if (!process.env.HOSTNAME || !existsSync("/.dockerenv")) return ""
+  return spawnSync(
+    "sh",
+    [
+      "-c",
+      "docker inspect $HOSTNAME --format '{{range $k,$_ := .NetworkSettings.Networks}}{{$k}}{{end}}'",
+    ],
+    { encoding: "utf8" },
+  ).stdout.trim()
+}
+
 function dockerRun(args: string[]): string {
   // MESMA REDE do container que roda o teste (medido em 29/09): sem isso o
   // efêmero nasce na bridge DEFAULT (172.17) e o gateway dela não é alcançável
@@ -64,17 +84,7 @@ function dockerRun(args: string[]): string {
   // 172.18) — 'Gitea not ready' em TODO gitea-real só dentro do job. O env
   // HOSTNAME de um container Docker é o próprio ID (curto); fora de container
   // o env não existe e a flag não é passada.
-  const rede =
-    process.env.HOSTNAME && existsSync("/.dockerenv")
-      ? spawnSync(
-          "sh",
-          [
-            "-c",
-            "docker inspect $HOSTNAME --format '{{range $k,$_ := .NetworkSettings.Networks}}{{$k}}{{end}}'",
-          ],
-          { encoding: "utf8" },
-        ).stdout.trim()
-      : ""
+  const rede = redeDoJob()
   const redeArgs = rede ? ["--network", rede] : []
   const res = spawnSync("docker", ["run", "-d", ...redeArgs, ...args], { encoding: "utf8" })
   if (res.status !== 0) throw new Error(`docker run failed: ${res.stderr}`)
@@ -423,16 +433,31 @@ const HTTP_TIMEOUT_MS = 5_000
 const API_TIMEOUT_MS = 15_000
 
 async function waitForGitea(url: string, timeoutMs = 30_000): Promise<void> {
+  const alvo = new URL(url)
+  const portas = [alvo.port || "80"]
+  // Se o alvo foi escrito como ENDEREÇO DIRETO DO CONTAINER (a porta interna do
+  // Gitea, 3000), a porta PUBLICADA no host é o segundo caminho — é ela que
+  // chega no host direto e via gateway:porta-publicada. Medido em 30/09/2026 na
+  // forja: o caminho gateway:porta-publicada foi NEGADO entre bridges distintas
+  // (gateway da rede do job em 192.168.64.1, pool do 172.18 esgotado) enquanto o
+  // caminho L2 (IP do container direto, mesma rede) passa — daí a ordem.
+  if (alvo.port === "3000" && !portas.includes("80")) portas.push("80")
   const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${url}/api/v1/version`, {
-        signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
-      })
-      if (res.ok) return
-    } catch {
-      // not ready yet — inclui o abort do timeout acima
+  for (;;) {
+    if (Date.now() >= deadline) break
+    for (const p of portas) {
+      try {
+        alvo.port = p
+        const res = await fetch(`${alvo.toString().replace(/\/$/, "")}/api/v1/version`, {
+          signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+        })
+        if (res.ok) return
+      } catch {
+        // not ready yet — inclui o abort do timeout acima
+      }
     }
+    // Nenhuma porta respondeu: espera e tenta de novo (o `return` acima só
+    // acontece no sucesso, então este sono é o ritmo de TODA tentativa falha).
     await new Promise((r) => setTimeout(r, 500))
   }
   throw new Error(`Gitea not ready at ${url} after ${timeoutMs}ms`)
@@ -508,30 +533,59 @@ export async function makeEphemeralGitea(
     throw new Error(`Não conseguiu resolver a porta do container: ${portRes.stdout}`)
   }
   const hostPort = match[1]
-  // ONDE O GITEA RESPONDE: com `-p` a porta é publicada NO HOST. Rodando direto
-  // na máquina (GitHub runner, dev), `127.0.0.1` chega lá. Dentro de um JOB
-  // CONTAINER da forja (label `docker://`), 127.0.0.1 é o PRÓPRIO container —
-  // o caminho até a porta publicada é o GATEWAY da rede do container (medido
-  // em 29/09: 'Gitea not ready' para todos os testes gitea-real só na forja).
+  // ONDE O GITEA RESPONDE — três caminhos, e a ORDEM importa (medido em
+  // 30/09/2026 na forja):
+  //   1. IP DIRETO DO CONTAINER na rede compartilhada (dentro de job container):
+  //      o `dockerRun` já sobe o efêmero na MESMA rede do job; falar com o IP do
+  //      container NESSA rede é tráfego L2 puro — passa onde o NAT da porta
+  //      publicada é negado (o caminho 2 falhou assim: gateway do job em
+  //      192.168.64.1 — o pool do 172.18 esgotou — e o DNAT da porta publicada
+  //      não atravessa a bridge). A porta é a INTERNA (3000).
+  //   2. GATEWAY da rede do job (dentro de container, sem rede compartilhada):
+  //      com `-p` a porta é publicada NO HOST; o gateway é o caminho até ela.
+  //      Lido de /proc/net/route (a imagem do job NÃO tem `ip`/iproute2 —
+  //      medido): a linha default é `eth0<TAB>00000000<TAB><GW hex LE>` —
+  //      010012AC = 172.18.0.1. Sem binário externo, sem shell.
+  //   3. 127.0.0.1:porta-publicada — máquina do GitHub runner / dev.
+  // O `waitForGitea` tenta a porta do endereço dado primeiro e a publicada
+  // junto — então o endereço direto sai com as duas portas vivas.
   const emContainer = existsSync("/.dockerenv") || existsSync("/run/.containerenv")
-  // O gateway lido de /proc/net/route (a imagem do job NÃO tem `ip`/iproute2 —
-  // medido): a linha default é `eth0<TAB>00000000<TAB><GW hex LE>` — 010012AC =
-  // 172.18.0.1. Sem binário externo, sem shell.
   let host = "127.0.0.1"
+  let portaAlvo = hostPort
   if (emContainer) {
-    try {
-      const rota = readFileSync("/proc/net/route", "utf8")
-        .split("\n")
-        .find((l) => l.split("\t")[1] === "00000000")
-      const hex = rota?.split("\t")[2]
-      if (hex && hex.length === 8) {
-        host = [3, 2, 1, 0].map((i) => parseInt(hex.slice(i * 2, i * 2 + 2), 16)).join(".")
+    // Caminho 1: o efêmero compartilha a rede do job (o `dockerRun` sobe com
+    // `--network` de `redeDoJob()`) — o IP dele NESSA rede é L2 puro e passa
+    // onde o NAT da porta publicada é negado entre bridges (medido na forja).
+    const rede = redeDoJob()
+    const ipDoContainer = rede
+      ? (spawnSync(
+          "docker",
+          ["inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", container],
+          { encoding: "utf8" },
+        )
+          .stdout.trim()
+          .split(/\s+/)
+          .filter(Boolean)[0] ?? "")
+      : ""
+    if (ipDoContainer) {
+      host = ipDoContainer
+      portaAlvo = "3000"
+    } else {
+      // Caminho 2: gateway:porta-publicada (rede não compartilhada).
+      try {
+        const rota = readFileSync("/proc/net/route", "utf8")
+          .split("\n")
+          .find((l) => l.split("\t")[1] === "00000000")
+        const hex = rota?.split("\t")[2]
+        if (hex && hex.length === 8) {
+          host = [3, 2, 1, 0].map((i) => parseInt(hex.slice(i * 2, i * 2 + 2), 16)).join(".")
+        }
+      } catch {
+        // sem /proc/net/route — segue 127.0.0.1 (host direto)
       }
-    } catch {
-      // sem /proc/net/route — segue 127.0.0.1 (host direto)
     }
   }
-  const baseUrl = `http://${host}:${hostPort}`
+  const baseUrl = `http://${host}:${portaAlvo}`
 
   try {
     // Espera o Gitea ficar pronto

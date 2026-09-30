@@ -665,6 +665,13 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
+      # O CLIENT do Prisma tem de EXISTIR antes da prova (a fase C da cópia roda
+      # o typecheck DE VERDADE). Paridade com o job da forja — a causa é a mesma
+      # (medido na forja, 30/09/2026: TS2305 `PrismaClient` no CONTROLE da prova
+      # `--sem-duble`, exit 1).
+      - name: Generate Prisma client
+        run: bun run db:generate
+
       # O PREFLIGHT defensivo (issue #32): as duas provas abaixo medem o pre-commit
       # DE VERDADE, e a prova `--sem-duble` roda os SEIS guards de fase A no host —
       # um deles (`check-mutation-count`) lê o registro do ato cujo custo é derivado
