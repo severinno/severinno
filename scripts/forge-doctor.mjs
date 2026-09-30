@@ -7348,10 +7348,12 @@ export async function diagnose({
  * processo com exit 13 e um aviso no stderr (`unsettled top-level await`) — e
  * um `return` aqui deixaria o promise de `main()` NUNCA se estabelecendo, com o
  * relatório intacto e o job do doctor MORRENDO de TLA (exit 13) em vez de sair
- * com o veredito. `process.exit()` dentro da função resolvida encerra ANTES de
- * o runtime reavaliar o await pendente: o veredito sai completo e o exit code é
- * o declarado (o mesmo encerramento imediato dos CLIs da família, agora
- * obrigatório aqui — medido no node 24 da imagem do runner).
+ * com o veredito. `process.exit()` dentro da função resolvida NÃO basta por si
+ * (medido na rodada ad83e264, na forja: a função resolve DENTRO do microtask do
+ * TLA e o runtime ENFILEIRA a checagem do await pendente no MESMO tick — o
+ * processo saiu 13 com o relatório INTEIRO já no pipe); o `setImmediate` abaixo
+ * é o que separa o exit do ciclo de vida do TLA (provado in-image no node
+ * v24.19.0: rc do veredito, 42KB de relatório, 0 avisos).
  *
  * @param {number} code
  * @returns {Promise<never>}
@@ -7360,6 +7362,16 @@ async function exitAfterFlush(code) {
   while (process.stdout.writableLength > 0) {
     await new Promise((resolve) => process.stdout.once("drain", resolve))
   }
+  // A VOLTA de um await pendente na pilha (o `await main()` do TLA) resolve esta
+  // função DENTRO do microtask do TLA — e o node ≥ 22 ENFILEIRA a checagem de TLA
+  // pendente para o MESMO tick: mesmo com o `process.exit()` na próxima linha, o
+  // aviso 'unsettled top-level await' ganha e o processo sai 13 (medido na rodada
+  // ad83e264, na forja: o relatório saiu INTEIRO e o gate morreu 13 depois dele).
+  // O `setImmediate` move o exit para a fila de CHECK do event loop — o runtime
+  // conclui o ciclo de vida do TLA pendente primeiro, sem aviso — e o exit sai
+  // com o veredito (a régua da casa é medir, nunca presumir: este comentário
+  // carrega a medida).
+  await new Promise((resolve) => setImmediate(resolve))
   process.exit(code)
 }
 
