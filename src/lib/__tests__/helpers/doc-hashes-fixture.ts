@@ -38,9 +38,36 @@ const GIT_IDENTITY = [
   ["user.name", "hook test"],
 ]
 
+/**
+ * A DATA de TODOS os commits do fixture, PINADA.
+ *
+ * O hash de um commit é função do CONTEÚDO + do autor/committer + do RELÓGIO —
+ * e as suítes que usam este fixture constroem repositorios INDEPENDENTES e
+ * exigem byte-igualdade entre eles (o remédio via `patch` de um e via `--fix`
+ * de outro têm de produzir a mesma prosa). Com a data vindo do relógio, dois
+ * repos construídos em segundos diferentes têm hashes diferentes — o teste
+ * passa onde a construção cabe no MESMO segundo (máquina rápida, medido) e
+ * reprova onde ela atravessa o segundo (medido na forja em 30/09/2026: o patch
+ * do preview trouxe `faede52` enquanto o `--fix` gravava `5f87f3c` — a MESMA
+ * construção, um segundo de diferença). Pinar a data torna o estado de partida
+ * REPRODUÍVEL por construção, e não por sorte do relógio.
+ */
+const DATA_FIXA = "2026-01-01T00:00:00+0000"
+
 /** Um `git` no diretório dado — erro ALTO: num fixture, git que não responde é o medidor quebrado. */
 export function gitEm(dir: string, args: string[]): string {
-  return execFileSync("git", args, { cwd: dir, encoding: "utf8" }).trim()
+  return execFileSync("git", args, {
+    cwd: dir,
+    encoding: "utf8",
+    // A data pinada vai em TODAS as chamadas (inofensiva para as que não
+    // commitam): um `--amend` define committer date AGORA quando ninguém a passa,
+    // e a dobra do fixture é um `--amend` — sem o pin, ela re-introduz o relógio.
+    env: {
+      ...process.env,
+      GIT_AUTHOR_DATE: DATA_FIXA,
+      GIT_COMMITTER_DATE: DATA_FIXA,
+    },
+  }).trim()
 }
 
 /** Um diretório temporário, registrado para a limpeza da suíte (`limparTmpDirs`). */

@@ -588,8 +588,15 @@ export async function makeEphemeralGitea(
   const baseUrl = `http://${host}:${portaAlvo}`
 
   try {
-    // Espera o Gitea ficar pronto
-    await waitForGitea(baseUrl, opts.timeoutMs ?? 30_000)
+    // Espera o Gitea ficar pronto. O ORÇAMENTO de 90s (medido em 30/09/2026): o
+    // cold start do Gitea sob a carga da forja — a suíte INTEIRA em paralelo
+    // sobre poucas vCPUs, com NINE containers de serviços e efêmeros nascendo
+    // junto — passa de 30s (o default anterior): os QUATRO testes gitea-real
+    // morreram em 'Gitea not ready after 30000ms' enquanto o teste que pede
+    // explicitamente 120s (gitea-ephemeral-signal) PASSOU no mesmo host. O
+    // prontidão lenta é do AMBIENTE, não do Gitea — e o default tem de cobrir
+    // o pior orçamento dos seus chamadores (o beforeAll deles é de 120s).
+    await waitForGitea(baseUrl, opts.timeoutMs ?? 90_000)
 
     // Cria o admin via CLI do container — como o user `git` (UID 1000),
     // pois o gitea recusa rodar como root.

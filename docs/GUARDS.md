@@ -8168,7 +8168,7 @@ sobre a árvore); a árvore é uma CÓPIA do
 checkout com commit base sintético (quem mede o commit do PR são as pipelines do
 merge); o REMÉDIO fica sem operador (`NO_PROMPT_ENV` do simulador — a prova mede
 o caminho NÃO interativo, e quem mede o interativo é o ensaio do pty); e o teto de
-tempo por comando do simulador (`runGit`, 60s) faz um controle mais lento que isso
+tempo por comando do simulador (`runGit`, 180s) faz um controle mais lento que isso
 sair como INDETERMINADO.
 
 **O que ela já pegou.** Na primeira medição de verdade o `--sem-duble` saiu

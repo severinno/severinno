@@ -529,7 +529,12 @@ describe("a prova sem dublê — as três metades no mesmo checkout", () => {
     expect(controle.status).toBe(0)
     expect(controle.headDepois).not.toBe(controle.headAntes)
     expect(controle.conteudoEmHead).toBe("igual ao corpo válido")
-  })
+    // O ORÇAMENTO: a prova roda o hook REAL (a fase C inteira: lint-staged +
+    // typecheck) DENTRO do processo de teste — e na forja, com a suíte INTEIRA
+    // em paralelo sobre poucas vCPUs, o commit do CONTROLE passa do teto de 30s
+    // do runner (medido em 30/09/2026: timeout nos DOIS testes que comitam;
+    // o job roda a prova sozinho em 5m11s). O teto do job é outro orçamento.
+  }, 180_000)
 
   it("um hook que recusa TAMBÉM o commit do CONTROLE: INDETERMINADO, nunca um verde", () => {
     // O PREDICADO do CONTROLE é a metade que separa "o hook recusou o defeito" de
@@ -626,7 +631,9 @@ describe("a prova sem dublê — as três metades no mesmo checkout", () => {
     expect(bump.controle.status).toBe(0)
     expect(bump.controle.headDepois).not.toBe(bump.controle.headAntes)
     expect(bump.controle.formasEmHead).toBe(1)
-  })
+    // Mesmo orçamento do teste acima: a metade 6 comita TRES vezes com a fase C
+    // inteira dentro de cada commit (o defeito do bump, o CONTROLE e os da fase B).
+  }, 180_000)
 
   it("um guard da contagem CEGO para o bump: o defeito ENTRA e a prova fica VERMELHA", () => {
     // A contraprova da metade 6 — a mutação que a torna load-bearing: com o guard

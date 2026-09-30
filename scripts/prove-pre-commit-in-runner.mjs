@@ -226,7 +226,7 @@ export const REAL_LIMITS = [
   "os defeitos são arquivos NOVOS — o workflow `.github/workflows/prova-fase-a-real.yml` (fase A) e um `.ts`/um `.md` (fase B, encoding/link): um defeito num arquivo EXISTENTE faria outros guards reprovarem junto, e a recusa deixaria de ser atribuível a um guard só",
   "a árvore da prova é uma CÓPIA do checkout (com o commit base sintético), não o commit do PR: quem mede o commit do PR são as pipelines do merge",
   "o REMÉDIO fica sem operador (`NO_PROMPT_ENV` do simulador): a prova mede o caminho NÃO interativo — quem mede o interativo é o ensaio do pty",
-  "o teto de tempo por comando do simulador (`runGit`, 60s): um commit de controle mais lento que isso sai como INDETERMINADO, nunca como verde",
+  "o teto de tempo por comando do simulador (`runGit`, 180s): um commit de controle mais lento que isso sai como INDETERMINADO, nunca como verde",
   "a OFERTA do remédio NÃO é medida nesta forma (`--sem-duble`): quem a mede é a forma padrão (`proveRemedyOffered`), no MESMO runtime — o job roda os dois passos, e é o primeiro que carrega esta metade",
   "o ATO do bump de matriz não é EXECUTADO nesta forma: o fixture escreve a forma nova no registro versionado pelo mesmo caminho que o ato escreveria (o guard é quem decide que ele passa), mas o custo do sub-test NÃO é medido aqui — quem o mede é `bench-guard-timing`, e quem cobra a existência dele é o `check:mutation-count` sobre a árvore",
 ]

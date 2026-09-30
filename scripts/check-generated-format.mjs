@@ -210,7 +210,6 @@ export const GERADORES = [
       "caminhoMaster",
       "caminhoWf",
       "caminhoReadme",
-      "caminhoBench",
     ],
   },
   {
