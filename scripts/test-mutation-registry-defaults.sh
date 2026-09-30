@@ -308,11 +308,34 @@ rodar_suite() {
   if [ -n "$filtro" ]; then args+=(-t "$filtro"); fi
   args+=("$arquivo")
   set +e
-  SUITE_OUT="$(cd "$SCRIPT_DIR" && bun x vitest "${args[@]}" 2>&1 | tail -12)"
+  # O output INTEIRO (e não um `tail`): a linha do sumário `Tests ...` fica no FIM
+  # e uma suíte VERMELHA imprime dezenas de linhas de erro antes dela — o tail
+  # de 12 linhas pode CORTAR a única linha que este medidor lê. Medido na forja
+  # (30/09/2026): o tail devolveu só o recorte de erros, o grep da linha `Tests `
+  # saiu vazio e, sob `set -e` + pipefail, o grep vazio MATOU o harness no meio
+  # (o CI viu exit 1 sem diagnóstico). 
+  SUITE_OUT="$(cd "$SCRIPT_DIR" && bun x vitest "${args[@]}" 2>&1)"
   SUITE_EXIT=$?
   set -e
-  SUITE_RODADOS="$(echo "$SUITE_OUT" | grep -oE '[0-9]+ passed' | head -1 | grep -oE '[0-9]+' || true)"
-  if [ -z "$SUITE_RODADOS" ] || [ "$SUITE_RODADOS" -eq 0 ]; then
+  # O RODADOS é o que o vitest EXECUTOU (passed + failed), lido da LINHA `Tests `
+  # — o mesmo padrão dos irmãos (test-mutation-artefatos-do-hook.sh,
+  # test-mutation-local-image.sh). Contar só o primeiro `N passed` do output é a
+  # armadilha medida na forja (30/09/2026): a mutação M9 deixa TODOS os testes do
+  # recorte VERMELHOS (`17 failed | 161 skipped` — zero passed) e a metade do
+  # recorte vazio lia "0 rodados" sobre uma suíte que rodou 17 — o próprio piso
+  # que impede o verde falso virava o falso vermelho. A linha `Tests ` (e não a
+  # `Test Files 1 passed`) é para o `1 passed` de ARQUIVO não casar como teste;
+  # os greps são blindados (`|| true`) porque um output sem sumário é medido
+  # abaixo (RODADOS=0 → fail com diagnóstico), não um crash do harness.
+  local linha_tests passados falhados
+  # O ANSI sai ANTES do grep: o sumário do vitest é ANSI-decorado (`\e[2m Tests
+  # \e[22m`) e a âncora `^[[:space:]]*Tests` nunca casa sobre o escape — medido:
+  # a extração devolvia vazio com o sumário NA FRENTE.
+  linha_tests="$(echo "$SUITE_OUT" | { sed 's/\x1b\[[0-9;]*m//g' || true; } | { grep -E '^[[:space:]]*Tests[[:space:]]' || true; } | head -1)"
+  passados="$(grep -oE '[0-9]+ passed' <<<"$linha_tests" | grep -oE '[0-9]+' || true)"
+  falhados="$(grep -oE '[0-9]+ failed' <<<"$linha_tests" | grep -oE '[0-9]+' || true)"
+  SUITE_RODADOS=$(( ${passados:-0} + ${falhados:-0} ))
+  if [ "$SUITE_RODADOS" -eq 0 ]; then
     fail "a suíte NÃO rodou nenhum teste ($arquivo${filtro:+ -t $filtro}) — um recorte vazio daria verde para qualquer mutação"
     echo "$SUITE_OUT" | sed 's/^/      /'
     exit 1
