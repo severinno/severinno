@@ -45,7 +45,17 @@ services:
         condition: service_healthy
     healthcheck:
       start_period: 60s
-      test: ["CMD", "wget", "-s", "-q", "http://localhost:80/health"]
+      # `--spider` (não `-s`): o BusyBox do container não tem a forma curta —
+      # o probe morria com 'wget: unrecognized option: s' (FailingStreak 3035)
+      # enquanto o próprio Caddy estava sadio. A sonda na VPS mediu: localhost:80
+      # NÃO serve (o redirect para HTTPS com SNI próprio falha o handshake:
+      # 'tlsv1 alert internal error') — a sonda viva confere a URL PÚBLICA pelo
+      # edge, com --no-check-certificate (o container não tem a chain do forge).
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q --spider --no-check-certificate https://git.severinno.com/ -O /dev/null",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
