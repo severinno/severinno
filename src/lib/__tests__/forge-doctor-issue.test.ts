@@ -693,7 +693,9 @@ describe("forge-doctor-issue — o relatório REAL do doctor", () => {
   // container de 4 vCPU compartilhado com a suíte em paralelo — o default de 30s
   // ficou atrás do custo real do ambiente (o teste levou >30s e morreu por
   // timeout, não por regressão).
-  const DOCTOR_E2E_TIMEOUT = 180_000
+  // 300s (medido na forja em 30/09/2026, rodada 205d62e5): o doctor inteiro
+  // sob a suíte em paralelo passou de 180s.
+  const DOCTOR_E2E_TIMEOUT = 300_000
 
   it(
     "o doctor produz o relatório que o publicador consome (as chaves não divergiram)",

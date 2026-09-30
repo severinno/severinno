@@ -600,31 +600,53 @@ export async function makeEphemeralGitea(
     }
     portaAlvo = match[1]
   }
-  const baseUrl = `http://${host}:${portaAlvo}`
+  // `let`: o RE-UP (espera em fatias, abaixo) re-sonda a porta e re-deriva a URL
+  let baseUrl = `http://${host}:${portaAlvo}`
 
   try {
-    // Espera o Gitea ficar pronto. O ORÇAMENTO de 150s (medido em 30/09/2026 na
-    // forja, sob carga): o cold start do Gitea no netns do job levou 99s no pior
-    // caso (a suíte INTEIRA em paralelo sobre 4 vCPU) — os 30s/90s anteriores
-    // eram menores que o custo REAL do ambiente. 150s deixa folga sobre o pior
-    // caso medido e cabe nos beforeAll de 120s dos chamadores? NÃO cabe — por
-    // isso os chamadores subiram para 180s no mesmo commit.
+    // Espera o Gitea ficar pronto. O ORÇAMENTO de 165s: o cold start medido na
+    // forja foi de 75-99s SOB carga — e, com a porta por instância, N efêmeros
+    // bootam em PARALELO sobre 4 vCPU (rodada 205d62e5: 3 dos 4 gitea-real
+    // passaram de 150s enquanto o 4º ficou pronto em ~145s). Os 15s de folga
+    // cobrem o pior caso medido + o custo do re-up.
     //
-    // RE-SUBIDA com OUTRA porta (uma vez, dentro do mesmo orçamento): se a porta
-    // sondada foi tomada ENTRE a sondagem e o bind (ou outro efêmero nascido no
-    // mesmo instância escolheu a mesma), o container entra em crash-loop e a
-    // prontidão nunca chega — remover e re-subir com nova porta sonda de novo,
-    // em vez de reprovar com um falso 'Gitea not ready'.
+    // A espera roda em FATIAS com checagem de LIVENESS do container: o crash
+    // mais comum é o bind negado (porta tomada ENTRE a sondagem e o bind, ou o
+    // efêmero irmão que escolheu a mesma) — esperar o orçamento INTEIRO por um
+    // container já morto gasta o beforeAll inteiro (medido: 'not ready after
+    // 150000ms' com o container há muito tempo parado). Container morto ⇒
+    // RE-SUBIDA com nova porta sondada, dentro do MESMO orçamento; vivo ⇒ o
+    // que resta da fatia é o custo de boot, não de espera morta.
     const inicioProntidao = Date.now()
-    const orcamentoProntidao = opts.timeoutMs ?? 150_000
-    try {
-      await waitForGitea(baseUrl, orcamentoProntidao)
-    } catch (primeiroErro) {
+    const orcamentoProntidao = opts.timeoutMs ?? 165_000
+    let sobe = 0
+    for (;;) {
       const restante = orcamentoProntidao - (Date.now() - inicioProntidao)
-      if (!emContainer || restante <= 5_000) throw primeiroErro
-      removerRegistrandoFalha(container)
-      subirGitea()
-      await waitForGitea(baseUrl, restante)
+      if (restante <= 0) {
+        throw new Error(
+          `Gitea not ready at ${baseUrl} after ${orcamentoProntidao}ms (re-subidas: ${sobe})`,
+        )
+      }
+      const fatia = Math.min(restante, 30_000)
+      try {
+        await waitForGitea(baseUrl, fatia)
+        break
+      } catch (erroDeFatia) {
+        const vivo = spawnSync("docker", ["inspect", "-f", "{{.State.Running}}", container], {
+          encoding: "utf8",
+        })
+        if (vivo.status !== 0 || vivo.stdout.trim() !== "true") {
+          if (sobe >= 2) throw erroDeFatia
+          sobe += 1
+          removerRegistrandoFalha(container)
+          if (emContainer) {
+            portaAlvo = String(await escolherPortaInterna())
+            baseUrl = `http://${host}:${portaAlvo}`
+          }
+          subirGitea()
+          continue
+        }
+      }
     }
 
     // Cria o admin via CLI do container — como o user `git` (UID 1000),
