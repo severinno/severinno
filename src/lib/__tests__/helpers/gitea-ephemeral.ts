@@ -570,29 +570,42 @@ export async function makeEphemeralGitea(
     await waitForGitea(baseUrl, opts.timeoutMs ?? 150_000)
 
     // Cria o admin via CLI do container — como o user `git` (UID 1000),
-    // pois o gitea recusa rodar como root.
-    const createUser = spawnSync(
-      "docker",
-      [
-        "exec",
-        "-u",
-        "git",
-        container,
-        "gitea",
-        "admin",
-        "user",
-        "create",
-        "--username",
-        adminUser,
-        "--password",
-        adminPass,
-        "--email",
-        `${adminUser}@test.local`,
-        "--admin",
-        "--must-change-password=false",
-      ],
-      { encoding: "utf8" },
-    )
+    // pois o gitea recusa rodar como root. O RETRY com backoff (3 tiros, 2s/5s)
+    // cobre a contenção do SQLite logo após o boot: o create de usuário pode
+    // levar `CreateUser: database is locked` enquanto o Gitea ainda compacta o
+    // banco inicial (medido na forja em 30/09/2026, suíte inteira em paralelo
+    // sobre 4 vCPU — os fails vieram todos do primeiro tiro). "already exists"
+    // segue aceito como sucesso (idempotência).
+    const criarAdmin = () =>
+      spawnSync(
+        "docker",
+        [
+          "exec",
+          "-u",
+          "git",
+          container,
+          "gitea",
+          "admin",
+          "user",
+          "create",
+          "--username",
+          adminUser,
+          "--password",
+          adminPass,
+          "--email",
+          `${adminUser}@test.local`,
+          "--admin",
+          "--must-change-password=false",
+        ],
+        { encoding: "utf8" },
+      )
+    let createUser = criarAdmin()
+    for (const pausaMs of [2_000, 5_000]) {
+      if (createUser.status === 0 || createUser.stderr.includes("already exists")) break
+      if (!createUser.stderr.includes("database is locked")) break
+      await new Promise((r) => setTimeout(r, pausaMs))
+      createUser = criarAdmin()
+    }
     if (createUser.status !== 0 && !createUser.stderr.includes("already exists")) {
       throw new Error(`Falha ao criar admin: ${createUser.stderr}`)
     }

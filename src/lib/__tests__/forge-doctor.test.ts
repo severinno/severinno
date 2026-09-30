@@ -2494,6 +2494,9 @@ describe("perfil --ci — o recorte local, com a régua inteira", () => {
     expect(v.unproven.join(" ")).toContain("pulados por --no-guards")
   })
 
+  // 180s (medido na forja em 30/09/2026): o CLI roda o doctor inteiro no
+  // perfil --ci num container de 4 vCPU compartilhado com a suíte em paralelo —
+  // o default de 30s do vitest morreu por timeout, não por regressão.
   it("o CLI aceita --ci e sai com o perfil declarado no relatório", () => {
     const dir = forgeFixture()
     // O `cwd` da fixture NÃO move o doctor (o CLI não tem flag de raiz: ele mede
@@ -2515,7 +2518,7 @@ describe("perfil --ci — o recorte local, com a régua inteira", () => {
         "--expected-var",
         `IMAGE_NAMESPACE=${namespace}`,
       ],
-      { cwd: dir, encoding: "utf8", timeout: 60_000 },
+      { cwd: dir, encoding: "utf8", timeout: 180_000 },
     )
     // 2 (INDETERMINADA) é o resultado NORMAL do perfil: o que ficou fora é
     // declarado, e nenhuma violação foi encontrada. 0 (PRONTA) seria mentira —
@@ -2529,7 +2532,7 @@ describe("perfil --ci — o recorte local, com a régua inteira", () => {
     // COMPLETA, então ele sai `proven` — um contrato sem o job seria BLOQUEIO.
     expect(report.facts.bringUpGate.state).toBe("proven")
     expect(report.facts.bringUpGate.job).toBe(BRING_UP_GATE_JOB)
-  })
+  }, 180_000)
 })
 
 // ── compose: a interpolação do compose da forja entra no veredito ─────────

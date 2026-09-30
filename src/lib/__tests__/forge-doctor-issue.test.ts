@@ -689,38 +689,52 @@ describe("forge-doctor-issue — o relatório REAL do doctor", () => {
     return { status: res.status ?? -1, stdout: res.stdout ?? "", stderr: res.stderr ?? "" }
   }
 
-  it("o doctor produz o relatório que o publicador consome (as chaves não divergiram)", () => {
-    const res = runDoctor()
-    const report = JSON.parse(res.stdout) as Record<string, any>
+  // 180s (medido na forja em 30/09/2026): o doctor inteiro roda os guards num
+  // container de 4 vCPU compartilhado com a suíte em paralelo — o default de 30s
+  // ficou atrás do custo real do ambiente (o teste levou >30s e morreu por
+  // timeout, não por regressão).
+  const DOCTOR_E2E_TIMEOUT = 180_000
 
-    expect(Object.keys(report).sort()).toEqual(["facts", "verdict"])
-    for (const key of ["verdict", "blockers", "unknowns", "unproven"]) {
-      expect(report.verdict, `o relatório perdeu 'verdict.${key}'`).toHaveProperty(key)
-    }
-    expect(Object.values(VERDICT)).toContain(report.verdict.verdict)
-    expect(isActionable(report)).toBe(true)
+  it(
+    "o doctor produz o relatório que o publicador consome (as chaves não divergiram)",
+    () => {
+      const res = runDoctor()
+      const report = JSON.parse(res.stdout) as Record<string, any>
 
-    // E o fato `nestedGuard` passou a existir em TODO relatório (a defesa
-    // declarada como fato próprio). A metade que isto prende: um relatório
-    // VERDADEIRO nunca pode ser lido como recursão — se algum dia o fato nascer
-    // com outro estado, o publicador abriria a issue de recursão em cima de um
-    // veredito comum, com o corpo e o título errados.
-    expect(report.facts.nestedGuard?.state).toBe("armed")
-    expect(isNestedGuardReport(report)).toBe(false)
-    expect(nestedGuardOf(report)).toBeNull()
-  })
+      expect(Object.keys(report).sort()).toEqual(["facts", "verdict"])
+      for (const key of ["verdict", "blockers", "unknowns", "unproven"]) {
+        expect(report.verdict, `o relatório perdeu 'verdict.${key}'`).toHaveProperty(key)
+      }
+      expect(Object.values(VERDICT)).toContain(report.verdict.verdict)
+      expect(isActionable(report)).toBe(true)
 
-  it("o CORPO da issue carrega os não-provados do relatório real", () => {
-    const report = JSON.parse(runDoctor().stdout)
-    const body = doctorIssueBody(report)
+      // E o fato `nestedGuard` passou a existir em TODO relatório (a defesa
+      // declarada como fato próprio). A metade que isto prende: um relatório
+      // VERDADEIRO nunca pode ser lido como recursão — se algum dia o fato nascer
+      // com outro estado, o publicador abriria a issue de recursão em cima de um
+      // veredito comum, com o corpo e o título errados.
+      expect(report.facts.nestedGuard?.state).toBe("armed")
+      expect(isNestedGuardReport(report)).toBe(false)
+      expect(nestedGuardOf(report)).toBeNull()
+    },
+    DOCTOR_E2E_TIMEOUT,
+  )
 
-    // O que o doctor não mediu tem de aparecer: é a única pista do leitor sobre
-    // onde o veredito termina.
-    for (const unknown of report.verdict.unknowns.slice(0, 3)) {
-      expect(body).toContain(unknown)
-    }
-    expect(body).toContain(markerOf(VERDICT_MARKER_ID, verdictSignatureOf(report)))
-  })
+  it(
+    "o CORPO da issue carrega os não-provados do relatório real",
+    () => {
+      const report = JSON.parse(runDoctor().stdout)
+      const body = doctorIssueBody(report)
+
+      // O que o doctor não mediu tem de aparecer: é a única pista do leitor sobre
+      // onde o veredito termina.
+      for (const unknown of report.verdict.unknowns.slice(0, 3)) {
+        expect(body).toContain(unknown)
+      }
+      expect(body).toContain(markerOf(VERDICT_MARKER_ID, verdictSignatureOf(report)))
+    },
+    DOCTOR_E2E_TIMEOUT,
+  )
 
   it("loadDoctorReport roda o doctor sem --report e devolve o JSON", () => {
     const seen: string[][] = []

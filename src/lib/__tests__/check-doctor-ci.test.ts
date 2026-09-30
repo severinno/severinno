@@ -102,7 +102,10 @@ function runGate(
   const res = spawnSync(process.execPath, [MODULE_PATH], {
     cwd,
     encoding: "utf8",
-    timeout: 60_000,
+    // 180s (medido na forja em 30/09/2026): o gate roda o doctor INTEIRO no
+    // perfil --ci sobre um container de 4 vCPU compartilhado com a suíte em
+    // paralelo — o teto de 60s do spawn ficou atrás do custo real.
+    timeout: 180_000,
     env: { ...process.env, ...env },
   })
   return { status: res.status, stdout: res.stdout, stderr: res.stderr }
@@ -185,34 +188,51 @@ describe("gateExitCode — o INDETERMINADA do perfil não bloqueia, a violação
 // ── o ciclo completo: o gate contra um checkout de verdade ────────────────
 
 describe("o gate ponta a ponta (checkout de fixture, sem rede)", () => {
-  it("espelhos em sincronia com as variables → exit 0", () => {
-    const res = runGate(VALUES, makeRepo())
-    expect(res.status, `${res.stdout}\n${res.stderr}`).toBe(0)
-    expect(res.stdout).toContain("nenhuma violação no recorte local")
-    // O perfil aparece no relatório: quem lê o run sabe que o escopo foi local.
-    expect(res.stdout).toContain("PERFIL --ci")
-  })
+  // 180s (medido na forja em 30/09/2026): CADA teste aqui spawn do gate, que
+  // roda o doctor inteiro no perfil --ci — o default de 30s do vitest morreu
+  // sob a carga da suíte em paralelo (timeout, não regressão).
+  const GATE_E2E_TIMEOUT = 180_000
 
-  it("valor DIVERGENTE do que o espelho declara → exit 1 (e o bloqueio nomeia a variável)", () => {
-    const res = runGate({ ...VALUES, IMAGE_NAMESPACE: "outro" }, makeRepo())
-    expect(res.status).toBe(1)
-    expect(res.stdout).toContain("IMAGE_NAMESPACE")
-    expect(res.stdout).toContain("env.gitea.example")
-    expect(res.stderr).toContain("BLOQUEOU")
-    expect(res.stderr).toContain("::error::")
-  })
+  it(
+    "espelhos em sincronia com as variables → exit 0",
+    () => {
+      const res = runGate(VALUES, makeRepo())
+      expect(res.status, `${res.stdout}\n${res.stderr}`).toBe(0)
+      expect(res.stdout).toContain("nenhuma violação no recorte local")
+      // O perfil aparece no relatório: quem lê o run sabe que o escopo foi local.
+      expect(res.stdout).toContain("PERFIL --ci")
+    },
+    GATE_E2E_TIMEOUT,
+  )
 
-  it("variável não configurada → exit 0, mas o run DIZ qual valor não foi conferido", () => {
-    const res = runGate(
-      { BUN_VERSION: "1.3.14", IMAGE_REGISTRY: "", IMAGE_NAMESPACE: "" },
-      makeRepo(),
-    )
-    expect(res.status).toBe(0)
-    expect(res.stdout).toContain("::warning::")
-    expect(res.stdout).toContain("IMAGE_REGISTRY, IMAGE_NAMESPACE")
-    // E o doctor também diz, no próprio relatório, que aquele valor não entrou.
-    expect(res.stdout).toContain("nao foi comparado")
-  })
+  it(
+    "valor DIVERGENTE do que o espelho declara → exit 1 (e o bloqueio nomeia a variável)",
+    () => {
+      const res = runGate({ ...VALUES, IMAGE_NAMESPACE: "outro" }, makeRepo())
+      expect(res.status).toBe(1)
+      expect(res.stdout).toContain("IMAGE_NAMESPACE")
+      expect(res.stdout).toContain("env.gitea.example")
+      expect(res.stderr).toContain("BLOQUEOU")
+      expect(res.stderr).toContain("::error::")
+    },
+    GATE_E2E_TIMEOUT,
+  )
+
+  it(
+    "variável não configurada → exit 0, mas o run DIZ qual valor não foi conferido",
+    () => {
+      const res = runGate(
+        { BUN_VERSION: "1.3.14", IMAGE_REGISTRY: "", IMAGE_NAMESPACE: "" },
+        makeRepo(),
+      )
+      expect(res.status).toBe(0)
+      expect(res.stdout).toContain("::warning::")
+      expect(res.stdout).toContain("IMAGE_REGISTRY, IMAGE_NAMESPACE")
+      // E o doctor também diz, no próprio relatório, que aquele valor não entrou.
+      expect(res.stdout).toContain("nao foi comparado")
+    },
+    GATE_E2E_TIMEOUT,
+  )
 
   it("argumento desconhecido → exit 3 (uso inválido não pode passar por veredito)", () => {
     const res = spawnSync(process.execPath, [MODULE_PATH, "--tudo"], {

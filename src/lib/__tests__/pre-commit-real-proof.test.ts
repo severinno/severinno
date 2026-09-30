@@ -716,6 +716,11 @@ describe("a prova sem dublê — a FASE B real, com o defeito no índice", () =>
     expect(r.detail).toContain("encoding")
   })
 
+  // Os ORÇAMENTOS dos três abaixo (180s cada, medido na forja em 30/09/2026):
+  // cada teste roda a prova INTEIRA (fases A+B+C) contra um checkout sintético —
+  // sob a suíte em paralelo sobre 4 vCPU, o defeito de LINK passou do teto de
+  // 30s do runner (35s na 1ª tentativa da mutation matrix) e os dois casos de
+  // refutador rodearam perto do teto. O teto do job é outro orçamento.
   it("o defeito de LINK é recusado e a recusa é atribuída ao guard NOMEADO", () => {
     const r = proveRealHookBlocks({ root: checkoutSintetico() })
     expect(r.state, r.detail).toBe("proven")
@@ -732,7 +737,7 @@ describe("a prova sem dublê — a FASE B real, com o defeito no índice", () =>
     )
     expect(link.controle.status).toBe(0)
     expect(link.controle.conteudoEmHead).toBe("igual ao arquivo remendado")
-  })
+  }, 180_000)
 
   it("MUTAÇÃO: sem a fase B no hook, o defeito de encoding ENTRA (a metade é load-bearing)", () => {
     const r = proveRealHookBlocks({ root: checkoutSintetico({ faseBCega: true }) })
@@ -758,7 +763,7 @@ describe("a prova sem dublê — a FASE B real, com o defeito no índice", () =>
     expect(r.state).toBe("unavailable")
     expect(r.detail).toContain("ficou(aram) verde(s)")
     expect(r.detail).toContain("encoding-runner")
-  })
+  }, 180_000)
 
   it("MUTAÇÃO: com o guard do encoding cego e nenhum outro refutador, o defeito ENTRA (o membro é load-bearing)", () => {
     // A contraprova do membro: sem o guard da classe e sem nenhum outro refutador
@@ -780,7 +785,7 @@ describe("a prova sem dublê — a FASE B real, com o defeito no índice", () =>
     expect(r.state).toBe("unavailable")
     expect(r.detail).toContain("NÃO declarado")
     expect(r.detail).toContain("barrel-lint")
-  })
+  }, 180_000)
 
   it("o runner sem os comandos declarados: premissa caída é dita, não ignorada", () => {
     const r = proveRealHookBlocks({ root: checkoutSintetico({ runnerSemComandos: true }) })

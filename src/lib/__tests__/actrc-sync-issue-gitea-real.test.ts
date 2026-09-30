@@ -117,13 +117,16 @@ describeReal("actrc-sync-issue Gitea — Gitea real em Docker (integração)", (
   }, 180_000)
 
   /**
-   * 60s de orçamento: quando o daemon nega o kill, o teardown gasta o timeout de
+   * 60s de orçamento (e o `gitea?` acima): quando o daemon nega o kill, o teardown gasta o timeout de
    * stop dele antes de o caminho por dentro rodar — com o padrão do vitest (10s)
    * o hook morreria por TIMEOUT, deixando o container vivo e o vermelho longe da
    * causa (ver o bloco do teardown em `helpers/gitea-ephemeral.ts`).
    */
   afterAll(async () => {
-    await gitea.cleanup()
+    // Se o SETUP falhou (ex.: `database is locked` no create do admin), o
+    // `gitea` segue indefinido — o afterAll não pode transformar a causa real
+    // num `TypeError` de cleanup, que esconde o erro original.
+    await gitea?.cleanup()
     for (const dir of tmpDirs) rmSync(dir, { recursive: true, force: true })
     tmpDirs = []
   }, 60_000)
