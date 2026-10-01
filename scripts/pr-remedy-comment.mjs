@@ -629,8 +629,13 @@ async function main() {
   const prFlag = valor("--pr")
   // `--pr` com valor não-numérico é erro de USO e não "sem PR": quem escreveu
   // `--pr abc` quis publicar em algum PR, e tratar isso como "sem canal" faria o
-  // passo seguir verde sobre um número que ninguém leu.
-  if (prFlag !== null && prNumberFrom({ flag: prFlag }) === null) {
+  // passo seguir verde sobre um número que ninguém leu. O julgamento é SÓ sobre
+  // a FLAG: o fallback do `prNumberFrom` (PR_NUMBER, payload do evento,
+  // GITHUB_REF) não valida a flag — na forja, o payload REAL do pull_request
+  // "resolvia" o PR do evento e o uso inválido saía verde (runs 33-38, medido:
+  // `--pr abc` com GITHUB_EVENT_PATH de PR no ar sai exit 0 em vez de USAGE).
+  const prDaFlag = Number.parseInt(String(prFlag ?? ""), 10)
+  if (prFlag !== null && !(Number.isInteger(prDaFlag) && prDaFlag > 0)) {
     console.error(`❌ --pr exige um número de PR: ${prFlag}`)
     console.error(USAGE)
     process.exit(EXIT.USAGE)

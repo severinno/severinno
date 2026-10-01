@@ -365,6 +365,21 @@ describe("a CLI", () => {
     expect(runCli(["--nada"]).status).toBe(EXIT.USAGE)
   })
 
+  it("uso inválido MESMO COM payload de PR no ambiente: o fallback do prNumberFrom não valida a flag", () => {
+    // Medido na forja (runs 33-38): com o GITHUB_EVENT_PATH REAL de um
+    // pull_request, o `--pr abc` caía no fallback do `prNumberFrom`, "resolvia"
+    // o PR do payload e o uso inválido saía VERDE (exit 0 em vez de USAGE) —
+    // o passo publicaria num PR que ninguém leu. O julgamento de uso é SÓ
+    // sobre a flag; o ambiente resolve o PR de quem NÃO passou flag.
+    const payload = join(mkdtempSync(join(tmpdir(), "pr-payload-")), "event.json")
+    writeFileSync(payload, JSON.stringify({ pull_request: { number: 1 } }), "utf8")
+    const r = spawnSync(process.execPath, [SCRIPT, "--pr", "abc"], {
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_EVENT_PATH: payload, PR_NUMBER: "1" },
+    })
+    expect(r.status).toBe(EXIT.USAGE)
+  })
+
   it("sem canal (sem token) o passo NÃO falha: o GATE é o veredito, e a ausência é DITA", () => {
     const dir = writeFixture(CICATRIZ)
     const out = runCli(["--root", dir])
