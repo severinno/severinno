@@ -181,10 +181,10 @@ describeReal("required-checks-drift-issue Gitea — Gitea real em Docker (integr
 
   beforeAll(async () => {
     gitea = await makeEphemeralGitea()
-    // 240s (medido em 30/09/2026 na forja, rodada 205d62e5): com a porta por
-    // instância os N efêmeros bootam em PARALELO sobre 4 vCPU — 3 dos 4
-    // gitea-real passaram de 150s e o setup do passou ficou em ~145s.
-  }, 240_000)
+    // 300s (medido em 30/09/2026 na forja, rodadas 205d62e5 e dbcaeee1): com a porta por
+    // instância os N efêmeros bootam em PARALELO sobre 4 vCPU disputados — 3 dos 4
+    // passaram de 150s e, na dbcaeee1, os 4 passaram de 165s com o container VIVO (re-subidas: 0).
+  }, 300_000)
 
   /**
    * 60s de orçamento (e o `gitea?` acima): quando o daemon nega o kill, o teardown gasta o timeout de

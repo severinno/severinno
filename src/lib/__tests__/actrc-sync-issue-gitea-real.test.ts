@@ -114,7 +114,7 @@ describeReal("actrc-sync-issue Gitea — Gitea real em Docker (integração)", (
     // 180s (medido em 30/09/2026 na forja): o cold start do Gitea no netns do
     // job levou 99s no pior caso, sob a suíte inteira em paralelo — o default
     // de 30s e o orçamento de 120s ficaram atrás do custo real do ambiente.
-  }, 240_000)
+  }, 300_000)
 
   /**
    * 60s de orçamento (e o `gitea?` acima): quando o daemon nega o kill, o teardown gasta o timeout de

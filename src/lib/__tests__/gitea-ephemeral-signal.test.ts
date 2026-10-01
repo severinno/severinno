@@ -134,7 +134,7 @@ function subirFilho(): FilhoEmPe {
   const saiu = once(proc, "close") as Promise<[number | null, NodeJS.Signals | null]>
   void saiu.then(() => rl.close())
 
-  const esperarFase = async (fase: Fase["fase"], timeoutMs = 200_000): Promise<Fase> => {
+  const esperarFase = async (fase: Fase["fase"], timeoutMs = 260_000): Promise<Fase> => {
     const fim = Date.now() + timeoutMs
     while (Date.now() < fim) {
       const visto = vistos.get(fase)
@@ -263,7 +263,7 @@ describeReal("gitea-ephemeral — o sweep sobrevive a um sinal no meio do teste"
       exitCode: code,
       signalCode: signal,
     })
-  }, 300_000)
+  }, 360_000)
 
   it("SIGINT durante o SETUP: o registro já cobre o container antes de o cleanup voltar ao teste", async () => {
     const pe = subirFilho()
@@ -287,5 +287,5 @@ describeReal("gitea-ephemeral — o sweep sobrevive a um sinal no meio do teste"
       exitCode: code,
       signalCode: signal,
     })
-  }, 240_000)
+  }, 300_000)
 })

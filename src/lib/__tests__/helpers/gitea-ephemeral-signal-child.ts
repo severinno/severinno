@@ -74,7 +74,7 @@ async function main(): Promise<void> {
   //    container, ADICIONA ao registro do sweep e só então começa a esperar o
   //    servidor responder. Não esperamos a promessa — o pai decide quando
   //    matar, e é justamente o "no meio" que se quer medir.
-  const setup = makeEphemeralGitea({ timeoutMs: 165_000 })
+  const setup = makeEphemeralGitea({ timeoutMs: 240_000 })
   // O pai pode matar durante o setup: TRATAR a rejeição evita um unhandled
   // rejection que encerraria o processo ANTES do sinal (e o teste mediria outra
   // coisa que não o handler) — mas tratá-la EM SILÊNCIO esconderia a causa de a

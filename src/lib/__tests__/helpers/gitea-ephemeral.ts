@@ -604,11 +604,14 @@ export async function makeEphemeralGitea(
   let baseUrl = `http://${host}:${portaAlvo}`
 
   try {
-    // Espera o Gitea ficar pronto. O ORÇAMENTO de 165s: o cold start medido na
+    // Espera o Gitea ficar pronto. O ORÇAMENTO de 240s: o cold start medido na
     // forja foi de 75-99s SOB carga — e, com a porta por instância, N efêmeros
-    // bootam em PARALELO sobre 4 vCPU (rodada 205d62e5: 3 dos 4 gitea-real
-    // passaram de 150s enquanto o 4º ficou pronto em ~145s). Os 15s de folga
-    // cobrem o pior caso medido + o custo do re-up.
+    // bootam em PARALELO sobre 4 vCPU que TAMBÉM carregam o resto da suíte (e, no
+    // host da forja, o re-bench paralelo de outro agente): rodada 205d62e5 → 3
+    // dos 4 passaram de 150s; rodada dbcaeee1 → os 4 passaram de 165s com o
+    // container VIVO o tempo todo (re-subidas: 0 — o liveness nunca viu um
+    // morto): migração SQLite de 4 Giteas ao mesmo tempo num host disputado. A
+    // cauda medida é de minutos, não de dezenas de segundos.
     //
     // A espera roda em FATIAS com checagem de LIVENESS do container: o crash
     // mais comum é o bind negado (porta tomada ENTRE a sondagem e o bind, ou o
@@ -618,7 +621,7 @@ export async function makeEphemeralGitea(
     // RE-SUBIDA com nova porta sondada, dentro do MESMO orçamento; vivo ⇒ o
     // que resta da fatia é o custo de boot, não de espera morta.
     const inicioProntidao = Date.now()
-    const orcamentoProntidao = opts.timeoutMs ?? 165_000
+    const orcamentoProntidao = opts.timeoutMs ?? 240_000
     let sobe = 0
     for (;;) {
       const restante = orcamentoProntidao - (Date.now() - inicioProntidao)
