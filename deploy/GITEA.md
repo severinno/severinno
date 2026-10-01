@@ -647,18 +647,28 @@ rodada pela API, confira cada job na UI da run (ou no banco): `success` com
 tambem e contexto obrigatorio em `ci/required-checks.json` — a exigencia mordida
 e dele, nao do Build skipped.
 
-### Logs de job que somem (Gitea 1.22.6)
+### Logs de job que somem (padrao deterministico, NAO curado pelo upgrade)
 
-Medido nas rodadas 21-25 (tasks 139-163, set/out 2026): metade das execucoes
-perdeu o log fisico em `/data/gitea/actions_log/` — o banco guarda o veredito
-(status, `log_size` e `log_indexes` integros) com `log_in_storage=0`, mas nem o
-arquivo nem conteudo em banco existem (sem entrada em `action_task_output`).
-Sem padrao por job, por hora ou por status; o runner nao registra erro de
-upload em 48h de log; disco com folga. Encaixa na familia do relato upstream
-`go-gitea/gitea#33822` (UploadLog aceito e nao persistido). O remedio e o
-upgrade da forja (1.22.6 -> 1.24+); ate la, o veredito dos jobs continua
-confiavel (esta no banco, nao no log) — autopsias que precisem do LOG de uma
-rodada devem extrair os arquivos cedo, logo apos a rodada terminar.
+Medido nas rodadas 21-25 (tasks 139-163, 1.22.6) e 26-28 (tasks 164+, 1.24.7):
+um SUBCONJUNTO de jobs perde o log fisico em `/data/gitea/actions_log/` — o
+banco guarda o veredito (status, `log_size` e `log_indexes` integros) com
+`log_in_storage=0`, mas nem o arquivo nem conteudo em banco existem (sem
+entrada em `action_task_output`). O padrao e DETERMINISTICO POR JOB e sobreviveu
+ao upgrade da forja 1.22.6 -> 1.24.7: em 3 rodadas seguidas, `Lint`,
+`Bring-up Gate Proof` e `Pre-commit Proof` perdem SEMPRE, `Stack Per-Commit` e
+`TypeCheck` ganham SEMPRE, `Repo Guards` e `Tests` oscilam. Nao e tamanho de
+log (Lint 25KB perde, TypeCheck 26KB ganha), nem status, nem horario; o runner
+nao registra erro de upload e ja e a versao mais recente (0.6.1 = `latest`).
+Familia do relato upstream `go-gitea/gitea#33822` (UploadLog aceito e nao
+persistido), agora com o upgrade DESCARTADO como causa/cura. O monitor
+`/opt/gitea/log-health.sh` (cron diario 11:40 UTC) classifica as tasks novas e
+abre issue em `severinno/alertas` se a taxa de perda piorar.
+
+Enquanto isso vale: o veredito dos jobs e CONFI AVEL (esta no banco, nao no
+log) — autopsias que precisem do LOG de um job especifico devem extrair o
+arquivo (`.zst` no 1.24, `zstd -dc`) CEDO, logo apos a rodada, e esperar perda
+nos tres jobs do padrao. Para ver o log de qualquer job na UI: os que ganham
+(Stack/TypeCheck) tem; os do padrao perdedor, nao.
 
 ### Registry de imagens (fonte unica)
 
