@@ -97,4 +97,28 @@ for n in $("$COMANDO" network ls --format '{{.Name}}' --filter "name=GITEA-ACTIO
   fi
 done
 
-echo "janitor: $CONTAINERS container(s) órfão(ões) + $NETWORKS network(s) vazia(s) com idade > ${IDADE_HORAS}h"
+# --- Volumes órfãos: acima da régua -----------------------------------------
+# MEDIDO em 01/10/2026: 47 volumes `GITEA-ACTIONS-TASK-*` acumulados desde a
+# task 14 — o runner remove os volumes no FIM do job, mas task CANCELADA ou
+# runner morto no meio deixa o volume (e o `-env`) para sempre. Não esgotam
+# pool nenhum, mas ocupam disco e crescem sem teto. A MESMA régua serve: o
+# job mais longo dura ~40min e o volume dele é removido no fim — volume com
+# >2h não tem job vivo que o use. (Não há "vazio" a checar: a régua temporal
+# cobre o job vivo, pois o volume só existe enquanto a task existe.)
+VOLUMES=0
+for v in $("$COMANDO" volume ls --format '{{.Name}}' --filter "name=GITEA-ACTIONS-TASK-"); do
+  CRIADO=$("$COMANDO" volume inspect "$v" --format '{{.CreatedAt}}')
+  EPOCH=$(date -u -d "${CRIADO:0:19}" +%s 2>/dev/null || echo 0)
+  IDADE=$((AGORA - EPOCH))
+  if [ "$IDADE" -gt "$LIMITE" ]; then
+    if [ "$DRY_RUN" = 1 ]; then
+      echo "[dry-run] volume órfão (${IDADE}s): ${v:0:60}..."
+    else
+      "$COMANDO" volume rm "$v" >/dev/null
+      echo "volume órfão removido (${IDADE}s): ${v:0:60}..."
+    fi
+    VOLUMES=$((VOLUMES + 1))
+  fi
+done
+
+echo "janitor: $CONTAINERS container(s) órfão(ões) + $NETWORKS network(s) vazia(s) + $VOLUMES volume(s) com idade > ${IDADE_HORAS}h"

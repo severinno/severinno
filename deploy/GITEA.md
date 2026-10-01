@@ -670,7 +670,7 @@ arquivo (`.zst` no 1.24, `zstd -dc`) CEDO, logo apos a rodada, e esperar perda
 nos tres jobs do padrao. Para ver o log de qualquer job na UI: os que ganham
 (Stack/TypeCheck) tem; os do padrao perdedor, nao.
 
-### Networks órfãs esgotam o pool do Docker (janitor cobre containers E networks)
+### Networks órfãs esgotam o pool do Docker (janitor cobre containers, networks E volumes)
 
 Medido em 01/10/2026 14:34 UTC: 28 networks VAZIAS `GITEA-ACTIONS-TASK-*`
 (restos de runs canceladas desde a task 14) consumiram o pool default do
@@ -686,14 +686,18 @@ Cura operacional, em duas camadas:
 1. Limpeza pontual: remover SOMENTE as `GITEA-ACTIONS-*` vazias (`docker
 network ls --filter name=GITEA-ACTIONS` + `network inspect ... '{{len
 .Containers}}'` = 0) — nunca `docker network prune` global, que alcança
-   redes de outros serviços.
-2. Prevenção: o janitor (`deploy/runner-janitor.sh` + `/opt/gitea/
-runner-janitor.sh`, cron `17 * * * *`) cobre containers E networks com a
-   MESMA régua de órfão (nenhum job legítimo roda >2h): network só sai VAZIA
-   E com idade > `--idade-horas` (default 2). Vazia descarta job vivo (o do
-   job tem containers anexados); a janela de 2h descarta a corrida de attach
-   do arranque da task. Roda DEPOIS da varredura de containers, então network
-   que esvaziou na mesma passada já sai junto.
+   redes de outros serviços.2. Prevenção: o janitor (`deploy/runner-janitor.sh` + `/opt/gitea/
+runner-janitor.sh`, cron `17 * * * *`) cobre TRÊS classes de órfão com a
+   MESMA régua (nenhum job legítimo roda >2h): CONTAINERS `GITEA-ACTIONS-*`
+   com idade > `--idade-horas` (default 2); NETWORKS `GITEA-ACTIONS-*` VAZIAS
+   E velhas (vazia descarta job vivo — a do job tem containers anexados; a
+   janela descarta a corrida de attach do arranque da task); e VOLUMES
+   `GITEA-ACTIONS-TASK-*` velhos (medido em 01/10/2026: 47 acumulados desde a
+   task 14 — o runner remove os volumes no FIM do job, mas task cancelada ou
+   runner morto no meio deixa o volume, e o `-env`, para sempre; não esgotam
+   pool, mas ocupam disco sem teto). A varredura roda containers → networks →
+   volumes, então network que esvaziou na mesma passada já sai junto, e os
+   volumes da rodada EM CURSO nunca são tocados (jovens pela régua).
 
 Armadilha de parse (custou um ciclo de correção): o `.Created` de NETWORK vem
 com espaços e nanosegundos (`2026-10-01 17:30:07.610158752 +0000 UTC`) — o GNU
