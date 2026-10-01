@@ -432,7 +432,10 @@ describe("smokeExpectations — as expectativas saem DO ARQUIVO", () => {
     expect(porRotulo["set -euo pipefail"]?.count).toBe(3)
     expect(porRotulo["set -uo pipefail +e"]?.steps.join(" ")).toContain("Prova 5")
     expect(porRotulo["bun install --frozen-lockfile"]?.steps.join(" ")).toContain("Prova 4")
-    expect(porRotulo["Restore Bun cache"]?.count).toBe(1)
+    // Sem actions/cache nesta forja (o artifactcache respondia timeout em
+    // 12/12 rodadas auditadas — issue #33): o grupo do step NÃO pode reaparecer
+    // no run real. Se o cache voltar, a workflow e este teste mudam juntos.
+    expect(porRotulo["Restore Bun cache"]).toBeUndefined()
     // as variáveis usadas pelo smoke TÊM de estar no template comitado
     for (const name of exp.variables) expect(ENV_TEXT).toContain(`${name}=`)
   })
