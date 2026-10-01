@@ -1,7 +1,13 @@
 {
-  "count": 9,
-  "updatedAt": "2026-09-30",
+  "count": 6,
+  "updatedAt": "2026-10-01",
   "findings": [
+    {
+      "package": "basic-ftp",
+      "url": "https://github.com/advisories/GHSA-c475-qrg2-pj4r",
+      "severity": "high",
+      "title": "basic-ftp: Quadratic-time CPU denial of service in Client.list() Unix directory-listing parser (RE_LINE backtracking)"
+    },
     {
       "package": "brace-expansion",
       "url": "https://github.com/advisories/GHSA-qhr7-859c-m2p7",
@@ -31,30 +37,6 @@
       "url": "https://github.com/advisories/GHSA-h3mg-xc3c-68pw",
       "severity": "moderate",
       "title": "ip-address: Address6 builds a parse diagnostic proportional to the input with no length bound, allowing a single long string to stall or crash the process"
-    },
-    {
-      "package": "nodemailer",
-      "url": "https://github.com/advisories/GHSA-g57g-f23g-4646",
-      "severity": "moderate",
-      "title": "Nodemailer: Quoted local-part can produce malformed envelope recipient through RFC 5322 comment parsing"
-    },
-    {
-      "package": "nodemailer",
-      "url": "https://github.com/advisories/GHSA-v53p-9fqp-m79j",
-      "severity": "high",
-      "title": "Nodemailer: Quadratic backtracking in the addressparser free-text fallback allows remote denial of service"
-    },
-    {
-      "package": "nodemailer",
-      "url": "https://github.com/advisories/GHSA-6vj9-mwq6-2f5v",
-      "severity": "moderate",
-      "title": "Nodemailer: Process-global DNS cache reuses TLS `servername` across transports, enabling cross-tenant SMTP credential disclosure"
-    },
-    {
-      "package": "nodemailer",
-      "url": "https://github.com/advisories/GHSA-8vvx-rff5-p5rq",
-      "severity": "moderate",
-      "title": "Nodemailer: Nested structured recipient arrays bypass the parser depth limit and cause stack exhaustion DoS"
     }
   ]
 }
