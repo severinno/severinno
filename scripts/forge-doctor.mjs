@@ -7428,4 +7428,23 @@ async function main() {
 
 const IS_DIRECT_RUN =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
-if (IS_DIRECT_RUN) await main()
+// A ENTRADA NÃO É UM TLA (medido DUAS vezes na forja: 4512d309 matava com o
+// `return` que deixava a promessa pendente — e ad83e264→dbcaeee1 matou DE NOVO
+// com o `await main()` do topo: o `setImmediate` do exitAfterFlush cobriu o
+// caminho --ci isolado (provado in-image), mas o cenário do bring-up — doctor
+// com --gitea-env, relatório de ~30KB e stdout em PIPE — enunciou o TLA de novo
+// (exit 13 DEPOIS do relatório inteiro, rodada dbcaeee1). A classe inteira
+// desaparece por construção: sem `await` no nível do módulo NÃO EXISTE await
+// pendente para o node ≥ 22 enunciar. Quem segura a execução é a promessa de
+// `main()` — ela termina em `exitAfterFlush` (process.exit) ou, num bug que a
+// REJEITE, no segundo handler (diagnóstico no stderr + exit 3, nunca um
+// unhandled rejection silencioso).
+if (IS_DIRECT_RUN) {
+  main().then(
+    () => {},
+    (err) => {
+      console.error("forge-doctor:", err)
+      process.exit(3)
+    },
+  )
+}
