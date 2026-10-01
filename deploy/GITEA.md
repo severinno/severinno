@@ -684,11 +684,11 @@ erro do daemon, várias seguidas.
 Cura operacional, em duas camadas:
 
 1. Limpeza pontual: remover SOMENTE as `GITEA-ACTIONS-*` vazias (`docker
-   network ls --filter name=GITEA-ACTIONS` + `network inspect ... '{{len
-   .Containers}}'` = 0) — nunca `docker network prune` global, que alcança
+network ls --filter name=GITEA-ACTIONS` + `network inspect ... '{{len
+.Containers}}'` = 0) — nunca `docker network prune` global, que alcança
    redes de outros serviços.
 2. Prevenção: o janitor (`deploy/runner-janitor.sh` + `/opt/gitea/
-   runner-janitor.sh`, cron `17 * * * *`) cobre containers E networks com a
+runner-janitor.sh`, cron `17 * * * *`) cobre containers E networks com a
    MESMA régua de órfão (nenhum job legítimo roda >2h): network só sai VAZIA
    E com idade > `--idade-horas` (default 2). Vazia descarta job vivo (o do
    job tem containers anexados); a janela de 2h descarta a corrida de attach

@@ -560,6 +560,12 @@ export const OUT_OF_SCOPE_ALLOWLIST = [
     reason:
       "e ESTE guard: o arquivo contem o proprio matcher (`imageRefsIn`) e a prosa que explica o defeito que a invariante 8 fechou (o literal que vivia em scripts/). Nao e um site de resolucao — e onde a forma da referencia e DEFINIDA. Fica aqui para o guard nao se dar uma isencao implicita: ele passa pela mesma regra que exige dos outros",
   },
+  {
+    path: "deploy/log-health.sh",
+    addedAt: "2026-10-01",
+    reason:
+      "script de CRON no HOST da forja (nao compoe stack): o probe do SQLite roda `docker run` com a MESMA imagem pinada do runner (`severinno/ubuntu-bun:<BUN_VERSION>`), cujo contrato vive no render do `deploy/docker-compose.gitea.yml` (invariante 6) — o literal espelha esse contrato de proposito, e `${IMAGE_REGISTRY:-...}` no cron do host seria cosmetica: a variavel nao existe no ambiente do cron, o default resolve sempre para o registry local. E monitor de leitura (volume gitea-data readonly), nao site de resolucao de imagem",
+  },
 ]
 
 /**
