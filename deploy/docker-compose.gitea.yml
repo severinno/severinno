@@ -67,7 +67,11 @@ services:
 
   # ── Gitea (Self-Hosted Git) ────────────────────────────────────────────
   gitea:
-    image: gitea/gitea:1.22
+    # 1.24-minor: curou a perda silenciosa de logs de job medida em 1.22.6
+    # (13/25 tasks das rodadas 21-25 com log_in_storage=0, sem arquivo e sem
+    # conteúdo no banco; família do go-gitea/gitea#33822). Migração de schema
+    # automática no primeiro boot (banco tem backup offsite diário às 05:15).
+    image: gitea/gitea:1.24
     container_name: gitea
     restart: unless-stopped
     environment:
