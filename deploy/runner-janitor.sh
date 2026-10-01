@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# deploy/runner-janitor.sh — remove containers órfãos do act_runner na VPS.
+# deploy/runner-janitor.sh — remove containers E networks órfãos do act_runner.
 # =============================================================================
 # Usage:
 #   bash deploy/runner-janitor.sh                    # remove órfãos (>2h)
@@ -17,9 +17,18 @@
 # rodando para sempre — e toda rodada seguinte de Tests falha com
 # "driver failed programming external connectivity" (colisão de porta no host).
 #
-# A RÉGUA: nenhum job legítimo desta forja roda mais de 2h (o mais longo é o
-# Stack Per-Commit, ~40min medido). Container `GITEA-ACTIONS-*` com mais de
-# --idade-horas é órfão por definição — não há como um job vivo ter essa idade.
+# NETWORKS (incidente 01/10/2026 14:34 UTC): 28 networks vazias
+# `GITEA-ACTIONS-TASK-*` (restos de runs canceladas) consumiram o pool default
+# do Docker (172.17–172.31 + 192.168.x) e mataram 14 tasks seguidas em
+# segundos com "all predefined address pools have been fully subnetted". O
+# daemon NÃO limpa network de task cancelada — acumula até esgotar o pool.
+#
+# A RÉGUA (igual para containers e networks): nenhum job legítimo desta forja
+# roda mais de 2h (o mais longo é o Stack Per-Commit, ~40min medido).
+# `GITEA-ACTIONS-*` com mais de --idade-horas é órfão por definição — não há
+# como um job vivo ter essa idade. Network só é removida VAZIA (0 containers
+# anexados) E velha: a janela de 2h elimina a corrida de attach no início do
+# job (containers anexam no arranque da task, nunca 2h depois).
 # =============================================================================
 
 set -euo pipefail
@@ -43,11 +52,12 @@ LIMITE=$((IDADE_HORAS * 3600))
 AGORA=$(date +%s)
 REMOVIDOS=0
 
+CONTAINERS=0
 for c in $("$COMANDO" ps -aq --filter "name=GITEA-ACTIONS"); do
   CRIADO=$("$COMANDO" inspect "$c" --format '{{.Created}}')
-  TS=$("$COMANDO" inspect "$c" --format '{{.Created}}' | awk '{print substr($1,1,19)}')
-  # Created vem em ISO; converter via date -d (disponível no host Ubuntu)
-  EPOCH=$(date -d "$TS" +%s 2>/dev/null || echo 0)
+  # .Created de container é ISO (ex.: 2026-10-01T12:17:13.790Z); os 19
+  # primeiros caracteres são "YYYY-MM-DDTHH:MM:SS" — -u lê como UTC.
+  EPOCH=$(date -u -d "${CRIADO:0:19}" +%s 2>/dev/null || echo 0)
   IDADE=$((AGORA - EPOCH))
   NOME=$("$COMANDO" inspect "$c" --format '{{.Name}}' | sed 's|^/||')
   if [ "$IDADE" -gt "$LIMITE" ]; then
@@ -57,8 +67,34 @@ for c in $("$COMANDO" ps -aq --filter "name=GITEA-ACTIONS"); do
       "$COMANDO" rm -f "$c" >/dev/null
       echo "removido (${IDADE}s): $NOME"
     fi
-    REMOVIDOS=$((REMOVIDOS + 1))
+    CONTAINERS=$((CONTAINERS + 1))
   fi
 done
 
-echo "janitor: $REMOVIDOS órfão(ões) com idade > ${IDADE_HORAS}h"
+# --- Networks órfãs: VAZIAS (0 containers anexados) e acima da régua --------
+# Roda DEPOIS da varredura de containers: network que ficou vazia porque o
+# container órfão acabou de ser removido já cai nesta mesma passada.
+NETWORKS=0
+for n in $("$COMANDO" network ls --format '{{.Name}}' --filter "name=GITEA-ACTIONS"); do
+  ANEXOS=$("$COMANDO" network inspect "$n" --format '{{len .Containers}}')
+  [ "$ANEXOS" -gt 0 ] && continue
+  # DIFERENTE de containers: o .Created de network vem com ESPAÇOS e
+  # nanosegundos ("2026-10-01 17:30:07.610158752 +0000 UTC") — o GNU date
+  # NÃO parseia a forma cheia (cai no fallback EPOCH=0). Cortar em 19
+  # caracteres dá "YYYY-MM-DD HH:MM:SS", que ele parseia; se um dia voltar
+  # a ser ISO com T, os 19 primeiros também servem.
+  CRIADA=$("$COMANDO" network inspect "$n" --format '{{.Created}}')
+  EPOCH=$(date -u -d "${CRIADA:0:19}" +%s 2>/dev/null || echo 0)
+  IDADE=$((AGORA - EPOCH))
+  if [ "$IDADE" -gt "$LIMITE" ]; then
+    if [ "$DRY_RUN" = 1 ]; then
+      echo "[dry-run] network vazia (${IDADE}s): $n"
+    else
+      "$COMANDO" network rm "$n" >/dev/null
+      echo "network vazia removida (${IDADE}s): $n"
+    fi
+    NETWORKS=$((NETWORKS + 1))
+  fi
+done
+
+echo "janitor: $CONTAINERS container(s) órfão(ões) + $NETWORKS network(s) vazia(s) com idade > ${IDADE_HORAS}h"

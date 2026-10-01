@@ -670,6 +670,41 @@ arquivo (`.zst` no 1.24, `zstd -dc`) CEDO, logo apos a rodada, e esperar perda
 nos tres jobs do padrao. Para ver o log de qualquer job na UI: os que ganham
 (Stack/TypeCheck) tem; os do padrao perdedor, nao.
 
+### Networks órfãs esgotam o pool do Docker (janitor cobre containers E networks)
+
+Medido em 01/10/2026 14:34 UTC: 28 networks VAZIAS `GITEA-ACTIONS-TASK-*`
+(restos de runs canceladas desde a task 14) consumiram o pool default do
+Docker (172.17–172.31 + 192.168.x) e mataram 14 tasks seguidas em SEGUNDOS com
+`Error response from daemon: all predefined address pools have been fully
+subnetted` (runs 30 e 31 inteiras, tasks 189–202). O daemon NÃO limpa a
+network de uma task cancelada — acumula até esgotar o pool, e aí a fila inteira
+morre. Sintoma para reconhecer: task morre no arranque (sem log útil) com esse
+erro do daemon, várias seguidas.
+
+Cura operacional, em duas camadas:
+
+1. Limpeza pontual: remover SOMENTE as `GITEA-ACTIONS-*` vazias (`docker
+   network ls --filter name=GITEA-ACTIONS` + `network inspect ... '{{len
+   .Containers}}'` = 0) — nunca `docker network prune` global, que alcança
+   redes de outros serviços.
+2. Prevenção: o janitor (`deploy/runner-janitor.sh` + `/opt/gitea/
+   runner-janitor.sh`, cron `17 * * * *`) cobre containers E networks com a
+   MESMA régua de órfão (nenhum job legítimo roda >2h): network só sai VAZIA
+   E com idade > `--idade-horas` (default 2). Vazia descarta job vivo (o do
+   job tem containers anexados); a janela de 2h descarta a corrida de attach
+   do arranque da task. Roda DEPOIS da varredura de containers, então network
+   que esvaziou na mesma passada já sai junto.
+
+Armadilha de parse (custou um ciclo de correção): o `.Created` de NETWORK vem
+com espaços e nanosegundos (`2026-10-01 17:30:07.610158752 +0000 UTC`) — o GNU
+`date -d` NÃO parseia a forma cheia, e cortar no 1º espaço dá só a data (idade
+= "desde a meia-noite"). Cortar em 19 caracteres (`${RAW:0:19}`) com `date -u`
+parseia certo — e os mesmos 19 caracteres funcionam se o formato voltar a ser
+ISO com `T`, que é o que CONTAINERS sempre usaram.
+
+Probe do pool depois de qualquer limpeza: `docker network create probe-tmp &&
+docker network rm probe-tmp` — se cria, o pool respira.
+
 ### Registry de imagens (fonte unica)
 
 O destino das imagens **nao** e hardcoded: vem de `IMAGE_REGISTRY`.
