@@ -53,12 +53,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Mesmo contrato da ci.yml: script + cache, sem composite local.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Mesmo contrato da ci.yml: script por `run:` (sem composite local).
+      # Sem `actions/cache` nesta forja — ver ci.yml.
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"

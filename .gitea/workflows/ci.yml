@@ -49,11 +49,11 @@ jobs:
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Sem `actions/cache` nesta forja: o artifactcache do runner respondeu
+      # timeout em TODAS as rodadas (12/12 logs auditados, issue #33) e o step
+      # virou ruído `::warning`; o tier-1 da imagem (`Usando Bun pré-instalado`)
+      # cobre o restore. O lado GitHub mantém o par canônico (contrato #5,
+      # classificado GitHub-only no check:forge-parity).
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
@@ -104,11 +104,11 @@ jobs:
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Sem `actions/cache` nesta forja: o artifactcache do runner respondeu
+      # timeout em TODAS as rodadas (12/12 logs auditados, issue #33) e o step
+      # virou ruído `::warning`; o tier-1 da imagem (`Usando Bun pré-instalado`)
+      # cobre o restore. O lado GitHub mantém o par canônico (contrato #5,
+      # classificado GitHub-only no check:forge-parity).
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
@@ -609,11 +609,11 @@ jobs:
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Sem `actions/cache` nesta forja: o artifactcache do runner respondeu
+      # timeout em TODAS as rodadas (12/12 logs auditados, issue #33) e o step
+      # virou ruído `::warning`; o tier-1 da imagem (`Usando Bun pré-instalado`)
+      # cobre o restore. O lado GitHub mantém o par canônico (contrato #5,
+      # classificado GitHub-only no check:forge-parity).
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
@@ -681,11 +681,11 @@ jobs:
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Sem `actions/cache` nesta forja: o artifactcache do runner respondeu
+      # timeout em TODAS as rodadas (12/12 logs auditados, issue #33) e o step
+      # virou ruído `::warning`; o tier-1 da imagem (`Usando Bun pré-instalado`)
+      # cobre o restore. O lado GitHub mantém o par canônico (contrato #5,
+      # classificado GitHub-only no check:forge-parity).
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
@@ -741,11 +741,11 @@ jobs:
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Sem `actions/cache` nesta forja: o artifactcache do runner respondeu
+      # timeout em TODAS as rodadas (12/12 logs auditados, issue #33) e o step
+      # virou ruído `::warning`; o tier-1 da imagem (`Usando Bun pré-instalado`)
+      # cobre o restore. O lado GitHub mantém o par canônico (contrato #5,
+      # classificado GitHub-only no check:forge-parity).
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
@@ -805,11 +805,11 @@ jobs:
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Sem `actions/cache` nesta forja: o artifactcache do runner respondeu
+      # timeout em TODAS as rodadas (12/12 logs auditados, issue #33) e o step
+      # virou ruído `::warning`; o tier-1 da imagem (`Usando Bun pré-instalado`)
+      # cobre o restore. O lado GitHub mantém o par canônico (contrato #5,
+      # classificado GitHub-only no check:forge-parity).
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
@@ -842,11 +842,11 @@ jobs:
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Sem `actions/cache` nesta forja: o artifactcache do runner respondeu
+      # timeout em TODAS as rodadas (12/12 logs auditados, issue #33) e o step
+      # virou ruído `::warning`; o tier-1 da imagem (`Usando Bun pré-instalado`)
+      # cobre o restore. O lado GitHub mantém o par canônico (contrato #5,
+      # classificado GitHub-only no check:forge-parity).
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"

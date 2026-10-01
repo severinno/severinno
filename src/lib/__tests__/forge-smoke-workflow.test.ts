@@ -144,6 +144,8 @@ function runStep(script: string, env: Record<string, string>) {
 
 describe("forge-smoke.yml — sintaxe YAML + snapshot", () => {
   it("parseia como YAML válido e casa com o snapshot da estrutura", () => {
+    // Regenerado no commit que removeu o actions/cache da forja (o snapshot
+    // fixa a estrutura; a removal dele é o ato, não a passagem de -u).
     expect(parsed).toMatchSnapshot()
   })
 
@@ -158,8 +160,12 @@ describe("forge-smoke.yml — sintaxe YAML + snapshot", () => {
     )
     expect(names).toContain("Prova 5 — o registro do runner é o do compose")
     expect(names).toContain("Report runner toolchain")
-    // O par canônico: o step de CACHE (action remoto) precede a chamada.
-    expect(steps.map((s) => s.uses)).toContain("actions/cache@v4")
+    // O step da Prova 2 é chamado por `run:` (não composite/action) e a forja
+    // NÃO usa actions/cache: o artifactcache do runner respondeu timeout em
+    // 12/12 rodadas auditadas (issue #33) e o tier-1 da imagem cobre o restore.
+    // A workflow só pode referenciar o checkout — se o cache voltar, este
+    // teste e a workflow mudam JUNTOS, num commit só.
+    expect(steps.map((s) => s.uses).filter(Boolean)).toEqual(["actions/checkout@v4"])
   })
 
   it("a Prova 4 EXIGE o render do compose — 'não provei' não pode passar verde na forja", () => {

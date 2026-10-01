@@ -36,14 +36,6 @@ echo "   registry desta forja: \${IMAGE_REGISTRY}"
           "shell": "bash",
         },
         {
-          "name": "Restore Bun cache",
-          "uses": "actions/cache@v4",
-          "with": {
-            "key": "bun-\${{ vars.BUN_VERSION }}-\${{ runner.os }}-\${{ runner.arch }}",
-            "path": "~/.bun",
-          },
-        },
-        {
           "name": "Prova 2 — setup por run: + tier-1 da imagem do runner",
           "run": "set -euo pipefail
 OUT="$(bash scripts/setup-bun-ci.sh "\${{ vars.BUN_VERSION }}" 2>&1)"
