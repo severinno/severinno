@@ -632,6 +632,34 @@ O pipeline de deploy esta em `.gitea/workflows/deploy.yml`:
 - Migrate do banco de dados
 - Deploy via SSH
 
+### Skipped aparece como success (leitura de status)
+
+A API de commit-status da forja
+(`/api/v1/repos/<owner>/<repo>/commits/<sha>/status`) reporta job `skipped`
+como `success`: o `Build` tem `needs: [lint, typecheck, test]` e o `Deploy`
+tem `needs: [build]` com `if: main` — enquanto o `Tests` falha, os dois ficam
+`status=4` (Skipped) no banco (`action_run_job`) e `success` na API. Medido na
+rodada 25 (commit `37341e4e`): `Build` e `Deploy` verdes na API com o `Tests`
+vermelho. E o comportamento CORRETO da cadeia (fail-closed: nada sobe depois
+de um gate vermelho) — o falso-verde e so da LEITURA. Antes de julgar uma
+rodada pela API, confira cada job na UI da run (ou no banco): `success` com
+`task_id=0` e skipped, nao verde. O merge continua bloqueado porque o `Tests`
+tambem e contexto obrigatorio em `ci/required-checks.json` — a exigencia mordida
+e dele, nao do Build skipped.
+
+### Logs de job que somem (Gitea 1.22.6)
+
+Medido nas rodadas 21-25 (tasks 139-163, set/out 2026): metade das execucoes
+perdeu o log fisico em `/data/gitea/actions_log/` — o banco guarda o veredito
+(status, `log_size` e `log_indexes` integros) com `log_in_storage=0`, mas nem o
+arquivo nem conteudo em banco existem (sem entrada em `action_task_output`).
+Sem padrao por job, por hora ou por status; o runner nao registra erro de
+upload em 48h de log; disco com folga. Encaixa na familia do relato upstream
+`go-gitea/gitea#33822` (UploadLog aceito e nao persistido). O remedio e o
+upgrade da forja (1.22.6 -> 1.24+); ate la, o veredito dos jobs continua
+confiavel (esta no banco, nao no log) — autopsias que precisem do LOG de uma
+rodada devem extrair os arquivos cedo, logo apos a rodada terminar.
+
 ### Registry de imagens (fonte unica)
 
 O destino das imagens **nao** e hardcoded: vem de `IMAGE_REGISTRY`.
