@@ -258,9 +258,10 @@ Cuidados:
   1.24.7 e o `caddy version` do container reporta v2.11.4): o pin é file-only,
   não muda nada em runtime e o recreate pega no próximo bring-up. Backup:
   `/opt/gitea/docker-compose.yml.bak-pin`. O compose do REPO
-  (`deploy/docker-compose.gitea.yml`) segue com `gitea/gitea:1.24` e
-  `caddy:2-alpine` flutuantes — é esse que o guard `check-runner-tag` lê, e a
-  política de versão comitada se atualiza por lá, não pelo host.
+  (`deploy/docker-compose.gitea.yml`) recebeu os MESMOS pins no mesmo dia —
+  `gitea/gitea:1.24.7` e `caddy:2.11.4-alpine`, com o racional comitado no
+  próprio compose — e é esse que o guard `check-runner-tag` lê: a política de
+  versão comitada se atualiza por lá, não pelo host.
 
 3. O `.env.gitea` DESTE host precisa estar em sincronia com o template comitado
    (`deploy/env.gitea.example`) — **em todas** as variaveis, nao so no
