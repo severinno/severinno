@@ -196,8 +196,8 @@ Pre-requisitos, NESTA ordem:
    (`deploy/env.gitea.example`, de onde este `.env.gitea` deriva), o `.actrc` e
    — **quando presente no checkout** — o `deploy/.env.gitea` do host. Num
    runner do GitHub esse ultimo nao existe (gitignored); no checkout da forja
-   ele existe, e era justamente ali que ele ficava invisivel: o guard conferia
-   so o template e dizia "em sincronia" enquanto a versao que o runner usa de
+   ele existe, e era justamente ali que ele ficava invisível: o guard conferia
+   so o template e dizia "em sincronia" enquanto a versão que o runner usa de
    verdade podia estar outra.
 
    O mesmo valor e conferido **a cada PR**, e nao so no cron: o job `guards`
@@ -213,6 +213,41 @@ Pre-requisitos, NESTA ordem:
 --gitea-env /opt/gitea/.env`. As tres tem o VALOR comparado; uma variavel sem
    `--expected-var` sai como NAO COMPARADA no log, nunca como conferida.
    Em runtime, quem prova a igualdade e o smoke (Prova 3, abaixo).
+
+### 3.1.1. Cache de bun persistente entre tasks (volume do runner)
+
+Medido em 02/10/2026 no host da forja: `bun install --frozen-lockfile` (1043
+pacotes) leva **70,7s frio → 10,0s quente** com o cache do bun persistido. Cada
+job da rodada paga o install (68s no guards, 37s no Tests), e o container do
+job é efêmero — o cache morre com ele. A cura é um volume NOMEADO, montado em
+TODA task via `container.options` da config do runner (NÃO via `valid_volumes`
+— esse mecanismo exige que o workflow declare o volume no step, e nenhum step
+declara; `options:` aplica a todo container de task):
+
+```yaml
+# /opt/gitea/runner-config.yaml (host-side), seção container:
+options: "-v runner-bun-cache:/root/.bun/install/cache"
+```
+
+Cuidados:
+
+- O cache é ENDEREÇÁVEL POR CONTEÚDO (hash do pacote + tarball): chaves
+  repetidas por versão exata não conflitam entre commits/branches, e um pacote
+  corrompido é curado com `docker volume rm runner-bun-cache` (o install
+  seguinte reconstrói frio; o bun valida o hash do tarball no restore).
+- A config é HOST-side (`/opt/gitea/runner-config.yaml` montado em
+  `/config.yaml`) — sem análogo comitado no repo. A spec EXATA do container do
+  runner em produção (imagem 0.6.1 pinada, env, mounts, network) está salva em
+  `/root/runner-spec-backup.json` na VPS; o compose canônico
+  (`deploy/docker-compose.gitea.yml`) NÃO leva a opção — replicar/ajustar a
+  config do runner é hand-off host-side declarado aqui.
+- Recriar o runner NÃO exige re-registro (o registro vive no volume
+  `runner-data:/data`, e labels/report vêm dele): `docker rm -f gitea-runner` +
+  `docker run` com a spec do backup + a opção nova. Só o `--re-register` (via
+  `gitea-up.sh`) apaga o registro — e o compose de `/opt/gitea` na VPS está
+  DESATUALIZADO (imagem `latest`, URL `http://`, sem a opção): ele NÃO é quem
+  criou o runner em produção, e o conflito de nome no `compose up` dele aborta
+  sem tocar no container real (auditado em 02/10).
 
 3. O `.env.gitea` DESTE host precisa estar em sincronia com o template comitado
    (`deploy/env.gitea.example`) — **em todas** as variaveis, nao so no
