@@ -570,7 +570,7 @@ export const OUT_OF_SCOPE_ALLOWLIST = [
     path: "deploy/runner-janitor.sh",
     addedAt: "2026-10-02",
     reason:
-      "script de CRON no HOST da forja (`17 * * * *`, nao compoe stack): a remocao cirurgica de orfaos roda um probe em batch `docker run` com a MESMA imagem pinada do runner (`git.severinno.com/severinno/ubuntu-bun:1.3.14`), cujo contrato vive no render do `deploy/docker-compose.gitea.yml` (invariante 6) — o literal espelha esse contrato de proposito, e `${IMAGE_REGISTRY:-...}` no cron do host seria cosmetica: a variavel nao existe no ambiente do cron, o default resolveria sempre para o registry local. O container e efemero e so le o banco (volume gitea-data ro); a decisao de imagem permanece no compose",
+      "script de CRON no HOST da forja (`17 * * * *`, nao compoe stack): a remocao cirurgica de orfaos roda um probe em batch `docker run` com a MESMA imagem pinada do runner (`severinno/ubuntu-bun:<BUN_VERSION>`), cujo contrato vive no render do `deploy/docker-compose.gitea.yml` (invariante 6) — o literal espelha esse contrato de proposito, e `${IMAGE_REGISTRY:-...}` no cron do host seria cosmetica: a variavel nao existe no ambiente do cron, o default resolveria sempre para o registry local. O container e efemero e so le o banco (volume gitea-data ro); a decisao de imagem permanece no compose",
   },
 ]
 
