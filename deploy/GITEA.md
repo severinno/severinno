@@ -700,10 +700,16 @@ network ls --filter name=GITEA-ACTIONS` + `network inspect ... '{{len
 .Containers}}'` = 0) — nunca `docker network prune` global, que alcança
    redes de outros serviços.2. Prevenção: o janitor (`deploy/runner-janitor.sh` + `/opt/gitea/
 runner-janitor.sh`, cron `17 * * * *`) cobre TRÊS classes de órfão com a
-   MESMA régua (nenhum job legítimo roda >2h): CONTAINERS `GITEA-ACTIONS-*`
-   com idade > `--idade-horas` (default 2); NETWORKS `GITEA-ACTIONS-*` VAZIAS
-   E velhas (vazia descarta job vivo — a do job tem containers anexados; a
-   janela descarta a corrida de attach do arranque da task); e VOLUMES
+   MESMA régua temporal (nenhum job legítimo roda >2h): CONTAINERS
+   `GITEA-ACTIONS-*` com idade > `--idade-horas` (default 2); NETWORKS
+   `GITEA-ACTIONS-*` VAZIAS E órfãs por UMA de DUAS réguas — a temporal (velha;
+   vazia descarta job vivo — a do job tem containers anexados; a janela
+   descarta a corrida de attach do arranque da task) e a CIRÚRGICA (02/10:
+   o nome carrega o task id e UM probe no banco diz o status — task ENCERRADA
+   (1..4) com network vazia sai NA HORA, porque o runner só não a removeu se a
+   task foi cancelada ou ele morreu no meio; task na fila/rodando (5/6) e id
+   AUSENTE no banco ficam para a temporal, e o probe FALHANDO degrada a
+   varredura inteira para a temporal — fail-closed); e VOLUMES
    `GITEA-ACTIONS-TASK-*` velhos (medido em 01/10/2026: 47 acumulados desde a
    task 14 — o runner remove os volumes no FIM do job, mas task cancelada ou
    runner morto no meio deixa o volume, e o `-env`, para sempre; não esgotam
