@@ -219,6 +219,23 @@ jobs:
           build-args: |
             BUN_VERSION=${{ vars.BUN_VERSION }}
 
+      # Caddy com os plugins que o Caddyfile.prod exige (rate_limit +
+      # transform-encoder — ver Dockerfile.caddy). Duas tags: a FIXA
+      # caddy-2.11.4-plugins (a que o compose declara) e caddy-<sha> para
+      # rollback exato. Publicar AQUI evita compilar xcaddy na VPS a cada
+      # deploy (o job pr-check já valida o parse com essa imagem).
+      - name: Build and push caddy image (plugins)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.caddy
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:caddy-2.11.4-plugins
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:caddy-${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   migrate:
     needs: build
     runs-on: self-hosted
@@ -263,9 +280,11 @@ jobs:
             set -e
             cd ${{ env.DEPLOY_PATH }}
             echo "Pulling new images..."
-            docker compose pull app realtime email-worker notification-worker
+            # caddy incluso: a tag caddy-2.11.4-plugins é publicada no build
+            # acima; up -d é idempotente (só recria o edge se a imagem/compose mudou).
+            docker compose pull app realtime email-worker notification-worker caddy
             echo "Restarting services..."
-            docker compose up -d --no-deps --remove-orphans app realtime
+            docker compose up -d --no-deps --remove-orphans app realtime caddy
             docker compose --profile workers up -d --no-deps email-worker notification-worker
             echo "Waiting for health check..."
             for i in $(seq 1 12); do

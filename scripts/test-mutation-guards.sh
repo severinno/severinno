@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 47 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 48 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -323,6 +323,7 @@ SUBTESTS=(
   "runner-tag|scripts/test-mutation-runner-tag.sh"
   "local-image|scripts/test-mutation-local-image.sh"
   "artefatos-do-hook|scripts/test-mutation-artefatos-do-hook.sh"
+  "caddy-validate|scripts/test-mutation-caddy-validate.sh"
   "mutacao-prova|scripts/test-mutation-mutacao-prova.sh"
 )
 
@@ -364,6 +365,7 @@ PROVA_DE_APLICACAO=(
   "runner-tag"
   "local-image"
   "artefatos-do-hook"
+  "caddy-validate"
   "archived-pipeline"
   "reconciliation"
   "nested-guard"

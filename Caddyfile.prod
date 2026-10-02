@@ -27,8 +27,12 @@
   # Remova esta linha para usar Let's Encrypt
   acme_ca https://acme.zerossl.com/v2/DV90
 
-  # Armazenamento persistente de certificados (volume Docker caddy_data)
-  storage file:///data/caddy
+  # Armazenamento persistente de certificados (volume Docker caddy_data).
+  # FIX (2026-10-02): a forma `storage file:///data/caddy` não é um módulo
+  # registrado — crasha o parse do Caddy inteiro no boot (provado com
+  # `caddy validate` na imagem caddy:2-alpine). A forma correta do Caddyfile
+  # é o módulo `file_system` + caminho.
+  storage file_system /data/caddy
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -59,15 +63,15 @@
     -X-AspNet-Version
   }
 
-  # ── Content Security Policy (linha única para compatibilidade HTTP) ───
-  # Segurança reforçada:
-  #   object-src 'none'       → Bloqueia plugins (Flash, Java, etc.)
-  #   worker-src 'self' blob: → Permite Service Workers + blob workers
-  #   manifest-src 'self'     → Manifest PWA apenas da origem
-  #   img-src restrito        → Sem wildcard https:; apenas domínios específicos
-  header {
-    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.tile.osrm.org https://s3.{$DOMAIN:severinno.com.br} https://*.s3.{$DOMAIN:severinno.com.br}; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.tile.openstreetmap.org https://nominatim.openstreetmap.org ws: wss: https://api.glitchtip.com wss://{$DOMAIN:severinno.com.br} https://glitchtip.{$DOMAIN:severinno.com.br}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; worker-src 'self' blob:; manifest-src 'self'"
-  }
+  # ── Content Security Policy ──────────────────────────────────────────
+  # NOTA (hardening 09/2026): a CSP AUTORITATIVA é a do proxy.ts (com nonce
+  # por-request + strict-dynamic). O header aqui NÃO define script-src com
+  # 'unsafe-inline' nem unpkg — quando este bloco define CSP, ele SOBRESCREVE
+  # a do app e destruiria os nonces. Portanto este header NÃO inclui CSP:
+  # o proxy.ts do Next.js é a fonte única (ver src/lib/csp.ts).
+  # Se um dia for preciso mover a CSP para cá, o Caddy precisa repassar o
+  # header x-nonce do upstream e montar o nonce dinâmico (não suportado
+  # nativamente) — mantenha no proxy.ts.
 
   # ── Healthcheck interno (Docker HEALTHCHECK) ────────────────────────
   # Responde 200 OK em /health para o Docker verificar se o Caddy está
@@ -80,6 +84,10 @@
   }
 
   # ── Rate limiting (prevenção básica contra abuso) ────────────────────
+  # RESOLVIDO (2026-10-02): `rate_limit` exige o plugin mholt/caddy-ratelimit
+  # — o serviço caddy do compose agora builda a imagem custom
+  # (Dockerfile.caddy, versões pinadas). Prova: caddy validate do arquivo
+  # INTEIRO = "Valid configuration" na imagem custom.
   rate_limit {
     zone dynamic {
       key {remote_host}
@@ -137,6 +145,8 @@
     #   caddy-access  → detecta 401/403 (força bruta)
     #   caddy-badbots → detecta paths sensíveis (.env, wp-admin) e user-agents maliciosos
     #   caddy-404-scan→ detecta varredura de diretórios (muitos 404)
+    # RESOLVIDO (2026-10-02): o encoder `transform` (caddyserver/
+    # transform-encoder) vem na imagem custom do compose (Dockerfile.caddy).
     # Template explícito (compatível com qualquer versão do Caddy v2):
     format transform "{request>remote_ip} - {request>user_id} [{ts}] \"{request>method} {request>uri} {request>proto}\" {status} {size} \"{request>headers>Referer}\" \"{request>headers>User-Agent}\""
     level INFO
@@ -158,6 +168,82 @@
     handle @5xx {
       respond "Service Unavailable" 503
     }
+  }
+}
+
+# ═════════════════════════════════════════════════════════════════════
+# SUBDOMÍNIO — s3 (bucket público de uploads — MinIO self-hosted)
+# ═════════════════════════════════════════════════════════════════════
+# Serve os objetos do bucket público em path-style: o app monta as URLs como
+# {S3_PUBLIC_URL}/{chave} (src/lib/storage.ts; prefixo real dos uploads é
+# uploads/ — src/lib/s3.ts) e o reprocess-svg-uploads.ts guarda os SVG
+# remediados em quarantine/svg-legacy/.
+#
+# DEFESA EM PROFUNDIDADE contra SVG armazenado: SVG é XML ativo (<script>,
+# onload=, <foreignObject>) e foi REMOVIDO da allowlist de upload
+# (src/lib/file-signature.ts, 09/2026) — mas objetos legados anteriores ao
+# bloqueio podem existir no bucket (censo/remediação no
+# scripts/reprocess-svg-uploads.ts). Mesmo que um SVG escape (legado
+# esquecido, falha de upload, vendador), este bloco REJEITA qualquer resposta
+# com Content-Type image/svg+xml — o browser nunca o renderiza (403; sem
+# MIME sniffing pelo X-Content-Type-Options acima).
+#
+# Por que matcher de RESPOSTA (handle_response avaliado no header da
+# resposta) e não de pedido (path *.svg): a detecção da remediação é PELO
+# CONTEÚDO — um .jpg pode ser um SVG renomeado; o que decide é o Content-Type
+# que o MinIO vai de fato servir.
+#
+# Requer DNS de s3.severinno.com.br apontando para este servidor. O domínio
+# é placeholder PLANO (não aninhado com {$DOMAIN:...} — placeholders aninhados
+# não parseiam; provado com caddy validate: "invalid port"). Para um domínio
+# diferente, defina S3_DOMAIN no env do Caddy.
+{$S3_DOMAIN:s3.severinno.com.br} {
+  encode zstd gzip
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    -Server
+    -X-Powered-By
+  }
+
+  reverse_proxy minio:9000 {
+    header_up Host {host}
+    header_up X-Real-IP {remote_host}
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Forwarded-Proto {scheme}
+
+    # Matcher avaliado contra a RESPOSTA do upstream (Caddy 2.7+).
+    # TEM de ser declarado DENTRO do reverse_proxy: response matchers têm
+    # namespace próprio — um @matcher no nível do site não é visível aqui e o
+    # Caddy crasha no boot (provado e2e: "no named response matcher defined
+    # with name ..."). Prova de comportamento: SVG servido → 403; PNG → 200.
+    @s3_svg_response {
+      header Content-Type image/svg+xml
+    }
+
+    # Se o MinIO for servir um SVG dos prefixos de upload/quarantine,
+    # a resposta é abortada AQUI — nada de SVG chega ao browser.
+    handle_response @s3_svg_response {
+      respond "Blocked: SVG content is not served from this bucket" 403
+    }
+  }
+
+  # ── Logs (formato DEFAULT json — o CLF do fail2ban é o log do site
+  #    principal; este bloco novo não entra nas jails existentes) ────────
+  log {
+    output file /var/log/caddy/s3-access.log {
+      roll_size 100mb
+      roll_keep 5
+      roll_keep_for 720h
+    }
+    level INFO
+  }
+
+  handle_errors {
+    respond "Service Unavailable" 503
   }
 }
 

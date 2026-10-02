@@ -144,7 +144,15 @@ services:
   #   bind mount: /var/log/caddy → fail2ban no host le os logs
   #   named volume: caddy_logs   → fallback Docker-managed persistente
   caddy:
-    image: caddy:2-alpine
+    # BUILD CUSTOM OBRIGATÓRIO (Dockerfile.caddy): o Caddyfile.prod usa
+    # rate_limit (mholt/caddy-ratelimit) e format transform
+    # (caddyserver/transform-encoder — CLF do fail2ban); nenhum existe na
+    # imagem stock e o parse crasha no boot com ela. Versões pinadas no
+    # Dockerfile.caddy (Caddy v2.11.4, ratelimit v0.1.0, transform 2026-04-23).
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
+    image: ${IMAGE_REGISTRY:-git.severinno.com}/${IMAGE_NAMESPACE:-severinno}/severinno:caddy-2.11.4-plugins
     restart: unless-stopped
     ports:
       - "80:80"

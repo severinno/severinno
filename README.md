@@ -972,7 +972,7 @@ hash que não existe) sai NOMEADO: o remédio não inventa um nome.
 
 **Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
 rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
-**47 sub-tests node-puro** via `scripts/test-mutation-guards.sh` — e, desde que a
+**48 sub-tests node-puro** via `scripts/test-mutation-guards.sh` — e, desde que a
 isenção `GITHUB_ONLY` da classe caiu, o **mesmo comando** roda também no job
 `guards` da **forja dona do merge** (o `check-forge-parity` exige a matriz e a
 prova das três regras de classificação nas duas pipelines): quem mergeia na forja
@@ -1293,7 +1293,7 @@ depois: `escreveu: true` é violação da família, não um detalhe do log.
 <!-- bench:mutations:custo — DERIVADO do registro (`mutations` da baseline); não edite à mão: o ato o reescreve -->
 
 **O custo do job mais caro do PR não é uma conta à mão** (família `mutations` do
-`bench-guard-timing`). O job `mutation-guards` roda 47 sub-tests, e o que CADA um
+`bench-guard-timing`). O job `mutation-guards` roda 48 sub-tests, e o que CADA um
 custa é medido pelo próprio master (`--json`) e versionado sub-test a sub-test no
 registro: o ato de 29/09/2026, medido sobre `13eedba1` — a âncora é o commit que CARREGA o
 registro, resolvida pela história —
@@ -1305,8 +1305,8 @@ Quem entra com um sub-test novo não compõe nada: ele entra **MEDIDO** na rodad
 (forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~16.8s**) é dita
 como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test. **LIMITE DECLARADO:** na rodada do ato, 2 sub-test(s) NÃO passaram (`nested-guard`, `pre-commit-proof`) — o custo deles não julga nada. E o vermelho foi RE-MEDIDO antes de virar veredito: `nested-guard`, `pre-commit-proof` REPETIU o vermelho na 2ª tentativa, então o ms dele é a SOMA das duas (o custo é o que o job pagou).
 
-**E a régua única tem contagem, não estimativa**: das 47 suítes da matriz,
-28 **PROVAM** a aplicação — chamam `mutacao_aplicar`, a cópia única
+**E a régua única tem contagem, não estimativa**: das 48 suítes da matriz,
+29 **PROVAM** a aplicação — chamam `mutacao_aplicar`, a cópia única
 `scripts/mutacao-prova.sh` (a CIRURGIA, o MARCADOR e o CONTEÚDO na mesma régua).
 E 4 delas usam TAMBÉM o caminho DECLARADO (`mutacao_aplicar_sem_marcador`,
 para o payload que não comporta o marcador).
@@ -1836,7 +1836,7 @@ warm):
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (47 sub-tests)³  |    **528.5s** (1 run)³     |     **step ≈ 9.1s**²      |
+| master `mutation-guards` (48 sub-tests)³  |    **528.5s** (1 run)³     |     **step ≈ 9.1s**²      |
 | checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
 | Summary                                   |             —              |           0.34s           |
 
@@ -2091,7 +2091,7 @@ runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 | 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |                      — (n/a)                       |         <2s         |
 | `utf8-check` (837 arquivos, `--ci src/`)          |        ≈ **0.92s**         |                     **7.46s**                      |    ~2-5s (est.)     |
 | `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |                     **3.61s**                      |    ~1-2s (est.)     |
-| `mutation-guards` (47 sub-tests node-puro)³       |        **528.5s**³         |                     **9.1s**²                      |   ~15-25s (est.)    |
+| `mutation-guards` (48 sub-tests node-puro)³       |        **528.5s**³         |                     **9.1s**²                      |   ~15-25s (est.)    |
 | `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |                    **4m37.6s**                     |   ~35-45s (est.)³   |
 | `unused-deps-guard` (mutation test + guard real)  |        ≈ **0.5s**⁴         |          **26.8s** cold / **20.9s** warm⁴          |   ~10-15s (est.)    |
 | `lint-guard` (prettier --check + eslint zero)     |     ~**4min** (local)⁵     | **7m22s** 1ª run / **6m23s** 2ª run (lint total)⁴  |   ~4-7 min (est.)   |

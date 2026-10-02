@@ -1146,7 +1146,7 @@ remédio é a linha inteira com o número de agora — que sai na própria mensa
 **A mesma posição escrita POR EXTENSO entra na MESMA régua** — `a quadragésima
 entrada da matriz` é a 40.ª, e o número é conferido contra a ordem do `SUBTESTS`
 como qualquer outro: hoje a `stack-per-commit` é a quadragésima entrada da matriz,
-e a `mutacao-prova` a quadragésima sétima entrada da matriz. Escrever a posição em
+e a `mutacao-prova` a quadragésima oitava entrada da matriz. Escrever a posição em
 palavras não a torna estável — o dia em que uma entrada nascer ANTES delas a prosa
 fica vermelha do mesmo jeito —, e uma grafia que o guard não lesse seria
 exatamente o lugar por onde o número errado passaria. A janela do extenso são as
@@ -1384,7 +1384,7 @@ por ele (a **M5**) ou a mesma troca passaria sem justificativa nenhuma (a **M6**
 e é isso que as duas metades tiram do lugar, exigindo o ACEITE onde havia recusa.
 
 A biblioteca é mutada PELA PRÓPRIA régua (com a prova de que a escrita entrou) e
-restaurada por checksum entre as metades. **28 suítes** provam a aplicação pela
+restaurada por checksum entre as metades. **29 suítes** provam a aplicação pela
 régua única, e a lista viva delas é o bloco `PROVA_DE_APLICACAO` do master. As
 três últimas foram as **PENDENTE** do eixo da árvore: `reconciliation`
 (`issue-publish.mjs`), `nested-guard` (`forge-doctor.mjs`) e `hook-ci-parity` (os
@@ -9447,6 +9447,64 @@ repositório é mutado: o que se muta é o GUARD, com backup e restauração
 conferida por checksum no `trap EXIT`. A suíte fecha com a INTEGRAÇÃO (o guard
 real na árvore real, o MESMO comando do CI) e com a testemunha unitária
 (`check-generated-format.test.ts`, 17 testes).
+
+## 39. O Caddyfile.prod PARSEIA em um Caddy real — sempre — `check:caddy-validate` (`scripts/check-caddy-validate.sh`)
+
+**A invariante:** o Caddyfile.prod é aceito por `caddy validate --adapter
+caddyfile` executado dentro de um CONTAINER (o binário que julga é um
+Caddy real, nunca um parser caseiro). O PR roda as DUAS passadas: `--stock`
+(imagem `caddy:2-alpine`, removendo ANTES da prova APENAS as diretivas
+que exigem plugins da imagem custom — `rate_limit`: 1 bloco,
+`format transform`: 2 linhas; a lista vive no script e o teste cobre que
+é exatamente a do Dockerfile.caddy) e `--full` (build do Dockerfile.caddy
+no PR + validação do arquivo INTEIRO, plugins inclusos — as diretivas de
+plugin deixam de ser confiança e viram sanção).
+
+**O defeito que fecha:** o Caddyfile.prod passou meses sem ser parseado
+por nenhum Caddy — o `storage file:///data/caddy` (módulo inexistente)
+crashava o parse INTEIRO no boot, e ninguém viu, porque nenhuma pipeline
+validava o arquivo (descoberto em 2026-10-02 ao validar o bloco `s3` da
+defesa SVG; provado com `caddy validate`). O modo stock pega qualquer
+regressão de parse (hosts, matchers, handlers, templates, sintaxe geral)
+sem exigir a imagem custom no runner de PR; o full sanciona também as
+diretivas de plugin.
+
+**Como mede:** bash + docker; exit 0 parse OK | 1 o Caddy REPROVA o
+arquivo (com o erro nomeando linha/diretiva) | 2 pré-requisito ausente
+(docker/imagem). Diretivas de plugin removidas no modo stock por script
+python embutido (bloco balanceado por chaves — não por regex de fim).
+
+**Prova por mutação (AUTOMATIZADA na matriz do master —
+`scripts/test-mutation-caddy-validate.sh`, 2 metades):** a **M1** desliga a
+RECUSA do veredito (o ramo `echo ❌` + `return 1`, texto idêntico nos ramos
+stock e full, UMA cirurgia com contagem 2) e exige o silêncio: com
+`diretriz_inexistente_mutada on` DENTRO do site principal, o guard íntegro
+sai 1 nomeando a diretiva (`unrecognized directive`) e o cego sai 0 — a
+classe do storage morto passaria no CI. A **M2** desliga a EXCLUSÃO do modo
+stock (as três linhas do python embutido, uma cirurgia) e a stock volta a
+reprovar o Caddyfile ÍNTEGRO — sem a exclusão o modo stock não sanciona
+nada, e a lista vira o contrato que o mantém útil. Lições da mutação mal
+feita, medidas quando a suíte nasceu: tokens soltos APÓS o último `}` viram
+"site-blocks vazios" VÁLIDOS para o parser do Caddyfile (dois
+"endereços") — a injeção é DENTRO do site principal; e neutralizar o
+`grep "Valid configuration"` NÃO muda nada (o `docker run` já reprova
+antes — o julgamento é o exit do container, não o grep).
+
+**Escopo deliberado:** não roda na forja (sem docker no job de guards —
+GITHUB_ONLY com razão escrita; o run-syntax de lá cobre o parse dos
+textos embutidos). O full do PR
+depende do daemon no runner self-hosted (o mesmo que builda as imagens
+do deploy) e do layer cache — build frio de xcaddy ~1–2 min, quente é
+quase grátis.
+
+**Como testar:**
+`src/lib/__tests__/check-caddy-validate.test.ts` — 9 casos: contrato do
+script (container real, modos, exit codes, lista de plugins casando com o
+Dockerfile), fiação (compose → Dockerfile.caddy; pr-check → modo stock;
+registro no forge-parity) e execução REAL no repo (stock, exit 0); e
+`scripts/test-mutation-caddy-validate.sh` — a entrada `caddy-validate` da
+matriz do master, com as duas metades da prova acima (exit 2 declarado sem
+docker/imagem, restauração por checksum entre as metades).
 
 ---
 
