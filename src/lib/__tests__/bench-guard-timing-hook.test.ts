@@ -441,6 +441,15 @@ describe("bench-guard-timing — o contrato da oferta no commit", () => {
         detection: { cmd: "node scripts/pre-commit-remedy.mjs", escreveu: false },
       }),
     ).toEqual([])
+    // ...e NEM acusa a medição que veio ABAIXO da referência (delta negativo
+    // além do ruído): a oferta não foi paga — mais rápido que o esperado não é
+    // a classe que este gate fecha. Pino da regressão da rodada 40: o texto
+    // (julgado na direção oposta, ver abaixo) flacou com −58ms.
+    expect(
+      hookCostViolations({
+        deltas: { ofertaComumMs: -(HOOK_RUIDO_MS + 8) },
+      }),
+    ).toEqual([])
   })
 
   it("as frases dão a DIREÇÃO de cada delta (e o não medido é dito)", () => {
@@ -465,6 +474,17 @@ describe("bench-guard-timing — o contrato da oferta no commit", () => {
       deltas: { ofertaComumMs: 300, esperaMs: 0, ofertaFalhaMs: 0, revalidacaoMs: 0 },
     })
     expect(pago.join("\n")).toContain("ATENÇÃO")
+
+    // A direção do texto é a do GATE (só POSITIVO acima do ruído acusa): delta
+    // negativo além do ruído é o hook mais rápido que a referência — nunca a
+    // oferta paga. Na rodada 40 (task 264) um −58ms publicava "ATENÇÃO: ela
+    // está sendo alcançada" com violações [] e o teste da linha 229 flacou;
+    // na 41 (task 271), dentro do ruído, passou — oscilação que era o bug.
+    const negativo = hookWhatItAdded({
+      deltas: { ofertaComumMs: -(HOOK_RUIDO_MS + 8), esperaMs: 0, ofertaFalhaMs: 0, revalidacaoMs: 0 },
+    })
+    expect(negativo.join("\n")).toContain("NÃO é alcançada")
+    expect(negativo.join("\n")).not.toContain("ATENÇÃO")
 
     expect(hookWhatItAdded({}).join("\n")).toContain("NÃO MEDIDO")
   })
