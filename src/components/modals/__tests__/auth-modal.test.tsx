@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent } from "@/__tests__/test-utils"
 import { AuthModal } from "../auth-modal"
-import { isDemoAccountsEnabled } from "@/lib/demo-accounts"
 import {
   createMockAuthStore,
   createMockUIStore,
@@ -159,11 +158,6 @@ vi.mock("@/lib/validators", () => ({
 vi.mock("@/lib/utils", () => ({ cn: (...c: any[]) => c.filter(Boolean).join(" ") }))
 vi.mock("@hookform/resolvers/zod", () => ({ zodResolver: () => ({}) }))
 
-// Gate das contas demo — controlável por teste (prod vs dev)
-vi.mock("@/lib/demo-accounts", () => ({
-  isDemoAccountsEnabled: vi.fn(() => true),
-}))
-
 beforeEach(() => {
   vi.clearAllMocks()
   Object.keys(formValues).forEach((k) => delete formValues[k])
@@ -175,7 +169,6 @@ beforeEach(() => {
   })
   mockAuthStore.login.mockResolvedValue({ ok: true })
   mockAuthStore.register.mockResolvedValue({ ok: true })
-  vi.mocked(isDemoAccountsEnabled).mockReturnValue(true)
 })
 
 describe("AuthModal — rendering", () => {
@@ -231,46 +224,6 @@ describe("AuthModal — rendering", () => {
     )
     expect(screen.getByText("CPF / CNPJ")).toBeInTheDocument()
     expect(screen.getByText(/Como prestador/)).toBeInTheDocument()
-  })
-
-  it("renders demo credentials in login mode (dev/test)", () => {
-    mockUIStore.authModal = { open: true, mode: "login", role: "CLIENT" }
-    render(
-      <TestQueryProvider>
-        <AuthModal />
-      </TestQueryProvider>,
-    )
-    // Demo credentials link — may appear once or in collapse/expand
-    const elements = screen.getAllByText("Ver credenciais de demonstração")
-    expect(elements.length).toBeGreaterThan(0)
-  })
-})
-
-describe("AuthModal — gating de contas demo (prod vs dev)", () => {
-  it("oculta as credenciais demo em produção", () => {
-    vi.mocked(isDemoAccountsEnabled).mockReturnValue(false)
-    mockUIStore.authModal = { open: true, mode: "login", role: "CLIENT" }
-    render(
-      <TestQueryProvider>
-        <AuthModal />
-      </TestQueryProvider>,
-    )
-    // Nenhum vestígio do bloco demo em produção
-    expect(screen.queryByText("Ver credenciais de demonstração")).not.toBeInTheDocument()
-    expect(screen.queryByText(/admin@severinno\.com/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/cliente@severinno\.com/)).not.toBeInTheDocument()
-  })
-
-  it("exibe as credenciais demo fora de produção", () => {
-    vi.mocked(isDemoAccountsEnabled).mockReturnValue(true)
-    mockUIStore.authModal = { open: true, mode: "login", role: "CLIENT" }
-    render(
-      <TestQueryProvider>
-        <AuthModal />
-      </TestQueryProvider>,
-    )
-    expect(screen.getAllByText("Ver credenciais de demonstração").length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/@severinno\.com/).length).toBeGreaterThan(0)
   })
 })
 

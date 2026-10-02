@@ -85,8 +85,8 @@ export async function POST(request: Request) {
     }
     // 🛡️ Contas demo (dev/staging only): mesmo que o usuário exista no banco
     // (banco clonado, seed antigo, etc.), em produção o login é recusado — a
-    // credencial admin@severinno.com/admin123 é pública. A mesma mensagem
-    // genérica evita revelar a existência da conta.
+    // credencial da conta demo é pública (docs/dev). A mensagem genérica evita
+    // revelar a existência da conta.
     if (!isDemoAccountsEnabled() && isDemoAccountEmail(user.email)) {
       throw unauthorized("E-mail ou senha inválidos")
     }

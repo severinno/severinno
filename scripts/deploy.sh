@@ -342,6 +342,46 @@ run_migrations() {
         bunx prisma generate
 }
 
+# ── Bootstrap do admin real (zero-demo) ────────────────────────────────
+
+# Cria/promove o primeiro administrador REAL a partir de Docker secrets
+# (admin_email/admin_password) — substitui definitivamente as credenciais
+# demo estáticas (admin@severinno.com/admin123). Idempotente: sem secrets
+# configurados apenas avisa e segue (fail-open por design pós-migrate).
+bootstrap_admin() {
+    step "4b/7 — Bootstrap do admin real (secrets admin_email/admin_password)"
+
+    if [ ! -s "$PROJECT_DIR/secrets/admin_email.secret" ] || \
+       [ ! -s "$PROJECT_DIR/secrets/admin_password.secret" ]; then
+        warn "secrets/admin_email.secret ou admin_password.secret vazios/ausentes — admin não criado"
+        warn "  Configure depois com: nano secrets/admin_email.secret secrets/admin_password.secret"
+        return 0
+    fi
+
+    if [ ! -f "$PROJECT_DIR/scripts/bootstrap-admin.mjs" ]; then
+        warn "scripts/bootstrap-admin.mjs não encontrado — bootstrap do admin pulado"
+        return 0
+    fi
+
+    info "Executando bootstrap do admin..."
+    local boot_output boot_exit
+    boot_output=$(run docker compose -f "$COMPOSE_FILE" run --rm --no-deps \
+        -v "$PROJECT_DIR/scripts/bootstrap-admin.mjs:/app/scripts/bootstrap-admin.mjs:ro" \
+        -v "$PROJECT_DIR/secrets/admin_email.secret:/run/secrets/admin_email:ro" \
+        -v "$PROJECT_DIR/secrets/admin_password.secret:/run/secrets/admin_password:ro" \
+        -e ADMIN_EMAIL_FILE=/run/secrets/admin_email \
+        -e ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
+        app node /app/scripts/bootstrap-admin.mjs 2>&1) || true
+    boot_exit=$?
+    echo "$boot_output" | tail -5
+
+    if [ "$boot_exit" -eq 0 ]; then
+        ok "Bootstrap do admin executado"
+    else
+        warn "Bootstrap do admin falhou (exit $boot_exit) — deploy continua; corrija os secrets e rode o deploy novamente"
+    fi
+}
+
 # ── Docker Up ────────────────────────────────────────────────────────────
 
 docker_up() {
@@ -605,6 +645,9 @@ main() {
         do_rollback 1
         exit 2
     fi
+
+    # 4b. Bootstrap do admin real (idempotente, fail-open)
+    bootstrap_admin
 
     # 5. Docker up
     if ! docker_up; then

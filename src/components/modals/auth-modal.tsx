@@ -6,8 +6,6 @@ import { useForm, type Resolver } from "react-hook-form"
 import {
   BadgeCheck,
   Check,
-  ChevronDown,
-  Copy,
   Eye,
   EyeOff,
   Loader2,
@@ -44,7 +42,6 @@ import { loginSchema, registerSchema, type LoginInput, type RegisterInput } from
 import { useUIStore, type AuthModalMode, type AuthModalRole } from "@/store/ui"
 import { useAuthStore, type AuthUser } from "@/store/auth"
 import { useViewStore } from "@/store/view"
-import { isDemoAccountsEnabled } from "@/lib/demo-accounts"
 import { cn } from "@/lib/utils"
 
 /**
@@ -162,27 +159,6 @@ export function AuthModal() {
 // Login form
 // ---------------------------------------------------------------------------
 
-/**
- * Demo credentials surfaced on the login form so first-time visitors can try
- * the platform without registering. Each row exposes a "Copiar" button that
- * copies only the e-mail to the clipboard and fires a sonner toast.
- *
- * DEV/STAGING ONLY: em produção o array fica vazio (NODE_ENV é substituído
- * estaticamente pelo bundler) e o bloco demo não é renderizado — uma
- * credencial de admin permanente com senha conhecida é bloqueador de release.
- */
-const DEMO_ACCOUNTS: ReadonlyArray<{
-  email: string
-  password: string
-  role: string
-}> = isDemoAccountsEnabled()
-  ? [
-      { email: "admin@severinno.com", password: "admin123", role: "Administrador" },
-      { email: "cliente@severinno.com", password: "cliente123", role: "Cliente" },
-      { email: "joao@severinno.com", password: "provider123", role: "Prestador" },
-    ]
-  : []
-
 function LoginForm({
   onSuccess,
   onSwitchRegister,
@@ -195,9 +171,6 @@ function LoginForm({
   const [loading, setLoading] = React.useState(false)
   const [formError, setFormError] = React.useState<string | null>(null)
   const [showPassword, setShowPassword] = React.useState(false)
-  // Re-avaliado em render-time: em produção o bloco demo é ocultado mesmo
-  // que o array module-level já tenha sido eliminado pelo bundler.
-  const demoAccounts = isDemoAccountsEnabled() ? DEMO_ACCOUNTS : []
 
   const form = useForm<LoginInput>({
     // Cast around Zod 4's `z.coerce.number().optional()` typing, which
@@ -315,44 +288,6 @@ function LoginForm({
           {loading && <Loader2 className="size-4 animate-spin" />}
           Entrar
         </Button>
-
-        {demoAccounts.length > 0 && (
-          <details className="group -mt-1">
-            <summary className="text-muted-foreground flex cursor-pointer list-none items-center justify-center gap-1 text-xs transition-colors hover:text-emerald-700 dark:hover:text-emerald-400 [&::-webkit-details-marker]:hidden">
-              Ver credenciais de demonstração
-              <ChevronDown className="size-3 transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="bg-muted/50 mt-2 rounded-lg p-3 text-xs">
-              <p className="text-muted-foreground mb-2">
-                Use estas contas para explorar a plataforma antes de se cadastrar.
-              </p>
-              <ul className="space-y-1.5">
-                {demoAccounts.map((acc) => (
-                  <li key={acc.email} className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-foreground truncate font-mono">{acc.email}</p>
-                      <p className="text-muted-foreground">
-                        {acc.password} · {acc.role}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      onClick={() => {
-                        void navigator.clipboard?.writeText(acc.email)
-                        toast.success("E-mail copiado")
-                      }}
-                      className="text-muted-foreground hover:bg-accent inline-flex size-6 shrink-0 items-center justify-center rounded-md transition-colors hover:text-emerald-700 dark:hover:text-emerald-400"
-                      aria-label={`Copiar e-mail ${acc.email}`}
-                    >
-                      <Copy className="size-3.5" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </details>
-        )}
 
         <div className="text-muted-foreground text-center text-sm">
           Não tem conta?{" "}
