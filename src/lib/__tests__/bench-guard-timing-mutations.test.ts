@@ -934,20 +934,25 @@ describe("bench-guard-timing — a baseline versionada carrega CADA sub-test", (
     }
     // Um sub-test que NÃO passou pode estar no registro — o custo dele não julga
     // nada —, mas não pode passar em SILÊNCIO: o registro versionado tem de
-    // NOMEAR cada forma vermelha em `mutations.violations`, e cada violação de
-    // "NÃO passaram" tem de nomear uma forma que existe e está vermelha (as duas
-    // direções). A régua que produz a violação é `mutationCostViolations`, provada
-    // acima; aqui se prova o que o ARQUIVO declara. Medido em 26/09/2026: o
-    // `workflow-run-syntax` fica vermelho NESTA árvore por um scratch local
-    // (`.tmp/mineracao`, gitignored — declarado no `meta.treeState`), e o CI, que
-    // não o tem, o vê verde: exigir verde absoluto aqui seria exigir que o
-    // registro escondesse o que a árvore mediu.
+    // NOMEAR cada forma vermelha em `mutations.violations`. A violação é por
+    // CLASSE — uma entrada "NÃO passaram" agrega TODAS as formas vermelhas (como
+    // "SEM metades declaradas" agrega as suas) — então a prova é nas duas
+    // direções contra o texto agregado: nenhuma vermelha sem citação e nenhuma
+    // citação que não seja uma vermelha. A régua que produz a violação é
+    // `mutationCostViolations`, provada acima; aqui se prova o que o ARQUIVO
+    // declara. Medido em 26/09/2026: o `workflow-run-syntax` fica vermelho NESTA
+    // árvore por um scratch local (`.tmp/mineracao`, gitignored — declarado no
+    // `meta.treeState`), e o CI, que não o tem, o vê verde: exigir verde
+    // absoluto aqui seria exigir que o registro escondesse o que a árvore mediu.
     const vermelhas = subs.filter((s) => s.exit !== 0).map((s) => s.role)
     const declaradas = (baseline.mutations.violations as string[]).filter((v) =>
       v.includes("NÃO passaram"),
     )
-    expect(declaradas).toHaveLength(vermelhas.length)
-    for (const role of vermelhas) expect(declaradas.join(" ")).toContain(role)
+    expect(declaradas.length).toBeGreaterThan(0)
+    const nomesCitados = declaradas.join(" ")
+    for (const role of vermelhas) expect(nomesCitados).toContain(role)
+    const citadas = nomesCitados.match(/[a-z0-9-]+ \(exit \d+\)/g) ?? []
+    expect(citadas).toHaveLength(vermelhas.length)
     // As somas da baseline FECHAM com as formas que ela guarda: `harnessMs` é a
     // diferença entre o total do master e a soma — se alguém editar um sub-test à
     // mão, a conta para de fechar e este teste cai.
