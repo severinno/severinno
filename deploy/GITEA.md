@@ -242,12 +242,19 @@ Cuidados:
   (`deploy/docker-compose.gitea.yml`) NÃO leva a opção — replicar/ajustar a
   config do runner é hand-off host-side declarado aqui.
 - Recriar o runner NÃO exige re-registro (o registro vive no volume
-  `runner-data:/data`, e labels/report vêm dele): `docker rm -f gitea-runner` +
-  `docker run` com a spec do backup + a opção nova. Só o `--re-register` (via
-  `gitea-up.sh`) apaga o registro — e o compose de `/opt/gitea` na VPS está
-  DESATUALIZADO (imagem `latest`, URL `http://`, sem a opção): ele NÃO é quem
-  criou o runner em produção, e o conflito de nome no `compose up` dele aborta
-  sem tocar no container real (auditado em 02/10).
+  `runner-data:/data`, e labels/report vêm dele). **RECONCILIADO em
+  02/10/2026**: o serviço `runner` do compose de `/opt/gitea` (o MESMO que o
+  `gitea-up.sh` usa via `COMPOSE_FILE`) estava fóssil — `act_runner:latest`,
+  URL `http://gitea:3000`, labels `node:20-bullseye` (pré-tier-1), sem o mount
+  da config — e o runner real era `docker run` SEM labels de compose (por isso
+  o `compose up` conflitava de nome sem tocar no container). Realinhado à
+  spec real (0.6.1 pinada, `https://`, labels `ubuntu-bun:1.3.14`, mount do
+  `/config.yaml`) e o runner re-aterrissado como container GERIDO pelo compose
+  (proj `gitea`): um `docker compose up -d runner` hoje recria com a spec
+  certa. Backup da era fantasma: `/opt/gitea/docker-compose.yml.bak-reconcile`.
+  Residual: `gitea/gitea:1.24` e `caddy:2-alpine` seguem flutuantes no compose
+  do host (o guard `check-runner-tag` só lê o compose do repo) — pinar num
+  follow-up.
 
 3. O `.env.gitea` DESTE host precisa estar em sincronia com o template comitado
    (`deploy/env.gitea.example`) — **em todas** as variaveis, nao so no
