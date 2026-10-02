@@ -252,9 +252,15 @@ Cuidados:
   `/config.yaml`) e o runner re-aterrissado como container GERIDO pelo compose
   (proj `gitea`): um `docker compose up -d runner` hoje recria com a spec
   certa. Backup da era fantasma: `/opt/gitea/docker-compose.yml.bak-reconcile`.
-  Residual: `gitea/gitea:1.24` e `caddy:2-alpine` seguem flutuantes no compose
-  do host (o guard `check-runner-tag` só lê o compose do repo) — pinar num
-  follow-up.
+  **PINADO em 02/10/2026**: as tags flutuantes do compose do host saíram —
+  `gitea/gitea:1.24.7` e `caddy:2.11.4-alpine` em `/opt/gitea/docker-compose.yml`
+  — com as versões REAIS confirmadas antes do pin (o binário do Gitea reporta
+  1.24.7 e o `caddy version` do container reporta v2.11.4): o pin é file-only,
+  não muda nada em runtime e o recreate pega no próximo bring-up. Backup:
+  `/opt/gitea/docker-compose.yml.bak-pin`. O compose do REPO
+  (`deploy/docker-compose.gitea.yml`) segue com `gitea/gitea:1.24` e
+  `caddy:2-alpine` flutuantes — é esse que o guard `check-runner-tag` lê, e a
+  política de versão comitada se atualiza por lá, não pelo host.
 
 3. O `.env.gitea` DESTE host precisa estar em sincronia com o template comitado
    (`deploy/env.gitea.example`) — **em todas** as variaveis, nao so no
