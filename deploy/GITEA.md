@@ -672,20 +672,15 @@ nos tres jobs do padrao. Para ver o log de qualquer job na UI: os que ganham
 
 ### Bucket do log vem de `action_task.log_filename` (o hex do id quebra no 256)
 
-Para abrir o log de uma task na autópsia (`zstd -dc
-/data/gitea/actions_log/severinno/severinno/<bucket>/<task>.log.zst | tr -d
-"\000"`), o `<bucket>` NÃO é o hex do id da task — a heurística vale só até o id
-255 e quebra do 256 em diante, quando o bucket REINICIA em `00`; a régua real é
-`id % 256` em 2 dígitos hex minúsculos. Medido no banco da forja (1.24.7,
-`SELECT id, log_filename FROM action_task`): 255→`ff`, **256→`00`**, 259→`03`,
-264→`08`, 272→`10`, 273→`11`. Quem calcula o hex do id inteiro procura o log num
-`<bucket>` que não existe e conclui "log perdido" em falso — a perda REAL é a da
-seção acima, e o veredito dela vive no banco (`status`/`log_in_storage`), não na
-ausência do arquivo. Fonte de verdade: a própria coluna
-`action_task.log_filename` já traz o caminho pronto
-(`severinno/severinno/<bucket>/<id>.log.zst`) — copie dela em vez de calcular.
-Detalhe: tasks antigas podem gravar `.log` puro sem `.zst` (task 14) — o
-`log-health.sh` já cobre os dois sufixos.
+O `<bucket>` do caminho
+`/data/gitea/actions_log/severinno/severinno/<bucket>/<task>.log.zst`
+NÃO é o hex do id da task: é `id % 256` em 2 dígitos hex — 255→`ff`,
+**256→`00`** (reinicia), 259→`03`, 264→`08`, 272→`10`. Quem busca pelo hex do id
+inteiro acha um bucket inexistente e declara "log perdido" em falso — a perda
+real é a da seção acima, e o veredito vive no banco (`status`/`log_in_storage`).
+Fonte de verdade: a coluna `action_task.log_filename` já traz o caminho pronto —
+copie, não calcule. Tasks antigas podem gravar `.log` puro sem `.zst` (task 14);
+o `log-health.sh` cobre os dois sufixos.
 
 ### Networks órfãs esgotam o pool do Docker (janitor cobre containers, networks E volumes)
 
