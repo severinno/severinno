@@ -14,6 +14,15 @@ import {
 } from "@/lib/radius-expansion"
 import { fetchProvidersData, type FetchProvidersDataDeps } from "@/lib/fetch-providers-data"
 import { fetchUnrestrictedResults } from "@/lib/fetch-unrestricted-results"
+import {
+  buildKeysetPredicate,
+  decodeProviderCursor,
+  encodeProviderCursor,
+  KEYSET_ORDER_KEYS_RATING,
+  keysetOrderKeysDistance,
+  type ProviderCursorAnchor,
+  type ProviderSort,
+} from "@/lib/keyset"
 import { buildProviderWhereClause } from "@/lib/sql"
 import {
   cacheControlPublic,
@@ -28,7 +37,7 @@ import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * Public catalog of verified, active providers.
- * Query params: lat,lng,q,categoryId,radius(km),sort(rating|distance),page,limit
+ * Query params: lat,lng,q,categoryId,radius(km),sort(rating|distance),page,limit,cursor
  *
  * PERFORMANCE ARCHITECTURE (2-Phase Query):
  *   Phase 1 — Resolve matching provider IDs using indexed raw SQL.
@@ -46,6 +55,12 @@ import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
  *   expansion needed. -1 means providers exist but beyond 100km (no radius
  *   filter applied).
  *
+ * KEYSET PAGINATION (cursor):
+ *   `cursor` presente ⇒ seek por predicado de linha (WHERE (k0,k1,k2) > âncora,
+ *   chaves normalizadas ASC — ver src/lib/keyset.ts): custo O(log n), sem o
+ *   O(offset) de páginas fundas, e determinístico sob empates de rating.
+ *   OFFSET (páginas numeradas da vitrine) segue disponível sem cursor.
+ *
  * Denormalized avgRating + favoriteCount on User avoid expensive JOINs.
  */
 
@@ -62,7 +77,7 @@ export async function GET(request: Request) {
     const q = searchParams.get("q")?.trim() || undefined
     const categoryId = searchParams.get("categoryId") || undefined
     const radius = searchParams.get("radius")
-    const sort = searchParams.get("sort") || "rating"
+    const sort: ProviderSort = searchParams.get("sort") === "distance" ? "distance" : "rating"
     const { page, limit, skip, take } = parsePagination(searchParams)
 
     const latNum = lat ? Number(lat) : null
@@ -98,6 +113,33 @@ export async function GET(request: Request) {
       )
     }
 
+    // ---- Keyset cursor (paginação determinística O(log n)) ----------------
+    // Cursor presente ⇒ seek por predicado de linha (sem OFFSET). Ausente ⇒
+    // OFFSET (páginas numeradas da vitrine e saltos arbitrários continuam
+    // funcionando). Cursor inválido ou com sort incompatível é 400 EXPLÍCITO —
+    // nunca re-paginar do início em silêncio (mascararia duplicatas/omissões).
+    const cursorRaw = searchParams.get("cursor")
+    let cursorAnchor: ProviderCursorAnchor | null = null
+    if (cursorRaw) {
+      cursorAnchor = decodeProviderCursor(cursorRaw)
+      // O 's' do cursor é a ordenação REAL da sequência: a página 1 pode ter
+      // caído no fallback unrestricted (ordenado por rating) mesmo com
+      // sort=distance pedido — o cliente só repete a query original. Cursor
+      // rating resuma qualquer sort; cursor DISTANCE exige sort=distance + geo.
+      if (!cursorAnchor || (cursorAnchor.s === "distance" && sort !== "distance")) {
+        return noStoreJson(
+          { error: "'cursor' inválido ou incompatível com o 'sort' pedido" },
+          { status: 400 },
+        )
+      }
+      if (cursorAnchor.s === "distance" && !hasGeo) {
+        return noStoreJson(
+          { error: "Cursor de distância requer as coordenadas 'lat' e 'lng'" },
+          { status: 400 },
+        )
+      }
+    }
+
     // Resolve category tree once (Redis-cached, 10min TTL)
     let categoryIds: string[] | undefined
     if (categoryId) {
@@ -129,6 +171,8 @@ export async function GET(request: Request) {
     let providerIds: string[] = []
     let total = 0
     let expandedRadius: number | null = null
+    let nextCursor: string | null = null
+    let hasMore = false
 
     if (usePostGisInSql) {
       const countFn = createCachedRadiusCountFn({
@@ -210,25 +254,72 @@ export async function GET(request: Request) {
           centerGeo,
         })
 
-        const sortByDistance = sort === "distance"
+        // O cursor manda na ordenação da página: sequência rating (página 1
+        // caiu no unrestricted) continua rating-order mesmo com sort=distance
+        // pedido. Sem cursor, o sort da query decide (comportamento OFFSET).
+        const pageSort: ProviderSort = cursorAnchor ? cursorAnchor.s : sort
+        const sortByDistance = pageSort === "distance"
+        const distExpr = `ST_Distance(u.location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography)`
 
         let orderClause: string
         if (sortByDistance) {
-          orderClause = `ST_Distance(u.location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) ASC, u."avgRating" DESC NULLS LAST`
+          orderClause = `${distExpr} ASC, u."avgRating" DESC NULLS LAST, u.id ASC`
         } else {
-          orderClause = `u."avgRating" DESC NULLS LAST, u."favoriteCount" DESC`
+          orderClause = `u."avgRating" DESC NULLS LAST, u."favoriteCount" DESC, u.id ASC`
         }
 
-        const idResult = await db.$queryRawUnsafe<Array<{ id: string }>>(
-          `SELECT u.id FROM "User" u WHERE ${idWhere}
-           ORDER BY ${orderClause}
-           LIMIT $${idParams.length + 1} OFFSET $${idParams.length + 2}`,
-          ...idParams,
-          take,
-          skip,
-        )
+        // Âncoras na própria SELECT: o nextCursor vem do ÚLTIMO item da página
+        // (distância calculada pelo MESMO PostGIS que ordena — sem drift de
+        // float entre DB e aplicação).
+        const anchorCols = sortByDistance
+          ? `u."avgRating" AS "avgRating", u."favoriteCount" AS "favoriteCount", ${distExpr} AS dist`
+          : `u."avgRating" AS "avgRating", u."favoriteCount" AS "favoriteCount"`
 
-        providerIds = idResult.map((r: { id: string }) => r.id)
+        let idSql: string
+        let idQueryParams: unknown[]
+        if (cursorAnchor) {
+          // Keyset: pega take+1 para hasMore EXATO (sem COUNT extra).
+          const pred = buildKeysetPredicate({
+            sort: cursorAnchor.s,
+            anchor: cursorAnchor,
+            distExpr: sortByDistance ? distExpr : undefined,
+            startParam: idParams.length + 1,
+          })
+          idSql = `SELECT u.id, ${anchorCols} FROM "User" u WHERE ${idWhere} AND ${pred.sql}
+           ORDER BY ${sortByDistance ? keysetOrderKeysDistance(distExpr) : KEYSET_ORDER_KEYS_RATING}
+           LIMIT $${idParams.length + pred.params.length + 1}`
+          idQueryParams = [...idParams, ...pred.params, take + 1]
+        } else {
+          idSql = `SELECT u.id, ${anchorCols} FROM "User" u WHERE ${idWhere}
+           ORDER BY ${orderClause}
+           LIMIT $${idParams.length + 1} OFFSET $${idParams.length + 2}`
+          idQueryParams = [...idParams, take + 1, skip]
+        }
+
+        const idResult = await db.$queryRawUnsafe<
+          Array<{
+            id: string
+            avgRating: number | null
+            favoriteCount: number | null
+            dist?: number
+          }>
+        >(idSql, ...idQueryParams)
+
+        hasMore = idResult.length > take
+        const pageRows = hasMore ? idResult.slice(0, take) : idResult
+        providerIds = pageRows.map((r) => r.id)
+        const lastRow = hasMore ? pageRows[pageRows.length - 1] : null
+        if (lastRow) {
+          nextCursor = encodeProviderCursor({
+            // pageSort, não sort: continuação rating sob sort=distance não pode
+            // emitir cursor distance sem d (decode rejeitaria na página seguinte).
+            s: pageSort,
+            r: lastRow.avgRating ?? null,
+            f: lastRow.favoriteCount ?? null,
+            d: sortByDistance ? (lastRow.dist ?? null) : undefined,
+            id: lastRow.id,
+          })
+        }
       } else {
         // No providers found at any expansion step
         // Try without any radius filter (unrestricted)
@@ -247,7 +338,7 @@ export async function GET(request: Request) {
         if (fbTotal > 0) {
           // Providers exist but beyond 100km — return unrestricted with expandedRadius = -1
           const unrestrictedResult = await fetchUnrestrictedResults(
-            { fbWhere, fbParams, take, skip, hasGeo, latNum, lngNum },
+            { fbWhere, fbParams, take, skip, hasGeo, latNum, lngNum, cursorAnchor },
             {
               serviceFindMany: db.service.findMany.bind(
                 db,
@@ -281,6 +372,8 @@ export async function GET(request: Request) {
             page,
             limit,
             expandedRadius: null,
+            nextCursor: null,
+            hasMore: false,
           }),
           EMPTY_COUNT_CACHE_TTL,
         )
@@ -308,6 +401,8 @@ export async function GET(request: Request) {
             page,
             limit,
             expandedRadius: null,
+            nextCursor: null,
+            hasMore: false,
           }),
           EMPTY_COUNT_CACHE_TTL,
         )
@@ -320,16 +415,44 @@ export async function GET(request: Request) {
         centerGeo: null,
       })
 
-      const idResult = await db.$queryRawUnsafe<Array<{ id: string }>>(
-        `SELECT u.id FROM "User" u WHERE ${idWhere}
-         ORDER BY u."avgRating" DESC NULLS LAST, u."favoriteCount" DESC
-         LIMIT $${idParams.length + 1} OFFSET $${idParams.length + 2}`,
-        ...idParams,
-        take,
-        skip,
-      )
+      let idSql: string
+      let idQueryParams: unknown[]
+      if (cursorAnchor) {
+        // Keyset rating-only: aqui nunca há distExpr. Um cursor distance só
+        // chegaria por replay cross-env — segue pelo seek rating (mesmas chaves
+        // r/f/id), sem lançar.
+        const pred = buildKeysetPredicate({
+          sort: "rating",
+          anchor: cursorAnchor,
+          startParam: idParams.length + 1,
+        })
+        idSql = `SELECT u.id, u."avgRating" AS "avgRating", u."favoriteCount" AS "favoriteCount" FROM "User" u WHERE ${idWhere} AND ${pred.sql}
+         ORDER BY ${KEYSET_ORDER_KEYS_RATING}
+         LIMIT $${idParams.length + pred.params.length + 1}`
+        idQueryParams = [...idParams, ...pred.params, take + 1]
+      } else {
+        idSql = `SELECT u.id, u."avgRating" AS "avgRating", u."favoriteCount" AS "favoriteCount" FROM "User" u WHERE ${idWhere}
+         ORDER BY u."avgRating" DESC NULLS LAST, u."favoriteCount" DESC, u.id ASC
+         LIMIT $${idParams.length + 1} OFFSET $${idParams.length + 2}`
+        idQueryParams = [...idParams, take + 1, skip]
+      }
 
-      providerIds = idResult.map((r: { id: string }) => r.id)
+      const idResult = await db.$queryRawUnsafe<
+        Array<{ id: string; avgRating: number | null; favoriteCount: number | null }>
+      >(idSql, ...idQueryParams)
+
+      hasMore = idResult.length > take
+      const pageRows = hasMore ? idResult.slice(0, take) : idResult
+      providerIds = pageRows.map((r) => r.id)
+      const lastRow = hasMore ? pageRows[pageRows.length - 1] : null
+      if (lastRow) {
+        nextCursor = encodeProviderCursor({
+          s: "rating",
+          r: lastRow.avgRating ?? null,
+          f: lastRow.favoriteCount ?? null,
+          id: lastRow.id,
+        })
+      }
     }
 
     if (providerIds.length === 0) {
@@ -339,6 +462,8 @@ export async function GET(request: Request) {
         page,
         limit,
         expandedRadius,
+        nextCursor: null,
+        hasMore: false,
       })
     }
 
@@ -362,7 +487,10 @@ export async function GET(request: Request) {
       },
     )
 
-    return cacheControlPublic(NextResponse.json({ items, total, page, limit, expandedRadius }), 60)
+    return cacheControlPublic(
+      NextResponse.json({ items, total, page, limit, expandedRadius, nextCursor, hasMore }),
+      60,
+    )
   } catch (e) {
     return handleError(e)
   }

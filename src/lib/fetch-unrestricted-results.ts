@@ -15,6 +15,13 @@ import {
   type FetchProvidersDataDeps,
   type ProviderDataItem,
 } from "./fetch-providers-data"
+import {
+  buildKeysetPredicate,
+  decodeProviderCursor,
+  encodeProviderCursor,
+  KEYSET_ORDER_KEYS_RATING,
+  type ProviderCursorAnchor,
+} from "./keyset"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,6 +43,11 @@ export interface UnrestrictedOpts {
   latNum: number | null
   /** User's longitude (may be null if !hasGeo). */
   lngNum: number | null
+  /**
+   * Âncora keyset já validada pela rota (rating-only neste caminho).
+   * Presente ⇒ seek por predicado de linha, sem OFFSET.
+   */
+  cursorAnchor?: ProviderCursorAnchor | null
 }
 
 /** Result of the unrestricted fallback query. */
@@ -44,6 +56,10 @@ export interface UnrestrictedResult {
   total: number
   /** Always -1, meaning "beyond max expansion (100 km)". */
   expandedRadius: -1
+  /** Âncora do último item da página (null quando não há mais). */
+  nextCursor: string | null
+  /** Exato: SELECT traz take+1 rows; sobrou ⇒ há próxima página. */
+  hasMore: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -65,18 +81,51 @@ export async function fetchUnrestrictedResults(
   opts: UnrestrictedOpts,
   deps: FetchProvidersDataDeps,
 ): Promise<UnrestrictedResult> {
-  const { fbWhere, fbParams, take, skip, hasGeo, latNum, lngNum } = opts
+  const { fbWhere, fbParams, take, skip, hasGeo, latNum, lngNum, cursorAnchor } = opts
   const { queryRawUnsafe } = deps
 
   // ── Phase 1b: Resolve paginated provider IDs ──────────────────────────
-  const fallbackIds = await queryRawUnsafe<Array<{ id: string }>>(
-    `SELECT u.id FROM "User" u WHERE ${fbWhere}
-     ORDER BY u."avgRating" DESC NULLS LAST, u."favoriteCount" DESC
-     LIMIT $${fbParams.length + 1} OFFSET $${fbParams.length + 2}`,
-    ...fbParams,
-    take,
-    skip,
-  )
+  // Âncoras na SELECT: o nextCursor vem do último item da página.
+  let idSql: string
+  let idQueryParams: unknown[]
+  if (cursorAnchor) {
+    // Keyset: take+1 rows para hasMore EXATO (sem COUNT extra).
+    // Este caminho é SEMPRE rating-ordered; um cursor distance (sequência que
+    // migrou de volta para o fallback após drift de localização) carrega as
+    // mesmas chaves r/f/id — o seek rating continua a sequência sem lançar.
+    const pred = buildKeysetPredicate({
+      sort: "rating",
+      anchor: cursorAnchor,
+      startParam: fbParams.length + 1,
+    })
+    idSql = `SELECT u.id, u."avgRating" AS "avgRating", u."favoriteCount" AS "favoriteCount" FROM "User" u WHERE ${fbWhere} AND ${pred.sql}
+     ORDER BY ${KEYSET_ORDER_KEYS_RATING}
+     LIMIT $${fbParams.length + pred.params.length + 1}`
+    idQueryParams = [...fbParams, ...pred.params, take + 1]
+  } else {
+    idSql = `SELECT u.id, u."avgRating" AS "avgRating", u."favoriteCount" AS "favoriteCount" FROM "User" u WHERE ${fbWhere}
+     ORDER BY u."avgRating" DESC NULLS LAST, u."favoriteCount" DESC, u.id ASC
+     LIMIT $${fbParams.length + 1} OFFSET $${fbParams.length + 2}`
+    idQueryParams = [...fbParams, take + 1, skip]
+  }
+
+  const fallbackRows = await queryRawUnsafe<
+    Array<{ id: string; avgRating: number | null; favoriteCount: number | null }>
+  >(idSql, ...idQueryParams)
+
+  const hasMore = fallbackRows.length > take
+  const pageRows = hasMore ? fallbackRows.slice(0, take) : fallbackRows
+
+  let nextCursor: string | null = null
+  if (hasMore) {
+    const last = pageRows[pageRows.length - 1]
+    nextCursor = encodeProviderCursor({
+      s: "rating",
+      r: last.avgRating ?? null,
+      f: last.favoriteCount ?? null,
+      id: last.id,
+    })
+  }
 
   // ── Count total matching providers ─────────────────────────────────────
   const countResult = await queryRawUnsafe<Array<{ total: bigint }>>(
@@ -85,16 +134,16 @@ export async function fetchUnrestrictedResults(
   )
   const total = Number(countResult[0]?.total ?? 0)
 
-  if (fallbackIds.length === 0) {
-    return { items: [], total, expandedRadius: -1 }
+  if (pageRows.length === 0) {
+    return { items: [], total, expandedRadius: -1, nextCursor: null, hasMore: false }
   }
 
   // ── Phase 2: Fetch full provider data ──────────────────────────────────
   const items = await fetchProvidersData(
-    fallbackIds.map((r) => r.id),
+    pageRows.map((r) => r.id),
     { hasGeo, latNum, lngNum, centerGeo: null },
     deps,
   )
 
-  return { items, total, expandedRadius: -1 }
+  return { items, total, expandedRadius: -1, nextCursor, hasMore }
 }

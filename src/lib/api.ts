@@ -290,6 +290,7 @@ export function fetchProviders(query: ProvidersQuery) {
     sort: query.sort,
     cursor: query.cursor,
     limit: query.limit,
+    page: query.page,
     verified: query.verified,
     minRating: query.minRating,
   })
