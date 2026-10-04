@@ -1,5 +1,17 @@
-import { describe, it, expect } from "vitest"
-import { createRadiusGeoJSON, estimatePolygonRadius } from "../geo-circle"
+import { describe, it, expect, vi } from "vitest"
+import {
+  createRadiusGeoJSON,
+  estimatePolygonRadius,
+  syncAccuracyCircle,
+  removeAccuracyCircle,
+  accuracyPulseOpacities,
+  startAccuracyPulse,
+  ACCURACY_SOURCE_ID,
+  ACCURACY_PULSE_LAYER_ID,
+  RADIUS_SOURCE_ID,
+  type GeoJsonSourceLike,
+  type PulseMapLike,
+} from "../geo-circle"
 import { haversineKm } from "../geo-shared"
 
 // ---------------------------------------------------------------------------
@@ -284,5 +296,235 @@ describe("createRadiusGeoJSON fuzzing (100 random inputs)", () => {
           `estimated=${maxErrorCase?.estimated.toFixed(1)}km, error=${(maxError * 100).toFixed(1)}%`,
       )
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// syncAccuracyCircle / removeAccuracyCircle — círculo pontilhado da incerteza
+// do GPS ao redor do marcador (raio = accuracy/1000 km, IDs próprios)
+// ---------------------------------------------------------------------------
+
+/** Mapa fake com a interface MapLike (spies de sources/layers). */
+function makeFakeMap() {
+  type FakeSource = Record<string, unknown> & GeoJsonSourceLike
+  const sources = new Map<string, FakeSource>()
+  const layers = new Set<string>()
+  const addedLayers: Array<Record<string, unknown>> = []
+  return {
+    sources,
+    layers,
+    addedLayers,
+    getSource: vi.fn((id: string) => sources.get(id)),
+    addSource: vi.fn((id: string, source: Record<string, unknown>) =>
+      sources.set(id, {
+        ...source,
+        setData: vi.fn((data: Record<string, unknown>) => {
+          sources.set(id, { ...(sources.get(id) as FakeSource), data })
+        }),
+      } as FakeSource),
+    ),
+    getLayer: vi.fn((id: string) => layers.has(id)),
+    addLayer: vi.fn((layer: Record<string, unknown>) => {
+      addedLayers.push(layer)
+      layers.add(layer.id as string)
+    }),
+    removeLayer: vi.fn((id: string) => layers.delete(id)),
+    removeSource: vi.fn((id: string) => sources.delete(id)),
+  }
+}
+
+describe("syncAccuracyCircle / removeAccuracyCircle", () => {
+  const LAT = -18.8517
+  const LNG = -41.9469
+
+  it("cria source + camadas com IDs próprios (distintos do círculo de raio)", () => {
+    const map = makeFakeMap()
+    syncAccuracyCircle(map, LAT, LNG, 12)
+
+    expect(map.sources.has(ACCURACY_SOURCE_ID)).toBe(true)
+    expect(map.sources.has(RADIUS_SOURCE_ID)).toBe(false)
+    expect(map.layers.has("accuracy-circle-fill")).toBe(true)
+    expect(map.layers.has("accuracy-circle-dots")).toBe(true)
+    // anel do pulso (efeito radar) nasce invisível (respeita reduced-motion)
+    expect(map.layers.has(ACCURACY_PULSE_LAYER_ID)).toBe(true)
+    const pulse = map.addedLayers.find((l) => l.id === ACCURACY_PULSE_LAYER_ID)
+    expect((pulse?.paint as Record<string, unknown>)["fill-opacity"]).toBe(0)
+
+    // Outline pontilhado: line com line-dasharray + round caps
+    const dots = map.addedLayers.find((l) => l.id === "accuracy-circle-dots")
+    expect(dots).toBeDefined()
+    expect(dots?.type).toBe("line")
+    expect((dots?.paint as Record<string, unknown>)["line-dasharray"]).toEqual([0.1, 2])
+    expect(dots?.layout).toEqual(expect.objectContaining({ "line-cap": "round" }))
+  })
+
+  it("raio do círculo = accuracy/1000 km (fix de 12 m → 12 m de raio)", () => {
+    const map = makeFakeMap()
+    syncAccuracyCircle(map, LAT, LNG, 12)
+
+    const data = map.sources.get(ACCURACY_SOURCE_ID)!.data as Record<string, unknown>
+    const avg = estimatePolygonRadius(data as any, LAT, LNG)
+    expect(avg).toBeGreaterThan(0.011) // 11 m
+    expect(avg).toBeLessThan(0.013) // 13 m
+  })
+
+  it("fix grosseira de 500 m → círculo de ~500 m de raio", () => {
+    const map = makeFakeMap()
+    syncAccuracyCircle(map, LAT, LNG, 500)
+
+    const data = map.sources.get(ACCURACY_SOURCE_ID)!.data as Record<string, unknown>
+    const avg = estimatePolygonRadius(data as any, LAT, LNG)
+    expect(avg).toBeGreaterThan(0.45)
+    expect(avg).toBeLessThan(0.55)
+  })
+
+  it("segunda chamada atualiza via setData sem recriar source/camadas", () => {
+    const map = makeFakeMap()
+    syncAccuracyCircle(map, LAT, LNG, 12)
+    const dataBefore = map.sources.get(ACCURACY_SOURCE_ID)!.data
+
+    syncAccuracyCircle(map, LAT, LNG, 500)
+
+    expect(map.addSource).toHaveBeenCalledTimes(1)
+    expect(map.addLayer).toHaveBeenCalledTimes(3) // fill + dots + pulse
+    const dataAfter = map.sources.get(ACCURACY_SOURCE_ID)!.data
+    expect(dataAfter).not.toBe(dataBefore) // setData recebeu geojson novo
+    const avg = estimatePolygonRadius(dataAfter as any, LAT, LNG)
+    expect(avg).toBeGreaterThan(0.45)
+  })
+
+  it.each([
+    ["accuracy null", null],
+    ["accuracy undefined", undefined],
+    ["accuracy 0", 0],
+    ["accuracy negativa", -5],
+    ["accuracy NaN", NaN],
+  ])("%s remove o círculo em vez de desenhar", (_label, accuracy) => {
+    const map = makeFakeMap()
+    syncAccuracyCircle(map, LAT, LNG, accuracy as number | null | undefined)
+
+    expect(map.sources.has(ACCURACY_SOURCE_ID)).toBe(false)
+    expect(map.layers.has("accuracy-circle-fill")).toBe(false)
+    expect(map.layers.has("accuracy-circle-dots")).toBe(false)
+  })
+
+  it("accuracy inválida remove círculo pré-existente (fix perdida)", () => {
+    const map = makeFakeMap()
+    syncAccuracyCircle(map, LAT, LNG, 12)
+    expect(map.sources.has(ACCURACY_SOURCE_ID)).toBe(true)
+
+    syncAccuracyCircle(map, LAT, LNG, null)
+
+    expect(map.sources.has(ACCURACY_SOURCE_ID)).toBe(false)
+    expect(map.removeSource).toHaveBeenCalledWith(ACCURACY_SOURCE_ID)
+  })
+
+  it("removeAccuracyCircle é idempotente e não derruba o círculo de raio", () => {
+    const map = makeFakeMap()
+    map.sources.set(RADIUS_SOURCE_ID, {
+      type: "geojson",
+      data: {},
+      setData: vi.fn(),
+    })
+    map.layers.add("radius-circle-fill")
+
+    removeAccuracyCircle(map)
+    removeAccuracyCircle(map) // segunda chamada: no-op
+
+    expect(map.sources.has(RADIUS_SOURCE_ID)).toBe(true)
+    expect(map.layers.has("radius-circle-fill")).toBe(true)
+  })
+
+  it("removeAccuracyCircle remove também a camada do pulso", () => {
+    const map = makeFakeMap()
+    syncAccuracyCircle(map, LAT, LNG, 12)
+    expect(map.layers.has(ACCURACY_PULSE_LAYER_ID)).toBe(true)
+
+    removeAccuracyCircle(map)
+
+    expect(map.layers.has(ACCURACY_PULSE_LAYER_ID)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Efeito radar — pulso suave (accuracyPulseOpacities + startAccuracyPulse)
+// ---------------------------------------------------------------------------
+
+describe("accuracyPulseOpacities (curva do pulso)", () => {
+  it("fase 0 (repouso): pulso apagado, fill na base 0.08", () => {
+    const { pulse, fill } = accuracyPulseOpacities(0)
+    expect(pulse).toBe(0)
+    expect(fill).toBeCloseTo(0.08, 10)
+  })
+
+  it("fase 0.5 (pico do sino): pulso 0.14, fill respirando em 0.13", () => {
+    const { pulse, fill } = accuracyPulseOpacities(0.5)
+    expect(pulse).toBeCloseTo(0.14, 10)
+    expect(fill).toBeCloseTo(0.13, 10)
+  })
+
+  it("fase 1 equivale a 0 e fase negativa dá wrap (ciclo contínuo)", () => {
+    expect(accuracyPulseOpacities(1)).toEqual(accuracyPulseOpacities(0))
+    expect(accuracyPulseOpacities(-0.5)).toEqual(accuracyPulseOpacities(0.5))
+    expect(accuracyPulseOpacities(2.25)).toEqual(accuracyPulseOpacities(0.25))
+  })
+
+  it("opacidades sempre dentro dos limites para fases arbitrárias", () => {
+    for (let i = 0; i <= 48; i++) {
+      const { pulse, fill } = accuracyPulseOpacities(i / 48)
+      expect(pulse).toBeGreaterThanOrEqual(0)
+      expect(pulse).toBeLessThanOrEqual(0.14 + 1e-12)
+      expect(fill).toBeGreaterThanOrEqual(0.08 - 1e-12)
+      expect(fill).toBeLessThanOrEqual(0.14 + 1e-12)
+    }
+  })
+})
+
+describe("startAccuracyPulse (loop rAF + setPaintProperty)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("anima fill-opacity das camadas pulse/base e stop restaura os valores base", () => {
+    const rafCbs: Array<(now: number) => void> = []
+    const rafSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((cb) => (rafCbs.push(cb), rafCbs.length))
+    const cafSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {})
+
+    const setPaintProperty = vi.fn()
+    const map = { ...makeFakeMap(), setPaintProperty } as unknown as PulseMapLike
+
+    const stop = startAccuracyPulse(map, 2400)
+    expect(rafSpy).toHaveBeenCalledTimes(1)
+    expect(rafCbs).toHaveLength(1)
+
+    // meio do ciclo (~1.2s após o início) → pico do sino (com tolerância de
+    // relógio: o delta real entre t0 e o frame simulado pode variar μs/ms)
+    rafCbs[0]!(performance.now() + 1200)
+    const pulseCall = setPaintProperty.mock.calls.find((c) => c[0] === ACCURACY_PULSE_LAYER_ID)
+    const fillCall = setPaintProperty.mock.calls.find((c) => c[0] === "accuracy-circle-fill")
+    expect(pulseCall?.[1]).toBe("fill-opacity")
+    expect(pulseCall?.[2] as number).toBeGreaterThan(0.13)
+    expect(pulseCall?.[2] as number).toBeLessThanOrEqual(0.14)
+    expect(fillCall?.[1]).toBe("fill-opacity")
+    expect(fillCall?.[2] as number).toBeGreaterThan(0.12)
+    expect(fillCall?.[2] as number).toBeLessThanOrEqual(0.14)
+
+    stop()
+    expect(cafSpy).toHaveBeenCalled()
+    expect(setPaintProperty).toHaveBeenLastCalledWith("accuracy-circle-fill", "fill-opacity", 0.1)
+
+    // após o stop, frames pendentes não animam mais (stopped)
+    const callsAfterStop = setPaintProperty.mock.calls.length
+    rafCbs.at(-1)!(performance.now())
+    expect(setPaintProperty.mock.calls.length).toBe(callsAfterStop)
+  })
+
+  it("sem setPaintProperty (mock/jsdom) o pulso é no-op seguro", () => {
+    const map = makeFakeMap() as unknown as PulseMapLike
+    const stop = startAccuracyPulse(map)
+    expect(typeof stop).toBe("function")
+    expect(() => stop()).not.toThrow()
   })
 })

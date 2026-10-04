@@ -69,6 +69,8 @@ export type ProviderDetail = ProviderCard & {
   state?: string | null
   cep?: string | null
   radiusKm?: number | null
+  /** Precisão da última fix do GPS do prestador (± m) — círculo de incerteza. */
+  gpsAccuracyM?: number | null
   availability?: ProviderAvailability[]
   reviews?: ProviderReview[]
 }

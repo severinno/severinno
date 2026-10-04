@@ -38,7 +38,24 @@ export async function PATCH(req: Request) {
     const user = await requireUser()
     const { step, done } = await parseBody(req, onboardingSchema)
 
-    const data = JSON.stringify({ step: step ?? 0, done: done ?? false })
+    // Mescla com o progresso salvo: um PATCH parcial (ex.: o wizard salvando
+    // só { step }) não pode resetar done de um onboarding já concluído.
+    const existing = await db.setting.findUnique({
+      where: { key: `onboarding:${user.userId}` },
+    })
+    let current: { step?: number; done?: boolean } = {}
+    if (existing) {
+      try {
+        current = JSON.parse(existing.value) as { step?: number; done?: boolean }
+      } catch {
+        current = {}
+      }
+    }
+
+    const data = JSON.stringify({
+      step: step ?? current.step ?? 0,
+      done: done ?? current.done ?? false,
+    })
 
     await db.setting.upsert({
       where: { key: `onboarding:${user.userId}` },

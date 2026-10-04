@@ -39,6 +39,9 @@ export const USER_PUBLIC_SELECT = {
   lat: true,
   lng: true,
   radiusKm: true,
+  // Precisão da última fix do GPS (± m) — público: desenha o círculo de
+  // incerteza no mapa do prestador (não é dado pessoal sensível).
+  gpsAccuracyM: true,
   cep: true,
   slug: true,
   verified: true,
@@ -122,6 +125,7 @@ export const PUBLIC_PROVIDER_SELECT = {
   lat: true,
   lng: true,
   radiusKm: true,
+  gpsAccuracyM: true,
   avgRating: true,
   reviewCount: true,
   favoriteCount: true,

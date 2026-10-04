@@ -15,3 +15,6 @@ setup-vps.sh
 DEPLOY_HOSTINGER.md
 # Gerado por `bun run docs:generate` (scripts/generate-openapi.ts).
 public/openapi.json
+# Gerado por scripts/sync-maplibre-worker.mjs (worker standalone do maplibre-gl
+# copiado de node_modules — o formato é do gerador, pela mesma política acima).
+public/maplibre/

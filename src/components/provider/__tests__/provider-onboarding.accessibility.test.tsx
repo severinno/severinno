@@ -32,12 +32,17 @@ vi.mock("@tanstack/react-query", () => ({
 }))
 
 vi.mock("lucide-react", () => ({
+  Camera: () => <svg />,
   Check: () => <svg />,
   ChevronLeft: () => <svg />,
   ChevronRight: () => <svg />,
+  ImagePlus: () => <svg />,
+  Loader2: () => <svg />,
+  MapPin: () => <svg />,
   Play: () => <svg />,
   Smartphone: () => <svg />,
   Volume2: () => <svg />,
+  X: () => <svg />,
 }))
 
 vi.mock("framer-motion", () => ({

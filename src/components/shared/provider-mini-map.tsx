@@ -19,12 +19,15 @@ import { useLocationBroadcaster } from "@/hooks/use-location-broadcaster"
 import {
   syncRadiusCircle,
   removeRadiusCircle,
+  syncAccuracyCircle,
+  removeAccuracyCircle,
   syncRadiusHandle,
   removeRadiusHandle,
   makeRadiusEdgeDraggable,
   type EdgeDragMap,
   type MapLike,
 } from "@/lib/geo-circle"
+import { ensureMaplibreWorker } from "@/lib/maplibre-worker"
 import { Slider } from "@/components/ui/slider"
 import { apiPatch } from "@/lib/api"
 
@@ -58,6 +61,8 @@ type Props = {
   userLng?: number | null
   /** Provider's service radius in km (for drawing the radius circle on the map). */
   radiusKm?: number | null
+  /** Precisão da última fix do GPS do prestador (± m) — círculo pontilhado de incerteza. */
+  accuracyM?: number | null
   /** Called when the user adjusts the radius slider. */
   onRadiusChange?: (radiusKm: number) => void
   /** Enable interactive edge-dot dragging. Only meaningful for the provider's own profile. */
@@ -81,6 +86,7 @@ export default function ProviderMiniMap({
   userLat,
   userLng,
   radiusKm,
+  accuracyM,
   onRadiusChange,
   interactive = false,
   height = 200,
@@ -180,6 +186,11 @@ export default function ProviderMiniMap({
         const maplibregl = maplibreModule as typeof import("maplibre-gl")
         if (cancelled || !containerRef.current) return
 
+        // Worker por URL ANTES da criação do mapa — o bundler quebra o worker
+        // blob do MapLibre (mapa em branco, zero tiles .pbf).
+        await ensureMaplibreWorker()
+        if (cancelled || !containerRef.current) return
+
         const map = new maplibregl.Map({
           container: containerRef.current,
           style: {
@@ -234,6 +245,11 @@ export default function ProviderMiniMap({
               )
             }
           }
+          // Círculo de incerteza da ÚLTIMA fix do GPS salva (± m) — aparece
+          // com a localização salva, sem nova fix; inválida não desenha.
+          if (accuracyM != null) {
+            syncAccuracyCircle(map as unknown as MapLike, providerLat, providerLng, accuracyM)
+          }
         })
 
         // Fallback: after 5s mark as ready anyway
@@ -256,6 +272,9 @@ export default function ProviderMiniMap({
                   },
                 )
               }
+            }
+            if (accuracyM != null && mapInstance) {
+              syncAccuracyCircle(map as unknown as MapLike, providerLat, providerLng, accuracyM)
             }
           }
         }, 5000)
@@ -311,11 +330,12 @@ export default function ProviderMiniMap({
       // Cleanup radius circle layers
       if (mapInstance) {
         removeRadiusCircle(mapInstance as unknown as MapLike)
+        removeAccuracyCircle(mapInstance as unknown as MapLike)
         removeRadiusHandle(mapInstance as unknown as MapLike)
       }
       cleanup?.()
     }
-  }, [providerLat, providerLng, providerName, userLat, userLng, radiusKm, interactive])
+  }, [providerLat, providerLng, providerName, userLat, userLng, radiusKm, accuracyM, interactive])
 
   // Update radius circle dynamically when slider changes (without recreating map)
   // NOTE: We do NOT call removeRadiusCircle/removeRadiusHandle here because

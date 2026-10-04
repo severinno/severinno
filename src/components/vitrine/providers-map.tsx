@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
 import { formatDistance } from "@/lib/geo-client"
 import { syncRadiusCircle, removeRadiusCircle, type MapLike } from "@/lib/geo-circle"
+import { ensureMaplibreWorker } from "@/lib/maplibre-worker"
 import { Slider } from "@/components/ui/slider"
 import { fitProvidersBounds, syncUserLocationMarker, escapeHtml } from "@/components/map/helpers"
 import type { ProviderCard } from "@/lib/api"
@@ -131,6 +132,11 @@ export default function ProvidersMap({
       const maplibregl = await import("maplibre-gl")
       if (cancelled || !containerRef.current) return
       maplibreglRef.current = maplibregl
+
+      // Worker por URL ANTES da criação do mapa — o bundler quebra o worker
+      // blob do MapLibre (mapa em branco, zero tiles .pbf).
+      await ensureMaplibreWorker()
+      if (cancelled || !containerRef.current) return
 
       const map = new maplibregl.Map({
         container: containerRef.current,

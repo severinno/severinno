@@ -18,6 +18,8 @@ import {
 } from "lucide-react"
 
 import { apiGet, apiPatch } from "@/lib/api"
+import { nearbyPhrase, suggestRadiusFromAccuracy } from "@/lib/geo-radius"
+import { refineSuggestedRadius } from "@/lib/geo-density"
 import { playCoinSound, playCompletionSound, playReviewSound, tryVibrate } from "@/lib/sounds"
 import { providerProfileSchema, type ProviderProfileInput } from "@/lib/validators"
 import { useAuthStore } from "@/store/auth"
@@ -217,6 +219,7 @@ export function ProviderProfile() {
       lat?: number | null
       lng?: number | null
       radiusKm?: number | null
+      gpsAccuracyM?: number | null
       verified: boolean
       soundEnabled?: boolean
       vibrateEnabled?: boolean
@@ -248,6 +251,7 @@ export function ProviderProfile() {
       lat: undefined,
       lng: undefined,
       radiusKm: 15,
+      gpsAccuracyM: undefined,
     },
   })
 
@@ -288,6 +292,7 @@ export function ProviderProfile() {
         lat: profile.lat ?? undefined,
         lng: profile.lng ?? undefined,
         radiusKm: profile.radiusKm ?? 15,
+        gpsAccuracyM: profile.gpsAccuracyM ?? undefined,
       })
     }
   }, [profile, form])
@@ -302,9 +307,33 @@ export function ProviderProfile() {
     toast.info("Obtendo sua localização…")
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const { latitude, longitude } = pos.coords
+        const { latitude, longitude, accuracy } = pos.coords
         form.setValue("lat", latitude)
         form.setValue("lng", longitude)
+        // Persiste a precisão da fix — o círculo de incerteza aparece depois
+        // com a localização salva, sem precisar de nova fix.
+        form.setValue("gpsAccuracyM", accuracy ?? null)
+        // Raio inicial ideal a partir da precisão da fix (±accuracy em m).
+        const suggestedRadius = suggestRadiusFromAccuracy(accuracy)
+        form.setValue("radiusKm", suggestedRadius)
+
+        // Refino assíncrono com as métricas de busca do marketplace (densidade
+        // de prestadores por bairro): área densa encolhe o raio, área esparsa
+        // cresce. Só aplica se o usuário não mexeu no raio nesse meio-tempo
+        // (a sugestão por accuracy continua valendo em falha da API).
+        void refineSuggestedRadius({
+          accuracyM: accuracy,
+          baseRadiusKm: suggestedRadius,
+          lat: latitude,
+          lng: longitude,
+        }).then((refined) => {
+          if (!refined || form.getValues("radiusKm") !== suggestedRadius) return
+          form.setValue("radiusKm", refined.radiusKm)
+          const districtPart = refined.district ? ` · bairro mais denso: ${refined.district}` : ""
+          toast.info(
+            `Raio ajustado pela densidade local: ${refined.radiusKm} km — ${nearbyPhrase(refined.nearbyCount)}${districtPart}.`,
+          )
+        })
         // Try reverse geocoding
         try {
           const data = await apiGet<{
@@ -319,9 +348,11 @@ export function ProviderProfile() {
           if (data.district) form.setValue("district", data.district)
           if (data.city) form.setValue("city", data.city)
           if (data.state) form.setValue("state", data.state)
-          toast.success("Localização capturada.")
+          toast.success(`Localização capturada. Raio sugerido: ${suggestedRadius} km.`)
         } catch {
-          toast.success("Coordenadas capturadas. Preencha o endereço manualmente.")
+          toast.success(
+            `Coordenadas capturadas. Raio sugerido: ${suggestedRadius} km. Preencha o endereço manualmente.`,
+          )
         }
       },
       () => {

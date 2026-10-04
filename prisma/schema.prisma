@@ -107,9 +107,17 @@ model User {
   lng          Float?
   // Operating radius (km) — providers only; null for clients/admins
   radiusKm     Float?
+  // Última precisão da fix do GPS (± metros) — desenha o círculo de incerteza
+  // no mapa mesmo quando a localização vem salva (sem nova fix).
+  gpsAccuracyM Float?
   // PostGIS spatial geography column — managed via SQL trigger (sync_user_location)
   // READ-ONLY via Prisma: all spatial access uses $queryRaw (see src/lib/postgis.ts)
   location     Unsupported("geography(Point, 4326)")?
+  // Vetor de busca full-text (tsvector) — mantido pelo trigger
+  // user_search_vector_update (migration 20260726120000) e consumido por SQL
+  // cru em src/lib/sql-builder.ts. Declarado aqui SÓ para o Prisma enxergar a
+  // coluna e nunca propor DROP no `db push` (drift destrutivo).
+  search_vector Unsupported("tsvector")?
   // Brazilian address fields
   cep          String?
   street       String?
@@ -938,8 +946,15 @@ model SearchReindexQueue {
   entityType String
   entityId   String
   action     String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  // A tabela REAL (criada por 20260724140000_auto_reindex_triggers e usada
+  // por SQL cru em src/lib/api-server.ts + src/queue/search-index-consumer.ts)
+  // é "search_reindex_queue" (lowercase): TIMESTAMPTZ, SEM updatedAt e com
+  // índice próprio. Sem o @@map o Prisma enxergava uma tabela
+  // "SearchReindexQueue" fantasma e o `db push` propunha DROP da tabela real
+  // — com dezenas de milhares de rows na fila de reindexação.
+  @@map("search_reindex_queue")
 
-  @@index([createdAt])
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([createdAt], map: "idx_search_reindex_queue_created")
 }

@@ -28,6 +28,7 @@ import {
   WifiOff,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ensureMaplibreWorker } from "@/lib/maplibre-worker"
 import { syncRadiusCircle, type MapLike } from "@/lib/geo-circle"
 
 // ---------------------------------------------------------------------------
@@ -301,9 +302,14 @@ export function LiveTracking({
     let isMounted = true
 
     Promise.all([import("maplibre-gl"), import("maplibre-gl/dist/maplibre-gl.css")])
-      .then(([maplibreglModule]) => {
+      .then(async ([maplibreglModule]) => {
         if (!isMounted || !mapContainerRef.current) return
         const maplibregl = maplibreglModule as typeof import("maplibre-gl")
+
+        // Worker por URL ANTES da criação do mapa — o bundler quebra o worker
+        // blob do MapLibre (mapa em branco, zero tiles .pbf).
+        await ensureMaplibreWorker()
+        if (!isMounted || !mapContainerRef.current) return
 
         const map = new maplibregl.Map({
           container: mapContainerRef.current,

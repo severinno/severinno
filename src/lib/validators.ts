@@ -90,6 +90,8 @@ export const providerProfileSchema = z.object({
   lat: z.coerce.number().optional(),
   lng: z.coerce.number().optional(),
   radiusKm: z.coerce.number().min(1).max(200).optional(),
+  // Precisão da última fix do GPS (± m) — null = sem fix conhecida
+  gpsAccuracyM: z.coerce.number().min(0).max(100_000).nullable().optional(),
   soundEnabled: z.boolean().optional(),
   vibrateEnabled: z.boolean().optional(),
 })

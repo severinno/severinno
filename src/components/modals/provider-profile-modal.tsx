@@ -701,17 +701,31 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
 
       {/* Mini map with radius circle */}
       {hasProviderCoords ? (
-        <ProviderMiniMap
-          providerLat={provider!.lat!}
-          providerLng={provider!.lng!}
-          providerName={provider!.name}
-          userLat={userLat}
-          userLng={userLng}
-          radiusKm={previewRadius ?? radius}
-          onRadiusChange={handleRadiusChange}
-          height={200}
-          className="w-full"
-        />
+        <div>
+          <ProviderMiniMap
+            providerLat={provider!.lat!}
+            providerLng={provider!.lng!}
+            providerName={provider!.name}
+            userLat={userLat}
+            userLng={userLng}
+            radiusKm={previewRadius ?? radius}
+            accuracyM={provider!.gpsAccuracyM}
+            onRadiusChange={handleRadiusChange}
+            height={200}
+            className="w-full"
+          />
+          {provider!.gpsAccuracyM != null && provider!.gpsAccuracyM > 0 ? (
+            <p className="text-muted-foreground mt-1.5 text-[11px]">
+              Círculo pontilhado âmbar = precisão do último GPS (±
+              {provider!.gpsAccuracyM >= 1000
+                ? ` ${(provider!.gpsAccuracyM / 1000).toLocaleString("pt-BR", {
+                    maximumFractionDigits: 1,
+                  })} km`
+                : ` ${Math.round(provider!.gpsAccuracyM)} m`}
+              ).
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       <Separator />

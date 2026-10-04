@@ -199,6 +199,181 @@ export function removeRadiusCircle(map: MapLike): void {
 }
 
 // ---------------------------------------------------------------------------
+// GPS accuracy (uncertainty) circle
+// ---------------------------------------------------------------------------
+
+/** Layer / source ID used for the GPS accuracy circle (distinct from radius). */
+export const ACCURACY_SOURCE_ID = "accuracy-circle-source"
+
+/** Camada fill animada do efeito radar sobre o círculo de accuracy. */
+export const ACCURACY_PULSE_LAYER_ID = "accuracy-circle-pulse"
+
+/** Duração de um ciclo completo do pulso (ms). */
+export const ACCURACY_PULSE_PERIOD_MS = 2400
+
+/**
+ * Add or update a dotted circle showing the GPS accuracy (uncertainty) area
+ * around the marker — a visual reference for how precise the fix is.
+ *
+ * The circle radius is `accuracyM / 1000` km, so a ±12 m fix draws a ~12 m
+ * circle. Amber tones distinguish it from the blue service-radius circle.
+ * Any invalid accuracy (null/undefined/NaN/≤ 0) removes the circle instead,
+ * so callers can pass the value straight from `GeolocationPosition`.
+ */
+export function syncAccuracyCircle(
+  map: MapLike,
+  lat: number,
+  lng: number,
+  accuracyM: number | null | undefined,
+): void {
+  const radiusKm = (accuracyM ?? NaN) / 1000
+  if (!Number.isFinite(radiusKm) || radiusKm <= 0) {
+    removeAccuracyCircle(map)
+    return
+  }
+
+  const geojson = createRadiusGeoJSON(lat, lng, radiusKm)
+
+  const existing = map.getSource(ACCURACY_SOURCE_ID)
+  if (existing) {
+    // Source already exists — just update the data in-place
+    existing.setData(geojson)
+    return
+  }
+
+  map.addSource(ACCURACY_SOURCE_ID, {
+    type: "geojson",
+    data: geojson,
+  })
+
+  // Faint amber fill (GPS uncertainty area)
+  map.addLayer({
+    id: "accuracy-circle-fill",
+    type: "fill",
+    source: ACCURACY_SOURCE_ID,
+    paint: {
+      "fill-color": "#d97706",
+      "fill-opacity": 0.1,
+    },
+  })
+
+  // Dotted outline: short dashes + round caps render as dots at any zoom
+  map.addLayer({
+    id: "accuracy-circle-dots",
+    type: "line",
+    source: ACCURACY_SOURCE_ID,
+    layout: {
+      "line-cap": "round",
+      "line-join": "round",
+    },
+    paint: {
+      "line-color": "#b45309",
+      "line-opacity": 0.85,
+      "line-width": 1.5,
+      "line-dasharray": [0.1, 2],
+    },
+  })
+
+  // Anel de pulso (efeito radar): fill âmbar animado por startAccuracyPulse;
+  // inicia invisível para respeitar prefers-reduced-motion (estático).
+  map.addLayer({
+    id: ACCURACY_PULSE_LAYER_ID,
+    type: "fill",
+    source: ACCURACY_SOURCE_ID,
+    paint: {
+      "fill-color": "#f59e0b",
+      "fill-opacity": 0,
+    },
+  })
+}
+
+/**
+ * Remove the accuracy circle layers and source from the map.
+ * Safe to call even if the layers have not been added yet.
+ */
+export function removeAccuracyCircle(map: MapLike): void {
+  try {
+    if (map.getLayer(ACCURACY_PULSE_LAYER_ID)) map.removeLayer(ACCURACY_PULSE_LAYER_ID)
+    if (map.getLayer("accuracy-circle-dots")) map.removeLayer("accuracy-circle-dots")
+    if (map.getLayer("accuracy-circle-fill")) map.removeLayer("accuracy-circle-fill")
+    if (map.getSource(ACCURACY_SOURCE_ID)) map.removeSource(ACCURACY_SOURCE_ID)
+  } catch {
+    // ignore — idempotent cleanup
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Efeito radar — pulso suave no círculo de incerteza do GPS
+// ---------------------------------------------------------------------------
+
+/**
+ * Opacidades do pulso para uma fase do ciclo em [0, 1] (fração do período).
+ *
+ * Curva em sino (sen²) — o fill âmbar extra acende e apaga suavemente e o
+ * fill base "respira" na mesma fase. Pura, para facilitar testes.
+ */
+export function accuracyPulseOpacities(phase: number): { pulse: number; fill: number } {
+  const p = ((phase % 1) + 1) % 1
+  const bell = Math.sin(Math.PI * p) ** 2
+  return { pulse: 0.14 * bell, fill: 0.08 + 0.05 * bell }
+}
+
+/** Map subset para o pulso: precisa de setPaintProperty (MapLibre real). */
+export interface PulseMapLike extends MapLike {
+  setPaintProperty?(layerId: string, prop: string, value: unknown): void
+}
+
+/**
+ * Inicia o pulso (efeito radar) nas camadas do círculo de accuracy.
+ *
+ * Loop rAF que anima `fill-opacity` das camadas pulse/base via
+ * `setPaintProperty` (barato — uniforme, sem rebuild de GeoJSON). Retorna
+ * função de stop que cancela o rAF e restaura as opacidades base (o círculo
+ * fica estático e correto após o stop).
+ *
+ * No-op seguro quando o mapa não expõe `setPaintProperty` (mocks/jsdom) ou
+ * não há rAF (SSR). A decisão de animar (incl. `prefers-reduced-motion`)
+ * é do chamador.
+ */
+export function startAccuracyPulse(
+  map: PulseMapLike,
+  periodMs = ACCURACY_PULSE_PERIOD_MS,
+): () => void {
+  if (typeof map.setPaintProperty !== "function") return () => {}
+  if (typeof requestAnimationFrame !== "function") return () => {}
+
+  let raf = 0
+  let stopped = false
+  const t0 = performance.now()
+
+  const tick = (now: number) => {
+    if (stopped) return
+    const phase = ((now - t0) % periodMs) / periodMs
+    const { pulse, fill } = accuracyPulseOpacities(phase)
+    try {
+      map.setPaintProperty!(ACCURACY_PULSE_LAYER_ID, "fill-opacity", pulse)
+      map.setPaintProperty!("accuracy-circle-fill", "fill-opacity", fill)
+    } catch {
+      // camadas podem ter sido removidas — segue animando (inofensivo)
+    }
+    raf = requestAnimationFrame(tick)
+  }
+
+  raf = requestAnimationFrame(tick)
+
+  return () => {
+    stopped = true
+    cancelAnimationFrame(raf)
+    try {
+      map.setPaintProperty?.(ACCURACY_PULSE_LAYER_ID, "fill-opacity", 0)
+      map.setPaintProperty?.("accuracy-circle-fill", "fill-opacity", 0.1)
+    } catch {
+      // mapa já destruído
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Interactive edge-dot dragging
 // ---------------------------------------------------------------------------
 

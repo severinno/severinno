@@ -52,6 +52,7 @@ interface ProviderRow {
   createdAt: Date
   radiusKm: number | null
   slug: string | null
+  gpsAccuracyM: number | null
 }
 
 /** Shape of each completed-booking group-by row. */
@@ -105,6 +106,8 @@ export interface ProviderDataItem {
   completedBookings: number
   memberSince: string
   distanceKm: number | null
+  /** Precisão (± m) do último GPS salvo pelo prestador — alimenta o círculo de incerteza. */
+  gpsAccuracyM: number | null
   services: Array<{
     id: string
     title: string
@@ -194,6 +197,7 @@ export async function fetchProvidersData(
       createdAt: true,
       radiusKm: true,
       slug: true,
+      gpsAccuracyM: true,
     },
   })
 
@@ -237,6 +241,7 @@ export async function fetchProvidersData(
       completedBookings: stats?.completedBookingCount ?? 0,
       memberSince: p.createdAt.toISOString(),
       distanceKm,
+      gpsAccuracyM: p.gpsAccuracyM,
       services: (servicesByProvider.get(p.id) ?? []).map((s: ServiceRow) => ({
         id: s.id,
         title: s.title,

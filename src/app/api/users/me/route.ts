@@ -58,6 +58,7 @@ export async function PATCH(request: Request) {
         ...(data.city !== undefined ? { city: data.city } : {}),
         ...(data.state !== undefined ? { state: data.state } : {}),
         ...(data.radiusKm !== undefined ? { radiusKm: data.radiusKm } : {}),
+        ...(data.gpsAccuracyM !== undefined ? { gpsAccuracyM: data.gpsAccuracyM } : {}),
         ...(data.soundEnabled !== undefined ? { soundEnabled: data.soundEnabled } : {}),
         ...(data.vibrateEnabled !== undefined ? { vibrateEnabled: data.vibrateEnabled } : {}),
       },
