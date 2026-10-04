@@ -8,7 +8,7 @@
  *   - Content header: result count + active filter chips + view toggle (Lista/Mapa)
  *   - Lista view: responsive grid of provider cards
  *   - Mapa view: split list + map; clicking a marker highlights a card
- *   - Loading: skeleton grid; Empty: friendly state with CTA; Pagination at bottom
+ *   - Loading: skeleton grid; Empty: friendly state with CTA; Load-more (cursor) at bottom
  */
 
 import * as React from "react"
@@ -21,13 +21,6 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination"
 
 import Filters, { DEFAULT_FILTERS, type FiltersState } from "./filters"
 import ProviderCard, { ProviderCardSkeleton } from "./provider-card"
@@ -49,8 +42,6 @@ const ProvidersMap = dynamic(() => import("./enhanced-providers-map"), {
 export type VitrineResultsProps = {
   providers: ProviderCardType[]
   total: number
-  page: number
-  limit: number
   isLoading: boolean
   isFetching: boolean
   error: unknown
@@ -65,7 +56,13 @@ export type VitrineResultsProps = {
   onQuote?: (id: string) => void
   onBook?: (id: string, serviceId?: string) => void
   onView?: (id: string) => void
-  onPageChange?: (page: number) => void
+  /** Paginação real (/?pagina=N): página corrente, total e navegação. */
+  hasPrevPage?: boolean
+  hasNextPage?: boolean
+  currentPage?: number
+  totalPages?: number
+  onPrevPage?: () => void
+  onNextPage?: () => void
   resultsAnchorId?: string
   className?: string
   /** Raio efetivo usado na expansão. null = sem expansão, número = km usado, -1 = além de 100km (sem filtro) */
@@ -77,8 +74,6 @@ type ViewMode = "list" | "map"
 export default function VitrineResults({
   providers,
   total,
-  page,
-  limit,
   isLoading,
   isFetching,
   error,
@@ -92,7 +87,12 @@ export default function VitrineResults({
   onQuote,
   onBook,
   onView,
-  onPageChange,
+  hasPrevPage,
+  hasNextPage,
+  currentPage,
+  totalPages,
+  onPrevPage,
+  onNextPage,
   resultsAnchorId,
   className,
   expandedRadius,
@@ -108,10 +108,6 @@ export default function VitrineResults({
     return selectedId
   }, [selectedId, providers])
 
-  const totalPages = Math.max(1, Math.ceil(total / Math.max(1, limit)))
-  const showingFrom = total === 0 ? 0 : (page - 1) * limit + 1
-  const showingTo = Math.min(total, page * limit)
-
   const activeChips = buildChips(filters, categories)
 
   const handleChipRemove = (key: keyof FiltersState) => {
@@ -124,6 +120,10 @@ export default function VitrineResults({
     else if (key === "minRating") next.minRating = 0
     onFiltersChange(next)
   }
+
+  // Paginação real: botões Anterior/Próxima no rodapé da listagem
+  // (o seek do servidor continua keyset — a página N busca com a âncora
+  // de cursor da N-1; o sentinela/observer do scroll infinito saiu).
 
   return (
     <section
@@ -164,7 +164,7 @@ export default function VitrineResults({
                   )}
                 </h2>
                 <p className="text-muted-foreground mt-0.5 text-xs">
-                  Exibindo {showingFrom}–{showingTo} de {total}
+                  Exibindo {providers.length} de {total}
                 </p>
               </div>
 
@@ -350,39 +350,39 @@ export default function VitrineResults({
             ) : null}
           </div>
 
-          {/* Pagination */}
-          {!error && !isLoading && total > limit ? (
-            <Pagination className="mt-8">
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      if (page > 1) onPageChange?.(page - 1)
-                    }}
-                    aria-disabled={page <= 1}
-                    className={cn(page <= 1 && "pointer-events-none opacity-50")}
-                  />
-                </PaginationItem>
-                <PaginationItem>
-                  <span className="text-sm tabular-nums">
-                    Página {page} de {totalPages}
-                  </span>
-                </PaginationItem>
-                <PaginationItem>
-                  <PaginationNext
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      if (page < totalPages) onPageChange?.(page + 1)
-                    }}
-                    aria-disabled={page >= totalPages}
-                    className={cn(page >= totalPages && "pointer-events-none opacity-50")}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
+          {/* Paginação — Anterior/Próxima (navegação real, pushState). */}
+          {!error && !isLoading && (hasPrevPage || hasNextPage) ? (
+            <nav
+              aria-label="Paginação de resultados"
+              className="mt-8 flex items-center justify-center gap-3"
+            >
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!hasPrevPage || isFetching}
+                onClick={() => onPrevPage?.()}
+              >
+                ← Anterior
+              </Button>
+              <span className="text-muted-foreground text-xs" role="status">
+                {typeof currentPage === "number" && currentPage > 0 ? (
+                  <>
+                    Página {currentPage}
+                    {typeof totalPages === "number" && totalPages > 0 ? ` de ${totalPages}` : ""}
+                  </>
+                ) : null}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!hasNextPage || isFetching}
+                onClick={() => onNextPage?.()}
+              >
+                Próxima →
+              </Button>
+            </nav>
           ) : null}
         </div>
       </div>
