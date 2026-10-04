@@ -481,7 +481,12 @@ describe("bench-guard-timing — o contrato da oferta no commit", () => {
     // está sendo alcançada" com violações [] e o teste da linha 229 flacou;
     // na 41 (task 271), dentro do ruído, passou — oscilação que era o bug.
     const negativo = hookWhatItAdded({
-      deltas: { ofertaComumMs: -(HOOK_RUIDO_MS + 8), esperaMs: 0, ofertaFalhaMs: 0, revalidacaoMs: 0 },
+      deltas: {
+        ofertaComumMs: -(HOOK_RUIDO_MS + 8),
+        esperaMs: 0,
+        ofertaFalhaMs: 0,
+        revalidacaoMs: 0,
+      },
     })
     expect(negativo.join("\n")).toContain("NÃO é alcançada")
     expect(negativo.join("\n")).not.toContain("ATENÇÃO")

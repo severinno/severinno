@@ -23,6 +23,14 @@
  * Hash: mesmos parâmetros de src/lib/crypto.ts (scrypt N=16384, r=8, p=1,
  * salt 16B, chave 64B — formato "saltHex:hashHex"). Script puro Node para
  * rodar na imagem standalone (node:22-alpine, sem bun nem devDeps).
+ *
+ * Usage:
+ *   node scripts/bootstrap-admin.mjs   (na VPS: via docker compose run — ver
+ *   "Uso manual" acima, com os secrets montados)
+ *
+ * Exit codes:
+ *   0 — admin criado/promovido (ou já existente — idempotente)
+ *   1 — credencial ausente/inválida ou falha no bootstrap
  */
 
 import { randomBytes, scryptSync } from "node:crypto"
