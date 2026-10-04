@@ -27,6 +27,7 @@ import {
 import { useGeoStore } from "@/store/geo"
 import { cn } from "@/lib/utils"
 import AddressAutocomplete from "@/components/vitrine/address-autocomplete"
+import { toast } from "sonner"
 import { apiGet } from "@/lib/api"
 import type { CepResult, GeoSearchResult } from "@/lib/api"
 
@@ -196,14 +197,35 @@ export function GeoAddressForm({
     try {
       await setFromGPS()
       const geo = useGeoStore.getState()
-      if (geo.lat != null && geo.lng != null) {
-        set("lat", geo.lat)
-        set("lng", geo.lng)
+      if (geo.lat == null || geo.lng == null) {
+        toast.error(geo.error || "Não foi possível obter sua localização.")
+        return
       }
+      // GPS também preenche o endereço (reverse geocode) — mesmo
+      // comportamento do onboarding do prestador. Se o reverse falhar,
+      // mantém só as coordenadas (usuário preenche manualmente).
+      const updates: Partial<AddressFormValue> = { lat: geo.lat, lng: geo.lng }
+      try {
+        const data = await apiGet<{
+          street?: string
+          district?: string
+          city?: string
+          state?: string
+          cep?: string
+        }>("/api/geo/reverse", { lat: geo.lat, lng: geo.lng })
+        if (data.cep) updates.cep = maskCep(data.cep)
+        if (data.street) updates.street = data.street
+        if (data.district) updates.district = data.district
+        if (data.city) updates.city = data.city
+        if (data.state) updates.state = data.state
+      } catch {
+        // reverse geocode falhou — só coordenadas
+      }
+      onChange({ ...value, ...updates })
     } finally {
       setGpsLoading(false)
     }
-  }, [set, setFromGPS])
+  }, [value, onChange, setFromGPS])
 
   return (
     <div className={cn("grid gap-3", className)}>
@@ -323,13 +345,28 @@ export function GeoAddressForm({
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-1.5">
           <Label htmlFor={`${idPrefix}-state`}>UF</Label>
-          <Select value={value.state} onValueChange={(v) => set("state", v)}>
+          <Select
+            value={value.state}
+            onValueChange={(v) => {
+              // Radix SelectBubbleInput (select nativo oculto) dispara
+              // change com value="" quando o valor é setado
+              // programaticamente (hidratação/CEP/GPS) com o dropdown
+              // fechado — as <option> nativas só existem após abrir o
+              // menu. Ignorar "" evita que esse artefato desfaça a
+              // hidratação da UF. A lista não tem item vazio, então é
+              // seguro.
+              if (v !== "") set("state", v)
+            }}
+          >
             <SelectTrigger
               id={`${idPrefix}-state`}
               className="h-10 w-full text-sm"
               aria-invalid={!!errors?.state}
             >
-              <SelectValue placeholder="Estado" />
+              {/* Radix SelectValue fica em branco quando o valor é setado
+                  programaticamente (GPS/CEP) antes do menu abrir — children
+                  garante a UF visível. */}
+              <SelectValue placeholder="Estado">{value.state || null}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {UF_OPTIONS.map((uf) => (

@@ -9,7 +9,10 @@
 # serviço caddy do docker-compose.prod.yml.
 #
 # Tudo PINADO (lição do check-runner-tag: quem decide a versão é a IMAGEM):
-#   - base Caddy v2.11.4 (a versão que o caddy:2-alpine entregava em 10/2026)
+#   - bases Caddy v2.11.4 POR DIGEST (o digest do ÍNDICE multi-arch de cada
+#     tag, resolvido em 2026-10-02 com `docker buildx imagetools inspect`) —
+#     o build não depende mais do estado da tag no Docker Hub; bump de versão
+#     = tag nova E digest novo, juntos;
 #   - caddy-ratelimit v0.1.0
 #   - transform-encoder v0.0.0-20260423033309-ba4124974830
 #
@@ -25,12 +28,12 @@
 #     validate --adapter caddyfile --config /etc/caddy/Caddyfile
 # ============================================================================
 
-FROM caddy:2.11.4-builder-alpine AS builder
+FROM caddy:2.11.4-builder-alpine@sha256:0aa610043dab5da82ad0a0268e46bb852785e6f5160f12f1c6fe3f42903d7e1b AS builder
 
 RUN xcaddy build v2.11.4 \
     --with github.com/mholt/caddy-ratelimit@v0.1.0 \
     --with github.com/caddyserver/transform-encoder@v0.0.0-20260423033309-ba4124974830
 
-FROM caddy:2.11.4-alpine
+FROM caddy:2.11.4-alpine@sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b
 
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy

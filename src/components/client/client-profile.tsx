@@ -41,7 +41,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Switch } from "@/components/ui/switch"
-import { AddressForm, type AddressFormValue } from "@/components/modals/address-form"
+import { GeoAddressForm, type AddressFormValue } from "@/components/forms/geo-address-form"
 import { PageHeader } from "@/components/client/client-shared"
 
 // ---------------------------------------------------------------------------
@@ -107,11 +107,15 @@ export function ClientProfile() {
   const [soundEnabled, setSoundEnabled] = React.useState(true)
   const [vibrateEnabled, setVibrateEnabled] = React.useState(true)
   const [uploadingAvatar, setUploadingAvatar] = React.useState(false)
-  const initialized = React.useRef(false)
+  // Hidratação: sincroniza o form do perfil a cada snapshot novo do
+  // meQuery ATÉ o usuário editar algo (dirty-guard) — nunca sobrescreve
+  // o que ele digitou. O ref one-shot antigo era frágil: se o primeiro
+  // snapshot chegasse incompleto, campos ficavam vazios para sempre.
+  const dirty = React.useRef(false)
 
   // Populate the form once data arrives
   React.useEffect(() => {
-    if (meQuery.data?.user && !initialized.current) {
+    if (meQuery.data?.user && !dirty.current) {
       const u = meQuery.data.user
       setName(u.name ?? "")
       setWhatsapp(u.whatsapp ?? "")
@@ -120,18 +124,19 @@ export function ClientProfile() {
       setAvatarUrl(u.avatarUrl ?? "")
       setSoundEnabled(u.soundEnabled ?? true)
       setVibrateEnabled(u.vibrateEnabled ?? true)
-      setAddress({
-        cep: u.cep ?? "",
-        street: u.street ?? "",
-        number: u.number ?? "",
-        complement: u.complement ?? "",
-        district: u.district ?? "",
-        city: u.city ?? "",
-        state: u.state ?? "",
-        lat: u.lat ?? null,
-        lng: u.lng ?? null,
-      })
-      initialized.current = true
+      // Merge não-destrutivo: campos ausentes em snapshots parciais são
+      // completados pelo próximo snapshot — nada do usuário é sobrescrito.
+      setAddress((prev) => ({
+        cep: u.cep ?? prev.cep,
+        street: u.street ?? prev.street,
+        number: u.number ?? prev.number,
+        complement: u.complement ?? prev.complement,
+        district: u.district ?? prev.district,
+        city: u.city ?? prev.city,
+        state: u.state ?? prev.state,
+        lat: u.lat ?? prev.lat,
+        lng: u.lng ?? prev.lng,
+      }))
     }
   }, [meQuery.data])
 
@@ -231,6 +236,11 @@ export function ClientProfile() {
         </Card>
       ) : (
         <form
+          onInputCapture={() => {
+            // Qualquer digitação/alteração dentro do form marca o perfil como
+            // editado — a partir daí a hidratação automática para de sobrescrever.
+            dirty.current = true
+          }}
           onSubmit={(e) => {
             e.preventDefault()
             saveMutation.mutate()
@@ -365,7 +375,7 @@ export function ClientProfile() {
                 <p className="text-muted-foreground text-xs">
                   Usado para calcular a distância dos prestadores.
                 </p>
-                <AddressForm value={address} onChange={setAddress} idPrefix="profile" />
+                <GeoAddressForm value={address} onChange={setAddress} idPrefix="profile" />
               </div>
 
               {/* Sound preference */}
