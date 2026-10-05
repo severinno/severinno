@@ -772,6 +772,42 @@ export const CORE_INVARIANTS = [
     jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {
+    id: "realtime-env-parity",
+    // O incidente está no comentário ⛳ da base: a REALTIME_EMIT_API_KEY faltava
+    // num canal — "metade do contrato em cada arquivo". O realtime é
+    // fail-closed e os dois canais dividem a declaração do serviço entre a
+    // base comum e overrides próprios; qualquer variável pode divergir do
+    // mesmo jeito e só explodir no canal que ninguém olhou. Compare no MERGE.
+    matches: /check-realtime-env-parity/,
+    command: /^node scripts\/check-realtime-env-parity\.mjs$/m,
+    why: "o realtime é fail-closed pela REALTIME_EMIT_API_KEY e a declaração dele vive dividida entre a base comum e os overrides de cada canal de produção — variável que só existe num canal, ou fonte diferente, reprova no merge em vez de explodir no deploy que ninguém olhou",
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
+  },
+  {
+    id: "realtime-emit-key-source",
+    // O desenho de provisionamento da chave do /emit: DOCKER SECRET
+    // (realtime_emit_api_key) lido via *_FILE, nunca valor em environment —
+    // `docker inspect`/`compose config` mostrariam o segredo. O guard nomeia
+    // os consumers (realtime, app, notification-worker) e prende o contrato
+    // nos 3 composes (base + os DOIS canais).
+    matches: /check-realtime-emit-key-source/,
+    command: /^node scripts\/check-realtime-emit-key-source\.mjs$/m,
+    why: "a chave do /emit é fail-closed e o que a protege é o CANAL de entrega: valor em environment aparece em docker inspect e no shell que sobe a stack, então o secret + _FILE têm de ser a única fonte sancionada nos composes de produção",
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
+  },
+  {
+    id: "route-handler-style",
+    // O ESTILO dos route handlers: withRoute/withParams é o lugar do tracing
+    // + request-id + handleError. O boilerplate manual (try/catch +
+    // handleError dentro do handler) já foi eliminado de 142 de 189 rotas —
+    // o guard congela o legado (allowlist datada) e reprova handler novo que
+    // o ressuscite. Entrada ociosa (rota migrou) reprova também.
+    matches: /check-route-handler-style/,
+    command: /^node scripts\/check-route-handler-style\.mjs$/m,
+    why: "boilerplate duplicado de erro/tracing não é só repetição: cada cópia manual pula o span e o request-id, e a que ninguém migrou vira o padrão que o próximo handler copia — o estilo é contrato, e o que congelar precisa de data e motivo",
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
+  },
+  {
     id: "doc-hashes",
     matches: /check-doc-hashes/,
     command: /^node scripts\/check-doc-hashes\.mjs$/m,
@@ -854,6 +890,20 @@ export const CORE_INVARIANTS = [
     why: "a regra que decide se um gate pode pular a forja e medida nas duas: a prova por mutacao das tres regras de classificacao roda onde o merge e decidido",
     jobIds: { gitea: "guards", github: "forge-parity-mutation" },
   },
+  {
+    id: "vitrine-pagination-baseline",
+    // O baseline de performance da paginação da vitrine como GATE: o guard roda
+    // a rotina de navegação contra um dev server real (PostGIS + seed + next
+    // dev + Chromium) e reprova piora além dos limiares de
+    // docs/vitrine-pagination-baseline.md. A infra é cara e por isso mora num
+    // JOB PRÓPRIO (não no job node-puro `guards`) — mas a invariante é do CORE:
+    // sem ela, o dono do merge libera piora de performance medida.
+    matches: /check[:-]vitrine[:-]pagination/,
+    command:
+      /^node scripts\/check-vitrine-pagination-baseline\.mjs --json --report-file \/tmp\/vitrine-baseline-report\.json$/m,
+    why: "o custo do clique de paginação é medido e versionado (docs/vitrine-pagination-baseline.md) — sem o gate, a piora além dos limiares do baseline mergeia como impressão",
+    jobIds: { gitea: "vitrine-baseline", github: "vitrine-baseline" },
+  },
 ]
 
 /**
@@ -864,6 +914,12 @@ export const CORE_INVARIANTS = [
  * @type {{ id: string, matches: RegExp, reason: string }[]}
  */
 export const GITHUB_ONLY = [
+  {
+    id: "caddy-validate",
+    matches: /check[:-]caddy[:-]validate/,
+    reason:
+      "julga o Caddyfile.prod com um Caddy REAL em container (caddy validate) — a forja não tem o daemon no job de guards; a invariante equivalente lá é o parse do Dockerfile/Caddyfile embutido que o run-syntax já executa",
+  },
   {
     id: "actionlint",
     matches: /actionlint/,
@@ -997,6 +1053,18 @@ export const GITHUB_ONLY = [
     matches: /check-utf8\.sh|audit-blob-crlf-history\.sh|check-blob-crlf\.sh/,
     reason:
       "roteiro de encoding que o pre-commit ja roda em TODO commit local (barato); a forja cobre a invariante pelo run-encoding-guards do proprio commit",
+  },
+  {
+    id: "caddy-validate",
+    matches: /check[:-]caddy[:-]validate/,
+    reason:
+      "julga o Caddyfile.prod com um Caddy REAL em container (caddy validate) — a forja não tem o daemon no job de guards; a invariante equivalente lá é o parse do Dockerfile/Caddyfile embutido que o run-syntax já executa",
+  },
+  {
+    id: "inline-style",
+    matches: /check[:-]inline[:-]style/,
+    reason:
+      "a invariante (nenhum <style> inline fora da allowlist; hash da CSP sincronizado) e executada na forja pela SUITE vitest do guard (check-inline-style.test.ts — CLI real do script contra o repo, no job de testes, como o par dependency-review/bun-audit); o passo dedicado fica no espelho, onde a CSP de produção é exercitada",
   },
 ]
 

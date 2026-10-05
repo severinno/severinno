@@ -3,68 +3,62 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
+
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { z } from "zod"
 import { parseBody } from "@/lib/api-middleware"
+
+import { withRoute } from "@/lib/api-route"
 
 const onboardingSchema = z.object({
   step: z.number().int().min(0).max(20).optional(),
   done: z.boolean().optional(),
 })
 
-export async function GET() {
-  try {
-    const user = await requireUser()
-    const setting = await db.setting.findUnique({
-      where: { key: `onboarding:${user.userId}` },
-    })
-    if (!setting) {
-      return NextResponse.json({ step: 0, done: false })
-    }
-    const data = JSON.parse(setting.value) as { step?: number; done?: boolean }
-    return NextResponse.json({
-      step: data.step ?? 0,
-      done: data.done ?? false,
-    })
-  } catch (e) {
-    return handleError(e)
+export const GET = withRoute("api.provider.onboarding.GET", async (_request) => {
+  const user = await requireUser()
+  const setting = await db.setting.findUnique({
+    where: { key: `onboarding:${user.userId}` },
+  })
+  if (!setting) {
+    return NextResponse.json({ step: 0, done: false })
   }
-}
+  const data = JSON.parse(setting.value) as { step?: number; done?: boolean }
+  return NextResponse.json({
+    step: data.step ?? 0,
+    done: data.done ?? false,
+  })
+})
 
-export async function PATCH(req: Request) {
-  try {
-    await assertRateLimit(req, RATE_LIMITS.general)
-    const user = await requireUser()
-    const { step, done } = await parseBody(req, onboardingSchema)
+export const PATCH = withRoute("api.provider.onboarding.PATCH", async (req) => {
+  await assertRateLimit(req, RATE_LIMITS.general)
+  const user = await requireUser()
+  const { step, done } = await parseBody(req, onboardingSchema)
 
-    // Mescla com o progresso salvo: um PATCH parcial (ex.: o wizard salvando
-    // só { step }) não pode resetar done de um onboarding já concluído.
-    const existing = await db.setting.findUnique({
-      where: { key: `onboarding:${user.userId}` },
-    })
-    let current: { step?: number; done?: boolean } = {}
-    if (existing) {
-      try {
-        current = JSON.parse(existing.value) as { step?: number; done?: boolean }
-      } catch {
-        current = {}
-      }
+  // Mescla com o progresso salvo: um PATCH parcial (ex.: o wizard salvando
+  // só { step }) não pode resetar done de um onboarding já concluído.
+  const existing = await db.setting.findUnique({
+    where: { key: `onboarding:${user.userId}` },
+  })
+  let current: { step?: number; done?: boolean } = {}
+  if (existing) {
+    try {
+      current = JSON.parse(existing.value) as { step?: number; done?: boolean }
+    } catch {
+      current = {}
     }
-
-    const data = JSON.stringify({
-      step: step ?? current.step ?? 0,
-      done: done ?? current.done ?? false,
-    })
-
-    await db.setting.upsert({
-      where: { key: `onboarding:${user.userId}` },
-      update: { value: data },
-      create: { key: `onboarding:${user.userId}`, value: data },
-    })
-
-    return NextResponse.json({ ok: true })
-  } catch (e) {
-    return handleError(e)
   }
-}
+
+  const data = JSON.stringify({
+    step: step ?? current.step ?? 0,
+    done: done ?? current.done ?? false,
+  })
+
+  await db.setting.upsert({
+    where: { key: `onboarding:${user.userId}` },
+    update: { value: data },
+    create: { key: `onboarding:${user.userId}`, value: data },
+  })
+
+  return NextResponse.json({ ok: true })
+})

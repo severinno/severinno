@@ -67,6 +67,18 @@ const REAL_LINES = [
   "      - run: bun run check:pii-gate",
   "      - run: node scripts/check-required-checks.mjs",
   "      - run: node scripts/check-script-headers.mjs",
+  // Gate do realtime (paridade de env entre os canais de produção) — o CORE
+  // ganhou a invariante `realtime-env-parity`; a lista golden segue o CORE.
+  "      - run: node scripts/check-realtime-env-parity.mjs",
+  // Gate da FONTE da chave do /emit: o valor entra por DOCKER SECRET
+  // (realtime_emit_api_key) lido via REALTIME_EMIT_API_KEY_FILE — nunca por
+  // environment (docker inspect/compose config exporiam o segredo). A lista
+  // golden segue o CORE, como a invariante realtime-env-parity acima.
+  "      - run: node scripts/check-realtime-emit-key-source.mjs",
+  // Gate do ESTILO dos route handlers: withRoute/withParams obrigatório; o
+  // legado congelado vive na ALLOWLIST datada e a entrada ociosa reprova. A
+  // lista golden segue o CORE, como as invariantes acima.
+  "      - run: node scripts/check-route-handler-style.mjs",
   "      - run: node scripts/check-pipefail-sigpipe.mjs",
   "      - run: node scripts/check-prove-docs.mjs",
   "      - run: node scripts/check-registry-source.mjs",
@@ -108,6 +120,10 @@ const REAL_LINES = [
   // pipelines com o mesmo comando — na forja dentro do job `guards`.
   "      - run: bash scripts/test-mutation-guards.sh",
   "      - run: bash scripts/test-mutation-forge-parity.sh",
+  // Gate do BASELINE de latência da paginação: roda contra um dev server real
+  // e reprova além dos limiares do doc. A lista golden segue o CORE, como as
+  // invariantes acima.
+  "      - run: node scripts/check-vitrine-pagination-baseline.mjs --json --report-file /tmp/vitrine-baseline-report.json",
 ]
 
 /** Pipeline sintética que executa TODOS os invariantes do CORE. */
