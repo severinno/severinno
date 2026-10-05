@@ -36,10 +36,10 @@ jobs:
     name: Lint
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -54,10 +54,10 @@ jobs:
     name: TypeCheck
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -117,10 +117,10 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -156,10 +156,10 @@ jobs:
     needs: [lint, typecheck, utf8-check, quality-gate, test]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -177,7 +177,7 @@ jobs:
         run: bash scripts/check-bundle-size.sh
 
       # Archive the standalone build for deployment
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: standalone-build
           path: .next/standalone/
@@ -191,10 +191,10 @@ jobs:
     if: github.event_name == 'pull_request' # Only on PRs to catch regressions
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}

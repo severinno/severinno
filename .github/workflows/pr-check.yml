@@ -34,7 +34,7 @@ jobs:
     name: UTF-8 Check
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Run UTF-8 validation on all .ts files
         run: bash scripts/check-utf8.sh --ci src/
@@ -65,7 +65,7 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # histórico completo — auditamos TODOS os blobs
 
@@ -103,7 +103,7 @@ jobs:
     name: All-text alert validation (fixture → gate)
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Validate all-text alert fixture + gate replica
         run: bash scripts/validate-all-text-alert.sh
@@ -123,14 +123,14 @@ jobs:
     name: Secrets Guard (no .env tracked)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
       # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
       # da leitura de YAML continua saindo.
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -138,7 +138,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -166,7 +166,7 @@ jobs:
     name: Seed Test Hooks Guard (no prod leak)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
       # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
@@ -178,7 +178,7 @@ jobs:
       # carregado"), transformando o gate numa falha permanente. Por isso este
       # job instala as dependências, no mesmo padrão dos vizinhos.
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -188,7 +188,7 @@ jobs:
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -224,14 +224,14 @@ jobs:
     name: Workflow References Guard (no dangling refs)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
       # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
       # da leitura de YAML continua saindo.
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -239,7 +239,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -499,7 +499,7 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # O gate REAL contra o working tree do PR: os DOIS escopos de shell do
       # repositório — todos os corpos `run:` das duas forjas (com a expressão do
@@ -588,7 +588,7 @@ jobs:
     name: Bring-up Gate Proof (pré-requisito 0, por execução)
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # `node` direto: guard node-puro (sem node_modules) e node é requisito do
       # próprio caminho executado (`command -v node` no gitea-up.sh).
@@ -643,12 +643,12 @@ jobs:
       # checkout. Num checkout RASO o membro recusa todo arquivo citado, a
       # atribuição passa a falar do fixture e a prova sai INDETERMINADA (exit 2)
       # em vez de medir — medido: é o que o `repoRaso` nomeia na premissa.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -656,7 +656,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -729,14 +729,14 @@ jobs:
     name: Sentinel Producer Guard (grep -Fq ↔ produtor)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
       # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
       # da leitura de YAML continua saindo.
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -744,7 +744,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -769,14 +769,14 @@ jobs:
     name: No setup-bun Guard (script local)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
       # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
       # da leitura de YAML continua saindo.
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -784,7 +784,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -819,14 +819,14 @@ jobs:
     name: Bun Mirror Guard (fonte única vars.BUN_VERSION)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
       # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
       # da leitura de YAML continua saindo.
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -834,7 +834,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -876,14 +876,14 @@ jobs:
     name: Doctor Guard (valor das repository variables nos espelhos)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
       # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
       # da leitura de YAML continua saindo.
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -891,7 +891,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -930,7 +930,7 @@ jobs:
     name: Mutation Jobs Guard (staged diff)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
         # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
         # da leitura de YAML continua saindo.
@@ -939,7 +939,7 @@ jobs:
           fetch-depth: 0 # needed for origin/main...HEAD diff
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -947,7 +947,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -1093,7 +1093,7 @@ jobs:
     name: Stack Per-Commit (cada commit sozinho)
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -1162,7 +1162,7 @@ jobs:
       # "clone raso/sem a história"), o `behindMax` colapsa a 0 e o CONTROLE
       # reprova o próprio relógio (medido no CI em 28/09/2026: "CONTROLE
       # FALHOU: behindMax saiu '0'" — 2 tentativas, exit 1 em ~580ms).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -1211,7 +1211,7 @@ jobs:
     name: Forge Parity Mutation (regras de classificação)
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # O PAR CANÔNICO (cache do `node_modules` + install frozen): a suíte chama
       # binários do `node_modules` — sem o install, os guards de YAML saem 2
@@ -1219,7 +1219,7 @@ jobs:
       # dependeria do `node_modules` do ambiente: imagem do runner, workspace
       # reusado). É o mesmo contrato que o `check-job-deps` cobra dos irmãos.
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -1227,7 +1227,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -1260,14 +1260,14 @@ jobs:
     name: Hooks Symmetry Guard (README ↔ hooks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
       # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
       # da leitura de YAML continua saindo.
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -1275,7 +1275,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -1311,14 +1311,14 @@ jobs:
     name: Mutation Jobs Guard (test-mutation-*.sh ↔ CI jobs)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
       # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
       # da leitura de YAML continua saindo.
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -1326,7 +1326,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -1358,7 +1358,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # PROSE ALLOWLIST: exime palavras de prosa comum ('abaixo', 'acima',
       # 'seguir', 'aqui', 'fluxo') que o strict flagaria como falso positivo
@@ -1442,7 +1442,7 @@ jobs:
     runs-on: self-hosted
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # needed for origin/main...HEAD diff
 
@@ -1551,14 +1551,14 @@ jobs:
     name: E2E Counts Guard (comentários = derivação)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
       # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
       # da leitura de YAML continua saindo.
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -1566,7 +1566,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -1604,14 +1604,14 @@ jobs:
     name: Seed Count Literals Guard (scripts/docs/.github = derivação)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Este gate só LEITURA (nenhum docker, nenhum serviço, nenhuma rede): roda no
       # caminho que NÃO depende do runner da forja — se o runner cair, o veredito
       # da leitura de YAML continua saindo.
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -1619,7 +1619,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -1638,7 +1638,7 @@ jobs:
     name: Actionlint (workflow syntax)
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Run actionlint on all workflows
         uses: docker://rhysd/actionlint:latest
@@ -1678,10 +1678,10 @@ jobs:
     name: Lint Guard (prettier + eslint zero)
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -1689,7 +1689,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -1774,10 +1774,10 @@ jobs:
     # CONFIRMAÇÃO quando drift é detectado (anti-flake) ≈ 14-15 min.
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -1785,7 +1785,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -1826,10 +1826,10 @@ jobs:
     name: Unused Deps Guard (package.json hygiene)
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -1853,10 +1853,10 @@ jobs:
     name: Mutation Count Guard (matrix ↔ job name/summary ↔ README)
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -1898,10 +1898,10 @@ jobs:
     name: Bun Audit Guard (deps — drift baseline)
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -1923,10 +1923,10 @@ jobs:
     name: Fuzz Tests
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -1934,7 +1934,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -1947,7 +1947,7 @@ jobs:
         run: bun run fuzz:ci > fuzz-results.json
 
       - name: Archive fuzz results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-results
           path: fuzz-results.json
@@ -1963,12 +1963,12 @@ jobs:
     name: Geo Benchmark
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # needed to fetch main branch for baseline
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -1976,7 +1976,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -2052,7 +2052,7 @@ jobs:
       # Upload artifact even on failure so results can be inspected
       - name: Upload benchmark artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: geo-benchmark
           path: docs/benchmarks/geo-latest.json
@@ -2094,12 +2094,12 @@ jobs:
           --health-start-period 10s
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -2107,7 +2107,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -2273,7 +2273,7 @@ jobs:
       # ── Upload artifact ───────────────────────────────────────────────
       - name: Upload GiST benchmark artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: geo-gist-benchmark-pr
           path: |
@@ -2374,7 +2374,7 @@ jobs:
       actions: read # gh api repos/X/actions/runs/<id>/jobs (jobs API) + gh run list + gh repo view
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Mede o step no run ATUAL e gateia por DRIFT RELATIVO + TETO ──
       # --max 240 (TETO ABSOLUTO) = 4 min — falha SEMPRE acima disso;
@@ -2403,7 +2403,7 @@ jobs:
       # ── Evidência como artifact (debug de falhas do budget) ────────
       - name: Upload timing JSON (artifact)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-coord-timing-pr
           path: /tmp/mutation-timing.json
@@ -2489,7 +2489,7 @@ jobs:
       packages: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # needed for origin/main...HEAD diff
 
@@ -2598,7 +2598,7 @@ jobs:
     name: Security Headers
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check security headers (CSP, HSTS, XFO, etc.)
         run: bash scripts/test-security-headers.sh --ci --url "${{ secrets.BASE_URL || 'https://severinno.com' }}"
@@ -2621,10 +2621,10 @@ jobs:
     name: TypeCheck (tsc --noEmit)
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -2632,7 +2632,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -2664,10 +2664,10 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -2675,7 +2675,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -2782,10 +2782,10 @@ jobs:
     name: PII Allowlist Guard (user payload projection)
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -2793,7 +2793,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}

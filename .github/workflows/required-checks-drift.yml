@@ -66,7 +66,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Avisa cedo no log (o step seguinte reporta o erro na ISSUE) ────────
       # Não falha aqui de propósito: se falhasse, o step da issue nunca rodaria
@@ -136,7 +136,7 @@ jobs:
       # ── Relatório como artifact (debug sem re-rodar) ─────────────────────
       - name: Upload drift report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: required-checks-drift-report
           path: /tmp/required-checks-drift.json

@@ -34,10 +34,10 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -63,10 +63,10 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -85,10 +85,10 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -107,10 +107,10 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -133,10 +133,10 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -149,7 +149,7 @@ jobs:
         run: npx tsx scripts/coverage-badge.ts --save
 
       - name: Upload badge artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: badge-coverage
           path: docs/badge-coverage.svg
