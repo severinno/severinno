@@ -211,6 +211,15 @@ export default function Vitrine() {
   const [walkActive, setWalkActive] = React.useState(false)
   /** Token de geração: qualquer reset/navegação aborta o walk async em curso. */
   const walkTokenRef = React.useRef(0)
+  /** Navegação por clique em curso (User Timing): marcada no goPage, medida
+   *  quando os dados da página alvo assentam (effect de render abaixo). */
+  const navStartRef = React.useRef<{
+    target: number
+    at: number
+    direction: "proxima" | "anterior"
+    warm: boolean
+    inFlight: boolean
+  } | null>(null)
   const queryClient = useQueryClient()
 
   // ── Walk: página funda sem âncora (deep-link OU popstate) ──
@@ -458,30 +467,33 @@ export default function Vitrine() {
   const totalPages =
     providerTotal > 0 && pagedData ? Math.max(1, Math.ceil(providerTotal / PAGE_LIMIT)) : undefined
 
-  /** Responde: existe página anterior (página > 1)? */
-  const hasPrevPage = pagina > 1
+  /** Existe página anterior? pagina > 1 E o alvo é alcançável: âncora em
+   *  memória (visita prévia), alvo = p1 (cuja âncora legítima é null) ou
+   *  walk reverso cabe no teto. Deep-link direto fundo SEM âncora de N-1 é
+   *  alcançável pelo MESMO walk do deep-link sem cursor; além do teto, o
+   *  botão desabilita — nada de seek com null (traria o conteúdo da p1
+   *  rotulado como N-1) nem de walk que não alcança o alvo. */
+  const hasPrevPage = pagina > 1 && (anchors.has(pagina - 1) || pagina - 1 <= MAX_WALK_TARGET)
   /** Próxima existe quando esta resposta tem nextCursor (durante o walk os
    *  botões ficam desabilitados via isFetching — a rotina async pousa na
    *  página alvo sozinha). */
   const hasNextPage = Boolean(pagedData?.hasMore)
 
   // ── Prefetch da página seguinte (?pagina=N+1) ──
-  // Quando a página corrente chega com hasMore, pré-busca a página seguinte
-  // com a âncora JÁ SEMEADA (nextCursor desta resposta): o clique em Próxima
-  // monta o useQuery de N+1 e encontra o cache quente (staleTime) — render
-  // instantâneo, zero request (request em voo deduplica no TanStack).
-  // A queryFn do prefetch TAMBÉM semeia a âncora de N+2: se o clique achar
-  // cache fresco, a queryFn do useQuery de N+1 NÃO roda — sem o seed aqui,
-  // N+2 seekaria com cursor null (conteúdo errado). Não cascateia: o efeito
-  // só observa a query MONTADA (pagedQuery.data), nunca a do prefetch.
-  React.useEffect(() => {
+  // Um único corpo para DOIS gatilhos: a CHEGADA da página corrente (effect
+  // abaixo) e o HOVER/FOCUS/TOUCH no botão Próxima (onPrefetchNext). O hover
+  // cobre o cache EXPIRADO (> staleTime de 30s): o prefetchQuery do TanStack
+  // é no-op com dados frescos e REVALIDA vencidos antes do clique — o clique
+  // volta a ser render do cache. A queryFn semeia a âncora de N+2 (cache
+  // quente ⇒ a queryFn do useQuery de N+1 NÃO roda — sem o seed, N+2
+  // seekaria com cursor null, conteúdo errado). Não cascateia: observa só a
+  // query MONTADA (pagedQuery.data), nunca a do prefetch.
+  const prefetchNextPage = React.useCallback(() => {
     if (!state.hydrated) return
     // PLACEHOLDER (keepPreviousData): durante a transição de página, `data`
     // ainda é da página ANTERIOR — pré-buscar N+1 com esse nextCursor busca
     // o conteúdo ERRADO sob a chave de N+1 (e o dedupe do TanStack impede a
     // correção pelo run seguinte → página repetida rotulada como seguinte).
-    // O effect re-roda quando os dados reais chegam (isPlaceholderData →
-    // false está nas deps) e aí sim pré-busca com a âncora correta.
     if (pagedQuery.isPlaceholderData) return
     const data = pagedQuery.data
     const nextCursor = data?.hasMore ? data.nextCursor : null
@@ -504,20 +516,77 @@ export default function Vitrine() {
     state.hydrated,
     pagedQuery.isPlaceholderData,
     pagedQuery.data,
-    // dataUpdatedAt muda a CADA fetch concluído — com structural sharing, um
-    // refetch de dados idênticos mantém a MESMA referência de `data` e sem
-    // isto o effect não re-roda (refetch stale ⇒ prefetch não refresca).
-    pagedQuery.dataUpdatedAt,
     pagina,
     filterKey,
     queryClient,
   ])
+
+  React.useEffect(() => {
+    // Prefetch de N+1 quando a página corrente assenta — guardas (hydrated,
+    // placeholder) e o seed da âncora N+2 moram no callback acima.
+    prefetchNextPage()
+  }, [
+    prefetchNextPage,
+    // dataUpdatedAt muda a CADA fetch concluído — com structural sharing, um
+    // refetch de dados idênticos mantém a MESMA referência de `data` (e a
+    // MESMA identidade do callback) e sem isto o effect não re-roda.
+    pagedQuery.dataUpdatedAt,
+  ])
+
+  // ── Prefetch da página anterior (Anterior ←) ──
+  // Só HOVER/FOCUS/TOUCH (sem trigger de load): a âncora de N-1 existe quando
+  // o usuário VEIO de N-1 — e nesse caso o cache de N-1 nasce fresco da
+  // visita; o hover cobre o caso EXPIRADO (ficou > staleTime em N). A fonte
+  // do cursor é o MAPA DE ÂNCORAS em memória (não o nextCursor da resposta —
+  // este é sempre o de N+1). GUARDA ANTI-CORRUPÇÃO: para N-1 > 1 SEM âncora
+  // (deep-link direto em N com cursor do link), seekar N-1 com null traria o
+  // conteúdo da p1 rotulado como N-1 — o prefetch ABSTÉM-SE (o clique cai no
+  // comportamento atual, sem envenenar o cache). Para N-1 = 1, null É a
+  // âncora legítima (primeira página da sequência). A queryFn semeia a
+  // âncora de N (idempotente — é a que a query montada de N já usou).
+  const prefetchPrevPage = React.useCallback(() => {
+    if (!state.hydrated) return
+    if (pagedQuery.isPlaceholderData) return
+    const prev = pagina - 1
+    if (prev < 1) return
+    const prevCursor = anchors.get(prev) ?? null
+    if (prev > 1 && !prevCursor) return
+    void queryClient.prefetchQuery({
+      queryKey: ["providers", "pagina", prev, filterKey],
+      queryFn: () =>
+        fetchProviders({ ...toFetchArgs(filterKey), cursor: prevCursor }).then((result) => {
+          if (result?.hasMore && result.nextCursor) {
+            const cursor = result.nextCursor
+            setAnchors((p) => (p.get(pagina) === cursor ? p : new Map(p).set(pagina, cursor)))
+          }
+          return result
+        }),
+      staleTime: 30 * 1000,
+    })
+  }, [state.hydrated, pagedQuery.isPlaceholderData, pagina, filterKey, queryClient, anchors])
 
   /** Navegação REAL: pushState + estado local. Back/forward rehidratam
    *  tudo da URL (applyUrl via popstate). */
   const goPage = React.useCallback(
     (next: number, opts?: { push?: boolean }) => {
       const target = Math.max(1, next)
+      // ── Instrumentação User Timing (Performance API) ──
+      // O INÍCIO da medição é o clique; o FIM é o assentamento dos dados da
+      // página alvo (effect navStartRef). `warm` diz se havia cache para o
+      // alvo no clique (render imediato) ou não (rede) — os dois regimes do
+      // baseline em docs/vitrine-pagination-baseline.md.
+      const direction: "proxima" | "anterior" = target > pagina ? "proxima" : "anterior"
+      const targetState = queryClient.getQueryState(["providers", "pagina", target, filterKey])
+      navStartRef.current = {
+        target,
+        at: performance.now(),
+        direction,
+        warm: targetState?.dataUpdatedAt != null,
+        // Fetch em voo para o alvo no clique (ex.: o focus-prefetch do botão
+        // dispara no mousedown, antes do click): warm=true + inFlight=true ⇒
+        // a medida ainda assim inclui o tail da rede.
+        inFlight: targetState?.fetchStatus === "fetching",
+      }
       // Qualquer navegação aborta um walk async em curso.
       walkTokenRef.current += 1
       setWalkActive(false)
@@ -538,8 +607,49 @@ export default function Vitrine() {
         if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
       }
     },
-    [filters, anchors],
+    [filters, anchors, pagina, filterKey, queryClient],
   )
+
+  // ── Medição do clique de paginação (User Timing / Performance API) ──
+  // Fim da medição aberta em goPage: os dados da PÁGINA ALVO assentam (não
+  // placeholder — placeholder é a página anterior na tela). Com cache quente
+  // o measure é ~1 frame; com rede, inclui o fetch. A entrada fica na
+  // performance timeline (DevTools → Performance → Timings) e em
+  // performance.getEntriesByType("measure") — baseline e limiar de
+  // regressão em docs/vitrine-pagination-baseline.md.
+  React.useEffect(() => {
+    const pending = navStartRef.current
+    if (!pending || pending.target !== pagina) return
+    if (pagedQuery.isPlaceholderData || !pagedQuery.data) return
+    navStartRef.current = null
+    try {
+      performance.measure("vitrine:pagina:render", {
+        start: pending.at,
+        end: performance.now(),
+        detail: pending,
+      })
+    } catch {
+      // User Timing indisponível (ambiente exótico): observabilidade nunca
+      // quebra a navegação.
+    }
+  }, [pagina, pagedQuery.isPlaceholderData, pagedQuery.data, pagedQuery.dataUpdatedAt])
+
+  /** Anterior: com âncora em memória (ou alvo = p1, cuja âncora legítima é
+   *  null), seek direto (goPage com pushState). Deep-link direto SEM âncora
+   *  de N-1: o MESMO walk do deep-link sem cursor (p1 → … → N-1, abortável
+   *  por walkToken, pousa com replaceState e semeia as âncoras 2..N-1 pelo
+   *  caminho — a navegação seguinte sai quente). Alvo além do teto nem
+   *  habilita o botão (hasPrevPage). O hover-prefetch permanece abstêmio
+   *  nesses casos: hover não pode custar N fetches. */
+  const goPrevPage = React.useCallback(() => {
+    const target = pagina - 1
+    if (target < 1) return
+    if (target > 1 && !anchors.has(target)) {
+      void startWalk(Math.min(target, MAX_WALK_TARGET), filters)
+      return
+    }
+    goPage(target)
+  }, [pagina, anchors, startWalk, filters, goPage])
 
   // ------------------------------------------------------------ favorites --
   const favoritesQuery = useQuery({
@@ -674,8 +784,10 @@ export default function Vitrine() {
           hasNextPage={hasNextPage}
           currentPage={pagina}
           totalPages={totalPages}
-          onPrevPage={() => goPage(pagina - 1)}
+          onPrevPage={goPrevPage}
           onNextPage={() => goPage(pagina + 1)}
+          onPrefetchNext={prefetchNextPage}
+          onPrefetchPrev={prefetchPrevPage}
           resultsAnchorId={RESULTS_ANCHOR_ID}
           expandedRadius={pagedData?.expandedRadius}
         />

@@ -38,6 +38,11 @@ const h = vi.hoisted(() => ({
    *  render (context) — instabilidade aqui faria applyUrl/startWalk mudarem
    *  de identidade e o effect de hidratação dispararia em loop. */
   queryClient: {
+    // Estado do cache para a instrumentação de navegação ("warm" = havia
+    // dados para a chave no clique — a pergunta que getQueryState responde
+    // no TanStack real).
+    getQueryState: (key: any) =>
+      firedKeys.has(JSON.stringify(key)) ? { dataUpdatedAt: 1 } : undefined,
     fetchQuery: (opts: any) => Promise.resolve(opts.queryFn()),
     // Fiel ao TanStack: registra a chave como disparada (um useQuery montado
     // depois encontra o cache e NÃO refaz o request), roda a queryFn 1x por
@@ -83,7 +88,24 @@ vi.mock("../vitrine-results", () => ({
         onClick={() => p.onFiltersChange?.({ ...p.filters, verifiedOnly: true })}
       />
       <button type="button" data-testid="go-next" onClick={() => p.onNextPage?.()} />
-      <button type="button" data-testid="go-prev" onClick={() => p.onPrevPage?.()} />
+      <button
+        type="button"
+        data-testid="hover-next"
+        onClick={() => p.onPrefetchNext?.()}
+        onPointerEnter={() => p.onPrefetchNext?.()}
+      />
+      <button
+        type="button"
+        data-testid="hover-prev"
+        onClick={() => p.onPrefetchPrev?.()}
+        onPointerEnter={() => p.onPrefetchPrev?.()}
+      />
+      <button
+        type="button"
+        data-testid="go-prev"
+        disabled={!p.hasPrevPage}
+        onClick={() => p.onPrevPage?.()}
+      />
     </div>
   ),
 }))
@@ -399,6 +421,178 @@ describe("Vitrine — ?pagina=N (navegação real com keyset)", () => {
     expect(window.location.search).toContain(`cursor=${CURSOR_C}`)
     // p3 foi prefetched na chegada à p2; o clique em si não busca nada.
     expect(fetchCalls().map((c) => c.cursor)).toEqual([null, CURSOR_B, CURSOR_C])
+  })
+
+  it("hover em Próxima re-prefetch N+1 com a âncora correta (cache quente: nenhum request novo)", async () => {
+    setPages({ 2: page(9, CURSOR_C) })
+    window.history.replaceState(null, "", `/?pagina=2&cursor=${CURSOR_B}`)
+    await renderVitrine()
+
+    // [p2 seek com a âncora do link, load-prefetch da p3 com a âncora C]
+    expect(fetchCalls().map((c) => c.cursor)).toEqual([CURSOR_B, CURSOR_C])
+    const prefetchesBefore = h.prefetchCalls.length
+
+    // Hover/focus/touch no botão real chamam onPrefetchNext (o stub dispara
+    // o prop via click/pointerEnter). Com cache QUENTE o prefetch é no-op —
+    // a queryFn não roda 2x (firedKeys espelha o TanStack): nenhum request
+    // novo sai do hover em si.
+    await act(async () => {
+      screen.getByTestId("hover-next").click()
+      await Promise.resolve()
+    })
+    expect(h.prefetchCalls.length).toBe(prefetchesBefore + 1)
+
+    // O prefetch do hover carrega a MESMA chave/âncora: executar a queryFn
+    // dele prova o cursor (o fetch abaixo é deste assert, não do hover).
+    const hoverPrefetch = h.prefetchCalls[h.prefetchCalls.length - 1]
+    expect(hoverPrefetch.queryKey[2]).toBe(3)
+    const antes = fetchCalls().length
+    await act(async () => {
+      await hoverPrefetch.queryFn()
+    })
+    expect(fetchCalls()[antes].cursor).toBe(CURSOR_C)
+    expect(fetchCalls().length).toBe(antes + 1)
+  })
+
+  it("hover em Anterior: pré-busca N-1 com a âncora em memória (e p1 com null)", async () => {
+    setPages({ 1: page(9, CURSOR_B), 2: page(9, CURSOR_C), 3: page(9, null) })
+    h.responsesByCursor.set(null, [page(9, CURSOR_B)])
+    h.responsesByCursor.set(CURSOR_B, [page(9, CURSOR_C)])
+    window.history.replaceState(null, "", "/")
+    await renderVitrine()
+
+    // Em p1 não há página anterior: hover não pré-busca nada.
+    const antes = h.prefetchCalls.length
+    await act(async () => {
+      screen.getByTestId("hover-prev").click()
+      await Promise.resolve()
+    })
+    expect(h.prefetchCalls.length).toBe(antes)
+
+    // p1 → p2 → p3 (navegação real; âncoras 2=B e 3=C ficam em memória)
+    await act(async () => {
+      screen.getByTestId("go-next").click()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      screen.getByTestId("go-next").click()
+      await Promise.resolve()
+    })
+    expect(window.location.search).toContain("pagina=3")
+
+    // Hover em Anterior: pré-busca da p2 com a âncora B (em memória desde a
+    // visita à p1). Cache quente ⇒ o hover em si não faz request; executar a
+    // queryFn do prefetch aqui prova o cursor (o fetch é deste assert).
+    const before = h.prefetchCalls.length
+    await act(async () => {
+      screen.getByTestId("hover-prev").click()
+      await Promise.resolve()
+    })
+    expect(h.prefetchCalls.length).toBe(before + 1)
+    const hoverPrev = h.prefetchCalls[h.prefetchCalls.length - 1]
+    expect(hoverPrev.queryKey[2]).toBe(2)
+    const antes2 = fetchCalls().length
+    await act(async () => {
+      await hoverPrev.queryFn()
+    })
+    expect(fetchCalls()[antes2].cursor).toBe(CURSOR_B)
+    expect(fetchCalls().length).toBe(antes2 + 1)
+  })
+
+  it("hover em Anterior SEM âncora de N-1 (deep-link direto): NÃO pré-busca", async () => {
+    // Deep-link p3 COM cursor do link: seek direto (sem walk) — a âncora da
+    // p2 não existe em memória (a p2 nunca foi visitada).
+    setPages({ 3: page(9, CURSOR_C) })
+    h.responsesByCursor.set(CURSOR_B, [page(9, CURSOR_C)])
+    window.history.replaceState(null, "", `/?pagina=3&cursor=${CURSOR_B}`)
+    await renderVitrine()
+
+    // [p3 seek com a âncora do link, load-prefetch da p4 com a âncora C]
+    expect(fetchCalls().map((c) => c.cursor)).toEqual([CURSOR_B, CURSOR_C])
+    const before = h.prefetchCalls.length
+
+    await act(async () => {
+      screen.getByTestId("hover-prev").click()
+      await Promise.resolve()
+    })
+    // Guarda anti-corrupção: sem âncora de p2, o hover NÃO pré-busca — seekar
+    // p2 com cursor null traria o conteúdo da p1 rotulado como p2.
+    expect(h.prefetchCalls.length).toBe(before)
+    expect(fetchCalls().length).toBe(2)
+  })
+
+  it("Anterior após deep-link com cursor SEM âncora de N-1: walk reverso p1→p2", async () => {
+    // Deep-link p3 com cursor do link: seek direto — a âncora da p2 não
+    // existe (a p2 nunca foi visitada). O clique em Anterior NÃO seeka p2
+    // com null (traria o conteúdo da p1 rotulado como p2): dispara o MESMO
+    // walk do deep-link sem cursor e pousa na p2 com a âncora semeada.
+    setPages({ 2: page(9, CURSOR_C), 3: page(9, CURSOR_C) })
+    h.responsesByCursor.set(CURSOR_B, [page(9, CURSOR_C), page(9, CURSOR_C)])
+    h.responsesByCursor.set(null, [page(9, CURSOR_B)])
+    window.history.replaceState(null, "", `/?pagina=3&cursor=${CURSOR_B}`)
+    await renderVitrine()
+
+    // [p3 seek com a âncora do link, load-prefetch da p4 com a âncora C]
+    expect(fetchCalls().map((c) => c.cursor)).toEqual([CURSOR_B, CURSOR_C])
+
+    await act(async () => {
+      screen.getByTestId("go-prev").click()
+      for (let i = 0; i < 8; i++) await Promise.resolve()
+    })
+
+    const cursors = fetchCalls().map((c) => c.cursor)
+    // [B seek p3, C prefetch p4, null p1 do walk, B remontagem da p2 pousada
+    // com a âncora semeada pelo walk — o fetchQuery do walk semeia âncoras;
+    // o TanStack real servia do cache, o mock refaz o fetch com a MESMA
+    // âncora: conteúdo idêntico de qualquer forma]
+    expect(cursors).toEqual([CURSOR_B, CURSOR_C, null, CURSOR_B])
+    expect(window.location.search).toContain("pagina=2")
+    expect(window.location.search).toContain(`cursor=${CURSOR_B}`)
+  })
+
+  it("Anterior além do teto do walk (deep-link fundo sem âncora de N-1): botão desabilita", async () => {
+    setPages({ 40: page(9, CURSOR_C) })
+    h.responsesByCursor.set(CURSOR_B, [page(9, CURSOR_C)])
+    window.history.replaceState(null, "", `/?pagina=40&cursor=${CURSOR_B}`)
+    await renderVitrine()
+
+    // [p40 seek com a âncora do link, load-prefetch da p41 com a âncora C]
+    expect(fetchCalls().map((c) => c.cursor)).toEqual([CURSOR_B, CURSOR_C])
+
+    // prev = 39 > MAX_WALK_TARGET (31) e sem âncora: o botão NEM habilita —
+    // nada de seek com null nem de walk que não alcança o alvo.
+    expect((screen.getByTestId("go-prev") as HTMLButtonElement).disabled).toBe(true)
+    // O hover também se abstém (guarda do prefetch — hover não custa N fetches).
+    const before = h.prefetchCalls.length
+    await act(async () => {
+      screen.getByTestId("hover-prev").click()
+      await Promise.resolve()
+    })
+    expect(h.prefetchCalls.length).toBe(before)
+  })
+
+  it("instrumentação User Timing: clique em Próxima registra a medida de render", async () => {
+    setPages({ 1: page(9, CURSOR_B), 2: page(9, CURSOR_C) })
+    h.responsesByCursor.set(null, [page(9, CURSOR_B)])
+    window.history.replaceState(null, "", "/")
+    await renderVitrine()
+
+    const measureSpy = vi.spyOn(performance, "measure")
+    try {
+      await act(async () => {
+        screen.getByTestId("go-next").click()
+        await Promise.resolve()
+      })
+      expect(measureSpy).toHaveBeenCalledTimes(1)
+      const [name, opts] = measureSpy.mock.calls[0] as [string, any]
+      expect(name).toBe("vitrine:pagina:render")
+      // Cache quente (a p2 foi pré-buscada na chegada da p1) ⇒ warm=true;
+      // a medida cobre do clique ao assentamento dos dados da página alvo.
+      expect(opts.detail).toMatchObject({ target: 2, direction: "proxima", warm: true })
+      expect(opts.end).toBeGreaterThanOrEqual(opts.start)
+    } finally {
+      measureSpy.mockRestore()
+    }
   })
 
   it("popstate volta para a página 1 (back do browser rehidrata da URL)", async () => {

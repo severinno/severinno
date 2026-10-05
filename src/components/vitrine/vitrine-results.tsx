@@ -63,6 +63,12 @@ export type VitrineResultsProps = {
   totalPages?: number
   onPrevPage?: () => void
   onNextPage?: () => void
+  /** Pré-busca da página seguinte (hover/focus/touch no Próxima — cobre o
+   *  cache expirado: revalida antes do clique; no-op com cache fresco). */
+  onPrefetchNext?: () => void
+  /** Pré-busca da página anterior (hover/focus/touch no Anterior) — só com a
+   *  âncora de N-1 em memória; cobre o cache expirado. */
+  onPrefetchPrev?: () => void
   resultsAnchorId?: string
   className?: string
   /** Raio efetivo usado na expansão. null = sem expansão, número = km usado, -1 = além de 100km (sem filtro) */
@@ -93,6 +99,8 @@ export default function VitrineResults({
   totalPages,
   onPrevPage,
   onNextPage,
+  onPrefetchNext,
+  onPrefetchPrev,
   resultsAnchorId,
   className,
   expandedRadius,
@@ -356,12 +364,17 @@ export default function VitrineResults({
               aria-label="Paginação de resultados"
               className="mt-8 flex items-center justify-center gap-3"
             >
+              {/* Hover/focus/touch pré-busam (ou revalidam, se expirado) a
+                  página anterior — o componente decide pela âncora. */}
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 disabled={!hasPrevPage || isFetching}
                 onClick={() => onPrevPage?.()}
+                onPointerEnter={onPrefetchPrev}
+                onFocus={onPrefetchPrev}
+                onTouchStart={onPrefetchPrev}
               >
                 ← Anterior
               </Button>
@@ -373,12 +386,17 @@ export default function VitrineResults({
                   </>
                 ) : null}
               </span>
+              {/* Hover/focus/touch pré-busam (ou revalidam, se expirado) a
+                  página seguinte antes do clique. */}
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 disabled={!hasNextPage || isFetching}
                 onClick={() => onNextPage?.()}
+                onPointerEnter={onPrefetchNext}
+                onFocus={onPrefetchNext}
+                onTouchStart={onPrefetchNext}
               >
                 Próxima →
               </Button>
