@@ -80,6 +80,47 @@ regime:
 - `vitrine:deeplink:render` seek **> 800 ms**; com walk interno **>
   250 ms × páginas de walk** (o observado é ~163 ms/página)
 
+## Guard de CI
+
+Os limiares acima são APLICADOS pelo guard
+`scripts/check-vitrine-pagination-baseline.mjs` — a constante `THRESHOLDS` do
+script é a fonte canônica dos números, e o teste de simetria
+(`src/lib/__tests__/check-vitrine-pagination-baseline.test.ts`) reprova quando
+este doc e o script divergem: reajustar um limiar é mudar os DOIS lados no
+mesmo commit.
+
+O guard roda a rotina completa contra um dev server real e coleta as measures
+pelo mesmo caminho do DevTools (`performance.getEntriesByType("measure")`):
+
+- **Clique quente** — 1 clique de aquecimento (absorve a rota fria do dev) +
+  5 cliques em Próxima; mediana dos warm ≤ 250 ms, qualquer clique ≤ 800 ms.
+- **Deep-link seek** — a URL de p3 capturada durante a caminhada, reaberta em
+  3 contextos JS frios; mediana ≤ 800 ms.
+- **Walk reverso** — Anterior no pouso do seek (sem âncora de p2): ≤ 800 ms ×
+  páginas de walk.
+- **Deep-link com walk interno** — `?pagina=4` sem cursor: ≤ 250 ms × 3
+  páginas.
+
+Regime sem measure nenhuma REPROVA (fail-closed — sem prova não há verde),
+com exit 1; ambiente não respondendo (server fora do ar, browser
+indisponível) é exit 2. Local:
+
+```sh
+# dev :3100 com a seed de 415 prestadores rodando + Chromium do Playwright
+bun run check:vitrine-pagination-baseline
+```
+
+No CI: `.github/workflows/vitrine-baseline.yml` (precedente `e2e-cache.yml`) —
+sobe PostGIS + seed + `next dev` na :3100 e roda o guard como gate POR PATHS
+(só dispara quando a vitrine, a API de providers, o seed ou o próprio guard
+mudam). Ele fica FORA do manifesto de required checks de propósito: é gate de
+regressão da rotina medida, não gate de merge — ligá-lo ao merge da Gitea
+exigiria mexer em `ci.yml` + `ci/required-checks.json` (ato deliberado). A
+saída JSON (flag `--json` / artifact `vitrine-baseline-report`) traz as
+amostras cruas para triagem — um vermelho em regime de amostra única (walk,
+walk-interno) primeiro pergunta "ruído de máquina?" (rodar de novo) antes de
+investigar código.
+
 ## Notas
 
 - Números de DEV (React development, HMR, sem minificação) — servem para

@@ -1,0 +1,172 @@
+# =============================================================================
+# Vitrine Pagination Baseline — guard de performance da paginação
+#
+# Roda a rotina de baseline da paginação da vitrine (Próxima/Anterior, walk
+# reverso, deep-link seek e deep-link com walk interno) contra um dev server
+# REAL (`next dev`, NÃO `next start` — os limiares do doc são de bundle de
+# desenvolvimento) e REPROVA pioras além dos limiares de
+# docs/vitrine-pagination-baseline.md. O veredito é do guard
+# scripts/check-vitrine-pagination-baseline.mjs (mesma fonte dos números do
+# doc — o teste de simetria doc↔script impede os dois lados de divergir).
+#
+# Por que `next dev`: o baseline medido (clique quente 40–120 ms, walk
+# ~240 ms/página, seek ~283 ms) é de DEV — React development, sem minificação.
+# Um build de produção mediria outra coisa e o limiar de 250 ms seria ruído.
+#
+# Por que workflow próprio (e não um step do pr-check/ci): a infra aqui é cara
+# e diferente — PostGIS + seed + dev server + Chromium —, e o precedente do
+# repositório para essa classe é o e2e-cache.yml. Fica FORA do manifesto de
+# required checks de propósito: este workflow é gate por PATHS (só roda quando
+# o que ele protege mudou), não gate de merge — ligá-lo como required check do
+# merge da Gitea é decisão deliberada (mexeria em ci.yml + manifesto).
+#
+# Triggered on:
+#   - PRs/pushes que tocam a vitrine, a API de providers, o seed ou o guard
+#   - workflow_dispatch (rodada manual — triagem de ruído de máquina)
+# =============================================================================
+
+name: Vitrine Pagination Baseline
+
+on:
+  pull_request:
+    branches: [main]
+    paths: &baseline_paths
+      - "src/components/vitrine/**"
+      - "src/app/page.tsx"
+      - "src/app/api/providers/route.ts"
+      - "src/lib/api.ts"
+      - "prisma/seed.ts"
+      - "scripts/check-vitrine-pagination-baseline.mjs"
+      - "docs/vitrine-pagination-baseline.md"
+      - ".github/workflows/vitrine-baseline.yml"
+  push:
+    branches: [main]
+    paths: *baseline_paths
+  workflow_dispatch:
+
+concurrency:
+  group: vitrine-baseline-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: postgresql://severinno:severinno_test@localhost:5433/severinno_test
+  REDIS_URL: redis://localhost:6381
+  SESSION_SECRET: ci-session-secret-vitrine-baseline-32-chars
+  VITRINE_BASE_URL: http://localhost:3100
+
+jobs:
+  baseline:
+    name: Pagination baseline guard
+    runs-on: self-hosted
+    timeout-minutes: 25
+
+    services:
+      postgis:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: severinno_test
+          POSTGRES_USER: severinno
+          POSTGRES_PASSWORD: severinno_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U severinno -d severinno_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 15s
+
+      redis:
+        image: valkey/valkey:7.2-alpine
+        ports:
+          - 6381:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      # O baseline é SENSÍVEL ao dataset: os limiares do doc foram medidos com
+      # a seed de 415 prestadores (47 páginas de 9). Sem ela o seek anda menos
+      # páginas e o walk reverso não acontece — o guard reprova por dados
+      # insuficientes em vez de passar com uma prova vazia.
+      - name: Push Prisma schema to test database
+        run: npx prisma db push --accept-data-loss --skip-generate
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Seed test database (baseline measured against this dataset)
+        run: bun run db:seed
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          SESSION_SECRET: ${{ env.SESSION_SECRET }}
+          REDIS_URL: ${{ env.REDIS_URL }}
+
+      # DEV, não produção: a régua do doc é de bundle de desenvolvimento.
+      # A PRONTIDÃO é da API paginada que o guard exercita (o /api/health pode
+      # responder 503 num ambiente válido — ele dependentência além do app).
+      - name: Start Next.js dev server on :3100
+        run: |
+          DATABASE_URL="${{ env.DATABASE_URL }}" \
+          REDIS_URL="${{ env.REDIS_URL }}" \
+          SESSION_SECRET="${{ env.SESSION_SECRET }}" \
+          bunx next dev -p 3100 &>/tmp/vitrine-dev.log &
+          echo "dev PID=$!"
+          ready=0
+          for i in $(seq 1 60); do
+            sleep 2
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3100/api/providers?page=1&limit=9" 2>/dev/null || echo "000")
+            if [ "$code" = "200" ]; then
+              echo "dev ready (API paginada 200) após $((i * 2))s"
+              ready=1
+              break
+            fi
+          done
+          if [ "$ready" != "1" ]; then
+            echo "❌ dev server não serviu a API paginada em 120s"
+            tail -50 /tmp/vitrine-dev.log
+            exit 1
+          fi
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install chromium --with-deps
+
+      # O guard em si: saída humana no log + JSON em artifact para triagem
+      # (amostras cruas incluídas — o número auditável em vez de acreditado).
+      - name: Run pagination baseline guard
+        run: node scripts/check-vitrine-pagination-baseline.mjs --json --report-file /tmp/vitrine-baseline-report.json
+
+      - name: Upload guard report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitrine-baseline-report
+          path: |
+            /tmp/vitrine-baseline-report.json
+            /tmp/vitrine-dev.log
+          retention-days: 7
