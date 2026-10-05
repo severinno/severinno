@@ -61,10 +61,10 @@ em construção) — quando a distinção importa, o número do **HEAD commitado
 - 215 scripts npm — cobertura rara de tarefas (mutation suites, guards,
   e2e, seeds, doctor). Risco: a superfície de scripts é grande e exige
   manutenção; o doctor existe exatamente para medi-la.
-- 85 deps runtime / 29 devDeps. Triagem de não-usadas: `graphql` (a rota
-  `/api/graphql` usa schema artesanal via yoga), `uuid` (usa
-  `crypto.randomUUID`), `prisma` (CLI usado por scripts — manter). Falso
-  positivo: `server-only` (bare imports).
+- 85 deps runtime / 29 devDeps. Triagem de não-usadas (CORRIGIDA na re-medição): o guard oficial
+  `check-unused-deps` mede as 114 deps TODAS referenciadas (1.858 arquivos
+  escaneados) — o scanner de 1ª passada subestimou bare imports e usos
+  indiretos (`graphql`/`uuid` incluídos). Zero dep morta comitada.
 
 ## Camada 2 — Dados: 8.0/10
 
@@ -175,7 +175,10 @@ em construção) — quando a distinção importa, o número do **HEAD commitado
 - Fluxos presentes: vitrine com busca geo/raio/categorias, onboarding de
   prestador com verificação de identidade (documento+selfie), bookings,
   contratos, notificações (digest/email/push), chat com detecção de fraude,
-  painel admin extenso.
+  painel admin extenso. CORREÇÃO (re-medição): o gateway de pagamento
+  EXISTE — Lytex Pagamentos com feature-flag (`feature-flags.ts`), recipient
+  id no schema e arquitetura documentada (`docs/payments-architecture.md`);
+  o que falta é o rollout pago, não a integração.
 - Ausências que definem o estágio: **sem gateway de pagamento** (escrow
   apenas em migração/script), multi-cidade não integrado, LGPD operacional
   (retenção/exclusão) não implementada, pagamentos `bookings/[id]/pay` em
@@ -261,6 +264,51 @@ Os itens acionáveis do parecer foram fechados na sequência:
 2. O vermelho residual no HEAD limpo de `cut-stages:prove` (paridade 6),
    `forge-doctor` (régua medida) e `ci-workflow` (snapshot) — todos medidos
    no tree como **verdes**; são o estado do WIP alheio e fecham no landing.
+
+# Plano de execução para o 10 (2026-10-05, mesma sessão)
+
+## O que foi executado AGORA (commits desta sessão)
+
+| #   | Item                                                                                                                                                                                                                             | Commit     | Efeito na nota                   |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------------------------------- |
+| 1   | Lint CI destravado (+ campo `saidasCruas` no guard de gerado)                                                                                                                                                                    | `415c35e7` | Governança 7.0→7.5               |
+| 2   | 8 barrels órfãos de lib/ removidos                                                                                                                                                                                               | `16a4f51e` | Frontend +0.5                    |
+| 3   | Parecer durável + desdobramento                                                                                                                                                                                                  | `7e1c623b` | —                                |
+| 4   | 12 componentes shadcn/ui órfãos removidos (−1.162 linhas)                                                                                                                                                                        | `aedf828a` | Frontend +0.5                    |
+| 5   | **Sentry client iniciado de fato** (`instrumentation-client.ts` — o config existia e ninguém o importava: erro de navegador nunca chegava ao GlitchTip)                                                                          | `d708f8db` | Observabilidade 7.5→8.5          |
+| 6   | **LGPD operacional**: retenção da biometria do KYC (MinIO limpo na decisão + purge de pendências), portabilidade (`GET /api/users/me/data-export`) e exclusão com anonimização (`POST /api/users/me/delete-account`) — 16 testes | `0cb8f5cc` | Segurança 8.0→9.0 · Produto +0.5 |
+
+## Notas re-mediadas
+
+| Camada               |  Antes  |  Agora   | O que falta para fechar                                                     |
+| -------------------- | :-----: | :------: | --------------------------------------------------------------------------- |
+| Config & ferramental |   8.5   | **9.0**  | GetLastError... nada relevante — estável                                    |
+| Dados                |   8.0   | **8.5**  | onDelete explícito nas ~14 relações sem cláusula (padronização)             |
+| API                  |   7.5   | **8.0**  | withRoute nas 76 rotas restantes (migração alheia em voo congela ao pousar) |
+| Auth & segurança     |   8.0   | **9.0**  | LGPD operacional pousada; resta seria auditoria externa                     |
+| Frontend             |   7.5   | **8.5**  | dead code residual = decisão de produto (features não integradas)           |
+| Observabilidade      |   7.5   | **8.5**  | init client ativo; falta dashboard de erro no on-call                       |
+| Qualidade & testes   |   8.5   | **9.0**  | guardas do HEAD verdes após landing do WIP                                  |
+| Infra & escala       |   8.5   | **8.5**  | HA como EXERCÍCIO (réplicas+adapter), não como código                       |
+| CI/CD & governança   |   7.0   | **7.5**  | credenciais do --apply (única pendência de insumo)                          |
+| Produto              |   7.0   | **8.0**  | LGPD pousada + Lytex mapeada; falta rollout pago e multi-cidade             |
+| **NOTA GERAL**       | **7.5** | **≈8.5** | —                                                                           |
+
+## O caminho honesto ao 10 (externo a este checkout)
+
+1. **Required check aplicado** (insumo: `GITEA_TOKEN` admin) → camada 9 sobe
+   para 8.5 e destrava o manifesto já stageado no tree.
+2. **Landing do WIP alheio** (realtime + migração withRoute, 213 arquivos) →
+   guardas do HEAD ficam verde: API → 9.0, Qualidade → 9.5, Governança → 9.0.
+3. **HA de verdade** (2+ réplicas, redis-adapter do realtime, metrics em
+   volume) + teste: Infra 8.5 → 9.5.
+4. **Rollout pago do Lytex + multi-cidade integrada** (decisão de negócio):
+   Produto 8.0 → 9.5.
+5. **Auditoria de segurança externa** (pentest)): o selo que eleva o 9.x
+   remanescente a 10 com honestidade.
+
+10/10 não se conquista um dia no navegador: é operação provada, HA medido e
+selo externo — o plano acima é a trilha completa.
 
 ## Limitações desta varredura
 
