@@ -299,7 +299,7 @@
         "declaredAt": "2026-10-05"
       },
       {
-        "subject": "chore(cleanup): remove os 9 barrels órfãos de lib/ que duplicam os módulos flat vivos",
+        "subject": "chore(cleanup): remove os 8 barrels órfãos de lib/ que duplicam os módulos flat vivos",
         "reason": "medido 05/10/2026 (pré-validação em worktree do commit, forge-parity): exit 1 — MESMA CAUSA dos pais declarados: as invariantes do CORE realtime-env-parity/realtime-emit-key-source e o wiring de route-handler-style exigem passos de pipeline + scripts que são WIP DE OUTRA THREAD no working tree (não commitados). Fecha com o landing do feature realtime (composes + secrets + guards) e o da migração withRoute.",
         "declaredAt": "2026-10-05"
       },
@@ -321,6 +321,46 @@
       {
         "subject": "feat(vitrine): anúncio de troca de resultados para leitores de tela (página E busca/filtro) + RUM leve da paginação e E2E da caminhada",
         "reason": "medido 05/10/2026 (pré-validação em worktree do commit, forge-parity): exit 1 — MESMA CAUSA do pai (wiring WIP de route-handler-style/realtime de outra thread). O a11y, o RUM e o E2E deste commit são verdes localmente (suítes + e2e 1 passed). Fecha com os landings.",
+        "declaredAt": "2026-10-05"
+      },
+      {
+        "subject": "feat(ci): guard do baseline de paginação contra dev server — piora além dos limiares do doc reprova o PR",
+        "reason": "medido 05/10/2026 (prover --only 128ec414 --sem-afetados; 2 tentativas repetiram o vermelho): forge-parity exit 1 — o gate 'scripts/check-caddy-validate.sh' NÃO CLASSIFICADO na árvore deste commit (nem CORE nem GITHUB_ONLY); a classificação GITHUB_ONLY entra no commit SEGUINTE da série ('fix(ci+api): classifica gate caddy-validate (GITHUB_ONLY)…') e é lá que o gate volta ao verde — transição, não regressão. mutation-count passa.",
+        "declaredAt": "2026-10-05"
+      },
+      {
+        "subject": "docs(perf): primeira edição dos baselines de API da vitrine e do orçamento de bundle client",
+        "reason": "medido 05/10/2026 (prover --only 457415bb --sem-afetados; 2 tentativas repetiram o vermelho): forge-parity exit 1 — MESMA CAUSA dos pais declarados: o wiring do CORE 'realtime-emit-key-source' (passo em .github/workflows/pr-check.yml + script canônico) é WIP DE OUTRA THREAD no working tree (não commitado); mutation-count passa. Fecha com o landing do feature realtime (composes + secrets + guards) e o da migração withRoute.",
+        "declaredAt": "2026-10-05"
+      },
+      {
+        "subject": "chore(ui): remove 12 componentes shadcn/ui nunca importados — a biblioteca que sobra é a que o produto usa",
+        "reason": "medido 05/10/2026 (prover --only aedf828a --sem-afetados; 2 tentativas repetiram o vermelho): forge-parity exit 1 — MESMA CAUSA dos pais declarados: o wiring do CORE 'realtime-emit-key-source' (passo em .github/workflows/pr-check.yml + script canônico) é WIP DE OUTRA THREAD no working tree (não commitado); mutation-count passa. Fecha com o landing do feature realtime (composes + secrets + guards) e o da migração withRoute.",
+        "declaredAt": "2026-10-05"
+      },
+      {
+        "subject": "fix(obs): o rastreio de erros no CLIENTE passa a iniciar de fato — o config existia e ninguém o carregava",
+        "reason": "medido 05/10/2026 (prover --only d708f8db --sem-afetados; 2 tentativas repetiram o vermelho): forge-parity exit 1 — MESMA CAUSA dos pais declarados: o wiring do CORE 'realtime-emit-key-source' (passo em .github/workflows/pr-check.yml + script canônico) é WIP DE OUTRA THREAD no working tree (não commitado); mutation-count passa. Fecha com o landing do feature realtime (composes + secrets + guards) e o da migração withRoute.",
+        "declaredAt": "2026-10-05"
+      },
+      {
+        "subject": "feat(lgpd): retenção da biometria do KYC, portabilidade e exclusão do titular — a política sai da intenção e vira código",
+        "reason": "medido 05/10/2026 (prover --only 0cb8f5cc --sem-afetados; 2 tentativas repetiram o vermelho): forge-parity exit 1 — MESMA CAUSA dos pais declarados: o wiring do CORE 'realtime-emit-key-source' (passo em .github/workflows/pr-check.yml + script canônico) é WIP DE OUTRA THREAD no working tree (não commitado); mutation-count passa. Fecha com o landing do feature realtime (composes + secrets + guards) e o da migração withRoute.",
+        "declaredAt": "2026-10-05"
+      },
+      {
+        "subject": "docs(qualidade): re-medição das notas do parecer + plano de execução para o 10",
+        "reason": "medido 05/10/2026 (prover --only 9886a748 --sem-afetados; 2 tentativas repetiram o vermelho): forge-parity exit 1 — MESMA CAUSA dos pais declarados: o wiring do CORE 'realtime-emit-key-source' (passo em .github/workflows/pr-check.yml + script canônico) é WIP DE OUTRA THREAD no working tree (não commitado); mutation-count passa. Fecha com o landing do feature realtime (composes + secrets + guards) e o da migração withRoute.",
+        "declaredAt": "2026-10-05"
+      },
+      {
+        "subject": "fix(infra): os serviços de longa duração sobem sozinhos após reboot — resiliência completa nos composes dev e raiz",
+        "reason": "medido 05/10/2026 (prover --only ca334252 --sem-afetados; 2 tentativas repetiram o vermelho): forge-parity exit 1 — MESMA CAUSA dos pais declarados: o wiring do CORE 'realtime-emit-key-source' (passo em .github/workflows/pr-check.yml + script canônico) é WIP DE OUTRA THREAD no working tree (não commitado); mutation-count passa. Fecha com o landing do feature realtime (composes + secrets + guards) e o da migração withRoute.",
+        "declaredAt": "2026-10-05"
+      },
+      {
+        "subject": "fix(ci): a dívida da pilha alcança o HEAD — os 8 vermelhos sem declaração saem de regressão anônima",
+        "reason": "medido 05/10/2026 no PAI (ca334252, prover --only --sem-afetados; 2 tentativas repetiram o vermelho): forge-parity exit 1 — o wiring do CORE 'realtime-emit-key-source' é WIP DE OUTRA THREAD no working tree (não commitado); este commit só muda ci/unproven.json e o parecer, nada que o gate leia, então o vermelho do próprio commit é a MESMA CAUSA. Fecha com o landing do feature realtime e o da migração withRoute.",
         "declaredAt": "2026-10-05"
       },
       {

@@ -252,9 +252,12 @@ Os itens acionáveis do parecer foram fechados na sequência:
   completo: os contextos CHEGAM à forja antes da declaração ser reescrita,
   a forja que recusa não deixa declaração, `--check` não escreve, e sem
   token a CLI recusa antes de tocar a forja — **verde**.
-- **Dívidas declaradas** em `ci/unproven.json` para os 3 commits desta
-  série (mesma causa dos pais: realtime/route-handler-style são WIP de
-  outra thread e só fecham com o landing dela).
+- **Dívidas declaradas** em `ci/unproven.json` para TODOS os 13 assuntos
+  vermelhos da série, cada um MEDIDO com o prover (`--only <sha>`
+  `--sem-afetados`, 2 tentativas repetidas; 05/10): caddy não classificado
+  no `128ec414` (fecha no commit seguinte da série) e o wiring realtime WIP
+  de outra thread nos demais — a prova final no HEAD `ca334252` classifica
+  DÍVIDA (não regressão): `divida 1 · regressao 0 · reancorar 0`.
 
 **Permanecem bloqueados (por desenho, não por código):**
 
@@ -320,3 +323,8 @@ selo externo — o plano acima é a trilha completa.
 - Sem credenciais das forjas, não inspecionei runs reais de CI — a
   conclusão de lint vermelho no CI é inferida do comando idêntico rodando
   localmente no HEAD.
+- O `stack-per-commit:prove` termina RC=1 POR DESENHO enquanto houver
+  dívida declarada: o vermelho nomeado como dívida não muda o exit — o que
+  o exit castiga SEM declaração é REGRESSÃO, e ela mede ZERO (vermelhos
+  re-mediados em 05/10, um a um, com 2 tentativas repetidas; o vermelho do
+  HEAD é o wiring WIP alheio, e RC=0 só volta com o landing dele).
