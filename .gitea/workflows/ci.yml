@@ -831,6 +831,118 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:55432/severinno_test
 
+  # ── Vitrine Pagination Baseline — required check do merge ─────────────
+  # O guard de performance da paginação (scripts/check-vitrine-pagination-
+  # baseline.mjs) roda a rotina de navegação contra um next dev REAL com a
+  # seed de 415 prestadores e REPROVA piora além dos limiares de
+  # docs/vitrine-pagination-baseline.md (mediana do clique quente, walk
+  # reverso, deep-link seek e walk-interno). Required check DE PROPÓSITO:
+  # regressão de performance da vitrine bloqueia o merge — e esta é a forja
+  # dona do merge (o espelho do GitHub roda o MESMO guard POR PATHS em
+  # .github/workflows/vitrine-baseline.yml; a forja de lá não tem portão).
+  vitrine-baseline:
+    name: Pagination baseline guard
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: severinno_test
+        ports:
+          # Portas de host PRÓPRIAS (55434/56381 — o job `test` usa 55432/56379):
+          # jobs em paralelo no MESMO runner self-hosted disputam as portas do
+          # host, e um container órfão de rodada anterior segura a porta e mata
+          # a rodada seguinte (mesma classe medida em 29/09).
+          - 55434:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 56381:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Script (não composite action): `run:` não passa pelo resolvedor de
+      # actions locais do runner — ver scripts/setup-bun-ci.sh.
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - run: bun install --frozen-lockfile
+      - run: bunx prisma generate
+
+      # O baseline é SENSÍVEL ao dataset: os limiares do doc foram medidos com
+      # a seed de 415 prestadores (47 páginas de 9). Sem ela o seek anda menos
+      # páginas e o walk reverso não acontece — o guard reprova por dados
+      # insuficientes em vez de passar com uma prova vazia.
+      - name: Push Prisma schema to test database
+        run: npx prisma db push --accept-data-loss --skip-generate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:55434/severinno_test
+
+      - name: Seed test database (baseline measured against this dataset)
+        run: bun run db:seed
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:55434/severinno_test
+          REDIS_URL: redis://localhost:56381
+          SESSION_SECRET: gitea-ci-vitrine-baseline-session-secret-32
+
+      # DEV, não produção: a régua do doc é de bundle de desenvolvimento. A
+      # PRONTIDÃO é da API paginada que o guard exercita (o /api/health pode
+      # responder 503 num ambiente válido — ele depende de mais do que o app).
+      - name: Start Next.js dev server on :3100
+        run: |
+          DATABASE_URL="postgresql://postgres:postgres@localhost:55434/severinno_test" \
+          REDIS_URL="redis://localhost:56381" \
+          SESSION_SECRET="gitea-ci-vitrine-baseline-session-secret-32" \
+          bunx next dev -p 3100 &>/tmp/vitrine-dev.log &
+          ready=0
+          for i in $(seq 1 60); do
+            sleep 2
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3100/api/providers?page=1&limit=9" 2>/dev/null || echo "000")
+            if [ "$code" = "200" ]; then
+              echo "dev ready (API paginada 200) após $((i * 2))s"
+              ready=1
+              break
+            fi
+          done
+          if [ "$ready" != "1" ]; then
+            echo "❌ dev server não serviu a API paginada em 120s"
+            tail -50 /tmp/vitrine-dev.log
+            exit 1
+          fi
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install chromium --with-deps
+
+      # O guard em si: a saída humana vai no log e, em falha, o JSON completo
+      # (amostras cruas para triagem) é impresso — a forja Gitea não tem
+      # upload-artifact em nenhum workflow; o log do job é o artifact.
+      - name: Run pagination baseline guard
+        run: node scripts/check-vitrine-pagination-baseline.mjs --json --report-file /tmp/vitrine-baseline-report.json
+
+      - name: Print guard report on failure
+        if: failure()
+        run: |
+          if [ -f /tmp/vitrine-baseline-report.json ]; then
+            echo "── vitrine-baseline-report.json ──"
+            cat /tmp/vitrine-baseline-report.json
+          fi
+          echo "── fim do dev server (últimas 50 linhas) ──"
+          tail -50 /tmp/vitrine-dev.log
+
   # ── Build ─────────────────────────────────────────────────────────────────
   build:
     name: Build

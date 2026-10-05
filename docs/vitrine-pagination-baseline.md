@@ -5,9 +5,9 @@ Instrumentação User Timing (Performance API) do clique de paginação
 detectar regressões futuras comparando medições como-como (mesmo ambiente,
 mesmo método — NÃO comparar com produção).
 
-Medido em: 2026-10-04 · ambiente: dev Next.js :3100 (bundle de desenvolvimento,
+Medido em: 2026-10-05 · ambiente: dev Next.js :3100 (bundle de desenvolvimento,
 não-minificado) · dataset: seed Governador Valadares, 415 prestadores, 47
-páginas de 9 · navegador Chromium via preview.
+páginas de 9 · navegador Chromium via Playwright (guard de CI, 3 rodadas).
 
 ## O que é medido
 
@@ -51,14 +51,14 @@ performance
 
 ## Baseline medido
 
-| Regime                                                       | Nome da medida            | duração observada                                            | n   |
-| ------------------------------------------------------------ | ------------------------- | ------------------------------------------------------------ | --- |
-| Clique, cache quente, nada em voo                            | `vitrine:pagina:render`   | **42.7 – 119.9 ms** (mediana ≈ 110 ms)                       | 5   |
-| Clique, cache quente + fetch em voo                          | `vitrine:pagina:render`   | ~204 ms observado (tail da rede; janela rara por design)     | 1   |
-| Caminhada rápida (4 cliques na cadência do botão)            | `vitrine:pagina:render`   | 36 – 102 ms por clique, 5 requests para 5 páginas (1/página) | 4   |
-| Walk reverso (Anterior, deep-link sem âncora de N-1; p1→p2)  | `vitrine:walk:render`     | **238.6 ms**                                                 | 1   |
-| Pouso do deep-link por seek direto (`?pagina=N&cursor=X`)    | `vitrine:deeplink:render` | **283.2 – 283.9 ms** (cold — inclui o seek)                  | 2   |
-| Pouso do deep-link com walk interno (`?pagina=4`, 3 páginas) | `vitrine:deeplink:render` | **489 ms**                                                   | 1   |
+| Regime                                                        | Nome da medida            | duração observada                                                                            | n   |
+| ------------------------------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------- | --- |
+| Clique, cache quente, nada em voo                             | `vitrine:pagina:render`   | **35.7 – 131.9 ms** (mediana ≈ 80 ms)                                                        | 15  |
+| Clique, cache quente + fetch em voo                           | `vitrine:pagina:render`   | ~204 ms observado (tail da rede; janela rara por design — 0 amostras nas 3 rodadas do guard) | 1   |
+| Caminhada rápida (6 cliques na cadência do botão, por rodada) | `vitrine:pagina:render`   | 27.5 – 131.9 ms por clique, 1 página por clique (o 1º absorve a rota fria do dev)            | 18  |
+| Walk reverso (Anterior, deep-link sem âncora de N-1; p1→p2)   | `vitrine:walk:render`     | **178.1 – 307.4 ms** (mediana ≈ 211 ms)                                                      | 3   |
+| Pouso do deep-link por seek direto (`?pagina=N&cursor=X`)     | `vitrine:deeplink:render` | **195.0 – 266.6 ms** (cold — inclui o seek; mediana ≈ 217 ms)                                | 9   |
+| Pouso do deep-link com walk interno (`?pagina=4`, 3 páginas)  | `vitrine:deeplink:render` | **365.0 – 409.1 ms** (mediana ≈ 374 ms)                                                      | 3   |
 
 Por que o clique é quase sempre `warm`: o prefetch da página seguinte dispara
 na chegada de cada página (e o hover/focus/touch revalida o cache vencido
@@ -71,14 +71,16 @@ Comparar SEMPRE em dev :3100, mesma seed, mediana de ≥ 3 amostras por
 regime:
 
 - `vitrine:pagina:render` warm mediana **> 250 ms** → investigar (o
-  esperado é 40–120 ms em dev; pioras relativas importam mais que
-  absolutos)
+  observado é 35.7 – 131.9 ms, mediana ≈ 80 ms; pioras relativas importam
+  mais que absolutos)
 - `inFlight: true` ou cold **> 800 ms** → investigar (o fetch de uma página
   em dev responde em ~15–25 ms server-side; o tail é client)
 - `vitrine:walk:render` **> 800 ms** por página de walk (o observado é
-  ~240 ms/página; escala linearmente com o número de páginas encadeadas)
+  ~211 ms/página, mediana de 3 rodadas; escala linearmente com o número de
+  páginas encadeadas)
 - `vitrine:deeplink:render` seek **> 800 ms**; com walk interno **>
-  250 ms × páginas de walk** (o observado é ~163 ms/página)
+  250 ms × páginas de walk** (o observado é ~125 ms/página: 365 – 409 ms
+  para 3 páginas)
 
 ## Guard de CI
 
@@ -110,16 +112,48 @@ indisponível) é exit 2. Local:
 bun run check:vitrine-pagination-baseline
 ```
 
-No CI: `.github/workflows/vitrine-baseline.yml` (precedente `e2e-cache.yml`) —
-sobe PostGIS + seed + `next dev` na :3100 e roda o guard como gate POR PATHS
-(só dispara quando a vitrine, a API de providers, o seed ou o próprio guard
-mudam). Ele fica FORA do manifesto de required checks de propósito: é gate de
-regressão da rotina medida, não gate de merge — ligá-lo ao merge da Gitea
-exigiria mexer em `ci.yml` + `ci/required-checks.json` (ato deliberado). A
-saída JSON (flag `--json` / artifact `vitrine-baseline-report`) traz as
-amostras cruas para triagem — um vermelho em regime de amostra única (walk,
-walk-interno) primeiro pergunta "ruído de máquina?" (rodar de novo) antes de
-investigar código.
+No CI, o guard é REQUIRED CHECK DO MERGE na forja dona do merge: o job
+`vitrine-baseline` do `.gitea/workflows/ci.yml` (contexto **Pagination
+baseline guard**, no manifesto `ci/required-checks.json`) sobe PostGIS + seed
+
+- `next dev` na :3100 e roda em TODO PR e push daquela forja — regressão de
+  performance da paginação bloqueia o merge, com a reaplicação de branch
+  protection declarada em `ci/required-checks-applied.json` (escrita pelo
+  applier, nunca à mão). O espelho do GitHub (sem portão de merge — 403 de
+  plano) roda o MESMO guard POR PATHS em `.github/workflows/vitrine-baseline.yml`
+  (precedente `e2e-cache.yml`), com o report como artifact. A saída JSON (flag
+  `--json`) traz as amostras cruas para triagem — um vermelho em regime de
+  amostra única (walk, walk-interno) primeiro pergunta "ruído de máquina?"
+  (rodar de novo) antes de investigar código.
+
+## RUM — o baseline visto pelos usuários reais
+
+O baseline deste doc vem de MEDIDAS CONTROLADAS (dev, mesma seed, guard de CI).
+O CONTRAPOINTO é o RUM leve: as mesmas 4 measures `vitrine:*` saem do browser
+dos usuários reais e viram log estruturado — resposta a "quanto do baseline
+vale em produção" (rede real, dispositivo real, cache frio).
+
+- **Client** (`src/lib/vitrine-rum.ts`): no assentamento de cada medida, o
+  reporter decide por AMOSTRAGEM DE LOAD (`NEXT_PUBLIC_RUM_SAMPLE_RATE`,
+  default **0.1**; `0` desliga) — a fração amostrada reporta TODAS as suas
+  medidas, o resto nenhuma (amostra coerente, mínimo de requests). Micro-batch
+  de 5 medidas ou 5s; transport é `navigator.sendBeacon` com fallback
+  `fetch keepalive`; nenhum caminho lança.
+- **SEM PII, por construção**: o payload é uma whitelist de campos (`name`,
+  `duration`, `target`, e os flags do regime `direction`/`warm`/`inFlight`/
+  `walked`) — qualquer outro campo é descartado no client ANTES da rede, e o
+  servidor revalida com zod e loga SÓ o parseado (o corpo cru nunca chega ao
+  log). Sem session id, sem user id, sem UA, sem URL, sem IP.
+- **Server** (`POST /api/rum/vitrine`): `withRoute` + zod (1–20 entries,
+  duração ≤ 60s, content-length ≤ 16 KB), resposta **sempre 204 sem corpo**
+  (beacon não lê resposta e RUM nunca vira sinal de erro), log pino no mesmo
+  destino do `/api/web-vitals` (Loki/Promtail).
+
+Como consultar: os logs carregam `[VitrineRUM] N medida(s)` com
+`rum: [{ name, duration, target, ... }]` — p95/mediana por `name` no agregador
+dá o perfil real por regime. NÃO comparar com os limiares deste doc (dev);
+produção tem outra régua — use o RUM para distribuições e tendência, o guard
+para o gate de regressão.
 
 ## Notas
 

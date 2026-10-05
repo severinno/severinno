@@ -294,6 +294,21 @@
     "reviewAfterDays": 90,
     "commits": [
       {
+        "subject": "fix(ci+api): classifica gate caddy-validate (GITHUB_ONLY), migra onboarding para withRoute e declara workflow vitrine-baseline no inventário do GitHub",
+        "reason": "medido 05/10/2026 (pré-validação em worktree do commit, forge-parity): exit 1 — as invariantes do CORE 'realtime-env-parity' e 'realtime-emit-key-source' e o wiring de 'route-handler-style' exigem passos de pipeline + scripts que são WIP DE OUTRA THREAD no working tree (não commitados); a pré-validação com blobs sintéticos só-meus fecha 'vitrine-pagination-baseline' nas DUAS forjas. Fecha com o landing do feature realtime (composes + secrets + guards) e o da migração withRoute.",
+        "declaredAt": "2026-10-05"
+      },
+      {
+        "subject": "feat(ci): Pagination baseline guard vira required check do merge na forja, com job espelho do MESMO comando canônico",
+        "reason": "medido 05/10/2026 (pré-validação em worktree do commit, forge-parity): exit 1 — MESMA CAUSA do pai: o wiring de 'route-handler-style' (passo em ci.yml/pr-check.yml + scripts/check-route-handler-style.mjs) e 'realtime-*' são WIP da migração withRoute e do feature realtime, em voo; o required check vitrine-baseline em si está fechado nas duas forjas neste commit. Fecha com os landings.",
+        "declaredAt": "2026-10-05"
+      },
+      {
+        "subject": "feat(vitrine): anúncio de troca de resultados para leitores de tela (página E busca/filtro) + RUM leve da paginação e E2E da caminhada",
+        "reason": "medido 05/10/2026 (pré-validação em worktree do commit, forge-parity): exit 1 — MESMA CAUSA do pai (wiring WIP de route-handler-style/realtime de outra thread). O a11y, o RUM e o E2E deste commit são verdes localmente (suítes + e2e 1 passed). Fecha com os landings.",
+        "declaredAt": "2026-10-05"
+      },
+      {
         "subject": "feat(gates): a classe da pilha vira gate — nenhum módulo importa nome que a ÁRVORE do commit ainda não exporta",
         "reason": "medido 28/09/2026 (bisseccionamento do push, 2 tentativas repetiram): vitest(15 arquivo(s)) reprova — o gate da classe da pilha recusa módulos que importam nome que a ÁRVORE DESTE commit ainda não exporta; os nomes novos só entram na árvore versionada nos commits SEGUINTES da train, e é lá que o gate volta ao verde (a árvore do TOPO da pilha passa integralmente)",
         "declaredAt": "2026-09-28"

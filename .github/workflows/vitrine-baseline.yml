@@ -13,12 +13,14 @@
 # ~240 ms/página, seek ~283 ms) é de DEV — React development, sem minificação.
 # Um build de produção mediria outra coisa e o limiar de 250 ms seria ruído.
 #
-# Por que workflow próprio (e não um step do pr-check/ci): a infra aqui é cara
-# e diferente — PostGIS + seed + dev server + Chromium —, e o precedente do
-# repositório para essa classe é o e2e-cache.yml. Fica FORA do manifesto de
-# required checks de propósito: este workflow é gate por PATHS (só roda quando
-# o que ele protege mudou), não gate de merge — ligá-lo como required check do
-# merge da Gitea é decisão deliberada (mexeria em ci.yml + manifesto).
+# Por que este workflow existe além do required check da Gitea: o guard é
+# required check do merge na FORJA DONA DO MERGE (job `vitrine-baseline` do
+# .gitea/workflows/ci.yml — contexto "Pagination baseline guard", ver
+# ci/required-checks.json). O GitHub não tem portão de merge (403 de plano,
+# declarado em ci/required-checks-applied.json), então aqui o guard roda POR
+# PATHS — sinal de saúde no espelho (só dispara quando o que ele protege
+# mudou), com o report como artifact para triagem. A infra é a do precedente
+# e2e-cache.yml (PostGIS + seed + dev server + Chromium).
 #
 # Triggered on:
 #   - PRs/pushes que tocam a vitrine, a API de providers, o seed ou o guard

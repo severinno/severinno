@@ -47,6 +47,12 @@
         "provenance": "declarado",
         "source": "README.md (build Next.js, 4m6s, 1 run, host local) — o mesmo número do bloco do job `e2e-cache`. REVISTO em 28/09/2026: o número segue o do README e NÃO foi re-medido COLD aqui — a única medição deste host é WARM (o `.next/` já quente: `bun run build` = 20,8s, 1 run, Linux), e uma run com cache não substitui a 1ª do README",
         "date": "2026-09-28"
+      },
+      "vitrine-baseline": {
+        "ms": 180000,
+        "provenance": "declarado (ESTIMATIVA de primeira edição — re-medir no primeiro run do job e ancorar)",
+        "source": "O passo do guard MEDIDO neste host (Linux, 05/10/2026, dev server :3100 e Chromium quentes) = 15,3s por rodada (3 rodadas exit 0, mediana warm 80ms); a frio o passo pode levar 60-90s (playwright cold, amostragem seek). O RESTO da duração ESTIMA o bring-up de postgis/redis (portas 55434/56381), a seed dos 415 prestadores, o startup do `next dev` e a readiness pela API paginada — SEM medição. Ficam FORA da soma: checkout, setup-bun e install",
+        "date": "2026-10-05"
       }
     },
     "github": {
@@ -235,6 +241,12 @@
         "source": "`.github/workflows/pr-check.yml` — `timeout-minutes: 25`; roda `act -j mutation-coord-update` (o README mede ESSE payload a 4m37.6s com act + ubuntu-bun, 1 run) + `measure-mutation-timing.mjs --act-log`, nos passos condicionados ao diff. O `act` não se remede aqui, então o número é o TETO do job",
         "date": "2026-09-17",
         "ceiling": true
+      },
+      "vitrine-baseline": {
+        "ms": 180000,
+        "provenance": "declarado (ESTIMATIVA de primeira edição — re-medir no primeiro run do job e ancorar)",
+        "source": "Espelho do job da forja (mesmo comando canônico, portas 55436/56383): a mesma estimativa do lado gitea — guard medido 15,3s quente neste host (05/10/2026) + bring-up de serviços/seed/dev estimados, SEM medição do job completo",
+        "date": "2026-10-05"
       }
     }
   }

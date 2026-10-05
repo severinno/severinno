@@ -316,6 +316,10 @@ export const RUNNER_SUBGUARD = [
  */
 export const HOOK_NOT_RUN = [
   {
+    ids: ["vitrine-pagination-baseline"],
+    why: "exige um DEV SERVER REAL da vitrine com os servicos (postgis/redis em portas proprias) e o Chromium do Playwright — o veredito e da LATENCIA da vitrine RODANDO, nao de um recorte de commit; o hook nao pode subir uma stack e um browser no caminho de cada commit. Roda no job proprio `vitrine-baseline` das DUAS pipelines a cada PR (o MESMO comando canônico com `--json --report-file`; na forja o report imprime em falha, no espelho vira artifact).",
+  },
+  {
     ids: ["bring-up-env-gate-proof", "runner-base", "prove-docs", "pre-commit-in-runner-proof"],
     why: "exigem DOCKER e/ou REDE (a imagem do runner, o registry, a execucao real do bring-up): nao cabem num hook local. Rodam nas DUAS pipelines (jobs bring-up-proof e workflow-refs-guard). O `pre-commit-in-runner-proof` entra por aqui pelo motivo mais literal do grupo: ele mede o bloqueio do pre-commit DENTRO do runtime que julga o PR (o `proveCommitBlocks` lancado na imagem do runner) — o hook nao pode rodar a propria prova dentro de uma imagem, e quem prova o hook no runtime do merge e o job `pre-commit-in-runner-proof` das duas forjas.",
   },

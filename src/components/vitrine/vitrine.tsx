@@ -25,6 +25,8 @@ import * as React from "react"
 import { Suspense } from "react"
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 
+import { reportVitrineMeasure } from "@/lib/vitrine-rum"
+
 import { useAuthStore, useGeoStore, useUIStore } from "@/store"
 import {
   fetchCategories,
@@ -457,6 +459,26 @@ export default function Vitrine() {
   // Mudança de filtro zera âncoras e volta para ?pagina=1.
   // useMemo: o effect de prefetch lista filterKey nas deps — identidade
   // estável evita re-executá-lo em render que não trocou filtro/geo.
+  // O RECOTE DE USUÁRIO do filterKey (sem lat/lng): é a assinatura de
+  // COMPOSIÇÃO dos resultados — muda quando busca/filtros definem um NOVO
+  // dataset, não quando a terra se move. O VitrineResults usa para decidir
+  // troca de busca/filtro (foco no heading + anúncio assertivo) sem confundir
+  // com o tranco do slider ou a digitação da busca (ambos assentam no debounce/
+  // commit antes de aqui mudar — um anúncio por composição, não por evento).
+  const filterUserKey = React.useMemo(
+    () =>
+      `${debouncedQ}|${filters.categoryId ?? ""}|${filters.radius}|${filters.sort}|${
+        filters.verifiedOnly ? 1 : 0
+      }|${filters.minRating}`,
+    [
+      debouncedQ,
+      filters.categoryId,
+      filters.radius,
+      filters.sort,
+      filters.verifiedOnly,
+      filters.minRating,
+    ],
+  )
   const filterKey = React.useMemo(
     () => ({
       q: debouncedQ,
@@ -676,16 +698,29 @@ export default function Vitrine() {
       deeplink: "vitrine:deeplink:render",
       popstate: "vitrine:popstate:render",
     } as const
+    const settledAt = performance.now()
     try {
       performance.measure(names[pending.kind], {
         start: pending.at,
-        end: performance.now(),
+        end: settledAt,
         detail: pending,
       })
     } catch {
       // User Timing indisponível (ambiente exótico): observabilidade nunca
       // quebra a navegação.
     }
+    // RUM leve: a mesma medida vai (amostrada, sem PII — whitelist em
+    // src/lib/vitrine-rum.ts) para /api/rum/vitrine virar log estruturado.
+    // O reporter engole os próprios erros: RUM nunca quebra a navegação.
+    reportVitrineMeasure({
+      name: names[pending.kind],
+      duration: settledAt - pending.at,
+      target: pending.target,
+      ...(pending.direction !== undefined ? { direction: pending.direction } : {}),
+      ...(pending.warm !== undefined ? { warm: pending.warm } : {}),
+      ...(pending.inFlight !== undefined ? { inFlight: pending.inFlight } : {}),
+      ...(pending.walked !== undefined ? { walked: pending.walked } : {}),
+    })
   }, [pagina, pagedQuery.isPlaceholderData, pagedQuery.data, pagedQuery.dataUpdatedAt])
 
   /** Anterior: com âncora em memória (ou alvo = p1, cuja âncora legítima é
@@ -845,6 +880,7 @@ export default function Vitrine() {
           hasNextPage={hasNextPage}
           currentPage={pagina}
           totalPages={totalPages}
+          filterUserKey={filterUserKey}
           onPrevPage={goPrevPage}
           onNextPage={() => goPage(pagina + 1)}
           onPrefetchNext={prefetchNextPage}

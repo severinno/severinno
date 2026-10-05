@@ -70,6 +70,12 @@ export type VitrineResultsProps = {
    *  âncora de N-1 em memória; cobre o cache expirado. */
   onPrefetchPrev?: () => void
   resultsAnchorId?: string
+  /** Assinatura de COMPOSIÇÃO dos resultados (q|categoria|raio|ordenacao|
+   *  verificados|nota — o recorte de usuário do filterKey do PAI, sem geo).
+   *  Muda quando busca/filtro definem um NOVO dataset: dispara o anúncio de
+   *  re-renderização quando os DADOS assentam — imune ao tranco do slider
+   *  (onValueChange contínuo) e à digitação da busca (debounce do pai). */
+  filterUserKey?: string
   className?: string
   /** Raio efetivo usado na expansão. null = sem expansão, número = km usado, -1 = além de 100km (sem filtro) */
   expandedRadius?: number | null
@@ -102,13 +108,13 @@ export default function VitrineResults({
   onPrefetchNext,
   onPrefetchPrev,
   resultsAnchorId,
+  filterUserKey,
   className,
   expandedRadius,
 }: VitrineResultsProps) {
   const [view, setView] = React.useState<ViewMode>("list")
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false)
-
   // Derive valid selection — automatically clears if the selected provider
   // is no longer in the current results (e.g. after pagination or filter change).
   const activeSelectedId = React.useMemo(() => {
@@ -132,6 +138,62 @@ export default function VitrineResults({
   // Paginação real: botões Anterior/Próxima no rodapé da listagem
   // (o seek do servidor continua keyset — a página N busca com a âncora
   // de cursor da N-1; o sentinela/observer do scroll infinito saiu).
+
+  // ── Acessibilidade da troca de resultados (página E busca/filtro) ──
+  // Após paginar ou trocar busca/filtro, o foco do usuário fica nos controles
+  // enquanto o conteúdo muda centenas de px acima: quem navega por teclado ou
+  // leitor de tela perde o contexto. O heading dos resultados recebe o foco
+  // (tabIndex=-1, programático — nunca na ordem de tab) e a região viva
+  // assertiva anuncia o novo estado — o role="status" do contador é educado e
+  // pode ser engolido no meio da fala.
+  const headingResultadosRef = React.useRef<HTMLHeadingElement>(null)
+  /** Página e composição do render ANTERIOR. `undefined` no primeiro render:
+   *  chegada/pouso não anuncia nem rouba foco (deep-link é narrado pelo URL). */
+  const paginaAnteriorRef = React.useRef<number | undefined>(undefined)
+  const composicaoAnteriorRef = React.useRef<string | undefined>(undefined)
+  /** A TROCA aguardando os dados assentarem — em REF (sem setState no gatilho:
+   *  registrar intenção não é motivo para render em cascata). Um anúncio por
+   *  ação: o tranco do slider (onValueChange contínuo), a digitação da busca e
+   *  a revalidação de fundo (isFetching) não anunciam nada. */
+  const trocaPendenteRef = React.useRef<{ tipo: "pagina" | "filtro"; pagina: number } | null>(null)
+  /** Texto do anúncio; null = região vazia (elemento estável no DOM — trocar
+   *  o nó da região viva re-registra e engole o anúncio). */
+  const [anuncio, setAnuncio] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    const pagAnterior = paginaAnteriorRef.current
+    const compAnterior = composicaoAnteriorRef.current
+    paginaAnteriorRef.current = currentPage
+    composicaoAnteriorRef.current = filterUserKey
+
+    // GATILHOS: composição (busca/filtro) vence a página — quando o filtro
+    // reseta para a p1, o anúncio é do NOVO dataset, não da p1; paginar é
+    // navegação. Chegada do primeiro valor (undefined) é carregamento, não.
+    const novaTroca =
+      compAnterior !== undefined && !!filterUserKey && compAnterior !== filterUserKey
+        ? { tipo: "filtro" as const, pagina: currentPage ?? 0 }
+        : pagAnterior !== undefined && currentPage !== undefined && pagAnterior !== currentPage
+          ? { tipo: "pagina" as const, pagina: currentPage }
+          : null
+    if (novaTroca) trocaPendenteRef.current = novaTroca
+
+    // CONSEQUÊNCIA — os dados da troca assentam (sai do carregamento): move o
+    // foco e anuncia UMA vez; revalidação de fundo não re-anuncia.
+    if (!trocaPendenteRef.current || isLoading) return
+    const pendente = trocaPendenteRef.current
+    trocaPendenteRef.current = null
+    headingResultadosRef.current?.focus({ preventScroll: true })
+    const paginas = typeof totalPages === "number" && totalPages > 0 ? ` de ${totalPages}` : ""
+    setAnuncio(
+      pendente.tipo === "pagina"
+        ? `Página ${pendente.pagina}${paginas} — ${providers.length} ${
+            providers.length === 1 ? "prestador" : "prestadores"
+          }`
+        : `Resultados atualizados — ${providers.length} ${
+            providers.length === 1 ? "prestador" : "prestadores"
+          } encontrado${providers.length === 1 ? "" : "s"}`,
+    )
+  }, [currentPage, filterUserKey, isLoading, totalPages, providers.length])
 
   return (
     <section
@@ -159,7 +221,11 @@ export default function VitrineResults({
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold tracking-tight">
+                <h2
+                  ref={headingResultadosRef}
+                  tabIndex={-1}
+                  className="text-lg font-semibold tracking-tight outline-none"
+                >
                   {isLoading ? (
                     <Skeleton className="h-6 w-40" />
                   ) : (
@@ -402,6 +468,15 @@ export default function VitrineResults({
               </Button>
             </nav>
           ) : null}
+          {/* Anúncio da troca de resultados para leitores de tela —
+              `role="alert"` (região viva assertiva implícita): a troca foi AÇÃO
+              do usuário e um anúncio educado aqui é perdido. SEMPRE montado
+              (vazio quando ocioso) e FORA do condicional da paginação: uma
+              troca de filtro pode remover a paginação inteira, e a região não
+              pode morrer junto com o anúncio que ela carrega. */}
+          <p role="alert" aria-live="assertive" aria-atomic="true" className="sr-only">
+            {anuncio}
+          </p>
         </div>
       </div>
     </section>
