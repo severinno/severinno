@@ -11,6 +11,7 @@ services:
   # ── PostgreSQL + PostGIS ───────────────────────────────────────────────
   postgis:
     image: postgis/postgis:16-3.4
+    restart: unless-stopped
     environment:
       POSTGRES_DB: severinno
       POSTGRES_USER: severinno
@@ -30,6 +31,7 @@ services:
   # ── Valkey (100% FOSS, in-memory cache & rate-limit) ───────────────────
   redis:
     image: valkey/valkey:7.2-alpine
+    restart: unless-stopped
     ports:
       - "127.0.0.1:6380:6379" # 6380 host → 6379 container (porta 6379 pode estar reservada pelo Hyper-V)
     volumes:
@@ -44,6 +46,7 @@ services:
   # ── RabbitMQ ───────────────────────────────────────────────────────────
   rabbitmq:
     image: rabbitmq:4-alpine
+    restart: unless-stopped
     ports:
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"
@@ -71,6 +74,7 @@ services:
       - ./mini-services/realtime:/app
       - /app/node_modules
     command: bun --hot index.ts
+    restart: unless-stopped # dev server também sobe de novo após reboot do daemon
     environment:
       # Sem isto o serviço cai no default `redis://localhost:6379` (dentro do
       # container não há nada escutando) e o adapter pub/sub fica inerte: o
@@ -83,6 +87,7 @@ services:
   # ── OpenSearch (Full-text search — Apache 2.0) ──────────────────────────
   opensearch:
     image: opensearchproject/opensearch:2.19.0
+    restart: unless-stopped
     environment:
       discovery.type: single-node
       DISABLE_INSTALL_DEMO_CONFIG: "true"
@@ -103,6 +108,7 @@ services:
   # ── GlitchTip (Error Monitoring — 100% FOSS, MIT) ─────────────────────
   glitchtip:
     image: glitchtip/glitchtip:v5.2
+    restart: unless-stopped
     ports:
       - "127.0.0.1:8000:8000"
     environment:
@@ -136,6 +142,7 @@ services:
 
   glitchtip-worker:
     image: glitchtip/glitchtip:v5.2
+    restart: unless-stopped
     command: ./bin/run-celery-with-beat.sh
     environment:
       DATABASE_URL: postgresql://severinno:severinno@postgis:5432/severinno_errors
@@ -154,6 +161,7 @@ services:
   # ── MinIO (S3-compatible Object Storage — 100% FOSS) ───────────────────
   minio:
     image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    restart: unless-stopped
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
@@ -189,6 +197,7 @@ services:
   # Setup data first: bash scripts/setup-osrm.sh
   osrm:
     image: ghcr.io/project-osrm/osrm-backend:latest
+    restart: unless-stopped
     ports:
       - "127.0.0.1:5000:5000"
     volumes:
