@@ -110,7 +110,13 @@ export const HELPERS = ["escreverFormatado", "escreverJsonFormatado"]
  * alcança (grava fixture e cita versão) mas cujo alvo versionado é LIDO: ele não
  * gera artefato, e o motivo fica escrito.
  *
- * @type {{script: string, saidas?: string[], reescreve?: string[], escritasCruas?: string[], leSo?: string}[]}
+ * `saidasCruas` são as saídas VERSIONADAS deliberadamente FORA do lint (vendor
+ * minificado, artefato binário): cada uma precisa estar no `.prettierignore` —
+ * o oráculo é INVERTIDO, e o guard reprova se o prettier passar a julgar o
+ * arquivo, porque aí ele voltou a ser julgável e tem de virar `saidas`. O motivo
+ * fica no comentário da entrada.
+ *
+ * @type {{script: string, saidas?: string[], reescreve?: string[], saidasCruas?: string[], escritasCruas?: string[], leSo?: string}[]}
  */
 export const GERADORES = [
   // ── 1. o REGISTRO do bench e os BLOCOS DERIVADOS da doc ────────────────────
@@ -142,6 +148,21 @@ export const GERADORES = [
   },
   { script: "scripts/check-github-dependencies.mjs", saidas: ["ci/github-dependencies.json"] },
   { script: "scripts/check-required-checks.mjs", saidas: ["ci/required-checks-applied.json"] },
+
+  // ── 2b. VENDOR minificado: saída cru DELIBERADA (o lint não pode julgá-la) ─
+  {
+    script: "scripts/sync-maplibre-worker.mjs",
+    // O worker/shared do maplibre-gl chegam MINIFICADOS do vendor: o prettier
+    // expandiria o bundle (quebraria a minificação) — por isso o .prettierignore
+    // já declara `public/maplibre/` fora do lint. VERSION.txt é o carimbo da
+    // versão vendorada, gravado cru no mesmo diretório.
+    saidasCruas: [
+      "public/maplibre/maplibre-gl-worker.js",
+      "public/maplibre/maplibre-gl-shared.js",
+      "public/maplibre/VERSION.txt",
+    ],
+    escritasCruas: ["destPath", 'join(root, "public/maplibre/VERSION.txt")'],
+  },
 
   // ── 3. os REESCRITORES da doc (o alvo é o arquivo/diretório que ele corrige) ─
   { script: "scripts/check-encoding-guards-badge.mjs", saidas: ["README.md"] },
@@ -445,6 +466,7 @@ export function artefatoNoLint(rel, { cwd, globs, run = spawnSync }) {
  *   violations: string[],
  *   geradores: number,
  *   saidas: number,
+ *   saidasCruas: number,
  *   candidatos: string[],
  *   escritasCruas: {script: string, cruas: string[], declaradas: string[]}[],
  *   globs: string[],
@@ -469,6 +491,7 @@ export async function analyze({
     violations: [],
     geradores: geradores.length,
     saidas: 0,
+    saidasCruas: 0,
     candidatos: [],
     escritasCruas: [],
     globs: [],
@@ -528,7 +551,7 @@ export async function analyze({
     if (!declarados.has(c)) {
       base.violations.push(
         `${c} grava e cita arquivo versionado, e NÃO está na tabela GERADORES deste guard: ` +
-          `declare as \`saidas\` (ou \`reescreve\`) e as \`escritasCruas\`, — um gerador fora da tabela é um gerado que ninguém mede`,
+          `declare as \`saidas\` (ou \`reescreve\`, ou \`saidasCruas\`) e as \`escritasCruas\`, — um gerador fora da tabela é um gerado que ninguém mede`,
       )
     }
   }
@@ -564,6 +587,25 @@ export async function analyze({
       const veredito = artefatoNoLint(rel, { cwd, globs, run })
       base.artefatos.push({ saida: rel, gerador: g.script, ok: veredito.ok })
       if (!veredito.ok) base.violations.push(veredito.motivo)
+    }
+    for (const rel of g.saidasCruas ?? []) {
+      base.saidasCruas++
+      if (!versionados.has(rel)) {
+        base.violations.push(
+          `${g.script}: a saída CRUA declarada '${rel}' não é versionada (git ls-files não a lista) — ` +
+            `declarar como gerado o que não entra no commit não mede nada`,
+        )
+        continue
+      }
+      const infoCrua = await prettierJudges(rel, cwd).catch(() => null)
+      if (infoCrua && infoCrua.ignored !== true) {
+        base.violations.push(
+          `${rel}: declarado como saída CRUA de '${g.script}' mas o prettier o JULGA — ` +
+            `declare em \`saidas\` (o gerado tem de sair formatado) ou declare o caminho no \`.prettierignore\` com o motivo`,
+        )
+        continue
+      }
+      base.artefatos.push({ saida: rel, gerador: g.script, ok: true })
     }
     for (const prefixo of g.reescreve ?? []) {
       const exemplo = prefixo.endsWith("/") ? `${prefixo}exemplo.json` : prefixo
@@ -660,8 +702,12 @@ function main() {
       )
       process.exit(report.exit)
     }
+    const cruas =
+      report.saidasCruas > 0
+        ? ` + ${report.saidasCruas} saída(s) CRUA(s) declarada(s) FORA do lint (ignoradas, com motivo)`
+        : ""
     console.log(
-      `✅ ${report.geradores} gerador(es) declarado(s) e ${report.saidas} saída(s) versionada(s) DENTRO do lint ` +
+      `✅ ${report.geradores} gerador(es) declarado(s) e ${report.saidas} saída(s) versionada(s) DENTRO do lint${cruas} ` +
         `(${report.candidatos.length} candidato(s) derivados da árvore, todos cobertos): o gerado sai como o prettier o deixa.`,
     )
     process.exit(report.exit)

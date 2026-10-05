@@ -181,6 +181,10 @@ export function OnboardingChecklist() {
         {/* Resumo com foto — mesmo padrão do onboarding do prestador */}
         <div className="mt-2 flex items-center gap-2.5">
           {profile.avatarUrl ? (
+            // <img> de propósito: a URL pode vir de host sem remotePattern
+            // configurado (MinIO assinado); o <Image> do next reprovaria no
+            // runtime. Preview de 40px não se beneficia do otimizador.
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={profile.avatarUrl}
               alt="Sua foto de perfil"

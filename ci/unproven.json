@@ -294,6 +294,21 @@
     "reviewAfterDays": 90,
     "commits": [
       {
+        "subject": "docs(qualidade): parecer da varredura por camadas (2026-10-05) com o desdobramento das correções",
+        "reason": "medido 05/10/2026 (pré-validação em worktree do commit, forge-parity): exit 1 — MESMA CAUSA dos pais declarados: as invariantes do CORE realtime-env-parity/realtime-emit-key-source e o wiring de route-handler-style exigem passos de pipeline + scripts que são WIP DE OUTRA THREAD no working tree (não commitados). Fecha com o landing do feature realtime (composes + secrets + guards) e o da migração withRoute.",
+        "declaredAt": "2026-10-05"
+      },
+      {
+        "subject": "chore(cleanup): remove os 9 barrels órfãos de lib/ que duplicam os módulos flat vivos",
+        "reason": "medido 05/10/2026 (pré-validação em worktree do commit, forge-parity): exit 1 — MESMA CAUSA dos pais declarados: as invariantes do CORE realtime-env-parity/realtime-emit-key-source e o wiring de route-handler-style exigem passos de pipeline + scripts que são WIP DE OUTRA THREAD no working tree (não commitados). Fecha com o landing do feature realtime (composes + secrets + guards) e o da migração withRoute.",
+        "declaredAt": "2026-10-05"
+      },
+      {
+        "subject": "fix(ci): lint volta ao verde no HEAD — vendor minificado vira saída crua declarada e warnings pré-existentes fecham",
+        "reason": "medido 05/10/2026 (pré-validação em worktree do commit, forge-parity): exit 1 — MESMA CAUSA dos pais declarados: as invariantes do CORE realtime-env-parity/realtime-emit-key-source e o wiring de route-handler-style exigem passos de pipeline + scripts que são WIP DE OUTRA THREAD no working tree (não commitados). Fecha com o landing do feature realtime (composes + secrets + guards) e o da migração withRoute.",
+        "declaredAt": "2026-10-05"
+      },
+      {
         "subject": "fix(ci+api): classifica gate caddy-validate (GITHUB_ONLY), migra onboarding para withRoute e declara workflow vitrine-baseline no inventário do GitHub",
         "reason": "medido 05/10/2026 (pré-validação em worktree do commit, forge-parity): exit 1 — as invariantes do CORE 'realtime-env-parity' e 'realtime-emit-key-source' e o wiring de 'route-handler-style' exigem passos de pipeline + scripts que são WIP DE OUTRA THREAD no working tree (não commitados); a pré-validação com blobs sintéticos só-meus fecha 'vitrine-pagination-baseline' nas DUAS forjas. Fecha com o landing do feature realtime (composes + secrets + guards) e o da migração withRoute.",
         "declaredAt": "2026-10-05"

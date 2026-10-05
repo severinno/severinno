@@ -1032,6 +1032,10 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
                   {/* Resumo do perfil — revisão rápida antes de publicar */}
                   <div className="bg-muted/30 flex items-center gap-3 rounded-lg border p-3">
                     {avatarUrl || localPreview ? (
+                      // <img> de propósito: o localPreview é blob: URL de
+                      // URL.createObjectURL(file) — o <Image> do next não
+                      // parseia blob:, e a prévia de 40px não usa otimizador.
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={avatarUrl ?? localPreview ?? undefined}
                         alt="Foto do prestador"

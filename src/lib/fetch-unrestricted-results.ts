@@ -17,7 +17,6 @@ import {
 } from "./fetch-providers-data"
 import {
   buildKeysetPredicate,
-  decodeProviderCursor,
   encodeProviderCursor,
   KEYSET_ORDER_KEYS_RATING,
   type ProviderCursorAnchor,
