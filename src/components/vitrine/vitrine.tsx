@@ -214,12 +214,23 @@ export default function Vitrine() {
   /** Navegação por clique em curso (User Timing): marcada no goPage, medida
    *  quando os dados da página alvo assentam (effect de render abaixo). */
   const navStartRef = React.useRef<{
+    kind: "pagina" | "walk-anterior" | "deeplink" | "popstate"
     target: number
     at: number
-    direction: "proxima" | "anterior"
-    warm: boolean
-    inFlight: boolean
+    direction?: "proxima" | "anterior"
+    warm?: boolean
+    inFlight?: boolean
+    walked?: boolean
   } | null>(null)
+  /** 1ª execução do applyUrl = pouso do deep-link; as seguintes = popstate
+   *  (o closure de applyUrl é estável — deps [startWalk] — então o gatilho
+   *  vem do ref, não do state.hydrated do render). */
+  const deepLinkRef = React.useRef(true)
+  /** Última URL aplicada: o applyUrl re-executa no MESMO load (double-invoke
+   *  de effect em dev/StrictMode) com a mesma URL — não é navegação nova e
+   *  NÃO deve sobrescrever o pending de instrumentação (roubava o rótulo
+   *  deeplink, virando popstate). */
+  const appliedUrlRef = React.useRef<string | null>(null)
   const queryClient = useQueryClient()
 
   // ── Walk: página funda sem âncora (deep-link OU popstate) ──
@@ -323,6 +334,14 @@ export default function Vitrine() {
 
   const applyUrl = React.useCallback(() => {
     if (typeof window === "undefined") return
+    // ── Instrumentação User Timing: pouso do deep-link (e do popstate) ──
+    // O relógio começa na HIDRATAÇÃO da URL (o que o SPA controla — o load
+    // de HTML/bundle precede). A 1ª execução é o deep-link; as seguintes,
+    // popstate (label próprio para não poluir o baseline do deep-link).
+    const at = performance.now()
+    const urlNow = window.location.pathname + window.location.search
+    const isSameApply = appliedUrlRef.current === urlNow
+    appliedUrlRef.current = urlNow
     const parsed = parseVitrineSearchParams(window.location.search)
     // sort=distancia sem geo cai para rating — mesmo contrato do
     // onFiltersChange (o botão "Mais próximos" é desabilitado sem geo).
@@ -340,11 +359,38 @@ export default function Vitrine() {
     // corrente começa em 1 e o walker sobe até o alvo (com teto).
     const needsWalk =
       parsed.pagina > 1 && !parsed.cursor && anchorsRef.current.get(parsed.pagina) == null
+    if (parsed.pagina > 1 && !isSameApply) {
+      // A chave do warm-check é construída da URL+geo — a MESMA forma que o
+      // filterKey da query montada terá pós-HYDRATE_URL (não referenciar
+      // filterKey aqui: é declarado adiante no componente e o array de deps
+      // do useCallback avalia NO render — TDZ).
+      const warmKey = {
+        q: urlFilters.q,
+        categoryId: urlFilters.categoryId,
+        radius: urlFilters.radius,
+        sort: urlFilters.sort,
+        verifiedOnly: urlFilters.verifiedOnly,
+        minRating: urlFilters.minRating,
+        lat: geoRef.current.lat,
+        lng: geoRef.current.lng,
+        limit: PAGE_LIMIT,
+      }
+      navStartRef.current = {
+        kind: deepLinkRef.current ? "deeplink" : "popstate",
+        target: parsed.pagina,
+        at,
+        walked: needsWalk,
+        warm:
+          queryClient.getQueryState(["providers", "pagina", parsed.pagina, warmKey])
+            ?.dataUpdatedAt != null,
+      }
+    }
+    deepLinkRef.current = false
     setPaginaState(needsWalk ? 1 : parsed.pagina)
     if (needsWalk) startWalk(Math.min(parsed.pagina, MAX_WALK_TARGET), urlFilters)
     // Dispatch SEMPRE (mesmo sem params): liga a flag hydrated do espelho.
     dispatch({ type: "HYDRATE_URL", filters: urlFilters, debouncedQ: urlFilters.q })
-  }, [startWalk])
+  }, [startWalk, queryClient])
 
   // Hidratação: em MICROTASK (nem render nem setState síncrono em effect —
   // react-hooks v6; o SSR ignora window sem quebrar). O primeiro fetch do
@@ -578,6 +624,7 @@ export default function Vitrine() {
       const direction: "proxima" | "anterior" = target > pagina ? "proxima" : "anterior"
       const targetState = queryClient.getQueryState(["providers", "pagina", target, filterKey])
       navStartRef.current = {
+        kind: "pagina",
         target,
         at: performance.now(),
         direction,
@@ -622,8 +669,15 @@ export default function Vitrine() {
     if (!pending || pending.target !== pagina) return
     if (pagedQuery.isPlaceholderData || !pagedQuery.data) return
     navStartRef.current = null
+    // Um nome por regime — filtragem direta no DevTools e no RUM.
+    const names = {
+      pagina: "vitrine:pagina:render",
+      "walk-anterior": "vitrine:walk:render",
+      deeplink: "vitrine:deeplink:render",
+      popstate: "vitrine:popstate:render",
+    } as const
     try {
-      performance.measure("vitrine:pagina:render", {
+      performance.measure(names[pending.kind], {
         start: pending.at,
         end: performance.now(),
         detail: pending,
@@ -645,7 +699,14 @@ export default function Vitrine() {
     const target = pagina - 1
     if (target < 1) return
     if (target > 1 && !anchors.has(target)) {
-      void startWalk(Math.min(target, MAX_WALK_TARGET), filters)
+      const walkTarget = Math.min(target, MAX_WALK_TARGET)
+      // ── Instrumentação: walk reverso (o pouso no alvo fecha a medida) ──
+      navStartRef.current = {
+        kind: "walk-anterior",
+        target: walkTarget,
+        at: performance.now(),
+      }
+      void startWalk(walkTarget, filters)
       return
     }
     goPage(target)

@@ -310,27 +310,43 @@ describe("Vitrine — ?pagina=N (navegação real com keyset)", () => {
   })
 
   it("pagina=3 SEM cursor: walk keyset encadeado (p1 → p2 → pousa p3)", async () => {
-    setPages({
-      1: page(9, CURSOR_B),
-      2: page(9, CURSOR_C),
-      3: page(9, null),
-    })
-    // fila por cursor: null alimenta p1 (componente) e p1 do walk; B alimenta p2
-    h.responsesByCursor.set(null, [page(9, CURSOR_B), page(9, CURSOR_B)])
-    h.responsesByCursor.set(CURSOR_B, [page(9, CURSOR_C)])
-    window.history.replaceState(null, "", "/?pagina=3")
-    await renderVitrine()
+    const measureSpy = vi.spyOn(performance, "measure")
+    try {
+      setPages({
+        1: page(9, CURSOR_B),
+        2: page(9, CURSOR_C),
+        3: page(9, null),
+      })
+      // fila por cursor: null alimenta p1 (componente) e p1 do walk; B alimenta p2
+      h.responsesByCursor.set(null, [page(9, CURSOR_B), page(9, CURSOR_B)])
+      h.responsesByCursor.set(CURSOR_B, [page(9, CURSOR_C)])
+      window.history.replaceState(null, "", "/?pagina=3")
+      await renderVitrine()
 
-    const cursors = fetchCalls().map((c) => c.cursor)
-    // Sequência REAL: o walk (rotina async em microtasks) completa o
-    // encadeamento antes do flush do re-render — o HYDRATE_URL + setPagina(3)
-    // coalescem num único commit e o componente NUNCA monta a p1 (o TanStack
-    // real deduplica da mesma forma: fetchQuery popula o cache do useQuery).
-    // [null=p1-walk, B=p2-walk com a âncora da p1, C=p3-componente com a
-    // âncora C semeada pelo walk]. A fila de null tem duas páginas: a segunda
-    // só seria consumida se o commit NÃO coalescesse (regressão de flush).
-    expect(cursors).toEqual([null, CURSOR_B, CURSOR_C])
-    expect(window.location.search).toContain("pagina=3")
+      const cursors = fetchCalls().map((c) => c.cursor)
+      // Sequência REAL: o walk (rotina async em microtasks) completa o
+      // encadeamento antes do flush do re-render — o HYDRATE_URL + setPagina(3)
+      // coalescem num único commit e o componente NUNCA monta a p1 (o TanStack
+      // real deduplica da mesma forma: fetchQuery popula o cache do useQuery).
+      // [null=p1-walk, B=p2-walk com a âncora da p1, C=p3-componente com a
+      // âncora C semeada pelo walk]. A fila de null tem duas páginas: a segunda
+      // só seria consumida se o commit NÃO coalescesse (regressão de flush).
+      expect(cursors).toEqual([null, CURSOR_B, CURSOR_C])
+      expect(window.location.search).toContain("pagina=3")
+
+      // Pouso do deep-link medido (User Timing): walked=true — o pouso veio de
+      // um walk interno, do relógio da hidratação da URL ao dado assentado.
+      const deeplinkMeasure = (measureSpy.mock.calls as unknown as [string, any][]).find(
+        (c) => c[0] === "vitrine:deeplink:render",
+      )
+      expect(deeplinkMeasure?.[1].detail).toMatchObject({
+        target: 3,
+        kind: "deeplink",
+        walked: true,
+      })
+    } finally {
+      measureSpy.mockRestore()
+    }
   })
 
   it("dataset acaba antes do alvo: walk aborta e normaliza a URL", async () => {
@@ -535,19 +551,40 @@ describe("Vitrine — ?pagina=N (navegação real com keyset)", () => {
     // [p3 seek com a âncora do link, load-prefetch da p4 com a âncora C]
     expect(fetchCalls().map((c) => c.cursor)).toEqual([CURSOR_B, CURSOR_C])
 
-    await act(async () => {
-      screen.getByTestId("go-prev").click()
-      for (let i = 0; i < 8; i++) await Promise.resolve()
-    })
+    const measureSpy = vi.spyOn(performance, "measure")
+    try {
+      await act(async () => {
+        screen.getByTestId("go-prev").click()
+        for (let i = 0; i < 8; i++) await Promise.resolve()
+      })
 
-    const cursors = fetchCalls().map((c) => c.cursor)
-    // [B seek p3, C prefetch p4, null p1 do walk, B remontagem da p2 pousada
-    // com a âncora semeada pelo walk — o fetchQuery do walk semeia âncoras;
-    // o TanStack real servia do cache, o mock refaz o fetch com a MESMA
-    // âncora: conteúdo idêntico de qualquer forma]
-    expect(cursors).toEqual([CURSOR_B, CURSOR_C, null, CURSOR_B])
-    expect(window.location.search).toContain("pagina=2")
-    expect(window.location.search).toContain(`cursor=${CURSOR_B}`)
+      const cursors = fetchCalls().map((c) => c.cursor)
+      // [B seek p3, C prefetch p4, null p1 do walk, B remontagem da p2 pousada
+      // com a âncora semeada pelo walk — o fetchQuery do walk semeia âncoras;
+      // o TanStack real servia do cache, o mock refaz o fetch com a MESMA
+      // âncora: conteúdo idêntico de qualquer forma]
+      expect(cursors).toEqual([CURSOR_B, CURSOR_C, null, CURSOR_B])
+      expect(window.location.search).toContain("pagina=2")
+      expect(window.location.search).toContain(`cursor=${CURSOR_B}`)
+      // O walk reverso fechou sua medida própria (User Timing).
+      const walkMeasure = (measureSpy.mock.calls as unknown as [string, any][]).find(
+        (c) => c[0] === "vitrine:walk:render",
+      )
+      expect(walkMeasure?.[1].detail).toMatchObject({ target: 2, kind: "walk-anterior" })
+
+      // Retorno Próxima: sai do cache SEM pré-busca extra no walk — o pouso em
+      // p2 já dispara o prefetch de N (com a âncora fresca) e a p3 de origem
+      // está no cache desde o seek do deep-link; o hover cobre o vencido. Um
+      // prefetch de N DURANTE o walk seria um 3º gatilho redundante.
+      await act(async () => {
+        screen.getByTestId("go-next").click()
+        await Promise.resolve()
+      })
+      expect(fetchCalls().map((c) => c.cursor)).toEqual([CURSOR_B, CURSOR_C, null, CURSOR_B])
+      expect(window.location.search).toContain("pagina=3")
+    } finally {
+      measureSpy.mockRestore()
+    }
   })
 
   it("Anterior além do teto do walk (deep-link fundo sem âncora de N-1): botão desabilita", async () => {
@@ -569,6 +606,32 @@ describe("Vitrine — ?pagina=N (navegação real com keyset)", () => {
       await Promise.resolve()
     })
     expect(h.prefetchCalls.length).toBe(before)
+  })
+
+  it("instrumentação User Timing: pouso do deep-link por seek direto é medido", async () => {
+    const measureSpy = vi.spyOn(performance, "measure")
+    try {
+      setPages({ 2: page(9, CURSOR_C) })
+      window.history.replaceState(null, "", `/?pagina=2&cursor=${CURSOR_B}`)
+      await renderVitrine()
+
+      // Primeira carga ?pagina=N&cursor=X: seek direto, walked=false — do
+      // relógio da hidratação da URL ao dado assentado. (warm depende da
+      // ordem cache↔hidratação: o mock popula o cache no 1º render, antes
+      // da microtask do applyUrl.)
+      const deeplink = (measureSpy.mock.calls as unknown as [string, any][]).find(
+        (c) => c[0] === "vitrine:deeplink:render",
+      )
+      expect(deeplink?.[1].detail).toMatchObject({
+        target: 2,
+        kind: "deeplink",
+        walked: false,
+      })
+      // Nenhuma medida de clique antes de qualquer clique.
+      expect(measureSpy.mock.calls.some((c) => c[0] === "vitrine:pagina:render")).toBe(false)
+    } finally {
+      measureSpy.mockRestore()
+    }
   })
 
   it("instrumentação User Timing: clique em Próxima registra a medida de render", async () => {
