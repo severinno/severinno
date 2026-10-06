@@ -27,10 +27,19 @@ WORKDIR /app
 # ── Deps: install dependencies with Bun ──────────────────────────────────────
 FROM base AS deps
 COPY package.json bun.lock ./
+# o postinstall (sync-maplibre-worker) precisa do script no container
+COPY scripts ./scripts
 RUN bun install --frozen-lockfile
 
 # ── Builder: generate Prisma client + build Next.js standalone ───────────────
-FROM node:22-alpine AS builder
+# glibc (bookworm-slim), NÃO alpine/musl: em node:22-alpine o worker postcss do
+# Turbopack tarpitou (6+ GB RSS, CPU 100% por 20+ min) — bindings nativos do
+# Tailwind v4 em musl. ATENÇÃO: o tarpit também foi reproduzido em
+# bookworm-slim (3x local, 1x VPS) — `next build` dentro de buildkit segue
+# instável nesta stack; as imagens de produção vêm do pipeline host-artifacts
+# (build no host, montagem da imagem sobre .next/standalone). Este Dockerfile
+# permanece como fonte canônica das camadas de runtime.
+FROM node:22-bookworm-slim AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
@@ -50,11 +59,21 @@ ENV DOCKER_BUILD=true
 RUN npm run build
 
 # ── Runner: Node.js standalone server ────────────────────────────────────────
-FROM node:22-alpine AS runner
+# Mesma família glibc do builder: as engines do Prisma geradas em bookworm
+# (debian-openssl) não rodam em alpine/musl.
+FROM node:22-bookworm-slim AS runner
 ENV NODE_ENV=production
 
 RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+    adduser --system --uid 1001 --gid 1001 nextjs
+
+# openssl CLI: sem ele a detecção de runtime do Prisma falha nas imagens slim
+# e o client procura a engine errada (debian-openssl-1.1.x). /data é gravado
+# pelo app em runtime (geo-query-log).
+RUN apt-get update -qq && \
+    apt-get install -y -qq --no-install-recommends openssl && \
+    rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /data && chown nextjs:nodejs /data
 
 # Public assets (favicon, manifest, icons, etc.)
 COPY --from=builder /app/public ./public
@@ -68,6 +87,16 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Prisma engine binaries (needed at runtime for query engine)
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
+
+# Schema + migrations: o job migrate do pipeline roda `prisma migrate deploy`
+# DENTRO desta imagem (compose run app) — sem o diretório, o CLI não acha o
+# schema e o deploy do banco falha.
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+
+# CLI do Prisma global: o job migrate roda `prisma migrate deploy` DENTRO de
+# um container --rm desta imagem — sem o CLI assado, o npx baixaria o pacote
+# da internet a CADA deploy (e o standalone não traz o binário).
+RUN npm install -g prisma@6.19.3
 
 USER nextjs
 EXPOSE 3000

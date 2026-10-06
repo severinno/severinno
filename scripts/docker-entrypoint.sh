@@ -90,7 +90,7 @@ export DATABASE_URL="postgresql://${POSTGRES_USER:-severinno}:${POSTGRES_PASSWOR
 export DIRECT_URL="postgresql://${POSTGRES_USER:-severinno}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-severinno}"
 
 # ── RabbitMQ (app e workers que consomem da fila) ───────────────────────
-export RABBITMQ_URL="amqp://${RABBITMQ_USER:-severinno}:${RABBITMQ_PASS}@rabbitmq:5672"
+export RABBITMQ_URL="amqp://${RABBITMQ_USER:-severinno}:${RABBITMQ_PASS}@rabbitmq:5672/${RABBITMQ_VHOST:-severinno}"
 
 echo "[entrypoint] URLs constructed: DATABASE_URL, DIRECT_URL, RABBITMQ_URL"
 

@@ -7,8 +7,11 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Migrations vão direto ao postgres (locks advisory + DDL não combinam com
+  // transaction pooling do pgbouncer; sessão de migrate presa = deadlock).
+  directUrl = env("DIRECT_URL")
 }
 
 // ============================================================================

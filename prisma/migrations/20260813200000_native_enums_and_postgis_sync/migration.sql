@@ -890,3 +890,9 @@ ALTER TABLE "PushSendLog" ADD CONSTRAINT "PushSendLog_adminId_fkey" FOREIGN KEY 
 -- AddForeignKey
 ALTER TABLE "WebhookExecutionLog" ADD CONSTRAINT "WebhookExecutionLog_webhookId_fkey" FOREIGN KEY ("webhookId") REFERENCES "EventWebhook"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+-- Índice da 20260724160000_add_missing_composite_indexes movido para cá: a
+-- migration original antecedia a criação de "WalletTransaction" (P3018 em
+-- banco fresh). Aqui a tabela já existe.
+CREATE INDEX IF NOT EXISTS idx_wallet_transaction_provider_date
+  ON "WalletTransaction" ("providerId", "createdAt" DESC);
+

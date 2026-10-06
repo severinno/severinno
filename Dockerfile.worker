@@ -22,7 +22,7 @@ FROM oven/bun:${BUN_VERSION}@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab
 WORKDIR /app
 
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --production
+RUN bun install --frozen-lockfile --production --ignore-scripts
 
 # ── Stage 2: Build ─────────────────────────────────────────────────────────
 FROM oven/bun:${BUN_VERSION}@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4 AS builder
@@ -46,7 +46,7 @@ RUN groupadd --gid 1001 appuser && \
 
 RUN apt-get update -qq && \
     apt-get install -y -qq --no-install-recommends \
-    libvips \
+    libvips openssl \
     && rm -rf /var/lib/apt/lists/*
 
 # Prisma client + schema + migrations
@@ -56,10 +56,20 @@ COPY --from=builder /app/prisma ./prisma
 # Runtime node_modules (production only)
 COPY --from=deps /app/node_modules ./node_modules
 
+# O pacote `server-only` lança erro quando importado fora do runtime de React
+# Server Components — e os consumers rodam Bun puro (fora do Next). Várias
+# libs de src/lib usadas pelos consumers são marcadas server-only
+# legitimamente (são código de servidor), então aqui o pacote vira no-op
+# APENAS nesta imagem; a imagem do app mantém o guard real.
+RUN printf 'module.exports = {};\n' > node_modules/server-only/index.js
+
 # Worker source code
 COPY src/queue ./src/queue
 COPY src/lib ./src/lib
 COPY src/types ./src/types
+# O Bun resolve o alias `@/*` pelo tsconfig.json — sem ele, imports como
+# `@/lib/db` falham em runtime ("Cannot find module '@/lib/db'").
+COPY tsconfig.json ./
 COPY package.json ./
 
 RUN chown -R appuser:appuser /app

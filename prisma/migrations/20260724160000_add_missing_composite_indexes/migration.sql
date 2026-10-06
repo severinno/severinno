@@ -14,8 +14,16 @@ CREATE INDEX IF NOT EXISTS idx_message_booking_date
   ON "Message" ("bookingId", "createdAt" ASC);
 
 -- 4. Wallet history for providers (transaction log)
-CREATE INDEX IF NOT EXISTS idx_wallet_transaction_provider_date
-  ON "WalletTransaction" ("providerId", "createdAt" DESC);
+-- A tabela WalletTransaction só é criada mais adiante (baseline
+-- 20260813200000_native_enums_and_postgis_sync) — o índice fica guardado por
+-- to_regclass para não quebrar banco novo (P3018) e é criado no fim da
+-- baseline, depois da tabela.
+DO $$ BEGIN
+  IF to_regclass('"WalletTransaction"') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS idx_wallet_transaction_provider_date
+      ON "WalletTransaction" ("providerId", "createdAt" DESC);
+  END IF;
+END $$;
 
 -- 5. QuoteRequest items by provider (for provider response dashboard)
 CREATE INDEX IF NOT EXISTS idx_quoteitem_provider_request
