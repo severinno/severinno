@@ -47,6 +47,13 @@ function parseRef(externalReference: string): { type: string; id: string } | nul
   return parts.length === 2 ? { type: parts[0], id: parts[1] } : null
 }
 
+type CustomerShapeV2 = {
+  name: string
+  email?: string
+  phone?: string
+  cpfCnpj: string
+}
+
 function mapStatus(s: string): "PENDING" | "PAID" | "REFUNDED" {
   if (s === "paid") return "PAID"
   if (s === "refunded" || s === "canceled" || s === "expired") return "REFUNDED"
@@ -136,6 +143,29 @@ async function lytexRequest<T>(method: string, path: string, body?: unknown): Pr
   return parsed as T
 }
 
+function normalizeContactPhone(rawPhone: string | undefined): string {
+  const digits = (rawPhone ?? "").replace(/\D/g, "").slice(-11)
+  if (digits.length < 10) {
+    throw new LytexError(
+      "Cobrança Lytex exige celular do cliente com DDD (10 ou 11 dígitos)",
+      400,
+      "client_contact_required",
+    )
+  }
+  return digits
+}
+
+function buildClientV2(customer: CustomerShapeV2) {
+  const digits = customer.cpfCnpj.replace(/\D/g, "")
+  return {
+    type: (digits.length <= 11 ? "pf" : "pj") as "pf" | "pj",
+    name: customer.name,
+    cpfCnpj: digits,
+    ...(customer.email ? { email: customer.email } : {}),
+    cellphone: normalizeContactPhone(customer.phone),
+  }
+}
+
 function toDueDate(iso?: string): string | undefined {
   return iso ? iso.slice(0, 10) : undefined
 }
@@ -143,22 +173,15 @@ function toDueDate(iso?: string): string | undefined {
 async function createPixCharge(
   ref: string,
   amount: number,
-  customer: { name: string; email: string; cpfCnpj: string },
+  customer: CustomerShapeV2,
   extra?: { description?: string; expiresAt?: string },
 ) {
   const cents = toCents(amount)
-  const digits = customer.cpfCnpj.replace(/\D/g, "")
   const body = {
-    client: {
-      type: digits.length <= 11 ? "pf" : "pj",
-      name: customer.name,
-      cpfCnpj: digits,
-      email: customer.email || null,
-    },
+    client: buildClientV2(customer),
     items: [
       { name: extra?.description ?? `Serviço Severinno (${ref})`, quantity: 1, value: cents },
     ],
-    totalValue: cents,
     dueDate: toDueDate(extra?.expiresAt),
     referenceId: ref,
     paymentMethods: {
@@ -366,6 +389,7 @@ describe("Lytex v2 — criar cobrança PIX (invoice)", () => {
     const res = (await createPixCharge("booking:abc123", 621.0, {
       name: "Cliente Teste",
       email: "cliente@teste.com",
+      phone: "11999999999",
       cpfCnpj: "529.982.247-25",
     })) as { totalValue?: number; paymentMethods?: { pix?: { qrcode?: string } } }
 
@@ -374,15 +398,50 @@ describe("Lytex v2 — criar cobrança PIX (invoice)", () => {
     const body = JSON.parse(String(call[1]?.body ?? "{}"))
     // centavos na fronteira (621.00 reais → 62100)
     expect(body.items[0].value).toBe(62100)
-    expect(body.totalValue).toBe(62100)
-    // cliente com cpfCnpj só dígitos + tipo pf
+    // itens determinam o total: description/totalValue NUNCA são enviados
+    // (mutuamente exclusivos na v2 — provado E2E 2026-10-06)
+    expect(body.totalValue).toBeUndefined()
+    expect(body.description).toBeUndefined()
+    // cliente: cpfCnpj só dígitos + pf + contato v2 (cellphone obrigatório)
     expect(body.client.cpfCnpj).toBe("52998224725")
     expect(body.client.type).toBe("pf")
+    expect(body.client.email).toBe("cliente@teste.com")
+    expect(body.client.cellphone).toBe("11999999999")
     // pix habilitado; referenceId preserva o booking
     expect(body.paymentMethods.pix.enable).toBe(true)
     expect(body.referenceId).toBe("booking:abc123")
     // resposta mapeada: qrcode v2 disponível
     expect(res.paymentMethods?.pix?.qrcode).toBe("00020126PIX-COPIA-COLA")
+  })
+
+  it("escopo de cliente: cellphone obrigatório (+DDD); email ausente é OMITIDO (regras provadas E2E)", async () => {
+    setCachedToken("TOKEN", 600_000)
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ _id: "i", status: "pending", totalValue: 200 }), {
+        status: 201,
+        headers: { "content-type": "application json" },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    // (a) sem phone: falha cedo com erro acionável (a API rejeitaria com 400 opaco)
+    await expect(
+      createPixCharge("booking:sem-phone", 2, {
+        name: "Sem Telefone",
+        email: "s@s.com",
+        cpfCnpj: "52998224725",
+      }),
+    ).rejects.toThrow("celular")
+
+    // (b) sem email: a chave email NÃO pode ir no body (null também rejeita na API)
+    await createPixCharge("booking:sem-email", 2, {
+      name: "Sem Email",
+      phone: "11999999999",
+      cpfCnpj: "52998224725",
+    })
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body ?? "{}"))
+    expect(body.client.cellphone).toBe("11999999999")
+    expect("email" in body.client).toBe(false)
   })
 
   it("dueDate vira data YYYY-MM-DD (formato da v2)", async () => {
@@ -398,7 +457,7 @@ describe("Lytex v2 — criar cobrança PIX (invoice)", () => {
     await createPixCharge(
       "booking:x",
       2,
-      { name: "C", email: "c@c.com", cpfCnpj: "52998224725" },
+      { name: "C", email: "c@c.com", phone: "11999999999", cpfCnpj: "52998224725" },
       { expiresAt: "2026-10-15T23:59:59Z" },
     )
 

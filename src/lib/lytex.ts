@@ -452,21 +452,55 @@ function mapInvoiceToQueryResponse(inv: LytexInvoiceV2): LytexQueryResponse {
 // ---------------------------------------------------------------------------
 
 /**
+ * Normaliza o celular do cliente ao formato da API: somente dígitos, 10 ou 11
+ * posições (DDD + número; prefixo de país é descartado com slice(-11)).
+ *
+ * A v2 EXIGE celular com dígitos para criar fatura: enviar null ou omitir
+ * rejeita com 400 genérico em cliente novo (provado E2E 2026-10-06 —
+ * L2=201 com celular, N1/N2/P3=400 sem). Falha aqui, cedo e com mensagem
+ * acionável, em vez de transtornar com o 400 opaco da API.
+ */
+function normalizeContactPhone(rawPhone: string | undefined): string {
+  const digits = (rawPhone ?? "").replace(/\D/g, "").slice(-11)
+  if (digits.length < 10) {
+    throw new LytexError(
+      "Cobrança Lytex exige celular do cliente com DDD (10 ou 11 dígitos)",
+      400,
+      "client_contact_required",
+    )
+  }
+  return digits
+}
+
+/**
+ * Bloco `client` do create de invoice (variante com dados completos).
+ *
+ * Regras provadas E2E contra a API real (2026-10-06):
+ * - `cellphone` com dígitos é OBRIGATÓRIO (acima);
+ * - `email`: obrigatório no cadastro do cliente NOVO; se ausente, a chave
+ *   deve ser OMITIDA — `email: null` rejeita com 400 genérico; cliente já
+ *   cadastrado aceita sem email (201).
+ */
+function buildClientV2(customer: LytexCustomer) {
+  const digits = customer.cpfCnpj.replace(/\D/g, "")
+  return {
+    type: (digits.length <= 11 ? "pf" : "pj") as "pf" | "pj",
+    name: customer.name,
+    cpfCnpj: digits,
+    ...(customer.email ? { email: customer.email } : {}),
+    cellphone: normalizeContactPhone(customer.phone),
+  }
+}
+
+/**
  * Criar cobrança PIX.
  * Cria uma INVOICE v2 com paymentMethods.pix habilitado e retorna o QR code
  * copia-e-cola gerado pela Lytex.
  */
 export async function createPixCharge(req: PixChargeRequest): Promise<PixChargeResponse> {
   const cents = toCents(req.amount)
-  const digits = req.customer.cpfCnpj.replace(/\D/g, "")
   const body = {
-    client: {
-      type: digits.length <= 11 ? ("pf" as const) : ("pj" as const),
-      name: req.customer.name,
-      cpfCnpj: digits,
-      email: req.customer.email || null,
-      cellphone: req.customer.phone ? req.customer.phone.replace(/\D/g, "") : null,
-    },
+    client: buildClientV2(req.customer),
     items: [
       {
         name: req.description ?? `Serviço Severinno (${req.externalReference})`,
@@ -474,11 +508,14 @@ export async function createPixCharge(req: PixChargeRequest): Promise<PixChargeR
         value: cents,
       },
     ],
-    totalValue: cents,
+    // Sem `description` e sem `totalValue`: na v2, items e description são
+    // MUTUAMENTE EXCLUSIVOS (400 "Os campos items e description não podem
+    // ser enviados simultaneamente" — provado E2E 2026-10-06) e items já
+    // determina o total (fatura R$2 criada sem totalValue → 201).
     dueDate: req.expiresAt ? req.expiresAt.slice(0, 10) : undefined,
     // Referência externa (booking.id) — consulta via GET /v2/invoices?referenceId=
+    // (formato com ':' aceito e pesquisável — provado E2E 2026-10-06)
     referenceId: req.externalReference,
-    description: req.description,
     paymentMethods: {
       pix: { enable: true },
       boleto: { enable: false },
@@ -526,13 +563,7 @@ export async function createCardCharge(req: CardChargeRequest): Promise<CardChar
 
   const installments = Math.min(Math.max(req.installments ?? 1, 1), 12)
   const body = {
-    client: {
-      type: digits.length <= 11 ? ("pf" as const) : ("pj" as const),
-      name: req.customer.name,
-      cpfCnpj: digits,
-      email: req.customer.email || null,
-      cellphone: req.customer.phone ? req.customer.phone.replace(/\D/g, "") : null,
-    },
+    client: buildClientV2(req.customer),
     items: [
       {
         name: req.description ?? `Serviço Severinno (${req.externalReference})`,
@@ -540,10 +571,10 @@ export async function createCardCharge(req: CardChargeRequest): Promise<CardChar
         value: cents,
       },
     ],
-    totalValue: cents,
+    // Sem `description` e sem `totalValue` — idem createPixCharge (regras
+    // mutuamente exclusivas da v2, provadas E2E).
     dueDate: new Date().toISOString().slice(0, 10),
     referenceId: req.externalReference,
-    description: req.description,
     creditCardToken: tokenRes.cardToken,
     paymentMethods: {
       pix: { enable: false },
