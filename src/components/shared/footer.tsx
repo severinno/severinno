@@ -221,10 +221,10 @@ export default function Footer({ className }: { className?: string }) {
           <div className="space-y-4">
             <div className="flex items-center">
               <Image
-                src="/logo-dark.png"
+                src="/logo-severinno-white.png"
                 alt="Severinno"
-                width={140}
-                height={28}
+                width={1150}
+                height={204}
                 className="h-7 w-auto object-contain"
               />
             </div>

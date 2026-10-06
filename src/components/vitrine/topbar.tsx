@@ -404,18 +404,18 @@ export default function Topbar({
             aria-label="Severinno — página inicial"
           >
             <Image
-              src="/logo.png"
+              src="/logo-severinno-black.png"
               alt="Severinno"
-              width={140}
-              height={28}
+              width={1150}
+              height={204}
               className="h-7 w-auto object-contain dark:hidden"
               priority
             />
             <Image
-              src="/logo-dark.png"
+              src="/logo-severinno-white.png"
               alt="Severinno"
-              width={140}
-              height={28}
+              width={1150}
+              height={204}
               className="hidden h-7 w-auto object-contain dark:block"
               priority
             />
@@ -1017,17 +1017,17 @@ export default function Topbar({
                 <SheetHeader className="border-b px-6 py-4">
                   <SheetTitle className="flex items-center">
                     <Image
-                      src="/logo.png"
+                      src="/logo-severinno-black.png"
                       alt="Severinno"
-                      width={130}
-                      height={26}
+                      width={1150}
+                      height={204}
                       className="h-6 w-auto object-contain dark:hidden"
                     />
                     <Image
-                      src="/logo-dark.png"
+                      src="/logo-severinno-white.png"
                       alt="Severinno"
-                      width={130}
-                      height={26}
+                      width={1150}
+                      height={204}
                       className="hidden h-6 w-auto object-contain dark:block"
                     />
                   </SheetTitle>
