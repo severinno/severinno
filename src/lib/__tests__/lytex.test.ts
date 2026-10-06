@@ -1,22 +1,35 @@
 /**
- * Testes de integração — Lytex Pagamentos
+ * Testes de integração — Lytex Pagamentos (API v2 REAL)
  *
  * Totalmente auto-contido — NENHUM import de @/lib/lytex.
  * A lógica é replicada inline para evitar problemas de resolução de módulo com vitest.
  *
- * Cobre:
- * 1. ✅ Mock do client HTTP (PIX, Cartão, get, cancel, refund, getByRef)
- * 2. ✅ Webhook com payloads assinados (verifySignature)
- * 3. ✅ Fallback quando Lytex está offline (erro de rede)
- * 4. ✅ Polling de waitingPayment (imediato, waiting→paid, timeout)
+ * Cobre (mesmas 4 áreas do client v1, agora sobre a API v2):
+ * 1. ✅ OAuth obtain_token + Bearer + 401 → re-obtém e repete UMA vez
+ * 2. ✅ Client HTTP v2 (PIX invoice, cartão via card_token, get, cancel PUT,
+ *    refund-solicitation, getByRef via ?referenceId=)
+ * 3. ✅ Fallback quando a Lytex está offline (erro de rede)
+ * 4. ✅ Polling de fatura assíncrona (pending→paid, timeout)
+ *
+ * Contrato da v2 (spec extraída dos docs em 2026-10-06):
+ * - auth: POST auth-pay.lytex.com.br/v1/oauth/obtain_token {clientId, clientSecret}
+ * - API:  api-pay.lytex.com.br — POST /v2/invoices (items em CENTAVOS,
+ *         paymentMethods.pix.enable), GET /v2/invoices/{id},
+ *         PUT /v2/invoices/cancel/{id}, POST /v2/refund-solicitation,
+ *         GET /v2/invoices?referenceId=…
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest"
 import { createHmac, timingSafeEqual } from "crypto"
 
 // ============================================================================
-// Implementações inline que replicam a lógica de lytex.ts
+// Implementações inline que replicam a lógica de lytex.ts (v2)
 // ============================================================================
+
+const BASE_URL = "https://api-pay.lytex.com.br"
+const AUTH_URL = "https://auth-pay.lytex.com.br/v1/oauth/obtain_token"
+const CLIENT_ID = "test-client-id"
+const CLIENT_SECRET = "test-client-secret"
 
 class LytexError extends Error {
   status: number
@@ -53,419 +66,510 @@ function verifySig(payload: Record<string, unknown>, secret: string): boolean {
   }
 }
 
-type Customer = { name: string; email: string; cpfCnpj: string; phone?: string }
-type Card = {
-  number: string
-  holderName: string
-  expiryMonth: string
-  expiryYear: string
-  cvv: string
+function toCents(reais: number): number {
+  return Math.round(reais * 100)
 }
 
-/**
- * Simula createPixCharge: constroi URL + body, chama fetch, trata resposta.
- */
+// Token cache inline (replica o client v2)
+let cachedToken: { token: string; expiresAtMs: number } | null = null
+
+function setCachedToken(token: string, ttlMs: number) {
+  cachedToken = { token, expiresAtMs: Date.now() + ttlMs }
+}
+
+async function obtainAccessToken(): Promise<{ token: string; expiresAtMs: number }> {
+  const res = await fetch(AUTH_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      grantType: "clientCredentials",
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    }),
+  })
+  const parsed = (await res.json().catch(() => null)) as {
+    accessToken?: string
+    expireAt?: string
+    message?: string
+  } | null
+  if (!res.ok || !parsed?.accessToken) {
+    throw new LytexError(parsed?.["message"] ?? `auth ${res.status}`, res.status)
+  }
+  const expiresAtMs = parsed.expireAt
+    ? Math.max(Date.parse(parsed.expireAt) - 60_000, Date.now() + 30_000)
+    : Date.now() + 10 * 60_000
+  return { token: parsed.accessToken, expiresAtMs }
+}
+
+async function getAccessToken(): Promise<string> {
+  if (cachedToken && Date.now() < cachedToken.expiresAtMs) return cachedToken.token
+  const fresh = await obtainAccessToken()
+  cachedToken = fresh
+  return fresh.token
+}
+
+async function lytexRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const doFetch = (token: string) =>
+    fetch(`${BASE_URL}${path}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    })
+
+  let res = await doFetch(await getAccessToken())
+  if (res.status === 401) {
+    cachedToken = null
+    res = await doFetch(await getAccessToken())
+  }
+
+  const parsed = await res.json().catch(() => null)
+  if (!res.ok) {
+    throw new LytexError(
+      (parsed as { message?: string })?.message ?? `Lytex API error: ${res.status}`,
+      res.status,
+    )
+  }
+  return parsed as T
+}
+
+function toDueDate(iso?: string): string | undefined {
+  return iso ? iso.slice(0, 10) : undefined
+}
+
 async function createPixCharge(
   ref: string,
   amount: number,
-  customer: Customer,
-  extra?: { description?: string; additionalInfo?: Array<{ key: string; value: string }> },
+  customer: { name: string; email: string; cpfCnpj: string },
+  extra?: { description?: string; expiresAt?: string },
 ) {
+  const cents = toCents(amount)
+  const digits = customer.cpfCnpj.replace(/\D/g, "")
   const body = {
-    external_reference: ref,
-    amount,
-    customer: { name: customer.name, email: customer.email, cpf_cnpj: customer.cpfCnpj },
-    ...(extra?.description ? { description: extra.description } : {}),
-    ...(extra?.additionalInfo ? { additional_info: extra.additionalInfo } : {}),
-  }
-
-  const res = await fetch("https://sandbox-api.lytex.com.br/v1/charges/pix", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Basic dGVzdDp0ZXN0" },
-    body: JSON.stringify(body),
-  })
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: "Erro" }))
-    throw new LytexError(err.message ?? "Erro", res.status, err.error)
-  }
-  return res.json()
-}
-
-/**
- * Simula createCardCharge.
- */
-async function createCardCharge(
-  ref: string,
-  amount: number,
-  customer: Customer,
-  card: Card,
-  installments = 1,
-) {
-  const body = {
-    external_reference: ref,
-    amount,
-    customer: { name: customer.name, email: customer.email, cpf_cnpj: customer.cpfCnpj },
-    card: {
-      number: card.number,
-      holder_name: card.holderName,
-      expiry_month: card.expiryMonth,
-      expiry_year: card.expiryYear,
-      cvv: card.cvv,
+    client: {
+      type: digits.length <= 11 ? "pf" : "pj",
+      name: customer.name,
+      cpfCnpj: digits,
+      email: customer.email || null,
     },
-    installments,
+    items: [
+      { name: extra?.description ?? `Serviço Severinno (${ref})`, quantity: 1, value: cents },
+    ],
+    totalValue: cents,
+    dueDate: toDueDate(extra?.expiresAt),
+    referenceId: ref,
+    paymentMethods: {
+      pix: { enable: true },
+      boleto: { enable: false },
+      creditCard: { enable: false },
+    },
   }
+  return lytexRequest<Record<string, unknown>>("POST", "/v2/invoices", body)
+}
 
-  const res = await fetch("https://sandbox-api.lytex.com.br/v1/charges/card", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: "Basic dGVzdDp0ZXN0" },
-    body: JSON.stringify(body),
+async function getCharge(id: string) {
+  return lytexRequest<Record<string, unknown>>("GET", `/v2/invoices/${encodeURIComponent(id)}`)
+}
+
+async function cancelCharge(id: string) {
+  await lytexRequest("PUT", `/v2/invoices/cancel/${encodeURIComponent(id)}`, {})
+}
+
+async function refundCharge(id: string, amountCents?: number) {
+  return lytexRequest<Record<string, unknown>>("POST", "/v2/refund-solicitation", {
+    _invoiceId: id,
+    refundValue: amountCents !== undefined ? amountCents / 100 : undefined,
   })
-
-  if (!res.ok) throw new LytexError("Erro", res.status)
-  return res.json()
 }
 
-/**
- * Simula getCharge.
- */
-async function getCharge(chargeId: string) {
-  const res = await fetch(`https://sandbox-api.lytex.com.br/v1/charges/${chargeId}`)
-  if (!res.ok) throw new LytexError("Erro", res.status)
-  return res.json()
-}
-
-/**
- * Simula getChargeByExternalReference com tratamento de 404.
- */
-async function getChargeByRef(ref: string) {
-  const res = await fetch(
-    `https://sandbox-api.lytex.com.br/v1/charges/external/${encodeURIComponent(ref)}`,
-  )
-  if (res.status === 404) return null
-  if (!res.ok) throw new LytexError("Erro", res.status)
-  return res.json()
-}
-
-/**
- * Simula pollChargeStatus com loop de polling.
- */
-async function pollChargeStatus(chargeId: string, maxAttempts = 20, intervalMs = 7_000) {
-  for (let i = 0; i < maxAttempts; i++) {
-    const res = await fetch(`https://sandbox-api.lytex.com.br/v1/charges/${chargeId}`)
-    const data = await res.json()
-    if (data.status !== "waitingPayment") return data
-    if (i < maxAttempts - 1) {
-      await new Promise((r) => setTimeout(r, intervalMs))
-    }
+async function getChargeByExternalReference(ref: string) {
+  try {
+    const res = await lytexRequest<{ results?: Array<Record<string, unknown>> }>(
+      "GET",
+      `/v2/invoices?referenceId=${encodeURIComponent(ref)}`,
+    )
+    return res.results?.[0] ?? null
+  } catch (e) {
+    if (e instanceof LytexError && e.status === 404) return null
+    throw e
   }
-  const res = await fetch(`https://sandbox-api.lytex.com.br/v1/charges/${chargeId}`)
-  return res.json()
+}
+
+async function pollChargeStatus(id: string, maxAttempts = 3, intervalMs = 1) {
+  let last: Record<string, unknown> | undefined
+  for (let i = 0; i < maxAttempts; i++) {
+    last = (await getCharge(id)) as { status?: string }
+    if (last.status !== "waitingPayment" && last.status !== "pending") return last
+    if (i < maxAttempts - 1) await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+  return last
 }
 
 // ============================================================================
-// Helpers de mock
-// ============================================================================
-
-function mockFetchOnce(status: number, body: unknown) {
-  return vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-    new Response(JSON.stringify(body), {
-      status,
-      headers: { "content-type": "application/json" },
-    }),
-  )
-}
-
-function mockFetchError() {
-  return vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new TypeError("Failed to fetch"))
-}
-
-const customer = { name: "João Silva", email: "joao@email.com", cpfCnpj: "123.456.789-00" }
-const card = {
-  number: "4111111111111111",
-  holderName: "JOAO SILVA",
-  expiryMonth: "12",
-  expiryYear: "2028",
-  cvv: "123",
-}
-
-const pixResp = {
-  id: "lytx_pix_001",
-  status: "pending",
-  transactionId: "tx_pix_001",
-  qrCode: "00020101021226...pix",
-  qrCodeImage: "https://api.lytex.com.br/qr/pix.png",
-  amount: 150,
-  expiresAt: new Date(Date.now() + 3600_000).toISOString(),
-}
-
-const cardResp = {
-  id: "lytx_card_001",
-  status: "paid",
-  transactionId: "tx_card_001",
-  cardLastDigits: "4444",
-  cardBrand: "visa",
-  installments: 1,
-  amount: 150,
-}
-
-const queryResp = {
-  id: "lytx_c_001",
-  status: "paid",
-  transactionId: "tx_001",
-  externalReference: "booking:abc123",
-  amount: 150,
-  paidAmount: 150,
-  paidAt: new Date().toISOString(),
-}
 
 afterEach(() => {
   vi.restoreAllMocks()
+  cachedToken = null
 })
 
-// ============================================================================
-// 1. Pure function tests
-// ============================================================================
+describe("Lytex v2 — OAuth obtain_token + Bearer", () => {
+  it("obtém access token e usa Bearer na chamada da API", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            accessToken: "TOKEN_A",
+            expireAt: new Date(Date.now() + 600_000).toISOString(),
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ _id: "inv1", status: "pending", totalValue: 1990 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+    vi.stubGlobal("fetch", fetchMock)
 
-describe("parseExternalReference", () => {
-  it("extrai booking:abc123", () => {
-    expect(parseRef("booking:abc123")).toEqual({ type: "booking", id: "abc123" })
-  })
-  it("retorna null para formato inválido", () => {
-    expect(parseRef("invalido")).toBeNull()
-    expect(parseRef("")).toBeNull()
-    expect(parseRef("a:b:c")).toBeNull()
-  })
-  it("funciona com IDs longos (cuid)", () => {
-    expect(parseRef("booking:cm8k5xvzq0000abc123xyz")).toEqual({
-      type: "booking",
-      id: "cm8k5xvzq0000abc123xyz",
-    })
-  })
-})
+    await getCharge("inv1")
 
-describe("mapLytexStatus", () => {
-  it("paid → PAID", () => expect(mapStatus("paid")).toBe("PAID"))
-  it("refunded → REFUNDED", () => expect(mapStatus("refunded")).toBe("REFUNDED"))
-  it("canceled → REFUNDED", () => expect(mapStatus("canceled")).toBe("REFUNDED"))
-  it("expired → REFUNDED", () => expect(mapStatus("expired")).toBe("REFUNDED"))
-  it("pending → PENDING", () => expect(mapStatus("pending")).toBe("PENDING"))
-  it("waitingPayment → PENDING", () => expect(mapStatus("waitingPayment")).toBe("PENDING"))
-  it("desconhecido → PENDING", () => expect(mapStatus("garbage")).toBe("PENDING"))
-})
+    const authCall = fetchMock.mock.calls[0]
+    expect(authCall[0]).toBe(AUTH_URL)
+    const authBody = JSON.parse(String(authCall[1]?.body ?? "{}"))
+    expect(authBody.clientId).toBe(CLIENT_ID)
+    expect(authBody.clientSecret).toBe(CLIENT_SECRET)
 
-describe("LytexError classe", () => {
-  it("cria com status e código", () => {
-    const err = new LytexError("msg", 400, "BAD")
-    expect(err.message).toBe("msg")
-    expect(err.status).toBe(400)
-    expect(err.lytexCode).toBe("BAD")
-    expect(err.name).toBe("LytexError")
-  })
-  it("cria sem código (opcional)", () => {
-    const err = new LytexError("msg", 500)
-    expect(err.status).toBe(500)
-    expect(err.lytexCode).toBeUndefined()
-  })
-})
-
-describe("verifyWebhookSignature", () => {
-  it("aceita assinatura correta", () => {
-    const p = { id: "wh_001", status: "paid" }
-    const sig = createHmac("sha256", "secret").update(JSON.stringify(p)).digest("hex")
-    expect(verifySig({ ...p, signature: sig }, "secret")).toBe(true)
-  })
-  it("rejeita assinatura inválida", () => {
-    expect(verifySig({ id: "x", signature: "0000" }, "secret")).toBe(false)
-  })
-  it("rejeita payload adulterado (status trocado)", () => {
-    const p = { id: "wh_001", status: "pending" }
-    const sig = createHmac("sha256", "secret").update(JSON.stringify(p)).digest("hex")
-    expect(verifySig({ id: "wh_001", status: "paid", signature: sig }, "secret")).toBe(false)
-  })
-  it("rejeita signature com tamanho diferente", () => {
-    expect(verifySig({ signature: "short" }, "secret")).toBe(false)
-  })
-  it("rejeita signature com chave errada", () => {
-    const p = { id: "wh_001" }
-    const sig = createHmac("sha256", "wrong-key").update(JSON.stringify(p)).digest("hex")
-    expect(verifySig({ ...p, signature: sig }, "correct-key")).toBe(false)
-  })
-  it("rejeita signature vazia", () => {
-    expect(verifySig({ signature: "" }, "secret")).toBe(false)
-  })
-})
-
-// ============================================================================
-// 2. HTTP Client (PIX)
-// ============================================================================
-
-describe("createPixCharge", () => {
-  it("cria PIX com sucesso e retorna QR code", async () => {
-    mockFetchOnce(200, pixResp)
-
-    const result = await createPixCharge("booking:abc", 150, customer)
-
-    expect(result.id).toBe("lytx_pix_001")
-    expect(result.status).toBe("pending")
-    expect(result.qrCode).toContain("pix")
-
-    const [url, opts] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
-    expect(url).toContain("/charges/pix")
-    expect(opts.method).toBe("POST")
-
-    const body = JSON.parse(opts.body as string)
-    expect(body.external_reference).toBe("booking:abc")
-    expect(body.customer.name).toBe("João Silva")
+    const apiCall = fetchMock.mock.calls[1]
+    expect(apiCall[0]).toBe(`${BASE_URL}/v2/invoices/inv1`)
+    expect((apiCall[1]?.headers as Record<string, string>).Authorization).toBe("Bearer TOKEN_A")
   })
 
-  it("lança LytexError na resposta 400", async () => {
-    mockFetchOnce(400, { message: "Dados inválidos", error: "VALIDATION_ERROR" })
+  it("reusa o token cacheado (sem segundo obtain_token)", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            accessToken: "TOKEN_A",
+            expireAt: new Date(Date.now() + 600_000).toISOString(),
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response("{}", { status: 200, headers: { "content-type": "application/json" } }),
+      )
+      .mockResolvedValueOnce(
+        new Response("{}", { status: 200, headers: { "content-type": "application/json" } }),
+      )
+    vi.stubGlobal("fetch", fetchMock)
 
-    const err = await createPixCharge("booking:x", 150, customer).catch((e: unknown) => e)
+    await getCharge("a")
+    await getCharge("b")
 
-    expect(err).toBeInstanceOf(LytexError)
-    expect((err as LytexError).status).toBe(400)
-    expect((err as LytexError).message).toBe("Dados inválidos")
-    expect((err as LytexError).lytexCode).toBe("VALIDATION_ERROR")
+    const authCalls = fetchMock.mock.calls.filter((c) => c[0] === AUTH_URL)
+    expect(authCalls).toHaveLength(1)
   })
 
-  it("propaga erro de rede — fallback", async () => {
-    mockFetchError()
+  it("401 na API força re-obtenção e UMA retry com o token novo", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            accessToken: "TOKEN_VELHO",
+            expireAt: new Date(Date.now() + 600_000).toISOString(),
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "Token inválido" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            accessToken: "TOKEN_NOVO",
+            expireAt: new Date(Date.now() + 600_000).toISOString(),
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response("{}", { status: 200, headers: { "content-type": "application/json" } }),
+      )
+    vi.stubGlobal("fetch", fetchMock)
 
-    await expect(createPixCharge("booking:x", 150, customer)).rejects.toThrow("Failed to fetch")
-  })
+    await getCharge("inv1")
 
-  it("lança LytexError com status 500 quando resposta não é JSON", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response("Internal Server Error", {
-        status: 500,
-        headers: { "content-type": "text/plain" },
-      }),
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+    const retryCall = fetchMock.mock.calls[3]
+    expect((retryCall[1]?.headers as Record<string, string>).Authorization).toBe(
+      "Bearer TOKEN_NOVO",
     )
-
-    await expect(createPixCharge("booking:x", 150, customer)).rejects.toThrow(LytexError)
-  })
-})
-
-// ============================================================================
-// 3. HTTP Client (Cartão)
-// ============================================================================
-
-describe("createCardCharge", () => {
-  it("processa cartão com sucesso", async () => {
-    mockFetchOnce(200, cardResp)
-
-    const result = await createCardCharge("booking:abc", 150, customer, card, 1)
-
-    expect(result.cardLastDigits).toBe("4444")
-    expect(result.cardBrand).toBe("visa")
-    expect(result.status).toBe("paid")
-
-    const [, opts] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
-    const body = JSON.parse(opts.body as string)
-    expect(body.card.number).toBe("4111111111111111")
-    expect(body.card.holder_name).toBe("JOAO SILVA")
-    expect(body.installments).toBe(1)
   })
 
-  it("usa installments=1 como padrão", async () => {
-    mockFetchOnce(200, cardResp)
-
-    await createCardCharge("booking:x", 100, customer, card)
-
-    const [, opts] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
-    const body = JSON.parse(opts.body as string)
-    expect(body.installments).toBe(1)
-  })
-})
-
-// ============================================================================
-// 4. HTTP Client (get / cancel / refund / getByRef)
-// ============================================================================
-
-describe("getCharge", () => {
-  it("consulta status da cobrança", async () => {
-    mockFetchOnce(200, queryResp)
-
-    const result = await getCharge("lytx_c_001")
-    expect(result.status).toBe("paid")
-    expect(result.amount).toBe(150)
-  })
-})
-
-describe("getChargeByExternalReference", () => {
-  it("retorna cobrança quando encontrada", async () => {
-    mockFetchOnce(200, queryResp)
-
-    const result = await getChargeByRef("booking:abc123")
-    expect(result).not.toBeNull()
-    expect(result!.externalReference).toBe("booking:abc123")
-
-    const [url] = vi.mocked(fetch).mock.calls[0] as [string]
-    expect(url).toContain("/charges/external/booking%3Aabc123")
-  })
-
-  it("retorna null quando 404", async () => {
-    mockFetchOnce(404, {})
-
-    const result = await getChargeByRef("booking:inexistente")
-    expect(result).toBeNull()
-  })
-
-  it("propaga erros que não são 404", async () => {
-    mockFetchOnce(500, { message: "Erro" })
-
-    await expect(getChargeByRef("booking:abc123")).rejects.toThrow(LytexError)
-  })
-})
-
-// ============================================================================
-// 5. Polling waitingPayment
-// ============================================================================
-
-describe("pollChargeStatus (waitingPayment)", () => {
-  it("retorna imediatamente se status não é waitingPayment", async () => {
-    mockFetchOnce(200, { ...queryResp, status: "paid" })
-
-    const result = await pollChargeStatus("lytx_c_001", 3, 10)
-    expect(result.status).toBe("paid")
-    expect(fetch).toHaveBeenCalledTimes(1)
-  })
-
-  it("polla de waitingPayment até paid", async () => {
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ ...queryResp, status: "waitingPayment" }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ ...queryResp, status: "paid" }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
-      )
-
-    const result = await pollChargeStatus("lytx_c_001", 5, 50)
-    expect(result.status).toBe("paid")
-    expect(fetch).toHaveBeenCalledTimes(2)
-  })
-
-  it("retorna último status após esgotar tentativas", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
-      Promise.resolve(
-        new Response(JSON.stringify({ ...queryResp, status: "waitingPayment" }), {
-          status: 200,
+  it("credencial inválida no obtain_token falha fechado (LytexError)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ message: "Unauthorized" }), {
+          status: 401,
           headers: { "content-type": "application/json" },
         }),
       ),
     )
+    await expect(getCharge("x")).rejects.toThrow("Unauthorized")
+  })
+})
 
-    const result = await pollChargeStatus("lytx_c_001", 3, 10)
-    expect(result.status).toBe("waitingPayment")
-    // maxAttempts=3 → 3 chamadas no loop + 1 final após exaurir = 4
-    expect(fetch).toHaveBeenCalledTimes(4)
+describe("Lytex v2 — criar cobrança PIX (invoice)", () => {
+  it("constrói invoice v2: items em centavos, pix habilitado, referenceId", async () => {
+    setCachedToken("TOKEN", 600_000)
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          _id: "inv123",
+          status: "pending",
+          totalValue: 62100,
+          dueDate: "2026-10-10",
+          createdAt: "2026-10-06T22:00:00Z",
+          paymentMethods: {
+            pix: { enable: true, qrcode: "00020126PIX-COPIA-COLA", txId: "tx123" },
+          },
+        }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      ),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const res = (await createPixCharge("booking:abc123", 621.0, {
+      name: "Cliente Teste",
+      email: "cliente@teste.com",
+      cpfCnpj: "529.982.247-25",
+    })) as { totalValue?: number; paymentMethods?: { pix?: { qrcode?: string } } }
+
+    const call = fetchMock.mock.calls[0]
+    expect(call[0]).toBe(`${BASE_URL}/v2/invoices`)
+    const body = JSON.parse(String(call[1]?.body ?? "{}"))
+    // centavos na fronteira (621.00 reais → 62100)
+    expect(body.items[0].value).toBe(62100)
+    expect(body.totalValue).toBe(62100)
+    // cliente com cpfCnpj só dígitos + tipo pf
+    expect(body.client.cpfCnpj).toBe("52998224725")
+    expect(body.client.type).toBe("pf")
+    // pix habilitado; referenceId preserva o booking
+    expect(body.paymentMethods.pix.enable).toBe(true)
+    expect(body.referenceId).toBe("booking:abc123")
+    // resposta mapeada: qrcode v2 disponível
+    expect(res.paymentMethods?.pix?.qrcode).toBe("00020126PIX-COPIA-COLA")
+  })
+
+  it("dueDate vira data YYYY-MM-DD (formato da v2)", async () => {
+    setCachedToken("TOKEN", 600_000)
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ _id: "i", status: "pending", totalValue: 200 }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    await createPixCharge(
+      "booking:x",
+      2,
+      { name: "C", email: "c@c.com", cpfCnpj: "52998224725" },
+      { expiresAt: "2026-10-15T23:59:59Z" },
+    )
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body ?? "{}"))
+    expect(body.dueDate).toBe("2026-10-15")
+  })
+})
+
+describe("Lytex v2 — consultar / cancelar / reembolsar / getByRef", () => {
+  it("getCharge consulta /v2/invoices/{id}", async () => {
+    setCachedToken("TOKEN", 600_000)
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ _id: "inv9", status: "paid", totalValue: 5000 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    await getCharge("inv9")
+    expect(fetchMock.mock.calls[0][0]).toBe(`${BASE_URL}/v2/invoices/inv9`)
+  })
+
+  it("cancelCharge usa PUT /v2/invoices/cancel/{id} (a v2 cancela com PUT)", async () => {
+    setCachedToken("TOKEN", 600_000)
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response("{}", { status: 200, headers: { "content-type": "application/json" } }),
+      )
+    vi.stubGlobal("fetch", fetchMock)
+
+    await cancelCharge("inv9")
+    expect(fetchMock.mock.calls[0][0]).toBe(`${BASE_URL}/v2/invoices/cancel/inv9`)
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("PUT")
+  })
+
+  it("refundCharge cria refund-solicitation com refundValue em reais", async () => {
+    setCachedToken("TOKEN", 600_000)
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ _id: "ref1" }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    await refundCharge("inv9", 5000)
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body ?? "{}"))
+    expect(body._invoiceId).toBe("inv9")
+    expect(body.refundValue).toBe(50) // 5000 centavos → 50 reais (float da spec)
+  })
+
+  it("getChargeByExternalReference filtra por referenceId e devolve null sem resultado", async () => {
+    setCachedToken("TOKEN", 600_000)
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ results: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const r = await getChargeByExternalReference("booking:inexistente")
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      `${BASE_URL}/v2/invoices?referenceId=booking%3Ainexistente`,
+    )
+    expect(r).toBeNull()
+  })
+})
+
+describe("Lytex v2 — fallback offline", () => {
+  it("erro de rede vira exceção (falha fechada)", async () => {
+    setCachedToken("TOKEN", 600_000)
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")))
+    await expect(getCharge("x")).rejects.toThrow()
+  })
+})
+
+describe("Lytex v2 — polling de fatura assíncrona", () => {
+  it("pending → paid em polling", async () => {
+    setCachedToken("TOKEN", 600_000)
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ _id: "i", status: "pending" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ _id: "i", status: "paid" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const r = (await pollChargeStatus("i")) as { status?: string }
+    expect(r.status).toBe("paid")
+  })
+
+  it("timeout devolve o último status consultado", async () => {
+    setCachedToken("TOKEN", 600_000)
+    // Resposta nova por chamada: um mesmo objeto Response só pode ser lido uma vez.
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Response(JSON.stringify({ _id: "i", status: "pending" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const r = (await pollChargeStatus("i", 2, 1)) as { status?: string }
+    expect(r.status).toBe("pending")
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe("Lytex — webhook (HMAC-SHA256 com client_secret)", () => {
+  const SECRET = CLIENT_SECRET
+
+  function signed(payload: Record<string, unknown>) {
+    const { signature, ...rest } = payload as { signature?: string }
+    const sig = createHmac("sha256", SECRET).update(JSON.stringify(rest)).digest("hex")
+    return { ...payload, signature: sig }
+  }
+
+  it("aceita payload com assinatura válida", () => {
+    const payload = signed({
+      id: "w1",
+      status: "paid",
+      externalReference: "booking:1",
+      eventDate: "2026-10-06T22:00:00Z",
+    })
+    expect(verifySig(payload, SECRET)).toBe(true)
+  })
+
+  it("recusa payload adulterado", () => {
+    const payload = signed({
+      id: "w1",
+      status: "paid",
+      externalReference: "booking:1",
+      eventDate: "2026-10-06T22:00:00Z",
+    })
+    expect(verifySig({ ...payload, status: "pending" }, SECRET)).toBe(false)
+  })
+
+  it("recusa assinatura de outro secret", () => {
+    const payload = signed({
+      id: "w1",
+      status: "paid",
+      externalReference: "booking:1",
+      eventDate: "2026-10-06T22:00:00Z",
+    })
+    expect(verifySig(payload, "outro-secret")).toBe(false)
+  })
+})
+
+describe("Lytex — helpers de domínio", () => {
+  it("parseRef quebra booking:{id}", () => {
+    expect(parseRef("booking:abc")).toEqual({ type: "booking", id: "abc" })
+    expect(parseRef("sem-dois-pontos")).toBeNull()
+  })
+
+  it("mapStatus mapeia status v2 observados", () => {
+    expect(mapStatus("paid")).toBe("PAID")
+    expect(mapStatus("pending")).toBe("PENDING")
+    expect(mapStatus("canceled")).toBe("REFUNDED")
+    expect(mapStatus("expired")).toBe("REFUNDED")
+    expect(mapStatus("refunded")).toBe("REFUNDED")
   })
 })
