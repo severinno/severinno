@@ -356,6 +356,11 @@
         "declaredAt": "2026-10-05"
       },
       {
+        "subject": "fix(ci): o required check Pagination baseline guard é aplicado na forja — a declaração aplicada cobre o manifesto",
+        "reason": "medido 05/10/2026 no PAI (ce502a19, prover --only --sem-afetados; 2 tentativas repetiram o vermelho): forge-parity exit 1 — o wiring do CORE 'realtime-emit-key-source' é WIP DE OUTRA THREAD no working tree (não commitado); este commit aplica o required check na forja (applied.json pelo applier sancionado) e comita o manifesto e o teste dele, nada que o gate de merge lê — o vermelho do próprio commit é a MESMA CAUSA. Fecha com o landing do feature realtime e o da migração withRoute.",
+        "declaredAt": "2026-10-06"
+      },
+      {
         "subject": "feat(gates): a classe da pilha vira gate — nenhum módulo importa nome que a ÁRVORE do commit ainda não exporta",
         "reason": "medido 28/09/2026 (bisseccionamento do push, 2 tentativas repetiram): vitest(15 arquivo(s)) reprova — o gate da classe da pilha recusa módulos que importam nome que a ÁRVORE DESTE commit ainda não exporta; os nomes novos só entram na árvore versionada nos commits SEGUINTES da train, e é lá que o gate volta ao verde (a árvore do TOPO da pilha passa integralmente)",
         "declaredAt": "2026-09-28"
