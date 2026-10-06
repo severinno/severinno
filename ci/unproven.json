@@ -281,6 +281,11 @@
     "reviewAfterDays": 90,
     "commits": [
       {
+        "subject": "fix(registro): a classe skipped sai do registro datado — os 4 irmãos do act-runner-lido só fecham com leitura real",
+        "reason": "medido 06/10/2026 no pai (c03df7dd, prover --only HEAD --sem-afetados; 2 tentativas repetiram o vermelho): forge-parity exit 1 — a invariante do CORE 'realtime-emit-key-source' NÃO roda com o comando canônico no espelho (o wiring é WIP DE OUTRA THREAD no working tree, não commitado); este commit só muda o registro datado (remédio da classe skipped nos 4 irmãos + teste de classe com cobertura de CLOSED_BY + a mutação da classe pela régua única) e a matriz do bench re-ancorada, nada que o gate de merge lê — o vermelho do próprio commit é a MESMA CAUSA. Fecha com o landing do feature realtime e o da migração withRoute.",
+        "declaredAt": "2026-10-06"
+      },
+      {
         "subject": "docs(qualidade): parecer da varredura por camadas (2026-10-05) com o desdobramento das correções",
         "reason": "medido 05/10/2026 (pré-validação em worktree do commit, forge-parity): exit 1 — MESMA CAUSA dos pais declarados: as invariantes do CORE realtime-env-parity/realtime-emit-key-source e o wiring de route-handler-style exigem passos de pipeline + scripts que são WIP DE OUTRA THREAD no working tree (não commitados). Fecha com o landing do feature realtime (composes + secrets + guards) e o da migração withRoute.",
         "declaredAt": "2026-10-05"

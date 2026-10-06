@@ -594,6 +594,135 @@ describe("datarLinhas — a data na linha onde o operador lê", () => {
   })
 })
 
+describe("A CLASSE skipped — nenhum estado de medição pulada fecha lacuna nenhuma", () => {
+  // A AUDITORIA de 05/10/2026 não achou UM falso fechamento — achou uma CLASSE:
+  // o `act-runner-lido` aceitava qualquer estado !== "unavailable" — e a seção
+  // pulada (perfil `--ci`, `--no-protection`, `--no-runner-labels`) publica
+  // exatamente esse estado. O mesmo defeito morava nos IRMÃOS do mesmo registro
+  // (a forja lida, o env do host, as duas metades da fila), e pode voltar a
+  // morar em qualquer predicado novo: a régua da classe é "o estado que fecha é
+  // o que uma LEITURA REAL produz", e `skipped` é a medição que NÃO aconteceu.
+  //
+  // Esta tabela é a prova da classe INTEIRA: para cada `closedBy` implementado,
+  // o fato FECHADOR (a medição real que fecha) e a ROTA do estado que o
+  // predicado lê — ou, para quem fecha por VALOR e não por estado, `rota: null`
+  // (não há "skipped" no caminho dele). A cobertura é o primeiro `it`: um
+  // predicado novo entra no vocabulário SEM a classificação dele e a suíte
+  // acende — fail-closed na ENTRADA, não na lembrança.
+  const CLASSE_SKIPPED: Record<string, { fechador: object; rota: string | null }> = {
+    "gitea-forja-lida": {
+      fechador: { protection: { forges: [{ forge: "gitea", state: "in-sync" }] } },
+      rota: "protection.forges.0.state",
+    },
+    "github-protection-suportada": {
+      fechador: { protection: { forges: [{ forge: "github", state: "in-sync" }] } },
+      rota: "protection.forges.0.state",
+    },
+    "host-env-presente": {
+      fechador: { image: { state: "exists" } },
+      rota: "image.state",
+    },
+    "act-runner-lido": {
+      fechador: { runnerLabels: { state: "proven" } },
+      rota: "runnerLabels.state",
+    },
+    "github-runner-registrado": {
+      fechador: { githubRunnerLabels: { state: "proven" } },
+      rota: "githubRunnerLabels.state",
+    },
+    "act-runner-na-tag-do-compose": {
+      fechador: { runnerLabels: { version: { state: "proven" } } },
+      rota: "runnerLabels.version.state",
+    },
+    "github-runner-na-versao-do-pin": {
+      fechador: { githubRunnerLabels: { version: { state: "proven" } } },
+      rota: "githubRunnerLabels.version.state",
+    },
+    "fila-gitea-medida": {
+      fechador: { runnerQueue: { forges: { gitea: { state: "ociosa" } } } },
+      rota: "runnerQueue.forges.gitea.state",
+    },
+    "fila-github-medida": {
+      fechador: { runnerQueue: { forges: { github: { state: "ociosa" } } } },
+      rota: "runnerQueue.forges.github.state",
+    },
+    "imagem-publicada-prova": {
+      fechador: { imageContract: { state: "proven" } },
+      rota: "imageContract.state",
+    },
+    // Fecha por VALOR presente (as duas variáveis com valor), não por estado de
+    // leitura: não há "skipped" no caminho — a seção pulada não publica valores.
+    "espelhos-com-valor": {
+      fechador: {
+        mirrors: { expectedVars: { IMAGE_REGISTRY: "ghcr.io", IMAGE_NAMESPACE: "severinno" } },
+      },
+      rota: null,
+    },
+    "referencias-versionadas": {
+      fechador: { imageRefs: { state: "proven" } },
+      rota: "imageRefs.state",
+    },
+    "forma-no-commit-de-origem": {
+      fechador: { benchFreshness: { forms: { state: "measured", missing: [], semResposta: 0 } } },
+      rota: "benchFreshness.forms.state",
+    },
+    "ato-na-matriz": {
+      fechador: { benchFreshness: { matrix: { state: "measured", aged: false } } },
+      rota: "benchFreshness.matrix.state",
+    },
+    "fila-de-migracao-vazia": {
+      fechador: { jobMigrationQueue: { state: "measured", queue: [] } },
+      rota: "jobMigrationQueue.state",
+    },
+  }
+
+  /** O fechador com o estado da rota trocado por "skipped" — a medição que NÃO aconteceu. */
+  function comSkipped(fact: object, rota: string): object {
+    const clone = structuredClone(fact) as Record<string, unknown>
+    const partes = rota.split(".")
+    let no = clone as Record<string, unknown>
+    for (const parte of partes.slice(0, -1)) no = no[parte] as Record<string, unknown>
+    no[partes[partes.length - 1]] = "skipped"
+    return clone
+  }
+
+  it("todo closedBy está classificado na tabela da classe (um predicado novo entra só com a prova dele)", () => {
+    const implementados = [...Object.keys(CLOSED_BY)].sort()
+    const classificados = [...Object.keys(CLASSE_SKIPPED)].sort()
+    const semClasse = implementados.filter((id) => !classificados.includes(id))
+    const fantasma = classificados.filter((id) => !implementados.includes(id))
+    expect(semClasse, `sem classificação na classe skipped: ${semClasse.join(", ")}`).toEqual([])
+    expect(fantasma, `classificado sem implementação: ${fantasma.join(", ")}`).toEqual([])
+  })
+
+  for (const [id, { fechador, rota }] of Object.entries(CLASSE_SKIPPED)) {
+    // UM it por predicado: a unidade da classe é o IRMÃO, e a âncora da mutação
+    // (a suíte `test-mutation-unproven-skipped.sh`) é o título DELE — reintroduzir
+    // o "aceita skipped" num predicado acende a âncora DELE com os irmãos verdes.
+    const titulo =
+      rota === null
+        ? `a lacuna fechável por '${id}' fecha por VALOR presente (sem estado de medição no caminho)`
+        : `a lacuna fechável por '${id}' fica open com o estado de medição pulado`
+    it(titulo, () => {
+      // A tabela NÃO PODE ser letra morta: o fechador declarado fecha de fato
+      // (senão a prova da classe passaria em vácuo sobre um predicado que nem
+      // fecha).
+      const fechado = medir([item({ id, closedBy: id })], { facts: fechador })
+      expect(
+        fechado.state,
+        `${id}: o fechador da classe deve fechar (a medição real: ${JSON.stringify(fechador)})`,
+      ).toBe("proven")
+
+      // E a CLASSE: o MESMO fato com "skipped" na rota que o predicado lê não
+      // fecha lacuna nenhuma — a seção pulada não é leitura, em NENHUM predicado.
+      if (rota !== null) {
+        const pulado = medir([item({ id, closedBy: id })], { facts: comSkipped(fechador, rota) })
+        expect(pulado.state, `${id}: 'skipped' na rota '${rota}' não fecha`).toBe("open")
+      }
+    })
+  }
+})
+
 describe("CLI do coletor", () => {
   it("o parse aceita --json e --root, e recusa o desconhecido", () => {
     expect(parseArgs(["--json", "--root", "/tmp"]).json).toBe(true)

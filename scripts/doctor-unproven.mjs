@@ -93,9 +93,19 @@ export const CLOSED_BY = {
    */
   "github-protection-suportada": (facts) =>
     ["in-sync", "drift"].includes(estadoDaForja(facts, "github")),
-  /** O env do HOST existe neste checkout (sem ele, imagem/tier-1/contrato não medem). */
+  /**
+   * O env do HOST existe neste checkout (sem ele, imagem/tier-1/contrato não medem).
+   *
+   * Fecha só o que uma MEDIÇÃO executada produz (o mesmo fail-closed dos
+   * irmãos): a imagem foi sondada no registry com o env resolvido — `exists`
+   * (HTTP 200), `missing` (HTTP 404 medido) e `exists-private` (medido por
+   * docker). `no-env`/`bad-env` são a NEGAÇÃO (o env não existe ou não
+   * resolve), e `skipped` é a seção PULADA — a classe do falso fechamento que
+   * a auditoria de 05/10/2026 mediu no `act-runner-lido`: uma medição que não
+   * aconteceu nunca fecha dívida.
+   */
   "host-env-presente": (facts) =>
-    Boolean(facts?.image) && facts.image.state !== undefined && facts.image.state !== "no-env",
+    Boolean(facts?.image) && ["exists", "missing", "exists-private"].includes(facts.image.state),
   /**
    * O registro do act_runner foi LIDO (a stack da forja está de pé).
    *
@@ -149,7 +159,7 @@ export const CLOSED_BY = {
    */
   "fila-gitea-medida": (facts) => {
     const metade = facts?.runnerQueue?.forges?.gitea
-    return Boolean(metade) && metade.state !== "unread"
+    return Boolean(metade) && FILA_MEDIDA.includes(metade.state)
   },
   /**
    * A FILA DO ESPELHO (GitHub) foi MEDIDA — o canal respondeu e o registro do
@@ -163,7 +173,7 @@ export const CLOSED_BY = {
    */
   "fila-github-medida": (facts) => {
     const metade = facts?.runnerQueue?.forges?.github
-    return Boolean(metade) && metade.state !== "unread"
+    return Boolean(metade) && FILA_MEDIDA.includes(metade.state)
   },
   /** O contrato da imagem publicada foi provado contra o registry. */
   "imagem-publicada-prova": (facts) => facts?.imageContract?.state === "proven",
@@ -238,13 +248,32 @@ function estadoDaForja(facts, forge) {
 }
 
 /**
- * A forja foi LIDA? O fato AUSENTE não é uma leitura — e `null !== "unavailable"`
- * responderia `true` para um relatório sem o fato, fechando a declaração por uma
- * medição que não aconteceu (o otimismo que este registro existe para não ter).
+ * Os estados que uma LEITURA REAL da protection produz, POR FORJA: `in-sync`/
+ * `drift` são a leitura do aplicador e `unsupported` é a RESPOSTA da forja (a
+ * API respondeu que o plano não suporta o recurso — a consulta aconteceu, e é
+ * afirmação sobre ela). A CLASSE DO FALSO FECHAMENTO (auditada em 05/10/2026
+ * no `act-runner-lido`): `skipped` é a seção PULADA (`--no-protection` →
+ * `{state:"skipped"}`), `unavailable` é a falta de canal e `unread` é a leitura
+ * ilegível — os três são AUSÊNCIA DE PROVA, e "não medi" nunca é "li".
+ */
+const FORJA_LIDA = ["in-sync", "drift", "unsupported"]
+
+/**
+ * Os estados que uma LEITURA REAL de UMA metade da fila produz (o vocabulário
+ * da derivação, `runner-queue.mjs`): a fila foi medida, em qualquer veredito
+ * dela. `unread` é "não pôde ser lida" e `skipped` é a seção pulada — a MESMA
+ * classe do falso fechamento da forja: "não consegui medir" nunca fecha dívida.
+ */
+const FILA_MEDIDA = ["ociosa", "drenando", "parada", "sem-puxador"]
+
+/**
+ * A forja foi LIDA? Fecha só o que uma leitura REAL produz (`FORJA_LIDA`) — e o
+ * fato AUSENTE não é uma leitura: `estado === null` não está na allowlist, então
+ * um relatório sem o fato não fecha declaração nenhuma (o otimismo que este
+ * registro existe para não ter).
  */
 function forjaLida(facts, forge) {
-  const estado = estadoDaForja(facts, forge)
-  return estado !== null && estado !== "unavailable"
+  return FORJA_LIDA.includes(estadoDaForja(facts, forge))
 }
 
 /**

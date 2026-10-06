@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 48 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 49 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -325,6 +325,7 @@ SUBTESTS=(
   "artefatos-do-hook|scripts/test-mutation-artefatos-do-hook.sh"
   "caddy-validate|scripts/test-mutation-caddy-validate.sh"
   "mutacao-prova|scripts/test-mutation-mutacao-prova.sh"
+  "unproven-skipped|scripts/test-mutation-unproven-skipped.sh"
 )
 
 # ── A PROVA-DE-APLICAÇÃO: as suítes que chamam a RÉGUA ÚNICA ──────────────
@@ -370,6 +371,7 @@ PROVA_DE_APLICACAO=(
   "reconciliation"
   "nested-guard"
   "hook-ci-parity"
+  "unproven-skipped"
 )
 
 # ── O CAMINHO DECLARADO (sem marcador): o alvo que o payload não deixa marcar ──
