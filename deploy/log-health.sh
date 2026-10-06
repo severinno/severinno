@@ -15,15 +15,24 @@
 #   - perda em job FORA do padrao (incluindo o oscilante piorando) = REGRESSAO
 #     -> abre/comenta issue em severinno/alertas.
 #
-# Uso:    bash /opt/gitea/log-health.sh [--silencioso]
-# Cron:   40 11 * * * bash /opt/gitea/log-health.sh >> /var/log/forja-log-health.log 2>&1
+# Uso:    cd /home/severinno/severinno && . deploy/.env.alertas && bash /opt/gitea/log-health.sh [--silencioso]
+# Cron:   40 11 * * * cd /home/severinno/severinno && set -a && . deploy/.env.alertas && set +a && bash /opt/gitea/log-health.sh >> /var/log/forja-log-health.log 2>&1
 # Saida:  <data> tarefas=<N> boas=<B> esperadas=<E> regressao=<R> ids=[...]
 # =============================================================================
 set -euo pipefail
 
 DESDE="${DESDE:-2026-10-01 12:17:00}"   # instante do upgrade (baseline do monitor)
 REPO_ALERTAS="${REPO_ALERTAS:-severinno/alertas}"
-TOKEN="${GITEA_TOKEN_ALERTAS:-1fc9a003603738195f24f4bf51ecff781cb6debe}"
+# ROTAÇÃO 2026-10-06: o token NÃO tem mais default hardcoded — o valor ficou
+# no histórico do git (pusheado em 939a25c8) e foi rotacionado; o VIVO mora no
+# cofre gitignored deploy/.env.alertas (local e VPS), e o script falha se não
+# houver credencial no ambiente (fail-closed, sem credencial não há como
+# abrir a issue de regressão de qualquer forma).
+TOKEN="${GITEA_TOKEN_ALERTAS:-}"
+if [ -z "$TOKEN" ]; then
+  echo "$(date '+%F %T') ERRO: GITEA_TOKEN_ALERTAS não definido — source deploy/.env.alertas antes de rodar"
+  exit 2
+fi
 URL="https://git.severinno.com/api/v1"
 SILENCIOSO=0
 [ "${1:-}" = "--silencioso" ] && SILENCIOSO=1
