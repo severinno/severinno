@@ -96,9 +96,20 @@ export const CLOSED_BY = {
   /** O env do HOST existe neste checkout (sem ele, imagem/tier-1/contrato não medem). */
   "host-env-presente": (facts) =>
     Boolean(facts?.image) && facts.image.state !== undefined && facts.image.state !== "no-env",
-  /** O registro do act_runner foi LIDO (a stack da forja está de pé). */
+  /**
+   * O registro do act_runner foi LIDO (a stack da forja está de pé).
+   *
+   * Fecha só o que uma LEITURA REAL produz: `proven` (lido e em sincronia com o
+   * compose) e `violated` (lido e divergente — a divergência vira bloqueio
+   * nomeado em outro lugar). `skipped` é a SEÇÃO PULADA (medido em 05/10/2026:
+   * o perfil `--ci` publicava o item como PROVADO com o fato pulado — uma
+   * medição que não aconteceu fechando dívida), `unread` é o exec que correu e
+   * não devolveu registro legível, e `unavailable` é docker fora/container
+   * ausente: os três são AUSÊNCIA DE PROVA — "não consegui medir" nunca fecha
+   * dívida, o mesmo fail-closed dos irmãos.
+   */
   "act-runner-lido": (facts) =>
-    Boolean(facts?.runnerLabels) && facts.runnerLabels.state !== "unavailable",
+    Boolean(facts?.runnerLabels) && ["proven", "violated"].includes(facts.runnerLabels.state),
   /** O runner auto-hospedado do GitHub está REGISTRADO como o setup declara. */
   "github-runner-registrado": (facts) => facts?.githubRunnerLabels?.state === "proven",
   /**

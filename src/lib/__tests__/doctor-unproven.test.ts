@@ -129,6 +129,33 @@ describe("collectUnproven — o julgamento de cada item", () => {
     expect(fato.state).toBe("open")
   })
 
+  it("o REGISTRO do act_runner fecha a lacuna SÓ com leitura real — `skipped` é a seção pulada, não uma leitura", () => {
+    // O predicado `act-runner-lido`: "o registro foi lido (a stack está de pé)".
+    // Fecha só o que uma leitura REAL produz: `proven` (lido e em sincronia) e
+    // `violated` (lido e divergente — a divergência vira bloqueio em outro
+    // lugar). O FALSO FECHAMENTO medido em 05/10/2026: sob o perfil `--ci` o
+    // fato sai `skipped` (a seção é pulada) e o predicate antigo aceitava
+    // qualquer estado != `unavailable` — o doctor publicava o item como PROVADO
+    // com uma medição que NÃO aconteceu. E `unread`/`unavailable` continuam sem
+    // fechar: "não consegui medir" nunca fecha dívida.
+    const registro = (state: string | null) => ({
+      runnerLabels: state === null ? null : { state, detail: `detalhe de ${state}` },
+    })
+    for (const state of ["proven", "violated"]) {
+      const lido = medir([item({ id: "act-runner-registration", closedBy: "act-runner-lido" })], {
+        facts: registro(state),
+      })
+      expect(lido.state, `registro=${state}`).toBe("proven")
+      expect(fato(lido, "act-runner-registration")?.state).toBe("proven")
+    }
+    for (const state of ["skipped", "unread", "unavailable", null]) {
+      const ainda = medir([item({ id: "act-runner-registration", closedBy: "act-runner-lido" })], {
+        facts: registro(state),
+      })
+      expect(ainda.state, `registro=${state}`).toBe("open")
+    }
+  })
+
   it("a VERSÃO do runner fecha a declaração SÓ quando ela é a do pin do setup", () => {
     // O predicado `github-runner-na-versao-do-pin`: a segunda pergunta ao MESMO
     // registro. Um serviço que RECUSOU o pin (drift) é o defeito medido — o runner

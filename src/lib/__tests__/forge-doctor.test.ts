@@ -1779,9 +1779,20 @@ describe("summarize — o REGISTRO do que o veredito NÃO cobre", () => {
           { forge: "gitea", state: "unavailable", detail: "defina GITEA_TOKEN" },
         ],
       }),
-      // `no-env` é o código do env ausente: é ele que publica "imagem do runner
-      // não checada" em vez de uma imagem confirmada.
-      image: { code: 2, state: "no-env", lines: [] },
+      // O estado MEDIDO em 05/10/2026 neste checkout: o `deploy/.env.gitea`
+      // EXISTE (criado em 29/09) e a imagem declarada foi resolvida e puxável
+      // (HTTP 200). Era `no-env` — e a linha "imagem do runner não checada" que
+      // ele publicava mantinha a declaração `host-env` viva; o env aparecer
+      // FECHOU a lacuna por medição (o doctor publicou o item como PROVADO) e a
+      // entrada saiu do registro como letra morta. A fixture segue o estado
+      // medido de agora, não o de 22/09.
+      image: {
+        code: 0,
+        state: "exists",
+        ref: "git.severinno.com/severinno/ubuntu-bun:1.3.14",
+        detail: "HTTP 200 em git.severinno.com",
+        lines: [],
+      },
       // Os espelhos vêm do leitor REAL (é ele que monta a linha do VALOR
       // comparado): aqui só o valor declarado entra, sem os `--expected-var`.
       mirrors: readMirrors(ROOT, { expected: "1.3.14", expectedVars: {} }),
@@ -1848,11 +1859,12 @@ describe("summarize — o REGISTRO do que o veredito NÃO cobre", () => {
           reason: null,
         },
       },
-      // A FILA DE MIGRAÇÃO do caminho da forja como foi MEDIDA (os 2 jobs da
-      // RUNNER_PATH_ALLOWLIST): é este estado que mantém VIVA a declaração datada
-      // `runner-path-migration-queue` — e é a linha que ela declara que a
-      // cobertura confere (com a fila vazia ela viraria letra morta: o mecanismo
-      // funcionando, não o que este teste mede).
+      // A FILA DE MIGRAÇÃO do caminho da forja como foi MEDIDA: a
+      // RUNNER_PATH_ALLOWLIST está VAZIA hoje — a fila esvaziou, a declaração
+      // `runner-path-migration-queue` fechou POR MEDIÇÃO e saiu do registro, e
+      // o predicado `fila-de-migracao-vazia` fica no lugar para a declaração
+      // voltar a valer quando um job novo entrar na classe (ela o nomeia).
+      // Com a fila vazia NENHUMA linha sai — e é isso que o COBERTURA confere.
       jobMigrationQueue: {
         state: "measured",
         queue: [...RUNNER_PATH_ALLOWLIST].map((e) => ({ id: e.job })),
@@ -3112,6 +3124,9 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
     ["forge-workflow-scope", "node scripts/check-forge-workflow-scope.mjs"],
     ["forge-parity", "node scripts/check-forge-parity.mjs"],
     ["script-headers", "node scripts/check-script-headers.mjs"],
+    ["realtime-env-parity", "node scripts/check-realtime-env-parity.mjs"],
+    ["realtime-emit-key-source", "node scripts/check-realtime-emit-key-source.mjs"],
+    ["route-handler-style", "node scripts/check-route-handler-style.mjs"],
     ["prove-docs", "node scripts/check-prove-docs.mjs"],
     ["pipefail-sigpipe", "node scripts/check-pipefail-sigpipe.mjs"],
     // As nove que passaram a ser invocadas pela MESMA linha canônica do

@@ -93,19 +93,6 @@
       ]
     },
     {
-      "id": "host-env",
-      "kind": "lacuna",
-      "declaredAt": "2026-09-22",
-      "subject": "o env do HOST da stack (deploy/.env.gitea) não existe neste checkout: a imagem do runner, o PRE-REQUISITO 0 do gitea-up.sh e o contrato da imagem publicada ficam sem medição (medido: `image: no-env`, exit 2)",
-      "proveWith": "rodar o doctor NO host da stack, com --gitea-env apontando o env de lá",
-      "remedy": "medir no host que tem o arquivo (ele é gitignored e existe só onde a stack roda)",
-      "closedBy": "host-env-presente",
-      "matches": [
-        "imagem do runner não checada",
-        "o PRE-REQUISITO 0 do deploy/gitea-up.sh nao foi coberto"
-      ]
-    },
-    {
       "id": "image-mirror-values",
       "kind": "lacuna",
       "declaredAt": "2026-09-22",
@@ -361,6 +348,11 @@
       {
         "subject": "fix(ci): a dívida da pilha alcança o HEAD — os 8 vermelhos sem declaração saem de regressão anônima",
         "reason": "medido 05/10/2026 no PAI (ca334252, prover --only --sem-afetados; 2 tentativas repetiram o vermelho): forge-parity exit 1 — o wiring do CORE 'realtime-emit-key-source' é WIP DE OUTRA THREAD no working tree (não commitado); este commit só muda ci/unproven.json e o parecer, nada que o gate leia, então o vermelho do próprio commit é a MESMA CAUSA. Fecha com o landing do feature realtime e o da migração withRoute.",
+        "declaredAt": "2026-10-05"
+      },
+      {
+        "subject": "fix(registro): host-env sai letra morta e o registro do act_runner só fecha com leitura real",
+        "reason": "medido 05/10/2026 no PAI (132d179a, prover --only --sem-afetados; 2 tentativas repetiram o vermelho): forge-parity exit 1 — o wiring do CORE 'realtime-emit-key-source' é WIP DE OUTRA THREAD no working tree (não commitado); este commit muda o registro (host-env sai letra morta), o predicado act-runner-lido e os testes dele, nada que o gate de merge lê — o vermelho do próprio commit é a MESMA CAUSA. Fecha com o landing do feature realtime e o da migração withRoute.",
         "declaredAt": "2026-10-05"
       },
       {
