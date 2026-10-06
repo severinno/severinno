@@ -7816,8 +7816,8 @@ UNIÃO com a atribuição do filho, o `source` sem `export` e o `export VAR` soz
 de linha, `$( )`, `case`, função, continuação). E o repositório REAL é julgado com
 um **PISO de cobertura** (`comandos >= 200`, os três hooks e os scripts descidos nomeados): se a extração
 ou a descida pararem de funcionar, a contagem cai e o guard "passa" — o piso é o
-que impede o verde por vazio. Em produção: **274 comandos** (129 nos 3 hooks +
-145 dentro dos 5 scripts chamados), **268 resolvidos** e **6 indeterminados
+que impede o verde por vazio. Em produção: **273 comandos** (128 nos 3 hooks +
+145 dentro dos 5 scripts chamados), **267 resolvidos** e **6 indeterminados
 DECLARADOS** (as quatro decisões de caminho viraram prova; sobraram os payloads de
 `-c`).
 
@@ -8002,14 +8002,16 @@ checkout é rodado SOMADO ao dublê do simulador: os guards irmãos do defeito
 devolvem 0 (declarado), e quem roda de verdade é o guard do defeito
 (`check-workflow-run-syntax.mjs --staged`, com o `node` REAL do runtime) e o
 REMÉDIO — é a forma BARATA, e o fixture não tem o `package.json` do projeto (a
-fase C real, `lint-staged`/`typecheck`, não caberia nele).
+fase C real, `lint-staged`, não caberia nele).
 
 Com `--sem-duble`, o hook é o **REAL** sobre uma **CÓPIA do checkout**
 (`proveRealHookBlocks`): sem wrapper e sem dublê, as **DUAS fases** rodam de
 VERDADE — os seis guards de fase A, o gate e os **onze membros da fase B**
 (inclusive o runner de encoding, que a fase A nem toca) —, e a fase C
 (lint-staged, typecheck) roda real, porque a cópia tem o `package.json` e o
-`node_modules` (LINKADO, não copiado).
+`node_modules` (LINKADO, não copiado). O `typecheck` saiu da fase C do pre-commit
+(recorte declarado no próprio hook; o pre-push e o job `TypeCheck` das duas
+pipelines continuam cobrindo o invariante) — a fase C da cópia roda `lint-staged`.
 
 **A forma padrão mede DUAS metades**, e o exit code é o da PIOR delas
 (`combineStates`: `violated` vence `unavailable`, que vence `proven` — uma metade
@@ -8225,7 +8227,9 @@ diretos (~2s) + o CONTROLE A (~25s, que é a fase C real: `lint-staged` +
 `typecheck`) + **o defeito e o controle de CADA classe da fase B** (dois defeitos
 curtos — a fase B recusa antes da fase C — e dois controles que rodam a fase C
 inteira; ~37s, medido aqui pelo delta de 36s para 73s na forma local). Ela RODA o
-typecheck do repositório de verdade — o que, na primeira
+typecheck do repositório de verdade (medido 09/2026, quando a fase C do pre-commit
+ainda o executava — após o recorte do typecheck no pre-commit, estes custos caem
+na mesma proporção) — o que, na primeira
 execução, reprovou o CONTROLE por um erro de tipo real introduzido no mesmo
 turno (JSDoc sem o campo novo), e o pegou antes de qualquer outra rede.
 
