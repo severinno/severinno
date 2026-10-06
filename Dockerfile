@@ -30,7 +30,7 @@ COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
 # ── Builder: generate Prisma client + build Next.js standalone ───────────────
-FROM base AS builder
+FROM node:22-alpine AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
@@ -38,7 +38,7 @@ COPY . .
 ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
 # Generate Prisma Client (needed by Next.js at build time)
-RUN bun run db:generate
+RUN npx prisma generate
 
 # Build Next.js with standalone output
 # BUILD_STANDALONE=true triggers output: "standalone" in next.config.ts
@@ -47,7 +47,7 @@ RUN bun run db:generate
 ENV BUILD_STANDALONE=true
 ENV SKIP_TYPESCRIPT_CHECK=true
 ENV DOCKER_BUILD=true
-RUN bun run build
+RUN npm run build
 
 # ── Runner: Node.js standalone server ────────────────────────────────────────
 FROM node:22-alpine AS runner

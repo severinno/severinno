@@ -246,6 +246,11 @@ export const NAO_CITACOES = [
     porque:
       "head MORTO: a branch `feature/tres-classes-base` foi apagada em 25/09/2026 e este commit não pertence à história do HEAD POR CONSTRUÇÃO — a nota de auditoria de 26/09 o cita como o head que virou `startup_failure` (0 jobs). O MESMO patch vive em `30447a57`, que é ancestral, mas ele descreve OUTRO commit: trocar a citação pelo nome vivo apagaria do registro qual head morreu, e o registro dele é o RUN `35990702155`.",
   },
+  {
+    literal: "1cb6debe",
+    porque:
+      "last8 do GITEA_TOKEN da forja ROTACIONADO em 06/10/2026, citado na mensagem do commit `706ae2c3` como IDENTIFICAÇÃO do secret (não um commit). O valor completo está inerte (a API responde 401) e classificado no baseline do check-secret-leaks.",
+  },
 ]
 
 /** O token de um hash: 7 a 40 hexadecimais isolados (o `\b` protege de runs maiores). */
