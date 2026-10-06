@@ -19,6 +19,7 @@
 11. [Webhook Security](#11-webhook-security)
 12. [Audit Trail](#12-audit-trail)
 13. [Seed Test Hooks (SEED_SPEC_PATCH)](#13-seed-test-hooks-seed_spec_patch)
+14. [Retenção LGPD de Identidade (cron de segurança)](#14-retenção-lgpd-de-identidade-cron-de-segurança)
 
 ---
 
@@ -402,3 +403,68 @@ NODE_ENV=development PROD_SEED_ALLOW_DEV=1 bun prisma/seed-prod.ts
 - `scripts/test-seed-prod-e2e.ts` — cenários 7 (update) e 8 (rename)
 - `scripts/test-seed-dev-e2e.ts` — cenários 9 (update) e 10 (rename)
 - `src/lib/__tests__/seed-data.test.ts` — 5 testes unitários de `buildPatchedSpec`
+
+---
+
+## 14. Retenção LGPD de Identidade (cron de segurança)
+
+> A política completa (os 3 atos da retenção de biometria) vive no código:
+> `src/lib/identity-retention.ts`. Esta seção documenta a OPERAÇÃO do ato 2
+> (pendência expirada) e o seu gatilho automatizado — a parte que não pode
+> depender de alguém lembrar de executá-la.
+
+### 14.1 O que o cron faz
+
+Todo dia às **03:15** (depois do settlements 03:00; entrada em
+`scripts/setup-cron-push.sh`), o endpoint `GET /api/cron/identity-purge`
+executa `purgeStalePendingIdentities(30)` sobre os usuários com
+`identityStatus = "pending"` há mais de 30 dias:
+
+1. as URLs de biometria são nuladas no banco PRIMEIRO (o app para de expor
+   mesmo se o bucket falhar);
+2. documento e selfie saem do MinIO (best-effort por objeto);
+3. o status vira `rejected` com motivo gravado no Redis (30d de TTL) —
+   reenviar a verificação é um clique, não um caso de suporte.
+
+A operação é **idempotente**: rodada repetida devolve `purged: 0` e não
+muda nada. O estado saudável do cron diário é `purged` baixo ou zero.
+
+### 14.2 Os dois gatilhos do ato 2
+
+| Gatilho        | Rota                             | Autenticação                     | Quando               |
+| -------------- | -------------------------------- | -------------------------------- | -------------------- |
+| Manual (admin) | `POST /api/admin/identity/purge` | Sessão + `requireRole("ADMIN")`  | Sob demanda          |
+| Diário (cron)  | `GET /api/cron/identity-purge`   | `CRON_SECRET` Bearer fail-closed | 03:15, todos os dias |
+
+O cron existe porque compliance que depende de operador de plantão não
+roda no dia em que o plantão esquece: a janela de retenção só é garantida
+quando o gatilho é automático e a rota manual fica para a exceção
+(ex.: purgar antes do prazo após pedido do titular).
+
+### 14.3 Fail-closed e operação
+
+A autenticação é a mesma família dos demais crons: Bearer contra
+`CRON_SECRET`, **sem query param** (não vaza em log de access). Sem
+`CRON_SECRET` configurado no ambiente, nenhum Bearer passa — o endpoint
+não "consegue rodar de qualquer jeito".
+
+```bash
+# Execução manual (VPS, credenciais locais):
+curl -s -H "Authorization: Bearer $CRON_SECRET" \
+  https://severinno.com.br/api/cron/identity-purge | jq
+# Log do cron do host: ~/cron-logs/identity-purge.log (código HTTP por linha)
+```
+
+Leitura do log:
+
+- `200` com `purged: 0` — saudável (não havia pendências expiradas);
+- `401` no log do host — `CRON_SECRET` divergente entre host e app
+  (ver § 10 Docker Secrets) ou entrada do cron sem o header;
+- `5xx` — falha de banco/S3 na varredura; investigar antes de re-run
+  (a função é idempotente e best-effort POR usuário: uma falha pontual
+  não corrompe o lote nem duplica remoção).
+
+A execução registra `logger.info` estruturado (`purged`, por usuário em
+`identity-retention.ts`) — segue para o Loki como o resto do audit trail
+(§ 12). Os logs do próprio container nunca recebem o conteúdo da
+biometria: só contagens e `userId`.

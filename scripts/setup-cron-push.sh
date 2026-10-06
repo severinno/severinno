@@ -32,6 +32,8 @@ CRON_SECRET="${CRON_SECRET:-}"
 #   - reminders:      roda a cada 30 minutos (verifica bookings com scheduledAt em ~24h)
 #   - settlements:    roda 1x ao dia às 03:00 (fecha período de repasse)
 #   - commissions:    roda 1x ao mês no dia 1 às 04:00 (relatório de comissões)
+#   - identity-purge: roda 1x ao dia (03:15) — retenção LGPD: pendências de KYC
+#                     expiradas (30d) perdem a biometria e viram rejected
 
 CRON_ENTRIES=$(
   cat <<'CRONTAB'
@@ -47,6 +49,9 @@ CRON_ENTRIES=$(
 
 # Relatório de comissões — 1x ao mês no dia 1 às 04:00
 0 4 1 * * curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer __CRON_SECRET__" "__APP_URL__/api/cron/commissions-report" >> ~/cron-logs/commissions.log 2>&1
+
+# Retenção LGPD — 1x ao dia às 03:15 (pendências de KYC expiradas perdem a biometria; idempotente)
+15 3 * * * curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer __CRON_SECRET__" "__APP_URL__/api/cron/identity-purge" >> ~/cron-logs/identity-purge.log 2>&1
 CRONTAB
 )
 

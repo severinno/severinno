@@ -2,10 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET as runReminders } from "@/app/api/cron/reminders/route"
 import { GET as runCommissions } from "@/app/api/cron/commissions-report/route"
 import { GET as runHealthMonitor } from "@/app/api/cron/health-monitor/route"
+import { GET as runIdentityPurge } from "@/app/api/cron/identity-purge/route"
 import { db } from "@/lib/db"
 import { sendMail } from "@/lib/mail"
 import { sendPushNotification } from "@/lib/push"
 import { runHealthMonitor as executeMonitor } from "@/lib/health-monitor"
+import { purgeStalePendingIdentities } from "@/lib/identity-retention"
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -35,6 +37,10 @@ vi.mock("@/lib/push", () => ({
 
 vi.mock("@/lib/health-monitor", () => ({
   runHealthMonitor: vi.fn(),
+}))
+
+vi.mock("@/lib/identity-retention", () => ({
+  purgeStalePendingIdentities: vi.fn(),
 }))
 
 describe("Cron API Routes (/api/cron/*)", () => {
@@ -138,6 +144,47 @@ describe("Cron API Routes (/api/cron/*)", () => {
       expect(res.status).toBe(200)
       expect(json.healthy).toBe(true)
       expect(json.summary.healthy).toBe(5)
+    })
+  })
+
+  describe("GET /api/cron/identity-purge — retenção LGPD diária", () => {
+    it("rejects request with invalid token", async () => {
+      const req = new Request("http://localhost:3000/api/cron/identity-purge", {
+        headers: { authorization: "Bearer wrong-secret" },
+      })
+      const res = await runIdentityPurge(req)
+      expect(res.status).toBe(401)
+      expect(purgeStalePendingIdentities).not.toHaveBeenCalled()
+    })
+
+    it("fail-closed: sem CRON_SECRET configurado, nem Bearer válido passa", async () => {
+      const prev = process.env.CRON_SECRET
+      delete process.env.CRON_SECRET
+      try {
+        const req = new Request("http://localhost:3000/api/cron/identity-purge", {
+          headers: { authorization: `Bearer ${CRON_SECRET}` },
+        })
+        const res = await runIdentityPurge(req)
+        expect(res.status).toBe(401)
+        expect(purgeStalePendingIdentities).not.toHaveBeenCalled()
+      } finally {
+        process.env.CRON_SECRET = prev
+      }
+    })
+
+    it("purges stale pending identities (30 dias) e devolve a contagem", async () => {
+      vi.mocked(purgeStalePendingIdentities).mockResolvedValue({ purged: 3 })
+
+      const req = new Request("http://localhost:3000/api/cron/identity-purge", {
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      })
+      const res = await runIdentityPurge(req)
+      const json = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(json.ok).toBe(true)
+      expect(json.purged).toBe(3)
+      expect(purgeStalePendingIdentities).toHaveBeenCalledWith(30)
     })
   })
 })
