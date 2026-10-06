@@ -251,6 +251,16 @@ export const NAO_CITACOES = [
     porque:
       "last8 do GITEA_TOKEN da forja ROTACIONADO em 06/10/2026, citado na mensagem do commit `706ae2c3` como IDENTIFICAÇÃO do secret (não um commit). O valor completo está inerte (a API responde 401) e classificado no baseline do check-secret-leaks.",
   },
+  {
+    literal: "8350028c3c45",
+    porque:
+      "ID (12 hex) da IMAGEM docker da app carregada no daemon da VPS em 06/10/2026, citado no relatório go-live como IDENTIFICAÇÃO do artefato em produção (não um commit).",
+  },
+  {
+    literal: "6a91c31d1c2b",
+    porque:
+      "ID (12 hex) da IMAGEM docker do worker carregada no daemon da VPS em 06/10/2026, citado no relatório go-live como IDENTIFICAÇÃO do artefato em produção (não um commit).",
+  },
 ]
 
 /** O token de um hash: 7 a 40 hexadecimais isolados (o `\b` protege de runs maiores). */
