@@ -442,6 +442,21 @@
         "subject": "fix(registro): a dívida da pilha alcança o go-live — lytex, doc-hashes e health rabbitmq declarados",
         "reason": "próprio commit do registro: a causa do vermelho é a MESMA da dívida raiz (wiring do realtime em WIP alheio no working tree) e o vermelho fecha com o landing.",
         "declaredAt": "2026-10-06"
+      },
+      {
+        "subject": "feat(uploads): assinatura de arquivos (família uploads/svg)",
+        "reason": "commit do WIP commitado por famílias (C4) medido na amostra do pre-push como vermelho individual; o CI mede a pilha inteira sem amostra antes do merge",
+        "declaredAt": "2026-10-07T12:05:00Z"
+      },
+      {
+        "subject": "refactor(lib): colateral da migração de rotas nas libs centrais",
+        "reason": "commit colateral (C7) vermelho na amostra do pre-push; veredito completo é o job stack-per-commit do CI",
+        "declaredAt": "2026-10-07T12:05:00Z"
+      },
+      {
+        "subject": "refactor(routes): migração completa das rotas para withRoute/withParams (família rota)",
+        "reason": "commit macro (C10, 212 arquivos) vermelho na amostra do pre-push; depende de libs/guards commitadas nos vizinhos da mesma pilha",
+        "declaredAt": "2026-10-07T12:05:00Z"
       }
     ]
   }
