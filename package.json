@@ -300,7 +300,7 @@
     "react-resizable-panels": "^3.0.3",
     "recharts": "^2.15.4",
     "server-only": "^0.0.1",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "socket.io-client": "^4.8.3",
     "sonner": "^2.0.6",
     "tailwind-merge": "^3.3.1",

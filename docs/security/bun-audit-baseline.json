@@ -1,7 +1,13 @@
 {
-  "count": 6,
-  "updatedAt": "2026-10-01",
+  "count": 11,
+  "updatedAt": "2026-10-07",
   "findings": [
+    {
+      "package": "@graphql-tools/utils",
+      "url": "https://github.com/advisories/GHSA-7mx3-vvmw-hjmv",
+      "severity": "high",
+      "title": "GraphQL Tools has prototype pollution in well-established utility function `mergeDeep`"
+    },
     {
       "package": "basic-ftp",
       "url": "https://github.com/advisories/GHSA-c475-qrg2-pj4r",
@@ -27,6 +33,18 @@
       "title": "brace-expansion: Quadratic-time expansion of the `{a},b}` rewrite causes CPU denial of service"
     },
     {
+      "package": "braces",
+      "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+      "severity": "high",
+      "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns"
+    },
+    {
+      "package": "fast-copy",
+      "url": "https://github.com/advisories/GHSA-jggr-w7fw-pc2j",
+      "severity": "moderate",
+      "title": "fast-copy: Stack exhaustion in fast-copy when copying deeply-nested values"
+    },
+    {
       "package": "ip-address",
       "url": "https://github.com/advisories/GHSA-j6r3-76f7-8jcv",
       "severity": "moderate",
@@ -37,6 +55,18 @@
       "url": "https://github.com/advisories/GHSA-h3mg-xc3c-68pw",
       "severity": "moderate",
       "title": "ip-address: Address6 builds a parse diagnostic proportional to the input with no length bound, allowing a single long string to stall or crash the process"
+    },
+    {
+      "package": "sharp",
+      "url": "https://github.com/advisories/GHSA-wq5f-xc86-pv6w",
+      "severity": "high",
+      "title": "sharp : Vulnerability in librsvg dependency CVE-2026-96889"
+    },
+    {
+      "package": "source-map-js",
+      "url": "https://github.com/advisories/GHSA-68fv-2mgg-jv7q",
+      "severity": "high",
+      "title": "source-map-js allows event-loop denial of service through indexed source-map section offsets"
     }
   ]
 }
