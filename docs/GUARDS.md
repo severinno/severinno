@@ -363,6 +363,22 @@ ilegível e o repo real: os treze usos no valor declarado e UM número trocado
 derrubando o guard com arquivo e linha) e
 `src/lib/__tests__/bun-version.test.ts` (a cadeia de resolução do resolvedor:
 env → espelhos, e o LANÇAR em vez de um default).
+
+**A blindagem da interpolação do include da base (invariante 20).** Os canais
+de produção (prod, hostinger) incluem a `docker-compose.base.yml` e declaram
+`env_file: [compose-include.env]` — um arquivo VAZIO de propósito. Sem a
+declaração, o Compose carregaria o `.env` do DIRETÓRIO da base por conta
+própria: uma var de dev vazaria para o render de produção quando o
+`--env-file` do comando não define a variável (a armadilha de interpolação
+documentada nos headers dos canais). O guard julga os DOIS lados: a declaração
+no canal (ausente, em forma de string sem env_file possível, ou apontando para
+outro arquivo → violação; YAML inválido ou include que não referencia a base →
+fail-closed) e o próprio arquivo (qualquer atribuição `CHAVE=valor` nele →
+violação, alguém recriaria a fuga por outro caminho).
+`src/lib/__tests__/check-bun-mirror-include-env.test.ts` cobre as três formas
+de violação do canal, o arquivo vazio só com comentários, a atribuição
+infiltrada, o comentário com `=` dentro (não é atribuição) e o REPOSITÓRIO real
+(a regra tem sujeito: os dois canais declaram hoje).
 **Prova por mutação:** `scripts/test-mutation-bun-literal.sh` — cinco fases: (A)
 o literal de workflow, (B) o CONTROLE do guard limpo, (C) `M3`: um script do
 fixture com literal é reprovado, e a MESMA cópia do guard SEM a chamada da
@@ -9463,6 +9479,237 @@ conferida por checksum no `trap EXIT`. A suíte fecha com a INTEGRAÇÃO (o guar
 real na árvore real, o MESMO comando do CI) e com a testemunha unitária
 (`check-generated-format.test.ts`, 17 testes).
 
+---
+
+## 34. O environment do realtime é o MESMO nos dois canais de produção — `check:realtime-env-parity` (`scripts/check-realtime-env-parity.mjs`)
+
+**A invariante:** o `environment` EFETIVO do serviço `realtime` (base +
+override mesclados com a semântica do Compose) é IDÊNTICO entre
+`docker-compose.prod.yml` e `docker-compose.hostinger.yml` — variável que só
+existe num canal, ou fonte diferente (`\${VAR}` vs literal), reprova o merge.
+
+**O defeito que fecha:** o comentário ⛳ da base documenta o incidente — a
+`REALTIME_EMIT_API_KEY` faltava no `app` do canal hostinger: "metade do
+contrato em cada arquivo". O realtime é fail-closed (recusa o boot sem a
+chave), mas qualquer OUTRA variável pode divergir do mesmo jeito e só
+explodir no canal que ninguém olhou. Os dois canais fazem `include:` da MESMA
+base e podem adicionar/sobrescrever variáveis no arquivo próprio — exatamente
+o lugar onde o drift mora.
+
+**Como mede:** js-yaml sobre os DOIS canais + a base, merge base→override por
+canal e comparação do mapa resultante. Valores são normalizados pela FONTE:
+`\${VAR}` e `\${VAR:-default}` viram o nome da variável — o que se compara é
+o CONTRATO (quais variáveis, de onde vêm), não o valor interpolado de um
+`.env` que não está no repo. Consequência deliberada: defaults de valor
+DIFERENTES para a mesma variável (`.com.br` vs `.com` no `app`, documentados
+nos headers) NÃO sinalizam — é drift de valor documentado, não de contrato.
+
+**Escopo deliberado:** um serviço por execução (`--service`, default
+`realtime`); os serviços com divergência de domínio LEGÍTIMA (app,
+email-worker, notification-worker) não são comparados por default. Env de
+host vs template é do `check-env-mirror`; imagem/registry é do
+`check-registry-source`.
+
+**Como testar:** `src/lib/__tests__/check-realtime-env-parity.test.ts` —
+unitários das funções exportadas + a CLI real contra o REPO (exit 0 na
+paridade do realtime; `--service app` exit 1 prova o caminho do vermelho com
+a divergência real do rollout CSP) e contra FIXTURES tmp (exit 1 divergência,
+exit 2 infra). O gate é do CORE nas duas forjas (classificado no
+`check-forge-parity` como `realtime-env-parity`).
+
+---
+
+## 35. A chave do /emit entra por DOCKER SECRET, nunca por environment — `check:realtime-emit-key-source` (`scripts/check-realtime-emit-key-source.mjs`)
+
+**A invariante:** a `REALTIME_EMIT_API_KEY` (fail-closed: produção nem sobe
+sem ela) entra nos canais de produção como DOCKER SECRET
+`realtime_emit_api_key` (→ `/run/secrets/realtime_emit_api_key`) e é lida via
+`REALTIME_EMIT_API_KEY_FILE` — o VALOR nunca aparece em `environment` de
+compose comitado (nem via `\${VAR}`: interpolar do `.env` do host é a fuga
+que fecha; `docker inspect` e `docker compose config` mostrariam o segredo).
+Os consumers são `realtime`, `app` e `notification-worker` — cada um declara
+o secret em `secrets:` e o caminho `_FILE` canônico.
+
+**O defeito que fecha:** a classe do incidente ⛳ da seção 34, um estágio
+depois do pipe. A chave já é obrigatória nos três serviços e em paridade
+entre os canais — mas o VALOR ainda podia transitar por environment (a
+before: `REALTIME_EMIT_API_KEY: \${REALTIME_EMIT_API_KEY}`), visível em
+`docker inspect`, `docker compose config` e em qualquer shell que exporte o
+`.env` do host. A migração para secret + `_FILE` aconteceu junto com este
+guard: ele prende o desenho, não o permite regredir.
+
+**Como mede:** js-yaml sobre os TRÊS composes (base + prod + hostinger, os
+canais que fazem `include:` da base) e cinco regras: R1 nenhum
+`REALTIME_EMIT_API_KEY:` com valor em environment; R2 todo consumer menciona
+a chave E recebe o secret (e nenhum consumer órfão com secret sem leitor); R3
+todo compose que menciona a chave declara o secret no top-level `secrets:`;
+R4 `secrets/realtime_emit_api_key.secret.example` existe com placeholder e
+nenhum `*.secret` está TRACKED no git (`.secret` local de dev é o fluxo
+normal — o `.gitignore` de secrets/ o ignora); R5 o caminho de `_FILE` é o
+canônico. Exit 0 sancionado | 1 violação | 2 infra (compose ilegível) | 3 uso.
+
+**Escopo deliberado:** staging/dev são composes monolíticos de
+desenvolvimento e leem a chave por env direta do `.env` — não são varridos. A
+paridade base↔override POR SERVIÇO é da seção 34; aqui o contrato é a FONTE
+da chave. Os loaders (src/lib/realtime-emit-key.ts e a cópia no
+mini-services/realtime — a imagem não contém src/) tratam `_FILE` como
+precedente e NUNCA caem silenciosamente para a env quando o arquivo não pode
+ser lido: mount quebrado é falha declarada, não "serviço sem chave".
+
+**Como testar:** `src/lib/__tests__/check-realtime-emit-key-source.test.ts` —
+unitários das funções exportadas + a CLI real contra o REPO (exit 0 no desenho
+vigente) e contra FIXTURES tmp (cada regra violada, uma por caso). O gate é do
+CORE nas duas forjas (classificado no `check-forge-parity` como
+`realtime-emit-key-source`; fora do pre-commit por `HOOK_NOT_RUN`, junto com
+a seção 34).
+
+---
+
+## 36. Todo handler de rota usa withRoute/withParams — `check:route-handler-style` (`scripts/check-route-handler-style.mjs`)
+
+**A invariante:** todo handler HTTP exportado por um `route.ts` sob
+`src/app/api` (`GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS`) usa o wrapper
+`withRoute`/`withParams` (`src/lib/api-route.ts`) — tracing OTel,
+request-context e `handleError` num lugar só. O padrão MANUAL
+(`try { ... } catch (e) { return handleError(e) }` dentro do handler) reprova.
+
+**O defeito que fecha:** o boilerplate manual não é só repetição — cada cópia
+pula o span e o request-id (o `handleError` fica sem requestId nos logs e o
+trace fica sem o trecho da rota). Das 189 rotas, 142 já usam o wrapper; os 47
+arquivos sem wrapper são em grande parte rotas SEM try/catch (health,
+metrics, webhooks com resposta própria, SSE). Os que mantêm o padrão manual
+(19 pares rota×handler) ficaram CONGELADOS na ALLOWLIST com `addedAt` +
+`reason` — handler NOVO com o padrão manual reprova o merge; o congelamento
+encolhe conforme a migração anda.
+
+**Como mede:** scanner node-puro (sem parser TS), heurística declarada no
+cabeçalho do guard: strip de comentários, extração dos handlers exportados e
+corpo por brace-balance a partir da lista de parâmetros (pula anotação de
+tipo tipo `Promise<{ id: string }>` — região curta sem `return`);
+`= withRoute(`/`= withParams(` é WRAPPED e não é escaneado. Cinco regras:
+handler manual fora da ALLOWLIST é violação; entrada OCIOSA (a rota migrou ou
+o handler sumiu) é violação — allowlist que não encolhe é isenção eterna;
+`addedAt` ausente/malformado/no futuro é violação (a régua compartilhada de
+`scripts/allowlist-review.mjs`); decisão vencida (janela de
+`ROUTE_HANDLER_STYLE_REVIEW_DAYS`, 180 dias) é `::warning::` no run normal e
+VIOLAÇÃO com `--review`. Exit 0 sancionado | 1 violação | 2 infra (árvore
+de rotas sumiu) | 3 uso.
+
+**Escopo deliberado:** o alvo é o HANDLER (helpers locais com catch próprio
+não são escaneados por si — a região de um handler vai até o próximo handler;
+o remédio é o mesmo). Catch custom SEM `handleError` (resposta própria de
+webhook/stream/degradação) não reprova — é outra classe, de resposta, não de
+estilo de erro.
+
+**Como testar:** `src/lib/__tests__/check-route-handler-style.test.ts` —
+unitários do scanner (comentário não é chamada; anotação de tipo não engana;
+wrapped não escaneado) + a CLI real contra o REPO (exit 0; `--list` casa 1:1
+com a ALLOWLIST) + árvore sintética construída A PARTIR da ALLOWLIST (cobra
+que a lista cobre exatamente o que a varredura acha) e fixtures de cada regra.
+O gate é do CORE nas duas forjas (classificado no `check-forge-parity` como
+`route-handler-style`; fora do pre-commit por `HOOK_NOT_RUN`, junto com as
+seções 34 e 35).
+
+---
+
+## 37. O dinheiro é DECIMAL — e a migration que converte é AUTOSSUFICIENTE — `check-money-decimal` (`scripts/check-money-decimal.sh`)
+
+**A invariante:** as 11 colunas monetárias continuam `numeric(10,2)/(12,2)`
+(migration `20260930120000_money_decimal`), os objetos canônicos que ela
+derruba e recria (`mv_provider_stats`, `trg_refresh_mv_on_booking`,
+`trg_search_reindex_service`) existem, e o round-trip numérico é EXATO
+(`0.1 + 0.2 = 0.30` em numeric; a testemunha float8 imprime
+`0.30000000000000004` — a razão da conversão). Em `--ephemeral`, semeia a
+cadeia de FKs e escreve em TODAS as tabelas monetárias, provando gravação
+centavo a centavo e os triggers recriados funcionando (MV refletida + fila
+de reindexação enfileirada).
+
+**O defeito que fecha:** dinheiro em DOUBLE PRECISION erra representação
+(`0.1 + 0.2 ≠ 0.3`) — inaceitável para custódia, split, comissão e
+settlement. E a primeira versão da migration deixaria a produção QUEBRADA:
+dropava a MV no fim e nunca recriava — o primeiro write pós-deploy
+dispararia o trigger de refresh contra uma relação inexistente. A migration
+foi reescrita autossuficiente (ver o header dela); este guard prova o
+estado FINAL contra um banco real a cada mudança de schema — qualquer
+regressão que reintroduza float (ou esqueça os objetos canônicos) reprova
+no CI.
+
+**Como mede:** bash + psql no banco do job `prisma-migrations`
+(infra-guards.yml), passo "Money decimal guard" DEPOIS do
+`migrate deploy`. O transporte é o padrão do job: `psql` de DENTRO do
+service container (`PG_CONTAINER=${{ job.services.postgres.id }}` — o
+runner self-hosted não tem psql no host); sem `PG_CONTAINER`, usa
+`psql $DATABASE_URL` (local). `--ephemeral` só aceita banco de nome
+descartável (`severinno_test`/`*_test`) — intertravamento contra INSERTs no
+banco de desenvolvimento. Exit 0 sancionado | 1 violação (lista completa no
+veredito) | 2 uso/pré-requisito ausente.
+
+**Escopo deliberado:** é guard de CI com banco, na família de
+`check-prisma-migrations.sh` — não entra no pre-commit (não há banco lá) e
+não tem mutation test dedicado: o DML de prova É a mutação inversa — sem os
+tipos ou objetos certos, o próprio guard reprova. O arredondamento histórico
+da conversão (float 9.999999999 → numeric 10.00) é provado pelo caso
+dedicado do round-trip.
+
+**Como testar:**
+`src/lib/__tests__/check-money-decimal-guard.test.ts` — contrato estrutural
+(sintaxe bash, `set -euo pipefail`, cabeçalho com Usage/exit codes, e a
+fiação no workflow: o passo existe DEPOIS do guard de migrations). O
+guard em si foi validado contra Postgres 16 + PostGIS efêmero local no
+desenho exato do CI (db push + migrations canônicas + exit 0 nos dois
+modos; rerun idempotente; cura do estado quebrado que a v1 deixaria).
+
+---
+
+## 38. Nenhum .tsx do app renderiza `<style>` inline fora da allowlist — e o hash da CSP é o do global-error ATUAL — `check:inline-style` (`scripts/check-inline-style.mjs`)
+
+**A invariante:** a CSP continua estrita em estilos — `style-src` e
+`style-src-elem` SEM `'unsafe-inline'` (src/lib/csp.ts), o único `<style>`
+inline legítimo é o do `global-error.tsx`, cujo conteúdo é pinado por
+hash (`'sha256-eqW5FnLZ2T07K7f5xhzEJOVJru1NKj1t3pH4q2urlAE='` em
+`style-src-elem`), e NENHUM outro .tsx de `src/` (fora de testes e da
+allowlist) abre um elemento `<style`. O guard também prova
+criptograficamente que o hash pinado na CSP é o do `styles` ATUAL do
+global-error — a allowlist não é vaga, é verificada por sha256-base64.
+
+**O defeito que fecha:** `<style>` inline não falha o BUILD — compila,
+roda, e é o BROWSER que bloqueia o estilo em produção (página sem CSS,
+sem erro nenhum, invisível em dev com CSP observação). E o lado inverso
+também é silencioso: editar o `styles` do global-error sem recalcular o
+hash quebra a PINA atual — a página de erro raiz (última linha de defesa
+quando tudo mais falhou) fica sem estilo. Os `<style>` anteriores (ticker,
+skeletons, 404) já foram migrados para `globals.css`; este guard impede a
+reintrodução por engano.
+
+**Como mede:** máquina de estados char a char branca comentários (JSDoc,
+`//` e blocos JSX) e conteúdo de strings/template literals antes de casar
+`<style` em abertura de elemento — `<style>` CITADO em comentário (o repo
+tem vários, herança da migração) não é falso positivo. Allowlist com
+`{path, reason, addedAt}` (padrão do `check-route-handler-style`) —
+UM membro: global-error (pinado por hash, obrigatório — renderiza fora
+da árvore normal). O 2º membro original, o `chart.tsx` vendado do shadcn
+(ChartStyle só emitia com `color`/`theme`, e sem consumidores no app), foi
+REMOVIDO em 2026-10-02 e a allowlist encolheu junto. Exit 0 sancionado | 1
+violação (novo `<style>` ou hash dessincronizado, com mensagem acionável).
+
+**Escopo deliberado:** varre `src/**/*.tsx` (fonte do app — testes não
+dividem a CSP do runtime); um `<style>` injetado EXCLUSIVAMENTE via string
+(`__html: "<style>..."`) escapa da heurística, mesma classe de limitação
+documentada do check-clock-bombs. Passo "Inline <style> guard" no CORE
+(pr-check.yml), node puro e offline (~0,2s), sem imports de pacotes (lição
+do check-bun-mirror: a forja copia guards para /tmp sem node_modules).
+
+**Como testar:**
+`src/lib/__tests__/check-inline-style.test.ts` — 26 casos: funções puras
+(blanking, detecção, exclusões, allowlist com reason), prova do hash
+(casando/editado/pin removido/extrator quebrado/skip em fixtures) e CLI
+real contra repos fake (violação → exit 1; comentário → exit 0;
+global-error+hash → exit 0; hash quebrado → exit 1) e contra o repo REAL
+(com asserção de sujeito: o global-error renderiza `<style>` hoje e o
+hash casa).
+
+---
+
 ## 39. O Caddyfile.prod PARSEIA em um Caddy real — sempre — `check:caddy-validate` (`scripts/check-caddy-validate.sh`)
 
 **A invariante:** o Caddyfile.prod é aceito por `caddy validate --adapter
@@ -9487,7 +9734,14 @@ diretivas de plugin.
 **Como mede:** bash + docker; exit 0 parse OK | 1 o Caddy REPROVA o
 arquivo (com o erro nomeando linha/diretiva) | 2 pré-requisito ausente
 (docker/imagem). Diretivas de plugin removidas no modo stock por script
-python embutido (bloco balanceado por chaves — não por regex de fim).
+python embutido (bloco balanceado por chaves — não por regex de fim). As
+bases do Dockerfile.caddy (builder e runtime) e as do Dockerfile.worker
+(`oven/bun:${BUN_VERSION}`, 3 stages) são PINADAS POR DIGEST do índice
+multi-arch (`name:tag@sha256:…` — a tag vira leitura, o pull é imutável;
+digests resolvidos com `docker buildx imagetools inspect` em 2026-10-02):
+bump de base = tag nova E digest novo, juntos — e no worker o digest tem
+de ser o da BUN_VERSION declarada, ou o build usa um Bun que o repositório
+não declara em silêncio.
 
 **Prova por mutação (AUTOMATIZADA na matriz do master —
 `scripts/test-mutation-caddy-validate.sh`, 2 metades):** a **M1** desliga a

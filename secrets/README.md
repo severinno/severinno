@@ -60,15 +60,17 @@ docker stack deploy -c docker-compose.prod.yml severinno
 1. **Docker Compose (file:)** — os secrets são montados em `/run/secrets/<nome>` dentro do container
 2. **Entrypoint customizado** (`scripts/docker-entrypoint.sh`) — lê `/run/secrets/*`, exporta como env vars, e reconstrói URLs de conexão
 3. **Serviços com suporte nativo a `_FILE`** (PostgreSQL, RabbitMQ, MinIO) — usam `*_FILE: /run/secrets/<nome>` diretamente
+4. **Serviços Bun com leitor `_FILE` próprio** (`realtime` e os emissores do bridge `/emit`) — a env `REALTIME_EMIT_API_KEY_FILE: /run/secrets/realtime_emit_api_key` aponta o loader do serviço para o arquivo do secret (src/lib/realtime-emit-key.ts e a cópia no mini-services/realtime). Guard: `bun run check:realtime-emit-key-source`.
 
 ### Serviços que usam o entrypoint
 
-| Serviço             | Secrets montados                                                                                                                |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| app                 | postgres_password, rabbitmq_pass, s3_secret_key, session_secret, vapid_private_key, smtp_pass, cron_secret, lytex_client_secret |
-| email-worker        | postgres_password, rabbitmq_pass, smtp_pass                                                                                     |
-| notification-worker | postgres_password, rabbitmq_pass, vapid_private_key                                                                             |
-| search-index-worker | postgres_password                                                                                                               |
+| Serviço             | Secrets montados                                                                                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| app                 | postgres_password, rabbitmq_pass, s3_secret_key, session_secret, vapid_private_key, smtp_pass, cron_secret, lytex_client_secret, realtime_emit_api_key |
+| email-worker        | postgres_password, rabbitmq_pass, smtp_pass                                                                                                            |
+| notification-worker | postgres_password, rabbitmq_pass, vapid_private_key, realtime_emit_api_key                                                                             |
+| search-index-worker | postgres_password                                                                                                                                      |
+| realtime            | realtime_emit_api_key (lido via `REALTIME_EMIT_API_KEY_FILE`, sem entrypoint)                                                                          |
 
 ### Serviços com suporte nativo a `_FILE`
 
@@ -109,6 +111,7 @@ Isso é uma limitação conhecida. A longo prazo, podemos:
 | `lytex_client_secret`     | app                                                                  | `lytex_client_secret.secret.example`     |
 | `cron_secret`             | app                                                                  | `cron_secret.secret.example`             |
 | `rabbitmq_pass`           | rabbitmq, app, workers                                               | `rabbitmq_pass.secret.example`           |
+| `realtime_emit_api_key`   | realtime (valida), app e notification-worker (emitem o bridge /emit) | `realtime_emit_api_key.secret.example`   |
 | `evolution_api_key`       | notification-worker                                                  | `evolution_api_key.secret.example`       |
 | `glitchtip_db_password`   | glitchtip-db                                                         | `glitchtip_db_password.secret.example`   |
 | `glitchtip_s3_secret_key` | glitchtip-minio                                                      | `glitchtip_s3_secret_key.secret.example` |

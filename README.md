@@ -130,6 +130,7 @@ Servidor WebSocket para notificações em tempo real, chat e tracking.
 ```bash
 curl -X POST http://localhost:3003/emit \
   -H "Content-Type: application/json" \
+  -H "x-api-key: $REALTIME_EMIT_API_KEY" \
   -d '{
     "event": "booking:update",
     "data": {
@@ -140,6 +141,13 @@ curl -X POST http://localhost:3003/emit \
     }
   }'
 ```
+
+> **🔐 /emit é fail-closed:** exige `REALTIME_EMIT_API_KEY` no header
+> `x-api-key`. Sem a chave configurada no servidor, **todo** request recebe
+> `503`; em produção (`NODE_ENV=production`), o serviço **falha o boot** se a
+> variável não estiver definida. O app Next.js usa a mesma variável para
+> autenticar o bridge (`src/lib/realtime-client.ts`) — os dois lados devem
+> ter o MESMO valor.
 
 **Eventos suportados:**
 
