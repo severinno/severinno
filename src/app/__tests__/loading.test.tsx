@@ -5,11 +5,9 @@ import Loading from "../loading"
 afterEach(cleanup)
 
 describe("Root Loading (home page skeleton)", () => {
-  it("renders shimmer style tag within component", () => {
+  it("não injeta <style> inline (estilos em globals.css — CSP sem unsafe-inline)", () => {
     const { container } = render(<Loading />)
-    const style = container.querySelector("style")
-    expect(style).toBeInTheDocument()
-    expect(style?.textContent).toContain("@keyframes shimmer")
+    expect(container.querySelector("style")).not.toBeInTheDocument()
   })
 
   it("renders shimmer divs throughout the page", () => {

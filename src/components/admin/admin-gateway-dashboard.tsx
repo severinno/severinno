@@ -202,6 +202,11 @@ export function AdminGatewayDashboard() {
   // Paid value from actual data (more accurate than proportional)
   const paidTotalValue = byStatus.find((s) => s.status === "paid")?.total ?? 0
 
+  // averageTicket chega em REAIS (fronteira toMoneyNumber da rota); os helpers
+  // locais formatBRL/formatCompactBRL esperam CENTAVOS (unidade dos demais
+  // campos, bruta da Lytex). Converte UMA vez, para os dois call sites.
+  const averageTicketCents = Math.round(averageTicket * 100)
+
   // Compute chart-friendly byStatus (exclude statuses with 0 count)
   const statusChartData = byStatus.filter((s) => s.count > 0)
 
@@ -279,7 +284,7 @@ export function AdminGatewayDashboard() {
         <StatCard
           icon={Zap}
           label="Ticket médio"
-          value={formatBRL(averageTicket)}
+          value={formatBRL(averageTicketCents)}
           sub="por transação"
           accent="cyan"
         />
@@ -440,7 +445,7 @@ export function AdminGatewayDashboard() {
             </div>
             <div className="text-center">
               <p className="text-lg font-bold tabular-nums">
-                {formatCompactBRL(averageTicket * 100)}
+                {formatCompactBRL(averageTicketCents)}
               </p>
               <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
                 Ticket médio

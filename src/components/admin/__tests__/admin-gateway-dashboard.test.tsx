@@ -22,7 +22,7 @@ function buildGatewayStatsData() {
     totalCount: 120,
     paidCount: 85,
     conversionRate: 70.8,
-    averageTicket: 588235, // R$ 5.882,35 em centavos
+    averageTicket: 5882.35, // R$ 5.882,35 em REAIS (fronteira toMoneyNumber da rota)
     byStatus: [
       { status: "paid", total: 45000000, count: 85 },
       { status: "waitingPayment", total: 3000000, count: 18 },

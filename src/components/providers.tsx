@@ -51,6 +51,9 @@ export function Providers({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return
+    // Dev: SW cacheia chunks e mata o HMR — registro só em produção
+    // (a limpeza de registros/caches residuais fica no SWRegister).
+    if (process.env.NODE_ENV !== "production") return
 
     let cancelled = false
 

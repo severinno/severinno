@@ -12,6 +12,10 @@ export type AuthUser = {
   email: string
   role: UserRole
   avatarUrl?: string | null
+  city?: string | null
+  state?: string | null
+  bio?: string | null
+  whatsapp?: string | null
   verified?: boolean
   identityStatus?: string | null
   soundEnabled?: boolean

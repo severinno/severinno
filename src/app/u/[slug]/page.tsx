@@ -5,6 +5,7 @@ import { PublicProfilePage, type PublicProfileProvider } from "./public-profile-
 import { BreadcrumbJsonLd } from "@/components/shared/breadcrumb-json-ld"
 import { sanitizeForJsonLd } from "@/lib/sanitize"
 import { exactShape } from "@/lib/api-server"
+import { toMoneyNumber } from "@/lib/money"
 
 type Props = { params: Promise<{ slug: string }> }
 
@@ -108,6 +109,8 @@ export default async function Page({ params }: Props) {
   const { _count, ...profileRow } = provider
   const profile = exactShape<PublicProfileProvider>()({
     ...profileRow,
+    // Decimal → number na fronteira RSC: o contrato do componente é number
+    services: profileRow.services.map((s) => ({ ...s, basePrice: toMoneyNumber(s.basePrice) })),
     rating,
     reviewCount: _count.reviewsReceived,
     completedBookings: _count.bookingsAsProvider,

@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { db } from "@/lib/db"
+import { toMoneyNumber } from "@/lib/money"
 
 /**
  * SEO landing pages for high-value search terms.
@@ -229,7 +230,7 @@ export default async function ServicoPage({ params }: Props) {
                   <div className="mt-2 flex flex-wrap gap-1">
                     {p.services.map((s) => (
                       <span key={s.id} className="bg-muted rounded-full px-2 py-0.5 text-xs">
-                        {s.title} — R$ {s.basePrice}
+                        {s.title} — R$ {toMoneyNumber(s.basePrice).toFixed(2).replace(".", ",")}
                       </span>
                     ))}
                   </div>

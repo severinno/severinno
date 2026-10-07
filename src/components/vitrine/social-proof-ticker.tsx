@@ -126,17 +126,8 @@ export default function SocialProofTicker() {
       )}
       aria-label="Atividade recente na plataforma"
     >
-      {/* Inject the @keyframes for CSS-only infinite scroll */}
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-            @keyframes marquee-scroll {
-              0% { transform: translateX(0); }
-              100% { transform: translateX(-50%); }
-            }
-          `,
-        }}
-      />
+      {/* Keyframes `marquee-scroll` migrados para globals.css (remoção do
+          <style> inline exigido pela CSP estrita — ver src/lib/csp.ts). */}
 
       <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 sm:py-4">
         {/* Badge: "● Atividade recente" (H1: system status) */}

@@ -17,15 +17,13 @@ describe("LoadingShell", () => {
     expect(within(container).getByTestId("child")).toBeInTheDocument()
   })
 
-  it("renders ShimmerStyle (injects style tag)", () => {
+  it("não injeta mais <style> (estilos em globals.css — CSP sem unsafe-inline)", () => {
     const { container } = render(
       <LoadingShell>
         <span>test</span>
       </LoadingShell>,
     )
-    const style = container.querySelector("style")
-    expect(style).toBeInTheDocument()
-    expect(style?.textContent).toContain("@keyframes shimmer")
+    expect(container.querySelector("style")).not.toBeInTheDocument()
   })
 
   it("renders with multiple children", () => {
@@ -181,10 +179,9 @@ describe("LoadingShell composition", () => {
       </LoadingShell>,
     )
 
-    // Verify style tag is injected
-    const style = container.querySelector("style")
-    expect(style).toBeInTheDocument()
-    expect(style?.textContent).toContain("@keyframes shimmer")
+    // Estilos vêm de globals.css (.shimmer/@keyframes shimmer) — nenhum
+    // <style> inline é injetado (CSP sem 'unsafe-inline' em style-src).
+    expect(container.querySelector("style")).not.toBeInTheDocument()
 
     // Verify shimmer divs exist (scoped to container)
     const shimmers = container.querySelectorAll(".shimmer")

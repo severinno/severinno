@@ -1,4 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { render, cleanup } from "@/__tests__/test-utils"
 import { shimmerCSS, ShimmerStyle, S, createContainer, createItem } from "../loading-base"
 
@@ -30,21 +32,26 @@ describe("shimmerCSS", () => {
   it("contains fadeSlideUp translateY(12px)", () => {
     expect(shimmerCSS).toContain("translateY(12px)")
   })
+
+  // shimmerCSS é agora apenas uma string espelho — a fonte real dos estilos é
+  // globals.css (.shimmer + @keyframes shimmer). Este teste impede que alguém
+  // remova o bloco global deixando o espelho órfão.
+  it("globals.css contém o bloco espelhado (fonte real dos estilos)", () => {
+    const css = readFileSync(join(__dirname, "..", "globals.css"), "utf8")
+    expect(css).toContain("@keyframes shimmer")
+    expect(css).toContain(".shimmer {")
+  })
 })
 
 // ── ShimmerStyle ──────────────────────────────────────────────────────────
 
 describe("ShimmerStyle", () => {
-  it("renders a style element", () => {
+  // Contrato CSP: o componente virou no-op — nenhum <style> inline é injetado
+  // (os estilos vivem em globals.css; ver src/lib/csp.ts).
+  it("não renderiza <style> (no-op deprecated)", () => {
     const { container } = render(<ShimmerStyle />)
-    expect(container.querySelector("style")).toBeInTheDocument()
-  })
-
-  it("injects shimmerCSS as text content", () => {
-    const { container } = render(<ShimmerStyle />)
-    const style = container.querySelector("style")
-    expect(style?.textContent).toContain("@keyframes shimmer")
-    expect(style?.textContent).toContain("@keyframes fadeSlideUp")
+    expect(container.querySelector("style")).not.toBeInTheDocument()
+    expect(container.firstChild).toBeNull()
   })
 })
 

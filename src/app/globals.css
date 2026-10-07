@@ -525,10 +525,86 @@ header {
   animation: typing-dot 1.4s ease-in-out infinite;
 }
 
-.typing-dot:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
 .typing-dot:nth-child(3) {
   animation-delay: 0.4s;
+}
+
+/* ===========================================================================
+   Keyframes globais migrados de <style> inline (remoção do 'unsafe-inline'
+   de style-src — ver src/lib/csp.ts). Os seletores acompanham os keyframes
+   para permitir poda de CSS morto sem consulta dinâmica.
+   =========================================================================== */
+
+/* social-proof-ticker.tsx — marquee CSS-only (scroll infinito sem JS) */
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+/* loading-base.tsx — skeletons de carregamento (usado por todos os loading.tsx)
+   A export `shimmerCSS` do loading-base.tsx espelha este bloco (compat). */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 25%,
+    hsl(var(--primary) / 0.08) 50%,
+    hsl(var(--muted)) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+@keyframes fade-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* fade-in: usar o @keyframes fade-in pré-existente acima (mesmos quadros) */
+
+/* not-found.tsx — entrada animada da página 404 (classes .nf-anim-*) */
+@keyframes nf-fade-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes nf-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.nf-anim-slide-up {
+  animation: nf-fade-slide-up 0.5s both;
+}
+
+.nf-anim-fade-in {
+  animation: nf-fade-in 0.5s both;
 }

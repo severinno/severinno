@@ -1631,7 +1631,7 @@
     },
     "/api/cron/settlements": {
       "get": {
-        "summary": "Cron job to auto-generate a settlement period.",
+        "summary": "Cron job to auto-generate a settlement period and prune expired idempotency records.",
         "responses": {
           "200": {
             "description": "Success"
@@ -1658,6 +1658,19 @@
     "/api/cron/geo-health-alert": {
       "get": {
         "summary": "GET /api/cron/geo-health-alert",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Cron"
+        ]
+      }
+    },
+    "/api/cron/svg-legacy-census": {
+      "get": {
+        "summary": "Cron semanal: censo DRY-RUN de SVG legado no bucket de uploads (alerta se svgFound > 0, até a remediação zerar a contagem).",
         "responses": {
           "200": {
             "description": "Success"

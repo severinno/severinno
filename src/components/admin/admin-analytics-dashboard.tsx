@@ -9,7 +9,8 @@
  * - KPI cards: conversion rate, avg response time, avg ticket, volume
  * - Period filters: 7d / 30d / 90d
  *
- * Uses recharts via the existing `@/components/ui/chart` system.
+ * Uses recharts directly (the `@/components/ui/chart` wrapper was removed —
+ * no consumer ever used it; see docs/GUARDS.md §38 for the <style> policy).
  * Data comes from the analytics API: /api/admin/analytics
  */
 

@@ -28,7 +28,8 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
-import { apiGet, apiPost } from "@/lib/api"
+import { apiGet, payBooking, newIdempotencyKey, type PayResponse } from "@/lib/api"
+import { describePayError, type PayErrorAction } from "@/lib/idempotency-client"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { playCoinSound } from "@/lib/sounds"
@@ -45,16 +46,6 @@ type PixCheckoutProps = {
 }
 
 type PixCheckoutState = "idle" | "generating" | "awaiting" | "confirmed" | "expired" | "error"
-
-type PayResponse = {
-  paymentMethod: string
-  status: string
-  lytexStatus?: string
-  qrCode?: string
-  qrCodeImage?: string
-  lytexId?: string
-  expiresAt?: string
-}
 
 type StatusResponse = {
   paymentStatus: string
@@ -83,17 +74,38 @@ export function PixCheckout({
   const [timeLeft, setTimeLeft] = React.useState<string>("")
   const [progressPct, setProgressPct] = React.useState(100)
   const [copied, setCopied] = React.useState(false)
-  const [errorMsg, setErrorMsg] = React.useState<string | null>(null)
 
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
   const timerRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
   const confirmedRef = React.useRef(false)
+
+  // Recuperação de IDEMPOTENCY_IN_FLIGHT: a 1ª requisição pode ter criado a
+  // cobrança no Lytex e perdido a resposta (timeout/duplo-clique). O status
+  // endpoint devolve o QR existente — checamos em vez de mostrar erro.
+  const recoveryAttemptsRef = React.useRef(0)
+  const recoveryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Erro detalhado (título/mensagem/ação vêm de describePayError).
+  const [errorTitle, setErrorTitle] = React.useState<string>("Erro ao gerar PIX")
+  const [errorMsg, setErrorMsg] = React.useState<string | null>(null)
+  const [errorRetryLabel, setErrorRetryLabel] = React.useState<string>("Tentar novamente")
+  const [errorAction, setErrorAction] = React.useState<PayErrorAction>("wait_and_retry")
+  const [checkingPayment, setCheckingPayment] = React.useState(false)
+
+  // Idempotência: UMA chave por montagem do checkout. Todo POST /pay desta
+  // montagem (primeira emissão, "Gerar novo QR" após expirar, "Tentar
+  // novamente" após erro) reenvia a MESMA chave — um timeout/duplo-clique no
+  // servidor devolve replay/409 em vez de criar uma segunda cobrança no Lytex.
+  // Gerada lazy no 1º POST via newIdempotencyKey() (chamada impura não pode
+  // rodar durante o render — react-hooks/purity).
+  const idempotencyKeyRef = React.useRef<string | null>(null)
 
   // ── Cleanup ──
   React.useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
       if (timerRef.current) clearInterval(timerRef.current)
+      if (recoveryTimeoutRef.current) clearTimeout(recoveryTimeoutRef.current)
     }
   }, [])
 
@@ -164,14 +176,69 @@ export function PixCheckout({
     timerRef.current = setInterval(tick, 1000)
   }, [])
 
+  // ── Recuperação de IN_FLIGHT: a tentativa pode já ter criado a cobrança ──
+  // (função NOMEADA: a recursão via setTimeout referencia o próprio nome da
+  // função, não a const externa — react-hooks/immutability)
+  const tryRecoverInFlight = React.useCallback(
+    function tryRecoverInFlight(attempt: number): void {
+      if (attempt > 3) {
+        setErrorTitle("Pagamento ainda em andamento")
+        setErrorMsg(
+          "A cobrança anterior ainda está sendo processada. Aguarde um instante e toque em verificar novamente.",
+        )
+        setErrorRetryLabel("Verificar novamente")
+        setErrorAction("wait_and_retry")
+        setState("error")
+        return
+      }
+      setCheckingPayment(true)
+      apiGet<StatusResponse>(`/api/bookings/${bookingId}/pay/status`)
+        .then((status) => {
+          if (status.paymentStatus === "PAID") {
+            confirmedRef.current = true
+            setState("confirmed")
+            playCoinSound({ vibrate: true })
+            toast.success("Pagamento PIX confirmado! 🎉")
+            onPaymentConfirmed?.()
+            return
+          }
+          if (status.payment?.qrCode) {
+            // A cobrança original EXISTE: exibir o QR já criado e voltar a
+            // aguardar — sem criar cobrança nova.
+            setQrCode(status.payment.qrCode)
+            setQrCodeImage(status.payment.qrCodeImage ?? null)
+            setState("awaiting")
+            startPolling()
+            return
+          }
+          recoveryTimeoutRef.current = setTimeout(() => tryRecoverInFlight(attempt + 1), 2000)
+        })
+        .catch(() => {
+          recoveryTimeoutRef.current = setTimeout(() => tryRecoverInFlight(attempt + 1), 2000)
+        })
+        .finally(() => setCheckingPayment(false))
+    },
+    [bookingId, onPaymentConfirmed, startPolling],
+  )
+
   // ── Generate PIX charge ──
   const generatePix = React.useCallback(async () => {
     setState("generating")
     setErrorMsg(null)
     confirmedRef.current = false
+    recoveryAttemptsRef.current = 0
 
     try {
-      const res = await apiPost<PayResponse>(`/api/bookings/${bookingId}/pay`, {})
+      if (idempotencyKeyRef.current === null) {
+        idempotencyKeyRef.current = newIdempotencyKey()
+      }
+      const res = await payBooking<PayResponse>(
+        bookingId,
+        {},
+        {
+          idempotencyKey: idempotencyKeyRef.current,
+        },
+      )
 
       if (res.qrCode) {
         setQrCode(res.qrCode)
@@ -196,12 +263,40 @@ export function PixCheckout({
         throw new Error("QR Code não disponível")
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Erro ao gerar PIX"
-      setErrorMsg(msg)
+      const outcome = describePayError(e)
+
+      if (outcome.code === "IDEMPOTENCY_IN_FLIGHT") {
+        // A execução original pode ter criado a cobrança no Lytex e perdido a
+        // resposta (timeout/duplo-clique). Verificar o status endpoint antes
+        // de mostrar erro: se o QR existir, o checkout segue de onde parou.
+        tryRecoverInFlight(1)
+        return
+      }
+      if (outcome.action === "new_key_retry") {
+        // FAILED/CONFLICT: a chave atual não é reutilizável — a próxima
+        // tentativa gera uma chave nova (nova intenção de pagamento).
+        idempotencyKeyRef.current = null
+      }
+
+      setErrorTitle(outcome.title)
+      setErrorMsg(outcome.message)
+      setErrorRetryLabel(outcome.retryLabel)
+      setErrorAction(outcome.action)
+      toast.error(`${outcome.title}. ${outcome.message}`)
       setState("error")
-      toast.error(msg)
     }
-  }, [bookingId, onPaymentConfirmed, startCountdown, startPolling])
+  }, [bookingId, onPaymentConfirmed, startCountdown, startPolling, tryRecoverInFlight])
+
+  // ── Retry do card de erro, conforme a ação do describePayError ──
+  const handleRetry = React.useCallback(() => {
+    if (errorAction === "wait_and_retry") {
+      generatePix() // mesma chave: IN_FLIGHT resolve em replay/recuperação
+      return
+    }
+    // new_key_retry (FAILED/CONFLICT): nova chave = nova intenção.
+    idempotencyKeyRef.current = newIdempotencyKey()
+    generatePix()
+  }, [errorAction, generatePix])
 
   // ── Copy PIX code ──
   const handleCopy = React.useCallback(async () => {
@@ -388,14 +483,23 @@ export function PixCheckout({
             <AlertTriangle className="size-7 text-red-600" />
           </div>
           <div className="text-center">
-            <p className="font-semibold text-red-800 dark:text-red-300">Erro ao gerar PIX</p>
+            <p className="font-semibold text-red-800 dark:text-red-300">{errorTitle}</p>
             <p className="text-muted-foreground mt-1 text-sm">
-              {errorMsg || "Tente novamente em alguns instantes."}
+              {errorMsg ?? "Tente novamente em alguns instantes."}
             </p>
           </div>
-          <Button onClick={generatePix} variant="outline" className="gap-2">
-            <RefreshCw className="size-4" />
-            Tentar novamente
+          <Button
+            onClick={handleRetry}
+            variant="outline"
+            disabled={checkingPayment}
+            className="gap-2"
+          >
+            {checkingPayment ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <RefreshCw className="size-4" />
+            )}
+            {checkingPayment ? "Verificando pagamento…" : errorRetryLabel}
           </Button>
         </div>
       )}
