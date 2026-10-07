@@ -427,6 +427,21 @@
         "subject": "fix(bench): o texto da oferta julga a MESMA direção do gate — delta negativo além do ruído não é \"alcançada\"",
         "reason": "medido 06/10/2026 na pilha completa (prover --base origin/main --medir --json; 2 tentativas repetiram o vermelho): vitest(9 arquivo(s)) exit 1 — as somas da baseline do bench não fecham com as formas que ela guarda ('As somas da baseline FECHAM com as formas que ela guarda'); nenhum commit posterior medido repete o fracasso — transição da série de baselines, não regressão.",
         "declaredAt": "2026-10-06"
+      },
+      {
+        "subject": "fix(guards): declara _id de invoice Lytex (0593c010) como não-citação",
+        "reason": "medido 06/10/2026 no recorte do push (prover --pushed; 2 tentativas repetiram o vermelho): forge-parity exit 1 — a invariante do CORE 'realtime-emit-key-source' NÃO roda com o comando canônico no espelho github: MESMA CAUSA da dívida raiz (wiring do realtime é WIP DE OUTRA THREAD no working tree, corre desde 132d179a e fecha com o landing) — os commits não tocam CI.",
+        "declaredAt": "2026-10-06"
+      },
+      {
+        "subject": "fix(health): rabbitmq sonda de verdade + conexão eager no boot + fix de promessa presa",
+        "reason": "medido 06/10/2026 no recorte do push (prover --pushed; 2 tentativas repetiram o vermelho): forge-parity exit 1 — a invariante do CORE 'realtime-emit-key-source' NÃO roda com o comando canônico no espelho github: MESMA CAUSA da dívida raiz (wiring do realtime é WIP DE OUTRA THREAD no working tree, corre desde 132d179a e fecha com o landing) — os commits não tocam CI.",
+        "declaredAt": "2026-10-06"
+      },
+      {
+        "subject": "fix(registro): a dívida da pilha alcança o go-live — lytex, doc-hashes e health rabbitmq declarados",
+        "reason": "próprio commit do registro: a causa do vermelho é a MESMA da dívida raiz (wiring do realtime em WIP alheio no working tree) e o vermelho fecha com o landing.",
+        "declaredAt": "2026-10-06"
       }
     ]
   }
