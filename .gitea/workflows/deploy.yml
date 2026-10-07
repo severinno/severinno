@@ -100,9 +100,12 @@ jobs:
 
       - name: Wait for health check
         run: |
+          # Sonda DENTRO do container (docker exec): o job está na rede bridge
+          # da gitea e o app em --network host — localhost do job não alcança
+          # (mesmo defeito do task 327; padrão provado do job deploy).
           for i in $(seq 1 20); do
             sleep 3
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health 2>/dev/null || echo "000")
+            HTTP_CODE=$(docker exec severinno-test node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>{console.log(r.status)}).catch(()=>{console.log(0)})" 2>/dev/null || echo "000")
             if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "503" ]; then
               echo "Health check passed (HTTP $HTTP_CODE) after ${i}s"
               exit 0
@@ -262,10 +265,15 @@ jobs:
             -e NODE_ENV=production \
             -e HOSTNAME=0.0.0.0 \
             "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          # A SONDA VAI DENTRO DO CONTAINER (`docker exec` + fetch do node): o
+          # job roda na rede bridge da gitea e o app em --network host — o
+          # `localhost` do job é OUTRO netns e nunca alcança o host (medido:
+          # HTTP 000 nas 40 tentativas dos tasks 322 e 327). Mesmo padrão já
+          # provado pelo job deploy abaixo.
           HTTP_LAST="000"
           for i in $(seq 1 20); do
             sleep 3
-            HTTP_LAST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health 2>/dev/null || echo "000")
+            HTTP_LAST=$(docker exec severinno-fallback-test node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>{console.log(r.status)}).catch(()=>{console.log(0)})" 2>/dev/null || echo "000")
             case "$HTTP_LAST" in
               200|503) echo "Boot OK (HTTP $HTTP_LAST em $i tentativas)"; break;;
             esac
