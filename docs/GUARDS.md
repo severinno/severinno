@@ -8337,24 +8337,25 @@ das duas forjas e a suíte de mutação. No escopo SEMPRE o relatório escreve
 
 <!-- prove-doc: stack-per-commit:prove
      run: --only HEAD --sem-afetados --json
-     exit: 1
+     exit: 0
      cenario: ambiente
-     desfecho: indeterminado
+     desfecho: provado
 -->
 
 ```text
 "commits": 1
-"veredito": "broken"
+"veredito": "ok"
+"escopo": "sempre"
 ```
 
-**ESTADO EM 05/10/2026 — vermelho MEDIDO e DECLARADO, doc não mente:** o CONJUNTO
-SEMPRE do HEAD reprova porque as invariantes do CORE `realtime-env-parity`,
-`realtime-emit-key-source` e o wiring de `route-handler-style` têm classificação
-commitada (check-forge-parity) com passos de pipeline e scripts ainda EM VOO noutra
-thread — o working tree os carrega (e a forja local fica verde), o HEAD da pilha
-ainda não. A dívida está declarada em `ci/unproven.json` (seção `pilha`, por
-assunto). REABRIR com `exit: 0` + `desfecho: provado` + `"veredito": "ok"` assim
-que o landing fechar o forge-parity do HEAD.
+**REABERTO EM 07/10/2026 (`exit: 0`, desfecho `provado`) — a dívida de 05/10 foi paga:**
+o landing da pilha fechou o forge-parity do HEAD. O CONJUNTO SEMPRE do HEAD
+(`--only HEAD --sem-afetados`) mede RC=0: o `check-forge-parity.mjs` está
+verde NA ÁRVORE DO COMMIT (as invariantes `realtime-env-parity`,
+`realtime-emit-key-source` e o wiring de `route-handler-style`, que em 05/10
+tinham passos e scripts "EM VOO noutra thread", chegaram pela pilha até
+`722b36d2`). O registro da dívida declarada naquela data vive em
+`ci/unproven.json` (seção `pilha`, por assunto).
 
 **O que ele mediu na primeira subida** (a cadeia do `#25`, 16 commits entre a base da
 pilha e o topo): o gate achou **três commits que não passam sozinhos** — `4962399e`,
