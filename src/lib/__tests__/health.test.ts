@@ -26,6 +26,7 @@ vi.mock("@/lib/logger", () => ({
 }))
 
 vi.mock("@/lib/queue", () => ({
+  getChannel: vi.fn().mockResolvedValue(undefined),
   getHealth: vi.fn().mockReturnValue({
     status: "ok",
     connected: true,
@@ -91,7 +92,7 @@ beforeAll(() => {
 })
 
 import { GET, resetHealthCache } from "@/app/api/health/route"
-import { getHealth as getRabbitHealth } from "@/lib/queue"
+import { getChannel, getHealth as getRabbitHealth } from "@/lib/queue"
 
 describe("GET /api/health", () => {
   beforeEach(() => {
@@ -135,12 +136,12 @@ describe("GET /api/health", () => {
     expect(second.status).toBe(200)
   })
 
-  it("rabbitmq lazy (nunca conectou) → agregado ok E detail não marca error", async () => {
-    // Estado real quando ninguém chamou publish() ainda (lazy init):
-    // queue.getHealth() deve reportar "disconnected" (não "error"), e o
-    // agregado /api/health deve seguir "ok" sem contradição no detail.
-    // Nota: details.rabbitmq = { status: <agregado>, detail: <health da lib> }.
-    vi.mocked(getRabbitHealth).mockReturnValueOnce({
+  it("rabbitmq lazy (nunca conectou) → sonda ativa; probe ok ⇒ agregado ok e conectado", async () => {
+    // Estado real quando ninguém chamou publish() ainda (lazy init): o check
+    // agora SONDAGEM de verdade (getChannel) em vez de crer no "ok" às cegas.
+    // Com o dial bem-sucedido, o agregado fica "ok" e o detail reflete a
+    // conexão provada — sem contradição entre checks e detail.
+    const disconnected = {
       status: "disconnected",
       connected: false,
       connectionStatus: "disconnected",
@@ -149,19 +150,46 @@ describe("GET /api/health", () => {
       totalReconnectAttempts: 0,
       heartbeat: 60,
       uptimeSeconds: null,
-    })
+    } as const
+    vi.mocked(getRabbitHealth).mockReturnValueOnce(disconnected).mockReturnValueOnce(disconnected)
 
     const response = await GET()
     const body = await response.json()
 
+    expect(vi.mocked(getChannel)).toHaveBeenCalledTimes(1)
     expect(body.checks.rabbitmq).toBe("ok")
-    // O agregado nunca é "error" aqui, e o health da lib (detail.status)
-    // deixa de gritar "error" — passa a ser "disconnected" (lazy, honesto).
-    expect(body.details.rabbitmq.detail.status).not.toBe("error")
-    expect(body.details.rabbitmq.detail.status).toBe("disconnected")
-    expect(body.details.rabbitmq.detail.connected).toBe(false)
+    expect(body.details.rabbitmq.detail.status).toBe("ok")
+    expect(body.details.rabbitmq.detail.connected).toBe(true)
+    expect(body.details.rabbitmq.detail.probeError).toBeUndefined()
     expect(body.status).toBe("ok")
     expect(response.status).toBe(200)
+  })
+
+  it("rabbitmq lazy + probe falhou → checks.rabbitmq 'error' com probeError", async () => {
+    // Sonda dial falhou (rabbit inacessível): o health não pode fingir "ok" —
+    // reporta error (degradado/503), consistente com a semântica do redis.
+    const disconnected = {
+      status: "disconnected",
+      connected: false,
+      connectionStatus: "disconnected",
+      lastConnectedAt: null,
+      reconnectAttempts: 0,
+      totalReconnectAttempts: 0,
+      heartbeat: 60,
+      uptimeSeconds: null,
+    } as const
+    vi.mocked(getChannel).mockRejectedValueOnce(new Error("ECONNREFUSED"))
+    vi.mocked(getRabbitHealth).mockReturnValueOnce(disconnected).mockReturnValueOnce(disconnected)
+
+    const response = await GET()
+    const body = await response.json()
+
+    expect(body.checks.rabbitmq).toBe("error")
+    expect(body.details.rabbitmq.detail.status).toBe("error")
+    expect(body.details.rabbitmq.detail.connected).toBe(false)
+    expect(body.details.rabbitmq.detail.probeError).toContain("ECONNREFUSED")
+    expect(body.status).toBe("degraded")
+    expect(response.status).toBe(503)
   })
 
   // ---- Kill-switches (kill-switch não é degradação) ---------------------

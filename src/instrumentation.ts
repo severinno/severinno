@@ -22,6 +22,22 @@ export async function register() {
       logger.warn({ err }, "instrumentation: Redis eager connect failed — memory tier active")
     }
 
+    // ── Eagerly connect RabbitMQ ────────────────────────────────────
+    // Mesmo padrão do Redis: conecta no boot para o /api/health refletir
+    // o estado real desde o primeiro request e para a primeira notificação
+    // não pagar o custo do lazy-connect. Falha não é fatal — o reconnect
+    // da lib (promessa resetada) e a sonda do health assumem depois.
+    try {
+      const { getChannel } = await import("./lib/queue")
+      await getChannel()
+      logger.info("instrumentation: RabbitMQ connected eagerly")
+    } catch (err) {
+      logger.warn(
+        { err },
+        "instrumentation: RabbitMQ eager connect failed — health sonda e reconecta",
+      )
+    }
+
     // ── Sentry / GlitchTip error tracking ──────────────────────────────
     // sentry.server.config.ts is auto-loaded by Next.js instrumentation.
     // We add flush on shutdown so pending events are delivered before exit.

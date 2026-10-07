@@ -105,6 +105,23 @@ describe("publish", () => {
   })
 })
 
+describe("reconexão", () => {
+  it("permite novo dial após falha inicial (promessa rejeitada não fica presa)", async () => {
+    // Regressão: ensureConnection/ensureChannel cacheavam a promessa rejeitada;
+    // todo retry futuro (scheduleReconnect, probe do /api/health) reutilizava a
+    // mesma rejeição sem nunca discar de novo até reiniciar o processo.
+    vi.resetModules()
+    const { getChannel } = await import("../queue")
+    const amqp = await import("amqplib")
+
+    vi.mocked(amqp.default.connect).mockRejectedValueOnce(new Error("ECONNREFUSED"))
+    await expect(getChannel()).rejects.toThrow("ECONNREFUSED")
+
+    // Segunda chamada deve discar de novo (promessa resetada) e resolver.
+    await expect(getChannel()).resolves.toBe(mockChannel)
+  })
+})
+
 describe("consume", () => {
   it("sets up consumer with correct queue binding", async () => {
     const handler = vi.fn().mockResolvedValue(undefined)

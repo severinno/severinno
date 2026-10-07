@@ -204,6 +204,10 @@ async function ensureConnection(): Promise<Connection> {
       return conn
     } catch (err) {
       connectionStatus = "disconnected"
+      // Sem este reset, a promessa rejeitada fica presa e TODO retry futuro
+      // (scheduleReconnect, probe do health) reutiliza a mesma rejeição
+      // sem nunca discar de novo.
+      connPromise = null
       logger.error(
         { err: (err as Error).message, attempt: reconnectAttempts + 1 },
         "rabbitmq connection failed",
@@ -235,28 +239,35 @@ async function ensureChannel(): Promise<Channel> {
   }
 
   chanPromise = (async () => {
-    const conn = await ensureConnection()
-    const ch = await conn.createChannel()
-    await ch.assertExchange(EXCHANGE, "direct", { durable: true })
-    await ch.assertExchange(DLX_EXCHANGE, "direct", { durable: true })
+    try {
+      const conn = await ensureConnection()
+      const ch = await conn.createChannel()
+      await ch.assertExchange(EXCHANGE, "direct", { durable: true })
+      await ch.assertExchange(DLX_EXCHANGE, "direct", { durable: true })
 
-    ch.on("error", (err: Error) => {
-      logger.error({ err: err.message }, "rabbitmq channel error")
-      channel = null
+      ch.on("error", (err: Error) => {
+        logger.error({ err: err.message }, "rabbitmq channel error")
+        channel = null
+        chanPromise = null
+      })
+
+      ch.on("close", () => {
+        logger.warn("rabbitmq channel closed")
+        channel = null
+        chanPromise = null
+      })
+
+      // Set prefetch for fair dispatch
+      await ch.prefetch(10)
+
+      channel = ch
+      return ch
+    } catch (err) {
+      // Mesmo motivo do connPromise: sem reset, a rejeição fica presa e
+      // nenhuma chamada futura consegue recriar o canal.
       chanPromise = null
-    })
-
-    ch.on("close", () => {
-      logger.warn("rabbitmq channel closed")
-      channel = null
-      chanPromise = null
-    })
-
-    // Set prefetch for fair dispatch
-    await ch.prefetch(10)
-
-    channel = ch
-    return ch
+      throw err
+    }
   })()
 
   return chanPromise
