@@ -170,12 +170,113 @@ jobs:
           build-args: |
             BUN_VERSION=${{ env.BUN_VERSION }}
 
+  # ── Fallback host-artifacts ──────────────────────────────────────────────
+  # O tarpit do buildkit (`next build` dentro do buildkit: worker postcss do
+  # Turbopack, 6+ GB RSS, CPU 100% sem término — reproduzido 3× local, 2× VPS,
+  # documentado no Dockerfile) deixava o deploy completo dependente de MAO
+  # HUMANA. Este job é o fallback MEDIDO no deploy de 07/10/2026: build fora
+  # do buildkit (bun install alpin → openssl + prisma generate + next build em
+  # node:22-bookworm-slim, RC=0 em 68s) e montagem COPY-only das camadas de
+  # runtime com as MESMAS 3 tags que o compose.hostinger consome (:latest,
+  # :sha-<sha>, :worker-latest). Roda sempre que docker-test OU build não
+  # chegam a success; migrate/deploy aceitam o caminho que vencer.
+  fallback:
+    name: Fallback host-artifacts
+    needs: [docker-test, build]
+    if: >-
+      always() &&
+      (needs.docker-test.result != 'success' || needs.build.result != 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Artefatos no host (bun install → openssl → generate → build)
+        run: |
+          set -e
+          docker run --rm -v "$PWD:/repo" -w /repo oven/bun:${{ env.BUN_VERSION }}-alpine \
+            sh -c "apk add --no-cache libc6-compat >/dev/null 2>&1; bun install --frozen-lockfile"
+          # openssl ANTES do generate: sem ele a detecção de runtime do Prisma
+          # falha nas imagens slim e o client procura a engine errada
+          # (debian-openssl-1.1.x) → 503 em runtime.
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            -e DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" \
+            -e BUILD_STANDALONE=true \
+            -e SKIP_TYPESCRIPT_CHECK=true \
+            -e DOCKER_BUILD=true \
+            node:22-bookworm-slim bash -c "apt-get update -qq && apt-get install -y -qq --no-install-recommends openssl && openssl version && npx prisma generate && npm run build"
+          test -f .next/standalone/server.js
+
+      - name: Imagem do app (COPY-only; contexto sem .dockerignore)
+        run: |
+          set -e
+          # O .dockerignore exclui .next/ e node_modules/ (insumos da montagem)
+          # e *.png/*.svg (ícones do public/) — a montagem COPY-only exige o
+          # contexto SEM ele, restaurado ao fim para o build do worker.
+          mv .dockerignore /tmp/.dockerignore.bak
+          cat > /tmp/fallback-app.Dockerfile <<'DOCKERFILE'
+          FROM node:22-bookworm-slim
+          ENV NODE_ENV=production
+          RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 --gid 1001 nextjs
+          RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+          RUN mkdir -p /data && chown nextjs:nodejs /data
+          WORKDIR /app
+          COPY --chown=nextjs:nodejs public ./public
+          COPY --chown=nextjs:nodejs .next/standalone ./
+          COPY --chown=nextjs:nodejs .next/static ./.next/static
+          COPY --chown=nextjs:nodejs node_modules ./node_modules
+          COPY --chown=nextjs:nodejs prisma ./prisma
+          COPY --chown=nextjs:nodejs prisma.config.ts ./prisma.config.ts
+          RUN npm install -g prisma@6.19.3
+          USER nextjs
+          EXPOSE 3000
+          ENV PORT=3000
+          CMD ["node", "server.js"]
+          DOCKERFILE
+          docker build -f /tmp/fallback-app.Dockerfile -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" .
+          mv /tmp/.dockerignore.bak .dockerignore
+          docker tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
+
+      - name: Imagem do worker (Dockerfile.worker, base pinada por digest)
+        run: |
+          set -e
+          docker build -f Dockerfile.worker --build-arg BUN_VERSION=${{ env.BUN_VERSION }} -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:worker-latest" .
+
+      - name: Prova de boot (servidor sobe e responde 200/503)
+        run: |
+          set -e
+          docker run -d --name severinno-fallback-test --network host \
+            -e DATABASE_URL="postgresql://placeholder:placeholder@127.0.0.1:5432/placeholder" \
+            -e REDIS_URL="redis://127.0.0.1:6379" \
+            -e SESSION_SECRET="fallback-secret-at-least-32-characters" \
+            -e NODE_ENV=production \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          HTTP_LAST="000"
+          for i in $(seq 1 20); do
+            sleep 3
+            HTTP_LAST=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health 2>/dev/null || echo "000")
+            case "$HTTP_LAST" in
+              200|503) echo "Boot OK (HTTP $HTTP_LAST em $i tentativas)"; break;;
+            esac
+            echo "attempt $i/20 - HTTP $HTTP_LAST"
+          done
+          docker logs severinno-fallback-test 2>&1 | tail -20 || true
+          docker rm -f severinno-fallback-test >/dev/null 2>&1 || true
+          case "$HTTP_LAST" in
+            200|503) exit 0;;
+            *) echo "Boot falhou após 20 tentativas (último HTTP $HTTP_LAST)"; exit 1;;
+          esac
+
   # ── Migrate Database ─────────────────────────────────────────────────────
   migrate:
     name: Migrate Database
-    needs: build
+    needs: [build, fallback]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    if: >-
+      always() &&
+      (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') &&
+      (needs.build.result == 'success' || needs.fallback.result == 'success')
 
     steps:
       - name: Run database migrations
