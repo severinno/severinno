@@ -425,6 +425,11 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOST: "0.0.0.0"
+      # HOSTNAME: o standalone do Next binda pelo HOSTNAME — sem ele o server
+      # sobe em localhost e o healthcheck do compose (e o Caddy) levam 503
+      # (incidente medido em produção 06-07/10/2026, corrigido à mão no compose
+      # do host; declarado aqui para o próximo deploy não herdar o 503).
+      HOSTNAME: "0.0.0.0"
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # ── Database (via PgBouncer pool) — password via secret ─────────
