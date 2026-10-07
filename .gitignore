@@ -129,3 +129,4 @@ caddy-access.log
 .caddy.pid
 k6/results.json
 playwright-report/
+.prova-tla-*/

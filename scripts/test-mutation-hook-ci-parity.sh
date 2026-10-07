@@ -320,15 +320,22 @@ pass "controle verde (exit 0) — violações|linhas|notRun|missing = $CONTROL_M
 
 # ── MUTAÇÃO A — a divergência REAL volta (segunda régua do typecheck) ────
 
-header "MUTAÇÃO A: os hooks voltam a rodar \`bunx tsc --noEmit\` (segunda régua)"
+header "MUTAÇÃO A: o pre-push volta a rodar \`bunx tsc --noEmit\` (segunda régua)"
 # O alvo é a LINHA DE COMANDO (o comentário do hook que CITA `bun run typecheck`
 # fica onde está: o guard ignora comentário, e ele não faz parte da paridade).
+# DESDE a600ffa7 (06/10/2026) o typecheck SAIU do pre-commit por recorte
+# declarado (HOOK_NOT_RUN: o invariante continua no pre-push e no job TypeCheck
+# das duas pipelines) — a metade do PRE_COMMIT aqui já não tem alvo real para
+# mutar: a régua é a CIRURGIA (o alvo casa UMA vez em CADA arquivo listado), e
+# mutar arquivo sem o alvo é "mutação não-cirúrgica", não vermelho. A segunda
+# régua continua sendo morta no ÚNICO hook que roda o comando: o pre-push.
 ANTES_TYPECHECK=$'\nbun run typecheck\n'
 DEPOIS_TYPECHECK=$'\nbunx tsc --noEmit\n'
 sem_marcador "$PRE_PUSH" "$ANTES_TYPECHECK" "$DEPOIS_TYPECHECK"
-sem_marcador "$PRE_COMMIT" "$ANTES_TYPECHECK" "$DEPOIS_TYPECHECK"
 run_guard
 assert_exit 1 "MUTAÇÃO A"
+# Duas violações: o comando divergente E o invariante 'typecheck' ficando sem
+# NENHUM hook (o pre-push era o único que o rodava desde a600ffa7).
 assert_violations 2 "MUTAÇÃO A"
 if ! violated 'bunx tsc --noEmit'; then
   fail "mutação A: o guard não nomeou o comando divergente"
