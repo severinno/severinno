@@ -201,11 +201,6 @@ io.use(async (socket, next) => {
 })
 
 // ---------- Types ----------
-interface JoinPayload {
-  userId: string
-  role: string
-}
-
 interface MessageSendPayload {
   fromId: string
   toId: string

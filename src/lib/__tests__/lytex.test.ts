@@ -582,7 +582,7 @@ describe("Lytex — webhook (HMAC-SHA256 com client_secret)", () => {
   const SECRET = CLIENT_SECRET
 
   function signed(payload: Record<string, unknown>) {
-    const { signature, ...rest } = payload as { signature?: string }
+    const { signature: _excluida, ...rest } = payload as { signature?: string }
     const sig = createHmac("sha256", SECRET).update(JSON.stringify(rest)).digest("hex")
     return { ...payload, signature: sig }
   }
