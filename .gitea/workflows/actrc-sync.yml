@@ -75,8 +75,8 @@ jobs:
         id: drift
         env:
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-          GITEA_URL: ${{ secrets.GITEA_URL }}
-          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+          GITEA_URL: ${{ github.server_url }}
+          GITEA_REPOSITORY: ${{ github.repository }}
         run: |
           set +e
           if [ -z "${GITEA_TOKEN:-}" ]; then
@@ -107,8 +107,8 @@ jobs:
         if: always() && steps.drift.outputs.publish == '1'
         env:
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-          GITEA_URL: ${{ secrets.GITEA_URL }}
-          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+          GITEA_URL: ${{ github.server_url }}
+          GITEA_REPOSITORY: ${{ github.repository }}
         run: |
           bun scripts/actrc-sync-issue.mjs \
             --report /tmp/actrc-sync-drift.json \

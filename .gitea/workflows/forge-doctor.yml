@@ -156,8 +156,8 @@ jobs:
         id: doctor
         env:
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-          GITEA_URL: ${{ secrets.GITEA_URL }}
-          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+          GITEA_URL: ${{ github.server_url }}
+          GITEA_REPOSITORY: ${{ github.repository }}
           # O board do GitHub (a seção 6/7 lê as duas forjas). Ausentes, o doctor
           # DIZ que não conseguiu ler (e o veredito vira INDETERMINADA) — o que
           # ele nunca faz é tratar o board não lido como board vazio.
@@ -243,8 +243,8 @@ jobs:
         if: always() && steps.doctor.outputs.report == '1'
         env:
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-          GITEA_URL: ${{ secrets.GITEA_URL }}
-          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+          GITEA_URL: ${{ github.server_url }}
+          GITEA_REPOSITORY: ${{ github.repository }}
         run: |
           bun scripts/forge-doctor-issue.mjs \
             --report /tmp/forge-doctor.json \
