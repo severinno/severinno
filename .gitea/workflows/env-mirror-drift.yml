@@ -76,6 +76,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # O .env.gitea do HOST é gitignored por desenho (é onde vive o
+      # RUNNER_TOKEN) — neste checkout ele NÃO existe e o guard não mede nada
+      # (state='absent', medido no task 308: um cron que não mede não passa por
+      # verde). O copy abaixo materializa a CÓPIA CANÔNICA do host da forja no
+      # caminho que a descoberta do guard procura. O container lê a fonte por
+      # bind de CAMINHO do HOST (o daemon resolve; volumes do runner não
+      # atravessam o -v) e o arquivo nasce no workspace pelo stdout do `cat` —
+      # nenhum -v de caminho de volume aqui.
+      - name: Materializar o env do HOST da forja (cópia canônica)
+        run: |
+          set -e
+          docker run --rm -v /opt/gitea/env-mirror/.env.gitea:/src:ro alpine cat /src > deploy/.env.gitea
+          test -s deploy/.env.gitea && echo "env do host materializado ($(wc -c < deploy/.env.gitea) bytes)"
+
       # Mesmo contrato da ci.yml: script por `run:` (sem composite local).
       # Sem `actions/cache` nesta forja — ver ci.yml.
       - name: Setup Bun
@@ -131,7 +145,7 @@ jobs:
       - name: Publish env-mirror drift issue (Gitea)
         if: always() && steps.drift.outputs.report == '1'
         env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_TOKEN: ${{ secrets.FORJA_TOKEN || secrets.GITEA_TOKEN }}
           GITEA_URL: ${{ github.server_url }}
           GITEA_REPOSITORY: ${{ github.repository }}
         run: |

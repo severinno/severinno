@@ -69,7 +69,7 @@ jobs:
       - name: Check drift (report only)
         id: drift
         env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_TOKEN: ${{ secrets.FORJA_TOKEN || secrets.GITEA_TOKEN }}
           GITEA_URL: ${{ github.server_url }}
           GITEA_REPOSITORY: ${{ github.repository }}
         run: |
@@ -101,7 +101,7 @@ jobs:
       - name: Publish drift issue (Gitea)
         if: always() && steps.drift.outputs.publish == '1'
         env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_TOKEN: ${{ secrets.FORJA_TOKEN || secrets.GITEA_TOKEN }}
           GITEA_URL: ${{ github.server_url }}
           GITEA_REPOSITORY: ${{ github.repository }}
         run: |

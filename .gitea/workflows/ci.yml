@@ -238,7 +238,7 @@ jobs:
       - name: Publicar o remendo como comentário no PR (todos os fixers do registro)
         if: always()
         env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_TOKEN: ${{ secrets.FORJA_TOKEN || secrets.GITEA_TOKEN }}
           GITEA_URL: ${{ github.server_url }}
           GITEA_REPOSITORY: ${{ github.repository }}
           REMEDY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
