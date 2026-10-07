@@ -175,9 +175,9 @@ jobs:
   # Turbopack, 6+ GB RSS, CPU 100% sem término — reproduzido 3× local, 2× VPS,
   # documentado no Dockerfile) deixava o deploy completo dependente de MAO
   # HUMANA. Este job é o fallback MEDIDO no deploy de 07/10/2026: build fora
-  # do buildkit (bun install alpin → openssl + prisma generate + next build em
-  # node:22-bookworm-slim, RC=0 em 68s) e montagem COPY-only das camadas de
-  # runtime com as MESMAS 3 tags que o compose.hostinger consome (:latest,
+  # do buildkit, no próprio job (imagem ubuntu-bun: bun + node + openssl) —
+  # RC=0, `next build` em ~70s — e montagem COPY-only das camadas de runtime
+  # com as MESMAS 3 tags que o compose.hostinger consome (:latest,
   # :sha-<sha>, :worker-latest). Roda sempre que docker-test OU build não
   # chegam a success; migrate/deploy aceitam o caminho que vencer.
   fallback:
@@ -192,20 +192,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Artefatos no host (bun install → openssl → generate → build)
+      - name: Artefatos no host (bun install → generate → build)
         run: |
           set -e
-          docker run --rm -v "$PWD:/repo" -w /repo oven/bun:${{ env.BUN_VERSION }}-alpine \
-            sh -c "apk add --no-cache libc6-compat >/dev/null 2>&1; bun install --frozen-lockfile"
-          # openssl ANTES do generate: sem ele a detecção de runtime do Prisma
-          # falha nas imagens slim e o client procura a engine errada
-          # (debian-openssl-1.1.x) → 503 em runtime.
-          docker run --rm -v "$PWD:/repo" -w /repo \
-            -e DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" \
-            -e BUILD_STANDALONE=true \
-            -e SKIP_TYPESCRIPT_CHECK=true \
-            -e DOCKER_BUILD=true \
-            node:22-bookworm-slim bash -c "apt-get update -qq && apt-get install -y -qq --no-install-recommends openssl && openssl version && npx prisma generate && npm run build"
+          # O job roda DENTRO da imagem ubuntu-bun (label ubuntu-latest da
+          # forja): bun, node, npm e openssl estão no PATH — o build acontece
+          # aqui, FORA do buildkit, que é onde o postcss do Turbopack tarpita.
+          # Nenhum `docker run -v $PWD` aqui: o -v do `-v` resolve o caminho no
+          # HOST daemon, e o workspace do runner é um volume — o 1º run deste
+          # fallback falhou com "Bun could not find a package.json" por isso
+          # (medido no task 312). OpenSSL 3.x daqui gera a mesma engine
+          # (debian-openssl-3.0.x) que o runtime node:22-bookworm-slim consome.
+          openssl version || { apt-get update -qq && apt-get install -y -qq --no-install-recommends openssl; }
+          openssl version
+          export DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
+          bun install --frozen-lockfile
+          npx prisma generate
+          BUILD_STANDALONE=true SKIP_TYPESCRIPT_CHECK=true DOCKER_BUILD=true npm run build
           test -f .next/standalone/server.js
 
       - name: Imagem do app (COPY-only; contexto sem .dockerignore)
