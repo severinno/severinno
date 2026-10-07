@@ -2,7 +2,10 @@
  * Tests for src/lib/realtime-client.ts
  *
  * The module emits real-time events via HTTP POST to the realtime
- * mini-service. All network errors are silently caught and logged.
+ * mini-service with an x-api-key (REALTIME_EMIT_API_KEY). Sem a chave
+ * configurada, o emit é SKIPADO com warn (fail-closed no lado do serviço:
+ * /emit rejeita request sem chave). All network errors are silently caught
+ * and logged.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
@@ -30,11 +33,13 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
   vi.clearAllMocks()
 })
 
 describe("emitRealtime", () => {
-  it("envia POST para REALTIME_URL/emit com headers e body corretos", async () => {
+  it("envia POST com x-api-key quando REALTIME_EMIT_API_KEY está configurada", async () => {
+    vi.stubEnv("REALTIME_EMIT_API_KEY", "secret-key-1")
     const mockFetch = vi.mocked(fetch)
     mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }))
 
@@ -48,7 +53,10 @@ describe("emitRealtime", () => {
     expect(call[0]).toBe("http://localhost:3003/emit")
     expect(call[1]).toMatchObject({
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": "secret-key-1",
+      },
     })
 
     // Verify body
@@ -59,7 +67,22 @@ describe("emitRealtime", () => {
     })
   })
 
+  it("SKIP com warn quando REALTIME_EMIT_API_KEY não está configurada (fail-closed)", async () => {
+    vi.stubEnv("REALTIME_EMIT_API_KEY", "")
+    const mockFetch = vi.mocked(fetch)
+
+    const { emitRealtime } = await import("@/lib/realtime-client")
+
+    await emitRealtime("booking:update", { bookingId: "b-1" })
+
+    // NÃO chama o serviço — evita 401 garantido e degrada com warn.
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(mockLoggerWarn).toHaveBeenCalledTimes(1)
+    expect(mockLoggerWarn.mock.calls[0]![1]).toContain("REALTIME_EMIT_API_KEY not set")
+  })
+
   it("usa REALTIME_URL do env quando definido", async () => {
+    vi.stubEnv("REALTIME_EMIT_API_KEY", "k")
     vi.stubEnv("REALTIME_URL", "http://realtime.internal:4000")
     const mockFetch = vi.mocked(fetch)
     mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }))
@@ -69,11 +92,10 @@ describe("emitRealtime", () => {
     await emitRealtime("test:event", {})
 
     expect(mockFetch).toHaveBeenCalledWith("http://realtime.internal:4000/emit", expect.anything())
-
-    vi.unstubAllEnvs()
   })
 
   it("captura erro de rede e loga warning sem propagar exceção", async () => {
+    vi.stubEnv("REALTIME_EMIT_API_KEY", "k")
     const mockFetch = vi.mocked(fetch)
     const networkError = new Error("ECONNREFUSED")
     mockFetch.mockRejectedValueOnce(networkError)
@@ -93,6 +115,7 @@ describe("emitRealtime", () => {
 
 describe("sendBookingUpdate", () => {
   it("chama emitRealtime com evento booking:update e payload correto", async () => {
+    vi.stubEnv("REALTIME_EMIT_API_KEY", "k")
     const mockFetch = vi.mocked(fetch)
     mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }))
 
@@ -121,6 +144,7 @@ describe("sendBookingUpdate", () => {
 
 describe("sendTrackingPosition", () => {
   it("chama emitRealtime com evento tracking:position e payload correto", async () => {
+    vi.stubEnv("REALTIME_EMIT_API_KEY", "k")
     const mockFetch = vi.mocked(fetch)
     mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }))
 
@@ -129,8 +153,8 @@ describe("sendTrackingPosition", () => {
     await sendTrackingPosition({
       bookingId: "b-789",
       clientId: "c-2",
-      lat: -23.55,
-      lng: -46.63,
+      lat: -19.81,
+      lng: -41.97,
     })
 
     expect(mockFetch).toHaveBeenCalledTimes(1)
@@ -140,8 +164,8 @@ describe("sendTrackingPosition", () => {
       data: {
         bookingId: "b-789",
         clientId: "c-2",
-        lat: -23.55,
-        lng: -46.63,
+        lat: -19.81,
+        lng: -41.97,
       },
     })
   })

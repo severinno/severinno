@@ -7,6 +7,13 @@
  *
  *   io("/?XTransformPort=3003")   <- NEVER put the port in the URL.
  *
+ * Autenticação do handshake: o cliente busca um ticket SINGLE-USE em
+ * POST /api/realtime/ticket (identidade vem da SESSÃO, via cookie httpOnly)
+ * e envia em `auth.ticket`. O servidor consome com GETDEL e estampa a
+ * identidade — o join NÃO é mais auto-declarado. A opção `auth` do socket.io
+ * roda a CADA tentativa de conexão (inicial e reconexões), então cada
+ * handshake busca um ticket novo (o antigo já foi consumido).
+ *
  * Usage:
  *   const { isConnected, join, sendMessage, ... } = useRealtime();
  *
@@ -24,9 +31,14 @@ import { io, Socket } from "socket.io-client"
 export type ConnectionStatus =
   "connecting" | "connected" | "disconnected" | "reconnecting" | "error"
 
+/**
+ * DEPRECATED como declaração de identidade: o payload é IGNORADO pelo
+ * servidor — a identidade do join vem do ticket do handshake. Mantido na
+ * assinatura por compatibilidade com os chamadores.
+ */
 export interface JoinPayload {
-  userId: string
-  role: string
+  userId?: string
+  role?: string
 }
 
 export interface MessageSendPayload {
@@ -106,6 +118,23 @@ export interface TrackingPositionEvent {
 let socketRef: Socket | null = null
 
 /**
+ * Busca um ticket de socket single-use (POST /api/realtime/ticket).
+ * Mesma origem: o fetch envia o cookie de sessão httpOnly por default.
+ * Retorna objeto vazio quando não autenticado/sem resposta — o servidor
+ * decide o que fazer com um handshake sem ticket (fail-closed em produção).
+ */
+async function fetchSocketTicket(): Promise<{ ticket?: string }> {
+  try {
+    const res = await fetch("/api/realtime/ticket", { method: "POST" })
+    if (!res.ok) return {}
+    const data = (await res.json()) as { ok?: boolean; ticket?: string }
+    return data.ok && data.ticket ? { ticket: data.ticket } : {}
+  } catch {
+    return {}
+  }
+}
+
+/**
  * Resolve the Socket.io server URL:
  *  - NEXT_PUBLIC_REALTIME_URL set (dev/e2e) → connect directly to the
  *    realtime mini-service (e.g. http://localhost:3003).
@@ -130,6 +159,11 @@ function getSocket(): Socket | null {
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
     timeout: 10000,
+    // A função `auth` roda em TODA tentativa de conexão — cada handshake
+    // busca um ticket NOVO (single-use: o anterior já foi consumido).
+    auth: async (cb) => {
+      cb(await fetchSocketTicket())
+    },
   })
   return socketRef
 }
@@ -214,7 +248,14 @@ export function useRealtime(): UseRealtimeResult {
       new Promise<boolean>((resolve) => {
         const s = socketRef
         if (!s || !s.connected) return resolve(false)
-        s.emit("join", payload, (res: { ok: boolean }) => resolve(!!res?.ok))
+        // O payload é ignorado pelo servidor (identidade do handshake) — o
+        // ack carrega ok:false + reason quando o socket não autenticou.
+        s.emit("join", payload, (res: { ok: boolean; reason?: string }) => {
+          if (!res?.ok && res?.reason) {
+            console.warn("[use-realtime] join recusado:", res.reason)
+          }
+          resolve(!!res?.ok)
+        })
       }),
     [],
   )
