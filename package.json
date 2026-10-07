@@ -8,6 +8,8 @@
     "bun": ">=1.0.0"
   },
   "scripts": {
+    "postinstall": "node scripts/sync-maplibre-worker.mjs",
+    "check:maplibre-worker": "node scripts/sync-maplibre-worker.mjs --check",
     "dev": "next dev -p 3000",
     "dev:clean": "rm -rf .next && bun run dev",
     "dev:kill-port": "kill -9 $(lsof -ti:3000) 2>/dev/null; exit 0",
@@ -26,6 +28,7 @@
     "check:direct-rtl-import": "node scripts/check-direct-rtl-import.mjs",
     "check:ts-nocheck": "node scripts/check-ts-nocheck.mjs",
     "check:pii-allowlist": "vitest run src/app/api/__tests__/response-pii-guard.test.ts src/lib/__tests__/prisma-client-single-source.test.ts",
+    "check:schema-drift": "bash scripts/check-schema-drift.sh",
     "check:pii-gate": "node scripts/verify-pii-gate.mjs",
     "check:required-checks": "node scripts/check-required-checks.mjs",
     "check:registry-source": "node scripts/check-registry-source.mjs",
@@ -34,6 +37,9 @@
     "check:github-dependencies": "node scripts/check-github-dependencies.mjs",
     "check:runner-base": "node scripts/check-runner-base.mjs",
     "check:script-headers": "node scripts/check-script-headers.mjs",
+    "check:realtime-env-parity": "node scripts/check-realtime-env-parity.mjs",
+    "check:realtime-emit-key-source": "node scripts/check-realtime-emit-key-source.mjs",
+    "check:route-handler-style": "node scripts/check-route-handler-style.mjs",
     "check:pipefail-sigpipe": "node scripts/check-pipefail-sigpipe.mjs",
     "check:workflow-run-syntax": "node scripts/check-workflow-run-syntax.mjs",
     "check:hook-commands": "node scripts/check-hook-commands.mjs",
