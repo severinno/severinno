@@ -95,6 +95,7 @@ jobs:
             -e REDIS_URL="redis://127.0.0.1:6379" \
             -e SESSION_SECRET="test-secret-at-least-32-chars-long" \
             -e NODE_ENV=production \
+            -e HOSTNAME=0.0.0.0 \
             severinno-test:latest
 
       - name: Wait for health check
@@ -249,11 +250,17 @@ jobs:
       - name: Prova de boot (servidor sobe e responde 200/503)
         run: |
           set -e
+          # HOSTNAME=0.0.0.0 OBRIGATÓRIO com --network host: o container herda o
+          # hostname da MÁQUINA (ex. "severinno") e o standalone do Next lê
+          # process.env.HOSTNAME para escolher a interface — sem esta linha o
+          # servidor binda no IP do host (inalcançável por localhost) e a prova
+          # de boot falha em HTTP 000 nas 20 tentativas (medido no task 322).
           docker run -d --name severinno-fallback-test --network host \
             -e DATABASE_URL="postgresql://placeholder:placeholder@127.0.0.1:5432/placeholder" \
             -e REDIS_URL="redis://127.0.0.1:6379" \
             -e SESSION_SECRET="fallback-secret-at-least-32-characters" \
             -e NODE_ENV=production \
+            -e HOSTNAME=0.0.0.0 \
             "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
           HTTP_LAST="000"
           for i in $(seq 1 20); do
