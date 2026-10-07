@@ -58,8 +58,13 @@
     "classificado à parte e PEDI re-ancoragem. Registro ilegível NUNCA vira",
     "regressão — não conseguir ler a dívida não a transforma em outra coisa.",
     "Declaração que a pilha medida não alcança é DITA no veredito (outra história",
-    "ou dívida já fechada). O exit do prover NÃO muda: dívida é dívida — o que",
-    "muda é o NOME verdadeiro de cada vermelho no veredito."
+    "ou dívida já fechada). O EXIT do RECORTE é a decisão do pushSeguePorDivida",
+    "(fail-closed): dívida declarada INTEGRAL segue o push (veredito CONDICIONADO,",
+    "nomeado no relatório); regressão, re-ancoragem pendente ou registro não",
+    "julgável bloqueiam. O CI (job stack-per-commit, pilha inteira sem amostra)",
+    "mantém o exit bruto e cobra TODOS os vermelhos — inclusive a dívida: quem",
+    "fecha a dívida é a forja. Medido em 07/10/2026: os pushes que exigiam",
+    "--no-verify pelos 4 vermelhos do meio da pilha passam a entrar SEM bypass."
   ],
   "version": 1,
   "reviewAfterDays": 90,
@@ -279,8 +284,9 @@
       "medição desta data não alcança (verdes agora ou absorvidos por main)",
       "saem do ledger, e as 11 vermelhas sem declaração (séries de",
       "paginação/GPS/auth/bench/caddy de outras linhas) entram. Dívida",
-      "declarada NÃO muda o exit do prover: o que muda é o nome verdadeiro de",
-      "cada vermelho no veredito. A 28ª declaração (primeira da lista) é a",
+      "declarada: o EXIT do recorte do push segue a regra do pushSeguePorDivida",
+      "(fail-closed) — dívida INTEGRAL segue o push (o CI continua cobrando a",
+      "pilha inteira); regressão bloqueia. A 28ª declaração (primeira da lista) é a",
       "dívida do PRÓPRIO commit do re-anchor, medida em 06/10/2026 com --only",
       "HEAD --sem-afetados."
     ],
@@ -446,17 +452,17 @@
       {
         "subject": "feat(uploads): assinatura de arquivos (família uploads/svg)",
         "reason": "commit do WIP commitado por famílias (C4) medido na amostra do pre-push como vermelho individual; o CI mede a pilha inteira sem amostra antes do merge",
-        "declaredAt": "2026-10-07T12:05:00Z"
+        "declaredAt": "2026-10-07"
       },
       {
         "subject": "refactor(lib): colateral da migração de rotas nas libs centrais",
         "reason": "commit colateral (C7) vermelho na amostra do pre-push; veredito completo é o job stack-per-commit do CI",
-        "declaredAt": "2026-10-07T12:05:00Z"
+        "declaredAt": "2026-10-07"
       },
       {
         "subject": "refactor(routes): migração completa das rotas para withRoute/withParams (família rota)",
         "reason": "commit macro (C10, 212 arquivos) vermelho na amostra do pre-push; depende de libs/guards commitadas nos vizinhos da mesma pilha",
-        "declaredAt": "2026-10-07T12:05:00Z"
+        "declaredAt": "2026-10-07"
       }
     ]
   }

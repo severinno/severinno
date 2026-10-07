@@ -65,6 +65,7 @@ import {
   amostrar,
   commitsDoPush,
   criarWorktree,
+  exitDoRecorte,
   gateAusente,
   hostAtual,
   juntarTentativas,
@@ -80,6 +81,7 @@ import {
   renderRecorteVazio,
   worktreeEmCurso,
 } from "../../../scripts/prove-stack-per-commit.mjs"
+import { pushSeguePorDivida } from "../../../scripts/doctor-unproven.mjs"
 
 /**
  * A raiz do repositório medido. A suíte roda do root (é o mesmo `cwd` de que a
@@ -1149,5 +1151,133 @@ describe("o gate que a árvore do commit não carrega não reprova o commit", ()
     expect(j.vermelhos).toBe(1)
     expect(j.resultados[0].veredito).toBe("vermelho")
     expect(j.resultados[0].sempre[0].ausente).toBeUndefined()
+  })
+})
+
+describe("o EXIT do recorte — dívida declarada INTEGRAL segue, o resto bloqueia", () => {
+  const dpMedido = (overrides: Record<string, unknown> = {}) => ({
+    estado: "medido",
+    divida: [
+      {
+        sha: "a".repeat(40),
+        assunto: "fix(x): declarado",
+        motivo: "m",
+        declaredAt: "2026-10-07",
+        reason: "r",
+      },
+    ],
+    reancorar: [],
+    regressao: [],
+    alheios: [],
+    naoClassificados: [],
+    erro: null,
+    ...overrides,
+  })
+  const vermelho = (sha: string) => ({
+    veredito: "vermelho",
+    sha,
+    assunto: "fix(x): declarado",
+    escopo: "ambos",
+    sempre: [{ id: "mutation-count", ok: false, ms: 1, motivo: "quebrou" }],
+    testes: { testes: [], porNome: [], porGrafo: [] },
+    motivo: "mutation-count: a contagem não fecha",
+    ms: 1,
+  })
+  const verde = () => ({ veredito: "verde", sha: "b".repeat(40) })
+
+  it("a DÍVIDA INTEGRAL segue: exit 0 no recorte, com o agregado intacto (broken)", () => {
+    const ag = agregar([vermelho("a".repeat(40))])
+    expect(ag.exit).toBe(EXIT.BROKEN)
+    expect(exitDoRecorte(ag, dpMedido(), true)).toBe(EXIT.OK)
+    // A decissão é só do EXIT: o veredito publicado segue `broken` — o CI vê o
+    // vermelho na pilha inteira.
+    expect(ag.veredito).toBe("broken")
+  })
+
+  it("REGRESSÃO bloqueia: nenhum vermelho sem declaração atravessa o recorte", () => {
+    const dp = dpMedido({ regressao: [{ sha: "c".repeat(40), assunto: "feat(y): novo" }] })
+    const ag = agregar([vermelho("c".repeat(40))])
+    expect(pushSeguePorDivida(dp)).toBe(false)
+    expect(exitDoRecorte(ag, dp, true)).toBe(EXIT.BROKEN)
+  })
+
+  it("RE-ANCORAGEM pendente bloqueia (assunto continuou — o casamento exato voltou a falhar)", () => {
+    const dp = dpMedido({
+      reancorar: [{ sha: "d".repeat(40), assunto: "fix(x): declarado (parte 2)" }],
+    })
+    expect(pushSeguePorDivida(dp)).toBe(false)
+    expect(exitDoRecorte(agregar([vermelho("d".repeat(40))]), dp, true)).toBe(EXIT.BROKEN)
+  })
+
+  it("registro NÃO JULGÁVEL bloqueia (fail-closed: não ler a dívida não a declara)", () => {
+    for (const estado of ["sem-registro", "registro-ilegivel"]) {
+      const dp = dpMedido({ estado, divida: [], naoClassificados: [{ sha: "e".repeat(40) }] })
+      expect(pushSeguePorDivida(dp)).toBe(false)
+      expect(exitDoRecorte(agregar([vermelho("e".repeat(40))]), dp, true)).toBe(EXIT.BROKEN)
+    }
+  })
+
+  it("MODO CI (sem recorte) mantém o agregado bruto: dívida declarada NÃO segue lá", () => {
+    const ag = agregar([vermelho("a".repeat(40))])
+    expect(exitDoRecorte(ag, dpMedido(), false)).toBe(EXIT.BROKEN)
+  })
+
+  it("verde segue verde — e a decissão nunca fabrica verde (sem vermelho, sem dp)", () => {
+    expect(exitDoRecorte(agregar([verde()]), null, true)).toBe(EXIT.OK)
+    // vermelho + dp ausente: fail-closed
+    expect(exitDoRecorte(agregar([vermelho("a".repeat(40))]), null, true)).toBe(EXIT.BROKEN)
+  })
+
+  it("o RELATÓRIO do recorte nomeia o veredito CONDICIONADO — e cala quando não é o caso", async () => {
+    const { renderRelatorio } = await import("../../../scripts/prove-stack-per-commit.mjs")
+    const base = {
+      base: "origin/main",
+      origemBase: "test",
+      head: "a".repeat(40),
+      teto: 150,
+      sempre: [],
+      commits: ["a".repeat(40)],
+      limpeza: null,
+      resultados: [vermelho("a".repeat(40))],
+      custoMs: 1,
+      veredito: "broken",
+      exit: EXIT.BROKEN,
+      vermelhos: 1,
+      indeterminados: 0,
+    }
+    const comDivida = renderRelatorio({
+      ...base,
+      recorte: {
+        refs: 1,
+        ignoradas: 0,
+        noRecorte: 1,
+        semTopo: true,
+        amostra: 6,
+        medidos: 1,
+        pulados: [],
+        origem: "origin/main",
+        negativos: [],
+      },
+      dividaPilha: dpMedido(),
+    })
+    expect(comDivida).toContain("⚪ push SEGUE por dívida declarada")
+    expect(comDivida).toContain("veredito CONDICIONADO")
+    const comRegressao = renderRelatorio({
+      ...base,
+      recorte: {
+        refs: 1,
+        ignoradas: 0,
+        noRecorte: 1,
+        semTopo: true,
+        amostra: 6,
+        medidos: 1,
+        pulados: [],
+        origem: "origin/main",
+        negativos: [],
+      },
+      dividaPilha: dpMedido({ regressao: [{ sha: "f".repeat(40), assunto: "feat(z): novo" }] }),
+    })
+    expect(comRegressao).not.toContain("push SEGUE por dívida declarada")
+    expect(comRegressao).toContain("🔴 REGRESSÃO:")
   })
 })

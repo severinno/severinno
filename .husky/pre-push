@@ -137,12 +137,19 @@ fi
 #     pilha de referência), e é o teto do que este hook acrescenta ao push.
 #
 # O que ele BARRA (medido por execução): um commit do MEIO que nasce vermelho
-# (exit 1 E o relatório do próximo) → nenhum objeto chega ao remoto. O que ele
-# NÃO barra, declarado: `indeterminado` (não consegui medir: worktree que não
-# abriu, gate ausente) e o caso em que o próprio recorte não chega a um veredito
-# (fecho incompleto, flag inválida) — os dois SEGUEM o push e são NOMEADOS: é a
-# mesma postura do `--no-verify`, e o CI fecha a conta. Um checkout sem o script
-# (ou sem `node_modules`) não tem o que medir.
+# (exit 1 E o relatório do próximo) → nenhum objeto chega ao remoto. Duas
+# classes SEGUEM o push, sempre NOMEADAS no relatório:
+#   · `indeterminado` e recorte sem veredito (fecho incompleto, flag inválida):
+#     não consegui medir não é reprovação — o CI fecha a conta;
+#   · DÍVIDA DECLARADA INTEGRAL (o `exitDoRecorte` do prover): os vermelhos do
+#     recorte estão todos nomeados no `ci/unproven.json` com motivo medido e
+#     datado — o veredito sai CONDICIONADO e o CI cobra a pilha inteira. Esta
+#     é a solução definitiva do impasse do `--no-verify`: a dívida já declarada
+#     não bloqueia mais NENHUM push, e o `--no-verify` deixa de ser necessário
+#     (o que ele desligava TUDO — inclusive os gates que NÃO são dívida).
+# REGRESSÃO (vermelho sem declaração), re-ancoragem pendente e registro não
+# julgável continuam BLOQUEANDO: fail-closed. Um checkout sem o script (ou sem
+# `node_modules`) não tem o que medir.
 if [ -f scripts/prove-stack-per-commit.mjs ] && [ -d node_modules ]; then
   RECORTE_LOG=$(mktemp)
   set +e
@@ -163,7 +170,7 @@ if [ -f scripts/prove-stack-per-commit.mjs ] && [ -d node_modules ]; then
   esac
   if [ "$RECORTE_RC" = 1 ] && [ "$RECORTE_VEREDITO" = sim ]; then
     echo ""
-    echo "❌ um commit do MEIO desta pilha NÃO passa sozinho — o push está bloqueado (o commit e o gate estão nomeados acima)"
+    echo "❌ um commit do MEIO desta pilha NÃO passa sozinho — o push está bloqueado (o commit e o gate estão nomeados acima; dívida TOTALMENTE declarada no ci/unproven.json segue — veja o veredito CONDICIONADO acima)"
     exit 1
   fi
   if [ "$RECORTE_RC" = 2 ]; then

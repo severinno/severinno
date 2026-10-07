@@ -790,6 +790,34 @@ export function separarDividaDeRegressao({ vermelhos = [], secao = null }) {
   }
 }
 
+/**
+ * A DECISÃO do RECORTE do push — a dívida declarada INTEGRAL segue.
+ *
+ * A derradeira leitura da separação dívida/regressão: o prover separa os
+ * vermelhos entre DÍVIDA DECLARADA (o registro conhece o assunto, com motivo
+ * medido e datado) e REGRESSÃO (nenhuma declaração alcança), mas o exit de
+ * ambos era o mesmo — e o pre-push bloqueava TODOS os pushes que carregam
+ * dívida, empurrando o repositório para o `--no-verify`, que desliga TAMBÉM os
+ * gates que não são dívida. A régua aqui é FAIL-CLOSED nos três lados: o push
+ * segue com exit 0 SOMENTE quando o registro pôde julgar (`estado "medido"`),
+ * há ao menos um vermelho declarado e NÃO existe regressão, re-ancoragem
+ * pendente nem vermelho não classificado. Quem fecha a dívida continua sendo o
+ * CI (job stack-per-commit, pilha inteira sem amostra).
+ *
+ * @param {{estado: string, divida: unknown[], reancorar: unknown[], regressao: unknown[], naoClassificados: unknown[]}|null} dp o retorno de `separarDividaDeRegressao`
+ * @returns {boolean} true = o recorte SEGUE (exit 0); false = bloqueia
+ */
+export function pushSeguePorDivida(dp) {
+  return Boolean(
+    dp &&
+    dp.estado === "medido" &&
+    dp.divida.length > 0 &&
+    dp.regressao.length === 0 &&
+    dp.reancorar.length === 0 &&
+    dp.naoClassificados.length === 0,
+  )
+}
+
 // ── CLI ────────────────────────────────────────────────────────────────────
 
 export function parseArgs(argv) {
