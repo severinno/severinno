@@ -85,7 +85,7 @@ describe("GET /api/quotes (list)", () => {
   })
 
   it("returns paginated quotes list", async () => {
-    const response = await GET(createMockRequest())
+    const response = await GET(createMockRequest(), { params: Promise.resolve({}) })
     const data = await response.json()
     expect(response.status).toBe(200)
     expect(data.items).toHaveLength(1)
@@ -95,7 +95,9 @@ describe("GET /api/quotes (list)", () => {
   })
 
   it("filters by status", async () => {
-    await GET(createMockRequest({ searchParams: { status: "PENDING" } }))
+    await GET(createMockRequest({ searchParams: { status: "PENDING" } }), {
+      params: Promise.resolve({}),
+    })
     expect(mockDb.quoteRequest.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ status: "PENDING" }) }),
     )
@@ -124,32 +126,42 @@ describe("POST /api/quotes (create)", () => {
   })
 
   it("creates a quote request as CLIENT", async () => {
-    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }))
+    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }), {
+      params: Promise.resolve({}),
+    })
     expect(response.status).toBe(201)
     expect(mockDb.quoteRequest.create).toHaveBeenCalled()
   })
 
   it("throws 403 when user is not CLIENT", async () => {
     vi.mocked(requireUser).mockResolvedValue({ userId: "prov-1", role: "PROVIDER" })
-    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }))
+    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }), {
+      params: Promise.resolve({}),
+    })
     expect(response.status).toBe(403)
   })
 
   it("throws 404 when provider not found/inactive", async () => {
     mockDb.user.findFirst.mockResolvedValue(null)
-    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }))
+    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }), {
+      params: Promise.resolve({}),
+    })
     expect(response.status).toBe(404)
   })
 
   it("throws 400 when provider is not verified", async () => {
     mockDb.user.findFirst.mockResolvedValue({ id: "prov-1", verified: false })
-    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }))
+    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }), {
+      params: Promise.resolve({}),
+    })
     expect(response.status).toBe(400)
   })
 
   it("throws 400 when service does not belong to provider", async () => {
     mockDb.service.findMany.mockResolvedValue([{ id: "svc-1", providerId: "prov-1" }])
-    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }))
+    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }), {
+      params: Promise.resolve({}),
+    })
     expect(response.status).toBe(400)
   })
 })

@@ -1,10 +1,12 @@
 export const dynamic = "force-dynamic"
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import ZAI from "z-ai-web-dev-sdk"
-import { handleError } from "@/lib/api-server"
+
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { chatMessageSchema } from "@/lib/validators"
+
+import { withRoute } from "@/lib/api-route"
 
 /**
  * POST /api/chat
@@ -15,13 +17,12 @@ import { chatMessageSchema } from "@/lib/validators"
  *
  * Body: { message: string, history?: Array<{role: string, content: string}> }
  */
-export async function POST(req: NextRequest) {
-  try {
-    await assertRateLimit(req, RATE_LIMITS.general)
-    const body = await req.json()
-    const { message, history } = chatMessageSchema.parse(body)
+export const POST = withRoute("api.chat.POST", async (req) => {
+  await assertRateLimit(req, RATE_LIMITS.general)
+  const body = await req.json()
+  const { message, history } = chatMessageSchema.parse(body)
 
-    const systemPrompt = `Você é o assistente virtual do Severinno Marketplace, uma plataforma brasileira de serviços verificados com geolocalização.
+  const systemPrompt = `Você é o assistente virtual do Severinno Marketplace, uma plataforma brasileira de serviços verificados com geolocalização.
 
 Seu papel é:
 1. Ajudar usuários a encontrar prestadores de serviço adequados (encanador, eletricista, pintor, etc.)
@@ -41,30 +42,27 @@ Regras:
 Categorias disponíveis: Alvenaria, Elétrica, Hidráulica, Pintura, Pisos, Pós-Obra, Residencial
 Serviços populares: Encanador, Eletricista, Pintor, Diarista, Pedreiro, Jardineiro`
 
-    const zai = await ZAI.create()
+  const zai = await ZAI.create()
 
-    const messages = [
-      { role: "assistant" as const, content: systemPrompt },
-      ...history.map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      })),
-      { role: "user" as const, content: message },
-    ]
+  const messages = [
+    { role: "assistant" as const, content: systemPrompt },
+    ...history.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    })),
+    { role: "user" as const, content: message },
+  ]
 
-    const completion = await zai.chat.completions.create({
-      messages,
-      thinking: { type: "disabled" },
-    })
+  const completion = await zai.chat.completions.create({
+    messages,
+    thinking: { type: "disabled" },
+  })
 
-    const response = completion.choices[0]?.message?.content
+  const response = completion.choices[0]?.message?.content
 
-    if (!response) {
-      return NextResponse.json({ error: "Sem resposta do assistente." }, { status: 500 })
-    }
-
-    return NextResponse.json({ response })
-  } catch (e) {
-    return handleError(e)
+  if (!response) {
+    return NextResponse.json({ error: "Sem resposta do assistente." }, { status: 500 })
   }
-}
+
+  return NextResponse.json({ response })
+})

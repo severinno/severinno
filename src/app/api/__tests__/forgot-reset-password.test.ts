@@ -90,6 +90,16 @@ vi.mock("@/lib/rate-limit", () => ({
   },
 }))
 
+// Guard progressivo por fingerprint — no-op nos testes de rota.
+vi.mock("@/lib/auth-rate-limit", () => ({
+  authFingerprintGuard: vi.fn(async () => ({
+    fingerprint: "test:fp",
+    blocked: false,
+    response: null,
+    recordFailure: vi.fn().mockResolvedValue(undefined),
+  })),
+}))
+
 // ── Imports ────────────────────────────────────────────────────────────────
 
 import { POST as forgotPassword } from "../auth/forgot-password/route"
@@ -143,7 +153,7 @@ describe("POST /api/auth/forgot-password", () => {
       method: "POST",
       body: { email: "joao@example.com" },
     })
-    const res = await forgotPassword(req)
+    const res = await forgotPassword(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -171,7 +181,7 @@ describe("POST /api/auth/forgot-password", () => {
       method: "POST",
       body: { email: "naoexiste@teste.com" },
     })
-    const res = await forgotPassword(req)
+    const res = await forgotPassword(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -191,7 +201,7 @@ describe("POST /api/auth/forgot-password", () => {
       method: "POST",
       body: { email: "joao@example.com" },
     })
-    await forgotPassword(req)
+    await forgotPassword(req, { params: Promise.resolve({}) })
 
     expect(mockDb.resetToken.updateMany).toHaveBeenCalledWith({
       where: { userId: "user-1", used: false },
@@ -214,6 +224,7 @@ describe("POST /api/auth/forgot-password", () => {
         method: "POST",
         body: { email: "joao@example.com" },
       }),
+      { params: Promise.resolve({}) },
     )
 
     expect(savedToken.length).toBe(64)
@@ -235,6 +246,7 @@ describe("POST /api/auth/forgot-password", () => {
         method: "POST",
         body: { email: "joao@example.com" },
       }),
+      { params: Promise.resolve({}) },
     )
 
     expect(savedExpiresAt).not.toBeNull()
@@ -253,6 +265,7 @@ describe("POST /api/auth/forgot-password", () => {
         method: "POST",
         body: { email: "JOAO@EXEMPLO.COM" },
       }),
+      { params: Promise.resolve({}) },
     )
 
     expect(mockDb.user.findUnique).toHaveBeenCalledWith({
@@ -266,6 +279,7 @@ describe("POST /api/auth/forgot-password", () => {
         method: "POST",
         body: { email: "" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(200)
@@ -279,6 +293,7 @@ describe("POST /api/auth/forgot-password", () => {
         method: "POST",
         body: {},
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(200)
@@ -301,6 +316,7 @@ describe("POST /api/auth/forgot-password", () => {
         method: "POST",
         body: { email: "joao@example.com" },
       }),
+      { params: Promise.resolve({}) },
     )
 
     expect(sentEmails[0].html).toContain(`/auth/reset-password/${savedToken}`)
@@ -319,6 +335,7 @@ describe("POST /api/auth/forgot-password", () => {
         method: "POST",
         body: { email: "admin@severinno.com" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -344,6 +361,7 @@ describe("POST /api/auth/forgot-password", () => {
         method: "POST",
         body: { email: "admin@severinno.com" },
       }),
+      { params: Promise.resolve({}) },
     )
 
     expect(sentEmails.length).toBe(1)
@@ -379,6 +397,7 @@ describe("POST /api/auth/reset-password", () => {
         method: "POST",
         body: { token: "valid-token-abc-123", password: "novaSenha123" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -397,6 +416,7 @@ describe("POST /api/auth/reset-password", () => {
         method: "POST",
         body: { token: "valid-token-abc-123", password: "novaSenha123" },
       }),
+      { params: Promise.resolve({}) },
     )
 
     const txArgs = mockDb.$transaction.mock.calls[0][0]
@@ -416,6 +436,7 @@ describe("POST /api/auth/reset-password", () => {
         method: "POST",
         body: { token: "expired-token", password: "novaSenha123" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -431,6 +452,7 @@ describe("POST /api/auth/reset-password", () => {
         method: "POST",
         body: { token: "used-token", password: "novaSenha123" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -446,6 +468,7 @@ describe("POST /api/auth/reset-password", () => {
         method: "POST",
         body: { token: "invalid-token", password: "novaSenha123" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -459,6 +482,7 @@ describe("POST /api/auth/reset-password", () => {
         method: "POST",
         body: { token: "valid-token", password: "123" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -472,6 +496,7 @@ describe("POST /api/auth/reset-password", () => {
         method: "POST",
         body: { password: "novaSenha123" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -485,6 +510,7 @@ describe("POST /api/auth/reset-password", () => {
         method: "POST",
         body: { token: "valid-token" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -503,6 +529,7 @@ describe("POST /api/auth/reset-password", () => {
         method: "POST",
         body: { token: "valid-token", password: "novaSenha123" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -522,6 +549,7 @@ describe("POST /api/auth/reset-password", () => {
         method: "POST",
         body: { token: "valid-token", password: "novaSenha123" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -543,6 +571,7 @@ describe("POST /api/auth/reset-password", () => {
         method: "POST",
         body: { token: "valid-token", password: "novaSenha123" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -556,6 +585,7 @@ describe("POST /api/auth/reset-password", () => {
         method: "POST",
         body: { token: "", password: "novaSenha123" },
       }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(400)
   })

@@ -91,7 +91,7 @@ describe("GET /api/provider/lytex", () => {
   it("returns simulated wallet with correct balance from COMPLETED bookings", async () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const data = await res.json()
 
     // COMPLETED: (200 + 350) * 0.85 = 467.5
@@ -106,7 +106,7 @@ describe("GET /api/provider/lytex", () => {
   it("generates simulated splits from COMPLETED bookings", async () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.splits).toHaveLength(2) // 2 COMPLETED bookings
@@ -118,7 +118,7 @@ describe("GET /api/provider/lytex", () => {
   it("returns 0 values when there are no bookings", async () => {
     mockDb.booking.findMany.mockResolvedValue([])
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.wallet.balance).toBe(0)
@@ -130,7 +130,7 @@ describe("GET /api/provider/lytex", () => {
   it("excludes PENDING paymentStatus bookings", async () => {
     mockDb.booking.findMany.mockResolvedValue([mockBookings[4]])
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.wallet.balance).toBe(0)
@@ -141,7 +141,7 @@ describe("GET /api/provider/lytex", () => {
     const { requireUser } = await import("@/lib/auth")
     vi.mocked(requireUser).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     expect(res.status).toBe(401)
   })
 })

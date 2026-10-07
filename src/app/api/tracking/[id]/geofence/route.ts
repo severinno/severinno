@@ -5,11 +5,13 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { calculateRouteAndEta } from "@/lib/osrm"
 import { sendWhatsApp } from "@/lib/whatsapp"
-import { badRequest, forbidden, notFound, handleError } from "@/lib/api-server"
+import { badRequest, forbidden, notFound } from "@/lib/api-server"
 import { checkGeofences } from "@/lib/geofencing"
 import { indexProviderLocation } from "@/lib/redis-geo"
 import { haversineKm } from "@/lib/geo-server"
 import logger from "@/lib/logger"
+
+import { withParams } from "@/lib/api-route"
 
 const GEOFENCE_DISTANCE_KM = 1.0
 const GEOFENCE_DURATION_MIN = 5
@@ -25,8 +27,9 @@ const GEOFENCE_RADIUS_M = 200
  *   3. If still not triggered, evaluates OSRM ETA as fallback trigger
  *   4. Sends WhatsApp "está chegando" on first trigger (idempotent)
  */
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
+export const POST = withParams<{ id: string }>(
+  "api.tracking.:id.geofence.POST",
+  async (request, { params }) => {
     const session = await requireUser()
     const { id: bookingId } = await params
 
@@ -162,7 +165,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       engineEvents: engineEvents.length,
       message: `Alerta enviado: ${providerName} está ${distanceText}`,
     })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

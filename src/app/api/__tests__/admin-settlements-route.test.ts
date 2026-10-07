@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import DecimalJS from "decimal.js"
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
@@ -206,11 +207,16 @@ describe("POST /api/admin/settlements — generate period", () => {
     } as any)
 
     const req = mockRequest({ type: "MONTHLY" })
-    const res = await generatePeriod(req)
+    const res = await generatePeriod(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(201)
-    expect(data.period.totalAmount).toBe(95000)
+    const eq = (a: { toString(): string }, b: string) =>
+      DecimalJS(a.toString()).equals(DecimalJS(b))
+    // Campos Decimal: gravação sem conversão para number (comparação numérica)
+    expect(eq(data.period.totalAmount, "95000")).toBe(true)
+    expect(eq(data.period.totalCommission, "9500")).toBe(true)
+    expect(eq(data.period.totalNet, "85500")).toBe(true)
     expect(data.period.totalCommission).toBe(9500)
     expect(data.period.totalNet).toBe(85500)
     expect(db.settlementPeriod.create).toHaveBeenCalledTimes(1)
@@ -219,7 +225,7 @@ describe("POST /api/admin/settlements — generate period", () => {
     const providerCreate = (createCall.data as any).providers.create as Array<any>
     expect(providerCreate).toHaveLength(2)
     expect(providerCreate[0].providerId).toBe("prov-1")
-    expect(providerCreate[0].totalAmount).toBe(65000)
+    expect(eq(providerCreate[0].totalAmount, "65000")).toBe(true)
   })
 
   it("returns 409 when period already exists for dates", async () => {
@@ -227,7 +233,7 @@ describe("POST /api/admin/settlements — generate period", () => {
     ;(vi.mocked(db.settlementPeriod.findFirst) as any).mockResolvedValue({ id: "existing" } as any)
 
     const req = mockRequest({ type: "MONTHLY" })
-    const res = await generatePeriod(req)
+    const res = await generatePeriod(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(409)
@@ -240,7 +246,7 @@ describe("POST /api/admin/settlements — generate period", () => {
     ;(vi.mocked(db.payment.findMany) as any).mockResolvedValue([])
 
     const req = mockRequest({ type: "MONTHLY" })
-    const res = await generatePeriod(req)
+    const res = await generatePeriod(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(404)
@@ -250,7 +256,7 @@ describe("POST /api/admin/settlements — generate period", () => {
   it("returns 403 when user is not ADMIN", async () => {
     _mockRole = "PROVIDER"
 
-    const res = await generatePeriod(mockRequest())
+    const res = await generatePeriod(mockRequest(), { params: Promise.resolve({}) })
     expect(res.status).toBe(403)
   })
 })

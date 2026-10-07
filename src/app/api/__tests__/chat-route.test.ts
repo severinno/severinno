@@ -92,7 +92,7 @@ describe("POST /api/chat", () => {
       }),
     )
 
-    const res = await POST(chatRequest({ message: "olá" }))
+    const res = await POST(chatRequest({ message: "olá" }), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(429)
@@ -106,7 +106,7 @@ describe("POST /api/chat", () => {
   })
 
   it("aplica o rate limit geral (RATE_LIMITS.general) antes de processar", async () => {
-    await POST(chatRequest({ message: "olá" }))
+    await POST(chatRequest({ message: "olá" }), { params: Promise.resolve({}) })
 
     expect(assertRateLimit).toHaveBeenCalledWith(
       expect.any(Request),
@@ -115,7 +115,7 @@ describe("POST /api/chat", () => {
   })
 
   it("rejeita mensagem vazia com 400", async () => {
-    const res = await POST(chatRequest({ message: "" }))
+    const res = await POST(chatRequest({ message: "" }), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
@@ -124,7 +124,7 @@ describe("POST /api/chat", () => {
   })
 
   it("rejeita mensagem só com espaços com 400", async () => {
-    const res = await POST(chatRequest({ message: "   " }))
+    const res = await POST(chatRequest({ message: "   " }), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
@@ -132,7 +132,7 @@ describe("POST /api/chat", () => {
   })
 
   it("rejeita body sem o campo message com 400", async () => {
-    const res = await POST(chatRequest({}))
+    const res = await POST(chatRequest({}), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
@@ -140,7 +140,9 @@ describe("POST /api/chat", () => {
   })
 
   it("retorna a resposta do assistente no caminho de sucesso", async () => {
-    const res = await POST(chatRequest({ message: "preciso de um encanador" }))
+    const res = await POST(chatRequest({ message: "preciso de um encanador" }), {
+      params: Promise.resolve({}),
+    })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -150,6 +152,7 @@ describe("POST /api/chat", () => {
   it("monta as messages com system prompt + histórico + pergunta do usuário", async () => {
     await POST(
       chatRequest({ message: "quanto custa?", history: [{ role: "user", content: "oi" }] }),
+      { params: Promise.resolve({}) },
     )
 
     expect(ZAI.create).toHaveBeenCalledTimes(1)
@@ -170,7 +173,7 @@ describe("POST /api/chat", () => {
       content: `turno ${i + 1}`,
     }))
 
-    await POST(chatRequest({ message: "final", history }))
+    await POST(chatRequest({ message: "final", history }), { params: Promise.resolve({}) })
 
     const messages = vi.mocked(mockSdk.completionsCreate).mock.calls[0][0].messages
     // system + 10 turnos do histórico + pergunta atual
@@ -186,7 +189,7 @@ describe("POST /api/chat", () => {
       choices: [{ message: { content: "" } }],
     })
 
-    const res = await POST(chatRequest({ message: "oi" }))
+    const res = await POST(chatRequest({ message: "oi" }), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(500)
@@ -196,7 +199,7 @@ describe("POST /api/chat", () => {
   it("retorna 500 com mensagem neutra quando o provider falha", async () => {
     vi.mocked(mockSdk.completionsCreate).mockRejectedValueOnce(new Error("ECONNREFUSED upstream"))
 
-    const res = await POST(chatRequest({ message: "oi" }))
+    const res = await POST(chatRequest({ message: "oi" }), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     // handleError mapeia erro genérico (não-HttpError) para 500 — não vaza a

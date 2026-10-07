@@ -96,12 +96,12 @@ describe("Cache-Control headers on GET /api/providers", () => {
   // ── 200 with data ─────────────────────────────────────────────────────
 
   it("sets cache headers on 200 with providers (max-age=60)", async () => {
-    const res = await listProviders(createMockRequest())
+    const res = await listProviders(createMockRequest(), { params: Promise.resolve({}) })
     expectCacheHeaders(res, 60)
   })
 
   it("second 200 with providers also has cache headers", async () => {
-    const res = await listProviders(createMockRequest())
+    const res = await listProviders(createMockRequest(), { params: Promise.resolve({}) })
     expectCacheHeaders(res, 60)
   })
 
@@ -109,7 +109,7 @@ describe("Cache-Control headers on GET /api/providers", () => {
 
   it("sets no-store on 400 sort=distance without coordinates", async () => {
     const req = createMockRequest({ searchParams: { sort: "distance" } })
-    const res = await listProviders(req)
+    const res = await listProviders(req, { params: Promise.resolve({}) })
 
     expect(res.status).toBe(400)
     // House rule (RFC 7234 §4.2.2): erros NUNCA são cacheáveis — sem header
@@ -133,7 +133,7 @@ describe("Cache-Control headers on GET /api/providers", () => {
       return Promise.resolve([])
     })
 
-    const res = await listProviders(createMockRequest())
+    const res = await listProviders(createMockRequest(), { params: Promise.resolve({}) })
     expect(res.status).toBe(200)
     // 15s — mirrors the Redis EMPTY_COUNT_CACHE_TTL: caches "empty" briefly
     // to absorb repeated hits without pinning it for the full 60s.

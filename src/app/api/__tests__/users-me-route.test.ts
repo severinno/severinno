@@ -38,7 +38,7 @@ describe("GET & PATCH /api/users/me", () => {
       role: "CLIENT",
     } as any)
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const json = await res.json()
 
     expect(res.status).toBe(200)
@@ -62,7 +62,7 @@ describe("GET & PATCH /api/users/me", () => {
       }),
     })
 
-    const res = await PATCH(req)
+    const res = await PATCH(req, { params: Promise.resolve({}) })
     const json = await res.json()
 
     expect(res.status).toBe(200)

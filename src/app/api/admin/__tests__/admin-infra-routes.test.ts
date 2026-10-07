@@ -24,7 +24,7 @@ describe("Admin Infra API Routes (/api/admin/performance, /api/admin/pgbouncer)"
 
   it("returns performance metrics summary", async () => {
     const req = new Request("http://localhost:3000/api/admin/performance?period=24h")
-    const res = await getPerformance(req as any)
+    const res = await getPerformance(req as any, { params: Promise.resolve({}) })
     const json = await res.json()
 
     expect(res.status).toBe(200)

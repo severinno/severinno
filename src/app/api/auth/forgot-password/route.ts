@@ -3,92 +3,94 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { randomBytes } from "crypto"
 import { db } from "@/lib/db"
-import { handleError } from "@/lib/api-server"
+import { withRoute } from "@/lib/api-route"
 import { sendMail, passwordResetHtml } from "@/lib/mail"
 import { saveAndQueueNotification } from "@/lib/notification-queue"
 import { captureError } from "@/lib/sentry"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { authFingerprintGuard } from "@/lib/auth-rate-limit"
 import logger from "@/lib/logger"
 import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
 
-export async function POST(request: Request) {
+export const POST = withRoute("api.auth.forgot-password.POST", async (request) => {
   await assertRateLimit(request, RATE_LIMITS.forgotPassword)
+  // 🛡️ Rate limit PROGRESSIVO por fingerprint — o fluxo é anti-enumeration
+  // (resposta 200 sempre), então o atraso da escada é o custo visível de
+  // quem varre e-mails em massa por uma só origem.
+  const fp = await authFingerprintGuard(request, "forgot")
+  if (fp.blocked) return fp.response
+  // Parse body safely — always return 200 to prevent email enumeration
+  let rawEmail = ""
   try {
-    // Parse body safely — always return 200 to prevent email enumeration
-    let rawEmail = ""
-    try {
-      const body = await request.json()
-      rawEmail = body.email ?? ""
-    } catch {
-      // Malformed JSON — still return 200
-    }
+    const body = await request.json()
+    rawEmail = body.email ?? ""
+  } catch {
+    // Malformed JSON — still return 200
+  }
 
-    const email = typeof rawEmail === "string" ? rawEmail.toLowerCase().trim() : ""
+  const email = typeof rawEmail === "string" ? rawEmail.toLowerCase().trim() : ""
 
-    if (!email) {
-      return NextResponse.json({
-        ok: true,
-        message: "Se o e-mail existir, você receberá as instruções de recuperação.",
-      })
-    }
-
-    const user = await db.user.findUnique({ where: { email } })
-    if (!user) {
-      return NextResponse.json({
-        ok: true,
-        message: "Se o e-mail existir, você receberá as instruções de recuperação.",
-      })
-    }
-
-    // 🛡️ Contas demo são dev/staging only — em produção não enviamos reset
-    // (a credencial é pública; o fluxo de reset não deve ser acionável).
-    // Mesma resposta genérica para não revelar a existência da conta.
-    if (!isDemoAccountsEnabled() && isDemoAccountEmail(user.email)) {
-      return NextResponse.json({
-        ok: true,
-        message: "Se o e-mail existir, você receberá as instruções de recuperação.",
-      })
-    }
-
-    // Invalidate any existing unused tokens for this user
-    await db.resetToken.updateMany({
-      where: { userId: user.id, used: false },
-      data: { used: true },
-    })
-
-    const token = randomBytes(32).toString("hex")
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000)
-
-    await db.resetToken.create({
-      data: { userId: user.id, token, expiresAt },
-    })
-
-    const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://severinno.com.br"}/auth/reset-password/${token}`
-
-    await sendMail({
-      to: email,
-      subject: "Redefinição de senha — Severinno",
-      html: passwordResetHtml({ userName: user.name, resetLink: resetUrl }),
-    })
-
-    logger.info({ userId: user.id }, "password reset email sent")
-
-    // Send push notification as security alert (fire-and-forget)
-    saveAndQueueNotification({
-      userId: user.id,
-      type: "PASSWORD_RESET_REQUESTED",
-      title: "Redefinição de senha solicitada",
-      body: "Alguém solicitou a redefinição da sua senha. Se não foi você, ignore este aviso.",
-      pushUrl: "/auth/reset-password",
-    }).catch((err) => {
-      captureError(err, { userId: user.id, context: "forgot-password notification" })
-    })
-
+  if (!email) {
     return NextResponse.json({
       ok: true,
       message: "Se o e-mail existir, você receberá as instruções de recuperação.",
     })
-  } catch (e) {
-    return handleError(e)
   }
-}
+
+  const user = await db.user.findUnique({ where: { email } })
+  if (!user) {
+    return NextResponse.json({
+      ok: true,
+      message: "Se o e-mail existir, você receberá as instruções de recuperação.",
+    })
+  }
+
+  // 🛡️ Contas demo são dev/staging only — em produção não enviamos reset
+  // (a credencial é pública; o fluxo de reset não deve ser acionável).
+  // Mesma resposta genérica para não revelar a existência da conta.
+  if (!isDemoAccountsEnabled() && isDemoAccountEmail(user.email)) {
+    return NextResponse.json({
+      ok: true,
+      message: "Se o e-mail existir, você receberá as instruções de recuperação.",
+    })
+  }
+
+  // Invalidate any existing unused tokens for this user
+  await db.resetToken.updateMany({
+    where: { userId: user.id, used: false },
+    data: { used: true },
+  })
+
+  const token = randomBytes(32).toString("hex")
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000)
+
+  await db.resetToken.create({
+    data: { userId: user.id, token, expiresAt },
+  })
+
+  const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://severinno.com.br"}/auth/reset-password/${token}`
+
+  await sendMail({
+    to: email,
+    subject: "Redefinição de senha — Severinno",
+    html: passwordResetHtml({ userName: user.name, resetLink: resetUrl }),
+  })
+
+  logger.info({ userId: user.id }, "password reset email sent")
+
+  // Send push notification as security alert (fire-and-forget)
+  saveAndQueueNotification({
+    userId: user.id,
+    type: "PASSWORD_RESET_REQUESTED",
+    title: "Redefinição de senha solicitada",
+    body: "Alguém solicitou a redefinição da sua senha. Se não foi você, ignore este aviso.",
+    pushUrl: "/auth/reset-password",
+  }).catch((err) => {
+    captureError(err, { userId: user.id, context: "forgot-password notification" })
+  })
+
+  return NextResponse.json({
+    ok: true,
+    message: "Se o e-mail existir, você receberá as instruções de recuperação.",
+  })
+})

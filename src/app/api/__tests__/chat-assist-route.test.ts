@@ -66,7 +66,7 @@ describe("POST /api/chat/assist", () => {
     const req = assistRequest({
       messages: [{ role: "user", content: "Olá" }],
     })
-    const res = await POST(req)
+    const res = await POST(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(401)
   })
 
@@ -74,7 +74,7 @@ describe("POST /api/chat/assist", () => {
     const req = assistRequest({
       messages: [],
     })
-    const res = await POST(req)
+    const res = await POST(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
     const data = await parseResponse(res)
     expect(data.body).toEqual({ error: "Mensagens são obrigatórias." })
@@ -102,7 +102,7 @@ describe("POST /api/chat/assist", () => {
     const req = assistRequest({
       messages: [{ role: "user", content: "Que horas você chega?" }],
     })
-    const res = await POST(req)
+    const res = await POST(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(200)
     const data = await parseResponse(res)
     expect((data.body as any).suggestions).toHaveLength(3)
@@ -116,7 +116,7 @@ describe("POST /api/chat/assist", () => {
     const req = assistRequest({
       messages: [{ role: "user", content: "Qual o valor do orçamento?" }],
     })
-    const res = await POST(req)
+    const res = await POST(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(200)
     const data = await parseResponse(res)
     expect((data.body as any).suggestions.length).toBeGreaterThanOrEqual(1)
@@ -129,7 +129,7 @@ describe("POST /api/chat/assist", () => {
     const req = assistRequest({
       messages: [{ role: "user", content: "Temos um vazamento de água urgente na pia!" }],
     })
-    const res = await POST(req)
+    const res = await POST(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(200)
     const data = await parseResponse(res)
     expect((data.body as any).intent).toBe("urgencia")

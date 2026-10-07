@@ -16,10 +16,12 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { cacheGet, cacheSet } from "@/lib/redis"
-import { handleError } from "@/lib/api-server"
+
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { checkGeofences } from "@/lib/geofencing"
 import { indexProviderLocation } from "@/lib/redis-geo"
+
+import { withParams } from "@/lib/api-route"
 
 // ── SSE connection registry ───────────────────────────────────────────────
 
@@ -200,8 +202,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
 // ── Position update endpoint (called by provider app) ─────────────────────
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
+export const POST = withParams<{ id: string }>(
+  "api.tracking.:id.stream.POST",
+  async (request, { params }) => {
     const { requireUser } = await import("@/lib/auth")
     const session = await requireUser()
     await assertRateLimit(request, RATE_LIMITS.general)
@@ -278,10 +281,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     return NextResponse.json({ ok: true, clients: clients.length })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)
 
 // ── Broadcast helper (exported for other modules) ─────────────────────────
 

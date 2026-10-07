@@ -6,16 +6,17 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { sanitizeText } from "@/lib/sanitize"
 import { quoteItemResponseSchema } from "@/lib/validators"
-import { forbidden, handleError, notFound } from "@/lib/api-server"
+import { forbidden, notFound } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { notifyQuoteResponse } from "@/lib/notifications"
 
-type Params = { params: Promise<{ id: string; itemId: string }> }
+import { withParams } from "@/lib/api-route"
 
 // PROVIDER (the item's provider): respond with price/note/status.
 // Sets request status to RESPONDED.
-export async function PATCH(request: Request, { params }: Params) {
-  try {
+export const PATCH = withParams<{ id: string; itemId: string }>(
+  "api.quotes.:id.items.:itemId.PATCH",
+  async (request, { params }) => {
     await assertRateLimit(request, RATE_LIMITS.bookings)
     const session = await requireUser()
     const { id, itemId } = await params
@@ -73,7 +74,5 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     return NextResponse.json({ item: updated })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

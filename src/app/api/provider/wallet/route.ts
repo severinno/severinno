@@ -2,24 +2,22 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { requireUser } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
+
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { computeBaseBalance, getWithdrawals, buildWallet } from "@/lib/wallet"
 
-export async function GET(request: Request) {
-  try {
-    const session = await requireUser()
-    await assertRateLimit(request, RATE_LIMITS.wallet)
+import { withRoute } from "@/lib/api-route"
 
-    const [base, withdrawals] = await Promise.all([
-      computeBaseBalance(session.userId),
-      getWithdrawals(session.userId),
-    ])
+export const GET = withRoute("api.provider.wallet.GET", async (request) => {
+  const session = await requireUser()
+  await assertRateLimit(request, RATE_LIMITS.wallet)
 
-    const wallet = buildWallet(base, withdrawals)
+  const [base, withdrawals] = await Promise.all([
+    computeBaseBalance(session.userId),
+    getWithdrawals(session.userId),
+  ])
 
-    return NextResponse.json(wallet)
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  const wallet = buildWallet(base, withdrawals)
+
+  return NextResponse.json(wallet)
+})

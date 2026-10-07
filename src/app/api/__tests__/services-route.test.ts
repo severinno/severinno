@@ -98,7 +98,7 @@ beforeEach(() => {
 describe("GET /api/services (list)", () => {
   it("returns all active services", async () => {
     mockDb.service.findMany.mockResolvedValue(mockServices)
-    const response = await GET(createMockRequest())
+    const response = await GET(createMockRequest(), { params: Promise.resolve({}) })
     const data = await response.json()
     expect(response.status).toBe(200)
     expect(data).toHaveLength(2)
@@ -107,7 +107,7 @@ describe("GET /api/services (list)", () => {
   it("filters by categoryId", async () => {
     mockDb.service.findMany.mockResolvedValue([mockServices[0]])
     const req = createMockRequest({ searchParams: { categoryId: "cat-1" } })
-    await GET(req)
+    await GET(req, { params: Promise.resolve({}) })
     expect(mockDb.service.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ categoryId: "cat-1" }),
@@ -118,7 +118,7 @@ describe("GET /api/services (list)", () => {
   it("filters by providerId", async () => {
     mockDb.service.findMany.mockResolvedValue([mockServices[0]])
     const req = createMockRequest({ searchParams: { providerId: "prov-1" } })
-    await GET(req)
+    await GET(req, { params: Promise.resolve({}) })
     expect(mockDb.service.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ providerId: "prov-1" }),
@@ -129,7 +129,7 @@ describe("GET /api/services (list)", () => {
   it("searches by text query (contains, case-sensitive in dev)", async () => {
     mockDb.service.findMany.mockResolvedValue([mockServices[0]])
     const req = createMockRequest({ searchParams: { q: "limpeza" } })
-    await GET(req)
+    await GET(req, { params: Promise.resolve({}) })
     expect(mockDb.service.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -141,7 +141,7 @@ describe("GET /api/services (list)", () => {
 
   it("orders by createdAt desc", async () => {
     mockDb.service.findMany.mockResolvedValue(mockServices)
-    await GET(createMockRequest())
+    await GET(createMockRequest(), { params: Promise.resolve({}) })
     expect(mockDb.service.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ orderBy: { createdAt: "desc" } }),
     )
@@ -149,7 +149,7 @@ describe("GET /api/services (list)", () => {
 
   it("only returns active services", async () => {
     mockDb.service.findMany.mockResolvedValue(mockServices)
-    await GET(createMockRequest())
+    await GET(createMockRequest(), { params: Promise.resolve({}) })
     expect(mockDb.service.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ active: true }) }),
     )

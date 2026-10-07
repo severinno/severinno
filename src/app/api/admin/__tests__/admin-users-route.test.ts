@@ -35,7 +35,7 @@ describe("GET /api/admin/users", () => {
     vi.mocked(db.user.count).mockResolvedValue(2)
 
     const req = createRequest("http://localhost:3000/api/admin/users?page=1&limit=10")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const json = await res.json()
 
     expect(res.status).toBe(200)
@@ -52,7 +52,7 @@ describe("GET /api/admin/users", () => {
     const req = createRequest(
       "http://localhost:3000/api/admin/users?role=PROVIDER&q=eletricista&city=Sao%20Paulo",
     )
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     expect(res.status).toBe(200)
     expect(db.user.findMany).toHaveBeenCalledWith(
@@ -74,7 +74,7 @@ describe("GET /api/admin/users", () => {
     const req = createRequest(
       "http://localhost:3000/api/admin/users?lat=-23.5505&lng=-46.6333&radius=10",
     )
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const json = await res.json()
 
     expect(res.status).toBe(200)
@@ -86,7 +86,7 @@ describe("GET /api/admin/users", () => {
     vi.mocked(requireRole).mockRejectedValue(new HttpError(403, "Acesso proibido"))
 
     const req = createRequest("http://localhost:3000/api/admin/users")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     expect(res.status).toBe(403)
   })

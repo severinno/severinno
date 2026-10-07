@@ -68,7 +68,9 @@ describe("GET /api/messages", () => {
     })
 
     it("returns conversation messages with peer info", async () => {
-      const response = await GET(createMockRequest({ searchParams: { with: "prov-1" } }))
+      const response = await GET(createMockRequest({ searchParams: { with: "prov-1" } }), {
+        params: Promise.resolve({}),
+      })
       const data = await response.json()
       expect(response.status).toBe(200)
       expect(data.peer.id).toBe("prov-1")
@@ -76,7 +78,9 @@ describe("GET /api/messages", () => {
     })
 
     it("marks unread inbound messages as read", async () => {
-      await GET(createMockRequest({ searchParams: { with: "prov-1" } }))
+      await GET(createMockRequest({ searchParams: { with: "prov-1" } }), {
+        params: Promise.resolve({}),
+      })
       expect(mockDb.message.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { fromId: "prov-1", toId: "client-1", read: false },
@@ -87,7 +91,9 @@ describe("GET /api/messages", () => {
 
     it("returns 404 when peer not found", async () => {
       mockDb.user.findUnique.mockResolvedValue(null)
-      const response = await GET(createMockRequest({ searchParams: { with: "unknown" } }))
+      const response = await GET(createMockRequest({ searchParams: { with: "unknown" } }), {
+        params: Promise.resolve({}),
+      })
       expect(response.status).toBe(404)
     })
   })
@@ -119,7 +125,7 @@ describe("GET /api/messages", () => {
     })
 
     it("returns conversation list grouped by peer", async () => {
-      const response = await GET(createMockRequest())
+      const response = await GET(createMockRequest(), { params: Promise.resolve({}) })
       const data = await response.json()
       expect(response.status).toBe(200)
       expect(data.items).toBeDefined()
@@ -127,7 +133,7 @@ describe("GET /api/messages", () => {
     })
 
     it("sorts conversations by most recent message", async () => {
-      const response = await GET(createMockRequest())
+      const response = await GET(createMockRequest(), { params: Promise.resolve({}) })
       const _data = await response.json()
       expect(response.status).toBe(200)
     })
@@ -152,7 +158,9 @@ describe("POST /api/messages", () => {
 
   it("sends a message and creates notification", async () => {
     mockDb.notification.create.mockResolvedValue({})
-    const response = await POST(createMockRequest({ method: "POST", body: validMessage }))
+    const response = await POST(createMockRequest({ method: "POST", body: validMessage }), {
+      params: Promise.resolve({}),
+    })
     const data = await response.json()
     expect(response.status).toBe(201)
     expect(data.message.fromId).toBe("client-1")
@@ -164,19 +172,24 @@ describe("POST /api/messages", () => {
     mockDb.notification.create.mockResolvedValue({})
     const response = await POST(
       createMockRequest({ method: "POST", body: { toId: "client-1", content: "test" } }),
+      { params: Promise.resolve({}) },
     )
     expect(response.status).toBe(400)
   })
 
   it("throws 404 when recipient does not exist", async () => {
     mockDb.user.findUnique.mockResolvedValue(null)
-    const response = await POST(createMockRequest({ method: "POST", body: validMessage }))
+    const response = await POST(createMockRequest({ method: "POST", body: validMessage }), {
+      params: Promise.resolve({}),
+    })
     expect(response.status).toBe(404)
   })
 
   it("throws 404 when recipient is inactive", async () => {
     mockDb.user.findUnique.mockResolvedValue({ id: "prov-1", active: false })
-    const response = await POST(createMockRequest({ method: "POST", body: validMessage }))
+    const response = await POST(createMockRequest({ method: "POST", body: validMessage }), {
+      params: Promise.resolve({}),
+    })
     expect(response.status).toBe(404)
   })
 
@@ -192,7 +205,9 @@ describe("POST /api/messages", () => {
       createdAt: new Date(),
     })
 
-    await POST(createMockRequest({ method: "POST", body: longMsg }))
+    await POST(createMockRequest({ method: "POST", body: longMsg }), {
+      params: Promise.resolve({}),
+    })
     expect(mockDb.notification.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -204,7 +219,9 @@ describe("POST /api/messages", () => {
 
   it("does not throw when notification creation fails (best-effort)", async () => {
     mockDb.notification.create.mockRejectedValue(new Error("DB error"))
-    const response = await POST(createMockRequest({ method: "POST", body: validMessage }))
+    const response = await POST(createMockRequest({ method: "POST", body: validMessage }), {
+      params: Promise.resolve({}),
+    })
     expect(response.status).toBe(201)
   })
 })

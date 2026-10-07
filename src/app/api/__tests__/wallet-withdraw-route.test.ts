@@ -77,7 +77,7 @@ describe("POST /api/provider/wallet/withdraw", () => {
       description: "Saque simulado de R$ 100.00",
     })
 
-    const res = await POST(mockRequest({ amount: 100 }))
+    const res = await POST(mockRequest({ amount: 100 }), { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)
@@ -90,7 +90,7 @@ describe("POST /api/provider/wallet/withdraw", () => {
     mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 200 } })
     mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
 
-    const res = await POST(mockRequest({ amount: 999 }))
+    const res = await POST(mockRequest({ amount: 999 }), { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(400)
@@ -98,34 +98,34 @@ describe("POST /api/provider/wallet/withdraw", () => {
   })
 
   it("rejects negative amount", async () => {
-    const res = await POST(mockRequest({ amount: -50 }))
+    const res = await POST(mockRequest({ amount: -50 }), { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
   })
 
   it("rejects zero amount", async () => {
-    const res = await POST(mockRequest({ amount: 0 }))
+    const res = await POST(mockRequest({ amount: 0 }), { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
   })
 
   it("rejects amount below minimum (R$ 10)", async () => {
-    const res = await POST(mockRequest({ amount: 5 }))
+    const res = await POST(mockRequest({ amount: 5 }), { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
     expect(await res.json()).toHaveProperty("error")
   })
 
   it("rejects amount above maximum (R$ 50.000)", async () => {
-    const res = await POST(mockRequest({ amount: 60000 }))
+    const res = await POST(mockRequest({ amount: 60000 }), { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
     expect(await res.json()).toHaveProperty("error")
   })
 
   it("rejects non-numeric amount", async () => {
-    const res = await POST(mockRequest({ amount: "abc" }))
+    const res = await POST(mockRequest({ amount: "abc" }), { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
   })
 
   it("rejects missing amount", async () => {
-    const res = await POST(mockRequest({}))
+    const res = await POST(mockRequest({}), { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
   })
 
@@ -141,7 +141,7 @@ describe("POST /api/provider/wallet/withdraw", () => {
       description: "Saque simulado de R$ 30.00",
     })
 
-    const res = await POST(mockRequest({ amount: 30 }))
+    const res = await POST(mockRequest({ amount: 30 }), { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)
@@ -153,7 +153,7 @@ describe("POST /api/provider/wallet/withdraw", () => {
     const { requireUser } = await import("@/lib/auth")
     vi.mocked(requireUser).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await POST(mockRequest({ amount: 100 }))
+    const res = await POST(mockRequest({ amount: 100 }), { params: Promise.resolve({}) })
     expect(res.status).toBe(401)
   })
 })

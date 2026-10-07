@@ -133,7 +133,7 @@ describe("GET /api/admin/gateway/stats — auth guard", () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("Unauthorized"))
 
     const req = buildRequest("http://localhost:3000/api/admin/gateway/stats?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     expect(res.status).toBe(500)
     const body = await res.json()
@@ -157,13 +157,16 @@ describe("GET /api/admin/gateway/stats — aggregation", () => {
     mockFetch(invoices)
 
     const req = buildRequest("http://localhost:3000/api/admin/gateway/stats?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const body = await res.json()
 
     expect(body.totalCount).toBe(5)
     expect(body.paidCount).toBe(2)
     expect(body.totalVolume).toBe(115000) // 50000+30000+20000+10000+5000
     expect(body.conversionRate).toBe(40) // 2/5 = 40%
+    // averageTicket em REAIS — fórmula preservada da rota (volume TOTAL de
+    // todas as faturas / nº de pagas): 115000/2 = 57500 centavos = R$ 575,00
+    expect(body.averageTicket).toBe(575)
     // 5 invoices with 4 unique statuses (2 paid are merged into 1 byStatus entry)
     expect(body.byStatus).toHaveLength(4)
   })
@@ -172,11 +175,12 @@ describe("GET /api/admin/gateway/stats — aggregation", () => {
     mockFetch([])
 
     const req = buildRequest("http://localhost:3000/api/admin/gateway/stats?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const body = await res.json()
 
     expect(body.totalCount).toBe(0)
     expect(body.totalVolume).toBe(0)
+    expect(body.averageTicket).toBe(0)
     expect(body.conversionRate).toBe(0)
     expect(body.byStatus).toEqual([])
     expect(body.monthly).toEqual([])
@@ -191,12 +195,15 @@ describe("GET /api/admin/gateway/stats — aggregation", () => {
     mockFetch(invoices)
 
     const req = buildRequest("http://localhost:3000/api/admin/gateway/stats?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const body = await res.json()
 
     expect(body.conversionRate).toBe(66.7) // 2/3 = 66.7%
     expect(body.totalCount).toBe(3)
     expect(body.paidCount).toBe(2)
+    // averageTicket em REAIS — volume total (30000) / pagas (2) = 15000
+    // centavos = R$ 150,00 (mesma fórmula preservada da rota)
+    expect(body.averageTicket).toBe(150)
   })
 
   it("agrupa por mês corretamente", async () => {
@@ -208,7 +215,7 @@ describe("GET /api/admin/gateway/stats — aggregation", () => {
     mockFetch(invoices)
 
     const req = buildRequest("http://localhost:3000/api/admin/gateway/stats?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const body = await res.json()
 
     expect(body.monthly).toHaveLength(2)
@@ -231,7 +238,7 @@ describe("GET /api/admin/gateway/stats — period filtering", () => {
     mockFetch(invoices)
 
     const req = buildRequest("http://localhost:3000/api/admin/gateway/stats?period=7d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const body = await res.json()
 
     expect(body.totalCount).toBe(1) // only the 3-day-old invoice
@@ -252,7 +259,7 @@ describe("GET /api/admin/gateway/stats — method distribution", () => {
     mockFetch(invoices)
 
     const req = buildRequest("http://localhost:3000/api/admin/gateway/stats?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const body = await res.json()
 
     expect(body.methodDistribution).toHaveLength(2)

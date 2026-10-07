@@ -123,7 +123,7 @@ describe("GET /api/reviews", () => {
     mockDb.review.count.mockResolvedValue(mockReviews.length)
 
     const req = createMockRequest()
-    const response = await GET(req)
+    const response = await GET(req, { params: Promise.resolve({}) })
 
     expect(response.status).toBe(200)
   })
@@ -132,7 +132,7 @@ describe("GET /api/reviews", () => {
     mockDb.review.findMany.mockResolvedValue([mockReviews[0]])
 
     const req = createMockRequest({ searchParams: { providerId: "prov-1" } })
-    await GET(req)
+    await GET(req, { params: Promise.resolve({}) })
 
     expect(mockDb.review.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -145,7 +145,7 @@ describe("GET /api/reviews", () => {
     mockDb.review.findMany.mockResolvedValue([mockReviews[0]])
 
     const req = createMockRequest({ searchParams: { bookingId: "book-1" } })
-    await GET(req)
+    await GET(req, { params: Promise.resolve({}) })
 
     expect(mockDb.review.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -158,7 +158,7 @@ describe("GET /api/reviews", () => {
     mockDb.review.findMany.mockResolvedValue(mockReviews)
 
     const req = createMockRequest()
-    await GET(req)
+    await GET(req, { params: Promise.resolve({}) })
 
     expect(mockDb.review.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ orderBy: { createdAt: "desc" } }),
@@ -184,7 +184,7 @@ describe("POST /api/reviews", () => {
 
   it("creates review for a completed booking", async () => {
     const req = createMockRequest({ method: "POST", body: validReviewData })
-    const response = await POST(req)
+    const response = await POST(req, { params: Promise.resolve({}) })
 
     expect(response.status).toBe(201)
     expect(mockDb.review.create).toHaveBeenCalled()
@@ -194,7 +194,7 @@ describe("POST /api/reviews", () => {
     vi.mocked(requireUser).mockResolvedValue({ userId: "prov-other", role: "PROVIDER" })
 
     const req = createMockRequest({ method: "POST", body: validReviewData })
-    const response = await POST(req)
+    const response = await POST(req, { params: Promise.resolve({}) })
 
     expect(response.status).toBe(403)
   })
@@ -203,7 +203,7 @@ describe("POST /api/reviews", () => {
     mockDb.booking.findUnique.mockResolvedValue(null)
 
     const req = createMockRequest({ method: "POST", body: validReviewData })
-    const response = await POST(req)
+    const response = await POST(req, { params: Promise.resolve({}) })
 
     expect(response.status).toBe(404)
   })
@@ -212,7 +212,7 @@ describe("POST /api/reviews", () => {
     mockDb.booking.findUnique.mockResolvedValue({ ...completedBooking, clientId: "client-2" })
 
     const req = createMockRequest({ method: "POST", body: validReviewData })
-    const response = await POST(req)
+    const response = await POST(req, { params: Promise.resolve({}) })
 
     expect(response.status).toBe(403)
   })
@@ -221,7 +221,7 @@ describe("POST /api/reviews", () => {
     mockDb.booking.findUnique.mockResolvedValue({ ...completedBooking, status: "IN_PROGRESS" })
 
     const req = createMockRequest({ method: "POST", body: validReviewData })
-    const response = await POST(req)
+    const response = await POST(req, { params: Promise.resolve({}) })
 
     expect(response.status).toBe(400)
   })
@@ -230,7 +230,7 @@ describe("POST /api/reviews", () => {
     mockDb.review.findUnique.mockResolvedValue({ id: "existing-review", rating: 5 })
 
     const req = createMockRequest({ method: "POST", body: validReviewData })
-    const response = await POST(req)
+    const response = await POST(req, { params: Promise.resolve({}) })
 
     expect(response.status).toBe(400)
   })
@@ -250,7 +250,7 @@ describe("POST /api/reviews", () => {
     })
 
     const req = createMockRequest({ method: "POST", body: dataWithoutComment })
-    const response = await POST(req)
+    const response = await POST(req, { params: Promise.resolve({}) })
 
     expect(response.status).toBe(201)
   })
@@ -267,7 +267,7 @@ describe("GET /api/reviews/recent", () => {
 
   it("returns recent reviews with client and service info", async () => {
     const req = createMockRequest()
-    const response = await GET_RECENT(req)
+    const response = await GET_RECENT(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(response)
 
     expect(parsed.status).toBe(200)
@@ -279,7 +279,7 @@ describe("GET /api/reviews/recent", () => {
 
   it("only returns reviews with comments", async () => {
     const req = createMockRequest()
-    await GET_RECENT(req)
+    await GET_RECENT(req, { params: Promise.resolve({}) })
 
     expect(mockDb.review.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { comment: { not: null } } }),
@@ -288,21 +288,21 @@ describe("GET /api/reviews/recent", () => {
 
   it("respects custom limit query param", async () => {
     const req = createMockRequest({ searchParams: { limit: "3" } })
-    await GET_RECENT(req)
+    await GET_RECENT(req, { params: Promise.resolve({}) })
 
     expect(mockDb.review.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 3 }))
   })
 
   it("caps limit at 12", async () => {
     const req = createMockRequest({ searchParams: { limit: "100" } })
-    await GET_RECENT(req)
+    await GET_RECENT(req, { params: Promise.resolve({}) })
 
     expect(mockDb.review.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 12 }))
   })
 
   it("uses default limit of 6 when not specified", async () => {
     const req = createMockRequest()
-    await GET_RECENT(req)
+    await GET_RECENT(req, { params: Promise.resolve({}) })
 
     expect(mockDb.review.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 6 }))
   })
@@ -315,7 +315,7 @@ describe("GET /api/reviews/recent", () => {
     })
 
     const req = createMockRequest()
-    const response = await GET_RECENT(req)
+    const response = await GET_RECENT(req, { params: Promise.resolve({}) })
 
     expect(response.status).toBe(200)
   })

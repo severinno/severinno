@@ -164,7 +164,7 @@ describe("GET /api/providers", () => {
 
   it("returns paginated list of active verified providers", async () => {
     const req = createMockRequest()
-    const res = await listProviders(req)
+    const res = await listProviders(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -188,7 +188,7 @@ describe("GET /api/providers", () => {
     })
 
     const req = createMockRequest()
-    const res = await listProviders(req)
+    const res = await listProviders(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -198,7 +198,7 @@ describe("GET /api/providers", () => {
 
   it("filters by search query (q)", async () => {
     const req = createMockRequest({ searchParams: { q: "Carlos" } })
-    await listProviders(req)
+    await listProviders(req, { params: Promise.resolve({}) })
 
     // Handler uses raw SQL with `search_vector @@ to_tsquery`, not Prisma `findMany`
     expect(db.$queryRawUnsafe).toHaveBeenCalledWith(
@@ -215,7 +215,7 @@ describe("GET /api/providers", () => {
     ])
 
     const req = createMockRequest({ searchParams: { categoryId: "cat-1" } })
-    const res = await listProviders(req)
+    const res = await listProviders(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -224,7 +224,7 @@ describe("GET /api/providers", () => {
 
   it("returns 400 when sort=distance without lat/lng", async () => {
     const req = createMockRequest({ searchParams: { sort: "distance" } })
-    const res = await listProviders(req)
+    const res = await listProviders(req, { params: Promise.resolve({}) })
 
     expect(res.status).toBe(400)
 
@@ -247,7 +247,7 @@ describe("GET /api/providers", () => {
     const req = createMockRequest({
       searchParams: { sort: "distance", lat: "-23.55", lng: "-46.63" },
     })
-    const res = await listProviders(req)
+    const res = await listProviders(req, { params: Promise.resolve({}) })
     const body = (await res.json()) as { items: Array<{ id: string; distanceKm: number }> }
 
     expect(res.status).toBe(200)

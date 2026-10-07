@@ -4,12 +4,12 @@ import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
-import { badRequest, handleError, notFound } from "@/lib/api-server"
+import { badRequest, notFound } from "@/lib/api-server"
 import { z } from "zod"
 import { sendText } from "@/lib/evolution"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
-type Params = { params: Promise<{ id: string }> }
+import { withParams } from "@/lib/api-route"
 
 const adminReviewSchema = z.object({
   status: z.enum(["approved", "rejected"]),
@@ -20,8 +20,9 @@ const adminReviewSchema = z.object({
  * PATCH /api/admin/verify-identity/[id]
  * Admin approves or rejects provider KYC identity verification.
  */
-export async function PATCH(request: Request, { params }: Params) {
-  try {
+export const PATCH = withParams<{ id: string }>(
+  "api.admin.verify-identity.:id.PATCH",
+  async (request, { params }) => {
     await requireRole("ADMIN")
     await assertRateLimit(request, RATE_LIMITS.admin)
     const { id } = await params
@@ -71,7 +72,5 @@ export async function PATCH(request: Request, { params }: Params) {
       message: isApproved ? "Prestador aprovado e verificado!" : "Verificação rejeitada.",
       provider: updated,
     })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

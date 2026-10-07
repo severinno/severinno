@@ -116,7 +116,9 @@ describe("GET /api/admin/services — auth guard", () => {
   it("returns 401 when auth fails", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await servicesGET(buildRequest("http://localhost:3000/api/admin/services"))
+    const res = await servicesGET(buildRequest("http://localhost:3000/api/admin/services"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(401)
     const body = await res.json()
@@ -172,7 +174,9 @@ describe("GET /api/admin/services — list", () => {
     vi.mocked(db.service.findMany).mockResolvedValueOnce(mockServices as any)
     vi.mocked(db.service.count).mockResolvedValueOnce(2)
 
-    const res = await servicesGET(buildRequest("http://localhost:3000/api/admin/services"))
+    const res = await servicesGET(buildRequest("http://localhost:3000/api/admin/services"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -201,7 +205,7 @@ describe("GET /api/admin/services — list", () => {
     const req = buildRequest(
       "http://localhost:3000/api/admin/services?q=limpeza&providerId=p-1&categoryId=c-1&active=true",
     )
-    await servicesGET(req)
+    await servicesGET(req, { params: Promise.resolve({}) })
 
     const where = vi.mocked(db.service.findMany).mock.calls[0][0]?.where
     expect(where).toMatchObject({
@@ -217,7 +221,9 @@ describe("GET /api/admin/services — list", () => {
     vi.mocked(db.service.findMany).mockResolvedValueOnce([] as any)
     vi.mocked(db.service.count).mockResolvedValueOnce(0)
 
-    await servicesGET(buildRequest("http://localhost:3000/api/admin/services?active=false"))
+    await servicesGET(buildRequest("http://localhost:3000/api/admin/services?active=false"), {
+      params: Promise.resolve({}),
+    })
 
     const where = vi.mocked(db.service.findMany).mock.calls[0][0]?.where
     expect(where).toEqual({ active: false })
@@ -232,7 +238,7 @@ describe("GET /api/admin/stats — auth guard", () => {
   it("returns 401 when auth fails", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await statsGET(mockRequest())
+    const res = await statsGET(mockRequest(), { params: Promise.resolve({}) })
 
     expect(res.status).toBe(401)
   })
@@ -311,7 +317,7 @@ describe("GET /api/admin/stats — aggregation", () => {
   it("aggregates users, bookings, quotes, revenue and top providers", async () => {
     mockQueries()
 
-    const res = await statsGET(mockRequest())
+    const res = await statsGET(mockRequest(), { params: Promise.resolve({}) })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -349,7 +355,7 @@ describe("GET /api/admin/stats — aggregation", () => {
     vi.mocked(db.booking.findMany).mockResolvedValueOnce([] as any)
     vi.mocked(db.user.findMany).mockResolvedValueOnce([] as any)
 
-    const res = await statsGET(mockRequest())
+    const res = await statsGET(mockRequest(), { params: Promise.resolve({}) })
     const body = await res.json()
 
     expect(body.usersByRole).toEqual({})
@@ -370,7 +376,9 @@ describe("GET /api/admin/users — auth guard", () => {
   it("returns 401 when auth fails", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await usersGET(buildRequest("http://localhost:3000/api/admin/users"))
+    const res = await usersGET(buildRequest("http://localhost:3000/api/admin/users"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(401)
   })
@@ -408,6 +416,7 @@ describe("GET /api/admin/users — list and pagination", () => {
 
     const res = await usersGET(
       buildRequest("http://localhost:3000/api/admin/users?page=2&limit=10"),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -452,7 +461,9 @@ describe("GET /api/admin/users — list and pagination", () => {
     vi.mocked(requireRole).mockResolvedValueOnce(MOCK_SESSION)
     vi.mocked(db.user.findMany).mockRejectedValueOnce(new Error("db exploded"))
 
-    const res = await usersGET(buildRequest("http://localhost:3000/api/admin/users"))
+    const res = await usersGET(buildRequest("http://localhost:3000/api/admin/users"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(500)
     expect(handleError).toHaveBeenCalledOnce()
@@ -503,6 +514,7 @@ describe("GET /api/admin/users — geo distance and radius", () => {
 
     const res = await usersGET(
       buildRequest("http://localhost:3000/api/admin/users?lat=-23.55&lng=-46.63"),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -521,6 +533,7 @@ describe("GET /api/admin/users — geo distance and radius", () => {
 
     const res = await usersGET(
       buildRequest("http://localhost:3000/api/admin/users?lat=-23.55&lng=-46.63&radius=10"),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 

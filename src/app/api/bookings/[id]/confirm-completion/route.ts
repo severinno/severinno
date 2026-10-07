@@ -4,18 +4,20 @@ import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
+import { badRequest, forbidden, notFound } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { notifyPaymentConfirmed } from "@/lib/notifications"
+import { toMoneyNumber } from "@/lib/money"
 
-type Params = { params: Promise<{ id: string }> }
+import { withParams } from "@/lib/api-route"
 
 /**
  * POST /api/bookings/[id]/confirm-completion
  * Client confirms service delivery, releasing escrow funds to provider.
  */
-export async function POST(_request: Request, { params }: Params) {
-  try {
+export const POST = withParams<{ id: string }>(
+  "api.bookings.:id.confirm-completion.POST",
+  async (_request, { params }) => {
     await assertRateLimit(_request, RATE_LIMITS.bookings)
     const session = await requireUser()
     const { id } = await params
@@ -64,8 +66,8 @@ export async function POST(_request: Request, { params }: Params) {
     ])
 
     // Notify provider that escrow was released
-    notifyPaymentConfirmed(booking.providerId, booking.id, booking.amount).catch((err) =>
-      logger.warn({ err }, "payment notification failed (fire-and-forget)"),
+    notifyPaymentConfirmed(booking.providerId, booking.id, toMoneyNumber(booking.amount)).catch(
+      (err) => logger.warn({ err }, "payment notification failed (fire-and-forget)"),
     )
 
     return NextResponse.json({
@@ -73,7 +75,5 @@ export async function POST(_request: Request, { params }: Params) {
       message: "Conclusão confirmada e pagamento liberado ao prestador com sucesso!",
       booking: updated,
     })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

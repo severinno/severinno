@@ -60,7 +60,7 @@ describe("POST & DELETE /api/push/subscribe and /api/push/click", () => {
       }),
     })
 
-    const res = await unsubscribePush(req)
+    const res = await unsubscribePush(req, { params: Promise.resolve({}) })
     const json = await res.json()
 
     expect(res.status).toBe(200)

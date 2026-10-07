@@ -23,11 +23,12 @@ export const dynamic = "force-dynamic"
  * ```
  */
 
-import { handleError } from "@/lib/api-server"
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { haversineKm } from "@/lib/geo-server"
+
+import { withRoute } from "@/lib/api-route"
 
 export type CoverageProvider = {
   id: string
@@ -72,73 +73,69 @@ const GAP_THRESHOLD = 2
 
 // ── Route ────────────────────────────────────────────────────────────────
 
-export async function GET(request: Request) {
-  try {
-    await requireRole("ADMIN")
-    const { assertRateLimit, RATE_LIMITS } = await import("@/lib/rate-limit")
-    await assertRateLimit(request, RATE_LIMITS.admin)
+export const GET = withRoute("api.admin.coverage.GET", async (request) => {
+  await requireRole("ADMIN")
+  const { assertRateLimit, RATE_LIMITS } = await import("@/lib/rate-limit")
+  await assertRateLimit(request, RATE_LIMITS.admin)
 
-    // Fetch all active, verified providers with location data
-    const users = await db.user.findMany({
-      where: {
-        role: "PROVIDER",
-        active: true,
-        lat: { not: null },
-        lng: { not: null },
-        radiusKm: { not: null, gt: 0 },
-      },
-      select: {
-        id: true,
-        name: true,
-        lat: true,
-        lng: true,
-        radiusKm: true,
-        city: true,
-        state: true,
-      },
-    })
+  // Fetch all active, verified providers with location data
+  const users = await db.user.findMany({
+    where: {
+      role: "PROVIDER",
+      active: true,
+      lat: { not: null },
+      lng: { not: null },
+      radiusKm: { not: null, gt: 0 },
+    },
+    select: {
+      id: true,
+      name: true,
+      lat: true,
+      lng: true,
+      radiusKm: true,
+      city: true,
+      state: true,
+    },
+  })
 
-    const providers: CoverageProvider[] = users.map((u) => ({
-      id: u.id,
-      name: u.name,
-      lat: u.lat!,
-      lng: u.lng!,
-      radiusKm: u.radiusKm!,
-      city: u.city,
-      state: u.state,
-    }))
+  const providers: CoverageProvider[] = users.map((u) => ({
+    id: u.id,
+    name: u.name,
+    lat: u.lat!,
+    lng: u.lng!,
+    radiusKm: u.radiusKm!,
+    city: u.city,
+    state: u.state,
+  }))
 
-    const total = await db.user.count({
-      where: { role: "PROVIDER", active: true },
-    })
+  const total = await db.user.count({
+    where: { role: "PROVIDER", active: true },
+  })
 
-    // Compute bounding box
-    let bounds: CoverageResponse["bounds"] = null
-    if (providers.length > 0) {
-      const lats = providers.map((p) => p.lat)
-      const lngs = providers.map((p) => p.lng)
-      bounds = {
-        minLat: Math.min(...lats),
-        maxLat: Math.max(...lats),
-        minLng: Math.min(...lngs),
-        maxLng: Math.max(...lngs),
-      }
+  // Compute bounding box
+  let bounds: CoverageResponse["bounds"] = null
+  if (providers.length > 0) {
+    const lats = providers.map((p) => p.lat)
+    const lngs = providers.map((p) => p.lng)
+    bounds = {
+      minLat: Math.min(...lats),
+      maxLat: Math.max(...lats),
+      minLng: Math.min(...lngs),
+      maxLng: Math.max(...lngs),
     }
-
-    // Compute coverage grid
-    const grid = computeCoverageGrid(providers)
-
-    return NextResponse.json({
-      providers,
-      total,
-      withLocation: providers.length,
-      grid,
-      bounds,
-    })
-  } catch (e) {
-    return handleError(e)
   }
-}
+
+  // Compute coverage grid
+  const grid = computeCoverageGrid(providers)
+
+  return NextResponse.json({
+    providers,
+    total,
+    withLocation: providers.length,
+    grid,
+    bounds,
+  })
+})
 
 // ── Grid computation ──────────────────────────────────────────────────────
 

@@ -3,9 +3,11 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { handleError, badRequest, forbidden, notFound } from "@/lib/api-server"
+import { badRequest, forbidden, notFound } from "@/lib/api-server"
 import { notifyBookingStatus } from "@/lib/notifications"
 import logger from "@/lib/logger"
+
+import { withRoute } from "@/lib/api-route"
 
 /**
  * Atualiza o registro PushAnalytics mais recente para o par
@@ -72,113 +74,109 @@ async function logPushAction(
  *   reject → Cancela o agendamento (provider)
  *   view   → Marca como lido e redireciona (qualquer role)
  */
-export async function POST(request: Request) {
-  try {
-    const session = await requireUser()
-    const body = await request.json()
-    const { action, bookingId } = body
+export const POST = withRoute("api.push.action.POST", async (request) => {
+  const session = await requireUser()
+  const body = await request.json()
+  const { action, bookingId } = body
 
-    if (!action || !bookingId) {
-      throw badRequest("action e bookingId são obrigatórios")
+  if (!action || !bookingId) {
+    throw badRequest("action e bookingId são obrigatórios")
+  }
+
+  if (!["accept", "reject", "view"].includes(action)) {
+    throw badRequest(`Ação inválida: ${action}. Use: accept, reject, view`)
+  }
+
+  logger.info({ userId: session.userId, action, bookingId }, "push action triggered")
+
+  // Fetch booking to validate permission
+  const booking = await db.booking.findUnique({
+    where: { id: bookingId },
+    select: {
+      id: true,
+      clientId: true,
+      providerId: true,
+      status: true,
+      service: { select: { title: true } },
+    },
+  })
+
+  if (!booking) throw notFound("Agendamento não encontrado")
+
+  // ── Accept (provider confirms booking) ─────────────────────────────
+  if (action === "accept") {
+    if (session.userId !== booking.providerId) {
+      throw forbidden("Apenas o prestador pode confirmar o agendamento")
+    }
+    if (booking.status !== "PENDING") {
+      throw badRequest(`Agendamento já está "${booking.status}". Não é possível confirmar.`)
     }
 
-    if (!["accept", "reject", "view"].includes(action)) {
-      throw badRequest(`Ação inválida: ${action}. Use: accept, reject, view`)
-    }
-
-    logger.info({ userId: session.userId, action, bookingId }, "push action triggered")
-
-    // Fetch booking to validate permission
-    const booking = await db.booking.findUnique({
+    await db.booking.update({
       where: { id: bookingId },
-      select: {
-        id: true,
-        clientId: true,
-        providerId: true,
-        status: true,
-        service: { select: { title: true } },
-      },
+      data: { status: "CONFIRMED" },
     })
 
-    if (!booking) throw notFound("Agendamento não encontrado")
+    // Log action in PushAnalytics
+    await logPushAction(session.userId, bookingId, "accept", "CONFIRMED")
 
-    // ── Accept (provider confirms booking) ─────────────────────────────
-    if (action === "accept") {
-      if (session.userId !== booking.providerId) {
-        throw forbidden("Apenas o prestador pode confirmar o agendamento")
-      }
-      if (booking.status !== "PENDING") {
-        throw badRequest(`Agendamento já está "${booking.status}". Não é possível confirmar.`)
-      }
+    // Notify both parties
+    await Promise.allSettled([
+      notifyBookingStatus(booking.clientId, bookingId, "CONFIRMED", booking.service.title),
+      notifyBookingStatus(booking.providerId, bookingId, "CONFIRMED", booking.service.title),
+    ])
 
-      await db.booking.update({
-        where: { id: bookingId },
-        data: { status: "CONFIRMED" },
-      })
+    return NextResponse.json({
+      ok: true,
+      action: "confirmed",
+      message: "Agendamento confirmado com sucesso!",
+      redirectUrl: `/dashboard?tab=bookings&booking=${bookingId}`,
+    })
+  }
 
-      // Log action in PushAnalytics
-      await logPushAction(session.userId, bookingId, "accept", "CONFIRMED")
-
-      // Notify both parties
-      await Promise.allSettled([
-        notifyBookingStatus(booking.clientId, bookingId, "CONFIRMED", booking.service.title),
-        notifyBookingStatus(booking.providerId, bookingId, "CONFIRMED", booking.service.title),
-      ])
-
-      return NextResponse.json({
-        ok: true,
-        action: "confirmed",
-        message: "Agendamento confirmado com sucesso!",
-        redirectUrl: `/dashboard?tab=bookings&booking=${bookingId}`,
-      })
+  // ── Reject (provider cancels booking) ──────────────────────────────
+  if (action === "reject") {
+    if (session.userId !== booking.providerId) {
+      throw forbidden("Apenas o prestador pode recusar o agendamento")
+    }
+    if (booking.status !== "PENDING") {
+      throw badRequest(`Agendamento já está "${booking.status}". Não é possível recusar.`)
     }
 
-    // ── Reject (provider cancels booking) ──────────────────────────────
-    if (action === "reject") {
-      if (session.userId !== booking.providerId) {
-        throw forbidden("Apenas o prestador pode recusar o agendamento")
-      }
-      if (booking.status !== "PENDING") {
-        throw badRequest(`Agendamento já está "${booking.status}". Não é possível recusar.`)
-      }
+    await db.booking.update({
+      where: { id: bookingId },
+      data: { status: "CANCELLED" },
+    })
 
-      await db.booking.update({
-        where: { id: bookingId },
-        data: { status: "CANCELLED" },
-      })
+    // Log action in PushAnalytics
+    await logPushAction(session.userId, bookingId, "reject", "CANCELLED")
 
-      // Log action in PushAnalytics
-      await logPushAction(session.userId, bookingId, "reject", "CANCELLED")
-
-      // Notify client
-      await notifyBookingStatus(
-        booking.clientId,
-        bookingId,
-        "CANCELLED",
-        booking.service.title,
-        "O prestador recusou o agendamento.",
-      )
-
-      return NextResponse.json({
-        ok: true,
-        action: "cancelled",
-        message: "Agendamento recusado.",
-        redirectUrl: `/dashboard?tab=bookings`,
-      })
-    }
-
-    // ── View (just mark as read, already handled by SW opening URL) ────
-    await logPushAction(session.userId, bookingId, "view", "viewed").catch((err) =>
-      logger.warn({ err }, "push action log failed"),
+    // Notify client
+    await notifyBookingStatus(
+      booking.clientId,
+      bookingId,
+      "CANCELLED",
+      booking.service.title,
+      "O prestador recusou o agendamento.",
     )
 
     return NextResponse.json({
       ok: true,
-      action: "viewed",
-      message: "Redirecionando...",
-      redirectUrl: `/dashboard?tab=bookings&booking=${bookingId}`,
+      action: "cancelled",
+      message: "Agendamento recusado.",
+      redirectUrl: `/dashboard?tab=bookings`,
     })
-  } catch (e) {
-    return handleError(e)
   }
-}
+
+  // ── View (just mark as read, already handled by SW opening URL) ────
+  await logPushAction(session.userId, bookingId, "view", "viewed").catch((err) =>
+    logger.warn({ err }, "push action log failed"),
+  )
+
+  return NextResponse.json({
+    ok: true,
+    action: "viewed",
+    message: "Redirecionando...",
+    redirectUrl: `/dashboard?tab=bookings&booking=${bookingId}`,
+  })
+})

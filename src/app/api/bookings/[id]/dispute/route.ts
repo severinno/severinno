@@ -3,12 +3,12 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
+import { badRequest, forbidden, notFound } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { z } from "zod"
 import { sanitizeText } from "@/lib/sanitize"
 
-type Params = { params: Promise<{ id: string }> }
+import { withParams } from "@/lib/api-route"
 
 const disputeSchema = z.object({
   reason: z.string().min(10, "Descreva o motivo da disputa com pelo menos 10 caracteres"),
@@ -18,8 +18,9 @@ const disputeSchema = z.object({
  * POST /api/bookings/[id]/dispute
  * Client opens a mediation dispute for a booking held in escrow.
  */
-export async function POST(request: Request, { params }: Params) {
-  try {
+export const POST = withParams<{ id: string }>(
+  "api.bookings.:id.dispute.POST",
+  async (request, { params }) => {
     await assertRateLimit(request, RATE_LIMITS.bookings)
     const session = await requireUser()
     const { id } = await params
@@ -67,7 +68,5 @@ export async function POST(request: Request, { params }: Params) {
       },
       { status: 201 },
     )
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

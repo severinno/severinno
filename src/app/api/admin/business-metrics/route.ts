@@ -4,9 +4,12 @@ import { NextResponse } from "next/server"
 import { type BookingStatus } from "@prisma/client"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
+
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { toMoneyNumber } from "@/lib/money"
 import { FEE_RATE } from "@/lib/constants"
+
+import { withRoute } from "@/lib/api-route"
 
 export type BusinessMetricsResponse = {
   gmv: number // Gross Merchandise Volume
@@ -29,66 +32,64 @@ export type BusinessMetricsResponse = {
  * GET /api/admin/business-metrics
  * Returns executive marketplace SaaS KPIs (GMV, Platform Net Revenue, Take Rate, Top Districts).
  */
-export async function GET(request: Request) {
-  try {
-    await assertRateLimit(request, RATE_LIMITS.admin)
-    await requireRole("ADMIN")
+export const GET = withRoute("api.admin.business-metrics.GET", async (request) => {
+  await assertRateLimit(request, RATE_LIMITS.admin)
+  await requireRole("ADMIN")
 
-    const activeStatuses: BookingStatus[] = ["COMPLETED", "CONFIRMED", "IN_PROGRESS"]
+  const activeStatuses: BookingStatus[] = ["COMPLETED", "CONFIRMED", "IN_PROGRESS"]
 
-    // 1. Aggregate bookings summary via SQL
-    const [bookingStats, completedCount] = await Promise.all([
-      db.booking.aggregate({
-        where: { status: { in: activeStatuses } },
-        _sum: { amount: true },
-        _count: true,
-      }),
-      db.booking.count({
-        where: { status: "COMPLETED" as BookingStatus },
-      }),
-    ])
-
-    const gmv = bookingStats._sum?.amount ?? 0
-    const totalBookings = bookingStats._count
-    const platformRevenue = Math.round(gmv * FEE_RATE * 100) / 100
-    const avgTicket = totalBookings > 0 ? Math.round((gmv / totalBookings) * 100) / 100 : 0
-    const completionRate =
-      totalBookings > 0 ? Math.round((completedCount / totalBookings) * 100) : 0
-
-    // 2. User base metrics
-    const [clientsCount, providersCount, verifiedCount] = await Promise.all([
-      db.user.count({ where: { role: "CLIENT", active: true } }),
-      db.user.count({ where: { role: "PROVIDER", active: true } }),
-      db.user.count({ where: { role: "PROVIDER", verified: true, active: true } }),
-    ])
-
-    // 3. Category breakdown via SQL groupBy
-    const categoryStats = await db.booking.groupBy({
-      by: ["serviceId"],
+  // 1. Aggregate bookings summary via SQL
+  const [bookingStats, completedCount] = await Promise.all([
+    db.booking.aggregate({
       where: { status: { in: activeStatuses } },
-      _count: true,
       _sum: { amount: true },
-      orderBy: { _sum: { amount: "desc" } },
-      take: 5,
-    })
+      _count: true,
+    }),
+    db.booking.count({
+      where: { status: "COMPLETED" as BookingStatus },
+    }),
+  ])
 
-    const serviceIds = categoryStats.map((c) => c.serviceId)
-    const services = await db.service.findMany({
-      where: { id: { in: serviceIds } },
-      select: { id: true, title: true },
-    })
-    const serviceTitleMap = new Map(services.map((s) => [s.id, s.title]))
+  const gmv = toMoneyNumber(bookingStats._sum?.amount)
+  const totalBookings = bookingStats._count
+  const platformRevenue = Math.round(gmv * FEE_RATE * 100) / 100
+  const avgTicket = totalBookings > 0 ? Math.round((gmv / totalBookings) * 100) / 100 : 0
+  const completionRate = totalBookings > 0 ? Math.round((completedCount / totalBookings) * 100) : 0
 
-    const topCategories = categoryStats.map((c) => ({
-      title: serviceTitleMap.get(c.serviceId) ?? "Desconhecido",
-      count: c._count,
-      totalRevenue: Math.round((c._sum?.amount ?? 0) * 100) / 100,
-    }))
+  // 2. User base metrics
+  const [clientsCount, providersCount, verifiedCount] = await Promise.all([
+    db.user.count({ where: { role: "CLIENT", active: true } }),
+    db.user.count({ where: { role: "PROVIDER", active: true } }),
+    db.user.count({ where: { role: "PROVIDER", verified: true, active: true } }),
+  ])
 
-    // 4. District breakdown via raw SQL aggregation
-    const districtStats = await db.$queryRaw<
-      Array<{ district: string; count: bigint; total_gmv: number }>
-    >`
+  // 3. Category breakdown via SQL groupBy
+  const categoryStats = await db.booking.groupBy({
+    by: ["serviceId"],
+    where: { status: { in: activeStatuses } },
+    _count: true,
+    _sum: { amount: true },
+    orderBy: { _sum: { amount: "desc" } },
+    take: 5,
+  })
+
+  const serviceIds = categoryStats.map((c) => c.serviceId)
+  const services = await db.service.findMany({
+    where: { id: { in: serviceIds } },
+    select: { id: true, title: true },
+  })
+  const serviceTitleMap = new Map(services.map((s) => [s.id, s.title]))
+
+  const topCategories = categoryStats.map((c) => ({
+    title: serviceTitleMap.get(c.serviceId) ?? "Desconhecido",
+    count: c._count,
+    totalRevenue: toMoneyNumber(c._sum?.amount),
+  }))
+
+  // 4. District breakdown via raw SQL aggregation
+  const districtStats = await db.$queryRaw<
+    Array<{ district: string; count: bigint; total_gmv: number }>
+  >`
       SELECT
         COALESCE(u.district, 'Centro / Geral') AS district,
         COUNT(b.id)::bigint AS count,
@@ -101,34 +102,31 @@ export async function GET(request: Request) {
       LIMIT 5
     `
 
-    const topDistricts = districtStats.map((d) => ({
-      district: d.district,
-      count: Number(d.count),
-      totalGmv: Number(d.total_gmv),
-    }))
+  const topDistricts = districtStats.map((d) => ({
+    district: d.district,
+    count: Number(d.count),
+    totalGmv: Number(d.total_gmv),
+  }))
 
-    const responseData: BusinessMetricsResponse = {
-      gmv: Math.round(gmv * 100) / 100,
-      platformRevenue,
-      takeRatePercent: Math.round(FEE_RATE * 100),
-      avgTicket,
-      totalBookings,
-      completedBookings: completedCount,
-      completionRatePercent: completionRate,
-      activeUsers: {
-        clients: clientsCount,
-        providers: providersCount,
-        verifiedProviders: verifiedCount,
-      },
-      topCategories,
-      topDistricts,
-    }
-
-    return NextResponse.json({
-      ok: true,
-      metrics: responseData,
-    })
-  } catch (e) {
-    return handleError(e)
+  const responseData: BusinessMetricsResponse = {
+    gmv: Math.round(gmv * 100) / 100,
+    platformRevenue,
+    takeRatePercent: Math.round(FEE_RATE * 100),
+    avgTicket,
+    totalBookings,
+    completedBookings: completedCount,
+    completionRatePercent: completionRate,
+    activeUsers: {
+      clients: clientsCount,
+      providers: providersCount,
+      verifiedProviders: verifiedCount,
+    },
+    topCategories,
+    topDistricts,
   }
-}
+
+  return NextResponse.json({
+    ok: true,
+    metrics: responseData,
+  })
+})

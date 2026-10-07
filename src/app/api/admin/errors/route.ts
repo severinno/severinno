@@ -16,10 +16,12 @@ export const dynamic = "force-dynamic"
  *   GET /api/admin/errors?endpoint=/api/bookings
  */
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
+
 import logger from "@/lib/logger"
+
+import { withRoute } from "@/lib/api-route"
 
 // ── Tipos ─────────────────────────────────────────────────────────────────
 
@@ -109,49 +111,45 @@ interface SentryConfig {
 
 // ── Handler ───────────────────────────────────────────────────────────────
 
-export async function GET(request: NextRequest) {
-  try {
-    await requireRole("ADMIN")
-    const { assertRateLimit, RATE_LIMITS } = await import("@/lib/rate-limit")
-    await assertRateLimit(request, RATE_LIMITS.admin)
+export const GET = withRoute("api.admin.errors.GET", async (request) => {
+  await requireRole("ADMIN")
+  const { assertRateLimit, RATE_LIMITS } = await import("@/lib/rate-limit")
+  await assertRateLimit(request, RATE_LIMITS.admin)
 
-    const { searchParams } = new URL(request.url)
-    const period = searchParams.get("period") ?? "24h"
+  const { searchParams } = new URL(request.url)
+  const period = searchParams.get("period") ?? "24h"
 
-    const dsn = process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN || ""
+  const dsn = process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN || ""
 
-    // Error aggregation not yet connected — return real config + empty data
-    const data: ErrorTrendsData = {
-      period,
-      collectedAt: new Date().toISOString(),
-      summary: {
-        totalErrors: 0,
-        uniqueEndpoints: 0,
-        uniqueUsers: 0,
-        uniqueVersions: 0,
-        changeFromPrevious: 0,
-        avgErrorsPerHour: 0,
-        peakHour: 0,
-        peakCount: 0,
-      },
-      byEndpoint: [],
-      byUser: [],
-      byVersion: [],
-      timeline: [],
-      topErrors: [],
-      sentryConfig: {
-        configured: dsn.length > 0,
-        dsnPresent: dsn.length > 0,
-        tracesSampleRate: Number(process.env.SENTRY_TRACE_SAMPLE_RATE ?? 0.3),
-        profilesSampleRate: Number(process.env.SENTRY_PROFILE_SAMPLE_RATE ?? 0.1),
-        release: process.env.SENTRY_RELEASE || process.env.VERCEL_GIT_COMMIT_SHA || undefined,
-        environment: process.env.NODE_ENV || "development",
-      },
-    }
-
-    logger.info("[errors] error trends requested (not yet aggregated)")
-    return NextResponse.json(data)
-  } catch (e) {
-    return handleError(e)
+  // Error aggregation not yet connected — return real config + empty data
+  const data: ErrorTrendsData = {
+    period,
+    collectedAt: new Date().toISOString(),
+    summary: {
+      totalErrors: 0,
+      uniqueEndpoints: 0,
+      uniqueUsers: 0,
+      uniqueVersions: 0,
+      changeFromPrevious: 0,
+      avgErrorsPerHour: 0,
+      peakHour: 0,
+      peakCount: 0,
+    },
+    byEndpoint: [],
+    byUser: [],
+    byVersion: [],
+    timeline: [],
+    topErrors: [],
+    sentryConfig: {
+      configured: dsn.length > 0,
+      dsnPresent: dsn.length > 0,
+      tracesSampleRate: Number(process.env.SENTRY_TRACE_SAMPLE_RATE ?? 0.3),
+      profilesSampleRate: Number(process.env.SENTRY_PROFILE_SAMPLE_RATE ?? 0.1),
+      release: process.env.SENTRY_RELEASE || process.env.VERCEL_GIT_COMMIT_SHA || undefined,
+      environment: process.env.NODE_ENV || "development",
+    },
   }
-}
+
+  logger.info("[errors] error trends requested (not yet aggregated)")
+  return NextResponse.json(data)
+})

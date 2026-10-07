@@ -18,6 +18,16 @@ vi.mock("@/lib/rate-limit", () => ({
   },
 }))
 
+// Guard progressivo por fingerprint — no-op nos testes de rota.
+vi.mock("@/lib/auth-rate-limit", () => ({
+  authFingerprintGuard: vi.fn(async () => ({
+    fingerprint: "test:fp",
+    blocked: false,
+    response: null,
+    recordFailure: vi.fn().mockResolvedValue(undefined),
+  })),
+}))
+
 vi.mock("@/lib/logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -85,7 +95,7 @@ describe("POST /api/auth/2fa/setup", () => {
       twoFactorEnabled: false,
     })
 
-    const res = await setup(createMockRequest({ method: "POST" }))
+    const res = await setup(createMockRequest({ method: "POST" }), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -105,14 +115,14 @@ describe("POST /api/auth/2fa/setup", () => {
       twoFactorEnabled: true,
     })
 
-    const res = await setup(createMockRequest({ method: "POST" }))
+    const res = await setup(createMockRequest({ method: "POST" }), { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
   })
 
   it("returns 404 if user not found", async () => {
     ;(vi.mocked(db.user.findUnique) as any).mockResolvedValue(null)
 
-    const res = await setup(createMockRequest({ method: "POST" }))
+    const res = await setup(createMockRequest({ method: "POST" }), { params: Promise.resolve({}) })
     expect(res.status).toBe(404)
   })
 })
@@ -130,7 +140,9 @@ describe("POST /api/auth/2fa/enable", () => {
       twoFactorSecret: "JBSWY3DPEHPK3PXP",
     })
 
-    const res = await enable(createMockRequest({ method: "POST", body: { code: "123456" } }))
+    const res = await enable(createMockRequest({ method: "POST", body: { code: "123456" } }), {
+      params: Promise.resolve({}),
+    })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -146,7 +158,9 @@ describe("POST /api/auth/2fa/enable", () => {
   })
 
   it("returns 400 if no code provided", async () => {
-    const res = await enable(createMockRequest({ method: "POST", body: {} }))
+    const res = await enable(createMockRequest({ method: "POST", body: {} }), {
+      params: Promise.resolve({}),
+    })
     expect(res.status).toBe(400)
   })
 
@@ -157,7 +171,9 @@ describe("POST /api/auth/2fa/enable", () => {
       twoFactorSecret: "JBSWY3DPEHPK3PXP",
     })
 
-    const res = await enable(createMockRequest({ method: "POST", body: { code: "123456" } }))
+    const res = await enable(createMockRequest({ method: "POST", body: { code: "123456" } }), {
+      params: Promise.resolve({}),
+    })
     expect(res.status).toBe(400)
   })
 
@@ -168,7 +184,9 @@ describe("POST /api/auth/2fa/enable", () => {
       twoFactorSecret: null,
     })
 
-    const res = await enable(createMockRequest({ method: "POST", body: { code: "123456" } }))
+    const res = await enable(createMockRequest({ method: "POST", body: { code: "123456" } }), {
+      params: Promise.resolve({}),
+    })
     expect(res.status).toBe(400)
   })
 
@@ -180,7 +198,9 @@ describe("POST /api/auth/2fa/enable", () => {
     })
     vi.mocked(verifyTOTP).mockReturnValueOnce(false)
 
-    const res = await enable(createMockRequest({ method: "POST", body: { code: "000000" } }))
+    const res = await enable(createMockRequest({ method: "POST", body: { code: "000000" } }), {
+      params: Promise.resolve({}),
+    })
     expect(res.status).toBe(400)
   })
 })
@@ -207,6 +227,7 @@ describe("POST /api/auth/2fa/verify", () => {
         method: "POST",
         body: { tempToken: "tok-123", code: "123456" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -223,6 +244,7 @@ describe("POST /api/auth/2fa/verify", () => {
         method: "POST",
         body: { tempToken: "expired", code: "123456" },
       }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(400)
   })
@@ -244,6 +266,7 @@ describe("POST /api/auth/2fa/verify", () => {
         method: "POST",
         body: { tempToken: "tok-123", code: "000000" },
       }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(401)
   })
@@ -264,6 +287,7 @@ describe("POST /api/auth/2fa/verify", () => {
         method: "POST",
         body: { tempToken: "tok-123", code: "AAAA-BBBB", isBackupCode: true },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -276,13 +300,16 @@ describe("POST /api/auth/2fa/verify", () => {
   })
 
   it("returns 400 if missing tempToken", async () => {
-    const res = await verify2fa(createMockRequest({ method: "POST", body: { code: "123456" } }))
+    const res = await verify2fa(createMockRequest({ method: "POST", body: { code: "123456" } }), {
+      params: Promise.resolve({}),
+    })
     expect(res.status).toBe(400)
   })
 
   it("returns 400 if missing code", async () => {
     const res = await verify2fa(
       createMockRequest({ method: "POST", body: { tempToken: "tok-123" } }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(400)
   })
@@ -301,7 +328,9 @@ describe("POST /api/auth/2fa/disable", () => {
       twoFactorSecret: "JBSWY3DPEHPK3PXP",
     })
 
-    const res = await disable(createMockRequest({ method: "POST", body: { code: "123456" } }))
+    const res = await disable(createMockRequest({ method: "POST", body: { code: "123456" } }), {
+      params: Promise.resolve({}),
+    })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -323,7 +352,9 @@ describe("POST /api/auth/2fa/disable", () => {
       twoFactorSecret: null,
     })
 
-    const res = await disable(createMockRequest({ method: "POST", body: { code: "123456" } }))
+    const res = await disable(createMockRequest({ method: "POST", body: { code: "123456" } }), {
+      params: Promise.resolve({}),
+    })
     expect(res.status).toBe(400)
   })
 
@@ -335,12 +366,16 @@ describe("POST /api/auth/2fa/disable", () => {
     })
     vi.mocked(verifyTOTP).mockReturnValueOnce(false)
 
-    const res = await disable(createMockRequest({ method: "POST", body: { code: "000000" } }))
+    const res = await disable(createMockRequest({ method: "POST", body: { code: "000000" } }), {
+      params: Promise.resolve({}),
+    })
     expect(res.status).toBe(400)
   })
 
   it("returns 400 if no code provided", async () => {
-    const res = await disable(createMockRequest({ method: "POST", body: {} }))
+    const res = await disable(createMockRequest({ method: "POST", body: {} }), {
+      params: Promise.resolve({}),
+    })
     expect(res.status).toBe(400)
   })
 })
@@ -358,7 +393,9 @@ describe("POST /api/auth/2fa/backup-codes", () => {
       twoFactorSecret: "JBSWY3DPEHPK3PXP",
     })
 
-    const res = await backupCodes(createMockRequest({ method: "POST", body: { code: "123456" } }))
+    const res = await backupCodes(createMockRequest({ method: "POST", body: { code: "123456" } }), {
+      params: Promise.resolve({}),
+    })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -377,7 +414,9 @@ describe("POST /api/auth/2fa/backup-codes", () => {
       twoFactorSecret: null,
     })
 
-    const res = await backupCodes(createMockRequest({ method: "POST", body: { code: "123456" } }))
+    const res = await backupCodes(createMockRequest({ method: "POST", body: { code: "123456" } }), {
+      params: Promise.resolve({}),
+    })
     expect(res.status).toBe(400)
   })
 
@@ -389,12 +428,16 @@ describe("POST /api/auth/2fa/backup-codes", () => {
     })
     vi.mocked(verifyTOTP).mockReturnValueOnce(false)
 
-    const res = await backupCodes(createMockRequest({ method: "POST", body: { code: "000000" } }))
+    const res = await backupCodes(createMockRequest({ method: "POST", body: { code: "000000" } }), {
+      params: Promise.resolve({}),
+    })
     expect(res.status).toBe(400)
   })
 
   it("returns 400 if no code provided", async () => {
-    const res = await backupCodes(createMockRequest({ method: "POST", body: {} }))
+    const res = await backupCodes(createMockRequest({ method: "POST", body: {} }), {
+      params: Promise.resolve({}),
+    })
     expect(res.status).toBe(400)
   })
 })
@@ -410,7 +453,7 @@ describe("GET /api/auth/2fa/status", () => {
       twoFactorEnabled: true,
     })
 
-    const res = await status(createMockRequest())
+    const res = await status(createMockRequest(), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -422,7 +465,7 @@ describe("GET /api/auth/2fa/status", () => {
       twoFactorEnabled: false,
     })
 
-    const res = await status(createMockRequest())
+    const res = await status(createMockRequest(), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -432,7 +475,7 @@ describe("GET /api/auth/2fa/status", () => {
   it("returns 404 if user not found", async () => {
     ;(vi.mocked(db.user.findUnique) as any).mockResolvedValue(null)
 
-    const res = await status(createMockRequest())
+    const res = await status(createMockRequest(), { params: Promise.resolve({}) })
     expect(res.status).toBe(404)
   })
 })

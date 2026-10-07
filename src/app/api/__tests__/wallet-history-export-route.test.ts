@@ -79,7 +79,7 @@ describe("GET /api/provider/wallet/history/export", () => {
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/provider/wallet/history/export")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     expect(res.status).toBe(200)
     expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8")
@@ -93,7 +93,7 @@ describe("GET /api/provider/wallet/history/export", () => {
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/provider/wallet/history/export")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const csv = await res.text()
 
     expect(csv).toContain("=== RESUMO ===")
@@ -109,7 +109,7 @@ describe("GET /api/provider/wallet/history/export", () => {
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/provider/wallet/history/export")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const csv = await res.text()
 
     expect(csv).toContain("Data,Descrição,Cliente,Valor Bruto,Taxa (15%),Valor Líquido,Status")
@@ -120,7 +120,7 @@ describe("GET /api/provider/wallet/history/export", () => {
     mockDb.walletTransaction.findMany.mockResolvedValue(mockWithdrawals)
 
     const req = new Request("http://localhost/api/provider/wallet/history/export")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const csv = await res.text()
 
     expect(csv).toContain("Sacado")
@@ -132,7 +132,7 @@ describe("GET /api/provider/wallet/history/export", () => {
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/provider/wallet/history/export?type=paid")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const csv = await res.text()
 
     expect(csv).toContain("Total de transações,2")
@@ -146,7 +146,7 @@ describe("GET /api/provider/wallet/history/export", () => {
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/provider/wallet/history/export")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const csv = await res.text()
 
     expect(csv).toContain("Total de transações,0")
@@ -159,7 +159,7 @@ describe("GET /api/provider/wallet/history/export", () => {
     vi.mocked(requireUser).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
     const req = new Request("http://localhost/api/provider/wallet/history/export")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     expect(res.status).toBe(401)
   })

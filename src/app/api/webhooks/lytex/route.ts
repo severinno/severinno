@@ -27,7 +27,14 @@ import {
 } from "@/lib/lytex"
 import { notifyPaymentConfirmed, notifyPaymentConfirmedToClient } from "@/lib/notifications"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { cacheGet, cacheSet } from "@/lib/redis"
+import {
+  deriveIdempotencyKey,
+  acquireIdempotency,
+  completeIdempotency,
+  failIdempotency,
+  idempotencyErrorResponse,
+} from "@/lib/idempotency"
+import { toMoneyNumber } from "@/lib/money"
 
 // ---------------------------------------------------------------------------
 // Helper: confirmar pagamento do booking
@@ -112,20 +119,20 @@ async function confirmBookingPayment(
   ])
 
   lytexLogger.info(
-    { bookingId, amount: booking.amount },
+    { bookingId, amount: toMoneyNumber(booking.amount) },
     "Webhook: pagamento confirmado com sucesso",
   )
 
   // Notificar provider via WhatsApp (best-effort)
-  notifyPaymentConfirmed(booking.providerId, bookingId, booking.amount).catch((err) =>
-    logger.warn({ err }, "lytex payment notification failed"),
+  notifyPaymentConfirmed(booking.providerId, bookingId, toMoneyNumber(booking.amount)).catch(
+    (err) => logger.warn({ err }, "lytex payment notification failed"),
   )
 
   // Notificar cliente com recibo via WhatsApp (best-effort)
   notifyPaymentConfirmedToClient(
     booking.clientId,
     bookingId,
-    booking.amount,
+    toMoneyNumber(booking.amount),
     booking.service?.title ?? "Serviço",
     booking.provider?.name ?? "Prestador",
   ).catch((err) => logger.warn({ err }, "lytex client payment confirmation failed"))
@@ -172,6 +179,9 @@ async function refundBookingPayment(bookingId: string) {
  * A Lytex espera um 200 OK rápido — processamento é assíncrono.
  */
 export async function POST(request: Request) {
+  // Preenchido após a validação da assinatura — o catch usa para marcar a
+  // tentativa como "failed" SOMENTE quando a chave já foi reservada.
+  let webhookKey: string | undefined
   try {
     // Rate limit para webhooks de pagamento (20/min — vem de IP fixo do Lytex)
     await assertRateLimit(request, RATE_LIMITS.webhookLytex)
@@ -202,17 +212,39 @@ export async function POST(request: Request) {
 
     const bookingId = ref.id
 
-    // Trava de idempotência via Redis (impede processamento duplicado em caso de retentativas rápidas)
-    const idempotencyKey = `webhook:lytex:${body.id || bookingId}:${body.status}`
-    const alreadyProcessed = await cacheGet<{ processedAt: string }>(idempotencyKey)
-    if (alreadyProcessed) {
+    // ── Idempotência em BANCO (tabela IdempotencyRecord, escopo webhook:lytex) ──
+    // Substitui a trava Redis (GET-then-SET), que não era atômica: dois
+    // reenvios simultâneos liam "não processado" ao mesmo tempo e processavam
+    // duas vezes. Aqui a corrida é resolvida pelo @unique: o perdedor recebe
+    // P2002 → in_flight, sem segundo processamento.
+    // A MESMA cobrança Lytex (body.id) emite VÁRIOS eventos (paid, refunded…):
+    // a chave inclui o status, então eventos DIFERENTES processam e o REENVIO
+    // do mesmo evento replaya.
+    const eventId = `${body.id || body.transactionId || `${bookingId}:${body.status}`}:${body.status}`
+    webhookKey = deriveIdempotencyKey(eventId, "webhook:lytex")
+    const webhookCtx = { bookingId, status: body.status, lytexId: body.id }
+    const acquired = await acquireIdempotency(webhookKey, webhookCtx, "webhook:lytex")
+
+    if (acquired.kind === "replay") {
       lytexLogger.info(
-        { idempotencyKey, bookingId, status: body.status },
-        "Webhook: evento já processado anteriormente (idempotência garantida)",
+        { bookingId, status: body.status, lytexId: body.id },
+        "Webhook: evento já processado (replay idempotente)",
       )
       return NextResponse.json({ received: true, deduplicated: true })
     }
-    await cacheSet(idempotencyKey, { processedAt: new Date().toISOString() }, 86400)
+    const idemError = idempotencyErrorResponse(acquired)
+    if (idemError) {
+      // in_flight = reenvio simultâneo: o vencedor processa este mesmo evento;
+      // responder 200 evita backoff de retry na Lytex. failed/conflict são
+      // registrados para investigação (ver IdempotencyRecord.error).
+      lytexLogger.warn(
+        { bookingId, status: body.status, kind: acquired.kind },
+        "Webhook: evento não processado pela idempotência",
+      )
+      return NextResponse.json({ received: true, deduplicated: true })
+    }
+    // kind === "fresh": chave reservada. Sucesso grava replay; falha cai no
+    // catch abaixo e marca "failed" (com o erro visível no registro).
 
     // Processar conforme o status
     switch (body.status) {
@@ -247,9 +279,20 @@ export async function POST(request: Request) {
         lytexLogger.info({ bookingId, status: body.status }, "Webhook: status não mapeado")
     }
 
+    // Sucesso: grava a resposta para replays futuros deste evento.
+    await completeIdempotency(webhookKey, { received: true })
+
     // Sempre retornar 200 para a Lytex (evita reenvios desnecessários)
     return NextResponse.json({ received: true })
   } catch (e) {
+    // Marca a tentativa como failed (o erro fica visível no registro; um
+    // eventual reenvio da Lytex não reprocessa às cegas).
+    if (webhookKey) {
+      await failIdempotency(
+        webhookKey,
+        e instanceof Error ? e.message : "Erro desconhecido no webhook",
+      )
+    }
     // Log do erro mas retorna 200 para a Lytex não reenviar
     lytexLogger.error({ err: e }, "Webhook: erro no processamento")
     captureErrorEnhanced(e, {

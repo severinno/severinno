@@ -2,15 +2,17 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { handleError, notFound } from "@/lib/api-server"
+import { notFound } from "@/lib/api-server"
 import { getRoute } from "@/lib/routing"
 import { requireUser } from "@/lib/auth"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
-type Params = { params: Promise<{ id: string }> }
+import { withParams } from "@/lib/api-route"
+import { toMoneyNumber } from "@/lib/money"
 
-export async function GET(request: Request, { params }: Params) {
-  try {
+export const GET = withParams<{ id: string }>(
+  "api.tracking.:id.GET",
+  async (request, { params }) => {
     await requireUser()
     await assertRateLimit(request, RATE_LIMITS.general)
     const { id } = await params
@@ -38,6 +40,14 @@ export async function GET(request: Request, { params }: Params) {
 
     if (!booking) throw notFound("Agendamento não encontrado")
 
+    // money_decimal: amount/basePrice são Decimal — serializam como STRING
+    // cru no JSON; a fronteira converte para number (contrato do frontend).
+    const bookingJson = {
+      ...booking,
+      amount: toMoneyNumber(booking.amount),
+      service: { ...booking.service, basePrice: toMoneyNumber(booking.service.basePrice, 0) },
+    }
+
     let routeInfo: {
       distanceKm: number
       durationMin: number
@@ -56,8 +66,6 @@ export async function GET(request: Request, { params }: Params) {
       }
     }
 
-    return NextResponse.json({ booking, route: routeInfo })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+    return NextResponse.json({ booking: bookingJson, route: routeInfo })
+  },
+)

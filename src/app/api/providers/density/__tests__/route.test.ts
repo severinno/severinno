@@ -9,7 +9,7 @@
  *   ✅ 200 com rings (7 raios canônicos) + districts agregados
  *   ✅ PostGIS: ponto é (lng, lat) e os raios entram em metros
  *   ✅ Cache com célula arredondada a 2 decimais
- *   ✅ Erro do banco → 500 via handleError
+ *   ✅ Erro do banco → 500 via withRoute/handleError
  *   ✅ Agregados apenas — nenhum campo de usuário/PII no payload
  */
 
@@ -147,7 +147,7 @@ describe("GET /api/providers/density — resposta", () => {
 })
 
 describe("GET /api/providers/density — erros", () => {
-  it("500 quando o banco falha (handleError)", async () => {
+  it("500 quando o banco falha (withRoute → handleError)", async () => {
     vi.mocked(db.$queryRawUnsafe).mockRejectedValue(new Error("connection refused"))
 
     const res = await GET(densityRequest("-18.8517", "-41.9469"))

@@ -36,7 +36,7 @@ describe("GET /api/admin/services", () => {
     vi.mocked(db.service.count).mockResolvedValue(1)
 
     const req = new Request("http://localhost:3000/api/admin/services?q=eletrica&active=true")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const json = await res.json()
 
     expect(res.status).toBe(200)

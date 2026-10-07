@@ -42,14 +42,16 @@ describe("POST /api/bookings/checkin-escrow", () => {
   beforeEach(() => vi.clearAllMocks())
 
   it("returns 400 for unknown action", async () => {
-    const res = await POST(req({ action: "unknown" }))
+    const res = await POST(req({ action: "unknown" }), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(400)
     expect((parsed.body as any).error).toBe("Dados inválidos")
   })
 
   it("checkin — returns 400 when missing parameters", async () => {
-    const res = await POST(req({ action: "checkin", bookingId: "b1" }))
+    const res = await POST(req({ action: "checkin", bookingId: "b1" }), {
+      params: Promise.resolve({}),
+    })
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(400)
   })
@@ -66,6 +68,7 @@ describe("POST /api/bookings/checkin-escrow", () => {
         clientAddressLat: -23.55,
         clientAddressLng: -46.63,
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(200)
@@ -74,14 +77,16 @@ describe("POST /api/bookings/checkin-escrow", () => {
   })
 
   it("generate-pin — returns 400 when bookingId missing", async () => {
-    const res = await POST(req({ action: "generate-pin" }))
+    const res = await POST(req({ action: "generate-pin" }), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(400)
   })
 
   it("generate-pin — returns PIN on success", async () => {
     mockGenerateEscrowPIN.mockResolvedValue({ pin: "123456", expiresAt: "2026-01-01T00:00:00Z" })
-    const res = await POST(req({ action: "generate-pin", bookingId: "b1" }))
+    const res = await POST(req({ action: "generate-pin", bookingId: "b1" }), {
+      params: Promise.resolve({}),
+    })
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(200)
     expect((parsed.body as any).success).toBe(true)
@@ -89,7 +94,9 @@ describe("POST /api/bookings/checkin-escrow", () => {
   })
 
   it("release-escrow — returns 400 when missing parameters", async () => {
-    const res = await POST(req({ action: "release-escrow", bookingId: "b1" }))
+    const res = await POST(req({ action: "release-escrow", bookingId: "b1" }), {
+      params: Promise.resolve({}),
+    })
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(400)
   })
@@ -98,6 +105,7 @@ describe("POST /api/bookings/checkin-escrow", () => {
     mockValidateEscrowRelease.mockResolvedValue({ success: true, released: true })
     const res = await POST(
       req({ action: "release-escrow", bookingId: "b1", pin: "123456", escrowAmount: 100 }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(200)
@@ -106,7 +114,7 @@ describe("POST /api/bookings/checkin-escrow", () => {
 
   it("returns 401 when not authenticated", async () => {
     vi.mocked(requireUser).mockRejectedValueOnce(new HttpError(401, "Não autorizado"))
-    const res = await POST(req({ action: "checkin" }))
+    const res = await POST(req({ action: "checkin" }), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(401)
   })

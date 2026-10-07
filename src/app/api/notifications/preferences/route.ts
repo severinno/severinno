@@ -1,53 +1,50 @@
 export const dynamic = "force-dynamic"
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { handleError, badRequest } from "@/lib/api-server"
+import { badRequest } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { requireUser } from "@/lib/auth"
 
+import { withRoute } from "@/lib/api-route"
+
 // ── GET — list all preferences for the current user ─────────────────────────
 
-export async function GET(request: NextRequest) {
-  try {
-    await assertRateLimit(request, RATE_LIMITS.general)
-    const session = await requireUser()
+export const GET = withRoute("api.notifications.preferences.GET", async (request) => {
+  await assertRateLimit(request, RATE_LIMITS.general)
+  const session = await requireUser()
 
-    const result = await db.$queryRawUnsafe<
-      Array<{
-        type: string
-        pushEnabled: boolean
-        emailEnabled: boolean
-        whatsappEnabled: boolean
-        soundEnabled: boolean
-      }>
-    >(
-      `SELECT type, "pushEnabled", "emailEnabled", "whatsappEnabled", "soundEnabled"
+  const result = await db.$queryRawUnsafe<
+    Array<{
+      type: string
+      pushEnabled: boolean
+      emailEnabled: boolean
+      whatsappEnabled: boolean
+      soundEnabled: boolean
+    }>
+  >(
+    `SELECT type, "pushEnabled", "emailEnabled", "whatsappEnabled", "soundEnabled"
        FROM "NotificationPreference"
        WHERE "userId" = $1`,
-      [session.userId],
-    )
+    [session.userId],
+  )
 
-    return NextResponse.json({ preferences: result })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  return NextResponse.json({ preferences: result })
+})
 
 // ── PATCH — upsert preferences for a notification type ──────────────────────
 
-export async function PATCH(request: NextRequest) {
-  try {
-    await assertRateLimit(request, RATE_LIMITS.general)
-    const session = await requireUser()
+export const PATCH = withRoute("api.notifications.preferences.PATCH", async (request) => {
+  await assertRateLimit(request, RATE_LIMITS.general)
+  const session = await requireUser()
 
-    const body = await request.json()
-    const { type, pushEnabled, emailEnabled, whatsappEnabled, soundEnabled } = body
+  const body = await request.json()
+  const { type, pushEnabled, emailEnabled, whatsappEnabled, soundEnabled } = body
 
-    if (!type || typeof type !== "string") throw badRequest("type is required")
+  if (!type || typeof type !== "string") throw badRequest("type is required")
 
-    await db.$executeRawUnsafe(
-      `INSERT INTO "NotificationPreference" ("id", "userId", "type", "pushEnabled", "emailEnabled", "whatsappEnabled", "soundEnabled")
+  await db.$executeRawUnsafe(
+    `INSERT INTO "NotificationPreference" ("id", "userId", "type", "pushEnabled", "emailEnabled", "whatsappEnabled", "soundEnabled")
        VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6)
        ON CONFLICT ("userId", "type")
        DO UPDATE SET
@@ -55,11 +52,8 @@ export async function PATCH(request: NextRequest) {
          "emailEnabled" = COALESCE($4, "NotificationPreference"."emailEnabled"),
          "whatsappEnabled" = COALESCE($5, "NotificationPreference"."whatsappEnabled"),
          "soundEnabled" = COALESCE($6, "NotificationPreference"."soundEnabled")`,
-      [session.userId, type, pushEnabled, emailEnabled, whatsappEnabled, soundEnabled],
-    )
+    [session.userId, type, pushEnabled, emailEnabled, whatsappEnabled, soundEnabled],
+  )
 
-    return NextResponse.json({ success: true })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  return NextResponse.json({ success: true })
+})

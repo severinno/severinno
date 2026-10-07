@@ -3,15 +3,18 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { handleError, badRequest, notFound, forbidden } from "@/lib/api-server"
+import { badRequest, notFound, forbidden } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { sanitizeText } from "@/lib/sanitize"
+
+import { withParams } from "@/lib/api-route"
 
 // =============================================================================
 // POST /api/reviews/[id]/reply — Provider replies to a review
 // =============================================================================
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
+export const POST = withParams<{ id: string }>(
+  "api.reviews.:id.reply.POST",
+  async (request, { params }) => {
     await assertRateLimit(request, RATE_LIMITS.general)
     const session = await requireUser()
     const { id } = await params
@@ -47,7 +50,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     })
 
     return NextResponse.json({ review: updated })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

@@ -19,6 +19,17 @@ vi.mock("@/lib/rate-limit", () => ({
   },
 }))
 
+// Guard progressivo por fingerprint — no-op nos testes de rota (cobertura
+// própria em src/lib/__tests__/auth-rate-limit.test.ts).
+vi.mock("@/lib/auth-rate-limit", () => ({
+  authFingerprintGuard: vi.fn(async () => ({
+    fingerprint: "test:fp",
+    blocked: false,
+    response: null,
+    recordFailure: vi.fn().mockResolvedValue(undefined),
+  })),
+}))
+
 vi.mock("@/lib/logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -146,7 +157,7 @@ describe("POST /api/auth/login", () => {
       method: "POST",
       body: { email: "joao@example.com", password: "12345678" },
     })
-    const res = await login(req)
+    const res = await login(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -164,7 +175,7 @@ describe("POST /api/auth/login", () => {
       method: "POST",
       body: { email: "joao@example.com", password: "wrongpwd" },
     })
-    const res = await login(req)
+    const res = await login(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(401)
   })
 
@@ -175,7 +186,7 @@ describe("POST /api/auth/login", () => {
       method: "POST",
       body: { email: "noone@example.com", password: "12345678" },
     })
-    const res = await login(req)
+    const res = await login(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(401)
   })
 
@@ -186,7 +197,7 @@ describe("POST /api/auth/login", () => {
       method: "POST",
       body: { email: "inactive@example.com", password: "12345678" },
     })
-    const res = await login(req)
+    const res = await login(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(401)
   })
 
@@ -195,7 +206,7 @@ describe("POST /api/auth/login", () => {
       method: "POST",
       body: { email: "not-an-email", password: "12345678" },
     })
-    const res = await login(req)
+    const res = await login(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
   })
 
@@ -204,7 +215,7 @@ describe("POST /api/auth/login", () => {
       method: "POST",
       body: { email: "joao@example.com" },
     })
-    const res = await login(req)
+    const res = await login(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
   })
 })
@@ -233,6 +244,7 @@ describe("POST /api/auth/login — contas demo (prod vs dev)", () => {
         method: "POST",
         body: { email: "admin@severinno.com", password: "admin123" },
       }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(200)
     expect(createSession).toHaveBeenCalledWith("user-1", "ADMIN", 0)
@@ -247,6 +259,7 @@ describe("POST /api/auth/login — contas demo (prod vs dev)", () => {
         method: "POST",
         body: { email: "admin@severinno.com", password: "admin123" },
       }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(401)
     expect(createSession).not.toHaveBeenCalled()
@@ -261,6 +274,7 @@ describe("POST /api/auth/login — contas demo (prod vs dev)", () => {
         method: "POST",
         body: { email: "joao@example.com", password: "12345678" },
       }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(200)
     expect(createSession).toHaveBeenCalled()
@@ -286,7 +300,7 @@ describe("POST /api/auth/register", () => {
     ;(vi.mocked(db.user.update) as any).mockResolvedValue({} as any)
 
     const req = createMockRequest({ method: "POST", body: clientPayload })
-    const res = await register(req)
+    const res = await register(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(201)
@@ -323,7 +337,7 @@ describe("POST /api/auth/register", () => {
         radiusKm: 20,
       },
     })
-    const res = await register(req)
+    const res = await register(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(201)
@@ -334,7 +348,7 @@ describe("POST /api/auth/register", () => {
     ;(vi.mocked(db.user.findUnique) as any).mockResolvedValue({ id: "existing" } as any)
 
     const req = createMockRequest({ method: "POST", body: clientPayload })
-    const res = await register(req)
+    const res = await register(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(409)
@@ -346,7 +360,7 @@ describe("POST /api/auth/register", () => {
       method: "POST",
       body: { name: "A", email: "bad", password: "12", confirmPassword: "34", role: "INVALID" },
     })
-    const res = await register(req)
+    const res = await register(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
   })
 
@@ -355,7 +369,7 @@ describe("POST /api/auth/register", () => {
       method: "POST",
       body: { ...clientPayload, confirmPassword: "654321" },
     })
-    const res = await register(req)
+    const res = await register(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
   })
 })
@@ -376,6 +390,7 @@ describe("POST /api/auth/register — emails demo (prod vs dev)", () => {
         method: "POST",
         body: { ...clientPayload, email: "admin@severinno.com" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(409)
@@ -399,6 +414,7 @@ describe("POST /api/auth/register — emails demo (prod vs dev)", () => {
         method: "POST",
         body: { ...clientPayload, email: "cliente@severinno.com" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(201)
@@ -408,7 +424,7 @@ describe("POST /api/auth/register — emails demo (prod vs dev)", () => {
 
 describe("POST /api/auth/logout", () => {
   it("destroys session and returns ok", async () => {
-    const res = await logout(createMockRequest())
+    const res = await logout(createMockRequest(), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -433,7 +449,7 @@ describe("GET /api/auth/me", () => {
       avatarUrl: null,
     } as any)
 
-    const res = await me(createMockRequest())
+    const res = await me(createMockRequest(), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -442,7 +458,7 @@ describe("GET /api/auth/me", () => {
   })
 
   it("returns null user when not authenticated", async () => {
-    const res = await me(createMockRequest())
+    const res = await me(createMockRequest(), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -453,7 +469,7 @@ describe("GET /api/auth/me", () => {
     _mockSession = { userId: "nonexistent", role: "CLIENT" } as any
     ;(vi.mocked(db.user.findUnique) as any).mockResolvedValue(null)
 
-    const res = await me(createMockRequest())
+    const res = await me(createMockRequest(), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)

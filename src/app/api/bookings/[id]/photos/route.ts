@@ -4,11 +4,11 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { sanitizeText } from "@/lib/sanitize"
-import { forbidden, handleError, notFound } from "@/lib/api-server"
+import { forbidden, notFound } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { z } from "zod"
 
-type Params = { params: Promise<{ id: string }> }
+import { withParams } from "@/lib/api-route"
 
 const photosSchema = z.object({
   type: z.enum(["before", "after"]),
@@ -23,8 +23,9 @@ const photosSchema = z.object({
  * POST /api/bookings/[id]/photos
  * Provider or client uploads before/after service photos for proof.
  */
-export async function POST(request: Request, { params }: Params) {
-  try {
+export const POST = withParams<{ id: string }>(
+  "api.bookings.:id.photos.POST",
+  async (request, { params }) => {
     await assertRateLimit(request, RATE_LIMITS.bookings)
     const session = await requireUser()
     const { id } = await params
@@ -71,7 +72,5 @@ export async function POST(request: Request, { params }: Params) {
       message: `Fotos do ${type === "before" ? "antes" : "depois"} salvas com sucesso!`,
       booking: updated,
     })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

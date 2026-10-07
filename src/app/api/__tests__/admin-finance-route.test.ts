@@ -124,7 +124,7 @@ describe("GET /api/admin/finance", () => {
     setupBasicMocks()
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)
@@ -147,7 +147,7 @@ describe("GET /api/admin/finance", () => {
     mockDb.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([])
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.averageTicket).toBe(30000)
@@ -188,7 +188,7 @@ describe("GET /api/admin/finance", () => {
       .mockResolvedValueOnce([])
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.providerStats).toHaveLength(2)
@@ -206,7 +206,7 @@ describe("GET /api/admin/finance", () => {
     setupBasicMocks()
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.paymentMethods).toHaveLength(2)
@@ -219,7 +219,7 @@ describe("GET /api/admin/finance", () => {
     setupBasicMocks()
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.commissionPercent).toBe(15)
@@ -239,7 +239,7 @@ describe("GET /api/admin/finance", () => {
     mockDb.$queryRaw.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.commissionPercent).toBe(15)
@@ -249,7 +249,7 @@ describe("GET /api/admin/finance", () => {
     _mockRole = "PROVIDER"
 
     const req = new Request("http://localhost/api/admin/finance")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(403)
   })
 
@@ -265,7 +265,7 @@ describe("GET /api/admin/finance", () => {
     mockDb.$queryRaw.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)
@@ -304,7 +304,7 @@ describe("GET /api/admin/finance", () => {
     mockDb.$queryRaw.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.page).toBe(1)
@@ -324,7 +324,7 @@ describe("GET /api/admin/finance", () => {
     mockDb.$queryRaw.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/finance?period=7d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)

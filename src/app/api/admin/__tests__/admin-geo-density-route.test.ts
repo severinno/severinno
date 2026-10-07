@@ -37,7 +37,7 @@ describe("GET /api/admin/geo-density", () => {
     ] as any)
 
     const req = new NextRequest("http://localhost:3000/api/admin/geo-density?resolution=7")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(200)
 
     const json = await res.json()

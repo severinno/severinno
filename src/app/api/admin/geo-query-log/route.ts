@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
+
 import {
   getQueryLogDiagnostics,
   getTopSearches,
   getTopCEPs,
   getTopReverses,
 } from "@/lib/geo-query-log"
+
+import { withRoute } from "@/lib/api-route"
 
 /**
  * GET /api/admin/geo-query-log
@@ -33,22 +35,18 @@ import {
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-export async function GET() {
-  try {
-    await requireRole("ADMIN")
+export const GET = withRoute("api.admin.geo-query-log.GET", async (_request) => {
+  await requireRole("ADMIN")
 
-    const diagnostics = getQueryLogDiagnostics()
-    const topSearches = getTopSearches(20)
-    const topCEPs = getTopCEPs(20)
-    const topReverses = getTopReverses(10)
+  const diagnostics = getQueryLogDiagnostics()
+  const topSearches = getTopSearches(20)
+  const topCEPs = getTopCEPs(20)
+  const topReverses = getTopReverses(10)
 
-    return NextResponse.json({
-      diagnostics,
-      topSearches,
-      topCEPs,
-      topReverses,
-    })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  return NextResponse.json({
+    diagnostics,
+    topSearches,
+    topCEPs,
+    topReverses,
+  })
+})

@@ -5,9 +5,11 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { sanitizeText } from "@/lib/sanitize"
 import { analyzeMessageForLeakage } from "@/lib/leak-detector"
-import { forbidden, notFound, handleError } from "@/lib/api-server"
+import { forbidden, notFound } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { z } from "zod"
+
+import { withParams } from "@/lib/api-route"
 
 const chatMessageSchema = z.object({
   content: z.string().min(1, "Conteúdo da mensagem é obrigatório").max(2000),
@@ -45,11 +47,9 @@ async function verifyBookingParticipant(bookingId: string, userId: string, role:
  * GET /api/chat/[bookingId]
  * Returns conversation messages for a specific booking from DB.
  */
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ bookingId: string }> },
-) {
-  try {
+export const GET = withParams<{ bookingId: string }>(
+  "api.chat.:bookingId.GET",
+  async (request, { params }) => {
     const session = await requireUser()
     await assertRateLimit(request, RATE_LIMITS.bookings)
     const { bookingId } = await params
@@ -85,21 +85,17 @@ export async function GET(
         session.userId === booking.clientId ? booking.provider.name : booking.client.name,
       messages: formatted,
     })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)
 
 /**
  * POST /api/chat/[bookingId]
  * body: { content }
  * Sends a new in-app message with automatic anti-fraud leakage analysis.
  */
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ bookingId: string }> },
-) {
-  try {
+export const POST = withParams<{ bookingId: string }>(
+  "api.chat.:bookingId.POST",
+  async (request, { params }) => {
     const session = await requireUser()
     await assertRateLimit(request, RATE_LIMITS.bookings)
     const { bookingId } = await params
@@ -147,7 +143,5 @@ export async function POST(
       message: newMessage,
       leakAnalysis,
     })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

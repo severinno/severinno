@@ -7,6 +7,8 @@ import { handleError, badRequest, notFound } from "@/lib/api-server"
 import logger from "@/lib/logger"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
+import { withParams } from "@/lib/api-route"
+
 const VALID_ROLES = ["CLIENT", "PROVIDER", "ADMIN"]
 
 /**
@@ -93,8 +95,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
  *
  * Exclui uma regra de webhook de evento.
  */
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
+export const DELETE = withParams<{ id: string }>(
+  "api.admin.push.webhooks.:id.DELETE",
+  async (_request, { params }) => {
     await requireRole("ADMIN")
     await assertRateLimit(_request, RATE_LIMITS.admin)
     const { id } = await params
@@ -107,7 +110,5 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     logger.info({ webhookId: id }, "event webhook deleted")
 
     return NextResponse.json({ ok: true, message: "Webhook excluido." })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

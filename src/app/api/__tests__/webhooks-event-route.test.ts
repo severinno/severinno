@@ -58,7 +58,7 @@ describe("GET /api/admin/push/webhooks", () => {
   it("returns list of webhooks", async () => {
     vi.mocked(db.eventWebhook.findMany).mockResolvedValue([mockWebhook()])
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const { status, body } = await parseResponse(res)
 
     expect(status).toBe(200)
@@ -71,7 +71,7 @@ describe("GET /api/admin/push/webhooks", () => {
   it("returns empty array when no webhooks exist", async () => {
     vi.mocked(db.eventWebhook.findMany).mockResolvedValue([])
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const { status, body } = await parseResponse(res)
 
     expect(status).toBe(200)

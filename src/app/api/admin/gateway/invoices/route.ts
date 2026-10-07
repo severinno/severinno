@@ -2,9 +2,11 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
+
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import logger from "@/lib/logger"
+
+import { withRoute } from "@/lib/api-route"
 
 const LY_BASE = process.env.LYTEX_BASE_URL ?? "https://api-pay.lytex.com.br"
 
@@ -28,35 +30,31 @@ async function getToken(): Promise<string> {
   return data.accessToken
 }
 
-export async function GET(request: Request) {
-  try {
-    await requireRole("ADMIN")
-    await assertRateLimit(request, RATE_LIMITS.admin)
-    const url = new URL(request.url)
-    const page = url.searchParams.get("page") ?? "1"
-    const perPage = url.searchParams.get("perPage") ?? "20"
-    const search = url.searchParams.get("search") ?? ""
+export const GET = withRoute("api.admin.gateway.invoices.GET", async (request) => {
+  await requireRole("ADMIN")
+  await assertRateLimit(request, RATE_LIMITS.admin)
+  const url = new URL(request.url)
+  const page = url.searchParams.get("page") ?? "1"
+  const perPage = url.searchParams.get("perPage") ?? "20"
+  const search = url.searchParams.get("search") ?? ""
 
-    const token = await getToken()
-    const params = new URLSearchParams({ page, perPage })
-    if (search) params.set("search", search)
+  const token = await getToken()
+  const params = new URLSearchParams({ page, perPage })
+  if (search) params.set("search", search)
 
-    const res = await fetch(`${LY_BASE}/v2/invoices?${params}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+  const res = await fetch(`${LY_BASE}/v2/invoices?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
 
-    if (!res.ok) {
-      const text = await res.text()
-      logger.error({ status: res.status, body: text }, "lytex admin list failed")
-      return NextResponse.json(
-        { ok: false, error: `Lytex API error: ${res.status}` },
-        { status: res.status },
-      )
-    }
-
-    const data = await res.json()
-    return NextResponse.json({ ok: true, ...data })
-  } catch (e) {
-    return handleError(e)
+  if (!res.ok) {
+    const text = await res.text()
+    logger.error({ status: res.status, body: text }, "lytex admin list failed")
+    return NextResponse.json(
+      { ok: false, error: `Lytex API error: ${res.status}` },
+      { status: res.status },
+    )
   }
-}
+
+  const data = await res.json()
+  return NextResponse.json({ ok: true, ...data })
+})

@@ -15,29 +15,26 @@ export const dynamic = "force-dynamic"
  * Response type: RedisDiagnosticsResponse (exported below)
  */
 
-import { handleError } from "@/lib/api-server"
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { getRedisDiagnostics } from "@/lib/redis"
+
+import { withRoute } from "@/lib/api-route"
 
 // ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
 
-export async function GET() {
-  try {
-    await requireRole("ADMIN")
+export const GET = withRoute("api.admin.redis-diagnostics.GET", async (_request) => {
+  await requireRole("ADMIN")
 
-    const diagnostics = await getRedisDiagnostics()
+  const diagnostics = await getRedisDiagnostics()
 
-    return NextResponse.json({
-      ...diagnostics,
-      timestamp: Date.now(),
-    })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  return NextResponse.json({
+    ...diagnostics,
+    timestamp: Date.now(),
+  })
+})
 
 // ---------------------------------------------------------------------------
 // Response type (exported for the client component)

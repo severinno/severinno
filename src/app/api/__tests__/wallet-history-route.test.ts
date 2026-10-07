@@ -59,6 +59,7 @@ vi.mock("@/lib/rate-limit", () => ({
 // ── Imports ────────────────────────────────────────────────────────────────
 
 import { GET } from "../provider/wallet/history/route"
+import { callRoute } from "@/lib/__tests__/helpers/api-test-utils"
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
@@ -71,9 +72,7 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const req = new Request("http://localhost/api/provider/wallet/history")
-    const res = await GET(req)
-    const data = await res.json()
+    const { res, data } = await callRoute(GET, { url: "/api/provider/wallet/history" })
 
     expect(res.status).toBe(200)
     expect(data.items).toHaveLength(3) // all 3 within default limit 20
@@ -87,9 +86,9 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const req = new Request("http://localhost/api/provider/wallet/history?page=1&limit=2")
-    const res = await GET(req)
-    const data = await res.json()
+    const { data } = await callRoute(GET, {
+      url: "/api/provider/wallet/history?page=1&limit=2",
+    })
 
     expect(data.items).toHaveLength(2)
     expect(data.total).toBe(3)
@@ -102,9 +101,9 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const req = new Request("http://localhost/api/provider/wallet/history?page=2&limit=2")
-    const res = await GET(req)
-    const data = await res.json()
+    const { data } = await callRoute(GET, {
+      url: "/api/provider/wallet/history?page=2&limit=2",
+    })
 
     expect(data.items).toHaveLength(1) // 3 total, 2 on page 1, 1 on page 2
     expect(data.total).toBe(3)
@@ -124,9 +123,7 @@ describe("GET /api/provider/wallet/history", () => {
       },
     ])
 
-    const req = new Request("http://localhost/api/provider/wallet/history")
-    const res = await GET(req)
-    const data = await res.json()
+    const { data } = await callRoute(GET, { url: "/api/provider/wallet/history" })
 
     // 3 booking transactions + 1 withdrawal = 4 total
     expect(data.total).toBe(4)
@@ -141,9 +138,7 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.booking.findMany.mockResolvedValue([])
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const req = new Request("http://localhost/api/provider/wallet/history")
-    const res = await GET(req)
-    const data = await res.json()
+    const { data } = await callRoute(GET, { url: "/api/provider/wallet/history" })
 
     expect(data.items).toHaveLength(0)
     expect(data.total).toBe(0)
@@ -154,9 +149,7 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const req = new Request("http://localhost/api/provider/wallet/history?type=paid")
-    const res = await GET(req)
-    const data = await res.json()
+    const { data } = await callRoute(GET, { url: "/api/provider/wallet/history?type=paid" })
 
     // Only booking-1 and booking-2 are COMPLETED → status "paid"
     // booking-3 is CONFIRMED → status "pending"
@@ -169,9 +162,7 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const req = new Request("http://localhost/api/provider/wallet/history?type=pending")
-    const res = await GET(req)
-    const data = await res.json()
+    const { data } = await callRoute(GET, { url: "/api/provider/wallet/history?type=pending" })
 
     expect(data.total).toBe(1)
     expect(data.items).toHaveLength(1)
@@ -190,9 +181,9 @@ describe("GET /api/provider/wallet/history", () => {
       },
     ])
 
-    const req = new Request("http://localhost/api/provider/wallet/history?type=withdrawn")
-    const res = await GET(req)
-    const data = await res.json()
+    const { data } = await callRoute(GET, {
+      url: "/api/provider/wallet/history?type=withdrawn",
+    })
 
     expect(data.total).toBe(1)
     expect(data.items).toHaveLength(1)
@@ -203,9 +194,7 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const req = new Request("http://localhost/api/provider/wallet/history?type=invalid")
-    const res = await GET(req)
-    const data = await res.json()
+    const { data } = await callRoute(GET, { url: "/api/provider/wallet/history?type=invalid" })
 
     expect(data.total).toBe(3) // all 3 returned
   })
@@ -215,9 +204,9 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
     // Only bookings on or after 2025-01-20
-    const req = new Request("http://localhost/api/provider/wallet/history?dateStart=2025-01-20")
-    const res = await GET(req)
-    const data = await res.json()
+    const { data } = await callRoute(GET, {
+      url: "/api/provider/wallet/history?dateStart=2025-01-20",
+    })
 
     // booking-1 is 2025-01-15 → excluded, booking-2 is 2025-01-20 → included
     // booking-3 is 2025-02-01 → included
@@ -238,9 +227,9 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
     // Only bookings on or before 2025-01-20
-    const req = new Request("http://localhost/api/provider/wallet/history?dateEnd=2025-01-20")
-    const res = await GET(req)
-    const data = await res.json()
+    const { data } = await callRoute(GET, {
+      url: "/api/provider/wallet/history?dateEnd=2025-01-20",
+    })
 
     expect(data.total).toBe(2)
     expect(
@@ -259,11 +248,9 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
     // Only bookings between 2025-01-20 and 2025-01-31
-    const req = new Request(
-      "http://localhost/api/provider/wallet/history?dateStart=2025-01-20&dateEnd=2025-01-31",
-    )
-    const res = await GET(req)
-    const data = await res.json()
+    const { data } = await callRoute(GET, {
+      url: "/api/provider/wallet/history?dateStart=2025-01-20&dateEnd=2025-01-31",
+    })
 
     expect(data.total).toBe(1)
     expect(data.items[0].description).toContain("Pintura")
@@ -273,8 +260,7 @@ describe("GET /api/provider/wallet/history", () => {
     const { requireUser } = await import("@/lib/auth")
     vi.mocked(requireUser).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const req = new Request("http://localhost/api/provider/wallet/history")
-    const res = await GET(req)
+    const { res } = await callRoute(GET, { url: "/api/provider/wallet/history" })
 
     expect(res.status).toBe(401)
   })

@@ -83,7 +83,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
+
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { getCacheStats, getMemoryCacheDiagnostics, isRedisAvailable } from "@/lib/redis"
 import {
@@ -102,6 +102,8 @@ import {
 } from "@/lib/geo-circuit-breakers"
 import { getGeoCallStats } from "@/lib/geo"
 import { getGeoMetrics } from "@/lib/geo-metrics"
+
+import { withRoute } from "@/lib/api-route"
 
 // ---------------------------------------------------------------------------
 // Type
@@ -198,143 +200,136 @@ type DebugResponse = {
 // GET handler
 // ---------------------------------------------------------------------------
 
-export async function GET(request: Request) {
-  try {
-    await requireRole("ADMIN")
-    await assertRateLimit(request, RATE_LIMITS.admin)
-    // ── Server info (always available, zero-cost) ──────────────────────
-    const server = {
-      uptime: Math.floor(process.uptime()),
-      platform: process.platform,
-      nodeVersion: process.version,
-      timestamp: new Date().toISOString(),
-    }
-
-    // ── Redis & cache diagnostics ──────────────────────────────────────
-    const cacheStats = getCacheStats()
-    const memCache = getMemoryCacheDiagnostics()
-
-    const redis = {
-      available: isRedisAvailable(),
-      hits: cacheStats.hits,
-      misses: cacheStats.misses,
-      total: cacheStats.total,
-      hitRatio: cacheStats.hitRatio,
-      memoryStoreSize: cacheStats.memoryStoreSize,
-      memoryStoreMaxAgeMs: memCache.maxAgeMs,
-    }
-
-    // ── Query log diagnostics ──────────────────────────────────────────
-    const logDiag = getQueryLogDiagnostics()
-
-    const queryLog = {
-      totalSearches: logDiag.totalSearches,
-      uniqueSearches: logDiag.uniqueSearches,
-      totalCEPs: logDiag.totalCEPs,
-      uniqueCEPs: logDiag.uniqueCEPs,
-      totalReverses: logDiag.totalReverses,
-      uniqueReverses: logDiag.uniqueReverses,
-      pendingChanges: logDiag.pendingChanges,
-      logPath: logDiag.logPath,
-      topSearches: getTopSearches(10),
-      topCEPs: getTopCEPs(10),
-      topReverses: getTopReverses(5),
-    }
-
-    // ── Cache warming config + runtime status ──────────────────────────
-    const cacheWarmConfig = getWarmConfig()
-    const cacheWarmLastRun = getLastWarmResult()
-
-    const cacheWarm = {
-      ...cacheWarmConfig,
-      lastRun: cacheWarmLastRun,
-    }
-
-    // ── Geo call stats + latency metrics ───────────────────────────
-    const geoCallStats = getGeoCallStats()
-    const geoMetrics = getGeoMetrics()
-
-    const geoMetricsSection = {
-      calls: {
-        cep: {
-          calls: geoCallStats.calls.cep,
-          fallbacks: geoCallStats.fallbacks.cep,
-          fallbackRate: geoCallStats.fallbackRate.cep,
-        },
-        search: {
-          calls: geoCallStats.calls.search,
-          fallbacks: geoCallStats.fallbacks.search,
-          fallbackRate: geoCallStats.fallbackRate.search,
-        },
-        reverse: {
-          calls: geoCallStats.calls.reverse,
-          fallbacks: geoCallStats.fallbacks.reverse,
-          fallbackRate: geoCallStats.fallbackRate.reverse,
-        },
-        structured: {
-          calls: geoCallStats.calls.structured,
-          fallbacks: geoCallStats.fallbacks.structured,
-          fallbackRate: geoCallStats.fallbackRate.structured,
-        },
-      },
-      latency: Object.fromEntries(
-        Object.entries(geoMetrics.services).map(([name, svc]) => [
-          name,
-          {
-            p50: svc.p50,
-            p95: svc.p95,
-            p99: svc.p99,
-            count: svc.count,
-            errorRate: svc.errorRate,
-            errorCount: svc.errorCount,
-          },
-        ]),
-      ),
-      latencyWindowSeconds: geoMetrics.timestamp,
-    }
-
-    // ── Circuit breaker status ─────────────────────────────────────
-    const circuitBreakers = {
-      nominatim: nominatimBreaker.getStats(),
-      viacep: viacepBreaker.getStats(),
-      osrm: osrmBreaker.getStats(),
-      osrmTable: osrmTableBreaker.getStats(),
-    }
-
-    // ── Rate limit config ──────────────────────────────────────────────
-    const rateLimits = Object.fromEntries(
-      Object.entries(GEO_LIMITS).map(([key, val]) => [
-        key,
-        { max: val.max, windowMs: val.windowMs },
-      ]),
-    )
-
-    // ── Relevant env vars (values stripped for security) ───────────────
-    const env = {
-      REDIS_CLUSTER_MODE: process.env.REDIS_CLUSTER_MODE === "true",
-      hasGeoQueryLogPath: !!process.env.GEO_QUERY_LOG_PATH,
-      hasRedisUrl: !!process.env.REDIS_URL,
-    }
-
-    const response: DebugResponse = {
-      server,
-      redis,
-      queryLog,
-      cacheWarm,
-      rateLimits,
-      circuitBreakers,
-      geoMetrics: geoMetricsSection,
-      env,
-    }
-
-    return NextResponse.json(response, {
-      headers: {
-        // Allow caching for 5s to avoid hammering on rapid refresh,
-        // but stale data is better than no data for debugging.
-        "Cache-Control": "public, max-age=5, s-maxage=5",
-      },
-    })
-  } catch (e) {
-    return handleError(e)
+export const GET = withRoute("api.geo.debug.GET", async (request) => {
+  await requireRole("ADMIN")
+  await assertRateLimit(request, RATE_LIMITS.admin)
+  // ── Server info (always available, zero-cost) ──────────────────────
+  const server = {
+    uptime: Math.floor(process.uptime()),
+    platform: process.platform,
+    nodeVersion: process.version,
+    timestamp: new Date().toISOString(),
   }
-}
+
+  // ── Redis & cache diagnostics ──────────────────────────────────────
+  const cacheStats = getCacheStats()
+  const memCache = getMemoryCacheDiagnostics()
+
+  const redis = {
+    available: isRedisAvailable(),
+    hits: cacheStats.hits,
+    misses: cacheStats.misses,
+    total: cacheStats.total,
+    hitRatio: cacheStats.hitRatio,
+    memoryStoreSize: cacheStats.memoryStoreSize,
+    memoryStoreMaxAgeMs: memCache.maxAgeMs,
+  }
+
+  // ── Query log diagnostics ──────────────────────────────────────────
+  const logDiag = getQueryLogDiagnostics()
+
+  const queryLog = {
+    totalSearches: logDiag.totalSearches,
+    uniqueSearches: logDiag.uniqueSearches,
+    totalCEPs: logDiag.totalCEPs,
+    uniqueCEPs: logDiag.uniqueCEPs,
+    totalReverses: logDiag.totalReverses,
+    uniqueReverses: logDiag.uniqueReverses,
+    pendingChanges: logDiag.pendingChanges,
+    logPath: logDiag.logPath,
+    topSearches: getTopSearches(10),
+    topCEPs: getTopCEPs(10),
+    topReverses: getTopReverses(5),
+  }
+
+  // ── Cache warming config + runtime status ──────────────────────────
+  const cacheWarmConfig = getWarmConfig()
+  const cacheWarmLastRun = getLastWarmResult()
+
+  const cacheWarm = {
+    ...cacheWarmConfig,
+    lastRun: cacheWarmLastRun,
+  }
+
+  // ── Geo call stats + latency metrics ───────────────────────────
+  const geoCallStats = getGeoCallStats()
+  const geoMetrics = getGeoMetrics()
+
+  const geoMetricsSection = {
+    calls: {
+      cep: {
+        calls: geoCallStats.calls.cep,
+        fallbacks: geoCallStats.fallbacks.cep,
+        fallbackRate: geoCallStats.fallbackRate.cep,
+      },
+      search: {
+        calls: geoCallStats.calls.search,
+        fallbacks: geoCallStats.fallbacks.search,
+        fallbackRate: geoCallStats.fallbackRate.search,
+      },
+      reverse: {
+        calls: geoCallStats.calls.reverse,
+        fallbacks: geoCallStats.fallbacks.reverse,
+        fallbackRate: geoCallStats.fallbackRate.reverse,
+      },
+      structured: {
+        calls: geoCallStats.calls.structured,
+        fallbacks: geoCallStats.fallbacks.structured,
+        fallbackRate: geoCallStats.fallbackRate.structured,
+      },
+    },
+    latency: Object.fromEntries(
+      Object.entries(geoMetrics.services).map(([name, svc]) => [
+        name,
+        {
+          p50: svc.p50,
+          p95: svc.p95,
+          p99: svc.p99,
+          count: svc.count,
+          errorRate: svc.errorRate,
+          errorCount: svc.errorCount,
+        },
+      ]),
+    ),
+    latencyWindowSeconds: geoMetrics.timestamp,
+  }
+
+  // ── Circuit breaker status ─────────────────────────────────────
+  const circuitBreakers = {
+    nominatim: nominatimBreaker.getStats(),
+    viacep: viacepBreaker.getStats(),
+    osrm: osrmBreaker.getStats(),
+    osrmTable: osrmTableBreaker.getStats(),
+  }
+
+  // ── Rate limit config ──────────────────────────────────────────────
+  const rateLimits = Object.fromEntries(
+    Object.entries(GEO_LIMITS).map(([key, val]) => [key, { max: val.max, windowMs: val.windowMs }]),
+  )
+
+  // ── Relevant env vars (values stripped for security) ───────────────
+  const env = {
+    REDIS_CLUSTER_MODE: process.env.REDIS_CLUSTER_MODE === "true",
+    hasGeoQueryLogPath: !!process.env.GEO_QUERY_LOG_PATH,
+    hasRedisUrl: !!process.env.REDIS_URL,
+  }
+
+  const response: DebugResponse = {
+    server,
+    redis,
+    queryLog,
+    cacheWarm,
+    rateLimits,
+    circuitBreakers,
+    geoMetrics: geoMetricsSection,
+    env,
+  }
+
+  return NextResponse.json(response, {
+    headers: {
+      // Allow caching for 5s to avoid hammering on rapid refresh,
+      // but stale data is better than no data for debugging.
+      "Cache-Control": "public, max-age=5, s-maxage=5",
+    },
+  })
+})

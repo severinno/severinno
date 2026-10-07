@@ -4,13 +4,15 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { serviceSchema } from "@/lib/validators"
-import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
+import { badRequest, forbidden, notFound } from "@/lib/api-server"
+import { toMoneyNumber } from "@/lib/money"
 
-type Params = { params: Promise<{ id: string }> }
+import { withParams } from "@/lib/api-route"
 
 // Public: get a service
-export async function GET(_request: Request, { params }: Params) {
-  try {
+export const GET = withParams<{ id: string }>(
+  "api.services.:id.GET",
+  async (_request, { params }) => {
     const { id } = await params
     const service = await db.service.findUnique({
       where: { id },
@@ -31,15 +33,14 @@ export async function GET(_request: Request, { params }: Params) {
     })
     if (!service) throw notFound("Serviço não encontrado")
     return NextResponse.json({ service })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)
 
 // Owner provider or admin: update a service
 // NOTE: basePrice can only INCREASE per business rule.
-export async function PATCH(request: Request, { params }: Params) {
-  try {
+export const PATCH = withParams<{ id: string }>(
+  "api.services.:id.PATCH",
+  async (request, { params }) => {
     const session = await requireUser()
     const { id } = await params
 
@@ -60,10 +61,10 @@ export async function PATCH(request: Request, { params }: Params) {
     const { sanitizeText } = await import("@/lib/sanitize")
 
     // Business rule: basePrice may only increase
-    if (data.basePrice !== undefined && data.basePrice < service.basePrice) {
+    if (data.basePrice !== undefined && data.basePrice < toMoneyNumber(service.basePrice)) {
       throw badRequest(
         "O preço base só pode ser reajustado para cima (mínimo atual: R$ " +
-          service.basePrice.toFixed(2) +
+          toMoneyNumber(service.basePrice).toFixed(2) +
           ")",
       )
     }
@@ -91,14 +92,13 @@ export async function PATCH(request: Request, { params }: Params) {
       include: { category: true },
     })
     return NextResponse.json({ service: updated })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)
 
 // Owner provider or admin: delete a service
-export async function DELETE(_request: Request, { params }: Params) {
-  try {
+export const DELETE = withParams<{ id: string }>(
+  "api.services.:id.DELETE",
+  async (_request, { params }) => {
     const session = await requireUser()
     const { id } = await params
 
@@ -116,7 +116,5 @@ export async function DELETE(_request: Request, { params }: Params) {
 
     await db.service.update({ where: { id }, data: { deletedAt: new Date() } })
     return NextResponse.json({ ok: true })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

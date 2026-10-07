@@ -65,7 +65,7 @@ describe("POST /api/admin/geo-reindex", () => {
   it("reindexes all 3 spatial indexes successfully", async () => {
     vi.mocked(db.$executeRawUnsafe).mockResolvedValue([{ result: "OK" }] as any)
 
-    const res = await POST()
+    const res = await POST(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse<GeoReindexResponse>(res)
 
     expect(parsed.status).toBe(200)
@@ -99,7 +99,7 @@ describe("POST /api/admin/geo-reindex", () => {
       .mockRejectedValueOnce(new Error("deadlock detected"))
       .mockResolvedValue([{ result: "OK" }] as any)
 
-    const res = await POST()
+    const res = await POST(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(500)
@@ -119,7 +119,7 @@ describe("POST /api/admin/geo-reindex", () => {
   it("returns 403 when user is not ADMIN", async () => {
     _mockRole = "PROVIDER"
 
-    const res = await POST()
+    const res = await POST(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(403)
@@ -130,7 +130,7 @@ describe("POST /api/admin/geo-reindex", () => {
   it("returns 401 when user is not authenticated", async () => {
     _mockRole = null
 
-    const res = await POST()
+    const res = await POST(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(401)
@@ -152,7 +152,7 @@ describe("POST /api/admin/geo-reindex", () => {
       return [{ result: "OK" }] as any
     }) as any)
 
-    const res = await POST()
+    const res = await POST(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse<GeoReindexResponse>(res)
 
     expect(parsed.status).toBe(200)

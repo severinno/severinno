@@ -83,6 +83,13 @@ vi.mock("@/lib/db", () => ({
       findUnique: vi.fn(),
       findUniqueOrThrow: vi.fn(),
     },
+    // pay route importa @/lib/idempotency (lib real) — model precisa existir;
+    // vi.fn() sem impl = fresh (undefined), igual ao comportamento acima.
+    idempotencyRecord: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
   },
 }))
 
@@ -93,6 +100,12 @@ import { GET as getBooking, PATCH as updateBooking } from "../bookings/[id]/rout
 import { POST as payBooking } from "../bookings/[id]/pay/route"
 import { db } from "@/lib/db"
 import { createPixCharge } from "@/lib/lytex"
+import DecimalJS from "decimal.js"
+import { Prisma } from "@prisma/client"
+
+// O namespace Prisma perde o Decimal sob o transform SSR do Vitest (ver
+// src/lib/money.ts) — instância direta de decimal.js é o padrão da casa
+const D = DecimalJS as unknown as typeof Prisma.Decimal
 
 // ── Mock data ──────────────────────────────────────────────────────────────
 
@@ -227,7 +240,7 @@ describe("GET /api/bookings", () => {
     ;(vi.mocked(db.booking.count) as any).mockResolvedValue(1)
 
     const req = createMockRequest()
-    const res = await listBookings(req)
+    const res = await listBookings(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -241,13 +254,38 @@ describe("GET /api/bookings", () => {
     ;(vi.mocked(db.booking.count) as any).mockResolvedValue(0)
 
     const req = createMockRequest({ searchParams: { status: "CONFIRMED" } })
-    await listBookings(req)
+    await listBookings(req, { params: Promise.resolve({}) })
 
     expect(db.booking.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ status: "CONFIRMED" }),
       }),
     )
+  })
+
+  it("money_decimal: serializa booking.amount e payment.amount como number (não string Decimal cru)", async () => {
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    ;(vi.mocked(db.booking.findMany) as any).mockResolvedValue([
+      {
+        ...mockBooking,
+        // Decimal REAL do Prisma — a unidade que o banco devolve
+        amount: new D("621.00"),
+        payment: { status: "PENDING", amount: new D("621.00") },
+      },
+    ])
+    ;(vi.mocked(db.booking.count) as any).mockResolvedValue(1)
+
+    const req = createMockRequest()
+    const res = await listBookings(req, { params: Promise.resolve({}) })
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    const item = (parsed.body as any).items[0]
+    // number exato (não "621.00" string, não 621.0000000000001)
+    expect(item.amount).toBe(621)
+    expect(typeof item.amount).toBe("number")
+    expect(item.payment.amount).toBe(621)
+    expect(typeof item.payment.amount).toBe("number")
   })
 })
 

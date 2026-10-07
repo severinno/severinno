@@ -20,10 +20,12 @@ export const dynamic = "force-dynamic"
  *   GET /api/admin/performance?period=24h
  */
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
+
 import logger from "@/lib/logger"
+
+import { withRoute } from "@/lib/api-route"
 
 // ── Tipos ─────────────────────────────────────────────────────────────────
 
@@ -98,48 +100,44 @@ interface SentryStatus {
 
 // ── Handler ───────────────────────────────────────────────────────────────
 
-export async function GET(request: NextRequest) {
-  try {
-    await requireRole("ADMIN")
-    const { assertRateLimit, RATE_LIMITS } = await import("@/lib/rate-limit")
-    await assertRateLimit(request, RATE_LIMITS.admin)
+export const GET = withRoute("api.admin.performance.GET", async (request) => {
+  await requireRole("ADMIN")
+  const { assertRateLimit, RATE_LIMITS } = await import("@/lib/rate-limit")
+  await assertRateLimit(request, RATE_LIMITS.admin)
 
-    const { searchParams } = new URL(request.url)
-    const period = searchParams.get("period") ?? "1h"
+  const { searchParams } = new URL(request.url)
+  const period = searchParams.get("period") ?? "1h"
 
-    const dsn = process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN || ""
+  const dsn = process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN || ""
 
-    const metrics: PerformanceMetrics = {
-      period,
-      collectedAt: new Date().toISOString(),
-      endpoints: [],
-      dbQueries: [],
-      externalCalls: [],
-      cacheOperations: [],
-      errorSummary: {
-        total5xx: 0,
-        total4xx: 0,
-        unhandledRejections: 0,
-        topErrors: [],
-      },
-      systemHealth: {
-        uptime: process.uptime(),
-        memoryUsageMb: Math.round((process.memoryUsage().heapUsed / 1024 / 1024) * 10) / 10,
-        cpuLoad: 0,
-        dbConnectionsActive: 0,
-        redisConnected: true,
-        rabbitmqConnected: false,
-      },
-      sentryStatus: {
-        configured: dsn.length > 0,
-        dsnPresent: dsn.length > 0,
-        tracesSampleRate: Number(process.env.SENTRY_TRACE_SAMPLE_RATE ?? 0.3),
-      },
-    }
-
-    logger.info("[perf] performance metrics requested (not yet aggregated)")
-    return NextResponse.json(metrics)
-  } catch (e) {
-    return handleError(e)
+  const metrics: PerformanceMetrics = {
+    period,
+    collectedAt: new Date().toISOString(),
+    endpoints: [],
+    dbQueries: [],
+    externalCalls: [],
+    cacheOperations: [],
+    errorSummary: {
+      total5xx: 0,
+      total4xx: 0,
+      unhandledRejections: 0,
+      topErrors: [],
+    },
+    systemHealth: {
+      uptime: process.uptime(),
+      memoryUsageMb: Math.round((process.memoryUsage().heapUsed / 1024 / 1024) * 10) / 10,
+      cpuLoad: 0,
+      dbConnectionsActive: 0,
+      redisConnected: true,
+      rabbitmqConnected: false,
+    },
+    sentryStatus: {
+      configured: dsn.length > 0,
+      dsnPresent: dsn.length > 0,
+      tracesSampleRate: Number(process.env.SENTRY_TRACE_SAMPLE_RATE ?? 0.3),
+    },
   }
-}
+
+  logger.info("[perf] performance metrics requested (not yet aggregated)")
+  return NextResponse.json(metrics)
+})

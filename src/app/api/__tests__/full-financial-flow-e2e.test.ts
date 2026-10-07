@@ -16,6 +16,13 @@ const mockDb = vi.hoisted(() => {
     resetToken: { updateMany: vi.fn(), create: vi.fn() },
     pushSubscription: { upsert: vi.fn() },
     notification: { create: vi.fn() },
+    // webhook lytex importa @/lib/idempotency (lib real) — model precisa
+    // existir E resolver promise (a lib encadeia .catch no update)
+    idempotencyRecord: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({}),
+      update: vi.fn().mockResolvedValue({}),
+    },
     $queryRaw: vi.fn().mockResolvedValue([]),
     $transaction: vi.fn() as ReturnType<typeof vi.fn>,
   }

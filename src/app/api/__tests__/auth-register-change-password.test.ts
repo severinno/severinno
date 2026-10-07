@@ -19,6 +19,16 @@ vi.mock("@/lib/rate-limit", () => ({
   },
 }))
 
+// Guard progressivo por fingerprint — no-op nos testes de rota.
+vi.mock("@/lib/auth-rate-limit", () => ({
+  authFingerprintGuard: vi.fn(async () => ({
+    fingerprint: "test:fp",
+    blocked: false,
+    response: null,
+    recordFailure: vi.fn().mockResolvedValue(undefined),
+  })),
+}))
+
 vi.mock("@/lib/logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -113,6 +123,7 @@ describe("POST /api/auth/register", () => {
           role: "CLIENT",
         },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -137,6 +148,7 @@ describe("POST /api/auth/register", () => {
           role: "CLIENT",
         },
       }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(409)
   })
@@ -153,6 +165,7 @@ describe("POST /api/auth/register", () => {
           role: "CLIENT",
         },
       }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(400)
   })
@@ -169,6 +182,7 @@ describe("POST /api/auth/register", () => {
           role: "CLIENT",
         },
       }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(400)
   })
@@ -179,6 +193,7 @@ describe("POST /api/auth/register", () => {
         method: "POST",
         body: { name: "Maria" },
       }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(400)
   })
@@ -209,6 +224,7 @@ describe("POST /api/auth/register", () => {
           radiusKm: 20,
         },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -239,6 +255,7 @@ describe("POST /api/auth/change-password", () => {
         method: "POST",
         body: { currentPassword: "OldSenha123", newPassword: "NewSenha456" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -269,6 +286,7 @@ describe("POST /api/auth/change-password", () => {
         method: "POST",
         body: { currentPassword: "WrongPass123", newPassword: "NewSenha456" },
       }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(400)
   })
@@ -287,6 +305,7 @@ describe("POST /api/auth/change-password", () => {
         method: "POST",
         body: { currentPassword: "OldSenha123", newPassword: "123" },
       }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(400)
   })
@@ -297,6 +316,7 @@ describe("POST /api/auth/change-password", () => {
         method: "POST",
         body: { currentPassword: "OldSenha123" },
       }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(400)
   })
@@ -309,6 +329,7 @@ describe("POST /api/auth/change-password", () => {
         method: "POST",
         body: { currentPassword: "OldSenha123", newPassword: "NewSenha456" },
       }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(400)
   })
@@ -327,6 +348,7 @@ describe("POST /api/auth/change-password", () => {
         method: "POST",
         body: { currentPassword: "OldSenha123", newPassword: "Password1" },
       }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(400)
   })

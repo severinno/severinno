@@ -2,8 +2,10 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
-import { handleError, cacheControlPrivate } from "@/lib/api-server"
+import { cacheControlPrivate } from "@/lib/api-server"
 import { CACHED_ROUTES, TOTAL_COUNT, PUBLIC_COUNT, PRIVATE_COUNT } from "@/lib/cache-manifest"
+
+import { withRoute } from "@/lib/api-route"
 
 /**
  * Static manifest of all cache-controlled API routes.
@@ -17,40 +19,36 @@ import { CACHED_ROUTES, TOTAL_COUNT, PUBLIC_COUNT, PRIVATE_COUNT } from "@/lib/c
  *
  * @returns {CacheRoutesManifest} — see ResponseType below.
  */
-export async function GET() {
-  try {
-    await requireRole("ADMIN")
+export const GET = withRoute("api.admin.cache-routes.GET", async (_request) => {
+  await requireRole("ADMIN")
 
-    const now = new Date().toISOString()
-    const routes: RouteEntry[] = CACHED_ROUTES.map((entry) => {
-      const base = routeManifestBase(entry.path)
-      return {
-        method: entry.method,
-        path: entry.path,
-        type: entry.type,
-        maxAge: entry.maxAge,
-        staleWhileRevalidate: entry.sMaxage,
-        vary: entry.vary.split(", "),
-        cacheControl: buildCacheControl(entry),
-        notes: base.notes,
-      }
-    })
-
-    const manifest: CacheRoutesManifest = {
-      meta: {
-        generatedAt: now,
-        totalRoutes: TOTAL_COUNT,
-        cacheControlPublic: PUBLIC_COUNT,
-        cacheControlPrivate: PRIVATE_COUNT,
-      },
-      routes,
+  const now = new Date().toISOString()
+  const routes: RouteEntry[] = CACHED_ROUTES.map((entry) => {
+    const base = routeManifestBase(entry.path)
+    return {
+      method: entry.method,
+      path: entry.path,
+      type: entry.type,
+      maxAge: entry.maxAge,
+      staleWhileRevalidate: entry.sMaxage,
+      vary: entry.vary.split(", "),
+      cacheControl: buildCacheControl(entry),
+      notes: base.notes,
     }
+  })
 
-    return cacheControlPrivate(NextResponse.json(manifest), 60)
-  } catch (e) {
-    return handleError(e)
+  const manifest: CacheRoutesManifest = {
+    meta: {
+      generatedAt: now,
+      totalRoutes: TOTAL_COUNT,
+      cacheControlPublic: PUBLIC_COUNT,
+      cacheControlPrivate: PRIVATE_COUNT,
+    },
+    routes,
   }
-}
+
+  return cacheControlPrivate(NextResponse.json(manifest), 60)
+})
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 

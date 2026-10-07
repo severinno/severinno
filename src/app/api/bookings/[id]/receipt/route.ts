@@ -3,16 +3,20 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { forbidden, notFound, handleError } from "@/lib/api-server"
+import { forbidden, notFound } from "@/lib/api-server"
 import { formatBRL, formatDateTime } from "@/lib/format"
+import { toMoneyNumber } from "@/lib/money"
 import crypto from "crypto"
+
+import { withParams } from "@/lib/api-route"
 
 /**
  * GET /api/bookings/[id]/receipt
  * Generates a formal digital receipt for completed services.
  */
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
+export const GET = withParams<{ id: string }>(
+  "api.bookings.:id.receipt.GET",
+  async (_request, { params }) => {
     const session = await requireUser()
     const { id: bookingId } = await params
 
@@ -76,8 +80,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
           location: booking.address,
         },
         financials: {
-          totalAmount: booking.amount,
-          formattedTotal: formatBRL(booking.amount),
+          totalAmount: toMoneyNumber(booking.amount),
+          formattedTotal: formatBRL(toMoneyNumber(booking.amount)),
           paymentMethod: booking.paymentMethod,
           paymentStatus: booking.paymentStatus,
         },
@@ -98,7 +102,5 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         },
       },
     })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

@@ -65,7 +65,7 @@ describe("GET /api/admin/finance/export-providers", () => {
     mockDb.$queryRaw.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const text = await res.text()
 
     expect(res.status).toBe(200)
@@ -82,7 +82,7 @@ describe("GET /api/admin/finance/export-providers", () => {
     mockDb.$queryRaw.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const text = await res.text()
 
     const header = text.trim().split("\n")[0]
@@ -108,7 +108,7 @@ describe("GET /api/admin/finance/export-providers", () => {
     ])
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const text = await res.text()
 
     const lines = text.trim().split("\n")
@@ -148,7 +148,7 @@ describe("GET /api/admin/finance/export-providers", () => {
     ])
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const text = await res.text()
 
     const lines = text.trim().split("\n")
@@ -174,7 +174,7 @@ describe("GET /api/admin/finance/export-providers", () => {
     ])
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const text = await res.text()
 
     const lines = text.trim().split("\n")
@@ -195,7 +195,7 @@ describe("GET /api/admin/finance/export-providers", () => {
     ])
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const text = await res.text()
 
     const lines = text.trim().split("\n")
@@ -207,7 +207,7 @@ describe("GET /api/admin/finance/export-providers", () => {
     mockDb.$queryRaw.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8")
     const disposition = res.headers.get("Content-Disposition") ?? ""
@@ -220,7 +220,7 @@ describe("GET /api/admin/finance/export-providers", () => {
     mockDb.$queryRaw.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const text = await res.text()
 
     const lines = text.trim().split("\n")
@@ -234,7 +234,7 @@ describe("GET /api/admin/finance/export-providers", () => {
     _mockRole = "PROVIDER"
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(403)
   })
 })

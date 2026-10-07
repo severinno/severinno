@@ -371,7 +371,9 @@ beforeEach(() => {
 describe("GET /api/admin/push/analytics", () => {
   it("returns 401 when the caller is not ADMIN", async () => {
     await expectUnauthorized(() =>
-      getAnalytics(buildRequest("http://localhost:3000/api/admin/push/analytics?days=30")),
+      getAnalytics(buildRequest("http://localhost:3000/api/admin/push/analytics?days=30"), {
+        params: Promise.resolve({}),
+      }),
     )
   })
 
@@ -395,7 +397,9 @@ describe("GET /api/admin/push/analytics", () => {
     ])
     mockDb.pushSubscription.count.mockResolvedValueOnce(250)
 
-    const res = await getAnalytics(buildRequest("http://localhost:3000/api/admin/push/analytics"))
+    const res = await getAnalytics(buildRequest("http://localhost:3000/api/admin/push/analytics"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -416,7 +420,9 @@ describe("GET /api/admin/push/analytics", () => {
   })
 
   it("returns zeroed metrics when there is no data", async () => {
-    const res = await getAnalytics(buildRequest("http://localhost:3000/api/admin/push/analytics"))
+    const res = await getAnalytics(buildRequest("http://localhost:3000/api/admin/push/analytics"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(body.summary.totalSent).toBe(0)
@@ -434,7 +440,9 @@ describe("GET /api/admin/push/analytics", () => {
 describe("GET /api/admin/push/audit", () => {
   it("returns 401 when the caller is not ADMIN", async () => {
     await expectUnauthorized(() =>
-      getAudit(buildRequest("http://localhost:3000/api/admin/push/audit")),
+      getAudit(buildRequest("http://localhost:3000/api/admin/push/audit"), {
+        params: Promise.resolve({}),
+      }),
     )
   })
 
@@ -448,7 +456,10 @@ describe("GET /api/admin/push/audit", () => {
       .mockResolvedValueOnce([{ action: "manual_send", _count: { id: 15 } }])
       .mockResolvedValueOnce([{ notificationType: "ADMIN_MANUAL", _count: { id: 9 } }])
 
-    const res = await getAudit(buildRequest("http://localhost:3000/api/admin/push/audit?limit=10"))
+    const res = await getAudit(
+      buildRequest("http://localhost:3000/api/admin/push/audit?limit=10"),
+      { params: Promise.resolve({}) },
+    )
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -473,6 +484,7 @@ describe("GET /api/admin/push/audit", () => {
       buildRequest(
         "http://localhost:3000/api/admin/push/audit?action=manual_send&type=ADMIN_MANUAL&adminId=admin-1&days=7",
       ),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -495,7 +507,9 @@ describe("GET /api/admin/push/audit", () => {
 describe("GET /api/admin/push/history", () => {
   it("returns 401 when the caller is not ADMIN", async () => {
     await expectUnauthorized(() =>
-      getHistory(buildRequest("http://localhost:3000/api/admin/push/history")),
+      getHistory(buildRequest("http://localhost:3000/api/admin/push/history"), {
+        params: Promise.resolve({}),
+      }),
     )
   })
 
@@ -518,7 +532,9 @@ describe("GET /api/admin/push/history", () => {
       .mockResolvedValueOnce([{ type: "ADMIN_MANUAL", _count: { id: 11 } }])
       .mockResolvedValueOnce([{ source: "manual", _count: { id: 9 } }])
 
-    const res = await getHistory(buildRequest("http://localhost:3000/api/admin/push/history"))
+    const res = await getHistory(buildRequest("http://localhost:3000/api/admin/push/history"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -564,7 +580,9 @@ describe("GET /api/admin/push/history", () => {
 describe("GET /api/admin/push/metrics", () => {
   it("returns 401 when the caller is not ADMIN", async () => {
     await expectUnauthorized(() =>
-      getMetrics(buildRequest("http://localhost:3000/api/admin/push/metrics")),
+      getMetrics(buildRequest("http://localhost:3000/api/admin/push/metrics"), {
+        params: Promise.resolve({}),
+      }),
     )
   })
 
@@ -594,7 +612,9 @@ describe("GET /api/admin/push/metrics", () => {
       _avg: { latencyMs: 123.46, deviceCount: 1.26 },
     })
 
-    const res = await getMetrics(buildRequest("http://localhost:3000/api/admin/push/metrics"))
+    const res = await getMetrics(buildRequest("http://localhost:3000/api/admin/push/metrics"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -615,7 +635,9 @@ describe("GET /api/admin/push/metrics", () => {
   })
 
   it("returns zeroed overview when there is no data", async () => {
-    const res = await getMetrics(buildRequest("http://localhost:3000/api/admin/push/metrics"))
+    const res = await getMetrics(buildRequest("http://localhost:3000/api/admin/push/metrics"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(body.overview.total).toBe(0)
@@ -808,6 +830,7 @@ describe("DELETE /api/admin/push/recurring", () => {
         method: "DELETE",
         body: { id: "rr-1" },
       }),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -826,6 +849,7 @@ describe("DELETE /api/admin/push/recurring", () => {
         method: "DELETE",
         body: { id: "missing" },
       }),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -911,6 +935,7 @@ describe("POST /api/admin/push/schedule", () => {
           type: "ADMIN_MANUAL",
         },
       }),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -932,6 +957,7 @@ describe("POST /api/admin/push/schedule", () => {
         method: "POST",
         body: { title: "Reminder", scheduledAt: "2026-02-10T15:00:00Z" },
       }),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -945,6 +971,7 @@ describe("POST /api/admin/push/schedule", () => {
         method: "POST",
         body: { userIds: ["u-1"], title: "Reminder", scheduledAt: "not-a-date" },
       }),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -1061,6 +1088,7 @@ describe("POST /api/admin/push/send", () => {
         method: "POST",
         body: { userIds: ["u-1", "u-2"], title: "Hello", body: "World" },
       }),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -1083,6 +1111,7 @@ describe("POST /api/admin/push/send", () => {
         method: "POST",
         body: { userIds: ["u-1"], title: "Hello" },
       }),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -1103,6 +1132,7 @@ describe("POST /api/admin/push/send", () => {
         method: "POST",
         body: { userIds: ["u-1"], title: "Hello" },
       }),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -1117,6 +1147,7 @@ describe("POST /api/admin/push/send", () => {
         method: "POST",
         body: { userIds: [], title: "Hello" },
       }),
+      { params: Promise.resolve({}) },
     )
 
     expect(res.status).toBe(400)
@@ -1128,7 +1159,9 @@ describe("POST /api/admin/push/send", () => {
 describe("GET /api/admin/push/users", () => {
   it("returns 401 when the caller is not ADMIN", async () => {
     await expectUnauthorized(() =>
-      getUsers(buildRequest("http://localhost:3000/api/admin/push/users")),
+      getUsers(buildRequest("http://localhost:3000/api/admin/push/users"), {
+        params: Promise.resolve({}),
+      }),
     )
   })
 
@@ -1158,7 +1191,9 @@ describe("GET /api/admin/push/users", () => {
     mockDb.user.count.mockResolvedValueOnce(2)
     mockDb.pushSubscription.count.mockResolvedValueOnce(3)
 
-    const res = await getUsers(buildRequest("http://localhost:3000/api/admin/push/users"))
+    const res = await getUsers(buildRequest("http://localhost:3000/api/admin/push/users"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -1183,7 +1218,9 @@ describe("GET /api/admin/push/users", () => {
       },
     ])
 
-    await getUsers(buildRequest("http://localhost:3000/api/admin/push/users?q=ali&role=CLIENT"))
+    await getUsers(buildRequest("http://localhost:3000/api/admin/push/users?q=ali&role=CLIENT"), {
+      params: Promise.resolve({}),
+    })
 
     expect(mockDb.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1201,7 +1238,9 @@ describe("GET /api/admin/push/users", () => {
 
 describe("GET /api/admin/push/webhooks", () => {
   it("returns 401 when the caller is not ADMIN", async () => {
-    await expectUnauthorized(() => getWebhooks())
+    await expectUnauthorized(() =>
+      getWebhooks(buildRequest("http://localhost:3000/api/admin/push/webhooks")),
+    )
   })
 
   it("lists all event webhook rules", async () => {
@@ -1215,7 +1254,7 @@ describe("GET /api/admin/push/webhooks", () => {
       }),
     ])
 
-    const res = await getWebhooks()
+    const res = await getWebhooks(buildRequest("http://localhost:3000/api/admin/push/webhooks"))
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -1256,6 +1295,7 @@ describe("POST /api/admin/push/webhooks", () => {
           active: true,
         },
       }),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -1274,6 +1314,7 @@ describe("POST /api/admin/push/webhooks", () => {
         method: "POST",
         body: { event: "bogus.event", title: "New booking", targetRoles: ["PROVIDER"] },
       }),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -1289,6 +1330,7 @@ describe("POST /api/admin/push/webhooks", () => {
         method: "POST",
         body: { event: "booking.created", title: "New booking", targetRoles: ["PROVIDER"] },
       }),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -1416,7 +1458,9 @@ describe("DELETE /api/admin/push/webhooks/[id]", () => {
 describe("GET /api/admin/push/webhooks/audit", () => {
   it("returns 401 when the caller is not ADMIN", async () => {
     await expectUnauthorized(() =>
-      getWebhookAudit(buildRequest("http://localhost:3000/api/admin/push/webhooks/audit")),
+      getWebhookAudit(buildRequest("http://localhost:3000/api/admin/push/webhooks/audit"), {
+        params: Promise.resolve({}),
+      }),
     )
   })
 
@@ -1433,6 +1477,7 @@ describe("GET /api/admin/push/webhooks/audit", () => {
 
     const res = await getWebhookAudit(
       buildRequest("http://localhost:3000/api/admin/push/webhooks/audit"),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 

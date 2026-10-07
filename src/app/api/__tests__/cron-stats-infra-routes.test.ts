@@ -381,7 +381,9 @@ describe("GET /api/cron/geo-cache-warm", () => {
   })
 
   it("returns 401 when the Authorization header is missing", async () => {
-    const res = await getGeoCacheWarm(cronRequest("/api/cron/geo-cache-warm"))
+    const res = await getGeoCacheWarm(cronRequest("/api/cron/geo-cache-warm"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(401)
@@ -390,7 +392,9 @@ describe("GET /api/cron/geo-cache-warm", () => {
   })
 
   it("returns 401 when the Bearer token is wrong", async () => {
-    const res = await getGeoCacheWarm(cronRequest("/api/cron/geo-cache-warm", "wrong"))
+    const res = await getGeoCacheWarm(cronRequest("/api/cron/geo-cache-warm", "wrong"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(401)
@@ -404,7 +408,9 @@ describe("GET /api/cron/geo-cache-warm", () => {
       errors: 0,
     } as never)
 
-    const res = await getGeoCacheWarm(cronRequest("/api/cron/geo-cache-warm", CRON_SECRET))
+    const res = await getGeoCacheWarm(cronRequest("/api/cron/geo-cache-warm", CRON_SECRET), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -419,7 +425,9 @@ describe("GET /api/cron/geo-cache-warm", () => {
   it("skips execution when the cooldown has not elapsed", async () => {
     vi.mocked(isCooldownElapsed).mockResolvedValue(false)
 
-    const res = await getGeoCacheWarm(cronRequest("/api/cron/geo-cache-warm", CRON_SECRET))
+    const res = await getGeoCacheWarm(cronRequest("/api/cron/geo-cache-warm", CRON_SECRET), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -432,7 +440,9 @@ describe("GET /api/cron/geo-cache-warm", () => {
   it("rejects request when CRON_SECRET is not configured (fail-closed)", async () => {
     process.env.CRON_SECRET = ""
 
-    const res = await getGeoCacheWarm(cronRequest("/api/cron/geo-cache-warm"))
+    const res = await getGeoCacheWarm(cronRequest("/api/cron/geo-cache-warm"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(401)
@@ -442,7 +452,9 @@ describe("GET /api/cron/geo-cache-warm", () => {
   it("returns 500 via handleError on internal failure", async () => {
     vi.mocked(isCooldownElapsed).mockRejectedValue(new Error("cooldown store down"))
 
-    const res = await getGeoCacheWarm(cronRequest("/api/cron/geo-cache-warm", CRON_SECRET))
+    const res = await getGeoCacheWarm(cronRequest("/api/cron/geo-cache-warm", CRON_SECRET), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(500)
@@ -563,7 +575,9 @@ describe("GET /api/cron/health-monitor", () => {
   })
 
   it("returns 401 when the Authorization header is missing", async () => {
-    const res = await getHealthMonitor(cronRequest("/api/cron/health-monitor"))
+    const res = await getHealthMonitor(cronRequest("/api/cron/health-monitor"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(401)
@@ -571,7 +585,9 @@ describe("GET /api/cron/health-monitor", () => {
   })
 
   it("returns 401 when the Bearer token is wrong", async () => {
-    const res = await getHealthMonitor(cronRequest("/api/cron/health-monitor", "wrong"))
+    const res = await getHealthMonitor(cronRequest("/api/cron/health-monitor", "wrong"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(401)
@@ -579,7 +595,9 @@ describe("GET /api/cron/health-monitor", () => {
   })
 
   it("reports the monitor result when the secret is valid", async () => {
-    const res = await getHealthMonitor(cronRequest("/api/cron/health-monitor", CRON_SECRET))
+    const res = await getHealthMonitor(cronRequest("/api/cron/health-monitor", CRON_SECRET), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -594,7 +612,9 @@ describe("GET /api/cron/health-monitor", () => {
   it("returns 500 via handleError on internal failure", async () => {
     vi.mocked(runHealthMonitor).mockRejectedValue(new Error("monitor crashed"))
 
-    const res = await getHealthMonitor(cronRequest("/api/cron/health-monitor", CRON_SECRET))
+    const res = await getHealthMonitor(cronRequest("/api/cron/health-monitor", CRON_SECRET), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(500)
@@ -624,7 +644,9 @@ describe("GET /api/cron/push-scheduled", () => {
   })
 
   it("returns 401 when the Authorization header is missing", async () => {
-    const res = await getPushScheduled(cronRequest("/api/cron/push-scheduled"))
+    const res = await getPushScheduled(cronRequest("/api/cron/push-scheduled"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(401)
@@ -632,7 +654,9 @@ describe("GET /api/cron/push-scheduled", () => {
   })
 
   it("returns 401 when the Bearer token is wrong", async () => {
-    const res = await getPushScheduled(cronRequest("/api/cron/push-scheduled", "wrong"))
+    const res = await getPushScheduled(cronRequest("/api/cron/push-scheduled", "wrong"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(401)
@@ -651,7 +675,9 @@ describe("GET /api/cron/push-scheduled", () => {
       },
     ] as never)
 
-    const res = await getPushScheduled(cronRequest("/api/cron/push-scheduled", CRON_SECRET))
+    const res = await getPushScheduled(cronRequest("/api/cron/push-scheduled", CRON_SECRET), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -683,7 +709,9 @@ describe("GET /api/cron/push-scheduled", () => {
       { id: "sp-2", title: "Vazio", body: "", pushUrl: "/", userIds: [], type: "info" },
     ] as never)
 
-    const res = await getPushScheduled(cronRequest("/api/cron/push-scheduled", CRON_SECRET))
+    const res = await getPushScheduled(cronRequest("/api/cron/push-scheduled", CRON_SECRET), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(body.results[0]).toMatchObject({ id: "sp-2", totalUsers: 0, status: "FAILED" })
@@ -717,7 +745,9 @@ describe("GET /api/cron/push-scheduled", () => {
     ] as never)
     vi.mocked(db.user.findMany).mockResolvedValue([{ id: "u1" }, { id: "u2" }] as never)
 
-    const res = await getPushScheduled(cronRequest("/api/cron/push-scheduled", CRON_SECRET))
+    const res = await getPushScheduled(cronRequest("/api/cron/push-scheduled", CRON_SECRET), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(body.recurring).toBe(1)
@@ -755,7 +785,9 @@ describe("GET /api/cron/push-scheduled", () => {
       },
     ] as never)
 
-    const res = await getPushScheduled(cronRequest("/api/cron/push-scheduled", CRON_SECRET))
+    const res = await getPushScheduled(cronRequest("/api/cron/push-scheduled", CRON_SECRET), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(body.recurring).toBe(0)
@@ -765,7 +797,9 @@ describe("GET /api/cron/push-scheduled", () => {
   it("returns 500 via handleError on internal failure", async () => {
     vi.mocked(db.scheduledPushNotification.findMany).mockRejectedValue(new Error("db exploded"))
 
-    const res = await getPushScheduled(cronRequest("/api/cron/push-scheduled", CRON_SECRET))
+    const res = await getPushScheduled(cronRequest("/api/cron/push-scheduled", CRON_SECRET), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(500)
@@ -788,7 +822,9 @@ describe("GET /api/cron/scheduled-push", () => {
   })
 
   it("returns 401 when the Authorization header is missing", async () => {
-    const res = await getScheduledPush(cronRequest("/api/cron/scheduled-push"))
+    const res = await getScheduledPush(cronRequest("/api/cron/scheduled-push"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(401)
@@ -796,7 +832,9 @@ describe("GET /api/cron/scheduled-push", () => {
   })
 
   it("returns 401 when the Bearer token is wrong", async () => {
-    const res = await getScheduledPush(cronRequest("/api/cron/scheduled-push", "wrong"))
+    const res = await getScheduledPush(cronRequest("/api/cron/scheduled-push", "wrong"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(401)
@@ -819,7 +857,9 @@ describe("GET /api/cron/scheduled-push", () => {
       { userId: "u3" },
     ] as never)
 
-    const res = await getScheduledPush(cronRequest("/api/cron/scheduled-push", CRON_SECRET))
+    const res = await getScheduledPush(cronRequest("/api/cron/scheduled-push", CRON_SECRET), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -846,7 +886,9 @@ describe("GET /api/cron/scheduled-push", () => {
     ] as never)
     vi.mocked(db.pushSubscription.groupBy).mockResolvedValue([])
 
-    const res = await getScheduledPush(cronRequest("/api/cron/scheduled-push", CRON_SECRET))
+    const res = await getScheduledPush(cronRequest("/api/cron/scheduled-push", CRON_SECRET), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(body.results[0]).toMatchObject({
@@ -870,7 +912,9 @@ describe("GET /api/cron/scheduled-push", () => {
       .mockResolvedValueOnce(undefined as never)
       .mockRejectedValueOnce(new Error("push provider down"))
 
-    const res = await getScheduledPush(cronRequest("/api/cron/scheduled-push", CRON_SECRET))
+    const res = await getScheduledPush(cronRequest("/api/cron/scheduled-push", CRON_SECRET), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(body.results[0]).toMatchObject({ status: "SENT", sentCount: 1, errorCount: 1 })
@@ -885,7 +929,9 @@ describe("GET /api/cron/scheduled-push", () => {
   it("returns 500 via handleError on internal failure", async () => {
     vi.mocked(db.scheduledPushNotification.findMany).mockRejectedValue(new Error("db exploded"))
 
-    const res = await getScheduledPush(cronRequest("/api/cron/scheduled-push", CRON_SECRET))
+    const res = await getScheduledPush(cronRequest("/api/cron/scheduled-push", CRON_SECRET), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(500)

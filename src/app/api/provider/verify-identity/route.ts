@@ -3,9 +3,11 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { forbidden, handleError } from "@/lib/api-server"
+import { forbidden } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { z } from "zod"
+
+import { withRoute } from "@/lib/api-route"
 
 const verifyIdentitySchema = z.object({
   docUrl: z.string().url("URL do documento inválida"),
@@ -16,38 +18,33 @@ const verifyIdentitySchema = z.object({
  * POST /api/provider/verify-identity
  * Provider submits identity documents (RG/CNH + Selfie) for admin verification.
  */
-export async function POST(request: Request) {
-  try {
-    await assertRateLimit(request, RATE_LIMITS.general)
-    const session = await requireUser()
-    if (session.role !== "PROVIDER") {
-      throw forbidden("Apenas prestadores podem solicitar verificação de identidade")
-    }
-
-    const body = await request.json().catch(() => ({}))
-    const { docUrl, selfieUrl } = verifyIdentitySchema.parse(body)
-
-    const user = await db.user.update({
-      where: { id: session.userId },
-      data: {
-        identityDocUrl: docUrl,
-        identitySelfieUrl: selfieUrl,
-        identityStatus: "pending",
-      },
-      select: {
-        id: true,
-        name: true,
-        identityStatus: true,
-      },
-    })
-
-    return NextResponse.json({
-      ok: true,
-      message:
-        "Documentos enviados com sucesso! Nossa equipe analisará sua verificação em até 24h.",
-      user,
-    })
-  } catch (e) {
-    return handleError(e)
+export const POST = withRoute("api.provider.verify-identity.POST", async (request) => {
+  await assertRateLimit(request, RATE_LIMITS.general)
+  const session = await requireUser()
+  if (session.role !== "PROVIDER") {
+    throw forbidden("Apenas prestadores podem solicitar verificação de identidade")
   }
-}
+
+  const body = await request.json().catch(() => ({}))
+  const { docUrl, selfieUrl } = verifyIdentitySchema.parse(body)
+
+  const user = await db.user.update({
+    where: { id: session.userId },
+    data: {
+      identityDocUrl: docUrl,
+      identitySelfieUrl: selfieUrl,
+      identityStatus: "pending",
+    },
+    select: {
+      id: true,
+      name: true,
+      identityStatus: true,
+    },
+  })
+
+  return NextResponse.json({
+    ok: true,
+    message: "Documentos enviados com sucesso! Nossa equipe analisará sua verificação em até 24h.",
+    user,
+  })
+})

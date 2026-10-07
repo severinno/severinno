@@ -4,20 +4,15 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { categorySchema } from "@/lib/validators"
-import {
-  badRequest,
-  conflict,
-  handleError,
-  invalidateCategoryCache,
-  notFound,
-} from "@/lib/api-server"
+import { badRequest, conflict, invalidateCategoryCache, notFound } from "@/lib/api-server"
 import { cacheInvalidate } from "@/lib/redis"
 
-type Params = { params: Promise<{ id: string }> }
+import { withParams } from "@/lib/api-route"
 
 // Admin: update category
-export async function PATCH(request: Request, { params }: Params) {
-  try {
+export const PATCH = withParams<{ id: string }>(
+  "api.categories.:id.PATCH",
+  async (request, { params }) => {
     await requireRole("ADMIN")
     const { id } = await params
     const existing = await db.category.findUnique({ where: { id } })
@@ -62,14 +57,13 @@ export async function PATCH(request: Request, { params }: Params) {
     })
     await Promise.all([cacheInvalidate("categories:*"), invalidateCategoryCache()])
     return NextResponse.json({ category: updated })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)
 
 // Admin: delete category (block if it has children or services)
-export async function DELETE(_request: Request, { params }: Params) {
-  try {
+export const DELETE = withParams<{ id: string }>(
+  "api.categories.:id.DELETE",
+  async (_request, { params }) => {
     await requireRole("ADMIN")
     const { id } = await params
     const existing = await db.category.findUnique({ where: { id } })
@@ -86,7 +80,5 @@ export async function DELETE(_request: Request, { params }: Params) {
     await db.category.delete({ where: { id } })
     await Promise.all([cacheInvalidate("categories:*"), invalidateCategoryCache()])
     return NextResponse.json({ ok: true })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

@@ -88,7 +88,7 @@ beforeEach(() => {
 describe("GET /api/favorites", () => {
   it("returns favorited providers for CLIENT role", async () => {
     mockDb.favorite.findMany.mockResolvedValue(mockFavorites)
-    const response = await GET(createMockRequest())
+    const response = await GET(createMockRequest(), { params: Promise.resolve({}) })
     const data = await response.json()
     expect(response.status).toBe(200)
     expect(data).toHaveLength(2)
@@ -99,20 +99,20 @@ describe("GET /api/favorites", () => {
 
   it("throws 403 for non-CLIENT roles", async () => {
     vi.mocked(requireUser).mockResolvedValue({ userId: "prov-1", role: "PROVIDER" })
-    const response = await GET(createMockRequest())
+    const response = await GET(createMockRequest(), { params: Promise.resolve({}) })
     expect(response.status).toBe(403)
   })
 
   it("allows ADMIN to access", async () => {
     vi.mocked(requireUser).mockResolvedValue({ userId: "admin-1", role: "ADMIN" })
-    const response = await GET(createMockRequest())
+    const response = await GET(createMockRequest(), { params: Promise.resolve({}) })
     // ADMIN passes the requireUser check but fails the role check
     expect(response.status).toBe(403)
   })
 
   it("returns providers without passwordHash", async () => {
     mockDb.favorite.findMany.mockResolvedValue(mockFavorites)
-    const response = await GET(createMockRequest())
+    const response = await GET(createMockRequest(), { params: Promise.resolve({}) })
     const data = await response.json()
     expect(data[0]).not.toHaveProperty("passwordHash")
     expect(data[0]).not.toHaveProperty("reviewsReceived")
@@ -120,7 +120,10 @@ describe("GET /api/favorites", () => {
 
   it("computes distanceKm when lat/lng params are provided", async () => {
     mockDb.favorite.findMany.mockResolvedValue(mockFavorites)
-    const response = await GET(createMockRequest({ searchParams: { lat: "-23.5", lng: "-46.6" } }))
+    const response = await GET(
+      createMockRequest({ searchParams: { lat: "-23.5", lng: "-46.6" } }),
+      { params: Promise.resolve({}) },
+    )
     const data = await response.json()
     expect(data[0]).toHaveProperty("distanceKm")
     expect(typeof data[0].distanceKm).toBe("number")
@@ -128,7 +131,7 @@ describe("GET /api/favorites", () => {
 
   it("returns null distanceKm when no geo params", async () => {
     mockDb.favorite.findMany.mockResolvedValue(mockFavorites)
-    const response = await GET(createMockRequest())
+    const response = await GET(createMockRequest(), { params: Promise.resolve({}) })
     const data = await response.json()
     // First provider is at -23.5,-46.6, same as the no-geo, so distance is 0
     expect(data[0]).toHaveProperty("distanceKm", null)
@@ -142,7 +145,7 @@ describe("GET /api/favorites", () => {
       },
     ]
     mockDb.favorite.findMany.mockResolvedValue(noReviews)
-    const response = await GET(createMockRequest())
+    const response = await GET(createMockRequest(), { params: Promise.resolve({}) })
     const data = await response.json()
     expect(data[0].rating).toBe(0)
     expect(data[0].reviewCount).toBe(0)
@@ -150,7 +153,7 @@ describe("GET /api/favorites", () => {
 
   it("orders favorites by createdAt desc", async () => {
     mockDb.favorite.findMany.mockResolvedValue(mockFavorites)
-    await GET(createMockRequest())
+    await GET(createMockRequest(), { params: Promise.resolve({}) })
     expect(mockDb.favorite.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ orderBy: { createdAt: "desc" } }),
     )

@@ -49,14 +49,14 @@ describe("POST /api/bookings/contract", () => {
   beforeEach(() => vi.clearAllMocks())
 
   it("returns 400 for invalid body", async () => {
-    const res = await POST(postReq({ bookingId: "b1" }))
+    const res = await POST(postReq({ bookingId: "b1" }), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(400)
   })
 
   it("generates contract on valid body", async () => {
     mockGenerateServiceContract.mockReturnValue({ contractId: "c1", html: "<html>" })
-    const res = await POST(postReq(VALID_BODY))
+    const res = await POST(postReq(VALID_BODY), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(200)
     expect((parsed.body as any).success).toBe(true)
@@ -65,7 +65,7 @@ describe("POST /api/bookings/contract", () => {
 
   it("returns 401 when not authenticated", async () => {
     vi.mocked(requireUser).mockRejectedValueOnce(new HttpError(401, "Não autorizado"))
-    const res = await POST(postReq(VALID_BODY))
+    const res = await POST(postReq(VALID_BODY), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(401)
   })
@@ -75,7 +75,7 @@ describe("GET /api/bookings/contract", () => {
   beforeEach(() => vi.clearAllMocks())
 
   it("returns 400 when id param missing", async () => {
-    const res = await GET(getReq())
+    const res = await GET(getReq(), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(400)
   })

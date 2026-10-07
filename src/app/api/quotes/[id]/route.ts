@@ -3,14 +3,15 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
+import { badRequest, forbidden, notFound } from "@/lib/api-server"
 import { type QuoteStatus } from "@prisma/client"
 
-type Params = { params: Promise<{ id: string }> }
+import { withParams } from "@/lib/api-route"
 
 // Participant: get a quote
-export async function GET(_request: Request, { params }: Params) {
-  try {
+export const GET = withParams<{ id: string }>(
+  "api.quotes.:id.GET",
+  async (_request, { params }) => {
     const session = await requireUser()
     const { id } = await params
 
@@ -39,14 +40,13 @@ export async function GET(_request: Request, { params }: Params) {
     if (!isParticipant) throw forbidden("Acesso negado a este orçamento")
 
     return NextResponse.json({ quote })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)
 
 // CLIENT: update request status (APPROVED / REJECTED / CANCELLED)
-export async function PATCH(request: Request, { params }: Params) {
-  try {
+export const PATCH = withParams<{ id: string }>(
+  "api.quotes.:id.PATCH",
+  async (request, { params }) => {
     const session = await requireUser()
     const { id } = await params
 
@@ -75,7 +75,5 @@ export async function PATCH(request: Request, { params }: Params) {
       },
     })
     return NextResponse.json({ quote: updated })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

@@ -3,9 +3,11 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
+
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { FEE_RATE } from "@/lib/wallet"
+import { feeOf, netOf, roundMoney } from "@/lib/money"
+
+import { withRoute } from "@/lib/api-route"
 
 type CommissionSummary = {
   year: number
@@ -38,48 +40,49 @@ type CommissionSummary = {
   }>
 }
 
-export async function GET(request: Request) {
-  try {
-    await requireRole("ADMIN")
-    await assertRateLimit(request, RATE_LIMITS.admin)
+export const GET = withRoute("api.admin.commissions.GET", async (request) => {
+  await requireRole("ADMIN")
+  await assertRateLimit(request, RATE_LIMITS.admin)
 
-    const { searchParams } = new URL(request.url)
-    const yearParam = searchParams.get("year")
-    const selectedYear = yearParam ? parseInt(yearParam, 10) : new Date().getFullYear()
-    const providerId = searchParams.get("providerId") || undefined
+  const { searchParams } = new URL(request.url)
+  const yearParam = searchParams.get("year")
+  const selectedYear = yearParam ? parseInt(yearParam, 10) : new Date().getFullYear()
+  const providerId = searchParams.get("providerId") || undefined
 
-    // Build date range for the selected year
-    const yearStart = new Date(selectedYear, 0, 1)
-    const yearEnd = new Date(selectedYear + 1, 0, 1)
+  // Build date range for the selected year
+  const yearStart = new Date(selectedYear, 0, 1)
+  const yearEnd = new Date(selectedYear + 1, 0, 1)
 
-    // Build where clause
-    const where: Record<string, unknown> = {
-      paymentStatus: "PAID",
-      createdAt: { gte: yearStart, lt: yearEnd },
-    }
-    if (providerId) {
-      where.providerId = providerId
-    }
+  // Build where clause
+  const where: Record<string, unknown> = {
+    paymentStatus: "PAID",
+    createdAt: { gte: yearStart, lt: yearEnd },
+  }
+  if (providerId) {
+    where.providerId = providerId
+  }
 
-    // Aggregate totals via SQL
-    const [bookingStats, completedCount] = await Promise.all([
-      db.booking.aggregate({
-        where,
-        _sum: { amount: true },
-        _count: { id: true },
-      }),
-      db.booking.count({
-        where: { ...where, status: "COMPLETED" },
-      }),
-    ])
+  // Aggregate totals via SQL
+  const [bookingStats, completedCount] = await Promise.all([
+    db.booking.aggregate({
+      where,
+      _sum: { amount: true },
+      _count: { id: true },
+    }),
+    db.booking.count({
+      where: { ...where, status: "COMPLETED" },
+    }),
+  ])
 
-    const grossRevenue = bookingStats._sum.amount ?? 0
-    const bookingCount = bookingStats._count.id
-    const platformCommission = Math.round(grossRevenue * FEE_RATE * 100) / 100
-    const providerEarnings = Math.round(grossRevenue * (1 - FEE_RATE) * 100) / 100
+  const bookingCount = bookingStats._count.id
+  // Decimal puro: fee e net derivados do MESMO gross arredondado (identidade
+  // gross = fee + net exata); conversão para number só na serialização.
+  const grossD = roundMoney(bookingStats._sum.amount)
+  const platformCommission = feeOf(grossD).toNumber()
+  const providerEarnings = netOf(grossD).toNumber()
 
-    // Monthly breakdown via raw SQL com date_trunc (groupBy("createdAt") agrupava por ms)
-    const monthlyStats = await db.$queryRaw<Array<{ month: string; gross: bigint; count: bigint }>>`
+  // Monthly breakdown via raw SQL com date_trunc (groupBy("createdAt") agrupava por ms)
+  const monthlyStats = await db.$queryRaw<Array<{ month: string; gross: bigint; count: bigint }>>`
       SELECT
         to_char("createdAt", 'YYYY-MM') AS month,
         SUM(amount) AS gross,
@@ -93,64 +96,64 @@ export async function GET(request: Request) {
       ORDER BY month ASC
     `
 
-    const monthly = monthlyStats.map((m) => ({
+  const monthly = monthlyStats.map((m) => {
+    const grossD = roundMoney(m.gross.toString()) // Decimal(10,2) do SQL SUM
+    return {
       month: m.month,
-      gross: Math.round(Number(m.gross) * 100) / 100,
-      commission: Math.round(Number(m.gross) * FEE_RATE * 100) / 100,
-      providerNet: Math.round(Number(m.gross) * (1 - FEE_RATE) * 100) / 100,
+      gross: grossD.toNumber(),
+      commission: feeOf(grossD).toNumber(),
+      providerNet: netOf(grossD).toNumber(),
       bookingCount: Number(m.count),
-    }))
+    }
+  })
 
-    // Per-provider breakdown via SQL groupBy
-    const providerStats = await db.booking.groupBy({
-      by: ["providerId"],
-      where,
-      _sum: { amount: true },
-      _count: { id: true },
-      orderBy: { _sum: { amount: "desc" } },
-    })
+  // Per-provider breakdown via SQL groupBy
+  const providerStats = await db.booking.groupBy({
+    by: ["providerId"],
+    where,
+    _sum: { amount: true },
+    _count: { id: true },
+    orderBy: { _sum: { amount: "desc" } },
+  })
 
-    const providerIds = providerStats.map((p) => p.providerId)
-    const providerUsers = await db.user.findMany({
-      where: { id: { in: providerIds } },
-      select: { id: true, name: true, avatarUrl: true },
-    })
-    const providerInfoMap = new Map(providerUsers.map((p) => [p.id, p]))
+  const providerIds = providerStats.map((p) => p.providerId)
+  const providerUsers = await db.user.findMany({
+    where: { id: { in: providerIds } },
+    select: { id: true, name: true, avatarUrl: true },
+  })
+  const providerInfoMap = new Map(providerUsers.map((p) => [p.id, p]))
 
-    // Count completed per provider
-    const completedByProvider = await db.booking.groupBy({
-      by: ["providerId"],
-      where: { ...where, status: "COMPLETED" },
-      _count: { id: true },
-    })
-    const completedMap = new Map(completedByProvider.map((c) => [c.providerId, c._count.id]))
+  // Count completed per provider
+  const completedByProvider = await db.booking.groupBy({
+    by: ["providerId"],
+    where: { ...where, status: "COMPLETED" },
+    _count: { id: true },
+  })
+  const completedMap = new Map(completedByProvider.map((c) => [c.providerId, c._count.id]))
 
-    const providers = providerStats.map((p) => {
-      const info = providerInfoMap.get(p.providerId)
-      const gross = p._sum.amount ?? 0
-      return {
-        id: p.providerId,
-        name: info?.name ?? "Desconhecido",
-        avatarUrl: info?.avatarUrl ?? null,
-        bookingCount: p._count.id,
-        grossRevenue: Math.round(gross * 100) / 100,
-        commission: Math.round(gross * FEE_RATE * 100) / 100,
-        netEarnings: Math.round(gross * (1 - FEE_RATE) * 100) / 100,
-        completedCount: completedMap.get(p.providerId) ?? 0,
-      }
-    })
+  const providers = providerStats.map((p) => {
+    const info = providerInfoMap.get(p.providerId)
+    const grossD = roundMoney(p._sum.amount)
+    return {
+      id: p.providerId,
+      name: info?.name ?? "Desconhecido",
+      avatarUrl: info?.avatarUrl ?? null,
+      bookingCount: p._count.id,
+      grossRevenue: grossD.toNumber(),
+      commission: feeOf(grossD).toNumber(),
+      netEarnings: netOf(grossD).toNumber(),
+      completedCount: completedMap.get(p.providerId) ?? 0,
+    }
+  })
 
-    return NextResponse.json({
-      year: selectedYear,
-      grossRevenue: Math.round(grossRevenue * 100) / 100,
-      platformCommission,
-      providerEarnings,
-      bookingCount,
-      completedCount,
-      monthly,
-      providers,
-    } satisfies CommissionSummary)
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  return NextResponse.json({
+    year: selectedYear,
+    grossRevenue: grossD.toNumber(),
+    platformCommission,
+    providerEarnings,
+    bookingCount,
+    completedCount,
+    monthly,
+    providers,
+  } satisfies CommissionSummary)
+})

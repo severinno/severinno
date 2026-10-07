@@ -552,13 +552,17 @@ describe("GET /api/admin/cache-routes", () => {
   it("returns 401 when requireRole rejects", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await GETCacheRoutes()
+    const res = await GETCacheRoutes(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(401)
   })
 
   it("returns the cache manifest with private cache-control headers", async () => {
-    const res = await GETCacheRoutes()
+    const res = await GETCacheRoutes(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(200)
     expect(res.headers.get("Cache-Control")).toBe("private, max-age=60")
@@ -597,7 +601,9 @@ describe("GET /api/admin/coverage", () => {
   it("returns 401 when requireRole rejects", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await GETCoverage(new Request("http://localhost/api/admin/coverage"))
+    const res = await GETCoverage(new Request("http://localhost/api/admin/coverage"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(401)
   })
@@ -610,7 +616,9 @@ describe("GET /api/admin/coverage", () => {
     })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
-    const res = await GETCoverage(new Request("http://localhost/api/admin/coverage"))
+    const res = await GETCoverage(new Request("http://localhost/api/admin/coverage"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(403)
   })
@@ -639,7 +647,9 @@ describe("GET /api/admin/coverage", () => {
     vi.mocked(db.user.count).mockResolvedValue(42)
     vi.mocked(haversineKm).mockReturnValue(5)
 
-    const res = await GETCoverage(new Request("http://localhost/api/admin/coverage"))
+    const res = await GETCoverage(new Request("http://localhost/api/admin/coverage"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -657,7 +667,9 @@ describe("GET /api/admin/coverage", () => {
     vi.mocked(db.user.findMany).mockResolvedValue([] as any)
     vi.mocked(db.user.count).mockResolvedValue(0)
 
-    const res = await GETCoverage(new Request("http://localhost/api/admin/coverage"))
+    const res = await GETCoverage(new Request("http://localhost/api/admin/coverage"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(body.providers).toEqual([])
@@ -676,13 +688,17 @@ describe("GET /api/admin/errors", () => {
   it("returns 401 when requireRole rejects", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await GETErrors(buildRequest("http://localhost:3000/api/admin/errors"))
+    const res = await GETErrors(buildRequest("http://localhost:3000/api/admin/errors"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(401)
   })
 
   it("returns aggregated error trends with the default period", async () => {
-    const res = await GETErrors(buildRequest("http://localhost:3000/api/admin/errors"))
+    const res = await GETErrors(buildRequest("http://localhost:3000/api/admin/errors"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(body.period).toBe("24h")
@@ -698,7 +714,9 @@ describe("GET /api/admin/errors", () => {
   })
 
   it("honors the period query param", async () => {
-    const res = await GETErrors(buildRequest("http://localhost:3000/api/admin/errors?period=7d"))
+    const res = await GETErrors(buildRequest("http://localhost:3000/api/admin/errors?period=7d"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(body.period).toBe("7d")
@@ -707,6 +725,7 @@ describe("GET /api/admin/errors", () => {
   it("filters byEndpoint entries by the endpoint query param", async () => {
     const res = await GETErrors(
       buildRequest("http://localhost:3000/api/admin/errors?endpoint=/api/bookings"),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -747,7 +766,9 @@ describe("GET /api/admin/geo-cache-diagnostics", () => {
   it("returns 401 when requireRole rejects", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await GETGeoCacheDiagnostics()
+    const res = await GETGeoCacheDiagnostics(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(401)
   })
@@ -760,7 +781,9 @@ describe("GET /api/admin/geo-cache-diagnostics", () => {
     })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
-    const res = await GETGeoCacheDiagnostics()
+    const res = await GETGeoCacheDiagnostics(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(403)
   })
@@ -769,7 +792,9 @@ describe("GET /api/admin/geo-cache-diagnostics", () => {
     vi.mocked(isRedisAvailable).mockReturnValue(true)
     vi.mocked(getClient).mockReturnValue({ ttl: vi.fn().mockResolvedValue(10) } as any)
 
-    const res = await GETGeoCacheDiagnostics()
+    const res = await GETGeoCacheDiagnostics(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -796,7 +821,9 @@ describe("GET /api/admin/geo-cache-diagnostics", () => {
   it("returns empty keyTTLs when Redis is unavailable", async () => {
     vi.mocked(isRedisAvailable).mockReturnValue(false)
 
-    const res = await GETGeoCacheDiagnostics()
+    const res = await GETGeoCacheDiagnostics(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(body.keyTTLs).toEqual([])
@@ -814,7 +841,7 @@ describe("GET /api/admin/geo-metrics", () => {
   it("returns 401 when requireRole rejects", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await GETGeoMetrics(mockRequest)
+    const res = await GETGeoMetrics(mockRequest, { params: Promise.resolve({}) })
 
     expect(res.status).toBe(401)
   })
@@ -827,7 +854,7 @@ describe("GET /api/admin/geo-metrics", () => {
     })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
-    const res = await GETGeoMetrics(mockRequest)
+    const res = await GETGeoMetrics(mockRequest, { params: Promise.resolve({}) })
 
     expect(res.status).toBe(403)
   })
@@ -839,7 +866,7 @@ describe("GET /api/admin/geo-metrics", () => {
     mockExistsSync.mockImplementation(() => true)
     mockReadFileSync.mockImplementation(() => GEO_BENCHMARK_FILE)
 
-    const res = await GETGeoMetrics(mockRequest)
+    const res = await GETGeoMetrics(mockRequest, { params: Promise.resolve({}) })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -864,7 +891,7 @@ describe("GET /api/admin/geo-metrics", () => {
     vi.mocked(getGeoMetricsHistory).mockReturnValue(GEO_METRICS_HISTORY as any)
     vi.mocked(getP95Baselines).mockReturnValue({})
 
-    const res = await GETGeoMetrics(mockRequest)
+    const res = await GETGeoMetrics(mockRequest, { params: Promise.resolve({}) })
     const body = await res.json()
 
     expect(body.benchmark).toBeNull()
@@ -899,6 +926,7 @@ describe("GET /api/admin/geo-metrics/timeline", () => {
 
     const res = await GETGeoMetricsTimeline(
       buildRequest("http://localhost:3000/api/admin/geo-metrics/timeline"),
+      { params: Promise.resolve({}) },
     )
 
     expect(res.status).toBe(401)
@@ -914,6 +942,7 @@ describe("GET /api/admin/geo-metrics/timeline", () => {
 
     const res = await GETGeoMetricsTimeline(
       buildRequest("http://localhost:3000/api/admin/geo-metrics/timeline"),
+      { params: Promise.resolve({}) },
     )
 
     expect(res.status).toBe(403)
@@ -926,6 +955,7 @@ describe("GET /api/admin/geo-metrics/timeline", () => {
       buildRequest(
         `http://localhost:3000/api/admin/geo-metrics/timeline?granularity=raw&from=1700000000000&to=1700000001000`,
       ),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -952,6 +982,7 @@ describe("GET /api/admin/geo-metrics/timeline", () => {
       buildRequest(
         `http://localhost:3000/api/admin/geo-metrics/timeline?granularity=5m&from=0&to=10000000000000`,
       ),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -972,6 +1003,7 @@ describe("GET /api/admin/geo-metrics/timeline", () => {
 
     const res = await GETGeoMetricsTimeline(
       buildRequest(`http://localhost:3000/api/admin/geo-metrics/timeline?from=abc&to=def`),
+      { params: Promise.resolve({}) },
     )
 
     expect(res.status).toBe(400)
@@ -986,6 +1018,7 @@ describe("GET /api/admin/geo-metrics/timeline", () => {
       buildRequest(
         `http://localhost:3000/api/admin/geo-metrics/timeline?granularity=1h&from=0&to=10000000000000`,
       ),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -1002,7 +1035,9 @@ describe("GET /api/admin/geo-query-log", () => {
   it("returns 401 when requireRole rejects", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await GETGeoQueryLog()
+    const res = await GETGeoQueryLog(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(401)
   })
@@ -1020,7 +1055,9 @@ describe("GET /api/admin/geo-query-log", () => {
     vi.mocked(getTopCEPs).mockReturnValue([{ cep: "01310100", count: 5 }] as any)
     vi.mocked(getTopReverses).mockReturnValue([] as any)
 
-    const res = await GETGeoQueryLog()
+    const res = await GETGeoQueryLog(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -1040,7 +1077,9 @@ describe("GET /api/admin/geo-rate-limit-status", () => {
   it("returns 401 when requireRole rejects", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await GETGeoRateLimitStatus()
+    const res = await GETGeoRateLimitStatus(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(401)
   })
@@ -1053,7 +1092,9 @@ describe("GET /api/admin/geo-rate-limit-status", () => {
     })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
-    const res = await GETGeoRateLimitStatus()
+    const res = await GETGeoRateLimitStatus(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(403)
   })
@@ -1067,7 +1108,9 @@ describe("GET /api/admin/geo-rate-limit-status", () => {
       redisRatio: 0.5,
     } as any)
 
-    const res = await GETGeoRateLimitStatus()
+    const res = await GETGeoRateLimitStatus(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -1085,7 +1128,9 @@ describe("POST /api/admin/geo-rate-limit-status/reset", () => {
   it("returns 401 when requireRole rejects", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await POSTGeoRateLimitReset()
+    const res = await POSTGeoRateLimitReset(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(401)
   })
@@ -1098,7 +1143,9 @@ describe("POST /api/admin/geo-rate-limit-status/reset", () => {
     })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
-    const res = await POSTGeoRateLimitReset()
+    const res = await POSTGeoRateLimitReset(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(403)
   })
@@ -1106,7 +1153,9 @@ describe("POST /api/admin/geo-rate-limit-status/reset", () => {
   it("resets the limiter and returns the before snapshot", async () => {
     vi.mocked(getRateLimitCounters).mockReturnValue({ totalChecks: 99, totalHits: 5 } as any)
 
-    const res = await POSTGeoRateLimitReset()
+    const res = await POSTGeoRateLimitReset(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -1127,6 +1176,7 @@ describe("GET /api/admin/geo-snapshots-summary", () => {
 
     const res = await GETGeoSnapshotsSummary(
       buildRequest("http://localhost:3000/api/admin/geo-snapshots-summary"),
+      { params: Promise.resolve({}) },
     )
 
     expect(res.status).toBe(401)
@@ -1151,6 +1201,7 @@ describe("GET /api/admin/geo-snapshots-summary", () => {
 
     const res = await GETGeoSnapshotsSummary(
       buildRequest("http://localhost:3000/api/admin/geo-snapshots-summary"),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -1181,6 +1232,7 @@ describe("GET /api/admin/geo-snapshots-summary", () => {
 
     const res = await GETGeoSnapshotsSummary(
       buildRequest("http://localhost:3000/api/admin/geo-snapshots-summary?days=7"),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -1197,6 +1249,7 @@ describe("GET /api/admin/geo-snapshots-summary", () => {
 
     const res = await GETGeoSnapshotsSummary(
       buildRequest("http://localhost:3000/api/admin/geo-snapshots-summary"),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -1216,7 +1269,9 @@ describe("GET /api/admin/global-rate-limit-status", () => {
   it("returns 401 when requireRole rejects", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await GETGlobalRateLimitStatus()
+    const res = await GETGlobalRateLimitStatus(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(401)
   })
@@ -1229,7 +1284,9 @@ describe("GET /api/admin/global-rate-limit-status", () => {
     })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
-    const res = await GETGlobalRateLimitStatus()
+    const res = await GETGlobalRateLimitStatus(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(403)
   })
@@ -1241,7 +1298,9 @@ describe("GET /api/admin/global-rate-limit-status", () => {
       timestamp: 1700000000000,
     } as any)
 
-    const res = await GETGlobalRateLimitStatus()
+    const res = await GETGlobalRateLimitStatus(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -1259,7 +1318,9 @@ describe("POST /api/admin/global-rate-limit-status/reset", () => {
   it("returns 401 when requireRole rejects", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await POSTGlobalRateLimitReset()
+    const res = await POSTGlobalRateLimitReset(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(401)
   })
@@ -1272,7 +1333,9 @@ describe("POST /api/admin/global-rate-limit-status/reset", () => {
     })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
-    const res = await POSTGlobalRateLimitReset()
+    const res = await POSTGlobalRateLimitReset(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(403)
   })
@@ -1280,7 +1343,9 @@ describe("POST /api/admin/global-rate-limit-status/reset", () => {
   it("resets the global limiter and returns the before snapshot", async () => {
     vi.mocked(getGlobalRateLimitDiagnostics).mockReturnValue({ storeSize: 7 } as any)
 
-    const res = await POSTGlobalRateLimitReset()
+    const res = await POSTGlobalRateLimitReset(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -1299,13 +1364,17 @@ describe("GET /api/admin/performance", () => {
   it("returns 401 when requireRole rejects", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await GETPerformance(buildRequest("http://localhost:3000/api/admin/performance"))
+    const res = await GETPerformance(buildRequest("http://localhost:3000/api/admin/performance"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(401)
   })
 
   it("returns performance metrics with the default period", async () => {
-    const res = await GETPerformance(buildRequest("http://localhost:3000/api/admin/performance"))
+    const res = await GETPerformance(buildRequest("http://localhost:3000/api/admin/performance"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -1323,6 +1392,7 @@ describe("GET /api/admin/performance", () => {
   it("honors the period query param", async () => {
     const res = await GETPerformance(
       buildRequest("http://localhost:3000/api/admin/performance?period=24h"),
+      { params: Promise.resolve({}) },
     )
     const body = await res.json()
 
@@ -1409,7 +1479,9 @@ describe("GET /api/admin/redis-diagnostics", () => {
   it("returns 401 when requireRole rejects", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await GETRedisDiagnostics()
+    const res = await GETRedisDiagnostics(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(401)
   })
@@ -1422,7 +1494,9 @@ describe("GET /api/admin/redis-diagnostics", () => {
     })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
-    const res = await GETRedisDiagnostics()
+    const res = await GETRedisDiagnostics(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
 
     expect(res.status).toBe(403)
   })
@@ -1435,7 +1509,9 @@ describe("GET /api/admin/redis-diagnostics", () => {
       nodes: ["node-1", "node-2"],
     } as any)
 
-    const res = await GETRedisDiagnostics()
+    const res = await GETRedisDiagnostics(new Request("http://localhost/test"), {
+      params: Promise.resolve({}),
+    })
     const body = await res.json()
 
     expect(res.status).toBe(200)

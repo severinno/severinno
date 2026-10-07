@@ -20,26 +20,23 @@ export const dynamic = "force-dynamic"
  * the admin dashboard.
  */
 
-import { handleError } from "@/lib/api-server"
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { getGlobalRateLimitDiagnostics } from "@/lib/global-rate-limit"
+
+import { withRoute } from "@/lib/api-route"
 
 // ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
 
-export async function GET() {
-  try {
-    await requireRole("ADMIN")
+export const GET = withRoute("api.admin.global-rate-limit-status.GET", async (_request) => {
+  await requireRole("ADMIN")
 
-    const diagnostics = getGlobalRateLimitDiagnostics()
+  const diagnostics = getGlobalRateLimitDiagnostics()
 
-    return NextResponse.json(diagnostics)
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  return NextResponse.json(diagnostics)
+})
 
 // ---------------------------------------------------------------------------
 // Response type (exported for the client component)

@@ -46,6 +46,13 @@ const mockDb = vi.hoisted(() => {
       updateMany: vi.fn(),
       create: vi.fn(),
     },
+    // webhook lytex importa @/lib/idempotency (lib real) — model precisa
+    // existir E resolver promise (a lib encadeia .catch no update)
+    idempotencyRecord: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({}),
+      update: vi.fn().mockResolvedValue({}),
+    },
     $transaction: vi.fn() as ReturnType<typeof vi.fn>,
     $queryRaw: vi.fn().mockResolvedValue([]),
   }
@@ -356,7 +363,7 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
       body: JSON.stringify({ amount: 100 }),
     })
 
-    const res = await POST(req)
+    const res = await POST(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)
@@ -383,7 +390,7 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
       body: JSON.stringify({ amount: 500 }),
     })
 
-    const res = await POST(req)
+    const res = await POST(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(400)
@@ -409,7 +416,7 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
       body: JSON.stringify({ amount: 200 }),
     })
 
-    const res = await POST(req)
+    const res = await POST(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(200)
 
     // Verify Serializable isolation is used

@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getSession } from "@/lib/auth"
 import logger from "@/lib/logger"
+import { toMoneyNumber } from "@/lib/money"
 
 const log = logger.child({ module: "provider-reports-api" })
 
@@ -157,7 +158,7 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    const totalGross = bookingsPaid.reduce((acc, b) => acc + b.amount, 0)
+    const totalGross = bookingsPaid.reduce((acc, b) => acc + toMoneyNumber(b.amount), 0)
     const platformFee = totalGross * 0.12 // 12% fee
     const netReceived = totalGross - platformFee
 
@@ -179,13 +180,14 @@ export async function GET(request: NextRequest) {
       "Valor Líquido (R$)",
     ]
     const rows = bookingsPaid.map((b) => {
-      const fee = b.amount * 0.12
-      const net = b.amount - fee
+      const amount = toMoneyNumber(b.amount)
+      const fee = amount * 0.12
+      const net = amount - fee
       return [
         b.id,
         new Date(b.updatedAt).toISOString().split("T")[0],
         b.paymentMethod,
-        b.amount.toFixed(2),
+        amount.toFixed(2),
         fee.toFixed(2),
         net.toFixed(2),
       ]

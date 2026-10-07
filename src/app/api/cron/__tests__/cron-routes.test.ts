@@ -56,7 +56,7 @@ describe("Cron API Routes (/api/cron/*)", () => {
       const req = new Request("http://localhost:3000/api/cron/reminders", {
         headers: { authorization: "Bearer wrong-secret" },
       })
-      const res = await runReminders(req)
+      const res = await runReminders(req, { params: Promise.resolve({}) })
       expect(res.status).toBe(401)
     })
 
@@ -76,7 +76,7 @@ describe("Cron API Routes (/api/cron/*)", () => {
       const req = new Request("http://localhost:3000/api/cron/reminders", {
         headers: { authorization: `Bearer ${CRON_SECRET}` },
       })
-      const res = await runReminders(req)
+      const res = await runReminders(req, { params: Promise.resolve({}) })
       const json = await res.json()
 
       expect(res.status).toBe(200)
@@ -108,7 +108,7 @@ describe("Cron API Routes (/api/cron/*)", () => {
       const req = new Request("http://localhost:3000/api/cron/commissions-report", {
         headers: { authorization: `Bearer ${CRON_SECRET}` },
       })
-      const res = await runCommissions(req)
+      const res = await runCommissions(req, { params: Promise.resolve({}) })
       const json = await res.json()
 
       expect(res.status).toBe(200)
@@ -138,7 +138,7 @@ describe("Cron API Routes (/api/cron/*)", () => {
       const req = new Request("http://localhost:3000/api/cron/health-monitor", {
         headers: { authorization: `Bearer ${CRON_SECRET}` },
       })
-      const res = await runHealthMonitor(req)
+      const res = await runHealthMonitor(req, { params: Promise.resolve({}) })
       const json = await res.json()
 
       expect(res.status).toBe(200)

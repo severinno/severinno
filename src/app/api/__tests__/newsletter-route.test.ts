@@ -52,7 +52,7 @@ describe("POST /api/newsletter", () => {
       method: "POST",
       body: { email: "user@example.com" },
     })
-    const res = await newsletterHandler(req as any)
+    const res = await newsletterHandler(req as any, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -76,7 +76,7 @@ describe("POST /api/newsletter", () => {
       method: "POST",
       body: { email: "user@example.com" },
     })
-    const res = await newsletterHandler(req as any)
+    const res = await newsletterHandler(req as any, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -92,7 +92,7 @@ describe("POST /api/newsletter", () => {
       method: "POST",
       body: {},
     })
-    const res = await newsletterHandler(req as any)
+    const res = await newsletterHandler(req as any, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
@@ -104,7 +104,7 @@ describe("POST /api/newsletter", () => {
       method: "POST",
       body: { email: "not-an-email" },
     })
-    const res = await newsletterHandler(req as any)
+    const res = await newsletterHandler(req as any, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
@@ -119,7 +119,7 @@ describe("POST /api/newsletter", () => {
       method: "POST",
       body: { email: "User@Example.COM" },
     })
-    const res = await newsletterHandler(req as any)
+    const res = await newsletterHandler(req as any, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -138,7 +138,7 @@ describe("POST /api/newsletter", () => {
       method: "POST",
       body: { email: "  user@example.com  " },
     })
-    const res = await newsletterHandler(req as any)
+    const res = await newsletterHandler(req as any, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)

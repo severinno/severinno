@@ -4,16 +4,18 @@ import { captureErrorEnhanced } from "@/lib/sentry-enhanced"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
+import { badRequest, forbidden, notFound } from "@/lib/api-server"
 import { saveAndQueueNotification } from "@/lib/notification-queue"
 import { captureError as _captureError } from "@/lib/sentry"
 import { emitRealtime } from "@/lib/realtime-client"
 import logger from "@/lib/logger"
+import { toMoneyNumber } from "@/lib/money"
 
-type Params = { params: Promise<{ id: string }> }
+import { withParams } from "@/lib/api-route"
 
-export async function POST(request: Request, { params }: Params) {
-  try {
+export const POST = withParams<{ id: string }>(
+  "api.quotes.:id.book.POST",
+  async (request, { params }) => {
     const session = await requireUser()
     const { id } = await params
     if (session.role !== "CLIENT") {
@@ -48,7 +50,7 @@ export async function POST(request: Request, { params }: Params) {
     if (isNaN(scheduleDate.getTime())) throw badRequest("Data inválida")
     if (scheduleDate <= new Date()) throw badRequest("A data deve ser futura")
 
-    const amount = quote.items.reduce((sum, item) => sum + (item.price ?? 0), 0)
+    const amount = quote.items.reduce((sum, item) => sum + toMoneyNumber(item.price), 0)
     if (amount <= 0) throw badRequest("Valor do orçamento inválido")
 
     const firstQuoted = quote.items.find((i) => i.status === "ACCEPTED" || i.price != null)
@@ -110,7 +112,5 @@ export async function POST(request: Request, { params }: Params) {
     })
 
     return NextResponse.json({ booking }, { status: 201 })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)
