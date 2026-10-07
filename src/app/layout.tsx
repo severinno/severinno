@@ -5,6 +5,8 @@ import "./globals.css"
 import { Providers } from "@/components/providers"
 import { SWRegister } from "@/components/sw-register"
 import { WebVitals } from "@/components/web-vitals"
+import { MaintenanceScreen } from "@/components/maintenance-screen"
+import { isMaintenanceMode } from "@/lib/maintenance-mode"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -83,14 +85,27 @@ export default async function RootLayout({
 }>) {
   const _nonce = (await headers()).get("x-nonce") ?? ""
 
+  // ── Chave de manutenção (um clique no painel admin) ────────────────────────
+  // Quando LIGADA, o público inteiro vê a tela de manutenção em QUALQUER
+  // página — o gate mora no layout raiz, então nem rota nova nem rota esquecida
+  // escapa. ADMIN atravessa (painel de pé para DESLIGAR). Fail-safe da lib:
+  // DB fora do ar → flag lida false → site ACESSÍVEL (nunca sequestrado).
+  const maintenance = await isMaintenanceMode()
+
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} bg-background text-foreground antialiased`}
       >
-        <Providers>{children}</Providers>
-        <WebVitals />
-        <SWRegister />
+        {maintenance ? (
+          <MaintenanceScreen />
+        ) : (
+          <>
+            <Providers>{children}</Providers>
+            <WebVitals />
+            <SWRegister />
+          </>
+        )}
       </body>
     </html>
   )

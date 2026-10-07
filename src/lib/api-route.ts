@@ -44,6 +44,7 @@ import { NextResponse } from "next/server"
 import { handleError } from "./api-server"
 import { traceSpan } from "./tracing"
 import { establishRequestContext } from "./request-context"
+import { requireMaintenanceAccessible } from "./maintenance-mode"
 import type { Span } from "@opentelemetry/api"
 
 /** Contexto entregue ao handler. `params` só existe em rotas dinâmicas. */
@@ -123,7 +124,19 @@ export function withRoute<P = Record<string, never>>(
         span.setAttribute("http.request_id", requestId)
         span.setAttribute("http.request.method", request.method)
         span.setAttribute("http.route", spanName)
-        span.setAttribute("url.path", requestPathname(request))
+        const pathname = requestPathname(request)
+        span.setAttribute("url.path", pathname)
+
+        // ── Chave de manutenção (um clique no painel admin) ────────────────
+        // Com a chave LIGADA, toda a API fica INACESSÍVEL ao público — responde
+        // 503 — e apenas sessões ADMIN atravessam (o painel continua operável
+        // para DESLIGAR a chave). Fora do corte, de propósito: `/api/webhooks/*`
+        // são callbacks de provedores externos (barrar na janela de manutenção
+        // pode corromper conciliação) e `/api/health` é o sinal de vida que o
+        // monitoramento consulta — a tela de manutenção É o estado observable.
+        if (!pathname.startsWith("/api/webhooks/") && pathname !== "/api/health") {
+          await requireMaintenanceAccessible()
+        }
 
         // Rotas dinâmicas do Next 16 passam `params` como Promise.
         const params = (ctx?.params ? await ctx.params : undefined) as P | undefined

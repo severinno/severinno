@@ -95,6 +95,10 @@ const AdminSettings = dynamic(
   () => import("./admin-settings").then((m) => ({ default: m.AdminSettings })),
   { ssr: false },
 )
+const AdminMaintenance = dynamic(
+  () => import("./admin-maintenance").then((m) => ({ default: m.AdminMaintenance })),
+  { ssr: false },
+)
 const AdminErrorTrends = dynamic(
   () => import("./admin-errors").then((m) => ({ default: m.AdminErrorTrends })),
   { ssr: false },
@@ -360,6 +364,11 @@ const NAV_ITEMS: NavItem[] = [
     label: "Configurações",
     icon: SettingsIcon,
   },
+  {
+    view: "admin.maintenance",
+    label: "Manutenção",
+    icon: HardHat,
+  },
 ]
 
 const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs: Breadcrumb[] }> = {
@@ -417,6 +426,12 @@ const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs:
     title: "Agendamentos",
     subtitle: "Supervisão de todos os agendamentos (somente leitura).",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Agendamentos" }],
+  },
+  "admin.maintenance": {
+    title: "Modo de manutenção",
+    subtitle:
+      "A chave que torna o site INACESSÍVEL ao público em um clique — e o reabre no clique seguinte.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Manutenção" }],
   },
   "admin.settings": {
     title: "Configurações",
@@ -702,6 +717,8 @@ function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: stri
       return <AdminHealthDashboard />
     case "admin.settings":
       return <AdminSettings />
+    case "admin.maintenance":
+      return <AdminMaintenance />
     default:
       return <AdminDashboard onNavigate={onNavigate} />
   }
