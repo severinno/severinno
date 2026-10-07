@@ -261,6 +261,21 @@ export const NAO_CITACOES = [
     porque:
       "ID (12 hex) da IMAGEM docker do worker carregada no daemon da VPS em 06/10/2026, citado no relatório go-live como IDENTIFICAÇÃO do artefato em produção (não um commit).",
   },
+  {
+    literal: "6ac58147",
+    porque:
+      "prefixo (com reticências) do _id de INVOICE de teste da API Lytex v2 — PIX R$2, 1º ciclo create→get→cancel do E2E de 06/10/2026 — citado na mensagem do commit `0593c010` como EVIDÊNCIA do teste (não é um commit).",
+  },
+  {
+    literal: "6ac581a",
+    porque:
+      "prefixo (com reticências) do _id de INVOICE de teste da API Lytex v2 — 2º ciclo do E2E de 06/10/2026 — citado na mensagem do commit `0593c010` como EVIDÊNCIA do teste (não é um commit).",
+  },
+  {
+    literal: "6ac581da",
+    porque:
+      "prefixo (com reticências) do _id de INVOICE de teste da API Lytex v2 — 3º ciclo do E2E de 06/10/2026 — citado na mensagem do commit `0593c010` como EVIDÊNCIA do teste (não é um commit).",
+  },
 ]
 
 /** O token de um hash: 7 a 40 hexadecimais isolados (o `\b` protege de runs maiores). */
