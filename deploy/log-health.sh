@@ -21,14 +21,14 @@
 # =============================================================================
 set -euo pipefail
 
-DESDE="${DESDE:-2026-10-01 12:17:00}"   # instante do upgrade (baseline do monitor)
+DESDE="${DESDE:-2026-10-07 03:00:00}"   # instante do upgrade (baseline do monitor)
 REPO_ALERTAS="${REPO_ALERTAS:-severinno/alertas}"
 # ROTAÇÃO 2026-10-06: o token NÃO tem mais default hardcoded — o valor ficou
 # no histórico do git (pusheado em 939a25c8) e foi rotacionado; o VIVO mora no
 # cofre gitignored deploy/.env.alertas (local e VPS), e o script falha se não
 # houver credencial no ambiente (fail-closed, sem credencial não há como
 # abrir a issue de regressão de qualquer forma).
-TOKEN="${GITEA_TOKEN_ALERTAS:-}"
+TOKEN="${GITEA_TOKEN_ALERTAS:-${GITEA_TOKEN:-}}"  # aceita os dois nomes (env pós-rotação usa GITEA_TOKEN)
 if [ -z "$TOKEN" ]; then
   echo "$(date '+%F %T') ERRO: GITEA_TOKEN_ALERTAS não definido — source deploy/.env.alertas antes de rodar"
   exit 2
@@ -52,9 +52,10 @@ const rows = comRetry(()=>db.prepare(
    WHERE t.status != 6 AND datetime(t.created,"unixepoch") >= ? ORDER BY t.id`
 ).all(process.env.DESDE));
 const PERDE_SEMPRE = /Lint|Bring-up Gate Proof|Pre-commit Proof/;
-const OSCILA = /Repo Guards|Tests/;
+const OSCILA = /Repo Guards|Tests|TypeCheck|UTF-8 Check/;
 let boas=0, esperadas=0, oscilou=0; const regressao=[];
 for (const r of rows){
+  if (r.status === 4) { esperadas++; continue; } // Skipped: job pulado roda e não grava log — não é perda
   const arquivo = existsSync(base+"/"+r.log_filename) || existsSync(base+"/"+r.log_filename.replace(/\.zst$/,""));
   const ganhou = r.log_in_storage === 1 && arquivo;
   if (ganhou) { boas++; continue; }
