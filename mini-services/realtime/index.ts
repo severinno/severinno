@@ -5,12 +5,87 @@
 
 import { createServer } from "http"
 import { Server as EngineServer } from "engine.io"
+import { readFileSync } from "fs"
 import { Server, Socket } from "socket.io"
 import { createAdapter } from "@socket.io/redis-adapter"
 import { Redis } from "ioredis"
 import { randomUUID } from "crypto"
 
-const PORT = 3003
+// A porta é fixa em produção (compose injeta PORT: 3003); a env existe para
+// a suíte E2E subir o serviço real numa porta livre sem colidir com nada.
+const PORT = Number(process.env.PORT ?? 3003)
+const NODE_ENV = process.env.NODE_ENV ?? "development"
+
+// ── /emit API key (FAIL-CLOSED) ─────────────────────────────────────────
+// O endpoint /emit injeta eventos em salas user:{id} — sem autenticação,
+// qualquer cliente HTTP na rede poderia forjar mensagens de chat, updates
+// de booking e posições de tracking para qualquer usuário.
+//
+// Política (09/2026):
+//   - Produção SEM REALTIME_EMIT_API_KEY configurada = boot FALHA (exit 1).
+//     O serviço não soba exposto sem chave — o orquestrador reinicia e o
+//     alerta de crashloop expõe o misconfiguration em vez de um endpoint
+//     aberto silenciosamente.
+//   - Sempre fail-closed: se a chave NÃO está configurada no servidor,
+//     TODO request ao /emit é rejeitado com 503 (não há modo aberto).
+//   - Em desenvolvimento, o boot apenas avisa (o /emit continua fechado).
+// Copia da regra de src/lib/realtime-emit-key.ts (a imagem do realtime não
+// contém src/ — os dois lados duplicam de propósito; o guard
+// check-realtime-emit-key-source.mjs prende o desenho secret + _FILE).
+function readEmitApiKey(): string | undefined {
+  const filePath = process.env.REALTIME_EMIT_API_KEY_FILE
+  if (filePath) {
+    let fromFile: string
+    try {
+      fromFile = readFileSync(filePath, "utf8").trim()
+    } catch {
+      throw new Error(
+        `[realtime] REALTIME_EMIT_API_KEY_FILE aponta para '${filePath}' mas o arquivo não pôde ser lido — ` +
+          `o Docker Secret realtime_emit_api_key não está montado neste container. ` +
+          `Fail-closed: sem fallback para a env direta. ` +
+          `Verifique o bloco secrets: do serviço no compose de produção.`,
+      )
+    }
+    if (fromFile) return fromFile
+  }
+  const direct = process.env.REALTIME_EMIT_API_KEY
+  return direct && direct.trim() ? direct.trim() : undefined
+}
+
+const EMIT_API_KEY = readEmitApiKey()
+
+if (!EMIT_API_KEY && NODE_ENV === "production") {
+  console.error(
+    "[realtime] FATAL: REALTIME_EMIT_API_KEY não configurada em produção. " +
+      "/emit injeta eventos em salas de usuários e não pode ficar aberto. " +
+      "Gere uma chave (ex.: `openssl rand -hex 32`) e configure REALTIME_EMIT_API_KEY " +
+      "no ambiente do serviço realtime E no app Next.js (mesmo valor).",
+  )
+  process.exit(1)
+}
+if (!EMIT_API_KEY) {
+  console.warn(
+    "[realtime] REALTIME_EMIT_API_KEY não configurada — /emit está FECHADO " +
+      "(todo request recebe 503). Configure a chave para habilitar o bridge do app.",
+  )
+}
+
+/**
+ * Compara duas chaves em tempo constante (evita timing attacks).
+ * Ambas viram hex de um SHA-256 antes da comparação — normaliza comprimento.
+ */
+async function keysMatch(provided: string, expected: string): Promise<boolean> {
+  const enc = new TextEncoder()
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(provided)),
+    crypto.subtle.digest("SHA-256", enc.encode(expected)),
+  ])
+  const av = new Uint8Array(a)
+  const bv = new Uint8Array(b)
+  let diff = 0
+  for (let i = 0; i < av.length; i++) diff |= av[i] ^ bv[i]
+  return diff === 0
+}
 
 // Allowed CORS origins — restrict to known domains
 const ALLOWED_ORIGINS = [
@@ -73,6 +148,57 @@ io.adapter(createAdapter(pubClient, subClient))
 pubClient.on("ready", () => console.log("[realtime] redis adapter connected"))
 pubClient.on("error", (err) => console.error("[realtime] redis adapter error:", err))
 subClient.on("error", (err) => console.error("[realtime] redis sub error:", err))
+
+// ---------- Socket ticket auth (handshake) ----------
+// O app emite um ticket SINGLE-USE (POST /api/realtime/{papel}/ticket, sessão
+// válida) gravando a identidade no MESMO Redis da base (TTL 60s). O handshake
+// consome com GETDEL — atômico: replay não funciona. A identidade estampada
+// no socket é a da SESSÃO, nunca payload do cliente (o join auto-declarado
+// permitia entrar em user:{id} de terceiros).
+const SOCKET_TICKET_PREFIX = "auth:socket-ticket:"
+
+interface TicketIdentity {
+  userId: string
+  role: string
+}
+
+async function consumeTicket(ticket: unknown): Promise<TicketIdentity | null> {
+  // 64 hex chars = 32 bytes de randomBytes — rejeita lixo antes do Redis.
+  if (typeof ticket !== "string" || !/^[0-9a-f]{64}$/.test(ticket)) return null
+  try {
+    const raw = await pubClient.getdel(`${SOCKET_TICKET_PREFIX}${ticket}`)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<TicketIdentity>
+    if (!parsed.userId || !parsed.role) return null
+    return { userId: String(parsed.userId), role: String(parsed.role) }
+  } catch (err) {
+    console.error("[realtime] ticket consume error:", err)
+    return null
+  }
+}
+
+// Handshake autenticado: sem ticket válido, a conexão só entra FORA de
+// produção (fallback dev — scripts e2e/smoke locais; o socket fica NÃO
+// autenticado e não recebe salas). Em produção é fail-closed.
+io.use(async (socket, next) => {
+  const identity = await consumeTicket(socket.handshake.auth?.ticket)
+  if (identity) {
+    socket.data.userId = identity.userId
+    socket.data.role = identity.role
+    socket.data.authenticated = true
+    console.log(
+      `[realtime] handshake autenticado: ${socket.id} user:${identity.userId} role:${identity.role}`,
+    )
+    return next()
+  }
+  if (NODE_ENV !== "production") {
+    socket.data.authenticated = false
+    console.warn(`[realtime] handshake SEM ticket (dev): ${socket.id} fica não autenticado`)
+    return next()
+  }
+  console.warn(`[realtime] handshake REJEITADO (sem ticket válido): ${socket.id}`)
+  next(new Error("unauthorized: ticket de socket ausente, expirado ou já usado"))
+})
 
 // ---------- Types ----------
 interface JoinPayload {
@@ -193,31 +319,40 @@ function handleNotificationNew(payload: { toId: string; notification?: unknown }
 io.on("connection", (socket: Socket) => {
   console.log(`[realtime] socket connected: ${socket.id}`)
 
-  // join { userId, role } -> join rooms user:{userId} and role:{role}
-  socket.on("join", (payload: JoinPayload, ack?: (res: { ok: boolean }) => void) => {
+  // join -> salas user:{userId} e role:{role} DA IDENTIDADE DO HANDSHAKE.
+  // O payload do cliente é IGNORADO — o servidor decide quem é quem; sem
+  // autenticação (fallback dev), o join falha com reason.
+  socket.on("join", (_payload: unknown, ack?: (res: { ok: boolean; reason?: string }) => void) => {
     try {
-      const { userId, role } = payload || ({} as JoinPayload)
-      if (!userId || !role) {
-        ack?.({ ok: false } as any)
+      const userId = socket.data.userId as string | undefined
+      const role = socket.data.role as string | undefined
+      if (!socket.data.authenticated || !userId || !role) {
+        ack?.({
+          ok: false,
+          reason: "não autenticado: obtenha um ticket em /api/realtime/{papel}/ticket",
+        })
         return
       }
       socket.join(`user:${userId}`)
       socket.join(`role:${role}`)
-      socket.data.userId = userId
-      socket.data.role = role
       console.log(`[realtime] ${socket.id} joined user:${userId} role:${role}`)
       ack?.({ ok: true })
     } catch (err) {
       console.error("[realtime] join error:", err)
-      ack?.({ ok: false } as any)
+      ack?.({ ok: false })
     }
   })
 
-  // message:send { fromId, toId, content, bookingId? }
-  // -> emit message:new (with id + timestamp) and notification:new to user:{toId}
+  // message:send — o fromId é a identidade do handshake (o payload não
+  // decide quem envia); não autenticado não retransmite.
   socket.on("message:send", (payload: MessageSendPayload) => {
     try {
-      handleMessageSend(payload)
+      const userId = socket.data.userId as string | undefined
+      if (!socket.data.authenticated || !userId) {
+        console.warn(`[realtime] message:send recusado (não autenticado): ${socket.id}`)
+        return
+      }
+      handleMessageSend({ ...payload, fromId: userId })
     } catch (err) {
       console.error("[realtime] message:send error:", err)
     }
@@ -227,6 +362,18 @@ io.on("connection", (socket: Socket) => {
   // -> emit booking:updated to both user:{clientId} and user:{providerId}
   socket.on("booking:update", (payload: BookingUpdatePayload) => {
     try {
+      const userId = socket.data.userId as string | undefined
+      if (!socket.data.authenticated || !userId) {
+        console.warn(`[realtime] booking:update recusado (não autenticado): ${socket.id}`)
+        return
+      }
+      // Só parte do booking retransmite o update dele.
+      if (payload?.clientId !== userId && payload?.providerId !== userId) {
+        console.warn(
+          `[realtime] booking:update recusado (${socket.id} não é parte do booking ${payload?.bookingId})`,
+        )
+        return
+      }
       handleBookingUpdate(payload)
     } catch (err) {
       console.error("[realtime] booking:update error:", err)
@@ -237,6 +384,17 @@ io.on("connection", (socket: Socket) => {
   // -> emit quote:updated to both user:{clientId} and user:{providerId}
   socket.on("quote:update", (payload: QuoteUpdatePayload) => {
     try {
+      const userId = socket.data.userId as string | undefined
+      if (!socket.data.authenticated || !userId) {
+        console.warn(`[realtime] quote:update recusado (não autenticado): ${socket.id}`)
+        return
+      }
+      if (payload?.clientId !== userId && payload?.providerId !== userId) {
+        console.warn(
+          `[realtime] quote:update recusado (${socket.id} não é parte da cotação ${payload?.quoteId})`,
+        )
+        return
+      }
       handleQuoteUpdate(payload)
     } catch (err) {
       console.error("[realtime] quote:update error:", err)
@@ -247,6 +405,14 @@ io.on("connection", (socket: Socket) => {
   // -> emit tracking:position to user:{clientId} (delivery tracking)
   socket.on("tracking:position", (payload: TrackingPositionPayload) => {
     try {
+      if (!socket.data.authenticated) {
+        console.warn(`[realtime] tracking:position recusado (não autenticado): ${socket.id}`)
+        return
+      }
+      // Próximo passo: validação de membership contra o banco (o payload não
+      // carrega o providerId — quem envia é o prestador do booking). Hoje:
+      // exige handshake autenticado; o destino (user:{clientId}) não é
+      // controlado pelo remetente.
       handleTrackingPosition(payload)
     } catch (err) {
       console.error("[realtime] tracking:position error:", err)
@@ -273,98 +439,121 @@ io.on("connection", (socket: Socket) => {
 //                 src/lib/realtime-client.ts (Next.js app server)
 // Every other request is delegated to engine.io (socket.io handshakes).
 httpServer.on("request", (req, res) => {
-  const url = new URL(req.url ?? "/", "http://localhost")
+  void (async () => {
+    const url = new URL(req.url ?? "/", "http://localhost")
 
-  if (url.pathname === "/health" && req.method === "GET") {
-    const clientsCount = io.engine ? io.engine.clientsCount : 0
-    res.writeHead(200, { "Content-Type": "application/json" })
-    res.end(
-      JSON.stringify({
-        status: "ok",
-        uptime: process.uptime(),
-        connections: clientsCount,
-        timestamp: new Date().toISOString(),
-      }),
-    )
-    return
-  }
+    if (url.pathname === "/health" && req.method === "GET") {
+      const clientsCount = io.engine ? io.engine.clientsCount : 0
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(
+        JSON.stringify({
+          status: "ok",
+          uptime: process.uptime(),
+          connections: clientsCount,
+          timestamp: new Date().toISOString(),
+        }),
+      )
+      return
+    }
 
-  if (url.pathname === "/metrics" && req.method === "GET") {
-    const clientsCount = io.engine ? io.engine.clientsCount : 0
-    const rooms = io.sockets.adapter.rooms
-    const roomsList = Array.from(rooms.entries())
-      .filter(([name]) => name.startsWith("user:") || name.startsWith("role:"))
-      .map(([name, sockets]) => ({ room: name, clients: sockets.size }))
-    res.writeHead(200, { "Content-Type": "application/json" })
-    res.end(
-      JSON.stringify({
-        connections: clientsCount,
-        rooms: roomsList,
-        uptime: process.uptime(),
-        timestamp: new Date().toISOString(),
-      }),
-    )
-    return
-  }
+    if (url.pathname === "/metrics" && req.method === "GET") {
+      const clientsCount = io.engine ? io.engine.clientsCount : 0
+      const rooms = io.sockets.adapter.rooms
+      const roomsList = Array.from(rooms.entries())
+        .filter(([name]) => name.startsWith("user:") || name.startsWith("role:"))
+        .map(([name, sockets]) => ({ room: name, clients: sockets.size }))
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(
+        JSON.stringify({
+          connections: clientsCount,
+          rooms: roomsList,
+          uptime: process.uptime(),
+          timestamp: new Date().toISOString(),
+        }),
+      )
+      return
+    }
 
-  if (url.pathname === "/emit" && req.method === "POST") {
-    // Authenticate internal API calls via x-api-key header
-    const emitApiKey = process.env.REALTIME_EMIT_API_KEY
-    if (emitApiKey) {
-      const providedKey = req.headers["x-api-key"]
-      if (providedKey !== emitApiKey) {
+    if (url.pathname === "/emit" && req.method === "POST") {
+      // FAIL-CLOSED: sem chave configurada no servidor, /emit rejeita TUDO.
+      // (Produção nem chega aqui: o boot falha sem REALTIME_EMIT_API_KEY.)
+      if (!EMIT_API_KEY) {
+        res.writeHead(503, { "Content-Type": "application/json" })
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: "realtime /emit disabled: REALTIME_EMIT_API_KEY not configured",
+          }),
+        )
+        return
+      }
+
+      const providedHeader = req.headers["x-api-key"]
+      const providedKey = Array.isArray(providedHeader) ? providedHeader[0] : providedHeader
+      const authorized = providedKey ? await keysMatch(providedKey, EMIT_API_KEY) : false
+      if (!authorized) {
+        console.warn(
+          `[realtime] /emit unauthorized from ${req.socket.remoteAddress ?? "?"} ` +
+            `(has key: ${!!providedKey})`,
+        )
         res.writeHead(401, { "Content-Type": "application/json" })
         res.end(JSON.stringify({ ok: false, error: "unauthorized" }))
         return
       }
+
+      let body = ""
+      req.setEncoding("utf8")
+      req.on("data", (chunk: string) => {
+        body += chunk
+        if (body.length > 1_000_000) req.destroy()
+      })
+      req.on("end", () => {
+        try {
+          const { event, data } = JSON.parse(body || "{}") as {
+            event?: string
+            data?: Record<string, unknown>
+          }
+          switch (event) {
+            case "booking:update":
+              handleBookingUpdate(data as BookingUpdatePayload)
+              break
+            case "quote:update":
+              handleQuoteUpdate(data as QuoteUpdatePayload)
+              break
+            case "message:send":
+              handleMessageSend(data as MessageSendPayload)
+              break
+            case "notification:new":
+              handleNotificationNew(data as { toId: string; notification?: unknown })
+              break
+            case "tracking:position":
+              handleTrackingPosition(data as TrackingPositionPayload)
+              break
+            default:
+              res.writeHead(400, { "Content-Type": "application/json" })
+              res.end(JSON.stringify({ ok: false, error: `unknown event: ${event}` }))
+              return
+          }
+          res.writeHead(200, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ ok: true, event }))
+        } catch (err) {
+          res.writeHead(400, { "Content-Type": "application/json" })
+          res.end(JSON.stringify({ ok: false, error: "invalid JSON body" }))
+          console.error("[realtime] /emit error:", err)
+        }
+      })
+      return
     }
 
-    let body = ""
-    req.setEncoding("utf8")
-    req.on("data", (chunk: string) => {
-      body += chunk
-      if (body.length > 1_000_000) req.destroy()
-    })
-    req.on("end", () => {
-      try {
-        const { event, data } = JSON.parse(body || "{}") as {
-          event?: string
-          data?: Record<string, unknown>
-        }
-        switch (event) {
-          case "booking:update":
-            handleBookingUpdate(data as BookingUpdatePayload)
-            break
-          case "quote:update":
-            handleQuoteUpdate(data as QuoteUpdatePayload)
-            break
-          case "message:send":
-            handleMessageSend(data as MessageSendPayload)
-            break
-          case "notification:new":
-            handleNotificationNew(data as { toId: string; notification?: unknown })
-            break
-          case "tracking:position":
-            handleTrackingPosition(data as TrackingPositionPayload)
-            break
-          default:
-            res.writeHead(400, { "Content-Type": "application/json" })
-            res.end(JSON.stringify({ ok: false, error: `unknown event: ${event}` }))
-            return
-        }
-        res.writeHead(200, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ ok: true, event }))
-      } catch (err) {
-        res.writeHead(400, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ ok: false, error: "invalid JSON body" }))
-        console.error("[realtime] /emit error:", err)
-      }
-    })
-    return
-  }
-
-  // socket.io handshake / polling requests
-  io.engine.handleRequest(req, res)
+    // socket.io handshake / polling requests
+    io.engine.handleRequest(req, res)
+  })().catch((err) => {
+    console.error("[realtime] request handler error:", err)
+    if (!res.headersSent) {
+      res.writeHead(500, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ ok: false, error: "internal error" }))
+    }
+  })
 })
 
 httpServer.on("upgrade", (req, socket, head) => {

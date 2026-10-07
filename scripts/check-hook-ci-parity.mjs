@@ -316,8 +316,8 @@ export const RUNNER_SUBGUARD = [
  */
 export const HOOK_NOT_RUN = [
   {
-    ids: ["vitrine-pagination-baseline"],
-    why: "exige um DEV SERVER REAL da vitrine com os servicos (postgis/redis em portas proprias) e o Chromium do Playwright — o veredito e da LATENCIA da vitrine RODANDO, nao de um recorte de commit; o hook nao pode subir uma stack e um browser no caminho de cada commit. Roda no job proprio `vitrine-baseline` das DUAS pipelines a cada PR (o MESMO comando canônico com `--json --report-file`; na forja o report imprime em falha, no espelho vira artifact).",
+    ids: ["realtime-env-parity", "realtime-emit-key-source", "route-handler-style"],
+    why: "o veredito é do REPOSITORIO inteiro (os DOIS canais de produção mesclados com a base comum / a árvore inteira de rotas), não de um recorte de commit — e o contexto que dá sentido ao bloqueio é o merge, onde a divergência reprova. Roda no job `guards` das duas pipelines (node-puro, ~50-100ms).",
   },
   {
     ids: ["bring-up-env-gate-proof", "runner-base", "prove-docs", "pre-commit-in-runner-proof"],
@@ -415,6 +415,10 @@ export const HOOK_NOT_RUN = [
     // série do checkout, não a do PR: quem a mede a cada merge é o job
     // `stack-per-commit` das DUAS pipelines.
     why: "LACUNA DECLARADA, nao impossibilidade: sao node-puros e baratos (<1s cada) e o CI os roda em TODO PR. O hook nao os roda porque esta no caminho de CADA commit — ele e um FILTRO RAPIDO do que o commit muda, nao uma copia do CI. Estar escrito aqui e o que torna a lacuna uma decisao revisavel em vez de um esquecimento.",
+  },
+  {
+    ids: ["vitrine-pagination-baseline"],
+    why: "exige um DEV SERVER REAL da vitrine com os servicos (postgis/redis em portas proprias) e o Chromium do Playwright — o veredito e da LATENCIA da vitrine RODANDO, nao de um recorte de commit; o hook nao pode subir uma stack e um browser no caminho de cada commit. Roda no job proprio `vitrine-baseline` das DUAS pipelines a cada PR (o MESMO comando canônico com `--json --report-file`; na forja o report imprime em falha, no espelho vira artifact).",
   },
 ]
 

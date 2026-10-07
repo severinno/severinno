@@ -4,10 +4,21 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      # Dispatch com census_only=true roda APENAS o censo de SVG legado na VPS
+      # (dry-run, leitura pura) e pula TODOS os jobs de deploy — é o gatilho
+      # manual do alarme semanal /api/cron/svg-legacy-census.
+      census_only:
+        description: "Só o censo SVG (dry-run na VPS); pula o deploy"
+        type: boolean
+        default: false
+        required: false
 
 concurrency:
   group: deploy-${{ github.ref }}
-  cancel-in-progress: true
+  # Expressão (não literal): o censo NÃO pode cancelar um deploy em andamento
+  # (group é o mesmo — mesma branch). Só deploy cancela deploy.
+  cancel-in-progress: "${{ github.event_name == 'workflow_dispatch' && !inputs.census_only }}"
 
 env:
   # Origem das imagens — FONTE ÚNICA (repo variable IMAGE_REGISTRY).
@@ -35,6 +46,7 @@ jobs:
   seed-hooks-guard:
     name: Seed Test Hooks Guard
     runs-on: self-hosted
+    if: "!(github.event_name == 'workflow_dispatch' && inputs.census_only)"
     steps:
       - uses: actions/checkout@v4
 
@@ -71,6 +83,7 @@ jobs:
     name: Docker Build & Test
     needs: [utf8-check, seed-hooks-guard]
     runs-on: self-hosted
+    if: "!(github.event_name == 'workflow_dispatch' && inputs.census_only)"
     timeout-minutes: 20
 
     services:
@@ -161,6 +174,7 @@ jobs:
   build:
     needs: [docker-test]
     runs-on: self-hosted
+    if: "!(github.event_name == 'workflow_dispatch' && inputs.census_only)"
     permissions:
       contents: read
       packages: write
@@ -239,7 +253,7 @@ jobs:
   migrate:
     needs: build
     runs-on: self-hosted
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    if: "(github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs.census_only)"
 
     steps:
       - name: Run database migrations
@@ -264,7 +278,7 @@ jobs:
   deploy:
     needs: migrate
     runs-on: self-hosted
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    if: "(github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs.census_only)"
 
     steps:
       - name: Deploy via SSH
@@ -301,3 +315,43 @@ jobs:
               echo "Attempt $i/12 — HTTP $HTTP_CODE, retrying..."
             done
             echo "Health check failed after 12 attempts" && exit 1
+
+  # ── Censo SVG legado (dry-run na VPS, via SSH) ───────────────────────────
+  # Disparo: workflow_dispatch com census_only=true. Roda o
+  # reprocess-svg-uploads.ts em DRY-RUN (leitura pura: list+get — sem --apply
+  # NADA é escrito/removido) DENTRO da rede Docker da VPS, onde o
+  # S3_ENDPOINT=http://minio:9000 resolve, e imprime o svgFound no log.
+  # Por que `docker compose run --no-deps` com bind :ro: a imagem final é
+  # standalone e NÃO copia scripts/ (ver Dockerfile) — o bind monta o script
+  # sem mutar o container; --no-deps evita subir serviços vizinhos; o mesmo
+  # padrão run --rm --no-deps app é o que o migrate usa. O `.env` do
+  # DEPLOY_PATH fornece as S3_* (o compose as repassa ao serviço app).
+  # O alarme contínuo é o cron semanal /api/cron/svg-legacy-census (setup-cron-push.sh);
+  # este job é o gatilho manual do mesmo censo, com o svgFound no log do Actions.
+  svg-legacy-census:
+    name: SVG legacy census (dry-run)
+    runs-on: self-hosted
+    if: github.event_name == 'workflow_dispatch' && inputs.census_only
+    steps:
+      - name: Census SVG legacy (dry-run) via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ env.DEPLOY_KEY }}
+          script: |
+            set -e
+            cd "$DEPLOY_PATH"
+            echo "Running SVG legacy census (DRY-RUN, read-only)..."
+            # --delete no censo: dry-run sem sharp (o container app nao o tem);
+            # svgFound e identico ao modo convert.
+            docker compose run --rm --no-deps -v ./scripts:/app/scripts:ro app \
+              bun scripts/reprocess-svg-uploads.ts --delete
+            echo "═══ RESUMO (svgFound > 0 = remediação pendente) ═══"
+            echo "Próximo passo se svgFound > 0: reexecute com --apply (converte para PNG;" \
+                 "original preservado em quarantine/svg-legacy/) — ver docs/RUNBOOK.md"

@@ -153,6 +153,38 @@ jobs:
       - name: Script header docs
         run: node scripts/check-script-headers.mjs
 
+      # O serviço realtime é fail-closed pela REALTIME_EMIT_API_KEY e os dois
+      # canais de produção (prod e deploy hostinger) dividem a declaração do
+      # serviço entre a base comum e overrides próprios — o incidente da chave
+      # faltando num canal ("metade do contrato em cada arquivo", comentário ⛳
+      # da base) é o defeito que este gate mede no MERGE. Compara o environment
+      # EFETIVO (base + override) do serviço nos dois canais: variável que só
+      # existe num lado, ou fonte diferente, reprova; defaults de valor
+      # documentados (.com vs .com.br) não são contrato e não sinalizam.
+      # node direto + js-yaml (dep do repo): node-puro, sem docker.
+      - name: Realtime env parity (prod ≡ hostinger)
+        run: node scripts/check-realtime-env-parity.mjs
+
+      # A REALTIME_EMIT_API_KEY é fail-closed: produção nem sobe sem ela. O
+      # VALOR da chave não pode voltar a transitar por `environment` de compose
+      # (docker inspect/compose config/shells) — entra como DOCKER SECRET
+      # realtime_emit_api_key, lido via REALTIME_EMIT_API_KEY_FILE. O guard
+      # prende o desenho nos 3 composes (base, prod, hostinger): sem valor em
+      # env, consumers (realtime, app, notification-worker) com o secret e o
+      # _FILE, declaração top-level, template .example e nenhum *.secret
+      # trackeado. node direto + js-yaml (dep do repo): node-puro, sem docker.
+      - name: Realtime emit key via Docker Secret (_FILE)
+        run: node scripts/check-realtime-emit-key-source.mjs
+
+      # O ESTILO dos route handlers: todo handler HTTP de route.ts usa o
+      # wrapper withRoute/withParams (tracing OTel + request-id + handleError
+      # num lugar só). Handler novo com try/catch + handleError MANUAL reprova;
+      # o legado congelado vive na ALLOWLIST com addedAt + reason (mesma régua
+      # do allowlist-review) e entrada OCIOSA (rota migrou) também reprova.
+      # node-puro, sem docker, ~100ms para 189 rotas.
+      - name: Route handler style (withRoute obrigatório)
+        run: node scripts/check-route-handler-style.mjs
+
       # A classe SIGPIPE: sob `set -o pipefail`, `algo | grep -q PADRAO` pode
       # passar a 141 MESMO com o padrão encontrado — `grep -q` fecha o stdin no
       # primeiro casamento e o produtor leva SIGPIPE se ainda tiver o que

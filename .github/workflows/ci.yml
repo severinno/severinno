@@ -66,6 +66,9 @@ jobs:
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - run: bun install --frozen-lockfile
       - run: bun run db:generate
+      # Worker do MapLibre servido por URL deve estar alinhado com a versão
+      # instalada (postinstall roda no `bun install`; isto falha o CI no drift).
+      - run: bun run check:maplibre-worker
 
       # O comando INTEIRO vive no script `typecheck` do package.json, inclusive
       # o heap de 4GB (o crash de OOM documentado: o heap default do Node,

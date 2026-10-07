@@ -159,6 +159,9 @@ generate_secret() {
 generate_secret "postgres_password.secret"
 generate_secret "rabbitmq_password.secret"
 generate_secret "minio_secret_key.secret"
+# Chave do bridge /emit do realtime (fail-closed) — consumida pelos serviços
+# realtime, app e notification-worker via REALTIME_EMIT_API_KEY_FILE.
+generate_secret "realtime_emit_api_key.secret"
 openssl rand -base64 48 > "$SECRETS_DIR/session_secret.secret" 2>/dev/null || true
 
 chmod 600 "$SECRETS_DIR"/*.secret

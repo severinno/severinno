@@ -30,6 +30,10 @@ const nextConfig: NextConfig = {
 
   // Image optimization
   images: {
+    // Dev-only: MinIO serves avatars from localhost:9000 (private IP) — Next 16's
+    // optimizer blocks private-IP upstreams unless this is on. Prod serves via
+    // https://severinno.com (public), so SSRF protection stays enabled there.
+    dangerouslyAllowLocalIP: process.env.NODE_ENV !== "production",
     formats: ["image/avif", "image/webp"],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920],
     remotePatterns: [

@@ -11,6 +11,10 @@
 #   POSTGRES_PASSWORD    — senha do banco de dados
 #   S3_ACCESS_KEY        — acesso ao MinIO/S3
 #   S3_SECRET_KEY        — segredo do MinIO/S3
+#   REALTIME_EMIT_API_KEY — chave do bridge /emit do realtime (fail-closed).
+#     Nos canais de produção NÃO vem por env: entra como DOCKER SECRET
+#     secrets/realtime_emit_api_key (declarado na base), lido via
+#     REALTIME_EMIT_API_KEY_FILE=/run/secrets/realtime_emit_api_key.
 #
 # ── Origem das imagens (FONTE UNICA) ─────────────────────────────────────
 #   IMAGE_REGISTRY   — host do registry OCI (default: git.severinno.com)
@@ -32,12 +36,37 @@
 # Deploy (sem rebuild, pull das imagens mais recentes):
 #   docker compose -f docker-compose.prod.yml --env-file .env.production pull
 #   docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+#
+# ── Modelo base + override ───────────────────────────────────────────────
+# Os 10 serviços comuns ao deploy via GitHub Action (hostinger) vivem em
+# deploy/docker-compose.base.yml — este arquivo é o PROD: base + Caddy
+# completo, geo-cache-warm, search-index-worker e o stack GlitchTip em
+# profile, além de ipam/subnets, limites de recursos e rotação de logs.
+# Divergências de default de domínio (`.com.br`, vigente aqui) ficam
+# explícitas no bloco environment deste arquivo.
 # =============================================================================
+
+include:
+  # env_file aponta para um arquivo VAZIO de propósito: sem ele, o include
+  # carregaria o .env do diretório da base por conta própria (var de dev
+  # vazaria para o render de produção quando o --env-file não a define).
+  # Com ele, a interpolação da base usa as MESMAS fontes do comando
+  # (--env-file .env.production), preservando o contrato do monolítico.
+  - path: docker-compose.base.yml
+    env_file: [compose-include.env]
+
+# ── Âncoras internas (só o que é EXCLUSIVO da produção) ──────────────────
+# Rotação de logs json-file — padrão de todos os serviços de produção.
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 # ── Redes compartilhadas ──────────────────────────────────────────────────
 # Separada em duas redes:
 #   frontend — Caddy exposto para o mundo (portas 80/443)
-#   backend  — servicos internos, SEM exposicao externa
+#   backend  — herda da base (name/driver) e ganha ipam/subnet por chave
 networks:
   frontend:
     name: severinno_frontend
@@ -46,25 +75,12 @@ networks:
       config:
         - subnet: 172.20.0.0/24
   backend:
-    name: severinno_backend
-    driver: bridge
-    # NOTA: internal: true foi removido intencionalmente porque os servicos
-    # no backend precisam de conectividade de saida (SMTP, Lytex, Evolution API,
-    # Sentry/GlitchTip). A seguranca e mantida via expose: (sem ports:).
     ipam:
       config:
         - subnet: 172.20.1.0/24
 
-# ── Volumes persistentes ─────────────────────────────────────────────────
+# ── Volumes persistentes (exclusivos: Caddy + GlitchTip) ─────────────────
 volumes:
-  postgres_data:
-    name: severinno_postgres_data
-  redis_data:
-    name: severinno_redis_data
-  minio_data:
-    name: severinno_minio_data
-  rabbitmq_data:
-    name: severinno_rabbitmq_data
   caddy_data:
     name: severinno_caddy_data
   caddy_config:
@@ -78,70 +94,34 @@ volumes:
   glitchtip_minio_data:
     name: severinno_glitchtip_minio_data
 
-# ── Docker Secrets ──────────────────────────────────────────────────────
-# Secrets sao montados em /run/secrets/<nome> dentro do container.
-# Servicos que suportam _FILE (PostgreSQL, RabbitMQ, MinIO) leem
-# diretamente do arquivo. Servicos customizados usam o entrypoint
-# scripts/docker-entrypoint.sh para exportar como env vars.
-#
-# USO EM PRODUCAO (Docker Swarm):
-#   ./scripts/setup-secrets.sh
-#
-# USO EM DESENVOLVIMENTO (Docker Compose file:):
-#   cp secrets/*.secret.example secrets/*.secret
-#   Preencha os valores reais nos arquivos .secret
-#
+# ── Docker Secrets (exclusivos: GlitchTip; os demais vêm da base) ────────
 secrets:
-  # ── Banco de Dados ──────────────────────────────────────────────────
-  postgres_password:
-    file: ./secrets/postgres_password.secret
-  glitchtip_db_password:
-    file: ./secrets/glitchtip_db_password.secret
-
-  # ── Storage ─────────────────────────────────────────────────────────
-  s3_secret_key:
-    file: ./secrets/s3_secret_key.secret
-
-  # ── Queue ───────────────────────────────────────────────────────────
-  rabbitmq_pass:
-    file: ./secrets/rabbitmq_pass.secret
-
-  # ── App ─────────────────────────────────────────────────────────────
-  session_secret:
-    file: ./secrets/session_secret.secret
-  vapid_private_key:
-    file: ./secrets/vapid_private_key.secret
-  smtp_pass:
-    file: ./secrets/smtp_pass.secret
-  cron_secret:
-    file: ./secrets/cron_secret.secret
-  lytex_client_secret:
-    file: ./secrets/lytex_client_secret.secret
-
-  # ── GlitchTip ───────────────────────────────────────────────────────
   glitchtip_s3_secret_key:
     file: ./secrets/glitchtip_s3_secret_key.secret
   glitchtip_secret_key:
     file: ./secrets/glitchtip_secret_key.secret
 
 # ============================================================================
-# SERVICOS
+# SERVIÇOS EXCLUSIVOS DA PRODUÇÃO
+# (postgres, redis, rabbitmq, minio, minio-init, pgbouncer, realtime, app,
+#  email-worker e notification-worker vêm de deploy/docker-compose.base.yml;
+#  abaixo só o que a produção acrescenta ou refina por chave)
 # ============================================================================
 
 services:
-  # ── Caddy (Reverse Proxy + SSL Automatico) ────────────────────────────
-  # HTTPS automatico via Let's Encrypt / ZeroSSL.
-  # Unico servico exposto para o mundo (portas 80 e 443).
+  # ── Caddy (Reverse Proxy + SSL Automático) ────────────────────────────
+  # HTTPS automático via Let's Encrypt / ZeroSSL.
+  # Único serviço exposto para o mundo (portas 80 e 443 + admin 2019).
   #
-  # ── Hardening de seguranca ───────────────────────────────────────────
-  #   security_opt: no-new-privileges  → Impede escalonamento de privilegios
+  # ── Hardening de segurança ───────────────────────────────────────────
+  #   security_opt: no-new-privileges  → Impede escalonamento de privilégios
   #   cap_drop: ALL                    → Remove todas as capacidades Linux
   #   cap_add: NET_BIND_SERVICE        → Permite apenas bind em portas <1024
   #   read_only: true                  → Filesystem somente leitura
-  #   tmpfs: /tmp                      → /tmp em RAM para arquivos temporarios
+  #   tmpfs: /tmp                      → /tmp em RAM para arquivos temporários
   #
   # ── Logs ─────────────────────────────────────────────────────────────
-  #   bind mount: /var/log/caddy → fail2ban no host le os logs
+  #   bind mount: /var/log/caddy → fail2ban no host lê os logs
   #   named volume: caddy_logs   → fallback Docker-managed persistente
   caddy:
     # BUILD CUSTOM OBRIGATÓRIO (Dockerfile.caddy): o Caddyfile.prod usa
@@ -182,24 +162,20 @@ services:
       realtime:
         condition: service_healthy
     # start_period aumentado para 120s porque o Caddy depende de app + realtime
-    # saudaveis, que por sua vez dependem de PostgreSQL, Redis, MinIO e RabbitMQ.
+    # saudáveis, que por sua vez dependem de PostgreSQL, Redis, MinIO e RabbitMQ.
     # Com start_period baixo, o Caddy entra em ciclo de restart se o app demorar.
     healthcheck:
       start_period: 120s
       # Verifica se o Caddy está respondendo na porta 80 (HTTP).
-      # Usa wget em vez de curl porque a imagem caddy:2-alpine NAO
-      # inclui curl (apenas BusyBox wget disponivel).
-      # O endpoint /health é servido pelo proprio Caddy (handle no
-      # Caddyfile.prod), sem depender do Next.js ou outros servicos.
+      # Usa wget em vez de curl porque a imagem caddy:2-alpine NÃO
+      # inclui curl (apenas BusyBox wget disponível).
+      # O endpoint /health é servido pelo próprio Caddy (handle no
+      # Caddyfile.prod), sem depender do Next.js ou outros serviços.
       test: ["CMD", "wget", "-s", "-q", "http://localhost:80/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *default-logging
     deploy:
       resources:
         limits:
@@ -209,49 +185,11 @@ services:
           cpus: "0.1"
           memory: "64M"
 
-  # ── PostgreSQL + PostGIS ───────────────────────────────────────────────
-  # Banco de dados principal com suporte geoespacial.
-  # ATENCAO: Em producao, use um banco gerenciado (RDS, Cloud SQL, etc.)
-  #          e remova este servico, configurando DATABASE_URL diretamente.
-  # Hardening: tmpfs para /tmp (PG usa /tmp para tabelas temporarias/sort),
-  #            capacidades minimas.
-  # NOTA: read_only=false — PG precisa de acesso de escrita para WAL,
-  #       background writer e checkpoints.
+  # ── Refinamentos de produção sobre a base ─────────────────────────────
+  # deploy.resources (limites de CPU/RAM) e rotação de logs são EXCLUSIVOS
+  # da produção — o deploy via action (hostinger) roda sem limites.
   postgres:
-    # Tag fixada: postgis/postgis:16-3.4-alpine (71MB vs 280MB da versao full)
-    image: postgis/postgis:16-3.4-alpine
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-    tmpfs:
-      - /tmp:size=256M
-    expose:
-      - "5432"
-    secrets:
-      - postgres_password
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-severinno}
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-      POSTGRES_DB: ${POSTGRES_DB:-severinno}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - backend
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-severinno} -d ${POSTGRES_DB:-severinno}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *default-logging
     deploy:
       resources:
         limits:
@@ -261,38 +199,8 @@ services:
           cpus: "0.25"
           memory: "256M"
 
-  # ── Redis (Cache + Rate Limiting) ─────────────────────────────────────
-  # Hardening: read-only filesystem + tmpfs para /tmp, capacidades minimas.
-  # Redis so escreve em /data (volume persistente) e /tmp (temporario).
   redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-    read_only: true
-    tmpfs:
-      - /tmp:size=64M
-    expose:
-      - "6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - backend
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *default-logging
     deploy:
       resources:
         limits:
@@ -302,49 +210,8 @@ services:
           cpus: "0.1"
           memory: "64M"
 
-  # ── RabbitMQ (Message Broker) ─────────────────────────────────────────
-  # Hardening: read-only filesystem com tmpfs para /tmp.
-  # Dados persistentes em volume rabbitmq_data (/var/lib/rabbitmq).
-  # ATENCAO: RabbitMQ pode precisar de /var/log/rabbitmq para logs internos;
-  #          se houver erro no startup, remova read_only e adicione log dir.
   rabbitmq:
-    image: rabbitmq:4-alpine
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-      - SYS_NICE # Necessario para RabbitMQ definir prioridade de E/S
-    read_only: true
-    tmpfs:
-      - /tmp:size=64M
-      - /var/log/rabbitmq:size=32M # Logs internos em RAM (RabbitMQ 4-alpine usa /var/log/rabbitmq)
-    expose:
-      - "5672"
-      - "15672"
-    secrets:
-      - rabbitmq_pass
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-severinno}
-      RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/rabbitmq_pass
-      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "+P 1048576"
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    networks:
-      - backend
-    healthcheck:
-      test: ["CMD-SHELL", "rabbitmq-diagnostics ping >/dev/null 2>&1 || exit 1"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-      start_period: 20s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *default-logging
     deploy:
       resources:
         limits:
@@ -354,47 +221,8 @@ services:
           cpus: "0.1"
           memory: "128M"
 
-  # ── MinIO (S3-compatible Object Storage) ──────────────────────────────
-  # Tag fixada: minio/minio:RELEASE.2024-12-18T13-15-44Z
-  # Nao usar :latest — versoes do MinIO quebram compatibilidade com frequencia.
-  # Hardening: tmpfs para /tmp, capacidades minimas.
-  # NOTA: read_only=false porque MinIO escreve ativamente em /data.
   minio:
-    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-      - SYS_CHROOT # MinIO usa chroot para isolamento de disco
-    tmpfs:
-      - /tmp:size=128M
-    command: server /data --console-address ":9001"
-    expose:
-      - "9000"
-      - "9001"
-    secrets:
-      - s3_secret_key
-    environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD_FILE: /run/secrets/s3_secret_key
-    volumes:
-      - minio_data:/data
-    networks:
-      - backend
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *default-logging
     deploy:
       resources:
         limits:
@@ -404,102 +232,8 @@ services:
           cpus: "0.1"
           memory: "128M"
 
-  # ── MinIO Bucket Init (one-shot) ──────────────────────────────────────
-  # Tag fixada: minio/mc:RELEASE.2024-12-18T13-15-44Z (mesma versao do server)
-  minio-init:
-    image: minio/mc:RELEASE.2024-12-18T13-15-44Z
-    restart: "no"
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        echo "Waiting for MinIO..."
-        S3_SECRET_VAL="$(cat /run/secrets/s3_secret_key 2>/dev/null || echo \"${S3_SECRET_KEY}\")"
-        until /usr/bin/mc alias set minio http://minio:9000 \
-          "${S3_ACCESS_KEY}" "${S3_SECRET_VAL}"; do sleep 2; done
-        echo "Creating bucket '${S3_BUCKET}'..."
-        /usr/bin/mc mb "minio/${S3_BUCKET}" --ignore-existing
-        /usr/bin/mc anonymous set download "minio/${S3_BUCKET}"
-        echo "Bucket '${S3_BUCKET}' ready."
-    environment:
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-      S3_BUCKET: ${S3_BUCKET:-severinno-uploads}
-    networks:
-      - backend
-    depends_on:
-      minio:
-        condition: service_healthy
-    secrets:
-      - s3_secret_key
-
-  # ── PgBouncer (Connection Pooler para PostgreSQL) ────────────────────
-  # Pooling de conexões em transaction mode para Prisma/Next.js.
-  # Reduz conexões ativas no PostgreSQL de ~centenas para ~25.
-  # Essencial em produção para evitar "too many connections" e OOM.
-  #
-  # Hardening: read-only filesystem (config montado como :ro).
-  # PgBouncer é stateless — nao escreve em disco em operacao normal.
-  #
-  # NOTA: a imagem Bitnami pode precisar de /opt/bitnami/pgbouncer/tmp
-  #       para PID files. Se falhar no startup com read_only, remova
-  #       read_only e mantenha cap_drop + security_opt.
   pgbouncer:
-    # ── IMAGEM CORRIGIDA ─────────────────────────────────────────────────
-    # bitnami/pgbouncer:latest NÃO EXISTE (404). Substituído por
-    # edoburu/pgbouncer:v1.25.2-p0 (pinned) que:
-    #   ✅ Suporta max_prepared_statements (necessário para Prisma)
-    #   ✅ Suporta auth_type = trust (configurado no pgbouncer.ini)
-    #   ✅ Leitura de config a partir de /etc/pgbouncer/pgbouncer.ini
-    #
-    # Tags disponíveis: https://hub.docker.com/r/edoburu/pgbouncer/tags
-    # Histórico: https://github.com/edoburu/docker-pgbouncer
-    image: edoburu/pgbouncer:v1.25.2-p0
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-    # NOTA: read_only propositalmente removido — o entrypoint do
-    # edoburu/pgbouncer precisa escrever userlist.txt em /etc/pgbouncer.
-    # Com read_only=true, o container falhava ao iniciar. O hardening
-    # é mantido via cap_drop: ALL + no-new-privileges:true, e o
-    # container está na rede interna backend (sem exposição externa).
-    tmpfs:
-      - /tmp:size=16M
-    expose:
-      - "6432"
-    networks:
-      - backend
-    depends_on:
-      postgres:
-        condition: service_healthy
-    volumes:
-      # Path corrigido: edoburu/pgbouncer lê config de /etc/pgbouncer/pgbouncer.ini
-      - ./config/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
-    # NOTA: As env vars PGBOUNCER_* (Bitnami) foram removidas porque
-    # a imagem edoburu/pgbouncer gera config a partir de env vars DIFERENTES
-    # (DB_HOST, POOL_MODE, etc.). Como montamos nosso próprio pgbouncer.ini
-    # customizado, o entrypoint da imagem o usa diretamente sem precisar
-    # de env vars. O config já contém:
-    #   pool_mode = transaction
-    #   default_pool_size = 25
-    #   reserve_pool_size = 5
-    #   reserve_pool_timeout = 3
-    #   max_prepared_statements = 200
-    #   auth_type = trust
-    healthcheck:
-      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "6432"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *default-logging
     deploy:
       resources:
         limits:
@@ -509,53 +243,8 @@ services:
           cpus: "0.1"
           memory: "64M"
 
-  # ── Realtime WebSocket (Socket.io) ─────────────────────────────────────
-  # Hardening: read-only + tmpfs. Servico stateless — estado via Redis.
   realtime:
-    build:
-      context: ./mini-services/realtime
-      dockerfile: Dockerfile
-      args:
-        BUN_VERSION: ${BUN_VERSION:-1.3.14}
-    image: ${IMAGE_REGISTRY:-git.severinno.com}/${IMAGE_NAMESPACE:-severinno}/realtime:latest
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-    read_only: true
-    tmpfs:
-      - /tmp:size=64M
-    expose:
-      - "3003"
-    environment:
-      PORT: 3003
-      REDIS_URL: redis://redis:6379
-      CORS_ORIGIN: ${NEXT_PUBLIC_APP_URL}
-    networks:
-      - backend
-    depends_on:
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "bun",
-          "-e",
-          "fetch('http://localhost:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *default-logging
     deploy:
       resources:
         limits:
@@ -565,127 +254,17 @@ services:
           cpus: "0.1"
           memory: "64M"
 
-  # ── Next.js (App Principal) ───────────────────────────────────────────
-  # Hardening: tmpfs + capacidades minimas.
-  # NOTA: read_only=false porque Next.js gera cache em .next em runtime
-  #       e pode precisar de /tmp para uploads temporarios.
-  #
-  # ── Secrets ──────────────────────────────────────────────────────────
-  # As senhas sensiveis sao lidas de /run/secrets/ pelo entrypoint
-  # scripts/docker-entrypoint.sh. As env vars publicas permanecem
-  # via environment: ou .env.production.
   app:
-    image: ${IMAGE_REGISTRY:-git.severinno.com}/${IMAGE_NAMESPACE:-severinno}/severinno:latest
-    entrypoint: ["./scripts/docker-entrypoint.sh"]
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-    tmpfs:
-      - /tmp:size=256M
-    expose:
-      - "3000"
-    networks:
-      - backend
-    depends_on:
-      pgbouncer:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
-      rabbitmq:
-        condition: service_healthy
-    secrets:
-      - postgres_password
-      - rabbitmq_pass
-      - s3_secret_key
-      - session_secret
-      - vapid_private_key
-      - smtp_pass
-      - cron_secret
-      - lytex_client_secret
-    volumes:
-      - ./scripts/docker-entrypoint.sh:/app/scripts/docker-entrypoint.sh:ro
+    # Divergências legítimas de default: produção usa o domínio vigente (.com.br).
     environment:
-      # ── App ──────────────────────────────────────────────────────────
-      NODE_ENV: production
-      PORT: 3000
-      HOST: "0.0.0.0"
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-
-      # ── Database (via PgBouncer pool) — password via secret ─────────
-      DATABASE_URL: postgresql://${POSTGRES_USER:-severinno}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-severinno}
-      DIRECT_URL: postgresql://${POSTGRES_USER:-severinno}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-severinno}
-
-      # ── Cache ────────────────────────────────────────────────────────
-      REDIS_URL: redis://redis:6379
-
-      # ── Queue — password via secret ──────────────────────────────────
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:-severinno}:${RABBITMQ_PASS}@rabbitmq:5672
-
-      # ── Storage — secret key via secret ──────────────────────────────
-      S3_ENDPOINT: http://minio:9000
-      S3_REGION: ${S3_REGION:-auto}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
-      S3_BUCKET: ${S3_BUCKET:-severinno-uploads}
-      S3_PUBLIC_URL: ${S3_PUBLIC_URL}
-      NEXT_PUBLIC_UPLOADS_BASE_URL: ${NEXT_PUBLIC_UPLOADS_BASE_URL:-/api/uploads}
-
-      # ── Realtime ─────────────────────────────────────────────────────
-      REALTIME_URL: http://realtime:3003
       NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-wss://severinno.com.br}
-
-      # ── Payments (Lytex) ─────────────────────────────────────────────
-      LYTEX_CLIENT_ID: ${LYTEX_CLIENT_ID}
-      LYTEX_ENV: ${LYTEX_ENV:-production}
-      LYTEX_API_URL: ${LYTEX_API_URL:-https://api.lytex.com.br/v1}
-
-      # ── Web Push (VAPID) ─────────────────────────────────────────────
-      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
-      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@severinno.com.br}
-      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
-
-      # ── SMTP ─────────────────────────────────────────────────────────
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER}
       SMTP_FROM: ${SMTP_FROM:-noreply@severinno.com.br}
-
-      # ── WhatsApp ─────────────────────────────────────────────────────
-      EVOLUTION_API_URL: ${EVOLUTION_API_URL}
-      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
-      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-severinno}
-
-      # ── Error Monitoring ─────────────────────────────────────────────
-      SENTRY_DSN: ${SENTRY_DSN}
-      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
-      GLITCHTIP_DSN: ${GLITCHTIP_DSN}
-
-      # ── Routing (OSRM) ───────────────────────────────────────────────
-      OSRM_BASE_URL: ${OSRM_BASE_URL:-http://osrm:5000}
-
-      # ── Search (OpenSearch) ──────────────────────────────────────────
-      OPENSEARCH_URL: ${OPENSEARCH_URL}
-      OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME}
-      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD}
-
-      # ── Upload ───────────────────────────────────────────────────────          MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-10485760}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      start_period: 30s
-      retries: 3
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@severinno.com.br}
+      # CSP: rollout começa em Report-Only (não bloqueia, só reporta para
+      # /api/csp-report). Avanço de estágio e kill-switch: docs/RUNBOOK.md § CSP.
+      # Defina CSP_REPORT_ONLY=0 no .env/shell do host quando pronto para enforce.
+      CSP_REPORT_ONLY: ${CSP_REPORT_ONLY:-1}
+    logging: *default-logging
     deploy:
       resources:
         limits:
@@ -694,6 +273,32 @@ services:
         reservations:
           cpus: "0.25"
           memory: "256M"
+
+  email-worker:
+    environment:
+      SMTP_FROM: ${SMTP_FROM:-noreply@severinno.com.br}
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: "256M"
+        reservations:
+          cpus: "0.1"
+          memory: "64M"
+
+  notification-worker:
+    environment:
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@severinno.com.br}
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: "256M"
+        reservations:
+          cpus: "0.1"
+          memory: "64M"
 
   # ── Geo Cache Warm (one-shot init) ───────────────────────────────────────
   # After the app is healthy, pre-fills the Redis cache with the most
@@ -745,165 +350,10 @@ services:
           cpus: "0.1"
           memory: "32M"
 
-  # ============================================================================
-  # WORKERS — sempre ativos em producao (sem profile)
-  # ============================================================================
-
-  # ── Email Worker ──────────────────────────────────────────────────────
-  # Hardening: tmpfs + capacidades minimas.
-  # NOTA: read_only=false — workers Node.js podem precisar gravar cache.
-  #
-  # Healthcheck: verifica se o worker consegue alcançar RabbitMQ via HTTP API.
-  # O RabbitMQ management API (porta 15672) expõe /api/health/checks/alarms
-  # que retorna 200 OK se o nó está saudável. Se falhar, o worker não
-  # conseguirá consumir mensagens da fila.
-  email-worker:
-    image: ${IMAGE_REGISTRY:-git.severinno.com}/${IMAGE_NAMESPACE:-severinno}/severinno:worker-latest
-    entrypoint: ["./scripts/docker-entrypoint.sh"]
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add: []
-    tmpfs:
-      - /tmp:size=64M
-    networks:
-      - backend
-    depends_on:
-      pgbouncer:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    secrets:
-      - postgres_password
-      - rabbitmq_pass
-      - smtp_pass
-    volumes:
-      - ./scripts/docker-entrypoint.sh:/app/scripts/docker-entrypoint.sh:ro
-    environment:
-      NODE_ENV: production
-      WORKER_TYPE: email
-      DATABASE_URL: postgresql://${POSTGRES_USER:-severinno}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-severinno}
-      REDIS_URL: redis://redis:6379
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:-severinno}:${RABBITMQ_PASS}@rabbitmq:5672
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_FROM: ${SMTP_FROM:-noreply@severinno.com.br}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-    healthcheck:
-      # Verifica conectividade TCP com RabbitMQ na porta AMQP real (5672).
-      # Usa node:net (disponivel no Bun) para tentar conexao TCP.
-      # NOTA: Nao usa HTTP management (porta 15672) porque a imagem
-      # rabbitmq:4-alpine nao inclui o plugin de management por padrao.
-      test:
-        [
-          "CMD",
-          "bun",
-          "-e",
-          "require('net').connect(5672,'rabbitmq').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1)).setTimeout(5000,()=>process.exit(1))",
-        ]
-      interval: 30s
-      timeout: 10s
-      start_period: 30s
-      retries: 3
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    deploy:
-      resources:
-        limits:
-          cpus: "0.25"
-          memory: "256M"
-        reservations:
-          cpus: "0.1"
-          memory: "64M"
-
-  # ── Notification Worker ───────────────────────────────────────────────
-  # Hardening: tmpfs + capacidades minimas.
-  #
-  # Healthcheck: verifica conectividade com RabbitMQ (mesmo principio do
-  # email-worker). O worker de notificação consome da fila de push e
-  # precisa do RabbitMQ para receber eventos.
-  notification-worker:
-    image: ${IMAGE_REGISTRY:-git.severinno.com}/${IMAGE_NAMESPACE:-severinno}/severinno:worker-latest
-    entrypoint: ["./scripts/docker-entrypoint.sh"]
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add: []
-    tmpfs:
-      - /tmp:size=64M
-    networks:
-      - backend
-    depends_on:
-      pgbouncer:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    secrets:
-      - postgres_password
-      - rabbitmq_pass
-      - vapid_private_key
-    volumes:
-      - ./scripts/docker-entrypoint.sh:/app/scripts/docker-entrypoint.sh:ro
-    environment:
-      NODE_ENV: production
-      WORKER_TYPE: notification
-      DATABASE_URL: postgresql://${POSTGRES_USER:-severinno}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-severinno}
-      DIRECT_URL: postgresql://${POSTGRES_USER:-severinno}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-severinno}
-      REDIS_URL: redis://redis:6379
-      RABBITMQ_URL: amqp://${RABBITMQ_USER:-severinno}:${RABBITMQ_PASS}@rabbitmq:5672
-      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
-      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@severinno.com.br}
-      EVOLUTION_API_URL: ${EVOLUTION_API_URL}
-      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
-      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-severinno}
-      REALTIME_URL: http://realtime:3003
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-    healthcheck:
-      # Verifica conectividade TCP com RabbitMQ na porta AMQP real (5672).
-      # Usa node:net (disponivel no Bun) para tentar conexao TCP.
-      # NOTA: Nao usa HTTP management (porta 15672) porque a imagem
-      # rabbitmq:4-alpine nao inclui o plugin de management por padrao.
-      test:
-        [
-          "CMD",
-          "bun",
-          "-e",
-          "require('net').connect(5672,'rabbitmq').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1)).setTimeout(5000,()=>process.exit(1))",
-        ]
-      interval: 30s
-      timeout: 10s
-      start_period: 30s
-      retries: 3
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    deploy:
-      resources:
-        limits:
-          cpus: "0.25"
-          memory: "256M"
-        reservations:
-          cpus: "0.1"
-          memory: "64M"
-
   # ── Search Index Worker ───────────────────────────────────────────────
-  # Hardening: tmpfs + capacidades minimas.
+  # Hardening: tmpfs + capacidades mínimas.
   #
-  # Healthcheck: este worker NAO usa RabbitMQ (ele polla o banco de dados
+  # Healthcheck: este worker NÃO usa RabbitMQ (ele polla o banco de dados
   # diretamente e indexa no OpenSearch). O healthcheck verifica se o
   # worker consegue conectar no PostgreSQL via PgBouncer.
   search-index-worker:
@@ -953,11 +403,7 @@ services:
       timeout: 10s
       start_period: 30s
       retries: 3
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *default-logging
     deploy:
       resources:
         limits:
@@ -1018,6 +464,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    logging: *default-logging
     deploy:
       resources:
         limits:
@@ -1033,10 +480,6 @@ services:
   #   - default_pool_size = 15 (GlitchTip é menos intensivo que o app)
   #   - profiles: glitchtip (só ativo quando GlitchTip está em uso)
   pgbouncer-glitchtip:
-    # ── IMAGEM CORRIGIDA ─────────────────────────────────────────────────
-    # Mesma correção do pgbouncer principal: bitnami/pgbouncer NÃO EXISTE.
-    # Substituído por edoburu/pgbouncer:v1.25.2-p0 com path de config corrigido.
-    # Tags disponíveis: https://hub.docker.com/r/edoburu/pgbouncer/tags
     image: edoburu/pgbouncer:v1.25.2-p0
     restart: unless-stopped
     profiles:
@@ -1047,7 +490,7 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
-    # NOTA: read_only removido (mesmo motivo do pgbouncer principal)
+    # read_only removido (mesmo motivo do pgbouncer da base)
     tmpfs:
       - /tmp:size=16M
     expose:
@@ -1058,21 +501,14 @@ services:
       glitchtip-db:
         condition: service_healthy
     volumes:
-      # Path corrigido para edoburu/pgbouncer
       - ./config/pgbouncer/pgbouncer-glitchtip.ini:/etc/pgbouncer/pgbouncer.ini:ro
-    # NOTA: Env vars PGBOUNCER_* removidas — o config montado já contém
-    # todas as definições necessárias (pool_mode = session, etc.)
     healthcheck:
       test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "6432"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *default-logging
     deploy:
       resources:
         limits:
@@ -1211,7 +647,7 @@ services:
       - backend
 
   # ── GlitchTip: Web Server (Django) ────────────────────────────────────
-  # Hardening minimo — imagem third-party (Django), pode precisar de
+  # Hardening mínimo — imagem third-party (Django), pode precisar de
   # acesso de escrita para staticfiles, cache, etc.
   #
   # ⚠️  LIMITAÇÃO DE SECRETS: Esta imagem third-party NÃO usa o entrypoint
@@ -1272,6 +708,7 @@ services:
       timeout: 10s
       start_period: 30s
       retries: 3
+    logging: *default-logging
     deploy:
       resources:
         limits:
@@ -1282,7 +719,7 @@ services:
           memory: "256M"
 
   # ── GlitchTip: Background Worker (Celery) ─────────────────────────────
-  # Hardening minimo — imagem third-party (Celery), pode precisar de
+  # Hardening mínimo — imagem third-party (Celery), pode precisar de
   # acesso a disco para resultados de tarefas.
   #
   # Conexão ao banco VIA PgBouncer (pooler).
@@ -1329,6 +766,7 @@ services:
       VTASKS_CONCURRENCY: ${GLITCHTIP_CONCURRENCY:-4}
     networks:
       - backend
+    logging: *default-logging
     deploy:
       resources:
         limits:

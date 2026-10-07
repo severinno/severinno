@@ -46,7 +46,8 @@ severinno.local {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(self)"
 		-Server
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://*.tile.openstreetmap.org https://*.tile.openstreetmap.org https://*.tiles.mapbox.com https://api.mapbox.com; font-src 'self' data:; connect-src 'self' http://localhost:* https://*.tiles.mapbox.com https://api.mapbox.com wss://severinno.local ws://severinno.local; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		# CSP removida (09/2026): definida no proxy.ts do Next.js com nonce por-request.
+		# Um header estático aqui sobrescreveria os nonces e quebraria os scripts.
 	}
 
 	request_body {
@@ -86,7 +87,8 @@ severinno.com {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(self)"
 		-Server
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://*.tile.openstreetmap.org https://*.tile.openstreetmap.org https://*.tiles.mapbox.com https://api.mapbox.com; font-src 'self' data:; connect-src 'self' https://*.tiles.mapbox.com https://api.mapbox.com wss://severinno.com ws://severinno.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		# CSP removida (09/2026): definida no proxy.ts do Next.js com nonce por-request.
+		# Um header estático aqui sobrescreveria os nonces e quebraria os scripts.
 	}
 
 	request_body {

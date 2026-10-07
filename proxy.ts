@@ -37,6 +37,7 @@ import { checkRouteRateLimit, routeRateLimitHeaders } from "@/lib/route-rate-lim
 import { handleApiVersioning } from "@/lib/api-versioning"
 import { Redis } from "@upstash/redis/cloudflare"
 import { generateCsrfToken, verifyCsrfToken, CSRF_COOKIE, CSRF_HEADER, MAX_AGE } from "@/lib/csrf"
+import { buildCsp, generateCspNonce, CSP_NONCE_HEADER } from "@/lib/csp"
 
 // ── Request ID generation (Edge-compatible) ──────────────────────────────
 
@@ -324,6 +325,7 @@ const PUBLIC_API = new Set([
   "/api/sentry",
   "/api/sentry/test",
   "/api/web-vitals",
+  "/api/csp-report",
   "/api/webhooks/lytex",
   "/api/webhooks/sentry-alert",
   "/api/webhooks/evolution",
@@ -352,7 +354,12 @@ export async function proxy(request: NextRequest) {
   const versionedResponse = handleApiVersioning(request)
   if (versionedResponse) return versionedResponse
 
-  const response = NextResponse.next()
+  // O nonce precisa existir ANTES do NextResponse.next() para que o header
+  // de request propagado ao app já o contenha.
+  const cspNonceEarly = generateCspNonce()
+  request.headers.set(CSP_NONCE_HEADER, cspNonceEarly)
+
+  const response = NextResponse.next({ request: { headers: request.headers } })
 
   // --- Request ID ---
   const requestId = request.headers.get("x-request-id") || generateRequestId()
@@ -373,26 +380,29 @@ export async function proxy(request: NextRequest) {
   )
   response.headers.set("Vary", "Accept-Encoding")
 
-  // Content-Security-Policy (dynamic — uses request origin)
+  // Content-Security-Policy estrita com nonce por-request.
+  // O nonce é gerado aqui (Edge), injetado na CSP e repassado ao app via
+  // header `x-nonce` — o App Router do Next.js 16 propaga automaticamente
+  // para os <script> que renderiza (contrato oficial de CSP do framework).
+  // Strict em produção (sem unsafe-inline/unsafe-eval, sem unpkg).
   const requestOrigin = request.headers.get("origin") || "https://severinno.com"
   const isProduction = process.env.NODE_ENV === "production"
-  const cspDirectives = [
-    "default-src 'self'",
-    isProduction
-      ? "script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com https://vercel-insights.com"
-      : "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://va.vercel-scripts.com https://vercel-insights.com",
-    "worker-src 'self' blob:",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "img-src 'self' data: blob: https://*.s3.amazonaws.com https://maps.googleapis.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://*.gravatar.com https://ui-avatars.com https://i.pravatar.cc https://picsum.photos",
-    "font-src 'self' https://fonts.gstatic.com",
-    isProduction
-      ? `connect-src 'self' ${requestOrigin} https://severinno.com https://*.upstash.io https://sentry.io https://*.ingest.sentry.io https://tile.openstreetmap.org https://*.tile.openstreetmap.org`
-      : `connect-src 'self' ${requestOrigin} https://severinno.local https://severinno.com http://localhost:* https://*.upstash.io https://sentry.io https://*.ingest.sentry.io https://tile.openstreetmap.org https://*.tile.openstreetmap.org wss://localhost:* ws://localhost:*`,
-    "frame-ancestors 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-  ].join("; ")
-  response.headers.set("Content-Security-Policy", cspDirectives)
+  const { header: cspHeader, value: cspDirectives } = buildCsp({
+    nonce: cspNonceEarly,
+    origin: requestOrigin,
+    isProduction,
+    // Rollout da CSP em 3 estágios (plano completo em docs/RUNBOOK.md § CSP):
+    //   1. Observação (default em produção): CSP_REPORT_ONLY=1 → header
+    //      Content-Security-Policy-Report-Only (não bloqueia nada, só reporta).
+    //   2. Enforce com kill-switch: CSP_ENFORCE=1 → CSP bloqueante;
+    //      remova CSP_ENFORCE para voltar à observação na hora (sem redeploys
+    //      de código, só recriar o container com o novo env).
+    //   3. Estável: CSP_REPORT_ONLY=0 (e sem CSP_ENFORCE) → CSP bloqueante
+    //      como estado permanente no compose.
+    // CSP_ENFORCE tem PRIORIDADE sobre CSP_REPORT_ONLY.
+    reportOnly: process.env.CSP_ENFORCE !== "1" && process.env.CSP_REPORT_ONLY !== "0",
+  })
+  response.headers.set(cspHeader, cspDirectives)
 
   // --- OPTIONS preflight ---
   if (request.method === "OPTIONS") {
