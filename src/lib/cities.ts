@@ -192,6 +192,7 @@ export async function getCityStats(cityId: string): Promise<{
 
   try {
     const { db } = await import("./db")
+    const { toMoneyNumber } = await import("./money")
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
     const [providers, clients, bookings] = await Promise.all([
@@ -210,7 +211,10 @@ export async function getCityStats(cityId: string): Promise<{
       providers,
       clients,
       bookings30d: bookings.length,
-      revenue30d: bookings.reduce((sum: number, b: { amount: number }) => sum + b.amount, 0),
+      revenue30d: bookings.reduce(
+        (sum: number, b: { amount: unknown }) => sum + toMoneyNumber(b.amount as number),
+        0,
+      ),
     }
   } catch {
     return null

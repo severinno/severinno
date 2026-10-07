@@ -81,10 +81,22 @@ export function runWithContext<T>(context: RequestContextData, fn: () => T): T {
  * Establish request context from Next.js headers.
  * Call this at the start of route handlers to enable request-scoped logging.
  *
+ * `headers()` lança fora de um request scope do Next (testes unitários, cron,
+ * jobs em background). O contexto é best-effort: sem headers disponíveis,
+ * segue com um requestId gerado para não quebrar o chamador.
+ *
  * @returns The request ID from the x-request-id header
  */
 export async function establishRequestContext(): Promise<string> {
-  const hdrs = await headers()
+  let hdrs: Headers
+  try {
+    hdrs = await headers()
+  } catch {
+    // Fora de request scope — contexto mínimo com requestId sintético.
+    const requestId = generateRequestId()
+    requestContext.enterWith({ requestId, startTime: Date.now() })
+    return requestId
+  }
   const requestId = hdrs.get("x-request-id") || generateRequestId()
   const userId = hdrs.get("x-user-id") || undefined
   const userRole = hdrs.get("x-user-role") || undefined

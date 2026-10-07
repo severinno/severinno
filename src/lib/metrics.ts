@@ -15,6 +15,7 @@
 
 import "server-only"
 import { db } from "./db"
+import { toMoneyNumber } from "./money"
 import logger from "./logger"
 
 // ── Request Duration Histogram ────────────────────────────────────────────
@@ -207,7 +208,7 @@ export async function getBusinessMetrics(days = 30): Promise<BusinessMetrics> {
     const quoteToBookingRate = totalQuotes > 0 ? +(quoteBookings / totalQuotes).toFixed(3) : null
     const avgBookingValue =
       totalBookings > 0 && paymentAgg._sum.amount
-        ? +(paymentAgg._sum.amount / totalBookings).toFixed(2)
+        ? +(toMoneyNumber(paymentAgg._sum.amount) / totalBookings).toFixed(2)
         : null
 
     return {
@@ -238,7 +239,7 @@ export async function getBusinessMetrics(days = 30): Promise<BusinessMetrics> {
         avgRating: reviewAgg._avg.rating ? +reviewAgg._avg.rating.toFixed(2) : null,
       },
       revenue: {
-        total: paymentAgg._sum.amount ?? 0,
+        total: toMoneyNumber(paymentAgg._sum.amount),
         paid: paymentAgg._count.id,
         pending: await db.payment.count({ where: { status: "PENDING" } }),
         avgBookingValue,

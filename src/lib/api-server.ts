@@ -60,6 +60,9 @@ export const USER_FULL_SELECT = {
   district: true,
   city: true,
   state: true,
+  // Preferências de UI do painel (o dono da conta pode ler e gravar as suas)
+  soundEnabled: true,
+  vibrateEnabled: true,
 } as const
 
 // ---------------------------------------------------------------------------

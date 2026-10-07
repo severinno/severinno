@@ -1,5 +1,5 @@
 import { cookies } from "next/headers"
-import { createHmac, timingSafeEqual } from "crypto"
+import { createHmac, randomBytes, timingSafeEqual } from "crypto"
 import { db } from "@/lib/db"
 import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/redis"
 import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
@@ -164,6 +164,49 @@ export async function getSession(): Promise<SessionPayload | null> {
 export async function destroySession() {
   const store = await cookies()
   store.delete(COOKIE_NAME)
+}
+
+// ── Ticket de socket (handshake autenticado do realtime) ────────────────────
+
+/** TTL do ticket de socket, em segundos. Single-use e curto: janela de replay mínima. */
+export const SOCKET_TICKET_TTL_SECONDS = 60
+
+/** Prefixo no Redis compartilhado — o mini-service consome com GETDEL. */
+export const SOCKET_TICKET_PREFIX = "auth:socket-ticket:"
+
+/**
+ * Emite um ticket de socket SINGLE-USE para autenticar o handshake do
+ * realtime. O app autentica a sessão (getSession — cookie HMAC + versão de
+ * sessão no banco) e grava a identidade no Redis TTL curto; o mini-service
+ * (outro processo, MESMO Redis da base do compose) consome o ticket no
+ * handshake com GETDEL e estampa socket.data.userId/role.
+ *
+ * Por que ticket e não o cookie direto: o cookie NÃO chega no websocket
+ * cross-origin do gateway (a URL `/?XTransformPort=3003` é mesma-origem, mas
+ * o dev/e2e conecta direto em NEXT_PUBLIC_REALTIME_URL — e o cliente não
+ * controla cookies httpOnly num handshake socket.io com transportes
+ * mistos). Confiar em payload do cliente (userId auto-declarado) é o buraco
+ * que fecha: qualquer um joinava em user:{id} de terceiros.
+ */
+export async function createSocketTicket(
+  /** Injetável para testes; produção usa o getSession real do módulo. */
+  getSessionFn: () => Promise<SessionPayload | null> = getSession,
+): Promise<{ ok: true; ticket: string; expiresIn: number } | { ok: false; error: string }> {
+  try {
+    const session = await getSessionFn()
+    if (!session) return { ok: false, error: "Não autenticado" }
+    const ticket = randomBytes(32).toString("hex")
+    await cacheSet(
+      `${SOCKET_TICKET_PREFIX}${ticket}`,
+      { userId: session.userId, role: session.role },
+      SOCKET_TICKET_TTL_SECONDS,
+    )
+    return { ok: true, ticket, expiresIn: SOCKET_TICKET_TTL_SECONDS }
+  } catch {
+    // getSession já engole erros internos como null; qualquer falha aqui é
+    // tratada como não-autenticado (sem vazar o motivo).
+    return { ok: false, error: "Não autenticado" }
+  }
 }
 
 /**

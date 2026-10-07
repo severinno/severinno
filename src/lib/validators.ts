@@ -108,6 +108,13 @@ export const serviceSchema = z.object({
   categoryId: z.string().min(1, "Selecione uma subcategoria"),
   basePrice: z.coerce.number().min(0, "Preço deve ser positivo").max(1_000_000),
   unit: serviceUnitEnum.default("UNIDADE"),
+  // Duração em minutos (opcional — o model Service tem `duration Int?`)
+  duration: z.coerce
+    .number()
+    .int()
+    .min(15, "Mínimo 15 minutos")
+    .max(480, "Máximo 480 minutos")
+    .optional(),
   photos: z.array(z.string().url()).max(4, "Máximo de 4 fotos").default([]),
   active: z.boolean().default(true),
 })

@@ -1,6 +1,7 @@
 import { db } from "@/lib/db"
 import { findProvidersWithinRadius, type ProximityResult } from "@/lib/postgis"
 import { haversineKm } from "@/lib/geo"
+import { toMoneyNumber } from "@/lib/money"
 
 export type SmartMatchCandidate = {
   providerId: string
@@ -143,7 +144,7 @@ export async function findBestProviders({
       avgRating: p.avgRating,
       reviewCount: p.reviewCount,
       distanceKm,
-      basePrice: svc.basePrice,
+      basePrice: toMoneyNumber(svc.basePrice),
       serviceTitle: svc.title,
       serviceId: svc.id,
       matchScore,

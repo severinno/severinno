@@ -168,6 +168,7 @@ async function request<T>(
   path: string,
   params?: Record<string, unknown>,
   body?: unknown,
+  extraHeaders?: Record<string, string>,
 ): Promise<T> {
   const url = method === "GET" ? buildUrl(path, params) : path
   const init: RequestInit = {
@@ -178,6 +179,7 @@ async function request<T>(
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
       // CSRF: attach token from cookie for mutations (POST/PUT/PATCH/DELETE)
       ...(method !== "GET" ? { [CSRF_HEADER]: getCsrfTokenFromCookie() ?? "" } : {}),
+      ...extraHeaders,
     },
     cache: "no-store", // dynamic data; public endpoints use per-route caching via apiGet calls
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -250,12 +252,76 @@ export function apiGet<T>(path: string, params?: Record<string, unknown>): Promi
   return request<T>("GET", path, params)
 }
 
-export function apiPost<T>(path: string, body?: unknown): Promise<T> {
-  return request<T>("POST", path, undefined, body)
+/** Opções extras mutáveis: headers adicionais (ex. Idempotency-Key). */
+export type ApiPostOptions = {
+  headers?: Record<string, string>
+}
+
+export function apiPost<T>(path: string, body?: unknown, options?: ApiPostOptions): Promise<T> {
+  return request<T>("POST", path, undefined, body, options?.headers)
 }
 
 export function apiPatch<T>(path: string, body?: unknown): Promise<T> {
   return request<T>("PATCH", path, undefined, body)
+}
+
+// ---------------------------------------------------------------------------
+// Payment — contrato do POST /api/bookings/[id]/pay
+// ---------------------------------------------------------------------------
+
+/**
+ * Gera uma chave de idempotência no formato aceito pelo servidor
+ * (`^[A-Za-z0-9_-]{8,128}$`). Use UMA chave por INTENÇÃO de pagamento: guarde
+ * o valor (ref/state) e reenvie-o nos retries da mesma tentativa — o servidor
+ * responde replay/409 em vez de criar uma segunda cobrança no Lytex.
+ */
+export function newIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+  return `pay-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+/** Resposta do POST /api/bookings/[id]/pay (PIX e/ou cartão). */
+export type PayResponse = {
+  paymentMethod: string
+  status: string
+  lytexStatus?: string
+  // PIX
+  qrCode?: string
+  qrCodeImage?: string | null
+  lytexId?: string
+  expiresAt?: string
+  // Cartão
+  cardLastDigits?: string
+  cardBrand?: string
+  installments?: number
+  transactionId?: string
+  message?: string
+}
+
+export type PayBookingOptions = {
+  /**
+   * Chave de idempotência da tentativa. Obrigatória na prática: sem ela o
+   * helper gera uma NOVA a cada chamada — o que mata a proteção em retries.
+   * Gere uma vez com newIdempotencyKey() e reenvie a mesma nos retries.
+   */
+  idempotencyKey?: string
+}
+
+/**
+ * POST /api/bookings/[id]/pay — SEMPRE envia `Idempotency-Key`, para PIX e
+ * cartão. Ponto único do contrato de idempotência de pagamento: novos
+ * chamadores (ex. um futuro card-checkout) não conseguem esquecer o header.
+ */
+export function payBooking<T = PayResponse>(
+  bookingId: string,
+  body?: unknown,
+  options?: PayBookingOptions,
+): Promise<T> {
+  return request<T>("POST", `/api/bookings/${bookingId}/pay`, undefined, body, {
+    "Idempotency-Key": options?.idempotencyKey ?? newIdempotencyKey(),
+  })
 }
 
 export function apiDelete<T>(path: string, body?: unknown): Promise<T> {

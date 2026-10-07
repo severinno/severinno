@@ -52,6 +52,7 @@ const CONTEXTS = [
   "TypeCheck",
   "Tests",
   "Build",
+  "Pagination baseline guard",
 ]
 const REPO = `${OWNER}/${REPO_NAME}`
 
@@ -191,7 +192,9 @@ describe("registrationDelta — a proteção registra o manifesto?", () => {
   it("contexto a MENOS: o job roda e o merge passa — nomeado", () => {
     const d = registrationDelta({ expected: CONTEXTS, registered: CONTEXTS.slice(0, -1) })
     expect(d.ok).toBe(false)
-    expect(d.missing).toEqual(["Build"])
+    // O removido é o ÚLTIMO da lista (o mesmo `slice(0, -1)`): nomear o que
+    // ficou fora, qualquer que seja o contexto que o CORE declare por último.
+    expect(d.missing).toEqual([CONTEXTS[CONTEXTS.length - 1]])
     expect(d.extra).toEqual([])
   })
 
@@ -513,8 +516,11 @@ describe("proveGiteaMergeGate — fluxo com docker e API dublados", () => {
     })
     expect(result.verdict).toBe("violated")
     expect(result.blockers.join(" ")).toContain("NAO registrou 1 contexto(s) do manifesto")
-    expect(result.blockers.join(" ")).toContain("'Build'")
-    expect(result.registration).toMatchObject({ ok: false, missing: ["Build"] })
+    expect(result.blockers.join(" ")).toContain(`'${CONTEXTS[CONTEXTS.length - 1]}'`)
+    expect(result.registration).toMatchObject({
+      ok: false,
+      missing: [CONTEXTS[CONTEXTS.length - 1]],
+    })
     expect(result.detail).toContain("o registro nao bate com o manifesto")
     expect(result.cases).toEqual([]) // a matriz nem chega a rodar
   })
