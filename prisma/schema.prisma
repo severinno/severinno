@@ -155,6 +155,9 @@ model User {
   twoFactorEnabled     Boolean  @default(false)
   twoFactorSecret      String?
   twoFactorBackupCodes String?  // JSON array of hashed backup codes
+  // Preferências de UI do painel (som/vibração) — lidas e gravadas via /api/users/me
+  soundEnabled   Boolean @default(true)
+  vibrateEnabled Boolean @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -225,7 +228,7 @@ model Service {
   categoryId  String
   title       String
   description String
-  basePrice   Float
+  basePrice   Decimal @db.Decimal(10, 2)
   unit        ServiceUnit @default(UNIDADE)
   // photos: JSON array of url strings (max 4)
   photos      Json     @default("[]")
@@ -306,7 +309,7 @@ model QuoteItem {
   quantity     Float
   unit         ServiceUnit @default(UNIDADE)
   photos       Json     @default("[]")
-  price        Float?   // provider's offer
+  price        Decimal? @db.Decimal(10, 2)   // provider's offer
   providerNote String?
   status       QuoteItemStatus @default(PENDING)
   createdAt    DateTime @default(now())
@@ -338,7 +341,7 @@ model Booking {
   // PostGIS spatial column — managed via SQL trigger (sync_booking_location)
   // READ-ONLY via Prisma: all spatial access uses $queryRaw (see src/lib/postgis.ts)
   location     Unsupported("geography(Point, 4326)")?
-  amount        Float
+  amount        Decimal @db.Decimal(10, 2)
   paymentMethod PaymentMethod @default(PIX)
   paymentStatus PaymentStatus @default(PENDING)
   notes         String?
@@ -523,7 +526,7 @@ model Notification {
 model Payment {
   id            String   @id @default(cuid())
   bookingId     String   @unique
-  amount        Float
+  amount        Decimal @db.Decimal(10, 2)
   method        PaymentMethod @default(PIX)
   status        PaymentStatus @default(PENDING)
   transactionId String?
@@ -549,6 +552,35 @@ model Payment {
 }
 
 // ============================================================================
+// IDEMPOTENCY — proteção contra cobrança duplicada (retry, timeout,
+// duplo-clique) nas rotas que criam cobranças no gateway (Lytex).
+// ============================================================================
+model IdempotencyRecord {
+  id        String   @id @default(cuid())
+  // Chave enviada pelo cliente no header Idempotency-Key (ou derivada
+  // server-side). Globalmente única — uma chave, UMA criação de cobrança.
+  key       String   @unique
+  // Escopo da operação: "pay:create" (cobrança PIX/cartão), extensível.
+  scope     String   @default("pay:create")
+  // Contexto da operação (bookingId, método, valor) para auditoria e para
+  // detectar reuso da MESMA chave com corpo diferente (409).
+  context   Json
+  // status: "processing" | "completed" | "failed"
+  status    String   @default("processing")
+  // Resposta serializada da primeira execução bem-sucedida (replay).
+  response  Json?
+  // Erro da primeira execução (para o retry falhar igual — sem cobrar).
+  error     String?
+  // Expira para não crescer sem fim; registros velhos podem ser podados.
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([expiresAt])
+  @@index([scope, createdAt])
+}
+
+// ============================================================================
 // SETTLEMENT PERIOD — automatic settlement cycles (weekly/monthly)
 // ============================================================================
 model SettlementPeriod {
@@ -559,9 +591,9 @@ model SettlementPeriod {
   status          String   @default("PENDING")
   startDate       DateTime
   endDate         DateTime
-  totalCommission Float    @default(0)
-  totalNet        Float    @default(0)
-  totalAmount     Float    @default(0)
+  totalCommission Decimal @db.Decimal(12, 2) @default(0)
+  totalNet        Decimal @db.Decimal(12, 2) @default(0)
+  totalAmount     Decimal @db.Decimal(12, 2) @default(0)
   providerCount   Int      @default(0)
   transactionCount Int     @default(0)
   notes           String?
@@ -585,9 +617,9 @@ model ProviderSettlement {
   providerId      String
   // status: "PENDING" | "PAID"
   status          String   @default("PENDING")
-  totalAmount     Float    @default(0)
-  commission      Float    @default(0)
-  netAmount       Float    @default(0)
+  totalAmount     Decimal @db.Decimal(12, 2) @default(0)
+  commission      Decimal @db.Decimal(12, 2) @default(0)
+  netAmount       Decimal @db.Decimal(12, 2) @default(0)
   transactionCount Int     @default(0)
   paidAt          DateTime?
   paidBy          String?
@@ -835,7 +867,7 @@ model PushAnalytics {
 model WalletTransaction {
   id          String   @id @default(cuid())
   providerId  String
-  amount      Float
+  amount      Decimal @db.Decimal(10, 2)
   status      String   @default("pending")  // "pending" | "completed" | "failed" | "cancelled"
   description String?
   createdAt   DateTime @default(now())
