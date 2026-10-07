@@ -21,7 +21,8 @@
 #
 # Exit codes:
 #   0 — sucesso
-#   1 — falha (db push, custom SQL, seed ou index com erro)
+#   1 — falha (db push, custom SQL, seed, index com erro OU drift de schema
+#       detectado pelo check-schema-drift no passo final)
 # =============================================================================
 
 set -euo pipefail
@@ -46,7 +47,7 @@ echo "── db:setup — schema sync (db push) ──────────�
 #    Unsupported("geography(Point, 4326)") e o push falha com
 #    'type "geography" does not exist' se a extensão não estiver ativa
 #    (banco limpo recém-criado não tem a extensão).
-echo "[0/5] Habilitando extensão PostGIS..."
+echo "[0/6] Habilitando extensão PostGIS..."
 bunx prisma db execute --stdin --schema prisma/schema.prisma <<< "CREATE EXTENSION IF NOT EXISTS postgis;" 2>/dev/null || \
   psql "${DATABASE_URL:-}" -c "CREATE EXTENSION IF NOT EXISTS postgis;" 2>/dev/null || true
 echo "      ✅ PostGIS habilitado"
@@ -54,7 +55,7 @@ echo "      ✅ PostGIS habilitado"
 # 1. Schema base via db push (cria tabelas/colunas/enums do schema.prisma)
 #    --accept-data-loss: em banco limpo não há dados a perder; em banco
 #    existente, é o mesmo fallback usado pelo deploy.yml e pelo setup.sh.
-echo "[1/5] prisma db push..."
+echo "[1/6] prisma db push..."
 bunx prisma db push --accept-data-loss 2>&1 | tail -4
 echo "      ✅ schema base sincronizado"
 
@@ -62,12 +63,15 @@ echo "      ✅ schema base sincronizado"
 #    (campos Unsupported: tsvector, geography, MV, triggers, extensão PostGIS)
 CUSTOM_MIGRATIONS=(
   "XX_add_postgis"
+  "20260722120000_add_performance_indexes"
   "20260724120000_mv_provider_stats"
   "20260724140000_auto_reindex_triggers"
   "20260726120000_add_user_search_vector"
   "20260726130000_add_denormalized_triggers"
+  "20261004120000_user_keyset_rating_index"
+  "20261004130000_user_location_visible_gist"
 )
-echo "[2/5] Reaplicando SQLs customizados (idempotentes)..."
+echo "[2/6] Reaplicando SQLs customizados (idempotentes)..."
 for mig in "${CUSTOM_MIGRATIONS[@]}"; do
   SQL_FILE="prisma/migrations/$mig/migration.sql"
   if [ ! -f "$SQL_FILE" ]; then
@@ -82,7 +86,7 @@ done
 echo "      ✅ SQLs customizados aplicados"
 
 # 3. Marca TODAS as migrations como aplicadas (o db push já criou o schema)
-echo "[3/5] Marcando migrations como aplicadas (migrate resolve)..."
+echo "[3/6] Marcando migrations como aplicadas (migrate resolve)..."
 find "$PROJECT_DIR/prisma/migrations" -maxdepth 1 -type d ! -name "migrations" | sort | while IFS= read -r mig_dir; do
   mig_name=$(basename "$mig_dir")
   if grep -q "$mig_name" <<< "$(bunx prisma migrate status 2>/dev/null)"; then
@@ -96,20 +100,60 @@ echo "      ✅ migrations marcadas"
 
 # 4. Seed (dados demo)
 if [ "$SKIP_SEED" = true ]; then
-  echo "[4/5] Seed pulado (--skip-seed)"
+  echo "[4/6] Seed pulado (--skip-seed)"
 else
-  echo "[4/5] Rodando seed..."
+  echo "[4/6] Rodando seed..."
   bun run db:seed 2>&1 | tail -3 || { echo "      ❌ Seed falhou" >&2; exit 1; }
   echo "      ✅ seed concluído"
 fi
 
 # 5. Índice de busca
 if [ "$SKIP_INDEX" = true ]; then
-  echo "[5/5] Índice de busca pulado (--skip-index)"
+  echo "[5/6] Índice de busca pulado (--skip-index)"
 else
-  echo "[5/5] Indexando busca..."
+  echo "[5/6] Indexando busca..."
   bun run db:search:index 2>&1 | tail -3 || { echo "      ❌ Index falhou" >&2; exit 1; }
   echo "      ✅ índice de busca pronto"
+fi
+
+# 6. Prova do schema — o db push NÃO gerencia os objetos customizados e já
+#    derrubou índices/triggers no passado; o guard compara o que as migrations
+#    da lista CUSTOM_MIGRATIONS prometem com o catálogo real e falha o setup
+#    em caso de drift. Transporte: psql no host quando houver; senão o container
+#    postgis do compose (padrão PG_CONTAINER do check-money-decimal.sh).
+echo "[6/6] Prova do schema (check-schema-drift)..."
+DB_USER="$(sed -E 's|^[^:]+://([^:]+):.*|\1|' <<< "${DATABASE_URL:-}" 2>/dev/null || true)"
+DB_NAME="$(sed -E 's|.*/([^/?]+)(\?.*)?$|\1|' <<< "${DATABASE_URL:-}" 2>/dev/null || true)"
+DB_USER="${DB_USER:-severinno}"
+DB_NAME="${DB_NAME:-severinno}"
+
+run_drift_check() {
+  if command -v psql >/dev/null 2>&1; then
+    bash scripts/check-schema-drift.sh
+    return
+  fi
+  if command -v docker >/dev/null 2>&1; then
+    local cid
+    cid="$(docker ps -q -f name=severinno-postgis 2>/dev/null | head -1)"
+    if [ -n "$cid" ]; then
+      PG_CONTAINER="$cid" PGUSER="${PGUSER:-$DB_USER}" PGDATABASE="${PGDATABASE:-$DB_NAME}" \
+        bash scripts/check-schema-drift.sh
+      return
+    fi
+  fi
+  echo "      ⚠️  sem transporte psql/docker — prova pulada; rode 'bun run check:schema-drift' com acesso ao banco"
+  return 2
+}
+
+DRIFT_RC=0
+run_drift_check || DRIFT_RC=$?
+if [ "$DRIFT_RC" -eq 1 ]; then
+  echo "      ❌ Drift de schema logo após o setup — algo prometido pelas migrations customizadas não existe no banco" >&2
+  exit 1
+elif [ "$DRIFT_RC" -gt 1 ]; then
+  echo "      ⚠️  prova do schema impossível (rc=$DRIFT_RC) — setup segue, mas rode o guard manualmente" >&2
+else
+  echo "      ✅ schema provado: todos os objetos customizados existem (0 drift)"
 fi
 
 echo ""

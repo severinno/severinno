@@ -55,6 +55,13 @@
 //      ${{ vars.BUN_VERSION }} (ex.: key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}).
 //      Um literal (bun-1.3.14-...) é VIOLAÇÃO — a troca da variável não
 //      invalidaria esse cache.
+//  20. Todo include da docker-compose.base.yml declara `env_file` apontando
+//      para o compose-include.env VAZIO (prod e hostinger hoje). Sem ele, o
+//      include carregaria o .env do DIRETÓRIO da base por conta própria e
+//      uma var de dev vazaria para o render de produção quando o --env-file
+//      não define a variável — a armadilha de interpolação que a consolidação
+//      base+override documentou nos headers dos canais. Declaração AUSENTE,
+//      caminho DIFERENTE ou arquivo de env INEXISTENTE/NÃO-VAZIO é violação.
 //
 //      A lista de prefixos é CONFIGURÁVEL (DEFAULT_CACHE_KEY_RULES):
 //      adicione { prefix, version, paths } para validar cache keys de
@@ -2876,6 +2883,199 @@ const PACKAGE_MANAGER_FIELD_RE = /"packageManager"\s*:/
  * @param {{addedLines?: number[]|null}} [opts]  recorte: só os blocos que o diff toca
  * @returns {string[]} violações
  */
+// ── Invariante 20: include da base declara env_file VAZIO ───────────────────
+
+/**
+ * O include da docker-compose.base.yml DEVE declarar `env_file` apontando
+ * para o compose-include.env vazio. Sem a declaração, o Compose carrega o
+ * .env do DIRETÓRIO do arquivo incluído por conta própria — uma var de dev
+ * vazaria para o render de produção quando o --env-file do comando não
+ * define a variável (armadilha documentada nos headers dos canais e no
+ * próprio compose-include.env).
+ *
+ * @param {string} rel caminho relativo do compose canal (rótulo do relatório)
+ * @param {string} content conteúdo do compose canal
+ * @param {{includeEnvFile: string}} [opts] includeEnvFile: caminho do env
+ *        vazio esperado (default compose-include.env), relativo à raiz —
+ *        injetável para fixtures.
+ * @returns {string[]} violações
+ */
+/**
+ * Parser de TEXTO do bloco `include:` (o guard NÃO tem dependências — os
+ * testes da forja copiam este arquivo para fixtures em /tmp SEM node_modules
+ * e o executam; um import de pacote quebraria a cópia com ERR_MODULE_NOT_FOUND).
+ * Suporta as formas do Compose:
+ *
+ *   include:
+ *     - path: docker-compose.base.yml     ← MAPA (canônico; env_file inline
+ *       env_file: [compose-include.env]      ou em lista de bloco)
+ *   include:
+ *     - docker-compose.base.yml           ← STRING (sem env_file possível)
+ *
+ * @param {string} content conteúdo do compose canal
+ * @returns {{found: boolean, entries: Array<{path: string, envFile: string[], form: "map"|"string"}>}}
+ */
+export function parseIncludeBlock(content) {
+  const lines = content.split("\n")
+  const startIdx = lines.findIndex((l) => /^include:\s*(#.*)?$/.test(l))
+  if (startIdx === -1) return { found: false, entries: [] }
+  // Corpo do bloco: linhas INDENTADAS (ou vazias/comentário) até a primeira
+  // linha de topo de novo.
+  const body = []
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const raw = lines[i]
+    if (raw.trim() === "" || /^[ \t]+#/.test(raw)) {
+      body.push(raw)
+      continue
+    }
+    if (/^[ \t]+/.test(raw)) body.push(raw)
+    else break
+  }
+  while (body.length > 0 && body[body.length - 1].trim() === "") body.pop()
+  /** Divide o body em entries: cada linha `- ...` abre um entry. */
+  const rawEntries = []
+  let current = null
+  for (const raw of body) {
+    const line = stripTrailingComment(raw).replace(/^[ \t]+/, "")
+    if (line === "") continue
+    if (line.startsWith("- ")) {
+      current = [line.slice(2)]
+      rawEntries.push(current)
+    } else if (current) {
+      current.push(line)
+    }
+  }
+  const unquote = (s) => s.trim().replace(/^["']|["']$/g, "")
+  const parsed = rawEntries.map((ls) => {
+    const head = ls[0] ?? ""
+    // MAPA inline (flow): - { path: X, env_file: [Y] }
+    const flow = head.match(/^\{(.*)\}$/)
+    if (flow) {
+      const path = unquote(flow[1].match(/path:\s*([^,}]+)/)?.[1] ?? "")
+      const env = flow[1].match(/env_file:\s*\[([^\]]*)\]/)?.[1] ?? ""
+      return {
+        path,
+        form: "map",
+        envFile: env.split(",").map(unquote).filter(Boolean),
+      }
+    }
+    const pathMatch = head.match(/^path:\s*(.+)$/)
+    if (!pathMatch) {
+      // STRING pura: `- docker-compose.base.yml`
+      return { path: unquote(head), form: "string", envFile: [] }
+    }
+    const path = unquote(pathMatch[1])
+    let envFile = []
+    for (let i = 1; i < ls.length; i++) {
+      const m = ls[i].match(/^env_file:\s*(.*)$/)
+      if (!m) continue
+      const inline = m[1].trim()
+      if (inline.startsWith("[")) {
+        envFile = inline
+          .replace(/^\[|\]$/g, "")
+          .split(",")
+          .map(unquote)
+          .filter(Boolean)
+      } else if (inline !== "") {
+        envFile = [unquote(inline)]
+      } else {
+        // Lista de bloco: os `- item` seguintes com indentação maior.
+        const baseIndent = ls[i].length - ls[i].trimStart().length
+        for (let j = i + 1; j < ls.length; j++) {
+          const itemLine = ls[j]
+          if (itemLine.trim() === "") continue
+          const indent = itemLine.length - itemLine.trimStart().length
+          if (indent <= baseIndent) break
+          const item = itemLine.trim().replace(/^-[ \t]*/, "")
+          if (item) envFile.push(unquote(item))
+        }
+      }
+      break
+    }
+    return { path, form: "map", envFile }
+  })
+  return { found: true, entries: parsed }
+}
+
+/**
+ * O include da docker-compose.base.yml DEVE declarar `env_file` apontando
+ * para o compose-include.env vazio. Sem a declaração, o Compose carrega o
+ * .env do DIRETÓRIO do arquivo incluído por conta própria — uma var de dev
+ * vazaria para o render de produção quando o --env-file do comando não
+ * define a variável (armadilha documentada nos headers dos canais e no
+ * próprio compose-include.env).
+ *
+ * @param {string} rel caminho relativo do compose canal (rótulo do relatório)
+ * @param {string} content conteúdo do compose canal
+ * @param {{includeEnvFile: string}} [opts] includeEnvFile: caminho do env
+ *        vazio esperado (default compose-include.env), relativo à raiz —
+ *        injetável para fixtures.
+ * @returns {string[]} violações
+ */
+export function checkBaseIncludeEnvFile(rel, content, opts = {}) {
+  const includeEnvFile = opts.includeEnvFile ?? "compose-include.env"
+  const violations = []
+  const { found, entries } = parseIncludeBlock(content)
+  if (!found || entries.length === 0) {
+    return [
+      `${rel}: sem bloco include: — este guard julga os CANAIS que incluem a docker-compose.base.yml (fail-closed).`,
+    ]
+  }
+  const BASE_SUFFIX = "docker-compose.base.yml"
+  if (!entries.some((e) => e.path.endsWith(BASE_SUFFIX))) {
+    return [
+      `${rel}: include não referencia a docker-compose.base.yml — o canal divergiu da fonte comum (fail-closed).`,
+    ]
+  }
+  for (const entry of entries) {
+    if (!entry.path.endsWith(BASE_SUFFIX)) continue
+    const declarado = entry.envFile
+    const temVazio = declarado.includes(includeEnvFile)
+    if (declarado.length === 0) {
+      // A forma STRING é a armadilha em pessoa: não há ONDE declarar env_file.
+      const byForm =
+        entry.form === "string"
+          ? `está em forma de STRING (sem env_file possível) — o Compose carregaria o .env do diretório da base por conta própria. Use a forma de mapa com env_file: [${includeEnvFile}] (arquivo VAZIO)`
+          : `NÃO declara env_file — o Compose carregaria o .env do diretório da base por conta própria (var de dev vazaria para o render de produção). Declare env_file: [${includeEnvFile}] (arquivo VAZIO)`
+      violations.push(`${rel}: o include da docker-compose.base.yml ${byForm}.`)
+    } else if (!temVazio) {
+      violations.push(
+        `${rel}: o include da base declara env_file [${declarado.join(", ")}] mas NÃO o ${includeEnvFile} vazio — o arquivo de env do include é a garantia de que a interpolação da base usa as MESMAS fontes do comando (--env-file).`,
+      )
+    }
+  }
+  return violations
+}
+
+/**
+ * O arquivo de env do include tem de continuar VAZIO (só comentários). Qualquer
+ * atribuição `CHAVE=valor` é violação — alguém começaria a interpolar a base a
+ * partir dele em vez das fontes do comando.
+ *
+ * @param {string} rel rótulo (caminho do arquivo)
+ * @param {string} content conteúdo do compose-include.env
+ * @returns {string[]} violações
+ */
+export function checkBaseIncludeEnvFileEmpty(rel, content) {
+  const attributions = content
+    .split("\n")
+    .map((line) => stripSlashComment(line).trim())
+    .filter((line) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(line))
+  if (attributions.length > 0) {
+    return [
+      `${rel}: o env_file do include da base tem atribuição(ões): ${attributions.slice(0, 3).join("; ")}${attributions.length > 3 ? "…" : ""} — o arquivo é VAZIO de propósito; valor aqui viraria fonte de interpolação da base (a fonte é o --env-file do comando).`,
+    ]
+  }
+  return []
+}
+
+/**
+ * @param {string} rel
+ * @param {string} content
+ * @param {string[]} bunDockerfiles  saída de `bunDockerfilesWithArg`
+ * @param {{addedLines?: number[]|null}} [opts]  recorte: só os blocos que o diff toca
+ * @returns {string[]} violações
+ */
 export function checkComposeBuildArgs(rel, content, bunDockerfiles, { addedLines = null } = {}) {
   const violations = []
   const recorte = addedLines ? new Set(addedLines) : null
@@ -4276,11 +4476,42 @@ function main() {
   // escrito nenhum para as invariantes 13/15/16 julgarem.
   const dockerfilesComArg = bunDockerfilesWithArg(cwd)
   const buildSites = new Map()
+  // ── Invariante 20: o include da base usa o env_file VAZIO ──────────
+  // Julga os canais que incluem a base (prod/hostinger): sem a declaração, o
+  // Compose carregaria o .env do DIRETÓRIO da base — a armadilha de
+  // interpolação que a consolidação base+override fechou. O arquivo de env
+  // vazio também é julgado: atribuição nele recria a fuga por outro caminho.
+  {
+    const includeEnvPath = join(cwd, "compose-include.env")
+    // O par (canal, env vazio) é julgado JUNTO: repo sem NENHUM canal não é
+    // violação (não há o que julgar — mesmo princípio do checkGiteaRunnerImage);
+    // com PELO MENOS UM canal, o env_file vazio é pré-requisito.
+    const hasChannel =
+      existsSync(join(cwd, "docker-compose.prod.yml")) ||
+      existsSync(join(cwd, "docker-compose.hostinger.yml"))
+    if (hasChannel && !existsSync(includeEnvPath)) {
+      violations.push(
+        "compose-include.env: ausente — o env_file vazio do include da base é a garantia de que a interpolação da base usa as fontes do comando (--env-file), não o .env do diretório.",
+      )
+    } else if (existsSync(includeEnvPath)) {
+      violations.push(
+        ...checkBaseIncludeEnvFileEmpty(
+          "compose-include.env",
+          readFileSync(includeEnvPath, "utf8"),
+        ),
+      )
+    }
+  }
   for (const rel of alvos) {
     if (!COMPOSE_FILE_RE.test(rel)) continue
     const content = readFileSync(join(cwd, rel), "utf8")
     buildSites.set(rel, composeBuildSites(rel, content))
     violations.push(...checkComposeBuildArgs(rel, content, dockerfilesComArg))
+    // Só canais que INCLUEM a base são julgados pela invariante 20 (a base e
+    // os monolíticos não têm bloco include dela).
+    if (/docker-compose\.(prod|hostinger)\.ya?ml$/.test(rel)) {
+      violations.push(...checkBaseIncludeEnvFile(rel, content))
+    }
   }
   violations.push(...checkPackageManagerVersion(cwd))
 

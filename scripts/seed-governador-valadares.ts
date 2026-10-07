@@ -18,6 +18,7 @@
  */
 
 import { PrismaClient } from "@prisma/client"
+import { backfillAvatars } from "./lib/backfill-avatars"
 
 const prisma = new PrismaClient()
 
@@ -432,7 +433,7 @@ async function seed() {
       providerId: provider.id,
       serviceId: servico.id,
       status,
-      amount: servico.basePrice + randInt(-20, 50),
+      amount: Number(servico.basePrice) + randInt(-20, 50),
       scheduledAt: randomDate(createdAt, new Date(createdAt.getTime() + 30 * 24 * 60 * 60 * 1000)),
       address: `Rua ${pick(RUA_NOMES)}, ${randInt(1, 500)} - ${bairro.nome}, GV - MG`,
       cep: genCep(),
@@ -474,6 +475,11 @@ async function seed() {
     process.stdout.write(`\r  ⭐ ${totalReviews}/${reviewData.length}...`)
   }
   console.log(`\n  ✅ ${totalReviews} reviews\n`)
+
+  // Avatares: etapa automática final do seed — mesma convenção dos cards
+  // (pravatar determinístico por userId), idempotente (ignora quem já tem).
+  const avatarsBackfilled = await backfillAvatars(prisma)
+  console.log(`  🖼️  Avatares: ${avatarsBackfilled} preenchidos nesta execução\n`)
 
   // Summary
   console.log("📊 Resumo:")

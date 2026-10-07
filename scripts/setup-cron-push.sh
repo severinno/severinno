@@ -32,6 +32,8 @@ CRON_SECRET="${CRON_SECRET:-}"
 #   - reminders:      roda a cada 30 minutos (verifica bookings com scheduledAt em ~24h)
 #   - settlements:    roda 1x ao dia às 03:00 (fecha período de repasse)
 #   - commissions:    roda 1x ao mês no dia 1 às 04:00 (relatório de comissões)
+#   - svg-census:     roda 1x por semana (dom 03:30) — censo dry-run de SVG legado;
+#                     alerta enquanto svgFound > 0, até a remediação (--apply) zerar
 #   - identity-purge: roda 1x ao dia (03:15) — retenção LGPD: pendências de KYC
 #                     expiradas (30d) perdem a biometria e viram rejected
 
@@ -49,6 +51,9 @@ CRON_ENTRIES=$(
 
 # Relatório de comissões — 1x ao mês no dia 1 às 04:00
 0 4 1 * * curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer __CRON_SECRET__" "__APP_URL__/api/cron/commissions-report" >> ~/cron-logs/commissions.log 2>&1
+
+# Censo de SVG legado — 1x por semana, domingo às 03:30 (dry-run; alerta se svgFound > 0)
+30 3 * * 0 curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer __CRON_SECRET__" "__APP_URL__/api/cron/svg-legacy-census" >> ~/cron-logs/svg-census.log 2>&1
 
 # Retenção LGPD — 1x ao dia às 03:15 (pendências de KYC expiradas perdem a biometria; idempotente)
 15 3 * * * curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer __CRON_SECRET__" "__APP_URL__/api/cron/identity-purge" >> ~/cron-logs/identity-purge.log 2>&1
