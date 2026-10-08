@@ -27,7 +27,7 @@
       "guards": {
         "ms": 1123200,
         "provenance": "declarado (PISO: a soma cobre os passos MEDIDOS; `check:pipefail-sigpipe`, o `bun install --frozen-lockfile` e o checkout seguem fora dela)",
-        "source": "RE-MEDIDO em 07/10/2026 (o MESMO ato do job `mutation-guards` do espelho: `bench-guard-timing --only mutations --json` na árvore COMMITADA b6037790, 49 sub-tests x 293 metades, 1116.8s de sub-tests + 6.4s de harness = 1123.2s), com a soma refeita passo a passo; o antigo 562.4s media a matriz de 39 sub-tests (23/09)",
+        "source": "RE-MEDIDO em 07/10/2026 (o MESMO ato do job `mutation-guards` do espelho: `bench-guard-timing --only mutations --json` na árvore COMMITADA ee3cde3d, 49 sub-tests x 293 metades, 1116.8s de sub-tests + 6.4s de harness = 1123.2s), com a soma refeita passo a passo; o antigo 562.4s media a matriz de 39 sub-tests (23/09)",
         "date": "2026-10-07"
       },
       "stack-per-commit": {
@@ -83,7 +83,7 @@
       "mutation-guards": {
         "ms": 1123200,
         "provenance": "medido (MEDIDO)",
-        "source": "RE-MEDIDO neste host (Linux, 16 cpus, 32 GB), 2026-10-07, com a matriz em 49 sub-tests x 293 metades (ato `bench-guard-timing --only mutations --json` na árvore commitada b6037790, 49/49 formas com fonte): UMA rodada da matriz COMPLETA = 1123.2s (1116.8s de sub-tests + 6.4s de harness); o antigo 528.5s media a matriz de 39 sub-tests (23/09)",
+        "source": "RE-MEDIDO neste host (Linux, 16 cpus, 32 GB), 2026-10-07, com a matriz em 49 sub-tests x 293 metades (ato `bench-guard-timing --only mutations --json` na árvore commitada ee3cde3d, 49/49 formas com fonte): UMA rodada da matriz COMPLETA = 1123.2s (1116.8s de sub-tests + 6.4s de harness); o antigo 528.5s media a matriz de 39 sub-tests (23/09)",
         "date": "2026-10-07"
       },
       "unused-deps-guard": {

@@ -3,7 +3,7 @@
     "tool": "bench-guard-timing",
     "version": 7,
     "anchor": "carrier",
-    "parentCommit": "b6037790",
+    "parentCommit": "ee3cde3d",
     "commitDate": "2026-10-07 20:46:21 -0300",
     "timestamp": "2026-10-07T23:47:01.149Z",
     "act": "bench-guard-timing --only mutations --json",
