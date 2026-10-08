@@ -859,18 +859,19 @@ jobs:
       - name: PII gate self-test
         run: bun run check:pii-gate
 
-      - run: bun run test:run
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:55432/severinno_test
-          DIRECT_URL: postgresql://postgres:postgres@localhost:55432/severinno_test
-
       # O E2E do realtime sobe o mini-service REAL como processo bun — o serviço
       # tem package.json/bun.lock PRÓPRIOS (mini-services/realtime/) e o checkout
       # limpo do CI não traz o node_modules dele (o local, sim, por isso o teste
       # passa fora da forja e morre nela com `Cannot find package 'engine.io'`).
+      # ANTES do test:run: o step que instala não pode vir depois de quem usa.
       - name: Install realtime mini-service deps (E2E)
         run: bun install --frozen-lockfile
         working-directory: mini-services/realtime
+
+      - run: bun run test:run
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:55432/severinno_test
+          DIRECT_URL: postgresql://postgres:postgres@localhost:55432/severinno_test
 
   # ── Vitrine Pagination Baseline — required check do merge ─────────────
   # O guard de performance da paginação (scripts/check-vitrine-pagination-
@@ -929,7 +930,19 @@ jobs:
       # páginas e o walk reverso não acontece — o guard reprova por dados
       # insuficientes em vez de passar com uma prova vazia.
       - name: Push Prisma schema to test database
-        run: npx prisma db push --accept-data-loss --skip-generate
+        # A porta de host é PRÓPRIA (55434) justamente para não disputar com o
+        # job test — mas no runner compartilhado o publish da porta pelo service
+        # pode atrasar além do healthcheck do container (P1001 medido em
+        # 08/10/2026): espera a porta do HOST responder antes do CLI.
+        run: |
+          for i in $(seq 1 30); do
+            if (echo > /dev/tcp/127.0.0.1/55434) 2>/dev/null; then
+              echo "postgres aceitou conexão na 55434 após $((i * 2))s"
+              break
+            fi
+            sleep 2
+          done
+          npx prisma db push --accept-data-loss --skip-generate
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:55434/severinno_test
           # O schema declara `directUrl = env("DIRECT_URL")` (sessão de migrate
