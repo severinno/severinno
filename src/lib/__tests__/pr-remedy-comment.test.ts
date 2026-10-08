@@ -267,7 +267,9 @@ describe("o ciclo de reconciliação (API dublê)", () => {
     )
     const out = await reconcileRemedy({
       request: api.request,
-      config: {},
+      // O path da API do Gitea é repo-escopo (o 404 do run 350 provou o contrário):
+      // o canal gitea agora EXIGE config.repo.
+      config: { repo: "o/r" },
       kind: "gitea",
       pr: 3,
       body: remedyBody(resultado()) ?? "",
