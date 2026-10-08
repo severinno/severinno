@@ -365,13 +365,15 @@ bootstrap_admin() {
 
     info "Executando bootstrap do admin..."
     local boot_output boot_exit
-    boot_output=$(run docker compose -f "$COMPOSE_FILE" run --rm --no-deps \
+    boot_output=$(run docker compose -f "$COMPOSE_FILE" run --rm --no-deps --user root \
         -v "$PROJECT_DIR/scripts/bootstrap-admin.mjs:/app/scripts/bootstrap-admin.mjs:ro" \
         -v "$PROJECT_DIR/secrets/admin_email.secret:/run/secrets/admin_email:ro" \
         -v "$PROJECT_DIR/secrets/admin_password.secret:/run/secrets/admin_password:ro" \
         -e ADMIN_EMAIL_FILE=/run/secrets/admin_email \
         -e ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
         app node /app/scripts/bootstrap-admin.mjs 2>&1) || true
+    # --user root: o secret do host é 600 e a imagem roda como nextjs — sem
+    # isso o bootstrap sai EACCES (o run é efêmero: nada muda no host).
     boot_exit=$?
     echo "$boot_output" | tail -5
 

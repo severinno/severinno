@@ -340,6 +340,34 @@ jobs:
             # (a imagem roda node:22 sem bun/bunx; o CLI do prisma vem assado
             # global na imagem, pino igual ao do package.json)
 
+      - name: Bootstrap do admin real (após o migrate)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }}
+            # O PRIMEIRO administrador REAL nasce no deploy, dos Docker secrets
+            # admin_email/admin_password (idempotente: admin existente não é
+            # tocado — rotação é operação manual). Sem os secrets, avisa e
+            # segue (mesma postura do deploy.sh: o deploy não falha por isso).
+            if [ ! -s secrets/admin_email.secret ] || [ ! -s secrets/admin_password.secret ]; then
+              echo "AVISO: secrets/admin_{email,password}.secret vazios/ausentes — bootstrap do admin pulado"
+              exit 0
+            fi
+            # --user root: o secret do host é 600 e a imagem roda como nextjs
+            # (o run é um container efêmero — as permissões do host não mudam).
+            docker compose -f docker-compose.hostinger.yml --env-file .env.production.local \
+              run --rm --no-deps --user root \
+              -v "$PWD/scripts/bootstrap-admin.mjs:/app/scripts/bootstrap-admin.mjs:ro" \
+              -v "$PWD/secrets/admin_email.secret:/run/secrets/admin_email:ro" \
+              -v "$PWD/secrets/admin_password.secret:/run/secrets/admin_password:ro" \
+              -e ADMIN_EMAIL_FILE=/run/secrets/admin_email \
+              -e ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
+              app node /app/scripts/bootstrap-admin.mjs \
+              || echo "AVISO: bootstrap do admin falhou — deploy continua; corrija os secrets e rode o deploy novamente"
+
   # ── Deploy to VPS ────────────────────────────────────────────────────────
   deploy:
     name: Deploy to VPS
