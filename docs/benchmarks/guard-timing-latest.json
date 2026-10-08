@@ -3,10 +3,10 @@
     "tool": "bench-guard-timing",
     "version": 7,
     "anchor": "carrier",
-    "parentCommit": "c03df7dd",
-    "commitDate": "2026-10-05 22:08:45 -0300",
-    "timestamp": "2026-10-06T03:01:51.444Z",
-    "act": "bench-guard-timing --only mutations --json --baseline --merge",
+    "parentCommit": "b6037790",
+    "commitDate": "2026-10-07 20:46:21 -0300",
+    "timestamp": "2026-10-07T23:47:01.149Z",
+    "act": "bench-guard-timing --only mutations --json",
     "nodeVersion": "v20.20.2",
     "platform": "linux",
     "arch": "x64",
@@ -15,443 +15,95 @@
     "reused": {
       "lint": {
         "source": "guard-timing-baseline.json",
-        "commit": "aedd8acd",
-        "commitDate": "2026-10-02 15:38:15 -0300",
-        "timestamp": "2026-10-02T20:47:03.711Z",
+        "commit": "c03df7dd",
+        "commitDate": "2026-10-05 22:08:45 -0300",
+        "timestamp": "2026-10-06T03:01:51.444Z",
         "missingInOrigin": null
       },
       "typecheck": {
         "source": "guard-timing-baseline.json",
-        "commit": "aedd8acd",
-        "commitDate": "2026-10-02 15:38:15 -0300",
-        "timestamp": "2026-10-02T20:47:03.711Z",
+        "commit": "c03df7dd",
+        "commitDate": "2026-10-05 22:08:45 -0300",
+        "timestamp": "2026-10-06T03:01:51.444Z",
         "missingInOrigin": null
       },
       "tests": {
         "source": "guard-timing-baseline.json",
-        "commit": "aedd8acd",
-        "commitDate": "2026-10-02 15:38:15 -0300",
-        "timestamp": "2026-10-02T20:47:03.711Z",
+        "commit": "c03df7dd",
+        "commitDate": "2026-10-05 22:08:45 -0300",
+        "timestamp": "2026-10-06T03:01:51.444Z",
         "missingInOrigin": null
       },
       "hook": {
         "source": "guard-timing-baseline.json",
-        "commit": "aedd8acd",
-        "commitDate": "2026-10-02 15:38:15 -0300",
-        "timestamp": "2026-10-02T20:47:03.711Z",
+        "commit": "c03df7dd",
+        "commitDate": "2026-10-05 22:08:45 -0300",
+        "timestamp": "2026-10-06T03:01:51.444Z",
         "missingInOrigin": null
       },
       "battery": {
         "source": "guard-timing-baseline.json",
-        "commit": "aedd8acd",
-        "commitDate": "2026-10-02 15:38:15 -0300",
-        "timestamp": "2026-10-02T20:47:03.711Z",
+        "commit": "c03df7dd",
+        "commitDate": "2026-10-05 22:08:45 -0300",
+        "timestamp": "2026-10-06T03:01:51.444Z",
         "missingInOrigin": null
       }
     },
     "families": {
       "battery": {
         "act": "reused",
-        "commit": "aedd8acd",
-        "commitDate": "2026-10-02 15:38:15 -0300",
-        "timestamp": "2026-10-02T20:47:03.711Z",
+        "commit": "c03df7dd",
+        "commitDate": "2026-10-05 22:08:45 -0300",
+        "timestamp": "2026-10-06T03:01:51.444Z",
         "source": "guard-timing-baseline.json",
         "missingInOrigin": null
       },
       "lint": {
         "act": "reused",
-        "commit": "aedd8acd",
-        "commitDate": "2026-10-02 15:38:15 -0300",
-        "timestamp": "2026-10-02T20:47:03.711Z",
+        "commit": "c03df7dd",
+        "commitDate": "2026-10-05 22:08:45 -0300",
+        "timestamp": "2026-10-06T03:01:51.444Z",
         "source": "guard-timing-baseline.json",
         "missingInOrigin": null
       },
       "typecheck": {
         "act": "reused",
-        "commit": "aedd8acd",
-        "commitDate": "2026-10-02 15:38:15 -0300",
-        "timestamp": "2026-10-02T20:47:03.711Z",
+        "commit": "c03df7dd",
+        "commitDate": "2026-10-05 22:08:45 -0300",
+        "timestamp": "2026-10-06T03:01:51.444Z",
         "source": "guard-timing-baseline.json",
         "missingInOrigin": null
       },
       "tests": {
         "act": "reused",
-        "commit": "aedd8acd",
-        "commitDate": "2026-10-02 15:38:15 -0300",
-        "timestamp": "2026-10-02T20:47:03.711Z",
+        "commit": "c03df7dd",
+        "commitDate": "2026-10-05 22:08:45 -0300",
+        "timestamp": "2026-10-06T03:01:51.444Z",
         "source": "guard-timing-baseline.json",
         "missingInOrigin": null
       },
       "hook": {
         "act": "reused",
-        "commit": "aedd8acd",
-        "commitDate": "2026-10-02 15:38:15 -0300",
-        "timestamp": "2026-10-02T20:47:03.711Z",
+        "commit": "c03df7dd",
+        "commitDate": "2026-10-05 22:08:45 -0300",
+        "timestamp": "2026-10-06T03:01:51.444Z",
         "source": "guard-timing-baseline.json",
         "missingInOrigin": null
       },
       "mutations": {
         "act": "measured",
         "commit": null,
-        "commitDate": "2026-10-05 22:08:45 -0300",
-        "timestamp": "2026-10-06T03:01:51.444Z",
+        "commitDate": "2026-10-07 20:46:21 -0300",
+        "timestamp": "2026-10-07T23:47:01.149Z",
         "source": null,
-        "missingInOrigin": [
-          {
-            "family": "mutations",
-            "form": "unproven-skipped",
-            "path": "scripts/test-mutation-unproven-skipped.sh",
-            "via": "form.script"
-          }
-        ]
+        "missingInOrigin": []
       }
     },
     "treeState": {
       "state": "measured",
       "clean": false,
       "staged": [],
-      "unstaged": [
-        ".env.example",
-        ".env.production.example",
-        ".env.staging.example",
-        ".gitea/workflows/ci.yml",
-        ".github/workflows/ci.yml",
-        ".github/workflows/deploy.yml",
-        ".github/workflows/infra-guards.yml",
-        ".github/workflows/pr-check.yml",
-        "Caddyfile",
-        "README.md",
-        "compose-include.env",
-        "deploy/docker-compose.override.yml",
-        "deploy/setup-vps.sh",
-        "docker-compose.base.yml",
-        "docker-compose.dev.yml",
-        "docker-compose.gitea.yml",
-        "docker-compose.hostinger.yml",
-        "docker-compose.prod.yml",
-        "docker-compose.staging.yml",
-        "docs/GUARDS.md",
-        "docs/ROUTE_MIGRATION_PLAN.md",
-        "docs/RUNBOOK.md",
-        "docs/SECURITY.md",
-        "docs/STYLE_MIGRATION_PLAN.md",
-        "docs/payments-architecture.md",
-        "mini-services/realtime/index.ts",
-        "next.config.ts",
-        "package.json",
-        "prisma/migrations/20260930120000_money_decimal/",
-        "prisma/migrations/20260930220000_idempotency_keys/",
-        "prisma/migrations/20261002193000_user_sound_vibrate_prefs/",
-        "prisma/migrations/20261004120000_user_keyset_rating_index/",
-        "prisma/migrations/20261004130000_user_location_visible_gist/",
-        "prisma/schema.prisma",
-        "proxy.ts",
-        "public/openapi.json",
-        "scripts/check-bun-mirror.mjs",
-        "scripts/check-hook-ci-parity.mjs",
-        "scripts/check-inline-style.mjs",
-        "scripts/check-money-decimal.sh",
-        "scripts/check-realtime-emit-key-source.mjs",
-        "scripts/check-realtime-env-parity.mjs",
-        "scripts/check-route-handler-style.mjs",
-        "scripts/check-schema-drift.sh",
-        "scripts/check-unused-deps.mjs",
-        "scripts/codemod-with-route-tests.mjs",
-        "scripts/codemod-with-route.mjs",
-        "scripts/db-setup.sh",
-        "scripts/doctor-unproven.mjs",
-        "scripts/forge-backup.sh",
-        "scripts/reprocess-svg-uploads.ts",
-        "scripts/seed-complete-flow.ts",
-        "scripts/seed-governador-valadares.ts",
-        "scripts/setup-cron-push.sh",
-        "scripts/test-booking-flow.ts",
-        "scripts/test-lytex.ts",
-        "scripts/test-mutation-guards.sh",
-        "scripts/test-mutation-unproven-skipped.sh",
-        "secrets/README.md",
-        "secrets/realtime_emit_api_key.secret.example",
-        "src/app/__tests__/loading-base.test.tsx",
-        "src/app/__tests__/loading-shell.test.tsx",
-        "src/app/__tests__/loading.test.tsx",
-        "src/app/__tests__/not-found.test.tsx",
-        "src/app/api/__tests__/admin-commissions-export-route.test.ts",
-        "src/app/api/__tests__/admin-commissions-route.test.ts",
-        "src/app/api/__tests__/admin-diagnostics-routes.test.ts",
-        "src/app/api/__tests__/admin-finance-export-providers-route.test.ts",
-        "src/app/api/__tests__/admin-finance-export-route.test.ts",
-        "src/app/api/__tests__/admin-finance-provider-transactions-route.test.ts",
-        "src/app/api/__tests__/admin-finance-route.test.ts",
-        "src/app/api/__tests__/admin-gateway-invoices-route.test.ts",
-        "src/app/api/__tests__/admin-gateway-stats-route.test.ts",
-        "src/app/api/__tests__/admin-push-routes.test.ts",
-        "src/app/api/__tests__/admin-services-users-routes.test.ts",
-        "src/app/api/__tests__/admin-settlements-route.test.ts",
-        "src/app/api/__tests__/auth-2fa-routes.test.ts",
-        "src/app/api/__tests__/auth-register-change-password.test.ts",
-        "src/app/api/__tests__/auth-route.test.ts",
-        "src/app/api/__tests__/bookings-checkin-escrow-route.test.ts",
-        "src/app/api/__tests__/bookings-contract-route.test.ts",
-        "src/app/api/__tests__/bookings-pay-route.test.ts",
-        "src/app/api/__tests__/bookings-route.test.ts",
-        "src/app/api/__tests__/change-password.test.ts",
-        "src/app/api/__tests__/chat-assist-route.test.ts",
-        "src/app/api/__tests__/chat-route.test.ts",
-        "src/app/api/__tests__/cities-route.test.ts",
-        "src/app/api/__tests__/cron-settlements-route.test.ts",
-        "src/app/api/__tests__/cron-stats-infra-routes.test.ts",
-        "src/app/api/__tests__/csp-report-route.test.ts",
-        "src/app/api/__tests__/favorites-route.test.ts",
-        "src/app/api/__tests__/financial-flow-e2e.test.ts",
-        "src/app/api/__tests__/forgot-reset-password.test.ts",
-        "src/app/api/__tests__/full-financial-flow-e2e.test.ts",
-        "src/app/api/__tests__/geo-reindex-route.test.ts",
-        "src/app/api/__tests__/messages-route.test.ts",
-        "src/app/api/__tests__/newsletter-route.test.ts",
-        "src/app/api/__tests__/provider-lytex-route.test.ts",
-        "src/app/api/__tests__/provider-region-demand.test.ts",
-        "src/app/api/__tests__/providers-cache-header.test.ts",
-        "src/app/api/__tests__/providers-handle-error.test.ts",
-        "src/app/api/__tests__/providers-list-radius.test.ts",
-        "src/app/api/__tests__/providers-radius-expansion.test.ts",
-        "src/app/api/__tests__/providers-route.test.ts",
-        "src/app/api/__tests__/quotes-route.test.ts",
-        "src/app/api/__tests__/realtime-ticket-route.test.ts",
-        "src/app/api/__tests__/response-pii-guard.test.ts",
-        "src/app/api/__tests__/reviews-route.test.ts",
-        "src/app/api/__tests__/services-route.test.ts",
-        "src/app/api/__tests__/svg-legacy-census-route.test.ts",
-        "src/app/api/__tests__/user-flow-e2e.test.ts",
-        "src/app/api/__tests__/users-me-route.test.ts",
-        "src/app/api/__tests__/wallet-history-export-route.test.ts",
-        "src/app/api/__tests__/wallet-history-route.test.ts",
-        "src/app/api/__tests__/wallet-route.test.ts",
-        "src/app/api/__tests__/wallet-withdraw-route.test.ts",
-        "src/app/api/__tests__/webhooks-event-route.test.ts",
-        "src/app/api/__tests__/webhooks-lytex-route.test.ts",
-        "src/app/api/admin/__tests__/admin-geo-density-route.test.ts",
-        "src/app/api/admin/__tests__/admin-infra-routes.test.ts",
-        "src/app/api/admin/__tests__/admin-services-route.test.ts",
-        "src/app/api/admin/__tests__/admin-stats-route.test.ts",
-        "src/app/api/admin/__tests__/admin-users-route.test.ts",
-        "src/app/api/admin/analytics/demand/route.ts",
-        "src/app/api/admin/business-metrics/route.ts",
-        "src/app/api/admin/cache-routes/route.ts",
-        "src/app/api/admin/commissions/export/route.ts",
-        "src/app/api/admin/commissions/route.ts",
-        "src/app/api/admin/coverage/route.ts",
-        "src/app/api/admin/disputes/mediate/route.ts",
-        "src/app/api/admin/errors/route.ts",
-        "src/app/api/admin/feature-flags/route.ts",
-        "src/app/api/admin/finance/export-providers/route.ts",
-        "src/app/api/admin/finance/export/route.ts",
-        "src/app/api/admin/finance/provider-transactions/route.ts",
-        "src/app/api/admin/finance/route.ts",
-        "src/app/api/admin/financial/export-csv/route.ts",
-        "src/app/api/admin/financial/route.ts",
-        "src/app/api/admin/gateway/invoices/route.ts",
-        "src/app/api/admin/gateway/stats/route.ts",
-        "src/app/api/admin/geo-cache-diagnostics/route.ts",
-        "src/app/api/admin/geo-density/route.ts",
-        "src/app/api/admin/geo-metrics/__tests__/route.test.ts",
-        "src/app/api/admin/geo-metrics/route.ts",
-        "src/app/api/admin/geo-metrics/timeline/route.ts",
-        "src/app/api/admin/geo-query-log/route.ts",
-        "src/app/api/admin/geo-rate-limit-status/reset/route.ts",
-        "src/app/api/admin/geo-rate-limit-status/route.ts",
-        "src/app/api/admin/geo-reindex/route.ts",
-        "src/app/api/admin/geo-snapshots-summary/route.ts",
-        "src/app/api/admin/global-rate-limit-status/reset/route.ts",
-        "src/app/api/admin/global-rate-limit-status/route.ts",
-        "src/app/api/admin/performance/route.ts",
-        "src/app/api/admin/push/analytics/route.ts",
-        "src/app/api/admin/push/audit/route.ts",
-        "src/app/api/admin/push/history/route.ts",
-        "src/app/api/admin/push/metrics/route.ts",
-        "src/app/api/admin/push/recurring/route.ts",
-        "src/app/api/admin/push/schedule/[id]/route.ts",
-        "src/app/api/admin/push/schedule/route.ts",
-        "src/app/api/admin/push/send/route.ts",
-        "src/app/api/admin/push/users/route.ts",
-        "src/app/api/admin/push/webhooks/[id]/route.ts",
-        "src/app/api/admin/push/webhooks/audit/route.ts",
-        "src/app/api/admin/push/webhooks/route.ts",
-        "src/app/api/admin/redis-diagnostics/route.ts",
-        "src/app/api/admin/services/route.ts",
-        "src/app/api/admin/settlements/[id]/finalize/route.ts",
-        "src/app/api/admin/settlements/[id]/pay/[providerId]/route.ts",
-        "src/app/api/admin/settlements/[id]/route.ts",
-        "src/app/api/admin/settlements/route.ts",
-        "src/app/api/admin/stats/route.ts",
-        "src/app/api/admin/users/[id]/lytex-account/route.ts",
-        "src/app/api/admin/users/[id]/route.ts",
-        "src/app/api/admin/users/route.ts",
-        "src/app/api/admin/verify-identity/[id]/route.ts",
-        "src/app/api/auth/2fa/backup-codes/route.ts",
-        "src/app/api/auth/2fa/disable/route.ts",
-        "src/app/api/auth/2fa/enable/route.ts",
-        "src/app/api/auth/2fa/setup/route.ts",
-        "src/app/api/auth/2fa/status/route.ts",
-        "src/app/api/auth/2fa/verify/route.ts",
-        "src/app/api/auth/change-password/route.ts",
-        "src/app/api/auth/forgot-password/route.ts",
-        "src/app/api/auth/login/route.ts",
-        "src/app/api/auth/logout/route.ts",
-        "src/app/api/auth/me/route.ts",
-        "src/app/api/auth/register/route.ts",
-        "src/app/api/auth/reset-password/route.ts",
-        "src/app/api/availability/[id]/route.ts",
-        "src/app/api/availability/blocks/[id]/route.ts",
-        "src/app/api/bookings/[id]/confirm-completion/route.ts",
-        "src/app/api/bookings/[id]/dispute/route.ts",
-        "src/app/api/bookings/[id]/pay/route.ts",
-        "src/app/api/bookings/[id]/pay/status/route.ts",
-        "src/app/api/bookings/[id]/photos/route.ts",
-        "src/app/api/bookings/[id]/receipt/route.ts",
-        "src/app/api/bookings/[id]/route.ts",
-        "src/app/api/bookings/checkin-escrow/route.ts",
-        "src/app/api/bookings/contract/route.ts",
-        "src/app/api/bookings/emergency-dispatch/route.ts",
-        "src/app/api/bookings/route.ts",
-        "src/app/api/categories/[id]/route.ts",
-        "src/app/api/categories/route.ts",
-        "src/app/api/chat/[bookingId]/route.ts",
-        "src/app/api/chat/assist/route.ts",
-        "src/app/api/chat/route.ts",
-        "src/app/api/cities/route.ts",
-        "src/app/api/cron/__tests__/cron-routes.test.ts",
-        "src/app/api/cron/commissions-report/route.ts",
-        "src/app/api/cron/geo-cache-warm/route.ts",
-        "src/app/api/cron/health-monitor/route.ts",
-        "src/app/api/cron/push-scheduled/route.ts",
-        "src/app/api/cron/reminders/route.ts",
-        "src/app/api/cron/scheduled-push/route.ts",
-        "src/app/api/cron/settlements/route.ts",
-        "src/app/api/cron/svg-legacy-census/",
-        "src/app/api/csp-report/",
-        "src/app/api/favorites/route.ts",
-        "src/app/api/geo/batch/route.ts",
-        "src/app/api/geo/cluster/route.ts",
-        "src/app/api/geo/debug/__tests__/route.test.ts",
-        "src/app/api/geo/debug/route.ts",
-        "src/app/api/geo/matrix-eta/route.ts",
-        "src/app/api/geo/route-eta/route.ts",
-        "src/app/api/geo/travel-fee/route.ts",
-        "src/app/api/messages/route.ts",
-        "src/app/api/monitor/push-failures/route.ts",
-        "src/app/api/newsletter/route.ts",
-        "src/app/api/notifications/[id]/read/route.ts",
-        "src/app/api/notifications/preferences/route.ts",
-        "src/app/api/provider/demand-heatmap/route.ts",
-        "src/app/api/provider/financial-summary/route.ts",
-        "src/app/api/provider/financial/mei-report/route.ts",
-        "src/app/api/provider/gamification/route.ts",
-        "src/app/api/provider/lytex/route.ts",
-        "src/app/api/provider/optimize-route/route.ts",
-        "src/app/api/provider/region-demand/route.ts",
-        "src/app/api/provider/reports/route.ts",
-        "src/app/api/provider/routes/optimize-daily/route.ts",
-        "src/app/api/provider/service-zone/route.ts",
-        "src/app/api/provider/stats/route.ts",
-        "src/app/api/provider/verify-identity/route.ts",
-        "src/app/api/provider/wallet/history/export/route.ts",
-        "src/app/api/provider/wallet/history/route.ts",
-        "src/app/api/provider/wallet/route.ts",
-        "src/app/api/provider/wallet/withdraw/route.ts",
-        "src/app/api/providers/[id]/favorite/route.ts",
-        "src/app/api/providers/density/__tests__/route.test.ts",
-        "src/app/api/providers/route.ts",
-        "src/app/api/push/__tests__/push-routes.test.ts",
-        "src/app/api/push/action/route.ts",
-        "src/app/api/push/subscribe/route.ts",
-        "src/app/api/quotes/[id]/book/route.ts",
-        "src/app/api/quotes/[id]/items/[itemId]/route.ts",
-        "src/app/api/quotes/[id]/route.ts",
-        "src/app/api/quotes/ai-estimate/route.ts",
-        "src/app/api/quotes/compare/route.ts",
-        "src/app/api/quotes/route.ts",
-        "src/app/api/realtime/",
-        "src/app/api/reviews/[id]/reply/route.ts",
-        "src/app/api/reviews/recent/route.ts",
-        "src/app/api/reviews/route.ts",
-        "src/app/api/search/bbox/route.ts",
-        "src/app/api/search/smart-match/route.ts",
-        "src/app/api/services/[id]/route.ts",
-        "src/app/api/services/route.ts",
-        "src/app/api/services/vision-diagnostic/route.ts",
-        "src/app/api/subscriptions/route.ts",
-        "src/app/api/tracking/[id]/geofence/route.ts",
-        "src/app/api/tracking/[id]/route.ts",
-        "src/app/api/tracking/[id]/stream/route.ts",
-        "src/app/api/upload/route.ts",
-        "src/app/api/users/me/route.ts",
-        "src/app/api/users/me/slug/route.ts",
-        "src/app/api/webhooks/lytex/route.ts",
-        "src/app/global-error.tsx",
-        "src/app/globals.css",
-        "src/app/loading-base.tsx",
-        "src/app/not-found.tsx",
-        "src/app/servicos/[servico]/page.tsx",
-        "src/app/tracking/[id]/page.tsx",
-        "src/app/u/[slug]/page.tsx",
-        "src/components/admin/__tests__/admin-gateway-dashboard.test.tsx",
-        "src/components/admin/admin-analytics-dashboard.tsx",
-        "src/components/admin/admin-gateway-dashboard.tsx",
-        "src/components/providers.tsx",
-        "src/components/shared/__tests__/pix-checkout.test.tsx",
-        "src/components/shared/__tests__/pix-debug.test.tsx",
-        "src/components/shared/pix-checkout.tsx",
-        "src/components/ui/chart.tsx",
-        "src/components/vitrine/social-proof-ticker.tsx",
-        "src/hooks/__tests__/use-realtime.test.ts",
-        "src/hooks/use-realtime.ts",
-        "src/lib/__tests__/admin-geo-metrics.test.ts",
-        "src/lib/__tests__/api-pay.test.ts",
-        "src/lib/__tests__/api-route.test.ts",
-        "src/lib/__tests__/auth-rate-limit.test.ts",
-        "src/lib/__tests__/check-bun-mirror-include-env.test.ts",
-        "src/lib/__tests__/check-inline-style.test.ts",
-        "src/lib/__tests__/check-money-decimal-guard.test.ts",
-        "src/lib/__tests__/check-realtime-emit-key-source.test.ts",
-        "src/lib/__tests__/check-realtime-env-parity.test.ts",
-        "src/lib/__tests__/check-route-handler-style.test.ts",
-        "src/lib/__tests__/csp.test.ts",
-        "src/lib/__tests__/doctor-unproven.test.ts",
-        "src/lib/__tests__/file-signature.test.ts",
-        "src/lib/__tests__/helpers/api-test-utils.test.ts",
-        "src/lib/__tests__/helpers/api-test-utils.ts",
-        "src/lib/__tests__/idempotency-client.test.ts",
-        "src/lib/__tests__/idempotency.test.ts",
-        "src/lib/__tests__/money-decimal.test.ts",
-        "src/lib/__tests__/prove-gitea-merge-gate.test.ts",
-        "src/lib/__tests__/realtime-client.test.ts",
-        "src/lib/__tests__/realtime-emit-e2e.test.ts",
-        "src/lib/__tests__/realtime-emit-key.test.ts",
-        "src/lib/__tests__/reprocess-svg-uploads.test.ts",
-        "src/lib/__tests__/socket-ticket.test.ts",
-        "src/lib/__tests__/wallet.test.ts",
-        "src/lib/api-route.ts",
-        "src/lib/api-server.ts",
-        "src/lib/api.ts",
-        "src/lib/auth-rate-limit.ts",
-        "src/lib/auth.ts",
-        "src/lib/cities.ts",
-        "src/lib/csp-logs.ts",
-        "src/lib/csp.ts",
-        "src/lib/file-signature.ts",
-        "src/lib/idempotency-client.ts",
-        "src/lib/idempotency.ts",
-        "src/lib/lytex.ts",
-        "src/lib/metrics.ts",
-        "src/lib/money.ts",
-        "src/lib/realtime-client.ts",
-        "src/lib/realtime-emit-key.ts",
-        "src/lib/request-context.ts",
-        "src/lib/smart-match.ts",
-        "src/lib/validators.ts",
-        "src/lib/wallet.ts",
-        "src/store/auth.ts"
-      ],
+      "unstaged": ["deploy/Caddyfile", "scripts/check-workflow-run-syntax.mjs"],
       "declared": [
         {
           "path": ".forge-doctor/",
@@ -489,23 +141,9 @@
       "judged": 49,
       "notJudged": 0,
       "semResposta": 0,
-      "missing": [
-        {
-          "family": "mutations",
-          "form": "unproven-skipped",
-          "path": "scripts/test-mutation-unproven-skipped.sh",
-          "via": "form.script"
-        }
-      ],
+      "missing": [],
       "families": {
-        "mutations": [
-          {
-            "family": "mutations",
-            "form": "unproven-skipped",
-            "path": "scripts/test-mutation-unproven-skipped.sh",
-            "via": "form.script"
-          }
-        ]
+        "mutations": []
       },
       "reason": null
     }
@@ -528,9 +166,9 @@
     "hookRevalidacaoMs": 68,
     "hookDetectionMs": 318,
     "mutationSubtests": 49,
-    "mutationSubtestsMs": 742911,
-    "mutationHarnessMs": 5916,
-    "mutationTotalMs": 748827
+    "mutationSubtestsMs": 1116781,
+    "mutationHarnessMs": 6396,
+    "mutationTotalMs": 1123177
   },
   "guards": [
     {
@@ -1187,14 +825,14 @@
     "measured": true,
     "cmd": "bash scripts/test-mutation-guards.sh --json",
     "exit": 1,
-    "wallMs": 748864,
+    "wallMs": 1123216,
     "subtests": 49,
     "metades": 293,
     "forms": [
       {
         "role": "bun-literal",
         "label": "bun-literal",
-        "ms": 1947,
+        "ms": 1983,
         "exit": 0,
         "metades": 5,
         "ok": true,
@@ -1203,12 +841,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 1947,
+        "ms1": 1983,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 1947,
+            "ms": 1983,
             "exit": 0,
             "ok": true
           }
@@ -1217,7 +855,7 @@
       {
         "role": "bun-removal",
         "label": "bun-removal",
-        "ms": 128,
+        "ms": 124,
         "exit": 0,
         "metades": 1,
         "ok": true,
@@ -1226,12 +864,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 128,
+        "ms1": 124,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 128,
+            "ms": 124,
             "exit": 0,
             "ok": true
           }
@@ -1240,7 +878,7 @@
       {
         "role": "hooks-symmetry",
         "label": "hooks-symmetry",
-        "ms": 106,
+        "ms": 107,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -1249,12 +887,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 106,
+        "ms1": 107,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 106,
+            "ms": 107,
             "exit": 0,
             "ok": true
           }
@@ -1263,7 +901,7 @@
       {
         "role": "readme",
         "label": "readme",
-        "ms": 405,
+        "ms": 414,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1272,12 +910,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 405,
+        "ms1": 414,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 405,
+            "ms": 414,
             "exit": 0,
             "ok": true
           }
@@ -1286,7 +924,7 @@
       {
         "role": "readme-reverse",
         "label": "readme-reverse",
-        "ms": 643,
+        "ms": 644,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1295,12 +933,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 643,
+        "ms1": 644,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 643,
+            "ms": 644,
             "exit": 0,
             "ok": true
           }
@@ -1309,7 +947,7 @@
       {
         "role": "docs-anchor",
         "label": "docs-anchor",
-        "ms": 75,
+        "ms": 89,
         "exit": 0,
         "metades": 1,
         "ok": true,
@@ -1318,12 +956,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 75,
+        "ms1": 89,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 75,
+            "ms": 89,
             "exit": 0,
             "ok": true
           }
@@ -1332,7 +970,7 @@
       {
         "role": "producer-sent",
         "label": "producer-sent",
-        "ms": 118,
+        "ms": 121,
         "exit": 0,
         "metades": 1,
         "ok": true,
@@ -1341,12 +979,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 118,
+        "ms1": 121,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 118,
+            "ms": 121,
             "exit": 0,
             "ok": true
           }
@@ -1355,7 +993,7 @@
       {
         "role": "mutation-jobs",
         "label": "mutation-jobs",
-        "ms": 463,
+        "ms": 443,
         "exit": 0,
         "metades": 4,
         "ok": true,
@@ -1364,12 +1002,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 463,
+        "ms1": 443,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 463,
+            "ms": 443,
             "exit": 0,
             "ok": true
           }
@@ -1378,7 +1016,7 @@
       {
         "role": "workflow-refs",
         "label": "workflow-refs",
-        "ms": 570,
+        "ms": 535,
         "exit": 0,
         "metades": 4,
         "ok": true,
@@ -1387,12 +1025,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 570,
+        "ms1": 535,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 570,
+            "ms": 535,
             "exit": 0,
             "ok": true
           }
@@ -1401,7 +1039,7 @@
       {
         "role": "utf8-scope",
         "label": "utf8-scope",
-        "ms": 118,
+        "ms": 124,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -1410,12 +1048,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 118,
+        "ms1": 124,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 118,
+            "ms": 124,
             "exit": 0,
             "ok": true
           }
@@ -1424,7 +1062,7 @@
       {
         "role": "timing-budget",
         "label": "timing-budget",
-        "ms": 715,
+        "ms": 733,
         "exit": 0,
         "metades": 5,
         "ok": true,
@@ -1433,12 +1071,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 715,
+        "ms1": 733,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 715,
+            "ms": 733,
             "exit": 0,
             "ok": true
           }
@@ -1470,7 +1108,7 @@
       {
         "role": "lint-guard",
         "label": "lint-guard",
-        "ms": 880,
+        "ms": 930,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1479,12 +1117,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 880,
+        "ms1": 930,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 880,
+            "ms": 930,
             "exit": 0,
             "ok": true
           }
@@ -1493,7 +1131,7 @@
       {
         "role": "mutation-count",
         "label": "mutation-count",
-        "ms": 14081,
+        "ms": 14730,
         "exit": 0,
         "metades": 19,
         "ok": true,
@@ -1502,12 +1140,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 14081,
+        "ms1": 14730,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 14081,
+            "ms": 14730,
             "exit": 0,
             "ok": true
           }
@@ -1516,7 +1154,7 @@
       {
         "role": "no-setup-bun",
         "label": "no-setup-bun",
-        "ms": 239,
+        "ms": 257,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -1525,12 +1163,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 239,
+        "ms1": 257,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 239,
+            "ms": 257,
             "exit": 0,
             "ok": true
           }
@@ -1539,7 +1177,7 @@
       {
         "role": "runner-base",
         "label": "runner-base",
-        "ms": 229,
+        "ms": 230,
         "exit": 0,
         "metades": 4,
         "ok": true,
@@ -1548,12 +1186,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 229,
+        "ms1": 230,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 229,
+            "ms": 230,
             "exit": 0,
             "ok": true
           }
@@ -1562,7 +1200,7 @@
       {
         "role": "runner-labels",
         "label": "runner-labels",
-        "ms": 5293,
+        "ms": 5492,
         "exit": 0,
         "metades": 1,
         "ok": true,
@@ -1571,12 +1209,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 5293,
+        "ms1": 5492,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 5293,
+            "ms": 5492,
             "exit": 0,
             "ok": true
           }
@@ -1585,7 +1223,7 @@
       {
         "role": "no-leaked-imports",
         "label": "no-leaked-imports",
-        "ms": 135,
+        "ms": 161,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1594,12 +1232,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 135,
+        "ms1": 161,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 135,
+            "ms": 161,
             "exit": 0,
             "ok": true
           }
@@ -1608,7 +1246,7 @@
       {
         "role": "reconciliation",
         "label": "reconciliation",
-        "ms": 9766,
+        "ms": 10010,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1617,12 +1255,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 9766,
+        "ms1": 10010,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 9766,
+            "ms": 10010,
             "exit": 0,
             "ok": true
           }
@@ -1631,7 +1269,7 @@
       {
         "role": "nested-guard",
         "label": "nested-guard",
-        "ms": 20326,
+        "ms": 22061,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -1640,12 +1278,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 20326,
+        "ms1": 22061,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 20326,
+            "ms": 22061,
             "exit": 0,
             "ok": true
           }
@@ -1654,7 +1292,7 @@
       {
         "role": "pipefail-sigpipe",
         "label": "pipefail-sigpipe",
-        "ms": 2383,
+        "ms": 2437,
         "exit": 0,
         "metades": 22,
         "ok": true,
@@ -1663,12 +1301,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 2383,
+        "ms1": 2437,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 2383,
+            "ms": 2437,
             "exit": 0,
             "ok": true
           }
@@ -1677,7 +1315,7 @@
       {
         "role": "hook-ci-parity",
         "label": "hook-ci-parity",
-        "ms": 4187,
+        "ms": 4861,
         "exit": 0,
         "metades": 9,
         "ok": true,
@@ -1686,12 +1324,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 4187,
+        "ms1": 4861,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 4187,
+            "ms": 4861,
             "exit": 0,
             "ok": true
           }
@@ -1700,7 +1338,7 @@
       {
         "role": "hook-commands",
         "label": "hook-commands",
-        "ms": 67841,
+        "ms": 70147,
         "exit": 0,
         "metades": 27,
         "ok": true,
@@ -1709,12 +1347,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 67841,
+        "ms1": 70147,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 67841,
+            "ms": 70147,
             "exit": 0,
             "ok": true
           }
@@ -1723,7 +1361,7 @@
       {
         "role": "workflow-defaults",
         "label": "workflow-defaults",
-        "ms": 1064,
+        "ms": 1078,
         "exit": 0,
         "metades": 7,
         "ok": true,
@@ -1732,12 +1370,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 1064,
+        "ms1": 1078,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 1064,
+            "ms": 1078,
             "exit": 0,
             "ok": true
           }
@@ -1746,7 +1384,7 @@
       {
         "role": "workflow-run-syntax",
         "label": "workflow-run-syntax",
-        "ms": 87303,
+        "ms": 90668,
         "exit": 0,
         "metades": 15,
         "ok": true,
@@ -1755,12 +1393,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 87303,
+        "ms1": 90668,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 87303,
+            "ms": 90668,
             "exit": 0,
             "ok": true
           }
@@ -1769,30 +1407,35 @@
       {
         "role": "merge-latency",
         "label": "merge-latency",
-        "ms": 4601,
-        "exit": 0,
+        "ms": 1780,
+        "exit": 1,
         "metades": 5,
-        "ok": true,
+        "ok": false,
         "infra": false,
         "script": "scripts/test-mutation-merge-latency.sh",
-        "tentativas": 1,
-        "exit1": 0,
-        "exit2": null,
-        "ms1": 4601,
-        "ms2": null,
+        "tentativas": 2,
+        "exit1": 1,
+        "exit2": 1,
+        "ms1": 902,
+        "ms2": 878,
         "flake": false,
         "runs": [
           {
-            "ms": 4601,
-            "exit": 0,
-            "ok": true
+            "ms": 902,
+            "exit": 1,
+            "ok": false
+          },
+          {
+            "ms": 878,
+            "exit": 1,
+            "ok": false
           }
         ]
       },
       {
         "role": "registry-defaults",
         "label": "registry-defaults",
-        "ms": 29131,
+        "ms": 30306,
         "exit": 0,
         "metades": 9,
         "ok": true,
@@ -1801,12 +1444,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 29131,
+        "ms1": 30306,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 29131,
+            "ms": 30306,
             "exit": 0,
             "ok": true
           }
@@ -1815,7 +1458,7 @@
       {
         "role": "job-deps",
         "label": "job-deps",
-        "ms": 213068,
+        "ms": 223006,
         "exit": 0,
         "metades": 12,
         "ok": true,
@@ -1824,12 +1467,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 213068,
+        "ms1": 223006,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 213068,
+            "ms": 223006,
             "exit": 0,
             "ok": true
           }
@@ -1838,7 +1481,7 @@
       {
         "role": "remedy-tty",
         "label": "remedy-tty",
-        "ms": 37713,
+        "ms": 38827,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -1847,12 +1490,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 37713,
+        "ms1": 38827,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 37713,
+            "ms": 38827,
             "exit": 0,
             "ok": true
           }
@@ -1861,7 +1504,7 @@
       {
         "role": "canal-fixers",
         "label": "canal-fixers",
-        "ms": 9796,
+        "ms": 10247,
         "exit": 0,
         "metades": 6,
         "ok": true,
@@ -1870,12 +1513,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 9796,
+        "ms1": 10247,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 9796,
+            "ms": 10247,
             "exit": 0,
             "ok": true
           }
@@ -1884,7 +1527,7 @@
       {
         "role": "required-applied",
         "label": "required-applied",
-        "ms": 20949,
+        "ms": 22123,
         "exit": 0,
         "metades": 10,
         "ok": true,
@@ -1893,12 +1536,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 20949,
+        "ms1": 22123,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 20949,
+            "ms": 22123,
             "exit": 0,
             "ok": true
           }
@@ -1907,7 +1550,7 @@
       {
         "role": "gate-registration",
         "label": "gate-registration",
-        "ms": 8268,
+        "ms": 9246,
         "exit": 0,
         "metades": 5,
         "ok": true,
@@ -1916,12 +1559,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 8268,
+        "ms1": 9246,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 8268,
+            "ms": 9246,
             "exit": 0,
             "ok": true
           }
@@ -1930,7 +1573,7 @@
       {
         "role": "archived-pipeline",
         "label": "archived-pipeline",
-        "ms": 838,
+        "ms": 953,
         "exit": 0,
         "metades": 6,
         "ok": true,
@@ -1939,12 +1582,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 838,
+        "ms1": 953,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 838,
+            "ms": 953,
             "exit": 0,
             "ok": true
           }
@@ -1953,7 +1596,7 @@
       {
         "role": "doc-hashes",
         "label": "doc-hashes",
-        "ms": 2189,
+        "ms": 2624,
         "exit": 0,
         "metades": 9,
         "ok": true,
@@ -1962,12 +1605,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 2189,
+        "ms1": 2624,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 2189,
+            "ms": 2624,
             "exit": 0,
             "ok": true
           }
@@ -1976,7 +1619,7 @@
       {
         "role": "github-deps",
         "label": "github-deps",
-        "ms": 13828,
+        "ms": 15797,
         "exit": 0,
         "metades": 9,
         "ok": true,
@@ -1985,12 +1628,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 13828,
+        "ms1": 15797,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 13828,
+            "ms": 15797,
             "exit": 0,
             "ok": true
           }
@@ -1999,7 +1642,7 @@
       {
         "role": "cut-stages",
         "label": "cut-stages",
-        "ms": 19457,
+        "ms": 22499,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -2008,12 +1651,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 19457,
+        "ms1": 22499,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 19457,
+            "ms": 22499,
             "exit": 0,
             "ok": true
           }
@@ -2022,7 +1665,7 @@
       {
         "role": "mirror-coverage",
         "label": "mirror-coverage",
-        "ms": 11552,
+        "ms": 14698,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -2031,12 +1674,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 11552,
+        "ms1": 14698,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 11552,
+            "ms": 14698,
             "exit": 0,
             "ok": true
           }
@@ -2045,35 +1688,30 @@
       {
         "role": "pre-commit-proof",
         "label": "pre-commit-proof",
-        "ms": 29777,
-        "exit": 1,
+        "ms": 362713,
+        "exit": 0,
         "metades": 3,
-        "ok": false,
+        "ok": true,
         "infra": false,
         "script": "scripts/test-mutation-pre-commit-proof.sh",
-        "tentativas": 2,
-        "exit1": 1,
-        "exit2": 1,
-        "ms1": 14962,
-        "ms2": 14815,
+        "tentativas": 1,
+        "exit1": 0,
+        "exit2": null,
+        "ms1": 362713,
+        "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 14962,
-            "exit": 1,
-            "ok": false
-          },
-          {
-            "ms": 14815,
-            "exit": 1,
-            "ok": false
+            "ms": 362713,
+            "exit": 0,
+            "ok": true
           }
         ]
       },
       {
         "role": "bench-freshness",
         "label": "bench-freshness",
-        "ms": 2107,
+        "ms": 2505,
         "exit": 1,
         "metades": 12,
         "ok": false,
@@ -2082,17 +1720,17 @@
         "tentativas": 2,
         "exit1": 1,
         "exit2": 1,
-        "ms1": 1058,
-        "ms2": 1049,
+        "ms1": 1311,
+        "ms2": 1194,
         "flake": false,
         "runs": [
           {
-            "ms": 1058,
+            "ms": 1311,
             "exit": 1,
             "ok": false
           },
           {
-            "ms": 1049,
+            "ms": 1194,
             "exit": 1,
             "ok": false
           }
@@ -2101,7 +1739,7 @@
       {
         "role": "stack-per-commit",
         "label": "stack-per-commit",
-        "ms": 9344,
+        "ms": 11389,
         "exit": 0,
         "metades": 8,
         "ok": true,
@@ -2110,12 +1748,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 9344,
+        "ms1": 11389,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 9344,
+            "ms": 11389,
             "exit": 0,
             "ok": true
           }
@@ -2124,7 +1762,7 @@
       {
         "role": "lint-scope",
         "label": "lint-scope",
-        "ms": 11175,
+        "ms": 11919,
         "exit": 0,
         "metades": 6,
         "ok": true,
@@ -2133,12 +1771,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 11175,
+        "ms1": 11919,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 11175,
+            "ms": 11919,
             "exit": 0,
             "ok": true
           }
@@ -2147,7 +1785,7 @@
       {
         "role": "act-origin",
         "label": "act-origin",
-        "ms": 2442,
+        "ms": 2496,
         "exit": 0,
         "metades": 9,
         "ok": true,
@@ -2156,12 +1794,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 2442,
+        "ms1": 2496,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 2442,
+            "ms": 2496,
             "exit": 0,
             "ok": true
           }
@@ -2170,7 +1808,7 @@
       {
         "role": "commit-import-exports",
         "label": "commit-import-exports",
-        "ms": 573,
+        "ms": 599,
         "exit": 0,
         "metades": 5,
         "ok": true,
@@ -2179,12 +1817,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 573,
+        "ms1": 599,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 573,
+            "ms": 599,
             "exit": 0,
             "ok": true
           }
@@ -2193,7 +1831,7 @@
       {
         "role": "runner-tag",
         "label": "runner-tag",
-        "ms": 3215,
+        "ms": 3286,
         "exit": 0,
         "metades": 1,
         "ok": true,
@@ -2202,12 +1840,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 3215,
+        "ms1": 3286,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 3215,
+            "ms": 3286,
             "exit": 0,
             "ok": true
           }
@@ -2216,7 +1854,7 @@
       {
         "role": "local-image",
         "label": "local-image",
-        "ms": 49201,
+        "ms": 52060,
         "exit": 0,
         "metades": 4,
         "ok": true,
@@ -2225,12 +1863,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 49201,
+        "ms1": 52060,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 49201,
+            "ms": 52060,
             "exit": 0,
             "ok": true
           }
@@ -2239,7 +1877,7 @@
       {
         "role": "artefatos-do-hook",
         "label": "artefatos-do-hook",
-        "ms": 33591,
+        "ms": 37584,
         "exit": 0,
         "metades": 4,
         "ok": true,
@@ -2248,12 +1886,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 33591,
+        "ms1": 37584,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 33591,
+            "ms": 37584,
             "exit": 0,
             "ok": true
           }
@@ -2262,7 +1900,7 @@
       {
         "role": "caddy-validate",
         "label": "caddy-validate",
-        "ms": 5610,
+        "ms": 5810,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -2271,12 +1909,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 5610,
+        "ms1": 5810,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 5610,
+            "ms": 5810,
             "exit": 0,
             "ok": true
           }
@@ -2285,7 +1923,7 @@
       {
         "role": "mutacao-prova",
         "label": "mutacao-prova",
-        "ms": 454,
+        "ms": 497,
         "exit": 0,
         "metades": 6,
         "ok": true,
@@ -2294,12 +1932,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 454,
+        "ms1": 497,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 454,
+            "ms": 497,
             "exit": 0,
             "ok": true
           }
@@ -2308,7 +1946,7 @@
       {
         "role": "unproven-skipped",
         "label": "unproven-skipped",
-        "ms": 5010,
+        "ms": 5431,
         "exit": 0,
         "metades": 4,
         "ok": true,
@@ -2317,12 +1955,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 5010,
+        "ms1": 5431,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 5010,
+            "ms": 5431,
             "exit": 0,
             "ok": true
           }
@@ -2330,26 +1968,26 @@
       }
     ],
     "deltas": {
-      "subtestsMs": 742911,
-      "harnessMs": 5916,
-      "totalMs": 748827,
-      "wallMs": 748864,
-      "proximoSubtestProjetadoMs": 15282,
-      "maisCaro": "job-deps",
-      "maisCaroMs": 213068,
-      "medianaMs": 3215
+      "subtestsMs": 1116781,
+      "harnessMs": 6396,
+      "totalMs": 1123177,
+      "wallMs": 1123216,
+      "proximoSubtestProjetadoMs": 22922,
+      "maisCaro": "pre-commit-proof",
+      "maisCaroMs": 362713,
+      "medianaMs": 2624
     },
     "tentativas": 51,
     "flakes": [],
     "infra": [],
     "violations": [
-      "sub-test(s) que NÃO passaram no master: pre-commit-proof (exit 1), bench-freshness (exit 1) — o custo deles não julga nada (um sub-test que morre no meio tem o tempo do pedaço que rodou)"
+      "sub-test(s) que NÃO passaram no master: merge-latency (exit 1), bench-freshness (exit 1) — o custo deles não julga nada (um sub-test que morre no meio tem o tempo do pedaço que rodou)"
     ],
     "whatItAdded": [
-      "MEDIDO, sub-test a sub-test: 49 sub-test(s) · 293 metade(s) · 742.9s de sub-tests + 5.9s de harness = 748.8s",
-      "o mais caro: job-deps (213.1s) · a mediana: 3.2s",
-      "o PRÓXIMO sub-test acrescenta ~15.3s (PROJEÇÃO: a média dos scripts medidos + o harness por sub-test) — e entra MEDIDO na primeira rodada que o tiver, sem conta à mão",
-      "↺ 2 forma(s) RE-MEDIDA(s): pre-commit-proof, bench-freshness — o vermelho REPETIU na 2ª tentativa (é da árvore, não do ambiente), e o ms publicado soma as duas"
+      "MEDIDO, sub-test a sub-test: 49 sub-test(s) · 293 metade(s) · 1116.8s de sub-tests + 6.4s de harness = 1123.2s",
+      "o mais caro: pre-commit-proof (362.7s) · a mediana: 2.6s",
+      "o PRÓXIMO sub-test acrescenta ~22.9s (PROJEÇÃO: a média dos scripts medidos + o harness por sub-test) — e entra MEDIDO na primeira rodada que o tiver, sem conta à mão",
+      "↺ 2 forma(s) RE-MEDIDA(s): merge-latency, bench-freshness — o vermelho REPETIU na 2ª tentativa (é da árvore, não do ambiente), e o ms publicado soma as duas"
     ],
     "metadesDaMatriz": {
       "total": 293,
