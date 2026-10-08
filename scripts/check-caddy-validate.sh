@@ -42,9 +42,14 @@ set -uo pipefail
 CADDYFILE="Caddyfile.prod"
 STOCK_IMAGE="${CADDY_STOCK_IMAGE:-caddy:2-alpine}"
 CUSTOM_IMAGE="${CADDY_IMAGE:-}"
-# WORK sob a raiz do repo (não /tmp): o daemon docker precisa VER o arquivo
-# no bind-mount — em estações com namespaces de mount segregados, /tmp do
-# shell não é visível ao daemon e o bind falha com "not a directory".
+# WORK sob a raiz do repo (não /tmp): só para o validate.out e o temporário
+# da cópia stock — o ARQUIVO entra no container por STDIN, não por bind-mount.
+# POR QUE STDIN: o -v de um container IRMÃO resolve o caminho no HOST daemon —
+# e dentro de um job de runner (workspace em VOLUME nomeado, ex. act_runner/
+# Gitea Actions) o caminho $(pwd) do job não existe no host: o daemon cria um
+# DIRETÓRIO no lugar do arquivo e o mount falha com "not a directory" (medido
+# 08/10/2026: o sub-test caddy-validate do doctor falhava 2× no runner com
+# 48/49 verdes). Por stdin, o guard funciona em host nu, bind-mount e volume.
 WORK="${CADDY_GUARD_TMP:-$(pwd)/.tmp}/caddy-validate.$$"
 mkdir -p "$WORK"
 TMP_OUT=""
@@ -96,8 +101,8 @@ run_full() {
   TMP_OUT="$WORK/Caddyfile"
   cp "$CADDYFILE" "$TMP_OUT"
   echo "[caddy-validate] modo FULL — imagem $CUSTOM_IMAGE (arquivo inteiro, plugins inclusos)"
-  if docker run --rm -v "$TMP_OUT":/etc/caddy/Caddyfile:ro "$CUSTOM_IMAGE" \
-      caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile >"$WORK/validate.out" 2>&1; then
+  if docker run -i --rm "$CUSTOM_IMAGE" sh -c 'cat > /etc/caddy/Caddyfile && exec caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile' \
+      <"$TMP_OUT" >"$WORK/validate.out" 2>&1; then
     grep -q "Valid configuration" "$WORK/validate.out" || { cat "$WORK/validate.out" >&2; return 1; }
     echo "[caddy-validate] ✅ Caddyfile.prod inteiro válido ($CUSTOM_IMAGE)"
     return 0
@@ -152,8 +157,8 @@ print(f"[caddy-validate] modo STOCK — {stock_image}; removidos {n_rate} bloco(
 PYEOF
   [ $? -eq 0 ] || { echo "[caddy-validate] falha ao preparar a cópia stock" >&2; exit 2; }
 
-  if docker run --rm -v "$TMP_OUT":/etc/caddy/Caddyfile:ro "$STOCK_IMAGE" \
-      caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile >"$WORK/validate.out" 2>&1; then
+  if docker run -i --rm "$STOCK_IMAGE" sh -c 'cat > /etc/caddy/Caddyfile && exec caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile' \
+      <"$TMP_OUT" >"$WORK/validate.out" 2>&1; then
     grep -q "Valid configuration" "$WORK/validate.out" || { cat "$WORK/validate.out" >&2; return 1; }
     echo "[caddy-validate] ✅ Caddyfile.prod válido na stock (diretivas de plugin excluídas desta prova — sancionadas no modo full)"
     return 0

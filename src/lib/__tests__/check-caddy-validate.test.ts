@@ -50,7 +50,11 @@ describe("contrato do script", () => {
   it("usa `caddy validate --adapter caddyfile` num CONTAINER (não parser caseiro)", () => {
     const s = readFileSync(GUARD, "utf8")
     expect(s).toContain("caddy validate --adapter caddyfile")
-    expect(s).toContain("docker run --rm")
+    // `-i` em vez de `-v`: o arquivo entra por STDIN porque o -v de um
+    // container IRMÃO resolve o caminho no HOST daemon — dentro de um runner
+    // (workspace em volume) o mount quebra com "not a directory" (medido
+    // 08/10/2026: 48/49 verdes, só caddy-validate vermelho no runner).
+    expect(s).toContain("docker run -i --rm")
   })
 
   it("modos --stock/--full e exit 2 para pré-requisito ausente", () => {

@@ -43,6 +43,11 @@ FROM node:22-bookworm-slim AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Fechamento do migrate (dotenv + @prisma/config + transitivas) para o runner:
+# gerado AQUI, DEPOIS do `COPY . .` — é ele quem traz o script no builder
+# (ver o COPY do runner abaixo)
+RUN node scripts/stage-migrate-closure.mjs node_modules migrate-closure
+
 # Prisma needs DATABASE_URL at generate time (only needs schema, not a real DB)
 ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
@@ -87,6 +92,15 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Prisma engine binaries (needed at runtime for query engine)
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
+
+# Closure do MIGRATE (dotenv + @prisma/config + transitivas): o job migrate
+# roda `prisma migrate deploy` DENTRO desta imagem e o prisma.config.ts
+# importa `dotenv/config` e `@prisma/config` — resolvidos a partir de /app.
+# Sem esta closure, o CLI global não carrega o config (medido 08/10/2026:
+# "Cannot find module 'dotenv/config'"). O script caminha sobre os
+# `dependencies` declarados (nunca dev/peer/optional) pela regra de resolução
+# do node e copia SÓ a fechamento — não o node_modules inteiro.
+COPY --from=builder --chown=nextjs:nodejs /app/migrate-closure ./node_modules
 
 # Schema + migrations: o job migrate do pipeline roda `prisma migrate deploy`
 # DENTRO desta imagem (compose run app) — sem o diretório, o CLI não acha o
