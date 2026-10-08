@@ -1760,23 +1760,81 @@ describe("summarize — o REGISTRO do que o veredito NÃO cobre", () => {
    * abaixo mediria contra um relatório que nunca publica as linhas.
    */
   function factsComAsLinhas(over: Record<string, unknown> = {}) {
+    // ATUALIZAÇÃO 08/10/2026: o estado MEDIDO de agora é o de CANAL COMPLETO —
+    // as duas proteções lidas e em sincronia (o repo github foi tornado PÚBLICO
+    // e os 25 required checks aplicados via apply-required-checks; a gitea já
+    // exigia os 8 do manifesto), as duas filas medidas e ociosas, o runner do
+    // github registrado (4 labels, 2.337.0 = pin). As declarações datadas que
+    // ESTE estado mantinha vivas (gitea-token, github-branch-protection,
+    // runner-queue-*, act-runner-*, github-self-hosted-runner,
+    // github-runner-version, image-mirror-values, published-image-contract,
+    // non-versioned-image-refs, bench-forma-fora-do-commit) foram PODADAS do
+    // registro com essa prova (o remédio que o próprio veredito declara para
+    // letra morta) — o que sobrou vivo são os 6 LIMITE por desenho.
     return facts({
-      // A FILA PARADA como ela foi MEDIDA no perfil completo de 24/09/2026: as
-      // duas metades não lidas (a Gitea sem a stack de pé, o GitHub sem o canal
-      // do espelho). É este estado que mantém VIVAS as declarações datadas
-      // `runner-queue-gitea`/`runner-queue-github` — e é a linha que cada uma
-      // declara (`a FILA do <forja> nao foi medida`) que a cobertura confere.
-      runnerQueue: runnerQueueFacts(),
-      // O estado MEDIDO do perfil completo em 22/09/2026, e não um inventado: o
-      // espelho NÃO SUPORTA branch protection (privado num plano sem a feature) e
-      // a forja dona do merge está `unavailable` (sem GITEA_TOKEN). É esse par que
-      // publica as duas linhas que as duas declarações de forja declaram.
+      // As duas filas MEDIDAS e ociosas no host da forja (08/10/2026): gitea 1
+      // runner online, github 2 online — fila vazia dos dois lados.
+      runnerQueue: runnerQueueMedida({
+        forges: {
+          gitea: {
+            forge: "gitea",
+            label: "Gitea",
+            state: "ociosa",
+            waiting: 0,
+            oldestMs: null,
+            oldestFromSample: false,
+            online: 1,
+            picking: 0,
+            runners: [{ name: "gitea-runner", status: "online", busy: false, raw: "idle" }],
+            remedy: null,
+            detail: "fila vazia (1 runner(s) registrado(s), 1 online)",
+          },
+          github: {
+            forge: "github",
+            label: "GitHub",
+            state: "ociosa",
+            waiting: 0,
+            oldestMs: null,
+            oldestFromSample: false,
+            online: 2,
+            picking: 0,
+            runners: [
+              { name: "hostinger-runner", status: "online", busy: false },
+              { name: "hostinger-runner-yaml", status: "online", busy: false },
+            ],
+            remedy: null,
+            detail: "fila vazia (2 runner(s) registrado(s), 2 online)",
+          },
+        },
+        detail: "Gitea: fila vazia · GitHub: fila vazia (2 runner(s) online)",
+      }),
+      // O estado MEDIDO de 08/10/2026: as DUAS forjas lidas e em sincronia —
+      // gitea: main exige os 8 checks do manifesto (canal FORJA_TOKEN); github:
+      // main exige os 25 (repo público, protection aplicada e conferida pelo
+      // aplicador: --check → inSync true, drift false).
       protection: protectionFacts({
-        state: "unsupported",
-        detail: "github: HTTP 403 'Upgrade to GitHub Pro or make this repository public'",
+        state: "in-sync",
+        detail:
+          "gitea: main exige os 8 check(s) do manifesto · github: main exige os 25 check(s) do manifesto",
         forges: [
-          { forge: "github", state: "unsupported", detail: "HTTP 403 (plano/visibilidade)" },
-          { forge: "gitea", state: "unavailable", detail: "defina GITEA_TOKEN" },
+          {
+            forge: "gitea",
+            state: "in-sync",
+            desired: 8,
+            branches: [],
+            missing: [],
+            extra: [],
+            detail: "main exige os 8 check(s) do manifesto",
+          },
+          {
+            forge: "github",
+            state: "in-sync",
+            desired: 25,
+            branches: [],
+            missing: [],
+            extra: [],
+            detail: "main exige os 25 check(s) do manifesto",
+          },
         ],
       }),
       // O estado MEDIDO em 05/10/2026 neste checkout: o `deploy/.env.gitea`
@@ -1794,71 +1852,37 @@ describe("summarize — o REGISTRO do que o veredito NÃO cobre", () => {
         lines: [],
       },
       // Os espelhos vêm do leitor REAL (é ele que monta a linha do VALOR
-      // comparado): aqui só o valor declarado entra, sem os `--expected-var`.
-      mirrors: readMirrors(ROOT, { expected: "1.3.14", expectedVars: {} }),
-      imageContract: imageContractFacts({ state: "unavailable", detail: "sem o env do runner" }),
-      // O estado ESTAGIADO aqui é o `floating` — a tag que NÃO pina versão, que
-      // era o par medido de 22/09/2026 neste host (a stack da forja fora do ar e
-      // o compose declarando `gitea/act_runner:latest`; o compose passou a pinar
-      // `0.6.1` no MESMO dia, e aí o estado sem container vira `unread`). É este
-      // `floating` que mantém a declaração datada `act-runner-version` VIVA neste
-      // teste (com `proven` ela viraria letra morta: o mecanismo funcionando, não
-      // o que ele mede) — o mesmo cuidado do `version: null` do runner do GitHub
-      // logo abaixo.
+      // comparado): com os `--expected-var` de 08/10/2026, o VALOR das duas
+      // variáveis é comparado com o que a forja tem (medido: confere).
+      mirrors: readMirrors(ROOT, {
+        expected: "1.3.14",
+        expectedVars: { IMAGE_REGISTRY: "git.severinno.com", IMAGE_NAMESPACE: "severinno" },
+      }),
+      // O contrato da imagem PUBLICADA, provado contra o registry da forja
+      // (08/10/2026: digest sha256:f295… resolve, plugin compose, bun 1.3.14).
+      imageContract: imageContractFacts({
+        target:
+          "git.severinno.com/severinno/ubuntu-bun@sha256:f295885acfe5fe17cd8ef59dcead712a63976f72103184bc5eb518b2242fd07e",
+        detail:
+          "a imagem PUBLICADA (git.severinno.com/severinno/ubuntu-bun@sha256:f295…) executa o contrato: plugin `compose`, bun 1.3.14 em /usr/local/bin/bun (a label da imagem declara 1.3.14)",
+      }),
+      // O registro do act_runner PROVADO (a stack de pé no host da forja): 2
+      // labels idênticos ao compose e o binário 0.6.1 = a tag pinada.
       runnerLabels: runnerLabelFacts({
-        state: "unavailable",
-        detail: "a stack não está de pé",
-        version: {
-          state: "floating",
-          tag: "latest",
-          reported: null,
-          detail:
-            "a imagem declarada do runner e 'gitea/act_runner:latest' e a tag 'latest' NAO declara versao nenhuma",
-        },
+        declared: ["ubuntu-latest:docker://git.severinno.com/severinno/ubuntu-bun:1.3.14"],
+        registered: ["ubuntu-latest:docker://git.severinno.com/severinno/ubuntu-bun:1.3.14"],
+        detail: "2 label(s) registrado(s) idênticos ao compose (declarado em deploy/.env.gitea)",
       }),
-      // O runner do GitHub está VIOLADO no host de verdade (o setup declara 4
-      // labels e o repositório não tem nenhum): a linha da declaração passa a
-      // ser a do BLOQUEIO — é o caso que a lista de trechos existe para cobrir.
+      // O runner do GitHub PROVADO (08/10/2026): 4 labels idênticos ao setup,
+      // 2 runners online, versão registrada 2.337.0 = pin.
       githubRunnerLabels: githubRunnerLabelFacts({
-        state: "violated",
-        detail: "o setup declara 4 label(s) e o repositório não tem o runner declarado",
-        violations: ["nenhum runner auto-hospedado registrado no repositório"],
-        remedies: ["registre o runner no host que o hospeda"],
-        runner: "hostinger-runner",
-        status: "offline",
-        repo: "severinno/severinno",
-        // E a VERSÃO fica NÃO julgada pelo mesmo motivo do estado acima: sem
-        // runner registrado não houve runner a selecionar, e sem seleção não há
-        // versão a comparar com o pin. É ESTE o `version: null` que o `check` real
-        // devolve nesse caso — e é ele que mantém a declaração datada
-        // `github-runner-version` VIVA aqui (com `proven` ela viraria letra
-        // morta: o mecanismo funcionando, não o que este teste mede).
-        version: null,
-        versionViolations: [],
+        detail: "4 label(s) registrado(s) idênticos ao setup, em 'hostinger-runner' (online)",
       }),
-      // O COMMIT DE ORIGEM × as FORMAS MEDIDAS: o estado MEDIDO daquele dia — a
-      // baseline grava `8e76c9a6` e a forma `doc-hashes` (a 39.ª entrada da
-      // matriz, medida naquela rodada com a suíte no ÍNDICE) NÃO existe naquele
-      // commit. É este estado que publica a linha que a declaração datada
-      // `bench-forma-fora-do-commit` cobre — e ele é do dia, não inventado: a
-      // idade sozinha dizia "fresco" (0 commit atrás), e era o CONTEÚDO daquele
-      // commit que faltava.
-      benchFreshness: {
-        ...BENCH_FRESHNESS_LIMPA,
-        forms: {
-          state: "measured",
-          families: [
-            { family: "mutations", commit: "8e76c9a6", judged: 38, missing: [...FORA_DO_COMMIT] },
-          ],
-          judged: 39,
-          notJudged: 32,
-          semResposta: 0,
-          missing: [...FORA_DO_COMMIT],
-          detail:
-            "1 forma(s) medida(s) NÃO existem no commit de origem: mutations/doc-hashes @ 8e76c9a6 (39 forma(s) com fonte declarada julgada(s), 32 sem fonte própria)",
-          reason: null,
-        },
-      },
+      // O COMMIT DE ORIGEM × as FORMAS MEDIDAS: re-ancorado em 08/10/2026
+      // (`bench:guard-timing --only mutations --baseline` na árvore commitada
+      // com o stdin fix do caddy-validate) — TODA forma medida existe no commit
+      // de origem, e a idade sai pela régua normal (o default LIMPO).
+      benchFreshness: BENCH_FRESHNESS_LIMPA,
       // A FILA DE MIGRAÇÃO do caminho da forja como foi MEDIDA: a
       // RUNNER_PATH_ALLOWLIST está VAZIA hoje — a fila esvaziou, a declaração
       // `runner-path-migration-queue` fechou POR MEDIÇÃO e saiu do registro, e
@@ -1877,35 +1901,36 @@ describe("summarize — o REGISTRO do que o veredito NÃO cobre", () => {
   }
 
   /**
-   * O relatório do perfil completo MEDIDO em 22/09/2026, com todos os fatos no
-   * estado que aquela medição produziu — incluindo os GATES CORE (que os dublês
-   * dos fluxos acima substituem) no par de causas daquele dia: o espelho sem o
-   * recurso e a forja dona do merge sem token. É o estado em que a promessa
-   * "nenhuma linha de 'não provado' sem data" tem de valer.
+   * O relatório do perfil completo MEDIDO em 08/10/2026, com todos os fatos no
+   * estado que a medição com CANAL COMPLETO produziu (runs 345-347 da forja):
+   * as duas proteções lidas e em sincronia, as filas medidas, os runners
+   * provados, as referências e o contrato da imagem provados. É o estado em
+   * que a promessa "nenhuma linha de 'não provado' sem data" tem de valer —
+   * e em que o veredito REAL saiu INDETERMINADA com ZERO bloqueios.
    */
   function factsDoPerfilCompleto() {
     const protection = protectionFacts({
-      state: "unsupported",
+      state: "in-sync",
       detail:
-        "github: HTTP 403 'Upgrade to GitHub Pro or make this repository public' · gitea: Gitea: defina GITEA_TOKEN no ambiente",
+        "gitea: main exige os 8 check(s) do manifesto · github: main exige os 25 check(s) do manifesto",
       forges: [
         {
-          forge: "github",
-          state: "unsupported",
-          detail: "HTTP 403 (plano/visibilidade)",
-          desired: 0,
+          forge: "gitea",
+          state: "in-sync",
+          desired: 8,
           branches: [],
-          missing: null,
-          extra: null,
+          missing: [],
+          extra: [],
+          detail: "main exige os 8 check(s) do manifesto",
         },
         {
-          forge: "gitea",
-          state: "unavailable",
-          detail: "Gitea: defina GITEA_TOKEN no ambiente",
-          desired: 0,
+          forge: "github",
+          state: "in-sync",
+          desired: 25,
           branches: [],
-          missing: null,
-          extra: null,
+          missing: [],
+          extra: [],
+          detail: "main exige os 25 check(s) do manifesto",
         },
       ],
     })
@@ -1914,8 +1939,9 @@ describe("summarize — o REGISTRO do que o veredito NÃO cobre", () => {
     // e a fixture planta violações nas pipelines dela (`gate CORE nao esta
     // cobrado no merge`) que nenhuma declaração datada cobre porque NÃO são
     // lacunas de prova: são defeitos plantados de propósito, para outros testes.
-    // Aqui os gates do repositório batem com a régua, e o que sobra deles é a
-    // única coisa que a medição real deixou: as DUAS causas de proteção.
+    // Aqui os gates do repositório batem com a régua, e o que sobra deles é o
+    // que a medição real de 08/10 deixou: NADA — as duas proteções lidas e em
+    // sincronia fecham as causas agregadas (nenhum 'não conferido' sai).
     return factsComAsLinhas({
       protection,
       gateContracts: readAllGateContracts({
@@ -1923,22 +1949,32 @@ describe("summarize — o REGISTRO do que o veredito NÃO cobre", () => {
         contract: readContract(ROOT),
         protection,
       }),
-      // As referências NÃO VERSIONADAS no estado daquele dia — `unavailable`, com
-      // as 4 que não foram provadas (a fixture do fluxo as tem `proven`, e com
-      // elas a declaração DATADA viraria letra morta: é o próprio mecanismo
-      // funcionando, e não o que este teste mede).
+      // As referências NÃO VERSIONADAS no estado MEDIDO de 08/10: todas
+      // PROVADAS — as repository variables entram pelo `--expected-var` e o
+      // registry da forja serve a tag que o repositório declara.
       imageRefs: refsFacts({
-        state: "unavailable",
-        detail:
-          "4 referencia(s) NAO PROVADA(S) — nenhuma foi presumida (3 nao aplicavel(is) neste checkout)",
+        state: "proven",
+        detail: "4 referencia(s) provada(s), 1 nao aplicavel(is) neste checkout",
         items: [
-          { source: "repository variable IMAGE_REGISTRY", state: "indeterminate", detail: "" },
-          { source: "repository variable IMAGE_NAMESPACE", state: "indeterminate", detail: "" },
-          { source: "repository variable BUN_VERSION", state: "indeterminate", detail: "" },
           {
-            source: "registry (o que git.severinno.cloud/severinno/ubuntu-bun:1.3.14 serve hoje)",
-            state: "indeterminate",
-            detail: "",
+            source: "repository variable IMAGE_REGISTRY",
+            state: "proven",
+            detail: "confere (git.severinno.com via --expected-var)",
+          },
+          {
+            source: "repository variable IMAGE_NAMESPACE",
+            state: "proven",
+            detail: "confere (severinno via --expected-var)",
+          },
+          {
+            source: "repository variable BUN_VERSION",
+            state: "proven",
+            detail: "1.3.14 confere com .actrc e deploy/env.gitea.example",
+          },
+          {
+            source: "registry (o que git.severinno.com/severinno/ubuntu-bun:1.3.14 serve hoje)",
+            state: "proven",
+            detail: "a tag serve a build que declara 1.3.14 (sha256:f295…)",
           },
         ],
       }),
@@ -1955,12 +1991,12 @@ describe("summarize — o REGISTRO do que o veredito NÃO cobre", () => {
     const ud = collectUnproven({ facts: base, root: ROOT })
     const v = summarize({ ...base, unprovenDebt: ud })
     expect(ud.state).not.toBe("unread")
-    // O par de causas MEDIDO: a forja sem o recurso e a forja não lida, as duas
-    // publicadas (a agregação dos gates sai uma linha por causa, e não uma por
-    // gate).
-    expect(v.unknowns.some((u) => u.includes("NÃO SUPORTA branch protection"))).toBe(true)
+    // O estado MEDIDO de 08/10/2026: as duas proteções lidas e em sincronia —
+    // NENHUMA das causas antigas (a forja sem o recurso, a forja não lida) sai;
+    // as linhas que elas publicavam desapareceram com o estado que as gerava.
+    expect(v.unknowns.some((u) => u.includes("NÃO SUPORTA branch protection"))).toBe(false)
     expect(v.unknowns.some((u) => u.includes("a branch protection de gitea não foi lida"))).toBe(
-      true,
+      false,
     )
     expect(v.unknowns.filter((u) => u.startsWith("gate '")).length).toBe(0)
     const datado = datarLinhas(
@@ -1987,9 +2023,20 @@ describe("summarize — o REGISTRO do que o veredito NÃO cobre", () => {
     expect(linhas.ud.state).not.toBe("unread")
     expect(linhas.ud.state).not.toBe("invalid")
     expect(linhas.ud.total).toBeGreaterThan(0)
-    const vivas = linhas.ud.items.filter(
-      (i: { state: string }) => i.state === "open" || i.state === "aged",
-    )
+    // ATUALIZAÇÃO 08/10/2026: o registro do repositório é 100% LIMITE por
+    // desenho (as 12 lacunas fecharam por medição e foram PODADAS com prova —
+    // gitea-token, github-branch-protection, runner-queue-*, act-runner-*,
+    // github-runner-*, image-*, bench-forma-fora-do-commit). Um limite NÃO fica
+    // `open`/`aged` — fica `declarado`, sem janela — mas DATA linhas
+    // normalmente (o `matches` dele casa com a linha do 'não provado' que o
+    // veredito publica): a declaração VIVA é a que tem trechos, em qualquer
+    // estado que não seja uma leitura quebrada.
+    const vivas = linhas.ud.items.filter((i: { state: string; matches: unknown }) => {
+      if (i.state === "invalid" || i.state === "unread") return false
+      const trechos =
+        typeof i.matches === "string" ? [i.matches] : Array.isArray(i.matches) ? i.matches : []
+      return trechos.length > 0
+    })
     expect(vivas.length).toBeGreaterThan(0)
     for (const i of vivas) {
       // O `matches` pode ser uma LISTA de alternativas (o mesmo assunto muda de
@@ -2021,26 +2068,35 @@ describe("summarize — o REGISTRO do que o veredito NÃO cobre", () => {
     const base = factsComAsLinhas()
     const ud = collectUnproven({ facts: base, root: ROOT })
     // As linhas que o registro declara saem do relatório (o cenário de alguém
-    // reescrever a prosa do veredito sem tocar no registro). O item declara mais
-    // de uma linha — o MESMO assunto aparece no `unproven` e nos `unknowns` —, e
-    // é o CONJUNTO que tem de sair para a declaração ficar órfã: apagar uma só
-    // deixaria as outras datando em nome dela.
+    // reescrever a prosa do veredito sem tocar no registro). ATUALIZAÇÃO
+    // 08/10/2026: o exemplo passou a ser `forge-history` — a
+    // `github-branch-protection` (que declarava o MESMO assunto em DUAS listas)
+    // saiu do registro com a prova de 08/10 (repo público + protection
+    // aplicada, `--check` inSync). O mecanismo acusado é o MESMO: sem a linha
+    // que o `matches` casa, a declaração fica órfã — é isso que a cobertura
+    // pega.
     const v = summarize({ ...base, unprovenDebt: ud })
-    const item = ud.items.find((i: { id: string }) => i.id === "github-branch-protection") as {
+    const item = ud.items.find((i: { id: string }) => i.id === "forge-history") as {
       matches: string | string[]
     }
     const declarados = typeof item.matches === "string" ? [item.matches] : item.matches
     const semEla = [...v.blockers, ...v.unproven, ...v.unknowns].filter(
       (l) => !declarados.some((t) => l.includes(t)),
     )
-    const vivas = ud.items.filter(
-      (i: { state: string }) => i.state === "open" || i.state === "aged",
-    )
+    // A declaração VIVA é a que tem trechos (o mesmo predicado do COBERTURA
+    // acima: o registro hoje é 100% limite, e limite fica `declarado`, não
+    // `open`/`aged` — mas data linhas como qualquer outro).
+    const vivas = ud.items.filter((i: { state: string; matches: unknown }) => {
+      if (i.state === "invalid" || i.state === "unread") return false
+      const trechos =
+        typeof i.matches === "string" ? [i.matches] : Array.isArray(i.matches) ? i.matches : []
+      return trechos.length > 0
+    })
     const orfas = vivas.filter((i: { matches: string | string[]; id: string }) => {
       const trechos = typeof i.matches === "string" ? [i.matches] : i.matches
       return !trechos.some((t) => semEla.some((l) => l.includes(t)))
     })
-    expect(orfas.map((i: { id: string }) => i.id)).toContain("github-branch-protection")
+    expect(orfas.map((i: { id: string }) => i.id)).toContain("forge-history")
   })
 
   it("o registro do REPOSITÓRIO é lido e julgado (o dado de verdade, não um fixture)", () => {
@@ -4446,6 +4502,30 @@ describe("summarize — o REGISTRO do runner do GitHub (a outra forja)", () => {
   it("a linha da versão sai DATADA pelo item do registro (o ciclo de reconciliação a alcança)", () => {
     // A outra metade da promessa: não basta a linha existir — ela tem de vir do
     // registro DATADO, senão o operador lê a acusação sem saber desde quando.
+    //
+    // ATUALIZAÇÃO 08/10/2026: a ENTRADA `github-runner-version` saiu do registro
+    // com a prova (o runner medido responde o pin 2.337.0 — letra morta não
+    // permanece). O CICLO de reconciliação continua implementado no módulo (o
+    // predicado `github-runner-na-versao-do-pin` fecha por medição), e é ELE
+    // que este teste exercita — com um registro sintético que declara a MESMA
+    // lacuna, do jeito que uma re-abertura real a declararia.
+    const registro = {
+      erro: null,
+      reviewAfterDays: 90,
+      items: [
+        {
+          id: "github-runner-version",
+          kind: "lacuna",
+          declaredAt: "2026-09-22",
+          subject:
+            "a VERSÃO do runner auto-hospedado do GitHub: o serviço responde a versão que o setup pina",
+          closedBy: "github-runner-na-versao-do-pin",
+          proveWith: "o registro do runner do GitHub respondendo o pin (leitura real do serviço)",
+          remedy: "alinhar RUNNER_VERSION com a versão registrada",
+          matches: "a VERSAO do runner do GITHUB",
+        },
+      ],
+    }
     const f = facts({
       githubRunnerLabels: githubRunnerLabelFacts({
         state: "violated",
@@ -4459,7 +4539,7 @@ describe("summarize — o REGISTRO do runner do GitHub (a outra forja)", () => {
         remedies: ["Remédio: alinhe RUNNER_VERSION"],
       }),
     })
-    const ud = collectUnproven({ facts: f, root: ROOT })
+    const ud = collectUnproven({ facts: f, root: ROOT, registry: registro })
     const item = ud.items.find((i) => i.id === "github-runner-version")
     expect(item?.state).toBe("open")
     expect(item?.declaredAt).toBe("2026-09-22")
@@ -4482,6 +4562,7 @@ describe("summarize — o REGISTRO do runner do GitHub (a outra forja)", () => {
         }),
       },
       root: ROOT,
+      registry: registro,
     })
     expect(fechado.items.find((i) => i.id === "github-runner-version")?.state).toBe("proven")
   })

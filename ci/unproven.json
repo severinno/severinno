@@ -64,141 +64,13 @@
     "julgável bloqueiam. O CI (job stack-per-commit, pilha inteira sem amostra)",
     "mantém o exit bruto e cobra TODOS os vermelhos — inclusive a dívida: quem",
     "fecha a dívida é a forja. Medido em 07/10/2026: os pushes que exigiam",
-    "--no-verify pelos 4 vermelhos do meio da pilha passam a entrar SEM bypass."
+    "--no-verify pelos 4 vermelhos do meio da pilha passam a entrar SEM bypass.",
+    "",
+    "ATUALIZAÇÃO 2026-10-08: 12 entradas PODADAS com prova na árvore (o relatório do doctor da forja, runs 345-347, MEDEU o que elas declaravam: canal completo GITEA+GH+vars, repo github público + protection aplicada via apply-required-checks, fila da forja medida no host). O remédio de remoção é o que o próprio veredito declara para um item letra morta."
   ],
   "version": 1,
   "reviewAfterDays": 90,
   "items": [
-    {
-      "id": "gitea-token",
-      "kind": "lacuna",
-      "declaredAt": "2026-09-22",
-      "subject": "a forja DONA DO MERGE (Gitea) não é lida: sem GITEA_TOKEN o doctor diz 'não lida' — nunca 'em sincronia' — e a branch protection registrada e o board dela ficam fora do veredito. É o único portão de merge que este repositório tem hoje (o espelho não tem nenhum)",
-      "proveWith": "GITEA_TOKEN=<token> GITEA_URL=<url> bun run doctor --gitea-env deploy/.env.gitea",
-      "remedy": "rode o doctor com o token da forja (ou feche a lacuna de credencial no host que o tem)",
-      "closedBy": "gitea-forja-lida",
-      "matches": [
-        "a dívida aberta no gitea NÃO foi lida",
-        "a branch protection REGISTRADA nao foi lida: gitea",
-        "a branch protection de gitea não foi lida — o registro não pode ser confirmado"
-      ]
-    },
-    {
-      "id": "github-branch-protection",
-      "kind": "lacuna",
-      "declaredAt": "2026-09-22",
-      "subject": "o portão de merge do ESPELHO (GitHub) NÃO EXISTE: o repositório é PRIVADO num plano sem branch protection (medido: HTTP 403 'Upgrade to GitHub Pro or make this repository public'), então nenhum required check pode ser aplicado nem lido ali — nada bloqueia o merge daquele lado, e a declaração de ci/required-checks-applied.json descreve a INTENÇÃO (a lista de contextos), não um portão",
-      "proveWith": "gh api repos/severinno/severinno/branches/main/protection/required_status_checks (403 hoje) — fecha com o repositório PÚBLICO ou GitHub Pro; depois: bun run ci:required-checks -- --apply",
-      "remedy": "decisão de PLANO/VISIBILIDADE (tornar o repositório público ou GitHub Pro) — não é código, e nenhuma credencial substitui o recurso",
-      "closedBy": "github-protection-suportada",
-      "matches": [
-        "o PORTÃO DE MERGE do github",
-        "a forja github NÃO SUPORTA branch protection: nenhum required check pode ser aplicado nem lido",
-        "a forja github NÃO SUPORTA branch protection — não há registro a conferir, e o merge daquele lado não tem portão"
-      ]
-    },
-    {
-      "id": "image-mirror-values",
-      "kind": "lacuna",
-      "declaredAt": "2026-09-22",
-      "subject": "o VALOR de IMAGE_REGISTRY/IMAGE_NAMESPACE não é comparado com a repository variable: medido em 22/09/2026 com `gh variable list`, elas NÃO existem no GitHub (só BUN_VERSION=1.3.14 e HOSTINGER_VM_ID), então os workflows caem no default do espelho — e o default é o que o `checkComposeImageDefaults` compara com os composes",
-      "proveWith": "gh variable list (GitHub) + o doctor com --gitea-env (Gitea) — os valores entram por --expected-var",
-      "remedy": "criar as duas repository variables na forja que as consome, ou declarar o fallback como contrato",
-      "closedBy": "espelhos-com-valor",
-      "matches": "o VALOR de IMAGE_REGISTRY, IMAGE_NAMESPACE nao foi comparado"
-    },
-    {
-      "id": "published-image-contract",
-      "kind": "lacuna",
-      "declaredAt": "2026-09-22",
-      "subject": "o contrato da imagem PUBLICADA não é provado: medido, `imageContract: unavailable` — a imagem declarada não foi resolvida porque o env do runner está ausente/inválido, e sem o alvo não há artefato para confrontar com o registry",
-      "proveWith": "bun run doctor --gitea-env <env da forja> (com a imagem publicada no registry)",
-      "remedy": "medir onde o env e o registry existem; a prova é do job da forja",
-      "closedBy": "imagem-publicada-prova",
-      "matches": "o contrato da imagem PUBLICADA nao foi provado"
-    },
-    {
-      "id": "non-versioned-image-refs",
-      "kind": "lacuna",
-      "declaredAt": "2026-09-22",
-      "subject": "as referências NÃO VERSIONADAS da imagem não são provadas: medido no perfil completo, `imageRefs: unavailable` com 4 referência(s) NÃO PROVADA(S) — as repository variables IMAGE_REGISTRY/IMAGE_NAMESPACE/BUN_VERSION e o que o registry serve para a tag (3 não são aplicáveis a este checkout, e a quarta depende do env do host). Nenhuma delas foi presumida",
-      "proveWith": "bun run doctor --expected \"$(gh variable get BUN_VERSION)\" --expected-var IMAGE_REGISTRY=<v> --expected-var IMAGE_NAMESPACE=<v> (com o env do host, se for o caso)",
-      "remedy": "medir onde as variáveis e o registry existem (o host da forja), ou declarar o fallback como contrato",
-      "closedBy": "referencias-versionadas",
-      "matches": "as referencias NAO VERSIONADAS da imagem nao foram provadas"
-    },
-    {
-      "id": "runner-queue-gitea",
-      "kind": "lacuna",
-      "declaredAt": "2026-09-24",
-      "subject": "a FILA da forja DONA DO MERGE não é medida daqui: a Gitea 1.22 não expõe a fila nem o estado do runner em REST (medido no `swagger.v1.json` dela: `/repos/{owner}/{repo}/actions/tasks` → HTTP 404, e a única rota de runner é a do token de registro), então as duas metades da pergunta — a FILA (`action_run_job.task_id = 0 AND status = 5 waiting`: a linha de `action_task` só nasce quando um runner PEGA o job, medido ao vivo em 26/09/2026 — a primeira leitura, em `action_task`, leria o trabalho do runner e nunca a espera) e `action_runner.last_online` contra a régua da própria forja (1 minuto = offline) — só existem no BANCO da stack; sem a stack de pé o veredito diz 'não lida', nunca 'sem fila' (um repo ausente do banco devolveria zero itens, e zero itens é o verde FALSO desta pergunta)",
-      "proveWith": "no host da forja, `bash deploy/gitea-up.sh` (é ele que sobe a stack e RE-REGISTRA o act_runner) e então `GITEA_REPOSITORY=<owner>/<repo> bun run doctor` — a metade fecha quando o banco responde, e a fila aparece medida (parada/drenando/ociosa) em vez de 'não lida'; e, sem a stack do host, o ciclo INTEIRO (silêncio → fato `parada` → re-registro → drenagem verde) é provado numa forja EFÊMERA local por `node scripts/prove-runner-queue-cycle.mjs --sem-no-new-privileges --job-image <ref>` (zero efeito externo; a prova lê o log inclusive quando a Gitea o guarda no DBFS do banco)",
-      "remedy": "subir/re-registrar a stack no host dela (`bash deploy/gitea-up.sh`) — o re-registro é o mesmo comando que o BLOQUEIO da fila parada publica: o registro é estado no volume, e subir o container sem ele devolve o runner velho",
-      "closedBy": "fila-gitea-medida",
-      "matches": "a FILA do Gitea nao foi medida"
-    },
-    {
-      "id": "runner-queue-github",
-      "kind": "lacuna",
-      "declaredAt": "2026-09-24",
-      "subject": "a FILA do ESPELHO (GitHub) não é medida sem o canal: a fila sai de `/repos/:repo/actions/runs?status=queued` (canal GH_TOKEN + GH_REPOSITORY, ou a CLI `gh`) e quem a PUXARIA sai de `/actions/runners` (que exige permissão de self-hosted runners) — sem qualquer uma das duas a metade é 'não lida', e a ausência das duas se disfarça de fila limpa. MEDIDO em 24/09/2026: 5 runs em `queued` (a mais antiga de 23/09 21:30) e `hostinger-runner` com `status=offline` — o defeito que este fato passou a publicar como BLOQUEIO",
-      "proveWith": "no host do runner, `bash deploy/setup-github-runner.sh` (o re-registro, com o `RUNNER_VERSION` pinado à versão que o serviço aceita) e então `GH_TOKEN=<pat> GH_REPOSITORY=<owner>/<repo> bun run doctor` — a metade fecha quando o canal E o registro respondem, e a fila aparece medida em vez de 'não lida'",
-      "remedy": "re-registrar o runner auto-hospedado (`bash deploy/setup-github-runner.sh`) e dar ao doctor o canal do espelho (GH_TOKEN + GH_REPOSITORY) — sem canal, um repo desconhecido devolveria o vazio de uma fila limpa",
-      "closedBy": "fila-github-medida",
-      "matches": "a FILA do GitHub nao foi medida"
-    },
-    {
-      "id": "act-runner-registration",
-      "kind": "lacuna",
-      "declaredAt": "2026-09-22",
-      "subject": "o registro do act_runner não é comparado com o compose: medido, `docker exec gitea-runner cat /data/.runner` responde 'No such container' — a stack da forja não está de pé neste host, e é o registro GRAVADO que decide a imagem de cada job",
-      "proveWith": "bash deploy/gitea-up.sh --gitea-env <env> (sobe a stack) e então bun run doctor",
-      "remedy": "subir a stack da forja no host dela, ou medir lá",
-      "closedBy": "act-runner-lido",
-      "matches": "o registro do act_runner nao foi comparado"
-    },
-    {
-      "id": "act-runner-version",
-      "kind": "lacuna",
-      "declaredAt": "2026-09-22",
-      "subject": "a TAG da imagem do act_runner declarava uma versão que NÃO pina o que a stack roda: medido em 22/09/2026, `deploy/docker-compose.gitea.yml` declarava `gitea/act_runner:latest`, e as duas imagens que este host tem reportam versões diferentes (`latest` → `v0.6.1`, `0.2.11` → `v0.2.11`). A versão do binário vem da IMAGEM (o container não se auto-atualiza, ao contrário do runner do GitHub), então o `docker compose pull` de outro dia troca o que a forja RODA sem uma linha do repositório mudar e sem sintoma nenhum na forja. REMÉDIO APLICADO no MESMO dia: a tag passou a `gitea/act_runner:0.6.1` — o MESMO digest que o `latest` do dia servia (`sha256:b5c35d6d…`), então a stack segue rodando exatamente o binário que rodava, agora DECLARADO (o `v0.6.1` NÃO existe no registry: medido, `not found`). O que esta declaração ainda cobre é a LEITURA: `act_runner --version` DENTRO do container contra a tag declarada (`runner-labels:check`), que exige a stack de pé — neste host ela está fora do ar, e a leitura sai `unread`. MEDIDO em 22/09/2026 com a imagem PINADA: `versao do binario: 0.6.1 = tag 0.6.1 (proven)`, e o relatório do doctor fechou esta entrada POR MEDIÇÃO",
-      "proveWith": "bun run runner-labels:check (com a stack da forja de pé: a versão que o binário reporta contra a tag declarada no compose) — medido em 22/09/2026 com a imagem pinada: `0.6.1 = tag 0.6.1 (proven)`",
-      "remedy": "aplicado: a tag do compose pina `0.6.1` (o mesmo digest que o `latest` do dia servia). O que resta é a LEITURA, e ela é da stack: `docker compose -f deploy/docker-compose.gitea.yml pull runner && docker compose -f deploy/docker-compose.gitea.yml up -d runner`",
-      "closedBy": "act-runner-na-tag-do-compose",
-      "matches": [
-        "a VERSAO do act_runner nao foi provada",
-        "a VERSAO do act_runner nao e a da tag declarada",
-        "'act-runner-version' ficou LETRA MORTA"
-      ]
-    },
-    {
-      "id": "github-self-hosted-runner",
-      "kind": "lacuna",
-      "declaredAt": "2026-09-22",
-      "subject": "o runner auto-hospedado do GitHub não está registrado: medido, `deploy/setup-github-runner.sh` declara 4 labels e o repositório não tem nenhum — todo `runs-on` fica ESPERANDO em vez de falhar (é BLOQUEIO no veredito deste host)",
-      "proveWith": "bash deploy/setup-github-runner.sh (registra com --replace no host do runner)",
-      "remedy": "registrar o runner no host que o hospeda — nenhuma permissão de token substitui o registro",
-      "closedBy": "github-runner-registrado",
-      "matches": [
-        "o registro do runner do GitHub nao foi comparado",
-        "o registro do runner do GITHUB NAO é o que o setup declara",
-        "'github-self-hosted-runner' ficou LETRA MORTA"
-      ]
-    },
-    {
-      "id": "github-runner-version",
-      "kind": "lacuna",
-      "declaredAt": "2026-09-22",
-      "subject": "a VERSAO do runner registrado não é comparada com o PIN do setup: medido em 22/09/2026, com o pin em 2.320.0 o runner registrou, pegou o primeiro job e se AUTO-ATUALIZOU para 2.337.0 no MEIO dele — o update derruba o worker, o job fica PRESO em `in_progress` segurando o único runner (o cancel do run e o remove do runner respondem 422 'is currently running a job') e a forja fica PARADA em vez de vermelha. O `version` do registro é legível na API, e é ele que tem de casar com o `RUNNER_VERSION` do script",
-      "proveWith": "bun run runner-labels:check:github (o `version` de cada runner contra o `RUNNER_VERSION` de deploy/setup-github-runner.sh)",
-      "remedy": "alinhar o PIN à versão que o serviço aceita (o `version` do registro é legível na API) e só então re-registrar — re-registrar com o mesmo pin recusado reproduz o defeito",
-      "closedBy": "github-runner-na-versao-do-pin",
-      "matches": [
-        "a VERSAO do runner do GitHub nao foi comparada com o pin",
-        "a VERSAO do runner do GITHUB nao é a do pin",
-        "'github-runner-version' ficou LETRA MORTA"
-      ]
-    },
     {
       "id": "forge-history",
       "kind": "limite",
@@ -252,19 +124,6 @@
       "proveWith": "medido (a prova do pre-push com --no-verify), e por desenho o hook não é barreira contra quem o desliga",
       "remedy": "declarar como limite: o que barra é o CI, e o job do CI mede o que chegou",
       "matches": "o LIMITE do gate LOCAL"
-    },
-    {
-      "id": "bench-forma-fora-do-commit",
-      "kind": "lacuna",
-      "declaredAt": "2026-09-23",
-      "subject": "o COMMIT DE ORIGEM da baseline do bench não contém TODAS as formas que ela mediu: medido em 23/09/2026, a baseline grava `commit: 8e76c9a6` e a forma `doc-hashes` (a 39.ª entrada da matriz, medida naquela rodada com a suíte no ÍNDICE) NÃO existe naquele commit — o `bench-freshness` a aponta como `ausente-do-master`, e a IDADE sozinha dizia 'fresco' porque ela mede a DISTÂNCIA em commits, não o CONTEÚDO deles",
-      "proveWith": "bun run bench:guard-timing:baseline — UMA rodada com a ÁRVORE COMMITADA basta: a v7 declara a âncora como o PORTADOR (o commit que CARREGA o registro, resolvido pela história — `meta.anchor = \"carrier\"`), e é na árvore DELE que as 39 formas existem; a régua fecha por medição: `node scripts/bench-freshness.mjs` (exits 1 enquanto alguma forma medida estiver fora)",
-      "remedy": "uma rodada só: medir com a matriz já na árvore e commitar a MESMA rodada (matriz + registro + `meta.anchor = \"carrier\"`) — a re-ancoragem em DOIS commits (um para gravar, outro para re-medir na árvore já commitada) era o preço do esquema v6, em que o registro gravava o PAI porque um commit não pode conter o próprio hash",
-      "closedBy": "forma-no-commit-de-origem",
-      "matches": [
-        "o COMMIT DE ORIGEM não contém",
-        "o COMMIT DE ORIGEM das formas medidas do bench não foi julgado"
-      ]
     }
   ],
   "pilha": {
