@@ -894,10 +894,12 @@ jobs:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: severinno_test
         ports:
-          # Portas de host PRÓPRIAS (55434/56381 — o job `test` usa 55432/56379):
-          # jobs em paralelo no MESMO runner self-hosted disputam as portas do
-          # host, e um container órfão de rodada anterior segura a porta e mata
-          # a rodada seguinte (mesma classe medida em 29/09).
+          # Portas de host publicadas SÓ para diagnóstico humano (docker ps);
+          # o job NÃO as consome: nesta forja job e services são containers
+          # separados na rede do job e o alcance é pelo NOME do label
+          # (postgres:5432, redis:6379). No runner compartilhado o publish
+          # pode inclusive atrasar (P1001 de localhost medido em 08/10) — o
+          # caminho do job é o nome, nunca localhost.
           - 55434:5432
         options: >-
           --health-cmd pg_isready
@@ -930,31 +932,34 @@ jobs:
       # páginas e o walk reverso não acontece — o guard reprova por dados
       # insuficientes em vez de passar com uma prova vazia.
       - name: Push Prisma schema to test database
-        # A porta de host é PRÓPRIA (55434) justamente para não disputar com o
-        # job test — mas no runner compartilhado o publish da porta pelo service
-        # pode atrasar além do healthcheck do container (P1001 medido em
-        # 08/10/2026): espera a porta do HOST responder antes do CLI.
+        # NESTA forja, job e services são containers SEPARADOS na rede do job
+        # (runner com container.network): `localhost` dentro do container do job
+        # é o loopback DELE — os services são alcançáveis pelo NOME do label
+        # (postgres:5432, redis:6379), não pela porta publicada no host. No
+        # GitHub (VM única) localhost funciona — por isso o espelho usa lá.
+        # A espera abaixo é de prudência: o healthcheck do service libera o step,
+        # mas o accept de conexão do Postgres pode atrasar 1 tick além dele.
         run: |
           for i in $(seq 1 30); do
-            if (echo > /dev/tcp/127.0.0.1/55434) 2>/dev/null; then
-              echo "postgres aceitou conexão na 55434 após $((i * 2))s"
+            if (echo > /dev/tcp/postgres/5432) 2>/dev/null; then
+              echo "postgres aceitou conexão após $((i * 2))s"
               break
             fi
             sleep 2
           done
           npx prisma db push --accept-data-loss --skip-generate
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:55434/severinno_test
+          DATABASE_URL: postgresql://postgres:postgres@postgres:5432/severinno_test
           # O schema declara `directUrl = env("DIRECT_URL")` (sessão de migrate
           # fora do pgbouncer); sem a var o CLI reprova no P1012 ANTES de tocar
           # o banco (prisma.config.ts não carrega .env no runner).
-          DIRECT_URL: postgresql://postgres:postgres@localhost:55434/severinno_test
+          DIRECT_URL: postgresql://postgres:postgres@postgres:5432/severinno_test
 
       - name: Seed test database (baseline measured against this dataset)
         run: bun run db:seed
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:55434/severinno_test
-          REDIS_URL: redis://localhost:56381
+          DATABASE_URL: postgresql://postgres:postgres@postgres:5432/severinno_test
+          REDIS_URL: redis://redis:6379
           SESSION_SECRET: gitea-ci-vitrine-baseline-session-secret-32
 
       # DEV, não produção: a régua do doc é de bundle de desenvolvimento. A
@@ -962,8 +967,8 @@ jobs:
       # responder 503 num ambiente válido — ele depende de mais do que o app).
       - name: Start Next.js dev server on :3100
         run: |
-          DATABASE_URL="postgresql://postgres:postgres@localhost:55434/severinno_test" \
-          REDIS_URL="redis://localhost:56381" \
+          DATABASE_URL="postgresql://postgres:postgres@postgres:5432/severinno_test" \
+          REDIS_URL="redis://redis:6379" \
           SESSION_SECRET="gitea-ci-vitrine-baseline-session-secret-32" \
           bunx next dev -p 3100 &>/tmp/vitrine-dev.log &
           ready=0
