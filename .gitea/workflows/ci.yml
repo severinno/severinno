@@ -862,6 +862,15 @@ jobs:
       - run: bun run test:run
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:55432/severinno_test
+          DIRECT_URL: postgresql://postgres:postgres@localhost:55432/severinno_test
+
+      # O E2E do realtime sobe o mini-service REAL como processo bun — o serviço
+      # tem package.json/bun.lock PRÓPRIOS (mini-services/realtime/) e o checkout
+      # limpo do CI não traz o node_modules dele (o local, sim, por isso o teste
+      # passa fora da forja e morre nela com `Cannot find package 'engine.io'`).
+      - name: Install realtime mini-service deps (E2E)
+        run: bun install --frozen-lockfile
+        working-directory: mini-services/realtime
 
   # ── Vitrine Pagination Baseline — required check do merge ─────────────
   # O guard de performance da paginação (scripts/check-vitrine-pagination-
@@ -923,6 +932,10 @@ jobs:
         run: npx prisma db push --accept-data-loss --skip-generate
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:55434/severinno_test
+          # O schema declara `directUrl = env("DIRECT_URL")` (sessão de migrate
+          # fora do pgbouncer); sem a var o CLI reprova no P1012 ANTES de tocar
+          # o banco (prisma.config.ts não carrega .env no runner).
+          DIRECT_URL: postgresql://postgres:postgres@localhost:55434/severinno_test
 
       - name: Seed test database (baseline measured against this dataset)
         run: bun run db:seed

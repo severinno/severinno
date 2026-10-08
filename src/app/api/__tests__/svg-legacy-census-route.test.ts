@@ -33,6 +33,14 @@ vi.mock("@/lib/logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() },
 }))
 
+// O wrapper withRoute (api-route.ts) consulta o gate de manutenção ANTES do
+// handler; a leitura dinâmica da chave usa o db — fora do escopo deste teste
+// (o contrato do gate é da suíte maintenance-mode). Sem o dublê, o findUnique
+// do db REAL explode e o warn fail-safe do gate polui as asserções de log.
+vi.mock("@/lib/maintenance-mode", () => ({
+  requireMaintenanceAccessible: vi.fn(async () => {}),
+}))
+
 vi.mock("@/lib/geo-alert-notify", () => ({
   notifyGeoAlert,
 }))

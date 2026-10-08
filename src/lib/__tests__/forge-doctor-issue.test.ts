@@ -1154,8 +1154,10 @@ describe("forge-doctor.yml — contrato do workflow agendado", () => {
     expect(publishStep.run).toContain("--report /tmp/forge-doctor.json")
     expect(publishStep.run).toContain("--backend gitea")
     // Sem token, a escrita falha — e falhar é o certo: um veredito que não pôde
-    // ser publicado é o silêncio de antes, só que parecendo verde.
-    expect(publishStep.env?.GITEA_TOKEN).toBe("${{ secrets.GITEA_TOKEN }}")
+    // ser publicado é o silêncio de antes, só que parecendo verde. O token
+    // primeiro é o de ADMIN da forja dona (FORJA_TOKEN), com fallback no do
+    // repo — mesmo contrato do canal de PR (pr-comment-channel).
+    expect(publishStep.env?.GITEA_TOKEN).toBe("${{ secrets.FORJA_TOKEN || secrets.GITEA_TOKEN }}")
   })
 
   it("dá ao cron o canal do board do GITHUB (as dívidas de README e de overhead vivem lá)", () => {
@@ -1277,15 +1279,31 @@ describe("forge-doctor.yml — o fechamento é ALCANÇÁVEL na run PRONTA", () =
       })
   }
 
-  /** Reescreve as expressões `${{ … }}` que ESTE workflow usa (vars e secrets). */
+  /** Reescreve as expressões `${{ … }}` que ESTE workflow usa (vars e secrets).
+   *  Suporta o fallback `A || B`: o runner resolve cada secret e o `||` bash
+   *  (e o próprio runner, para env) escolhe o primeiro não vazio — token de
+   *  admin da forja dona com fallback no token do repo.
+   */
   function resolveExpressions(value: string): string {
     const scope: Record<string, Record<string, string>> = {
       vars: { BUN_VERSION: "1.3.14", IMAGE_REGISTRY: "ghcr.io/acme", IMAGE_NAMESPACE: "acme" },
-      secrets: { GITEA_TOKEN: "token-de-teste", GITEA_URL: baseUrl, GITEA_REPOSITORY: REPO },
+      secrets: {
+        GITEA_TOKEN: "token-de-teste",
+        FORJA_TOKEN: "token-de-teste",
+        GITEA_URL: baseUrl,
+        GITEA_REPOSITORY: REPO,
+      },
+      github: { server_url: baseUrl, repository: REPO },
     }
-    return value.replace(/\$\{\{\s*(vars|secrets)\.([\w.-]+)\s*\}\}/g, (_all, kind, name) => {
-      return scope[kind as string][name as string] ?? ""
-    })
+    return value
+      .replace(
+        /\$\{\{\s*secrets\.([\w.-]+)\s*\|\|\s*secrets\.([\w.-]+)\s*\}\}/g,
+        (_all, first, second) =>
+          scope.secrets[first as string] || scope.secrets[second as string] || "",
+      )
+      .replace(/\$\{\{\s*(vars|secrets|github)\.([\w.-]+)\s*\}\}/g, (_all, kind, name) => {
+        return scope[kind as string][name as string] ?? ""
+      })
   }
 
   /**

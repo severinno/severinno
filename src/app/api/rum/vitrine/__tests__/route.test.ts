@@ -19,6 +19,14 @@ vi.mock("@/lib/logger", () => ({
   default: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
 }))
 
+// O wrapper withRoute (api-route.ts) consulta o gate de manutenção ANTES do
+// handler; a leitura dinâmica da chave usa o db — fora do escopo deste teste
+// (o contrato do gate é da suíte maintenance-mode). Dublê fail-closed: chave
+// LIGADA faria o teste ver 503 em vez do contrato da rota.
+vi.mock("@/lib/maintenance-mode", () => ({
+  requireMaintenanceAccessible: vi.fn(async () => {}),
+}))
+
 import logger from "@/lib/logger"
 import { POST } from "@/app/api/rum/vitrine/route"
 
