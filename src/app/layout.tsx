@@ -83,21 +83,40 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const _nonce = (await headers()).get("x-nonce") ?? ""
+  const reqHeaders = await headers()
+  const _nonce = reqHeaders.get("x-nonce") ?? ""
 
   // ── Chave de manutenção (um clique no painel admin) ────────────────────────
-  // Quando LIGADA, o público inteiro vê a tela de manutenção em QUALQUER
-  // página — o gate mora no layout raiz, então nem rota nova nem rota esquecida
-  // escapa. ADMIN atravessa (painel de pé para DESLIGAR). Fail-safe da lib:
-  // DB fora do ar → flag lida false → site ACESSÍVEL (nunca sequestrado).
+  // Quando LIGADA, o público geral vê a tela de manutenção em qualquer
+  // página. Sessões ADMIN ou requisições originadas do IP LOCAL / Whitelist de IPs
+  // autorizados atravessam normalmente para permitir acesso, desenvolvimento e testes.
   const maintenance = await isMaintenanceMode()
+  let showMaintenance = maintenance
+
+  if (maintenance) {
+    const { getSession } = await import("@/lib/auth")
+    const session = await getSession()
+    if (session?.role === "ADMIN") {
+      showMaintenance = false
+    } else {
+      const clientIp =
+        reqHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+        reqHeaders.get("x-real-ip") ||
+        reqHeaders.get("cf-connecting-ip") ||
+        "127.0.0.1"
+      const { isClientAllowedDuringMaintenance } = await import("@/lib/maintenance-mode")
+      if (await isClientAllowedDuringMaintenance(clientIp)) {
+        showMaintenance = false
+      }
+    }
+  }
 
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} bg-background text-foreground antialiased`}
       >
-        {maintenance ? (
+        {showMaintenance ? (
           <MaintenanceScreen />
         ) : (
           <>

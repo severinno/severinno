@@ -30,7 +30,11 @@ vi.mock("@/lib/api-server", () => ({
 
 import {
   MAINTENANCE_MODE_KEY,
+  MAINTENANCE_ALLOWED_IPS_KEY,
   isMaintenanceMode,
+  getAllowedMaintenanceIps,
+  isClientAllowedDuringMaintenance,
+  isMaintenanceAccessible,
   requireMaintenanceAccessible,
   resetMaintenanceModeCache,
 } from "@/lib/maintenance-mode"
@@ -135,5 +139,65 @@ describe("requireMaintenanceAccessible", () => {
     await expect(requireMaintenanceAccessible()).rejects.toMatchObject({
       message: expect.stringContaining("em breve estaremos online para melhor atender"),
     })
+  })
+
+  it("com a chave ligada, cliente com IP na whitelist atravessa sem precisar de sessão ADMIN", async () => {
+    findUnique.mockImplementation(async ({ where }: { where: { key: string } }) => {
+      if (where.key === MAINTENANCE_MODE_KEY) return row("true")
+      if (where.key === MAINTENANCE_ALLOWED_IPS_KEY) {
+        return { key: MAINTENANCE_ALLOWED_IPS_KEY, value: JSON.stringify(["203.0.113.195"]) }
+      }
+      return null
+    })
+
+    getSession.mockResolvedValue(null) // anônimo / sem cookie
+    await expect(requireMaintenanceAccessible(undefined, "203.0.113.195")).resolves.toBeUndefined()
+  })
+
+  it("com a chave ligada, cliente em localhost/loopback sempre atravessa (acesso local)", async () => {
+    findUnique.mockResolvedValue(row("true"))
+    getSession.mockResolvedValue(null)
+
+    await expect(requireMaintenanceAccessible(undefined, "127.0.0.1")).resolves.toBeUndefined()
+    await expect(requireMaintenanceAccessible(undefined, "::1")).resolves.toBeUndefined()
+    await expect(requireMaintenanceAccessible(undefined, "localhost")).resolves.toBeUndefined()
+  })
+})
+
+// ── isClientAllowedDuringMaintenance & isMaintenanceAccessible ─────────────
+describe("isClientAllowedDuringMaintenance & isMaintenanceAccessible", () => {
+  it("reconhece loopback e localhost como permitidos", async () => {
+    await expect(isClientAllowedDuringMaintenance("127.0.0.1")).resolves.toBe(true)
+    await expect(isClientAllowedDuringMaintenance("::1")).resolves.toBe(true)
+    await expect(isClientAllowedDuringMaintenance("localhost")).resolves.toBe(true)
+  })
+
+  it("isMaintenanceAccessible devolve true se manutenção estiver desligada", async () => {
+    findUnique.mockResolvedValue(row("false"))
+    await expect(isMaintenanceAccessible({ ip: "198.51.100.1" })).resolves.toBe(true)
+  })
+
+  it("isMaintenanceAccessible devolve true se IP estiver autorizado", async () => {
+    findUnique.mockImplementation(async ({ where }: { where: { key: string } }) => {
+      if (where.key === MAINTENANCE_MODE_KEY) return row("true")
+      if (where.key === MAINTENANCE_ALLOWED_IPS_KEY) {
+        return { key: MAINTENANCE_ALLOWED_IPS_KEY, value: "198.51.100.42" }
+      }
+      return null
+    })
+    await expect(isMaintenanceAccessible({ ip: "198.51.100.42" })).resolves.toBe(true)
+  })
+
+  it("isMaintenanceAccessible devolve false se IP não autorizado e sem sessão ADMIN", async () => {
+    findUnique.mockImplementation(async ({ where }: { where: { key: string } }) => {
+      if (where.key === MAINTENANCE_MODE_KEY) return row("true")
+      if (where.key === MAINTENANCE_ALLOWED_IPS_KEY) {
+        return { key: MAINTENANCE_ALLOWED_IPS_KEY, value: "198.51.100.42" }
+      }
+      return null
+    })
+    await expect(
+      isMaintenanceAccessible({ ip: "198.51.100.99", session: { role: "CLIENT" } }),
+    ).resolves.toBe(false)
   })
 })

@@ -135,7 +135,7 @@ export function withRoute<P = Record<string, never>>(
         // pode corromper conciliação) e `/api/health` é o sinal de vida que o
         // monitoramento consulta — a tela de manutenção É o estado observable.
         if (!pathname.startsWith("/api/webhooks/") && pathname !== "/api/health") {
-          await requireMaintenanceAccessible()
+          await requireMaintenanceAccessible(request)
         }
 
         // Rotas dinâmicas do Next 16 passam `params` como Promise.
