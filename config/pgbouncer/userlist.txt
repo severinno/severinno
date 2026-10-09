@@ -13,5 +13,8 @@
 # Formato:
 #   "username" "SCRAM-SHA-256$<hash>"
 # ═══════════════════════════════════════════════════════════════════════════
-# "severinno" "SCRAM-SHA-256$<hash_do_postgresql>"  # ← descomente se mudar auth_type
+# Para auth_type = trust, o PgBouncer exige que o usuário esteja listado aqui:
+"severinno" ""
+"postgres" ""
+"glitchtip" ""
 

@@ -123,6 +123,11 @@ services:
     cap_drop:
       - ALL
     cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
       - NET_BIND_SERVICE
     tmpfs:
       - /tmp:size=256M
@@ -157,6 +162,11 @@ services:
     cap_drop:
       - ALL
     cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
       - NET_BIND_SERVICE
     read_only: true
     tmpfs:
@@ -184,6 +194,11 @@ services:
     cap_drop:
       - ALL
     cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
       - NET_BIND_SERVICE
       - SYS_NICE # Necessário para RabbitMQ definir prioridade de E/S
     read_only: true
@@ -197,7 +212,7 @@ services:
       - rabbitmq_pass
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-severinno}
-      RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/rabbitmq_pass
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-severinno}
       RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "+P 1048576"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
@@ -312,6 +327,7 @@ services:
         condition: service_healthy
     volumes:
       - ./config/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./config/pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "6432"]
       interval: 10s
@@ -386,6 +402,7 @@ services:
   app:
     image: ${IMAGE_REGISTRY:-git.severinno.com}/${IMAGE_NAMESPACE:-severinno}/severinno:latest
     entrypoint: ["./scripts/docker-entrypoint.sh"]
+    command: ["node", "server.js"]
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -479,7 +496,13 @@ services:
       OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME}
       OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 30s
       timeout: 10s
       start_period: 30s

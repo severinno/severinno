@@ -75,9 +75,8 @@ networks:
       config:
         - subnet: 172.20.0.0/24
   backend:
-    ipam:
-      config:
-        - subnet: 172.20.1.0/24
+    name: severinno_backend
+    external: true
 
 # ── Volumes persistentes (exclusivos: Caddy + GlitchTip) ─────────────────
 volumes:
@@ -439,6 +438,11 @@ services:
     cap_drop:
       - ALL
     cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
       - NET_BIND_SERVICE
     tmpfs:
       - /tmp:size=128M

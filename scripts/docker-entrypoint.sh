@@ -98,5 +98,9 @@ echo "[entrypoint] URLs constructed: DATABASE_URL, DIRECT_URL, RABBITMQ_URL"
 # FASE 3 — Execução do comando original
 # ═══════════════════════════════════════════════════════════════════════════
 
+if [ $# -eq 0 ]; then
+  set -- node server.js
+fi
+
 echo "[entrypoint] Starting: $@"
 exec "$@"
