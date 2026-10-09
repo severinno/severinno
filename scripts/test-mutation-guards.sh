@@ -159,7 +159,176 @@ MUT_SCRATCH_RUN="$(mktemp -d "$MUT_SCRATCH/run-XXXXXX")" || {
 # Daqui para baixo, o `MUT_SCRATCH` que as suítes leem é a raiz DA RODADA.
 MUT_SCRATCH="$MUT_SCRATCH_RUN"
 export MUT_SCRATCH
-trap 'rm -rf "$MUT_SCRATCH_RUN" 2>/dev/null || true' EXIT
+# Daqui para baixo, o `MUT_SCRATCH` que as suítes leem é a raiz DA RODADA.
+MUT_SCRATCH="$MUT_SCRATCH_RUN"
+export MUT_SCRATCH
+
+# ── O ESTADO DA ÁRVORE É PARTE DO FECHO (issue #5, medido 08/10/2026) ─────
+# O DEFEITO: uma suíte abortada NO MEIO (kill -9, timeout do CI, OOM, operador)
+# deixava o resíduo de mutação NA ÁRVORE — a rodada seguinte media a árvore COM
+# ele, e o vermelho era indistinguível de "guard cego" (só o `git status` manual
+# separava instrumento sujo de defeito real — auditar em 08/10/2026). Pior: um
+# verde sobre resíduo MASCARA o guard cego — se a mutação abortada era justamente
+# o que o guard cobria, o verde é prova vazia.
+#
+# O REMÉDIO (fail-closed, nos DOIS lados do tempo):
+#
+#   · ANTES da matriz (`fecho_da_arvore detetar`): o resíduo que a rodada ENCONTRA
+#     não é dela — restaurar seria o resíduo de OUTRO processo, escondido com o
+#     dono trocado. O master o DIZ (lista os caminhos) e sai 2 (INFRA nomeada).
+#
+#   · NOS TRAPS e no FECHO final (`fecho_da_arvore restaurar`): o resíduo é
+#     DESTA rodada (as suítes restauram no caminho feliz; o abort não chega lá).
+#     O master o RESTAURA e o NOMEIA por arquivo (`↻ resíduo de mutação
+#     restaurado: <path>`) — o operador sabe o que a rodada morta deixou. O que
+#     a restauração NÃO alcança (o git recusa, o caminho segue sujo) sai NOMEADO
+#     e o exit vira 2: nunca verde silencioso, nunca vermelho inventado (o
+#     estado da árvore SOBREVIVE às classes do veredito = critério 3 da issue).
+#
+# UNTRACKED NÃO entra na conta: o `deploy/Caddyfile` é estado do HOST declarado
+# local por desenho — daí `--untracked-files=no`. O que a conta lê é EXATAMENTE
+# o que a cirurgia na árvore toca (tracked modificado/apagado). Um diretório
+# que NÃO é repo git (a árvore de ensaio, a fixture) não é resíduo: não há
+# contagem possível e o master sai sem inventar nada.
+# =============================================================================
+
+# O arquivo está no git da árvore? O `restore` sobre um caminho não-trackeado é
+# a recusa CONHECIDA (não restaura e não avisa com utilidade o suficiente): a
+# conferência torna essa Recusa visível no log, e o caso sai NOMEADO.
+tracked_no_git() { # $1 = caminho relativo
+  git -C "$SCRIPT_DIR" ls-files --error-unmatch -- "$1" >/dev/null 2>&1
+}
+
+# As LINHAS do `git status --porcelain --untracked-files=no`. A saída VAZIA é
+# dado válido (árvore limpa); o git que morre sai stderr + exit != 0 — é o exit
+# que a chamada julga, não o stdout vazio.
+linhas_sujas_2() {
+  git -C "$SCRIPT_DIR" status --porcelain --untracked-files=no
+}
+
+# O FECHO da árvore. $1 = "detetar" (à ABERTURA: o resíduo NÃO é desta rodada —
+# é DITO e sai 2, SEM restaurar) ou "restaurar" (nos TRAPS e no fecho final: o
+# resíduo é da rodada — RESTAURA e LOGA por arquivo; o que sobrar NOMEIA e manda
+# o veredito para 2).
+#
+# Roda SEM `set -e` (o fecho tem de chegar ao fim mesmo com um `restore` que
+# recusa): cada chamada julga o SEU exit explicitamente.
+fecho_da_arvore() { # <detetar|restaurar>
+  local modo="$1" sujo="" linha="" path=""
+  set +e
+
+  # NÃO é repo git (a árvore de ensaio, a fixture): não há resíduo a julgar —
+  # não menciona nada e sai sem resto.
+  if ! git -C "$SCRIPT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    set -e
+    return 0
+  fi
+
+  # O estado da árvore NÃO pôde ser lido (corrompido, git indisponível): sair
+  # fail-closed é a única saída que não inventa veredito.
+  if ! sujo="$(linhas_sujas_2 2>/dev/null)"; then
+    echo "❌ o estado da ÁRVORE não pôde ser lido (o git morreu) — sem medição: INFRA" >&2
+    set -e
+    if [ "$modo" = "detetar" ]; then
+      exit 2
+    fi
+    return 1
+  fi
+
+  # Árvore LIMPA (o caminho feliz): nada a dizer, nada a restaurar.
+  if [ -z "${sujo//[ \t\n]/}" ]; then
+    set -e
+    return 0
+  fi
+
+  # ── O estado da árvore NÃO está limpo — a rota depende do MODO ──────────
+  if [ "$modo" = "detetar" ]; then
+    echo "" >&2
+    echo "  🚧 INFRA (ÁRVORE SUJA ANTES DA RODADA) — os caminhos abaixo NÃO são desta" >&2
+    echo "     rodada (o master ainda não mutou nada): não serão restaurados por ela —" >&2
+    echo "     a restauração ainda INVERTERIA o dono (o resíduo não era dela)." >&2
+    echo "  Resíduo na árvore (git status --porcelain --untracked-files=no):" >&2
+    while IFS= read -r linha; do
+      echo "    $linha" >&2
+    done <<<"$sujo"
+    echo "  O DONO deste resíduo o restaura (git restore -- <caminho>) e rode de novo —" >&2
+    echo "  o vermelho/verde seguinte sobre esta árvore não seria da próxima rodada:" >&2
+    echo "  seria o resíduo medindo outro instrumento (o diagnóstico começa errado)." >&2
+    exit 2
+  fi
+
+  # MODO "restaurar" — o resíduo é DESTA rodada (o abort no meio da suíte: o
+  # kill, o timeout do CI, o OOM). O master o desfaz e o LOGA por arquivo.
+  echo "" >&2
+  echo "  ⚠️  RESÍDUO DE MUTAÇÃO NA ÁRVORE ao fechar a rodada (abort/trap) — RESTAURANDO:" >&2
+  while IFS= read -r linha; do
+    # O porcelain imprime 2 chars de status + 1 espaço: os 3 primeiros chars são
+    # de status (o caminho vem do 4º em diante).
+    path="${linha:3}"
+    if tracked_no_git "$path"; then
+      if git -C "$SCRIPT_DIR" restore -- "$path" >/dev/null 2>&1; then
+        echo "  ↻ resíduo de mutação restaurado: $path" >&2
+      else
+        fail "❌ fecho: '$path' NÃO PÔDE ser restaurado (o git recusou)" >&2
+      fi
+    else
+      fail "❌ fecho: '$path' está sujo e não é TRACKED — o restore não o alcança" >&2
+    fi
+  done <<<"$sujo"
+  echo "  (fonte: git status --porcelain --untracked-files=no — untracked FORA da conta: é estado do host)" >&2
+
+  # A PROVA de que a restauração entrou (fail-closed): sobra qualquer coisa = o
+  # estado da árvore não voltou ao íntegro, e a RODADA sai 2 (INFRA que segue
+  # NOMEADA) — nunca verde silencioso, nunca vermelho inventado.
+  sujo="$(linhas_sujas_2 2>/dev/null)"
+  if [ -n "${sujo//[ \t\n]/}" ]; then
+    echo "" >&2
+    fail "❌ FECHO INFRA: a árvore PERMANECE SUJA após a restauração — o estado da árvore é" >&2
+    fail "   PARTE do veredito: o fecho manda a rodada para 2 e o resíduo segue NOMEADO:" >&2
+    while IFS= read -r linha; do
+      echo "    $linha" >&2
+    done <<<"$sujo"
+    VERDICT_EXIT=2
+    set -e
+    return 1
+  fi
+  set -e
+  return 0
+}
+
+# O EXIT do master INTEIRO. O trap EXIT o lê; o fecho da árvore pode PISAR
+# sobre ele com o 2 da árvore suja — o estado do disco manda no que o job sai.
+VERDICT_EXIT=0
+
+# O TRAP DE FECHO — quatro caminhos de saída, UM handler (o MESMO restauro): o
+# fim de qualquer laço (o `exit ...` do veredito), o `ctrl-c` do operador (INT),
+# o timeout do CI (TERM) e o HUP da sessão que cai. `trap - ...` DESLIGA os
+# próprios traps: um `restore` a mais não re-entra no fecho (sai DEPOIS de
+# restaurar UMA vez, com o que tem). O sinal manda o 128+n, e o fim manda o
+# estado da rodada; a árvore suja TROCA o exit por 2 (o estado do disco é PARTE
+# do veredito).
+fecho_da_rodada() { # $1 = o exit DESTE caminho ($? no EXIT; 128+n no sinal)
+  local exit_original="$1"
+  trap - EXIT INT TERM HUP
+  # A LIMPEZA do SCRATCH (o corpo antigo do trap EXIT) vira parte do fecho: a
+  # rodada apaga só a raiz DELA, agora sob o MESMO handler que restaura a árvore.
+  rm -rf "${MUT_SCRATCH_RUN:-}" 2>/dev/null || true
+  fecho_da_arvore restaurar || VERDICT_EXIT=2
+  if [ "$VERDICT_EXIT" -ne 0 ]; then
+    exit "$VERDICT_EXIT"
+  fi
+  exit "$exit_original"
+}
+trap 'fecho_da_rodada $?' EXIT
+trap 'fecho_da_rodada 130' INT
+trap 'fecho_da_rodada 143' TERM
+trap 'fecho_da_rodada 129' HUP
+
+# ── A ABERTURA: a rodada NÃO herda resíduo (issue #5, critério 2) ──────────
+# O resíduo que a rodada ACHA antes de mutar não é dela — o master o DITA (lista
+# os caminhos) e sai 2: nada de verde sobre árvore suja que o master não sujou,
+# nada de restauro que esconde o estado de outro processo.
+fecho_da_arvore detetar
 
 # ── A DESCRIÇÃO DE CADA SUB-TEST (derivada, nunca escrita à mão) ──────────
 # A fonte única é o bloco `METADES=(...)` do PRÓPRIO script granular — a mesma
