@@ -680,6 +680,7 @@ export async function getChargeByExternalReference(
 export function verifyWebhookSignature(
   payload: LytexWebhookPayload,
   headerSignature?: string | null,
+  rawBody?: string,
 ): boolean {
   const { clientSecret } = getConfig()
   if (!clientSecret || !payload) return false
@@ -687,10 +688,25 @@ export function verifyWebhookSignature(
   const rawSig = headerSignature || payload?.signature
   if (!rawSig || typeof rawSig !== "string") return false
 
-  // A assinatura esperada é HMAC-SHA256 do JSON do payload (sem o campo signature)
-  // usando client_secret como chave
-  const { signature: _ignored, ...payloadWithoutSignature } = payload
-  const payloadStr = JSON.stringify(payloadWithoutSignature)
+  // Preferir o raw body bruto da requisição para o HMAC — evita problemas
+  // de reordenação de chaves ou whitespace causados por JSON.stringify().
+  // Fallback para JSON.stringify apenas em código legado/testes que não
+  // passam rawBody (compatibilidade retroativa).
+  let payloadStr: string
+  if (rawBody) {
+    // Se o body bruto contém o campo "signature", precisamos removê-lo
+    // para o cálculo do HMAC (a Lytex assina sem ele).
+    try {
+      const parsed = JSON.parse(rawBody)
+      delete parsed.signature
+      payloadStr = JSON.stringify(parsed)
+    } catch {
+      payloadStr = rawBody
+    }
+  } else {
+    const { signature: _ignored, ...payloadWithoutSignature } = payload
+    payloadStr = JSON.stringify(payloadWithoutSignature)
+  }
 
   // HMAC via crypto.createHmac (Node.js) — importado no topo do módulo
   const expected = createHmac("sha256", clientSecret).update(payloadStr).digest("hex")

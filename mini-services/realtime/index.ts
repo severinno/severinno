@@ -382,11 +382,21 @@ io.on("connection", (socket: Socket) => {
 
   // message:send — o fromId é a identidade do handshake (o payload não
   // decide quem envia); não autenticado não retransmite.
+  // SEGURANÇA: exige bookingId para garantir que o remetente e destinatário
+  // possuem um contexto de negociação aberto (anti-spam/assédio).
   socket.on("message:send", (payload: MessageSendPayload) => {
     try {
       const userId = socket.data.userId as string | undefined
       if (!socket.data.authenticated || !userId) {
         console.warn(`[realtime] message:send recusado (não autenticado): ${socket.id}`)
+        return
+      }
+      if (!payload?.bookingId) {
+        console.warn(`[realtime] message:send recusado (bookingId ausente): ${socket.id}`)
+        return
+      }
+      if (!payload?.toId) {
+        console.warn(`[realtime] message:send recusado (toId ausente): ${socket.id}`)
         return
       }
       handleMessageSend({ ...payload, fromId: userId })
@@ -395,47 +405,22 @@ io.on("connection", (socket: Socket) => {
     }
   })
 
-  // booking:update { bookingId, clientId, providerId, status }
-  // -> emit booking:updated to both user:{clientId} and user:{providerId}
-  socket.on("booking:update", (payload: BookingUpdatePayload) => {
-    try {
-      const userId = socket.data.userId as string | undefined
-      if (!socket.data.authenticated || !userId) {
-        console.warn(`[realtime] booking:update recusado (não autenticado): ${socket.id}`)
-        return
-      }
-      // Só parte do booking retransmite o update dele.
-      if (payload?.clientId !== userId && payload?.providerId !== userId) {
-        console.warn(
-          `[realtime] booking:update recusado (${socket.id} não é parte do booking ${payload?.bookingId})`,
-        )
-        return
-      }
-      handleBookingUpdate(payload)
-    } catch (err) {
-      console.error("[realtime] booking:update error:", err)
-    }
+  // booking:update — DESABILITADO no socket do cliente.
+  // SEGURANÇA: o payload do cliente inclui clientId e providerId — um atacante
+  // pode colocar seu próprio ID no campo clientId e alterar status de bookings
+  // de terceiros. Mudanças de status devem ser emitidas SOMENTE pelo backend
+  // via POST /emit (autenticado por REALTIME_EMIT_API_KEY).
+  socket.on("booking:update", (_payload: BookingUpdatePayload) => {
+    console.warn(
+      `[realtime] booking:update via socket RECUSADO (use /emit server-side): ${socket.id}`,
+    )
   })
 
-  // quote:update { quoteId, clientId, providerId, status }
-  // -> emit quote:updated to both user:{clientId} and user:{providerId}
-  socket.on("quote:update", (payload: QuoteUpdatePayload) => {
-    try {
-      const userId = socket.data.userId as string | undefined
-      if (!socket.data.authenticated || !userId) {
-        console.warn(`[realtime] quote:update recusado (não autenticado): ${socket.id}`)
-        return
-      }
-      if (payload?.clientId !== userId && payload?.providerId !== userId) {
-        console.warn(
-          `[realtime] quote:update recusado (${socket.id} não é parte da cotação ${payload?.quoteId})`,
-        )
-        return
-      }
-      handleQuoteUpdate(payload)
-    } catch (err) {
-      console.error("[realtime] quote:update error:", err)
-    }
+  // quote:update — DESABILITADO no socket do cliente (mesma razão do booking:update).
+  socket.on("quote:update", (_payload: QuoteUpdatePayload) => {
+    console.warn(
+      `[realtime] quote:update via socket RECUSADO (use /emit server-side): ${socket.id}`,
+    )
   })
 
   // tracking:position { bookingId, clientId, lat, lng }

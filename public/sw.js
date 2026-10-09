@@ -309,7 +309,7 @@ function showNotificationFromPayload(data) {
         : []
 
   const options = {
-    body,
+    body: data.body || "",
     icon: data.icon || "/icon-192.png",
     badge: data.badge || "/icon-192.png",
     vibrate: [200, 100, 200],

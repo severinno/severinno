@@ -45,6 +45,8 @@ async function confirmBookingPayment(
   paymentData: {
     lytexId: string
     lytexStatus: string
+    /** Valor pago em centavos reportado pelo webhook */
+    paidAmountCents?: number
     qrCode?: string
     qrCodeImage?: string
     cardLastDigits?: string
@@ -71,6 +73,25 @@ async function confirmBookingPayment(
   if (!booking || !booking.payment) {
     lytexLogger.warn({ bookingId }, "Webhook: booking ou payment não encontrado ")
     return
+  }
+
+  // ── Validação de valor pago (anti-fraude) ──────────────────────────────
+  // Se o webhook informa um valor pago, ele DEVE ser >= ao valor esperado
+  // do booking. Impede que um atacante adultere o link de pagamento para
+  // R$0.01 e o sistema confirme como pagamento integral.
+  if (paymentData.paidAmountCents != null) {
+    const expectedCents = Math.round(toMoneyNumber(booking.amount) * 100)
+    if (paymentData.paidAmountCents < expectedCents) {
+      lytexLogger.warn(
+        {
+          bookingId,
+          paidCents: paymentData.paidAmountCents,
+          expectedCents,
+        },
+        "Webhook: valor pago INFERIOR ao esperado — pagamento REJEITADO (possível fraude)",
+      )
+      return
+    }
   }
 
   // Se já está pago, só atualiza metadados (não duplica confirmação)
@@ -186,7 +207,16 @@ export async function POST(request: Request) {
     // Rate limit para webhooks de pagamento (20/min — vem de IP fixo do Lytex)
     await assertRateLimit(request, RATE_LIMITS.webhookLytex)
 
-    const body = (await request.json()) as LytexWebhookPayload
+    // ── Ler body BRUTO para validação HMAC e depois parsear ─────────────
+    // O HMAC deve ser calculado sobre o payload intacto (bytes originais),
+    // não sobre JSON re-serializado (que pode reordenar chaves).
+    const rawBody = await request.text()
+    let body: LytexWebhookPayload
+    try {
+      body = JSON.parse(rawBody) as LytexWebhookPayload
+    } catch {
+      return NextResponse.json({ error: "JSON inválido" }, { status: 400 })
+    }
 
     lytexLogger.info(
       { status: body.status, externalRef: body.externalReference },
@@ -195,21 +225,25 @@ export async function POST(request: Request) {
 
     // Validar assinatura (header x-lytex-signature ou campo payload.signature)
     const headerSig = request.headers.get("x-lytex-signature") || request.headers.get("x-signature")
-    const isValid = verifyWebhookSignature(body, headerSig)
+    const isValid = verifyWebhookSignature(body, headerSig, rawBody)
     if (!isValid) {
       lytexLogger.warn({}, "Webhook: assinatura inválida")
       return NextResponse.json({ error: "Assinatura inválida" }, { status: 401 })
     }
 
     // Proteção contra replay de timestamps expirados (> 10min)
+    // O timestamp é OBRIGATÓRIO — sem ele, rejeitar para fechar bypass
+    // por omissão de header (ataque de downgrade).
     const requestTimestamp =
       request.headers.get("x-lytex-timestamp") || (body as { timestamp?: string }).timestamp
-    if (requestTimestamp) {
-      const ts = new Date(requestTimestamp).getTime()
-      if (!isNaN(ts) && Math.abs(Date.now() - ts) > 10 * 60 * 1000) {
-        lytexLogger.warn({ requestTimestamp }, "Webhook: timestamp expirado (> 10min)")
-        return NextResponse.json({ error: "Timestamp expirado" }, { status: 401 })
-      }
+    if (!requestTimestamp) {
+      lytexLogger.warn({}, "Webhook: timestamp ausente — rejeitado (anti-downgrade)")
+      return NextResponse.json({ error: "Timestamp obrigatório" }, { status: 401 })
+    }
+    const ts = new Date(requestTimestamp).getTime()
+    if (!isNaN(ts) && Math.abs(Date.now() - ts) > 10 * 60 * 1000) {
+      lytexLogger.warn({ requestTimestamp }, "Webhook: timestamp expirado (> 10min)")
+      return NextResponse.json({ error: "Timestamp expirado" }, { status: 401 })
     }
 
     // Extrair booking ID do externalReference (formato: "booking:{bookingId}")
@@ -264,6 +298,7 @@ export async function POST(request: Request) {
         await confirmBookingPayment(bookingId, {
           lytexId: body.id,
           lytexStatus: body.status,
+          paidAmountCents: body.paidAmount,
           qrCode: body.qrCode,
           qrCodeImage: body.qrCodeImage,
           cardLastDigits: body.cardLastDigits,

@@ -108,6 +108,12 @@ armIdempotencyFresh()
 // Save original value to restore after all tests (prevents env leak to other test files)
 const _origWebhookSecret = process.env.PAYMENT_WEBHOOK_SECRET
 
+/** Headers mínimos que toda request precisa (assinatura + timestamp anti-replay). */
+const webhookHeaders = () => ({
+  "x-signature": "any-signature",
+  "x-lytex-timestamp": new Date().toISOString(),
+})
+
 describe("POST /api/webhooks/lytex", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -159,7 +165,7 @@ describe("POST /api/webhooks/lytex", () => {
     const req = createMockRequest({
       method: "POST",
       body: chargePaidPayload,
-      headers: { "x-signature": "any-signature" },
+      headers: webhookHeaders(),
     })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
@@ -195,6 +201,7 @@ describe("POST /api/webhooks/lytex", () => {
     const req = createMockRequest({
       method: "POST",
       body: payload,
+      headers: webhookHeaders(),
     })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
@@ -226,7 +233,7 @@ describe("POST /api/webhooks/lytex", () => {
       paymentMethod: "PIX",
     }
 
-    const req = createMockRequest({ method: "POST", body: payload })
+    const req = createMockRequest({ method: "POST", body: payload, headers: webhookHeaders() })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
 
@@ -250,6 +257,7 @@ describe("POST /api/webhooks/lytex", () => {
     const req = createMockRequest({
       method: "POST",
       body: payload,
+      headers: webhookHeaders(),
     })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
@@ -272,6 +280,7 @@ describe("POST /api/webhooks/lytex", () => {
     const req = createMockRequest({
       method: "POST",
       body: payload,
+      headers: webhookHeaders(),
     })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
@@ -283,18 +292,23 @@ describe("POST /api/webhooks/lytex", () => {
   it("returns 401 when timestamp is expired (anti-replay guard)", async () => {
     vi.mocked(verifyWebhookSignature).mockReturnValue(true)
 
+    const expiredTimestamp = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+
     const payload = {
       id: "ch-1",
       transactionId: "tx-1",
       externalReference: "booking:book-1",
       status: "paid" as const,
       paymentMethod: "PIX",
-      timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(), // 15min atrás
     }
 
     const req = createMockRequest({
       method: "POST",
       body: payload,
+      headers: {
+        "x-signature": "any-signature",
+        "x-lytex-timestamp": expiredTimestamp,
+      },
     })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
@@ -343,7 +357,7 @@ describe("POST /api/webhooks/lytex — idempotência (booking já paga)", () => 
       qrCodeImage: "data:image/png;base64,new",
     }
 
-    const req = createMockRequest({ method: "POST", body: payload })
+    const req = createMockRequest({ method: "POST", body: payload, headers: webhookHeaders() })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
 
@@ -380,7 +394,7 @@ describe("POST /api/webhooks/lytex — idempotência (booking já paga)", () => 
       paymentMethod: "PIX",
     }
 
-    const req = createMockRequest({ method: "POST", body: payload })
+    const req = createMockRequest({ method: "POST", body: payload, headers: webhookHeaders() })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
 
@@ -434,7 +448,7 @@ describe("POST /api/webhooks/lytex — pagamento com cartão", () => {
       installments: 3,
     }
 
-    const req = createMockRequest({ method: "POST", body: payload })
+    const req = createMockRequest({ method: "POST", body: payload, headers: webhookHeaders() })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
 
@@ -477,7 +491,7 @@ describe("POST /api/webhooks/lytex — status não-pagos (log only)", () => {
       paymentMethod: "PIX",
     }
 
-    const req = createMockRequest({ method: "POST", body: payload })
+    const req = createMockRequest({ method: "POST", body: payload, headers: webhookHeaders() })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
 
@@ -499,7 +513,7 @@ describe("POST /api/webhooks/lytex — status não-pagos (log only)", () => {
       paymentMethod: "CARD",
     }
 
-    const req = createMockRequest({ method: "POST", body: payload })
+    const req = createMockRequest({ method: "POST", body: payload, headers: webhookHeaders() })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
 
@@ -518,7 +532,7 @@ describe("POST /api/webhooks/lytex — status não-pagos (log only)", () => {
       paymentMethod: "BOLETO",
     }
 
-    const req = createMockRequest({ method: "POST", body: payload })
+    const req = createMockRequest({ method: "POST", body: payload, headers: webhookHeaders() })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
 
@@ -558,7 +572,7 @@ describe("POST /api/webhooks/lytex — edge cases", () => {
       paymentMethod: "PIX",
     }
 
-    const req = createMockRequest({ method: "POST", body: payload })
+    const req = createMockRequest({ method: "POST", body: payload, headers: webhookHeaders() })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
 
@@ -588,7 +602,7 @@ describe("POST /api/webhooks/lytex — edge cases", () => {
       paymentMethod: "PIX",
     }
 
-    const req = createMockRequest({ method: "POST", body: payload })
+    const req = createMockRequest({ method: "POST", body: payload, headers: webhookHeaders() })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
 
@@ -598,22 +612,24 @@ describe("POST /api/webhooks/lytex — edge cases", () => {
     expect(db.$transaction).not.toHaveBeenCalled()
   })
 
-  it("JSON inválido no body retorna 200 (catch block)", async () => {
+  it("JSON inválido no body retorna 400", async () => {
     const _req = createMockRequest({ method: "POST" })
     // Override body to invalid JSON by accessing Request internals
     // createMockRequest with no body creates an empty GET — use explicit invalid body
     const badReq = new Request("http://localhost:3000/api/webhooks/lytex", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "x-lytex-timestamp": new Date().toISOString(),
+      },
       body: "not-json-}",
     })
 
     const res = await webhookHandler(badReq)
     const parsed = await parseResponse(res)
 
-    expect(parsed.status).toBe(200)
-    // catch block logs error and returns { received: true }
-    expect((parsed.body as any).received).toBe(true)
+    expect(parsed.status).toBe(400)
+    expect((parsed.body as any).error).toBe("JSON inválido")
     // No DB operations should be attempted
     expect(db.booking.findUnique).not.toHaveBeenCalled()
   })
@@ -651,7 +667,7 @@ describe("POST /api/webhooks/lytex — idempotência em banco (reenvios)", () =>
   })
 
   it("chave deriva de evento (cobrança+status) no escopo webhook:lytex", async () => {
-    const req = createMockRequest({ method: "POST", body: PAID })
+    const req = createMockRequest({ method: "POST", body: PAID, headers: webhookHeaders() })
     await webhookHandler(req)
 
     expect(acquireIdempotency).toHaveBeenCalledWith(
@@ -664,7 +680,7 @@ describe("POST /api/webhooks/lytex — idempotência em banco (reenvios)", () =>
   it("replay: evento reenviado devolve deduplicated e NÃO reprocessa", async () => {
     acquireIdempotency.mockResolvedValueOnce({ kind: "replay", response: { received: true } })
 
-    const req = createMockRequest({ method: "POST", body: PAID })
+    const req = createMockRequest({ method: "POST", body: PAID, headers: webhookHeaders() })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
 
@@ -677,7 +693,7 @@ describe("POST /api/webhooks/lytex — idempotência em banco (reenvios)", () =>
   it("in_flight: reenvio simultâneo devolve 200 sem processar (o vencedor processa)", async () => {
     acquireIdempotency.mockResolvedValueOnce({ kind: "in_flight" })
 
-    const req = createMockRequest({ method: "POST", body: PAID })
+    const req = createMockRequest({ method: "POST", body: PAID, headers: webhookHeaders() })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
 
@@ -693,11 +709,15 @@ describe("POST /api/webhooks/lytex — idempotência em banco (reenvios)", () =>
       lytexId: "lytex-charge-x",
     })
 
-    const paidReq = createMockRequest({ method: "POST", body: PAID })
+    const paidReq = createMockRequest({ method: "POST", body: PAID, headers: webhookHeaders() })
     await webhookHandler(paidReq)
 
     const refunded = { ...PAID, status: "refunded" as const }
-    const refundedReq = createMockRequest({ method: "POST", body: refunded })
+    const refundedReq = createMockRequest({
+      method: "POST",
+      body: refunded,
+      headers: webhookHeaders(),
+    })
     await webhookHandler(refundedReq)
 
     // Duas chaves distintas → dois acquires fresh
@@ -711,7 +731,7 @@ describe("POST /api/webhooks/lytex — idempotência em banco (reenvios)", () =>
   })
 
   it("sucesso grava replay (complete) para o próximo reenvio", async () => {
-    const req = createMockRequest({ method: "POST", body: PAID })
+    const req = createMockRequest({ method: "POST", body: PAID, headers: webhookHeaders() })
     await webhookHandler(req)
 
     expect(completeIdempotency).toHaveBeenCalledWith("srv:webhook:lytex:lytex-charge-x:paid", {
@@ -722,7 +742,7 @@ describe("POST /api/webhooks/lytex — idempotência em banco (reenvios)", () =>
   it("falha no processamento marca a chave como failed (não reprocessa às cegas)", async () => {
     db.booking.findUnique = vi.fn().mockRejectedValue(new Error("db down"))
 
-    const req = createMockRequest({ method: "POST", body: PAID })
+    const req = createMockRequest({ method: "POST", body: PAID, headers: webhookHeaders() })
     const res = await webhookHandler(req)
     const parsed = await parseResponse(res)
 
@@ -735,7 +755,7 @@ describe("POST /api/webhooks/lytex — idempotência em banco (reenvios)", () =>
   it("erro ANTES de reservar a chave (assinatura inválida) NÃO toca a lib", async () => {
     vi.mocked(verifyWebhookSignature).mockReturnValueOnce(false)
 
-    const req = createMockRequest({ method: "POST", body: PAID })
+    const req = createMockRequest({ method: "POST", body: PAID, headers: webhookHeaders() })
     await webhookHandler(req)
 
     expect(acquireIdempotency).not.toHaveBeenCalled()
