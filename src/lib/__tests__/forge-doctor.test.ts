@@ -8097,3 +8097,173 @@ describe("readJobMigrationQueue — a fila de migração do caminho da forja, co
     expect(["por medição", "aberta com corpo"]).toContain(fechado)
   })
 })
+
+// ── bootstrap-admin --rotate: a rotação do hash do admin, fail-closed ──────
+//
+// O `bootstrap-admin.mjs` é o ÚNICO caminho que escreve o hash do primeiro
+// ADMIN em produção (deploy.sh o chama após o migrate), e a rotação de
+// credencial comprometida passa POR ELE (`--rotate`). O que precisa ser
+// provado (o script pode "parecer" rotacionar e mentir):
+//   1. o hash EXISTENTE é REESCRITO com UMA hash em "saltHex:hashHex" (mesmo
+//      formato de src/lib/crypto.ts) — rotação que não muda o dado é log só;
+//   2. a rotação é FAIL-CLOSED sobre o usuário: inexistente ou não-ADMIN
+//      recusam com exit 1 e NENHUMA escrita (rotacionar sobre quem não é o
+//      dono inventaria verde sobre secret errado);
+//   3. os e-mails demo seguem recusados TAMBÉM no rotate (a troca de hash no
+//      admin@severinno.com seria a porta dos fundos do gate demo);
+//   4. o log NUNCA informa a senha nem o hash (novo nem velho) — o secreto
+//      vive no secret file, não no stdout/stderr que o deploy ecoa.
+//
+// Sem banco e sem rede: o `@prisma/client` é dublado num node_modules de
+// tmpdir (createRequire do script resolve a partir da RAIZ dele), com ESTADO
+// semeado por env e DESPEJADO ao fim num marcador no stderr — o teste lê o
+// mesmo processo, sem rede nem variável compartilhada.
+
+describe("bootstrap-admin --rotate — o hash do admin reescrito, fail-closed", () => {
+  const SENHA = "SenhaSegura123"
+  const EMAIL = "op@severinno.com.br"
+
+  type Estado = {
+    map: Record<string, { role?: string; passwordHash?: string; email: string; name?: string }>
+    calls: string[]
+  }
+
+  /**
+   * A bancada: tmpdir com `scripts/bootstrap-admin.mjs` (o REAL, copiado) e
+   * `node_modules/@prisma/client` dublado (o createRequire do script resolve
+   * a partir da raiz dele). O USUÁRIO SEMEADO entra por env (BA_USERS = JSON
+   * `email -> role|undefined`); o ESTADO sai ao fim num marcador no stderr
+   * (process.on("exit") no dublê) — canal do processo, sem estado compartilhado.
+   */
+  function bancada(): string {
+    const dir = makeDir()
+    mkdirSync(join(dir, "scripts"), { recursive: true })
+    const stubDir = join(dir, "node_modules", "@prisma", "client")
+    mkdirSync(stubDir, { recursive: true })
+    writeFileSync(
+      join(dir, "scripts", "bootstrap-admin.mjs"),
+      readFileSync(join(ROOT, "scripts", "bootstrap-admin.mjs"), "utf8"),
+    )
+    writeFileSync(
+      join(stubDir, "package.json"),
+      JSON.stringify({ name: "@prisma/client", version: "0.0.0-duble", main: "index.js" }),
+    )
+    writeFileSync(
+      join(stubDir, "index.js"),
+      [
+        "const state = { map: {}, calls: [] }",
+        "// O SEMEIO: BA_USERS é JSON `email -> role|undefined` (o banco pré-existente).",
+        'const sementes = JSON.parse(process.env.BA_USERS ?? "{}")',
+        "for (const [email, role] of Object.entries(sementes)) {",
+        "  state.map[email] = { email, ...(role ? { role } : {}) }",
+        "}",
+        "class FakeUserDelegate {",
+        "  async findUnique({ where }) { return state.map[where.email] ?? null }",
+        "  async update({ where, data }) {",
+        "    const u = state.map[where.email]",
+        "    if (!u) return null",
+        "    Object.assign(u, data)",
+        '    state.calls.push(`update:${where.email}:${data.role ?? ""}:${data.passwordHash ? "HASH" : "NO_HASH"}`)',
+        "    return { ...u }",
+        "  }",
+        "  async create({ data }) {",
+        "    state.map[data.email] = { ...data }",
+        '    state.calls.push(`create:${data.email}:${data.role}:${data.passwordHash ? "HASH" : "NO_HASH"}`)',
+        "    return { ...data }",
+        "  }",
+        "}",
+        "function PrismaClient() { this.user = new FakeUserDelegate() }",
+        "PrismaClient.prototype.$disconnect = () => {}",
+        "module.exports = { PrismaClient }",
+        'process.on("exit", () => {',
+        '  require("node:fs").writeSync(2, `#ESTADO#${JSON.stringify(state)}#FIM#\\n`)',
+        "})",
+      ].join("\n"),
+    )
+    return dir
+  }
+
+  const run = (
+    dir: string,
+    opts: { email?: string; args?: string[]; usuarios?: Record<string, string | undefined> } = {},
+  ) =>
+    spawnSync(
+      process.execPath,
+      [join(dir, "scripts", "bootstrap-admin.mjs"), ...(opts.args ?? [])],
+      {
+        cwd: dir,
+        encoding: "utf8",
+        timeout: 30_000,
+        env: {
+          ...process.env,
+          ADMIN_EMAIL: opts.email ?? EMAIL,
+          ADMIN_PASSWORD: SENHA,
+          NODE_PATH: join(dir, "node_modules"),
+          BA_USERS: JSON.stringify(opts.usuarios ?? {}),
+        },
+      },
+    )
+
+  /** O estado do dublê (a linha `#ESTADO#...#FIM#` no stderr). */
+  const estado = (res: { stdout?: string; stderr?: string }): Estado => {
+    const linha = `${res.stdout ?? ""}${res.stderr ?? ""}`.match(/#ESTADO#(.+)#FIM#/) ?? null
+    expect(linha, "o dublê não despejou o estado — a bancada está quebrada").not.toBeNull()
+    return JSON.parse(linha![1]) as Estado
+  }
+
+  /** O canal HUMANO do script (sem a linha de dump, que é do teste). */
+  const canal = (res: { stdout?: string; stderr?: string }): string =>
+    `${res.stdout ?? ""}\n${res.stderr ?? ""}`
+      .split("\n")
+      .filter((l) => !l.includes("#ESTADO#"))
+      .join("\n")
+
+  it("--rotate reescreve o hash do ADMIN existente com UM hash novo, e o log NÃO mostra senha nem hash", () => {
+    const dir = bancada()
+    const res = run(dir, { args: ["--rotate"], usuarios: { [EMAIL]: "ADMIN" } })
+    expect(res.status).toBe(0)
+    const est = estado(res)
+    expect(est.calls).toEqual([`update:${EMAIL}::HASH`])
+    // O hash NOVO mudou (rotação que não muda o dado é log vazio).
+    expect(est.map[EMAIL].passwordHash).toMatch(/^[0-9a-f]{32}:[0-9a-f]{128}$/)
+    // O log humano não carrega o dado secreto: nem a senha nem hex longo nem
+    // nada parecido com hash ("saltHex:hashHex").
+    const saida = canal(res)
+    expect(saida).toContain("ROTACIONADO")
+    expect(saida).not.toContain(SENHA)
+    expect(saida).not.toMatch(/[0-9a-f]{32,}/)
+  })
+
+  it("--rotate sobre usuário INEXISTENTE → exit 1 SEM escrita (rotação não cria usuário)", () => {
+    const dir = bancada()
+    const res = run(dir, { args: ["--rotate"] })
+    expect(res.status).toBe(1)
+    expect(res.stderr).toContain("NÃO existe")
+    expect(res.stderr).toContain("--rotate")
+    expect(estado(res).calls).toEqual([])
+  })
+
+  it("--rotate sobre usuário que NÃO é ADMIN → exit 1 SEM escrita (rotação não cria dono)", () => {
+    const dir = bancada()
+    const res = run(dir, { args: ["--rotate"], usuarios: { [EMAIL]: "CLIENT" } })
+    expect(res.status).toBe(1)
+    expect(res.stderr).toContain("não como ADMIN")
+    expect(estado(res).calls).toEqual([])
+  })
+
+  it("--rotate com e-mail do GATE DEMO → exit 1 SEM escrita (a porta dos fundos do demo não abre pela rotação)", () => {
+    const dir = bancada()
+    const res = run(dir, { email: "admin@severinno.com", args: ["--rotate"] })
+    expect(res.status).toBe(1)
+    expect(res.stderr).toContain("gate demo")
+  })
+
+  it("sem --rotate o bootstrap de sempre é PRESERVADO: admin existente sai idempotente SEM tocar o hash", () => {
+    const dir = bancada()
+    const res = run(dir, { usuarios: { [EMAIL]: "ADMIN" } })
+    expect(res.status).toBe(0)
+    expect(canal(res)).toContain("nada a fazer")
+    // Nenhuma chamada: o caminho antigo não reescreve hash de admin existente.
+    expect(estado(res).calls).toEqual([])
+  })
+})

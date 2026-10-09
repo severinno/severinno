@@ -15,7 +15,8 @@
  *     -v "$PWD/secrets/admin_password.secret:/run/secrets/admin_password:ro" \
  *     -e ADMIN_EMAIL_FILE=/run/secrets/admin_email \
  *     -e ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
- *     app node /app/scripts/bootstrap-admin.mjs
+ *     app node /app/scripts/bootstrap-admin.mjs                    # bootstrap
+ *     app node /app/scripts/bootstrap-admin.mjs --rotate           # rotação
  *
  * Fontes de credencial (precedência): ADMIN_EMAIL / ADMIN_PASSWORD (env
  * direta) → ADMIN_EMAIL_FILE / ADMIN_PASSWORD_FILE (Docker secrets).
@@ -24,13 +25,24 @@
  * salt 16B, chave 64B — formato "saltHex:hashHex"). Script puro Node para
  * rodar na imagem standalone (node:22-alpine, sem bun nem devDeps).
  *
+ * ROTATE (`--rotate`): atualiza o hash do admin EXISTENTE com a senha do
+ * secret — o caminho de rotação de credencial comprometida. Fail-closed em
+ * TUDO: o admin precisa EXISTIR e ser ADMIN (rotar sobre usuário inexistente
+ * ou não-admin esconderia um secret trocado por uma saída verde), o e-mail
+ * demo continua recusado, a senha continua validada, e o log NUNCA exibe a
+ * senha nem o hash (novo nem velho). Sem `--rotate` o script é o bootstrap de
+ * sempre — a flag só muda o efeito sobre o admin EXISTENTE: em vez de "já é
+ * ADMIN — nada a fazer", o hash é REESCRITO (a senha do secret passa a valer).
+ *
  * Usage:
- *   node scripts/bootstrap-admin.mjs   (na VPS: via docker compose run — ver
- *   "Uso manual" acima, com os secrets montados)
+ *   node scripts/bootstrap-admin.mjs            (na VPS: via docker compose run —
+ *   node scripts/bootstrap-admin.mjs --rotate    ver "Uso manual" acima, com os
+ *                                                secrets montados)
  *
  * Exit codes:
- *   0 — admin criado/promovido (ou já existente — idempotente)
- *   1 — credencial ausente/inválida ou falha no bootstrap
+ *   0 — bootstrap ok (criado/promovido/idempotente) ou hash rotacionado
+ *   1 — credencial ausente/inválida, e-mail demo, admin não existe (rotate),
+ *       admin não é ADMIN (rotate) ou falha no bootstrap
  */
 
 import { randomBytes, scryptSync } from "node:crypto"
@@ -49,6 +61,8 @@ const DEMO_EMAILS_REFUSED = new Set([
 ])
 
 const MIN_PASSWORD_LEN = 12
+
+const ROTATE_FLAG = "--rotate"
 
 function fail(message) {
   console.error(`❌ bootstrap-admin: ${message}`)
@@ -86,6 +100,15 @@ function validatePassword(password) {
   }
 }
 
+// A FLAG: um argumento que não é `--rotate` é uso inválido (fail-closed: o
+// deploy chama este script sem argumentos — um argumento a mais é um erro de
+// operação, nunca um modo silenciosamente ignorado).
+const args = process.argv.slice(2)
+const extra = args.filter((a) => a !== ROTATE_FLAG)
+if (extra.length > 0)
+  fail(`argumento desconhecido: ${extra.join(" ")} (uso: node bootstrap-admin.mjs [--rotate])`)
+const ROTATE = args.includes(ROTATE_FLAG)
+
 const email = readSource("ADMIN_EMAIL", "ADMIN_EMAIL_FILE").toLowerCase()
 const password = readSource("ADMIN_PASSWORD", "ADMIN_PASSWORD_FILE")
 
@@ -105,6 +128,18 @@ const prisma = new PrismaClient()
 async function main() {
   const existing = await prisma.user.findUnique({ where: { email } })
   if (existing) {
+    if (ROTATE) {
+      if (existing.role !== "ADMIN") {
+        fail(
+          `--rotate: ${email} existe como ${existing.role}, não como ADMIN — rotação recusada (bootstrap que o PROMOVE, rotação não cria dono)`,
+        )
+      }
+      await prisma.user.update({ where: { email }, data: { passwordHash: hashPassword(password) } })
+      console.log(
+        `✅ ${email} — hash do ADMIN ROTACIONADO com a senha do secret (a senha em si nunca sai no log; a antiga deixa de valer).`,
+      )
+      return
+    }
     if (existing.role === "ADMIN") {
       console.log(`✅ ${email} já é ADMIN — nada a fazer (idempotente).`)
       return
@@ -114,6 +149,11 @@ async function main() {
       `⚠️  ${email} existia como ${existing.role} — promovido a ADMIN (senha preservada).`,
     )
     return
+  }
+  if (ROTATE) {
+    fail(
+      `--rotate: ${email} NÃO existe — rotação não cria usuário (use o bootstrap sem a flag, que cria o admin pelo secret)`,
+    )
   }
   await prisma.user.create({
     data: { email, name, passwordHash: hashPassword(password), role: "ADMIN" },
