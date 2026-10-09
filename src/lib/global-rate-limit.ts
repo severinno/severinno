@@ -51,6 +51,7 @@ export type GlobalRateLimitResult = {
   remaining: number
   reset: number
   limit: number
+  burstAnomaly?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -268,6 +269,11 @@ export async function checkGlobalRateLimit(
       return upstashResult
     }
     // Upstash failed (or not configured) — fall through to in-memory
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn(
+        `[RATE_LIMIT_DEGRADED] Upstash Redis call failed; degrading to in-memory fallback for route: ${route}`,
+      )
+    }
   }
 
   // ── In-memory fallback (process-local) ───────────────────────────────
@@ -282,7 +288,11 @@ export async function checkGlobalRateLimit(
   // Remove entries outside the window
   entry.timestamps = entry.timestamps.filter((t) => t > windowStart)
   const count = entry.timestamps.length
-  const allowed = count < config.max
+
+  // Anti-burst anomaly detection: >35 requests in 2 seconds from the same fingerprint
+  const recentBurstCount = entry.timestamps.filter((t) => t > now - 2000).length
+  const burstAnomaly = recentBurstCount >= 35
+  const allowed = count < config.max && !burstAnomaly
 
   // Only record the request if under the limit
   if (allowed) {
@@ -297,6 +307,7 @@ export async function checkGlobalRateLimit(
     remaining: Math.max(0, config.max - count - (allowed ? 1 : 0)),
     reset,
     limit: config.max,
+    burstAnomaly,
   }
 }
 
@@ -330,12 +341,16 @@ function extractRoutePrefix(url: string): string {
 // ---------------------------------------------------------------------------
 
 export function globalRateLimitHeaders(result: GlobalRateLimitResult): Record<string, string> {
-  return {
+  const headers: Record<string, string> = {
     "X-Global-RateLimit-Limit": String(result.limit),
     "X-Global-RateLimit-Remaining": String(result.remaining),
     "X-Global-RateLimit-Reset": String(Math.ceil(result.reset / 1000)),
     "Retry-After": String(Math.ceil((result.reset - Date.now()) / 1000)),
   }
+  if (result.burstAnomaly) {
+    headers["X-RateLimit-Warning"] = "burst-detected"
+  }
+  return headers
 }
 
 // ---------------------------------------------------------------------------

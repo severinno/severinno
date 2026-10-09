@@ -279,6 +279,29 @@ describe("POST /api/webhooks/lytex", () => {
     expect(parsed.status).toBe(401)
     expect((parsed.body as any).error).toBe("Assinatura inválida")
   })
+
+  it("returns 401 when timestamp is expired (anti-replay guard)", async () => {
+    vi.mocked(verifyWebhookSignature).mockReturnValue(true)
+
+    const payload = {
+      id: "ch-1",
+      transactionId: "tx-1",
+      externalReference: "booking:book-1",
+      status: "paid" as const,
+      paymentMethod: "PIX",
+      timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(), // 15min atrás
+    }
+
+    const req = createMockRequest({
+      method: "POST",
+      body: payload,
+    })
+    const res = await webhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(401)
+    expect((parsed.body as any).error).toBe("Timestamp expirado")
+  })
 })
 
 // ── Idempotency — booking already PAID ──────────────────────────────────────

@@ -8,6 +8,7 @@
     "bun": ">=1.0.0"
   },
   "scripts": {
+    "cli": "node scripts/cli.mjs",
     "postinstall": "node scripts/sync-maplibre-worker.mjs",
     "check:maplibre-worker": "node scripts/sync-maplibre-worker.mjs --check",
     "dev": "next dev -p 3000",

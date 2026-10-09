@@ -170,3 +170,57 @@ describe("sendTrackingPosition", () => {
     })
   })
 })
+
+describe("sendMessageDelivered e sendMessageRead", () => {
+  it("chama emitRealtime com evento message:delivered", async () => {
+    vi.stubEnv("REALTIME_EMIT_API_KEY", "k")
+    const mockFetch = vi.mocked(fetch)
+    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }))
+
+    const { sendMessageDelivered } = await import("@/lib/realtime-client")
+
+    await sendMessageDelivered({
+      messageId: "m-123",
+      toId: "u-2",
+      fromId: "u-1",
+      bookingId: "b-1",
+    })
+
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    const body = JSON.parse(mockFetch.mock.calls[0]![1]!.body as string)
+    expect(body).toEqual({
+      event: "message:delivered",
+      data: {
+        messageId: "m-123",
+        toId: "u-2",
+        fromId: "u-1",
+        bookingId: "b-1",
+      },
+    })
+  })
+
+  it("chama emitRealtime com evento message:read", async () => {
+    vi.stubEnv("REALTIME_EMIT_API_KEY", "k")
+    const mockFetch = vi.mocked(fetch)
+    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }))
+
+    const { sendMessageRead } = await import("@/lib/realtime-client")
+
+    await sendMessageRead({
+      messageId: "m-123",
+      readerId: "u-2",
+      fromId: "u-1",
+    })
+
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    const body = JSON.parse(mockFetch.mock.calls[0]![1]!.body as string)
+    expect(body).toEqual({
+      event: "message:read",
+      data: {
+        messageId: "m-123",
+        readerId: "u-2",
+        fromId: "u-1",
+      },
+    })
+  })
+})

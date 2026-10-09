@@ -197,6 +197,38 @@
         "tags": [
           "Categories"
         ]
+      },
+      "put": {
+        "summary": "Replace",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Categories"
+        ]
+      },
+      "delete": {
+        "summary": "Delete",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Categories"
+        ]
       }
     },
     "/api/bookings": {
@@ -415,9 +447,45 @@
         ]
       }
     },
+    "/api/web-vitals": {
+      "post": {
+        "summary": "POST /api/web-vitals",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Web-vitals"
+        ]
+      }
+    },
     "/api/provider/lytex": {
       "get": {
         "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/provider/reports": {
+      "get": {
+        "summary": "Provider Exportable Reports API",
         "responses": {
           "200": {
             "description": "Success"
@@ -803,6 +871,53 @@
         ]
       }
     },
+    "/api/auth/activity": {
+      "get": {
+        "summary": "Audit Log / User Activity API",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/identity": {
+      "get": {
+        "summary": "Identity Verification API — POST: upload docs + auto-OCR, GET: check status",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      },
+      "post": {
+        "summary": "Identity Verification API — POST: upload docs + auto-OCR, GET: check status",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
     "/api/auth/forgot-password": {
       "post": {
         "summary": "Create",
@@ -849,9 +964,137 @@
         ]
       }
     },
+    "/api/auth/2fa/status": {
+      "get": {
+        "summary": "GET /api/auth/2fa/status",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/2fa/backup-codes": {
+      "post": {
+        "summary": "POST /api/auth/2fa/backup-codes",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/2fa/verify": {
+      "post": {
+        "summary": "POST /api/auth/2fa/verify",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/2fa/setup": {
+      "post": {
+        "summary": "POST /api/auth/2fa/setup",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/2fa/disable": {
+      "post": {
+        "summary": "POST /api/auth/2fa/disable",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/2fa/enable": {
+      "post": {
+        "summary": "POST /api/auth/2fa/enable",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
     "/api/favorites": {
       "get": {
-        "summary": "Retrieve",
+        "summary": "⚠️ NUNCA troque o `select` por `include`: descreve TERCEIROS para o cliente",
         "responses": {
           "200": {
             "description": "Success"
@@ -872,6 +1115,40 @@
         },
         "tags": [
           "Monitor"
+        ]
+      }
+    },
+    "/api/graphql": {
+      "get": {
+        "summary": "GraphQL API Route — serves the GraphQL schema via Yoga",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Graphql"
+        ]
+      },
+      "post": {
+        "summary": "GraphQL API Route — serves the GraphQL schema via Yoga",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Graphql"
         ]
       }
     },
@@ -911,9 +1188,100 @@
         ]
       }
     },
+    "/api/tracking/{id}/stream": {
+      "get": {
+        "summary": "GET /api/tracking/[id]/stream — SSE streaming for real-time tracking.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Tracking"
+        ]
+      },
+      "post": {
+        "summary": "GET /api/tracking/[id]/stream — SSE streaming for real-time tracking.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Tracking"
+        ]
+      }
+    },
+    "/api/users/notification-preferences": {
+      "get": {
+        "summary": "Notification Preferences API",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      },
+      "put": {
+        "summary": "Notification Preferences API",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
     "/api/users/me/slug": {
       "post": {
         "summary": "POST /api/users/me/slug",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/users/me/delete-account": {
+      "post": {
+        "summary": "POST /api/users/me/delete-account — LGPD art. 18 (VI): exclusão.",
         "responses": {
           "200": {
             "description": "Success"
@@ -968,9 +1336,35 @@
         ]
       }
     },
+    "/api/users/me/data-export": {
+      "get": {
+        "summary": "GET /api/users/me/data-export — LGPD art. 18 (II): portabilidade.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/providers/density": {
+      "get": {
+        "summary": "Public density metrics for radius suggestions (aggregate only, no PII).",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Providers"
+        ]
+      }
+    },
     "/api/providers/{id}": {
       "get": {
-        "summary": "Public provider detail: profile, services, availability (ordered),",
+        "summary": "Busca do detalhe público. O `select` ABAIXO é a fonte do tipo da resposta",
         "responses": {
           "200": {
             "description": "Success"
@@ -1217,6 +1611,19 @@
         ]
       }
     },
+    "/api/health/dashboard": {
+      "get": {
+        "summary": "Consolidated Health Dashboard — single endpoint for all system health",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
     "/api/services": {
       "get": {
         "summary": "Retrieve",
@@ -1435,6 +1842,19 @@
         ]
       }
     },
+    "/api/bookings/{id}/pay/status": {
+      "get": {
+        "summary": "GET /api/bookings/[id]/pay/status",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
     "/api/bookings/{id}/pay": {
       "post": {
         "summary": "Create",
@@ -1551,6 +1971,29 @@
         ]
       }
     },
+    "/api/realtime/ticket": {
+      "post": {
+        "summary": "POST /api/realtime/ticket",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Realtime"
+        ]
+      }
+    },
     "/api/reviews/recent": {
       "get": {
         "summary": "GET /api/reviews/recent — public endpoint for the vitrine testimonials section.",
@@ -1561,6 +2004,76 @@
         },
         "tags": [
           "Reviews"
+        ]
+      }
+    },
+    "/api/reviews/{id}/reply": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Reviews"
+        ]
+      }
+    },
+    "/api/cron/identity-purge": {
+      "get": {
+        "summary": "GET /api/cron/identity-purge — o gatilho DIÁRIO do ato 2 da retenção LGPD",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Cron"
+        ]
+      }
+    },
+    "/api/cron/whatsapp-flows": {
+      "get": {
+        "summary": "Cron route for automated WhatsApp flows and adaptive notification digest flush.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Cron"
+        ]
+      },
+      "post": {
+        "summary": "Cron route for automated WhatsApp flows and adaptive notification digest flush.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Cron"
         ]
       }
     },
@@ -1631,7 +2144,7 @@
     },
     "/api/cron/settlements": {
       "get": {
-        "summary": "Cron job to auto-generate a settlement period and prune expired idempotency records.",
+        "summary": "Cron job to auto-generate a settlement period + PODA de idempotência.",
         "responses": {
           "200": {
             "description": "Success"
@@ -1655,6 +2168,19 @@
         ]
       }
     },
+    "/api/cron/svg-legacy-census": {
+      "get": {
+        "summary": "GET /api/cron/svg-legacy-census — censo SEMANAL de SVG legado no bucket.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Cron"
+        ]
+      }
+    },
     "/api/cron/geo-health-alert": {
       "get": {
         "summary": "GET /api/cron/geo-health-alert",
@@ -1668,16 +2194,16 @@
         ]
       }
     },
-    "/api/cron/svg-legacy-census": {
+    "/api/csp-report": {
       "get": {
-        "summary": "Cron semanal: censo DRY-RUN de SVG legado no bucket de uploads (alerta se svgFound > 0, até a remediação zerar a contagem).",
+        "summary": "GET /api/csp-report — painel operacional do rollout da CSP.",
         "responses": {
           "200": {
             "description": "Success"
           }
         },
         "tags": [
-          "Cron"
+          "Csp-report"
         ]
       }
     },
@@ -1824,6 +2350,29 @@
         },
         "tags": [
           "Subscriptions"
+        ]
+      }
+    },
+    "/api/rum/vitrine": {
+      "post": {
+        "summary": "POST /api/rum/vitrine",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Rum"
         ]
       }
     },
@@ -2000,6 +2549,29 @@
         ]
       }
     },
+    "/api/chat/assist": {
+      "post": {
+        "summary": "POST /api/chat/assist",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Chat"
+        ]
+      }
+    },
     "/api/admin/geo-query-log": {
       "get": {
         "summary": "GET /api/admin/geo-query-log",
@@ -2132,7 +2704,7 @@
     },
     "/api/admin/geo-metrics": {
       "get": {
-        "summary": "GET /api/admin/geo-metrics",
+        "summary": "Retrieve",
         "responses": {
           "200": {
             "description": "Success"
@@ -2156,7 +2728,33 @@
         ]
       }
     },
+    "/api/admin/geo-density": {
+      "get": {
+        "summary": "GET /api/admin/geo-density",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
     "/api/admin/financial/export-csv": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/financial": {
       "get": {
         "summary": "Retrieve",
         "responses": {
@@ -2627,9 +3225,9 @@
         ]
       }
     },
-    "/api/admin/settlements": {
+    "/api/admin/identity": {
       "get": {
-        "summary": "GET /api/admin/settlements — list all settlement periods",
+        "summary": "Admin Identity Verification Review API",
         "responses": {
           "200": {
             "description": "Success"
@@ -2640,7 +3238,64 @@
         ]
       },
       "post": {
-        "summary": "GET /api/admin/settlements — list all settlement periods",
+        "summary": "Admin Identity Verification Review API",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/identity/purge": {
+      "post": {
+        "summary": "POST /api/admin/identity/purge — o gatilho MANUAL do ato 2 da retenção",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/settlements": {
+      "get": {
+        "summary": "GET /api/admin/settlements — list all settlement periods with pagination",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "post": {
+        "summary": "GET /api/admin/settlements — list all settlement periods with pagination",
         "responses": {
           "200": {
             "description": "Success"
@@ -3012,6 +3667,19 @@
         ]
       }
     },
+    "/api/admin/analytics/demand": {
+      "get": {
+        "summary": "Admin Demand Heatmap Analytics API",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
     "/api/admin/settings": {
       "get": {
         "summary": "Retrieve",
@@ -3065,6 +3733,40 @@
         "responses": {
           "200": {
             "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/maintenance-mode": {
+      "get": {
+        "summary": "POST /api/admin/maintenance-mode — a CHAVE de ligar/desligar o marketplace.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "post": {
+        "summary": "POST /api/admin/maintenance-mode — a CHAVE de ligar/desligar o marketplace.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
           }
         },
         "tags": [
@@ -3190,6 +3892,32 @@
         ]
       }
     },
+    "/api/cities": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Cities"
+        ]
+      }
+    },
+    "/api/messages/stream": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
     "/api/geo/travel-fee": {
       "get": {
         "summary": "GET /api/geo/travel-fee?providerId=X&clientLat=Y&clientLng=Z",
@@ -3231,7 +3959,7 @@
     },
     "/api/geo/cep": {
       "get": {
-        "summary": "Retrieve",
+        "summary": "GET /api/geo/cep?cep=30130-000",
         "responses": {
           "200": {
             "description": "Success"
@@ -3244,7 +3972,7 @@
     },
     "/api/geo/reverse": {
       "get": {
-        "summary": "Retrieve",
+        "summary": "JSON error response that must NEVER be cached (house rule: errors carry",
         "responses": {
           "200": {
             "description": "Success"
@@ -3310,6 +4038,29 @@
         "responses": {
           "200": {
             "description": "Success"
+          }
+        },
+        "tags": [
+          "Geo"
+        ]
+      }
+    },
+    "/api/geo/batch": {
+      "post": {
+        "summary": "POST /api/geo/batch — Batch geocoding endpoint.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
           }
         },
         "tags": [

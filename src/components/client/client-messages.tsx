@@ -33,14 +33,15 @@ import { formatDateTime, formatRelative } from "@/lib/format"
 import { useRealtime } from "@/hooks/use-realtime"
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
+import { triggerHaptic } from "@/lib/haptics"
 
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Badge } from "@/components/ui/badge"
 import { SectionTitle } from "@/components/shared/dashboard-shell"
+import { RealtimeStatusBadge } from "@/components/shared/realtime-status-badge"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -124,42 +125,54 @@ export function ClientMessages() {
   })
 
   // ---- Realtime ----------------------------------------------------------------
-  const { on, isConnected } = useRealtime()
+  const { on, isConnected, status, confirmDelivery, markMessageRead } = useRealtime()
   React.useEffect(() => {
     if (!user?.id) return
-    const off1 = on<{ fromId: string; toId: string; content: string }>("message:new", (data) => {
-      // Invalidate the conversations list so ordering/unread update.
-      qc.invalidateQueries({ queryKey: ["messages", "conversations"] })
-      if (data?.fromId && data.fromId === selectedPeerId) {
-        // Active thread — invalidate the thread (server marks read on GET).
-        qc.invalidateQueries({
-          queryKey: ["messages", "thread", selectedPeerId],
-        })
-      } else if (data?.fromId && data.toId === user.id) {
-        // Other conversation — toast + invalidate its thread if cached.
-        toast.info("Nova mensagem recebida.", {
-          description: data.content?.slice(0, 80),
-        })
-      }
-    })
+    const off1 = on<{ id?: string; fromId: string; toId: string; content: string }>(
+      "message:new",
+      (data) => {
+        // Invalidate the conversations list so ordering/unread update.
+        qc.invalidateQueries({ queryKey: ["messages", "conversations"] })
+        if (data?.id && data.toId === user.id) {
+          confirmDelivery({ messageId: data.id, fromId: data.fromId })
+        }
+        if (data?.fromId && data.fromId === selectedPeerId) {
+          // Active thread — invalidate the thread (server marks read on GET).
+          if (data?.id) {
+            markMessageRead({ messageId: data.id, fromId: data.fromId })
+          }
+          qc.invalidateQueries({
+            queryKey: ["messages", "thread", selectedPeerId],
+          })
+        } else if (data?.fromId && data.toId === user.id) {
+          // Other conversation — toast + invalidate its thread if cached.
+          toast.info("Nova mensagem recebida.", {
+            description: data.content?.slice(0, 80),
+          })
+        }
+      },
+    )
     return () => {
       off1()
     }
-  }, [on, qc, selectedPeerId, user?.id])
+  }, [on, qc, selectedPeerId, user?.id, confirmDelivery, markMessageRead])
 
   // ---- Send message ------------------------------------------------------------
   const [draft, setDraft] = React.useState("")
   const sendMutation = useMutation({
     mutationFn: (vars: { toId: string; content: string }) => apiPost("/api/messages", vars),
     onSuccess: () => {
+      triggerHaptic("success")
       setDraft("")
       qc.invalidateQueries({
         queryKey: ["messages", "thread", selectedPeerId],
       })
       qc.invalidateQueries({ queryKey: ["messages", "conversations"] })
     },
-    onError: (e: { message?: string }) =>
-      toast.error(e?.message || "Não foi possível enviar a mensagem."),
+    onError: (e: { message?: string }) => {
+      triggerHaptic("error")
+      toast.error(e?.message || "Não foi possível enviar a mensagem.")
+    },
   })
 
   const handleSend = () => {
@@ -169,11 +182,13 @@ export function ClientMessages() {
   }
 
   const handleSelectPeer = (peerId: string) => {
+    triggerHaptic("selection")
     setSelectedPeerId(peerId)
     setMobileThreadOpen(true)
   }
 
   const handleBackToList = () => {
+    triggerHaptic("light")
     setMobileThreadOpen(false)
   }
 
@@ -190,21 +205,7 @@ export function ClientMessages() {
         <div className={cn("flex flex-col border-r", mobileThreadOpen && "hidden md:flex")}>
           <div className="flex items-center justify-between gap-2 border-b px-3 py-2.5">
             <p className="text-sm font-semibold">Conversas</p>
-            <Badge
-              variant="outline"
-              className={cn(
-                "gap-1 text-[10px]",
-                isConnected ? "text-emerald-600" : "text-muted-foreground",
-              )}
-            >
-              <span
-                className={cn(
-                  "size-1.5 rounded-full",
-                  isConnected ? "bg-emerald-500" : "bg-muted-foreground",
-                )}
-              />
-              {isConnected ? "Online" : "Reconectando"}
-            </Badge>
+            <RealtimeStatusBadge status={status} isConnected={isConnected} size="sm" />
           </div>
 
           <ScrollArea className="flex-1">

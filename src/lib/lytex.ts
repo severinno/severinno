@@ -677,8 +677,15 @@ export async function getChargeByExternalReference(
  *
  * @returns true se a assinatura é válida
  */
-export function verifyWebhookSignature(payload: LytexWebhookPayload): boolean {
+export function verifyWebhookSignature(
+  payload: LytexWebhookPayload,
+  headerSignature?: string | null,
+): boolean {
   const { clientSecret } = getConfig()
+  if (!clientSecret || !payload) return false
+
+  const rawSig = headerSignature || payload?.signature
+  if (!rawSig || typeof rawSig !== "string") return false
 
   // A assinatura esperada é HMAC-SHA256 do JSON do payload (sem o campo signature)
   // usando client_secret como chave
@@ -688,12 +695,10 @@ export function verifyWebhookSignature(payload: LytexWebhookPayload): boolean {
   // HMAC via crypto.createHmac (Node.js) — importado no topo do módulo
   const expected = createHmac("sha256", clientSecret).update(payloadStr).digest("hex")
 
-  // Timing-safe comparison
-  const a = Buffer.from(payload.signature, "hex")
-  const b = Buffer.from(expected, "hex")
-  if (a.length !== b.length) return false
-
   try {
+    const a = Buffer.from(rawSig, "hex")
+    const b = Buffer.from(expected, "hex")
+    if (a.length !== b.length || a.length === 0) return false
     return timingSafeEqual(a, b)
   } catch {
     return false

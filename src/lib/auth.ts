@@ -20,8 +20,21 @@ function getSecret(): string {
   return secret
 }
 
-function sign(payload: string): string {
-  return createHmac("sha256", getSecret()).update(payload).digest("hex")
+function getAllVerificationSecrets(): string[] {
+  const primary = getSecret()
+  const fallback = process.env.SESSION_SECRETS_FALLBACK
+  if (fallback) {
+    const list = fallback
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+    return [primary, ...list]
+  }
+  return [primary]
+}
+
+function sign(payload: string, secret = getSecret()): string {
+  return createHmac("sha256", secret).update(payload).digest("hex")
 }
 
 export type SessionPayload = {
@@ -115,11 +128,18 @@ export async function getSession(): Promise<SessionPayload | null> {
         parts.length === 5
           ? `${userId}.${role}.${expiresAtStr}.${sessionVersion}`
           : `${userId}.${role}.${expiresAtStr}`
-      const expected = sign(payload)
-
+      let isValidSignature = false
       const a = Buffer.from(signature, "hex")
-      const b = Buffer.from(expected, "hex")
-      if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      for (const candidateSecret of getAllVerificationSecrets()) {
+        const expected = sign(payload, candidateSecret)
+        const b = Buffer.from(expected, "hex")
+        if (a.length === b.length && timingSafeEqual(a, b)) {
+          isValidSignature = true
+          break
+        }
+      }
+
+      if (!isValidSignature) {
         span.setAttribute("auth.session", "invalid_signature")
         return null
       }

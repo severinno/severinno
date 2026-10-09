@@ -193,11 +193,23 @@ export async function POST(request: Request) {
       "Webhook recebido da Lytex",
     )
 
-    // Validar assinatura
-    const isValid = verifyWebhookSignature(body)
+    // Validar assinatura (header x-lytex-signature ou campo payload.signature)
+    const headerSig = request.headers.get("x-lytex-signature") || request.headers.get("x-signature")
+    const isValid = verifyWebhookSignature(body, headerSig)
     if (!isValid) {
       lytexLogger.warn({}, "Webhook: assinatura inválida")
       return NextResponse.json({ error: "Assinatura inválida" }, { status: 401 })
+    }
+
+    // Proteção contra replay de timestamps expirados (> 10min)
+    const requestTimestamp =
+      request.headers.get("x-lytex-timestamp") || (body as { timestamp?: string }).timestamp
+    if (requestTimestamp) {
+      const ts = new Date(requestTimestamp).getTime()
+      if (!isNaN(ts) && Math.abs(Date.now() - ts) > 10 * 60 * 1000) {
+        lytexLogger.warn({ requestTimestamp }, "Webhook: timestamp expirado (> 10min)")
+        return NextResponse.json({ error: "Timestamp expirado" }, { status: 401 })
+      }
     }
 
     // Extrair booking ID do externalReference (formato: "booking:{bookingId}")

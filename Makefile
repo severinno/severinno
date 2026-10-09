@@ -4,7 +4,7 @@
 # Comandos centralizados para DevOps, deploy e manutenção.
 # ============================================================================
 
-.PHONY: help infra infra-full infra-down build deploy backup backup-s3 restore \
+.PHONY: help infra infra-lite infra-full infra-down build deploy backup backup-s3 restore \
         dlq-monitor logs db-studio db-migrate db-seed test test-e2e lint clean \
         setup health workers
 
@@ -31,7 +31,8 @@ help:
 	@echo "$(CYAN)Severinno Marketplace — Comandos de Infraestrutura$(NC)"
 	@echo ""
 	@echo "$(GREEN)Infraestrutura Docker:$(NC)"
-	@echo "  make infra          Sobe PostgreSQL + Redis + MinIO"
+	@echo "  make infra-lite     Sobe PostgreSQL + Redis + RabbitMQ (modo leve)"
+	@echo "  make infra          Sobe PostgreSQL + Redis + RabbitMQ + Realtime + MinIO"
 	@echo "  make infra-full     Sobe infra + RabbitMQ + Workers"
 	@echo "  make infra-down     Derruba toda a infraestrutura"
 	@echo ""
@@ -73,6 +74,11 @@ help:
 	@echo ""
 
 # ═════════════════════════════════════════════════════════════════════════════
+infra-lite:
+	@echo "$(CYAN)[..] Subindo infraestrutura leve (postgis + redis + rabbitmq)...$(NC)"
+	docker compose $(COMPOSE_INFRA) up -d postgis redis rabbitmq
+	@echo "$(GREEN)[OK] PostgreSQL/PostGIS + Redis + RabbitMQ prontos (modo leve)$(NC)"
+
 infra:
 	@echo "$(CYAN)[..] Subindo infraestrutura (postgis + redis + rabbitmq + realtime + minio)...$(NC)"
 	docker compose $(COMPOSE_INFRA) up -d postgis redis rabbitmq realtime minio

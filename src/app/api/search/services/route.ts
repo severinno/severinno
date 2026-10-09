@@ -2,11 +2,12 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { searchServices } from "@/lib/search"
+import { searchServicesDatabase } from "@/lib/search-database-fallback"
 import { cacheControlPublic, handleError, noStoreJson } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
- * OpenSearch-powered service search.
+ * OpenSearch-powered service search with intelligent Database Fallback.
  *
  * Query params:
  *   q     — Full-text query (fuzzy, synonym-aware)
@@ -16,7 +17,7 @@ import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
  * Usage:
  *   GET /api/search/services?q=instalação+elétrica
  *
- * Falls back to empty results if OpenSearch is unavailable.
+ * Falls back to PostgreSQL Full-Text Search with synonyms if OpenSearch is unavailable.
  */
 export async function GET(request: Request) {
   await assertRateLimit(request, RATE_LIMITS.general)
@@ -30,7 +31,13 @@ export async function GET(request: Request) {
       return noStoreJson({ error: "Parâmetro 'q' é obrigatório" }, { status: 400 })
     }
 
-    const result = await searchServices(q, page, limit)
+    let result = await searchServices(q, page, limit)
+    let engine = "opensearch"
+
+    if (!result.items || result.items.length === 0) {
+      result = await searchServicesDatabase(q, page, limit)
+      engine = "database-fallback"
+    }
 
     return cacheControlPublic(
       NextResponse.json({
@@ -39,7 +46,7 @@ export async function GET(request: Request) {
         page: result.page,
         limit: result.limit,
         took: result.took,
-        engine: "opensearch",
+        engine,
       }),
       30,
     )

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { RedisGeoCache } from "@/lib/redis-geo"
+import { AlertingService } from "@/lib/alerting-service"
 
 export const dynamic = "force-dynamic"
 
@@ -96,7 +97,21 @@ export async function GET() {
     }
   }
 
-  // 4. Memory & Process Stats
+  // 4. External Integrations Readiness Check
+  const hasLytex = !!(process.env.LYTEX_CLIENT_ID && process.env.LYTEX_SECRET)
+  const hasEvolution = !!(process.env.EVOLUTION_API_KEY && process.env.EVOLUTION_INSTANCE)
+  const hasSmtp = !!(process.env.SMTP_HOST && process.env.SMTP_PASS)
+  checks.externalIntegrations = {
+    status: hasLytex && hasEvolution && hasSmtp ? "UP" : "DEGRADED",
+    latencyMs: 0,
+    details: [
+      hasLytex ? "Lytex: pronto" : "Lytex: pendente credenciais",
+      hasEvolution ? "WhatsApp: pronto" : "WhatsApp: pendente credenciais",
+      hasSmtp ? "SMTP: pronto" : "SMTP: pendente credenciais",
+    ].join(" | "),
+  }
+
+  // 5. Memory & Process Stats
   const mem = process.memoryUsage()
   const memoryStats = {
     rssMb: Math.round(mem.rss / 1024 / 1024),
@@ -106,6 +121,13 @@ export async function GET() {
 
   const overallStatus = hasFailure ? "UNHEALTHY" : hasDegradation ? "DEGRADED" : "HEALTHY"
   const totalDurationMs = Math.round(performance.now() - startTime)
+
+  if (hasFailure) {
+    void AlertingService.reportOutage(
+      "Database/Core",
+      checks.database?.details ?? "Falha crítica na infraestrutura",
+    )
+  }
 
   return NextResponse.json(
     {

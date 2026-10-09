@@ -111,3 +111,103 @@ export function useServiceWorker(): SWState {
 
   return { isRegistered, updateAvailable, error, applyUpdate }
 }
+
+/**
+ * Converts a base64 string to a Uint8Array for VAPID applicationServerKey
+ */
+export function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/")
+  const rawData = typeof window !== "undefined" ? window.atob(base64) : ""
+  const outputArray = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i)
+  }
+  return outputArray
+}
+
+export function usePushSubscription() {
+  const [isSubscribed, setIsSubscribed] = useState(false)
+  const [isSupported] = useState(() => {
+    return typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window
+  })
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!isSupported) return
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((sub) => {
+        setIsSubscribed(!!sub)
+      })
+      .catch(() => {})
+  }, [isSupported])
+
+  const subscribe = useCallback(async () => {
+    if (!isSupported) return false
+    setLoading(true)
+    try {
+      const res = await fetch("/api/push/subscribe")
+      const { publicKey } = (await res.json()) as { publicKey?: string }
+      if (!publicKey) throw new Error("VAPID public key not available")
+
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey) as unknown as BufferSource,
+      })
+
+      const rawKey = sub.getKey ? sub.getKey("p256dh") : null
+      const rawAuth = sub.getKey ? sub.getKey("auth") : null
+      const p256dh = rawKey ? btoa(String.fromCharCode(...new Uint8Array(rawKey))) : ""
+      const auth = rawAuth ? btoa(String.fromCharCode(...new Uint8Array(rawAuth))) : ""
+
+      const saveRes = await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: sub.endpoint,
+          p256dh,
+          auth,
+          userAgent: navigator.userAgent,
+        }),
+      })
+
+      if (saveRes.ok) {
+        setIsSubscribed(true)
+        return true
+      }
+      return false
+    } catch {
+      return false
+    } finally {
+      setLoading(false)
+    }
+  }, [isSupported])
+
+  const unsubscribe = useCallback(async () => {
+    if (!isSupported) return false
+    setLoading(true)
+    try {
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.getSubscription()
+      if (sub) {
+        await fetch("/api/push/subscribe", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        })
+        await sub.unsubscribe()
+        setIsSubscribed(false)
+        return true
+      }
+      return false
+    } catch {
+      return false
+    } finally {
+      setLoading(false)
+    }
+  }, [isSupported])
+
+  return { isSubscribed, isSupported, loading, subscribe, unsubscribe }
+}

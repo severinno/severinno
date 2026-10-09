@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { POST as subscribePush, DELETE as unsubscribePush } from "@/app/api/push/subscribe/route"
+import {
+  POST as subscribePush,
+  DELETE as unsubscribePush,
+  GET as getVapidKey,
+} from "@/app/api/push/subscribe/route"
 import { POST as trackPushClick } from "@/app/api/push/click/route"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
@@ -82,5 +86,19 @@ describe("POST & DELETE /api/push/subscribe and /api/push/click", () => {
 
     expect(res.status).toBe(200)
     expect(json.ok).toBe(true)
+  })
+
+  it("returns public VAPID key via GET", async () => {
+    vi.stubEnv("VAPID_PUBLIC_KEY", "test-public-key-xyz")
+
+    const req = new Request("http://localhost:3000/api/push/subscribe", {
+      method: "GET",
+    })
+
+    const res = await getVapidKey(req)
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(json.publicKey).toBe("test-public-key-xyz")
   })
 })

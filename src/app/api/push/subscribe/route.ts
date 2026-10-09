@@ -44,3 +44,8 @@ export const DELETE = withRoute("api.push.subscribe.DELETE", async (request) => 
   logger.info({ userId: session.userId }, "push subscription removed")
   return NextResponse.json({ ok: true })
 })
+
+export const GET = withRoute("api.push.subscribe.GET", async () => {
+  const publicKey = process.env.VAPID_PUBLIC_KEY || process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ""
+  return NextResponse.json({ publicKey })
+})

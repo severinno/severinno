@@ -229,6 +229,20 @@ interface TrackingPositionPayload {
   lng: number
 }
 
+interface MessageDeliveredPayload {
+  messageId: string
+  toId: string
+  fromId: string
+  bookingId?: string
+}
+
+interface MessageReadPayload {
+  messageId?: string
+  readerId: string
+  fromId: string
+  bookingId?: string
+}
+
 // ---------- Helpers ----------
 const generateId = () => randomUUID()
 const nowTimestamp = () => new Date().toISOString()
@@ -308,6 +322,34 @@ function handleNotificationNew(payload: { toId: string; notification?: unknown }
   if (!toId) return
   io.to(`user:${toId}`).emit("notification:new", notification ?? {})
   console.log(`[realtime] notification:new -> user:${toId}`)
+}
+
+function handleMessageDelivered(payload: MessageDeliveredPayload): void {
+  const { messageId, toId, fromId, bookingId } = payload || ({} as MessageDeliveredPayload)
+  if (!messageId || !fromId) return
+  const evt = {
+    messageId,
+    toId,
+    fromId,
+    bookingId: bookingId ?? null,
+    deliveredAt: nowTimestamp(),
+  }
+  io.to(`user:${fromId}`).emit("message:delivered", evt)
+  console.log(`[realtime] message:delivered ${messageId} -> user:${fromId}`)
+}
+
+function handleMessageRead(payload: MessageReadPayload): void {
+  const { messageId, readerId, fromId, bookingId } = payload || ({} as MessageReadPayload)
+  if (!fromId || !readerId) return
+  const evt = {
+    messageId: messageId ?? null,
+    readerId,
+    fromId,
+    bookingId: bookingId ?? null,
+    readAt: nowTimestamp(),
+  }
+  io.to(`user:${fromId}`).emit("message:read", evt)
+  console.log(`[realtime] message:read by ${readerId} -> user:${fromId}`)
 }
 
 // ---------- Connection handling ----------
@@ -414,6 +456,34 @@ io.on("connection", (socket: Socket) => {
     }
   })
 
+  // message:delivered { messageId, fromId, bookingId }
+  // -> emit message:delivered to user:{fromId}
+  socket.on("message:delivered", (payload: MessageDeliveredPayload) => {
+    try {
+      const userId = socket.data.userId as string | undefined
+      if (!socket.data.authenticated || !userId) {
+        return
+      }
+      handleMessageDelivered({ ...payload, toId: userId })
+    } catch (err) {
+      console.error("[realtime] message:delivered error:", err)
+    }
+  })
+
+  // message:read { messageId, fromId, bookingId }
+  // -> emit message:read to user:{fromId}
+  socket.on("message:read", (payload: MessageReadPayload) => {
+    try {
+      const userId = socket.data.userId as string | undefined
+      if (!socket.data.authenticated || !userId) {
+        return
+      }
+      handleMessageRead({ ...payload, readerId: userId })
+    } catch (err) {
+      console.error("[realtime] message:read error:", err)
+    }
+  })
+
   // ping -> ack { pong: true, t: Date.now() }
   socket.on("ping", (_data: unknown, ack?: (res: { pong: boolean; t: number }) => void) => {
     ack?.({ pong: true, t: Date.now() })
@@ -517,6 +587,12 @@ httpServer.on("request", (req, res) => {
               break
             case "message:send":
               handleMessageSend(data as MessageSendPayload)
+              break
+            case "message:delivered":
+              handleMessageDelivered(data as MessageDeliveredPayload)
+              break
+            case "message:read":
+              handleMessageRead(data as MessageReadPayload)
               break
             case "notification:new":
               handleNotificationNew(data as { toId: string; notification?: unknown })

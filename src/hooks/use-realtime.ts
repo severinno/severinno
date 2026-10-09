@@ -113,6 +113,22 @@ export interface TrackingPositionEvent {
   timestamp: string
 }
 
+export interface MessageDeliveredEvent {
+  messageId: string
+  toId: string
+  fromId: string
+  bookingId: string | null
+  deliveredAt: string
+}
+
+export interface MessageReadEvent {
+  messageId: string | null
+  readerId: string
+  fromId: string
+  bookingId: string | null
+  readAt: string
+}
+
 // ---------- Singleton socket ----------
 // Only build it in the browser. SSR returns null.
 let socketRef: Socket | null = null
@@ -175,6 +191,8 @@ export interface UseRealtimeResult {
   // helpers
   join: (payload: JoinPayload) => Promise<boolean>
   sendMessage: (payload: MessageSendPayload) => void
+  confirmDelivery: (payload: { messageId: string; fromId: string; bookingId?: string }) => void
+  markMessageRead: (payload: { messageId?: string; fromId: string; bookingId?: string }) => void
   updateBooking: (payload: BookingUpdatePayload) => void
   updateQuote: (payload: QuoteUpdatePayload) => void
   sendTrackingPosition: (payload: TrackingPositionPayload) => void
@@ -267,6 +285,20 @@ export function useRealtime(): UseRealtimeResult {
     [],
   )
 
+  const confirmDelivery = useMemo<UseRealtimeResult["confirmDelivery"]>(
+    () => (payload: { messageId: string; fromId: string; bookingId?: string }) => {
+      socketRef?.emit("message:delivered", payload)
+    },
+    [],
+  )
+
+  const markMessageRead = useMemo<UseRealtimeResult["markMessageRead"]>(
+    () => (payload: { messageId?: string; fromId: string; bookingId?: string }) => {
+      socketRef?.emit("message:read", payload)
+    },
+    [],
+  )
+
   const updateBooking = useMemo<UseRealtimeResult["updateBooking"]>(
     () => (payload: BookingUpdatePayload) => {
       socketRef?.emit("booking:update", payload)
@@ -345,6 +377,8 @@ export function useRealtime(): UseRealtimeResult {
     status,
     join,
     sendMessage,
+    confirmDelivery,
+    markMessageRead,
     updateBooking,
     updateQuote,
     sendTrackingPosition,

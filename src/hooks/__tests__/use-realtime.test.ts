@@ -37,4 +37,26 @@ describe("fetch de ticket do use-realtime", () => {
     expect(p.userId).toBeUndefined()
     expect(p.role).toBeUndefined()
   })
+
+  it("exporta tipos para recibos de entrega e leitura", async () => {
+    const mod = await import("../use-realtime")
+    expect(mod.useRealtime).toBeDefined()
+    // Type-level verification
+    const delivered: import("../use-realtime").MessageDeliveredEvent = {
+      messageId: "msg-1",
+      toId: "usr-2",
+      fromId: "usr-1",
+      bookingId: null,
+      deliveredAt: new Date().toISOString(),
+    }
+    const read: import("../use-realtime").MessageReadEvent = {
+      messageId: "msg-1",
+      readerId: "usr-2",
+      fromId: "usr-1",
+      bookingId: null,
+      readAt: new Date().toISOString(),
+    }
+    expect(delivered.messageId).toBe("msg-1")
+    expect(read.readerId).toBe("usr-2")
+  })
 })
