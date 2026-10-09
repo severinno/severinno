@@ -243,6 +243,10 @@ fecho_da_arvore() { # <detetar|restaurar>
 
   # ── O estado da árvore NÃO está limpo — a rota depende do MODO ──────────
   if [ "$modo" = "detetar" ]; then
+    # A FLAG do resíduo pré-existente: o fecho_da_rodada (o trap EXIT a alcança
+    # MESMO no `exit 2` daqui) a lê e PULA o restaurar — o resíduo aberto aqui não
+    # é da rodada, e restaurar o esconderia com o DONO trocado (critério 2).
+    RESIDUO_PREEXISTENTE=1
     echo "" >&2
     echo "  🚧 INFRA (ÁRVORE SUJA ANTES DA RODADA) — os caminhos abaixo NÃO são desta" >&2
     echo "     rodada (o master ainda não mutou nada): não serão restaurados por ela —" >&2
@@ -299,6 +303,11 @@ fecho_da_arvore() { # <detetar|restaurar>
 # O EXIT do master INTEIRO. O trap EXIT o lê; o fecho da árvore pode PISAR
 # sobre ele com o 2 da árvore suja — o estado do disco manda no que o job sai.
 VERDICT_EXIT=0
+# A FLAG: o MODO DETETAR seta 1 quando a árvore JÁ abre suja (o resíduo é de
+# outro processo). O fecho_da_rodada a consulta para PULAR o restaurar: o dono
+# do resíduo o restaura — trocar o dono no trap seria esconder o estado de
+# OUTRO processo (critério 2 da issue).
+RESIDUO_PREEXISTENTE=0
 
 # O TRAP DE FECHO — quatro caminhos de saída, UM handler (o MESMO restauro): o
 # fim de qualquer laço (o `exit ...` do veredito), o `ctrl-c` do operador (INT),
@@ -313,7 +322,14 @@ fecho_da_rodada() { # $1 = o exit DESTE caminho ($? no EXIT; 128+n no sinal)
   # A LIMPEZA do SCRATCH (o corpo antigo do trap EXIT) vira parte do fecho: a
   # rodada apaga só a raiz DELA, agora sob o MESMO handler que restaura a árvore.
   rm -rf "${MUT_SCRATCH_RUN:-}" 2>/dev/null || true
-  fecho_da_arvore restaurar || VERDICT_EXIT=2
+  if [ "${RESIDUO_PREEXISTENTE:-0}" = "1" ]; then
+    # O resíduo NÃO é desta rodada (o detetar já o ditou na abertura): o
+    # restaurar aqui INVERTERIA o dono — pulado, o estado do disco fica
+    # PARTE do exit 2 que o detetar manda.
+    :
+  else
+    fecho_da_arvore restaurar || VERDICT_EXIT=2
+  fi
   if [ "$VERDICT_EXIT" -ne 0 ]; then
     exit "$VERDICT_EXIT"
   fi

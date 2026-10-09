@@ -1470,3 +1470,104 @@ describe("test-mutation-guards — a re-medição no master de VERDADE (matriz d
     expect(json.summary.passed).toBe(1)
   })
 })
+
+// ── 9. O FECHO DA ÁRVORE (issue #5): o estado do disco é PARTE do veredito ──
+
+/**
+ * A prova de COMPORTAMENTO do fecho da árvore: o master REAL num repositório
+ * git de ensaio (o `ensaioDoMaster` copia o master para um tmpdir SEM git — o
+ * fecho novo julga REPOSITÓRIO, então este ensaio cria o dele com `git init`).
+ *
+ * Os stubs sujam a árvore por fora (que é o que o remédio fecha): o abort de
+ * um `kill`/timeout live num ponto que a suíte granular não alcança, e é esse
+ * ponto que o stub simula — escrever num arquivo tracked e sair.
+ */
+function ensaioDoMasterGit(
+  subtests: [string, string][],
+  opts: { sujaInicial?: boolean; preencher?: (dir: string) => void } = {},
+) {
+  const dir = ensaioDoMaster(subtests)
+  const git = (...args: string[]) => spawnSync("git", args, { cwd: dir, encoding: "utf8" })
+  git("init", "-q")
+  git("config", "user.email", "ensaio@test")
+  git("config", "user.name", "ensaio")
+  // O ALVO de resíduo: um arquivo tracked que o stub vai sujar (e que é a
+  // assinatura do resíduo de mutação na árvore): commitado = sujeira é rastro.
+  writeFileSync(join(dir, "alvo-da-arvore.txt"), "conteúdo íntegro\n")
+  git("add", "-A")
+  git("commit", "-qm", "base")
+  if (opts.sujaInicial) {
+    // A árvore já abre SUJA — o resíduo de OUTRO processo (não é da rodada).
+    writeFileSync(join(dir, "alvo-da-arvore.txt"), "resíduo de outra rodada\n")
+  }
+  // A BANCADA extra do teste (o stub que suja) entra ANTES do spawn: o master
+  // roda no fim e não veria um arquivo escrito depois do return (saída 127 =
+  // stub inexistente = INFRA, não vermelho — a ordem É o dado).
+  opts.preencher?.(dir)
+  const res = spawnSync("bash", [join(dir, "scripts", "test-mutation-guards.sh"), "--json"], {
+    encoding: "utf8",
+    timeout: 60_000,
+  })
+  return { dir, res }
+}
+
+describe("test-mutation-guards — o estado da árvore é PARTE do fecho (issue #5)", () => {
+  it("resíduo DE SUÍTE QUE SUJA E MORRE: o fecho RESTAURA e o log NOMEIA por arquivo (saída limpa, exit da rodada)", () => {
+    const { dir, res } = ensaioDoMasterGit([["verde-suja", "scripts/stub-suja-e-hackeia.sh"]], {
+      // O STUB do abort entra ANTES do spawn (o master roda no fim do helper):
+      // suja o arquivo tracked e sai 1 — como um `kill`/timeout que deixa rastro;
+      // a 2ª tentativa re-mede o vermelho sobre a árvore já suja pela 1ª.
+      preencher: (raiz) =>
+        writeFileSync(
+          join(raiz, "scripts", "stub-suja-e-hackeia.sh"),
+          `#!/usr/bin/env bash
+set -euo pipefail
+METADES=(
+  'M1|a metade de ensaio — o stub suja e morre (o abort que deixa resíduo)'
+)
+conta="${raiz}/suja"
+n=$(cat "$conta" 2>/dev/null || echo 0)
+n=$((n + 1))
+printf "%s" "$n" >"$conta"
+echo "resíduo de mutação da tentativa $n" >> "${raiz}/alvo-da-arvore.txt"
+exit 1
+`,
+        ),
+    })
+    // O master re-mede o vermelho (2º tiro); o Fecho da ÁRVORE RESTAURA o alvo
+    // DEPOIS — e o exit final é 1 (a regressão), não 2: o restauro CHEGOU.
+    expect(res.status).toBe(1)
+    const saida = `${res.stdout ?? ""}${res.stderr ?? ""}`
+    expect(saida).toContain("↻ resíduo de mutação restaurado: alvo-da-arvore.txt")
+    const depois = readFileSync(join(dir, "alvo-da-arvore.txt"), "utf8")
+    expect(depois).toBe("conteúdo íntegro\n")
+  })
+
+  it("ÁRVORE SUJA ANTES (não é da rodada): o master DIZ os caminhos e sai 2 (INFRA), SEM restaurar", () => {
+    const { dir, res } = ensaioDoMasterGit([["verde", "scripts/stub-verde.sh"]], {
+      sujaInicial: true,
+    })
+    expect(res.status).toBe(2)
+    const saida = `${res.stdout ?? ""}${res.stderr ?? ""}`
+    expect(saida).toContain("ÁRVORE SUJA ANTES DA RODADA")
+    expect(saida).toContain("alvo-da-arvore.txt")
+    // Não restaurou: o resíduo segue na árvore (o DONO é outro).
+    expect(readFileSync(join(dir, "alvo-da-arvore.txt"), "utf8")).toBe("resíduo de outra rodada\n")
+  })
+
+  it("UNTRACKED não entra na conta: sujeira untracked NÃO vira INFRA nem restauro", () => {
+    const { dir, res } = ensaioDoMasterGit([["verde", "scripts/stub-verde.sh"]])
+    writeFileSync(join(dir, "deploy-Caddyfile"), "estado do host\n")
+    const res2 = spawnSync("bash", [join(dir, "scripts", "test-mutation-guards.sh"), "--json"], {
+      encoding: "utf8",
+      timeout: 60_000,
+    })
+    expect(res2.status).toBe(0)
+    const saida = `${res2.stdout ?? ""}${res2.stderr ?? ""}`
+    expect(saida).not.toContain("RESÍDUO DE MUTAÇÃO")
+    expect(saida).not.toContain("ÁRVORE SUJA")
+    expect(readFileSync(join(dir, "deploy-Caddyfile"), "utf8")).toBe("estado do host\n")
+    void dir
+    void res
+  })
+})
