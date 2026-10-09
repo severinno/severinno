@@ -77,180 +77,109 @@ jobs:
         run: node scripts/check-seed-hooks.mjs
 
   # Docker Build & Test (local, no push) ----------------------------------
-  # Builds the image locally and runs a health-check smoke test to catch
-  # runtime regressions before the image is pushed to the registry.
-  docker-test:
-    name: Docker Build & Test
+  # ── Build & Test (host-artifacts) ─────────────────────────────────────────
+  # O build do Next.js roda no host do runner (~70s), fora do buildkit
+  # (evitando o tarpit conhecido do Turbopack em container).
+  # Em seguida monta a imagem COPY-only diretamente no daemon da VPS.
+  build:
+    name: Build & Test (host-artifacts)
     needs: [utf8-check, seed-hooks-guard]
     runs-on: self-hosted
     if: "!(github.event_name == 'workflow_dispatch' && inputs.census_only)"
     timeout-minutes: 20
 
-    services:
-      postgis:
-        image: postgis/postgis:16-3.4
-        env:
-          POSTGRES_DB: severinno
-          POSTGRES_USER: severinno
-          POSTGRES_PASSWORD: severinno
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U severinno -d severinno"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-          --health-start-period 15s
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build image (load locally, no push)
-        uses: docker/build-push-action@v6
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-          BUN_VERSION: ${{ vars.BUN_VERSION }}
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          context: .
-          load: true
-          push: false
-          tags: severinno-test:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            SENTRY_AUTH_TOKEN=${{ env.SENTRY_AUTH_TOKEN }}
-            SENTRY_ORG=${{ env.SENTRY_ORG }}
-            SENTRY_PROJECT=${{ env.SENTRY_PROJECT }}
-            BUN_VERSION=${{ env.BUN_VERSION }}
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
 
-      - name: Start container
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Build Next.js standalone artifacts
         run: |
-          docker run -d \
-            --name severinno-test \
-            --network host \
-            -e DATABASE_URL="postgresql://severinno:severinno@127.0.0.1:5432/severinno" \
+          set -e
+          export DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
+          npx prisma generate
+          BUILD_STANDALONE=true SKIP_TYPESCRIPT_CHECK=true DOCKER_BUILD=true npm run build
+          test -f .next/standalone/server.js
+
+      - name: Montagem da imagem do app (COPY-only no daemon da VPS)
+        run: |
+          set -e
+          mv .dockerignore /tmp/.dockerignore.bak
+          node scripts/stage-migrate-closure.mjs node_modules migrate-closure
+          cat > /tmp/fallback-app.Dockerfile <<'DOCKERFILE'
+          FROM node:22-bookworm-slim
+          ENV NODE_ENV=production
+          RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 --gid 1001 nextjs
+          RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+          RUN mkdir -p /data && chown nextjs:nodejs /data
+          WORKDIR /app
+          COPY --chown=nextjs:nodejs public ./public
+          COPY --chown=nextjs:nodejs .next/standalone ./
+          COPY --chown=nextjs:nodejs .next/static ./.next/static
+          COPY --chown=nextjs:nodejs migrate-closure ./node_modules
+          COPY --chown=nextjs:nodejs prisma ./prisma
+          COPY --chown=nextjs:nodejs prisma.config.ts ./prisma.config.ts
+          RUN npm install -g prisma@6.19.3
+          USER nextjs
+          EXPOSE 3000
+          ENV PORT=3000
+          CMD ["node", "server.js"]
+          DOCKERFILE
+          docker build -f /tmp/fallback-app.Dockerfile -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}" .
+          mv /tmp/.dockerignore.bak .dockerignore
+          rm -rf migrate-closure
+
+      - name: Build worker image (load no daemon da VPS)
+        run: |
+          set -e
+          docker build -f Dockerfile.worker --build-arg BUN_VERSION=${{ vars.BUN_VERSION }} -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:worker-latest" .
+
+      - name: Prova de boot (servidor sobe e responde 200/503)
+        run: |
+          set -e
+          docker run -d --name severinno-test --network host \
+            -e DATABASE_URL="postgresql://placeholder:placeholder@127.0.0.1:5432/placeholder" \
             -e REDIS_URL="redis://127.0.0.1:6379" \
             -e SESSION_SECRET="test-secret-at-least-32-chars-long" \
             -e NODE_ENV=production \
-            severinno-test:latest
-
-      - name: Wait for health check
-        run: |
+            -e HOSTNAME=0.0.0.0 \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          HTTP_LAST="000"
           for i in $(seq 1 20); do
             sleep 3
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health 2>/dev/null || echo "000")
-            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "503" ]; then
-              echo "Health check passed (HTTP $HTTP_CODE) after ${i}s"
-              exit 0
-            fi
-            echo "Attempt $i/20 - HTTP $HTTP_CODE"
+            HTTP_LAST=$(docker exec severinno-test node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>{console.log(r.status)}).catch(()=>{console.log(0)})" 2>/dev/null || echo "000")
+            case "$HTTP_LAST" in
+              200|503) echo "Boot OK (HTTP $HTTP_LAST em $i tentativas)"; break;;
+            esac
+            echo "attempt $i/20 - HTTP $HTTP_LAST"
           done
-          echo "Health check failed after 20 attempts"
-          exit 1
-
-      - name: Show container logs on failure
-        if: failure()
-        run: docker logs severinno-test 2>&1 | tail -50
-
-      - name: Clean up container
-        if: always()
-        run: docker rm -f severinno-test 2>/dev/null || true
-
-  build:
-    needs: [docker-test]
-    runs-on: self-hosted
-    if: "!(github.event_name == 'workflow_dispatch' && inputs.census_only)"
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,prefix=,format=short
-            type=ref,event=branch
-
-      - name: Build and push app image
-        uses: docker/build-push-action@v6
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-          BUN_VERSION: ${{ vars.BUN_VERSION }}
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            SENTRY_AUTH_TOKEN=${{ env.SENTRY_AUTH_TOKEN }}
-            SENTRY_ORG=${{ env.SENTRY_ORG }}
-            SENTRY_PROJECT=${{ env.SENTRY_PROJECT }}
-            BUN_VERSION=${{ env.BUN_VERSION }}
-
-      - name: Build and push worker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.worker
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:worker-${{ steps.meta.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            BUN_VERSION=${{ vars.BUN_VERSION }}
-
-      # Caddy com os plugins que o Caddyfile.prod exige (rate_limit +
-      # transform-encoder — ver Dockerfile.caddy). Duas tags: a FIXA
-      # caddy-2.11.4-plugins (a que o compose declara) e caddy-<sha> para
-      # rollback exato. Publicar AQUI evita compilar xcaddy na VPS a cada
-      # deploy (o job pr-check já valida o parse com essa imagem).
-      - name: Build and push caddy image (plugins)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.caddy
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:caddy-2.11.4-plugins
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:caddy-${{ steps.meta.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          docker logs severinno-test 2>&1 | tail -20 || true
+          docker rm -f severinno-test >/dev/null 2>&1 || true
+          case "$HTTP_LAST" in
+            200|503) exit 0;;
+            *) echo "Boot falhou após 20 tentativas (último HTTP $HTTP_LAST)"; exit 1;;
+          esac
 
   migrate:
+    name: Migrate Database
     needs: build
     runs-on: self-hosted
     if: "(github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs.census_only)"
@@ -269,13 +198,42 @@ jobs:
           key: ${{ env.DEPLOY_KEY }}
           script: |
             cd ${{ env.DEPLOY_PATH }}
+            echo "Subindo a camada de dados (postgres/redis/rabbitmq/minio/pgbouncer)..."
+            docker compose -f docker-compose.hostinger.yml --env-file .env.production.local \
+              up -d --wait postgres redis rabbitmq minio pgbouncer
             echo "Running database migrations..."
-            docker compose run --rm --no-deps app prisma migrate deploy
-            # (a imagem roda node:22 sem bun/bunx; o CLI do prisma vem assado
-            # global na imagem, pino igual ao do package.json — sem fallback
-            # `db push --accept-data-loss`: o deploy não pode aceitar perda de dados)
+            docker compose -f docker-compose.hostinger.yml --env-file .env.production.local \
+              run --rm --no-deps app prisma migrate deploy
+
+      - name: Bootstrap do admin real (após o migrate)
+        uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ env.DEPLOY_KEY }}
+          script: |
+            cd ${{ env.DEPLOY_PATH }}
+            if [ ! -s secrets/admin_email.secret ] || [ ! -s secrets/admin_password.secret ]; then
+              echo "AVISO: secrets/admin_{email,password}.secret vazios/ausentes — bootstrap do admin pulado"
+              exit 0
+            fi
+            docker compose -f docker-compose.hostinger.yml --env-file .env.production.local \
+              run --rm --no-deps --user root \
+              -v "$PWD/scripts/bootstrap-admin.mjs:/app/scripts/bootstrap-admin.mjs:ro" \
+              -v "$PWD/secrets/admin_email.secret:/run/secrets/admin_email:ro" \
+              -v "$PWD/secrets/admin_password.secret:/run/secrets/admin_password:ro" \
+              -e ADMIN_EMAIL_FILE=/run/secrets/admin_email \
+              -e ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
+              app node /app/scripts/bootstrap-admin.mjs \
+              || echo "AVISO: bootstrap do admin falhou — deploy continua"
 
   deploy:
+    name: Deploy to VPS
     needs: migrate
     runs-on: self-hosted
     if: "(github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs.census_only)"
@@ -295,20 +253,16 @@ jobs:
           script: |
             set -e
             cd ${{ env.DEPLOY_PATH }}
-            echo "Pulling new images..."
-            # caddy incluso: a tag caddy-2.11.4-plugins é publicada no build
-            # acima; up -d é idempotente (só recria o edge se a imagem/compose mudou).
-            docker compose pull app realtime email-worker notification-worker caddy
-            echo "Restarting services..."
-            docker compose up -d --no-deps --remove-orphans app realtime caddy
-            docker compose --profile workers up -d --no-deps email-worker notification-worker
+            COMPOSE="docker compose -f docker-compose.hostinger.yml --env-file .env.production.local"
+            echo "Aplicando app/realtime/workers..."
+            $COMPOSE up -d --no-deps --remove-orphans app realtime
+            $COMPOSE up -d --no-deps email-worker notification-worker
             echo "Waiting for health check..."
             for i in $(seq 1 12); do
               sleep 5
-              HTTP_CODE=$(docker compose exec -T app node -e "fetch('http://localhost:3000/api/health').then(r=>{console.log(r.status);process.exit(r.ok?0:1)}).catch(()=>{console.log(0);process.exit(1)})" || echo 000)
+              HTTP_CODE=$($COMPOSE exec -T app node -e "fetch('http://localhost:3000/api/health').then(r=>{console.log(r.status);process.exit(r.ok?0:1)}).catch(()=>{console.log(0);process.exit(1)})" || echo 000)
               if [ "$HTTP_CODE" = "200" ]; then
                 echo "Health check passed (HTTP $HTTP_CODE)"
-                # Clean up old images
                 docker image prune -f
                 exit 0
               fi

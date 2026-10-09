@@ -261,13 +261,7 @@ export const JOB_DEPS_ALLOWLIST = [
   // exit 2 "YAML NAO VALIDADO" de todos os workflows era a conta do
   // `node_modules` faltando, nao de codigo) e a isencao que sobra mente sobre
   // o presente.
-  {
-    job: ".github/workflows/utf8-check.yml::utf8-check",
-    addedAt: "2026-09-17",
-    semDeps: "falha-fechado",
-    reason:
-      "o job mistura escopo puro (`check-utf8-scope`/`check-crlf-scope`, exit 0 sem deps) com dois guards que leem YAML (`check-no-setup-bun`, `check-bun-mirror`): os dois ultimos saem 2 sem `js-yaml`",
-  },
+  // utf8-check SAIU desta lista em 09/10/2026 pelo mesmo motivo: ganhou o par canonico.
 ]
 
 /** A janela de revisao das isencoes deste guard (o default do modulo compartilhado). */
