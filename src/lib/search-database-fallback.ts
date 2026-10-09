@@ -41,7 +41,9 @@ export async function searchServicesDatabase(
       }
     }
 
-    const termArray = Array.from(expandedTerms)
+    // Limit expanded terms to at most 5 to prevent combinatorial SQL ILIKE explosion
+    // that triggers severe sequential scan CPU spikes on PostgreSQL under load.
+    const termArray = Array.from(expandedTerms).slice(0, 5)
     const skip = (page - 1) * limit
 
     // 2. Query Prisma with case-insensitive matches across title, description & category

@@ -24,6 +24,10 @@ export interface AlertPayload {
   timestamp?: string
 }
 
+// Debounce map for outages: prevents spamming webhooks when frequent health probes (e.g. every 5s) hit an outage.
+const outageDebounceMap = new Map<string, number>()
+const OUTAGE_DEBOUNCE_MS = 5 * 60 * 1000 // 5 minutes
+
 export const AlertingService = {
   /**
    * Dispatch an incident alert to configured notification webhooks
@@ -96,9 +100,20 @@ export const AlertingService = {
   },
 
   /**
-   * Helper for DB / Service connection outage
+   * Helper for DB / Service connection outage (debounced per service to 1 alert per 5min)
    */
   async reportOutage(serviceName: string, errorDetails: string): Promise<boolean> {
+    const now = Date.now()
+    const lastSent = outageDebounceMap.get(serviceName)
+    if (lastSent && now - lastSent < OUTAGE_DEBOUNCE_MS) {
+      logger.info(
+        { serviceName, remainingMs: OUTAGE_DEBOUNCE_MS - (now - lastSent) },
+        "[ALERTING] Outage report debounced (avoiding webhook spam on repetitive healthchecks)",
+      )
+      return true
+    }
+    outageDebounceMap.set(serviceName, now)
+
     return this.sendAlert({
       title: `Queda de Conexão: ${serviceName}`,
       message: `O serviço ${serviceName} parou de responder ou falhou nos healthchecks.\nDetalhes: ${errorDetails}`,

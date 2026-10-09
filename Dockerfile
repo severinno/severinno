@@ -119,10 +119,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/migrate-closure ./node_modules
 # schema e o deploy do banco falha.
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 
-# CLI do Prisma global: o job migrate roda `prisma migrate deploy` DENTRO de
-# um container --rm desta imagem — sem o CLI assado, o npx baixaria o pacote
-# da internet a CADA deploy (e o standalone não traz o binário).
-RUN npm install -g prisma@6.19.3
+# CLI do Prisma global: versão resolvida dinamicamente a partir do package.json
+# para evitar drift entre o CLI global e o Prisma Client (@prisma/client) da aplicação.
+RUN PRISMA_VER=$(node -e "const pkg = require('./package.json'); const v = (pkg.dependencies?.prisma || pkg.devDependencies?.prisma || 'latest').replace(/^[^0-9]*/, ''); process.stdout.write(v);") && \
+    npm install -g "prisma@${PRISMA_VER}"
 
 USER nextjs
 EXPOSE 3000

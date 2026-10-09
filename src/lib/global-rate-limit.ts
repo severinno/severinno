@@ -64,6 +64,23 @@ interface SlidingEntry {
 
 const store = new Map<string, SlidingEntry>()
 
+/**
+ * Limite superior do store in-memory para prevenir OOM sob ataque DDoS.
+ * Com milhões de IPs distintos, o Map cresce indefinidamente — este limite
+ * garante que a memória nunca excede ~40MB (10k × ~4KB por entry).
+ */
+const MAX_STORE_SIZE = 10_000
+
+/** Evict entradas mais antigas quando o store atinge o limite. */
+function evictOldestEntries(count: number): void {
+  const iter = store.keys()
+  for (let i = 0; i < count; i++) {
+    const { value, done } = iter.next()
+    if (done) break
+    store.delete(value as string)
+  }
+}
+
 // Periodic cleanup of stale entries (every 60s — only in Edge/Node runtimes)
 // Uses getConfig().windowMs * 2 so the retention respects custom config values.
 if (typeof setInterval !== "undefined" && typeof process !== "undefined") {
@@ -206,13 +223,22 @@ async function upstashSlidingWindow(
     const windowKey = Math.floor(now / windowMs) * windowMs
     const redisKey = `ratelimit:global:${windowKey}:${key}`
 
-    // INCR + EXPIRE in a pipeline would be ideal, but Upstash REST doesn't
-    // support pipelining.  We use INCR and set EXPIRE on the first increment.
-    const count = await client.incr(redisKey)
-
-    // Always set EXPIRE to prevent stale keys.
-    // TTL = 2× window to handle clock skew across instances.
-    await client.expire(redisKey, Math.ceil((windowMs * 2) / 1000))
+    // Upstash pipeline enables executing INCR + EXPIRE in a single REST request,
+    // halving the roundtrip latency (~5ms instead of ~10ms).
+    let count: number
+    if (typeof client.pipeline === "function") {
+      const p = client.pipeline()
+      p.incr(redisKey)
+      p.expire(redisKey, Math.ceil((windowMs * 2) / 1000))
+      const results = await p.exec<[number, number]>()
+      count = Number(results[0])
+    } else {
+      count = await client.incr(redisKey)
+      // Only set EXPIRE on first increment (count === 1) to avoid redundant network roundtrips
+      if (count === 1) {
+        await client.expire(redisKey, Math.ceil((windowMs * 2) / 1000))
+      }
+    }
 
     if (count <= max) {
       return {
@@ -281,6 +307,9 @@ export async function checkGlobalRateLimit(
 
   let entry = store.get(key)
   if (!entry) {
+    if (store.size >= MAX_STORE_SIZE) {
+      evictOldestEntries(Math.floor(MAX_STORE_SIZE * 0.1))
+    }
     entry = { timestamps: [] }
     store.set(key, entry)
   }

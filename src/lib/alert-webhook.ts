@@ -20,9 +20,11 @@ export async function sendAlertWebhook(alert: AlertWebhookPayload): Promise<void
   const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN
   const telegramChatId = process.env.TELEGRAM_CHAT_ID
 
+  const dispatches: Promise<unknown>[] = []
+
   if (discordUrl) {
-    try {
-      await safeFetch(discordUrl, {
+    dispatches.push(
+      safeFetch(discordUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -48,15 +50,13 @@ export async function sendAlertWebhook(alert: AlertWebhookPayload): Promise<void
         }),
         timeoutMs: 5_000,
         label: "discord-webhook",
-      })
-    } catch (e) {
-      logger.warn({ err: e }, "Failed to send Discord alert")
-    }
+      }).catch((err) => logger.warn({ err }, "Failed to send Discord alert")),
+    )
   }
 
   if (slackUrl) {
-    try {
-      await safeFetch(slackUrl, {
+    dispatches.push(
+      safeFetch(slackUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -64,16 +64,14 @@ export async function sendAlertWebhook(alert: AlertWebhookPayload): Promise<void
         }),
         timeoutMs: 5_000,
         label: "slack-webhook",
-      })
-    } catch (e) {
-      logger.warn({ err: e }, "Failed to send Slack alert")
-    }
+      }).catch((err) => logger.warn({ err }, "Failed to send Slack alert")),
+    )
   }
 
   if (telegramBotToken && telegramChatId) {
-    try {
-      const text = `${emoji} *${alert.title}*\n${alert.message}\n_Metric: ${alert.metric}_`
-      await safeFetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
+    const text = `${emoji} *${alert.title}*\n${alert.message}\n_Metric: ${alert.metric}_`
+    dispatches.push(
+      safeFetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -83,15 +81,13 @@ export async function sendAlertWebhook(alert: AlertWebhookPayload): Promise<void
         }),
         timeoutMs: 5_000,
         label: "telegram-alert",
-      })
-    } catch (e) {
-      logger.warn({ err: e }, "Failed to send Telegram alert")
-    }
+      }).catch((err) => logger.warn({ err }, "Failed to send Telegram alert")),
+    )
   }
 
   if (incidentUrl) {
-    try {
-      await safeFetch(incidentUrl, {
+    dispatches.push(
+      safeFetch(incidentUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -104,9 +100,11 @@ export async function sendAlertWebhook(alert: AlertWebhookPayload): Promise<void
         }),
         timeoutMs: 5_000,
         label: "incident-webhook",
-      })
-    } catch (e) {
-      logger.warn({ err: e }, "Failed to send Incident webhook alert")
-    }
+      }).catch((err) => logger.warn({ err }, "Failed to send Incident webhook alert")),
+    )
+  }
+
+  if (dispatches.length > 0) {
+    await Promise.allSettled(dispatches)
   }
 }
