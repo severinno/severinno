@@ -58,6 +58,18 @@ RUN npx prisma generate
 # BUILD_STANDALONE=true triggers output: "standalone" in next.config.ts
 # SKIP_TYPESCRIPT_CHECK: skip tsc in Docker build (CI runs tsc separately)
 # DOCKER_BUILD: tells next.config.ts to ignore build-time TS errors
+#
+# CAP DE HEAP MEDIDO (não é chuto): sem cap, o `next build` dentro do buildkit
+# da forja alcançou 15.2GB anon-rss (total-vm 58GB) num host de 15GiB e levou
+# o OOM GLOBAL do kernel junto (09/10/2026, 04:47, CONSTRAINT_NONE — não era
+# limite de cgroup nenhum: o build rodava SEM limite, então o kernel podia
+# escolher a stack de produção em vez dele). Com o cap, medido no host de
+# prova (mesmo env do builder): exit 0, pico de ~4.1GB na árvore de processos.
+# O cap faz o build estourar DENTRO do node (erro de heap nomeado) antes de
+# derrubar o host — e o MALLOC_ARENA_MAX corta a fragmentação do glibc que
+# infla o RSS com muitas threads.
+ENV NODE_OPTIONS="--max-old-space-size=8192" \
+    MALLOC_ARENA_MAX=2
 ENV BUILD_STANDALONE=true
 ENV SKIP_TYPESCRIPT_CHECK=true
 ENV DOCKER_BUILD=true
