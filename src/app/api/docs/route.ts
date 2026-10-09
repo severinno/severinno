@@ -1,14 +1,19 @@
 import { NextResponse } from "next/server"
 
-export const dynamic = "force-static"
+export const dynamic = "force-dynamic"
 
 /**
  * GET /api/docs — Documentação Interativa de APIs (OpenAPI 3.1 & Scalar)
  *
- * Renderiza o portal interativo de documentação das mais de 190 rotas do Severinno,
+ * Renderiza o portal interativo de documentação das rotas do Severinno,
  * consumindo a especificação pública gerada em /openapi.json.
+ * Em produção, é ocultado por padrão para evitar reconnaissance de superfície de ataque,
+ * a menos que EXPOSE_DOCS="true" esteja explicitamente configurado.
  */
 export async function GET() {
+  if (process.env.NODE_ENV === "production" && process.env.EXPOSE_DOCS !== "true") {
+    return new NextResponse("Not Found", { status: 404 })
+  }
   const html = `<!doctype html>
 <html lang="pt-BR">
   <head>

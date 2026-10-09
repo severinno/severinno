@@ -25,7 +25,16 @@ export type AuthUser = {
 type AuthStatus = "idle" | "loading" | "authenticated" | "unauthenticated"
 
 type LoginPayload = { email: string; password: string }
-type RegisterPayload = Record<string, unknown>
+export type RegisterPayload = {
+  name: string
+  email: string
+  password?: string
+  role?: UserRole
+  phone?: string
+  city?: string
+  state?: string
+  [key: string]: unknown
+}
 
 type AuthState = {
   user: AuthUser | null
@@ -156,8 +165,14 @@ export const useAuthStore = create<AuthState>()(
       // without falsely reporting `initialized` before fetchMe() has
       // verified the cookie server-side. `initialized` always starts false
       // and flips to true only after the first fetchMe() on mount.
+      // Omit ADMIN role from localStorage to prevent visual UI spoofing via DevTools.
       partialize: (state) => ({
-        user: state.user,
+        user: state.user
+          ? {
+              ...state.user,
+              role: (state.user.role === "ADMIN" ? "CLIENT" : state.user.role) as UserRole,
+            }
+          : null,
         status: state.status,
       }),
     },

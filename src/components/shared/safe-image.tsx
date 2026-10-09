@@ -46,8 +46,15 @@ function SafeImage({
   blurDataURL,
 }: SafeImageProps) {
   if (!isOptimizable(src)) {
-    // eslint-disable-next-line @next/next/no-img-element -- non-optimizable (blob/data/relative without /) URL
-    return <img src={src} alt={alt} className={className} loading={loading} />
+     
+    return (
+      <img
+        src={src}
+        alt={alt}
+        className={`h-full w-full object-cover ${className ?? ""}`.trim()}
+        loading={loading}
+      />
+    )
   }
 
   const hasBlur = blur || !!blurDataURL
