@@ -2,7 +2,7 @@
   "meta": {
     "tool": "merge-latency",
     "version": 1,
-    "date": "2026-09-29",
+    "date": "2026-10-08",
     "why": "O custo dos gates em LATÊNCIA DE MERGE. A tabela de overhead do repositório lista o custo de cada gate e convida a somar — mas o PR não paga a soma: ele paga o caminho crítico e a FILA. Este arquivo é o que não dá para derivar da pipeline (grafo e comandos saem de lá); o que ele declara carrega FONTE e DATA, e o benchmark confronta o que ele cobre. O `provenance` de cada job diz QUE TIPO de número ele carrega: `declarado (MEDIDO)` (medido neste repositório, com os comandos na fonte), `declarado (PISO: passo não medido)` (soma dos passos medidos, com o passo de fora NOMEADO) e `declarado (TETO: timeout-minutes)` (o LIMITE que a própria pipeline declara no job — para custo que não se mede fora do runner)."
   },
   "overhead": {
@@ -25,10 +25,10 @@
   "jobs": {
     "gitea": {
       "guards": {
-        "ms": 1123200,
+        "ms": 1107588,
         "provenance": "declarado (PISO: a soma cobre os passos MEDIDOS; `check:pipefail-sigpipe`, o `bun install --frozen-lockfile` e o checkout seguem fora dela)",
-        "source": "RE-MEDIDO em 07/10/2026 (o MESMO ato do job `mutation-guards` do espelho: `bench-guard-timing --only mutations --json` na árvore COMMITADA ee3cde3d, 49 sub-tests x 293 metades, 1116.8s de sub-tests + 6.4s de harness = 1123.2s), com a soma refeita passo a passo; o antigo 562.4s media a matriz de 39 sub-tests (23/09)",
-        "date": "2026-10-07"
+        "source": "RE-MEDIDO em 08/10/2026 (a MESMA baseline versionada que o doctor indexa: `bench-guard-timing --only mutations --baseline` na árvore COMMITADA 003c705d, ato em 2026-10-08T12:31Z, 49 sub-tests x 293 metades, sub-tests 1101.7s + harness 5.9s = 1107.6s — `mutations.deltas.totalMs` da `docs/benchmarks/guard-timing-baseline.json`, v7); o 1123.2s de 07/10 media a MESMA matriz de 49 sub-tests na árvore ee3cde3d, no runner EFÊMERO da forja — o número de cá descreve a árvore que o PR cobre",
+        "date": "2026-10-08"
       },
       "stack-per-commit": {
         "ms": 1233200,
@@ -81,10 +81,10 @@
         "date": "2026-09-28"
       },
       "mutation-guards": {
-        "ms": 1123200,
+        "ms": 1107588,
         "provenance": "medido (MEDIDO)",
-        "source": "RE-MEDIDO neste host (Linux, 16 cpus, 32 GB), 2026-10-07, com a matriz em 49 sub-tests x 293 metades (ato `bench-guard-timing --only mutations --json` na árvore commitada ee3cde3d, 49/49 formas com fonte): UMA rodada da matriz COMPLETA = 1123.2s (1116.8s de sub-tests + 6.4s de harness); o antigo 528.5s media a matriz de 39 sub-tests (23/09)",
-        "date": "2026-10-07"
+        "source": "RE-MEDIDO neste host (Linux, 16 cpus, 32 GB), 2026-10-08, com a matriz em 49 sub-tests x 293 metades — o MESMO ato versionado que a baseline publica (`bench-guard-timing --only mutations --baseline` na árvore commitada 003c705d, `docs/benchmarks/guard-timing-baseline.json` v7, 49/49 formas com fonte): UMA rodada da matriz COMPLETA = 1107.6s (1101.7s de sub-tests + 5.9s de harness); o 1123.2s de 07/10 (árvore ee3cde3d) é a MESMA matriz no runner efêmero da forja, e o antigo 528.5s media 39 sub-tests (23/09)",
+        "date": "2026-10-08"
       },
       "unused-deps-guard": {
         "ms": 840,

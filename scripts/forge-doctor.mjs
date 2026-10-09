@@ -703,7 +703,17 @@ export function forgeGates(content) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** O PISO de tempo por gate — o teto de quem NÃO tem custo versionado. */
-export const DEFAULT_TIMEOUT_S = 120
+// POR QUE 300 e não 120: o piso é o teto de TODO gate sem custo versionado —
+// hoje 34 dos 35 gates do job `guards` (o só derivado é o master de mutação,
+// cujo teto o bench deriva sozinho). O gate MAIS CARO dessa maioria, medido na
+// baseline v7 (árvore 003c705d), é o `check:prove-docs`: 15.6s WARM — e warm é
+// a MELHOR hipótese: na forja o doctor roda com concorrência 4, então tsc e
+// vitest cold disputam CPU com 3 vizinhos. O piso velho (120s) nasceu do gate
+// mais caro de outra época; um "não terminou em 120s" que parece do ambiente e
+// é do piso é o mesmo defeito que o teto derivado já fechou para o master.
+// 300s dá ~3x sobre o warm medido e segue longe do derivado do master
+// (1662s), que não depende dele.
+export const DEFAULT_TIMEOUT_S = 300
 
 /**
  * A MARGEM do teto derivado. Ela é DECLARADA, não medida: o custo do bench é de
@@ -6579,7 +6589,7 @@ Opções:
                          Repetível; BUN_VERSION entra por --expected
   --gitea-env <path>     env do HOST (default: deploy/.env.gitea) — e ele que o
                          doctor compara com o template comitado
-  --timeout <segundos>   PISO de tempo por gate (default: 120). O TETO de um gate
+  --timeout <segundos>   PISO de tempo por gate (default: 300). O TETO de um gate
                          é max(piso, custo versionado do bench × 1.5) — sem o
                          derivado, um gate de 395s nunca caberia em 120s e o
                          veredito carregaria um não-provado estrutural.
@@ -6685,7 +6695,7 @@ export function parseArgs(argv) {
     envFile: DEFAULT_ENV_FILE,
     expected: null,
     expectedVars: {},
-    timeoutS: 120,
+    timeoutS: DEFAULT_TIMEOUT_S,
     json: false,
     help: false,
     error: null,
@@ -6864,7 +6874,7 @@ export async function diagnose({
   benchFreshness = true,
   preCommitProof = true,
   prePushProof = true,
-  timeoutS = 120,
+  timeoutS = DEFAULT_TIMEOUT_S,
   run,
   imageDeps = {},
   imageRefsDeps = {},
