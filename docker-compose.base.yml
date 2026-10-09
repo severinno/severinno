@@ -516,6 +516,7 @@ services:
   email-worker:
     image: ${IMAGE_REGISTRY:-git.severinno.com}/${IMAGE_NAMESPACE:-severinno}/severinno:worker-latest
     entrypoint: ["./scripts/docker-entrypoint.sh"]
+    command: ["bun", "src/queue/email-consumer.ts"]
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -568,6 +569,7 @@ services:
   notification-worker:
     image: ${IMAGE_REGISTRY:-git.severinno.com}/${IMAGE_NAMESPACE:-severinno}/severinno:worker-latest
     entrypoint: ["./scripts/docker-entrypoint.sh"]
+    command: ["bun", "src/queue/consumer.ts"]
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
