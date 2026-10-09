@@ -134,7 +134,11 @@ export function withRoute<P = Record<string, never>>(
         // são callbacks de provedores externos (barrar na janela de manutenção
         // pode corromper conciliação) e `/api/health` é o sinal de vida que o
         // monitoramento consulta — a tela de manutenção É o estado observable.
-        if (!pathname.startsWith("/api/webhooks/") && pathname !== "/api/health") {
+        if (
+          !pathname.startsWith("/api/webhooks/") &&
+          !pathname.startsWith("/api/health") &&
+          !pathname.startsWith("/api/auth/")
+        ) {
           await requireMaintenanceAccessible(request)
         }
 

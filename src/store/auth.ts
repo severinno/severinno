@@ -165,14 +165,8 @@ export const useAuthStore = create<AuthState>()(
       // without falsely reporting `initialized` before fetchMe() has
       // verified the cookie server-side. `initialized` always starts false
       // and flips to true only after the first fetchMe() on mount.
-      // Omit ADMIN role from localStorage to prevent visual UI spoofing via DevTools.
       partialize: (state) => ({
-        user: state.user
-          ? {
-              ...state.user,
-              role: (state.user.role === "ADMIN" ? "CLIENT" : state.user.role) as UserRole,
-            }
-          : null,
+        user: state.user,
         status: state.status,
       }),
     },
