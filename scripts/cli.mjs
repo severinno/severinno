@@ -17,7 +17,7 @@
 
 import { spawnSync } from "node:child_process"
 import { writeFileSync, chmodSync } from "node:fs"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import process from "node:process"
 
 const [, , command, subcommand, ...extraArgs] = process.argv
@@ -97,16 +97,31 @@ switch (command) {
   case "hook":
     if (subcommand === "install") {
       try {
-        const hookPath = join(process.cwd(), ".git", "hooks", "pre-commit")
+        let hooksDir = join(process.cwd(), ".git", "hooks")
+        try {
+          const revParse = spawnSync("git", ["rev-parse", "--git-path", "hooks"], {
+            encoding: "utf8",
+          })
+          if (revParse.status === 0 && revParse.stdout.trim()) {
+            hooksDir = resolve(process.cwd(), revParse.stdout.trim())
+          }
+        } catch {
+          // fallback to .git/hooks
+        }
+        const hookPath = join(hooksDir, "pre-commit")
         const hookScript = `#!/usr/bin/env bash\n# Severinno Pre-commit Guard Hook\nset -e\nnode scripts/cli.mjs precommit\n`
         writeFileSync(hookPath, hookScript, { encoding: "utf8" })
         chmodSync(hookPath, 0o755)
         console.log(`✅ Git pre-commit hook instalado com sucesso em ${hookPath}`)
         process.exit(0)
       } catch (err) {
-        if (err.code === "EROFS" || err.code === "EACCES") {
-          console.warn("⚠️  A pasta .git/hooks está em modo somente-leitura (comum em sandboxes).")
-          console.log("   Para ativar no seu terminal local, execute: bun run cli hook install")
+        const isCI = Boolean(
+          process.env.CI || process.env.CONTINUOUS_INTEGRATION || process.env.SANDBOX,
+        )
+        if (isCI && (err.code === "EROFS" || err.code === "EACCES")) {
+          console.warn(
+            "⚠️  A pasta .git/hooks está em modo somente-leitura no ambiente CI/Sandbox.",
+          )
           process.exit(0)
         }
         console.error("❌ Falha ao instalar git pre-commit hook:", err.message)

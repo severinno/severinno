@@ -48,9 +48,10 @@ export function SWRegister() {
           if (!newWorker) return
           newWorker.addEventListener("statechange", () => {
             if (newWorker.state === "activated") {
-              // SW updated — notify user or silently reload
-              // eslint-disable-next-line no-console -- dev visibility for SW lifecycle
-              console.log("[PWA] Service Worker updated")
+              if (process.env.NODE_ENV !== "production") {
+                // eslint-disable-next-line no-console -- dev visibility for SW lifecycle
+                console.log("[PWA] Service Worker updated")
+              }
             }
           })
         })

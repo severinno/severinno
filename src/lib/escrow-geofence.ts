@@ -54,8 +54,10 @@ export function validateEscrowGeofence(
     serviceLocation.lng,
   )
 
-  const roundedDistanceKm = Math.round(distanceKm * 100) / 100
-  const valid = roundedDistanceKm <= maxAllowedDistanceKm
+  // Avaliação estrita da distância real sem relaxamento aritmético por arredondamento para baixo
+  // (evita que 1.504km vire 1.50km e libere fundos fraudulentamente).
+  const roundedDistanceKm = Math.round(distanceKm * 1000) / 1000
+  const valid = distanceKm <= maxAllowedDistanceKm
 
   if (!valid) {
     const reason = `Prestador a ${roundedDistanceKm}km do local do serviço (máximo permitido: ${maxAllowedDistanceKm}km)`

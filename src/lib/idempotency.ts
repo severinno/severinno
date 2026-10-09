@@ -82,6 +82,38 @@ export type AcquireResult =
   | { kind: "conflict"; reason: string }
 
 /**
+ * Canonical deep equality check for idempotency context.
+ * Key-order insensitive (unlike JSON.stringify) to prevent false conflicts
+ * when objects have matching keys serialized in different order.
+ */
+export function isDeepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (a === null || typeof a !== "object" || b === null || typeof b !== "object") return false
+  if (Array.isArray(a) !== Array.isArray(b)) return false
+
+  if (Array.isArray(a)) {
+    const arrB = b as unknown[]
+    if (a.length !== arrB.length) return false
+    for (let i = 0; i < a.length; i++) {
+      if (!isDeepEqual(a[i], arrB[i])) return false
+    }
+    return true
+  }
+
+  const objA = a as Record<string, unknown>
+  const objB = b as Record<string, unknown>
+  const keysA = Object.keys(objA)
+  const keysB = Object.keys(objB)
+
+  if (keysA.length !== keysB.length) return false
+  for (const k of keysA) {
+    if (!Object.prototype.hasOwnProperty.call(objB, k)) return false
+    if (!isDeepEqual(objA[k], objB[k])) return false
+  }
+  return true
+}
+
+/**
  * Tenta reservar a chave. Ver o contrato no topo do arquivo.
  */
 export async function acquireIdempotency(
@@ -99,8 +131,8 @@ export async function acquireIdempotency(
     if (existing.expiresAt <= now) {
       await db.idempotencyRecord.deleteMany({ where: { key, expiresAt: { lte: now } } })
     } else {
-      // Mesma chave DEVE mapear para a MESMA operação.
-      const sameContext = JSON.stringify(existing.context) === JSON.stringify(context)
+      // Mesma chave DEVE mapear para a MESMA operação (ordem de chaves não gera conflito falso).
+      const sameContext = isDeepEqual(existing.context, context)
       if (!sameContext) {
         return {
           kind: "conflict",

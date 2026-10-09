@@ -194,6 +194,9 @@ export const SOCKET_TICKET_TTL_SECONDS = 60
 /** Prefixo no Redis compartilhado — o mini-service consome com GETDEL. */
 export const SOCKET_TICKET_PREFIX = "auth:socket-ticket:"
 
+/** Prefixo do ponteiro de ticket ativo por usuário — garante no máximo 1 ticket ativo por usuário. */
+export const USER_ACTIVE_TICKET_PREFIX = "auth:user-active-ticket:"
+
 /**
  * Emite um ticket de socket SINGLE-USE para autenticar o handshake do
  * realtime. O app autentica a sessão (getSession — cookie HMAC + versão de
@@ -215,12 +218,23 @@ export async function createSocketTicket(
   try {
     const session = await getSessionFn()
     if (!session) return { ok: false, error: "Não autenticado" }
+
+    // Limite de 1 ticket ativo por usuário: se já existe um pendente, invalida o anterior
+    // evitando exaustão de memória no Redis por flood de requisições autenticadas.
+    const userActiveKey = `${USER_ACTIVE_TICKET_PREFIX}${session.userId}`
+    const previousTicket = await cacheGet<string>(userActiveKey)
+    if (previousTicket) {
+      await cacheInvalidate(`${SOCKET_TICKET_PREFIX}${previousTicket}`)
+    }
+
     const ticket = randomBytes(32).toString("hex")
     await cacheSet(
       `${SOCKET_TICKET_PREFIX}${ticket}`,
       { userId: session.userId, role: session.role },
       SOCKET_TICKET_TTL_SECONDS,
     )
+    await cacheSet(userActiveKey, ticket, SOCKET_TICKET_TTL_SECONDS)
+
     return { ok: true, ticket, expiresIn: SOCKET_TICKET_TTL_SECONDS }
   } catch {
     // getSession já engole erros internos como null; qualquer falha aqui é

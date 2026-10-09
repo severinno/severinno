@@ -207,6 +207,25 @@ describe("acquireIdempotency", () => {
     expect(mockDb.idempotencyRecord.create).not.toHaveBeenCalled()
   })
 
+  it("mesma chave com chaves reordenadas no contexto mapeia com sucesso (sem conflito falso)", async () => {
+    mockDb.idempotencyRecord.findUnique.mockResolvedValue({
+      key: "key-12345678",
+      scope: "pay:create",
+      status: "completed",
+      context: { bookingId: "book-1", method: "PIX" },
+      response: { ok: true, pix: "qrcode" },
+      error: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    })
+
+    // Contexto com as chaves em ordem invertida
+    const reorderedCtx = { method: "PIX", bookingId: "book-1" }
+    const result = await acquireIdempotency("key-12345678", reorderedCtx)
+
+    expect(result).toEqual({ kind: "replay", response: { ok: true, pix: "qrcode" } })
+    expect(mockDb.idempotencyRecord.create).not.toHaveBeenCalled()
+  })
+
   it("conflict: mesma chave usada em outro escopo", async () => {
     mockDb.idempotencyRecord.findUnique.mockResolvedValue({
       key: "key-12345678",

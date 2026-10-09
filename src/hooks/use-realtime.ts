@@ -372,22 +372,40 @@ export function useRealtime(): UseRealtimeResult {
     [],
   )
 
-  return {
-    isConnected,
-    status,
-    join,
-    sendMessage,
-    confirmDelivery,
-    markMessageRead,
-    updateBooking,
-    updateQuote,
-    sendTrackingPosition,
-    ping,
-    emit,
-    on,
-    off,
-    disconnect,
-  }
+  return useMemo(
+    () => ({
+      isConnected,
+      status,
+      join,
+      sendMessage,
+      confirmDelivery,
+      markMessageRead,
+      updateBooking,
+      updateQuote,
+      sendTrackingPosition,
+      ping,
+      emit,
+      on,
+      off,
+      disconnect,
+    }),
+    [
+      isConnected,
+      status,
+      join,
+      sendMessage,
+      confirmDelivery,
+      markMessageRead,
+      updateBooking,
+      updateQuote,
+      sendTrackingPosition,
+      ping,
+      emit,
+      on,
+      off,
+      disconnect,
+    ],
+  )
 }
 
 export default useRealtime
