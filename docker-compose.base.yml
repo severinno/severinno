@@ -329,7 +329,7 @@ services:
       - ./config/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
       - ./config/pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
     healthcheck:
-      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "6432"]
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "6432", "-d", "severinno"]
       interval: 10s
       timeout: 5s
       retries: 5
