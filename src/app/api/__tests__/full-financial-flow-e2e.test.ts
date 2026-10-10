@@ -142,17 +142,24 @@ describe("Full Financial Flow E2E", () => {
     mockDb.booking.findUnique.mockResolvedValue({
       id: "b1",
       paymentStatus: "PENDING",
+      amount: 250,
       payment: { id: "pay1", status: "PENDING" },
     })
+    const nowIso = new Date().toISOString()
     const { POST: lytexWebhook } = await import("@/app/api/webhooks/lytex/route")
     const r2 = await lytexWebhook(
       new Request("http://localhost", {
         method: "POST",
+        headers: {
+          "x-lytex-signature": "valid-sig",
+          "x-lytex-timestamp": nowIso,
+        },
         body: JSON.stringify({
           id: "lytex-1",
           status: "paid",
           externalReference: "booking:b1",
-          paidAt: new Date().toISOString(),
+          paidAmount: 25000,
+          paidAt: nowIso,
         }),
       }),
     )
