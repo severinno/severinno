@@ -22,6 +22,7 @@ import { checkGeofences } from "@/lib/geofencing"
 import { indexProviderLocation } from "@/lib/redis-geo"
 
 import { withParams } from "@/lib/api-route"
+import { sendTrackingPosition } from "@/lib/realtime-client"
 
 // ── SSE connection registry ───────────────────────────────────────────────
 
@@ -221,7 +222,7 @@ export const POST = withParams<{ id: string }>(
     // Verify the caller is the assigned provider for this booking
     const booking = await db.booking.findUnique({
       where: { id: bookingId },
-      select: { providerId: true, status: true },
+      select: { providerId: true, clientId: true, status: true },
     })
     if (!booking) {
       return NextResponse.json({ error: "Agendamento não encontrado" }, { status: 404 })
@@ -251,6 +252,16 @@ export const POST = withParams<{ id: string }>(
 
     // Update spatial index so nearby-provider searches stay fresh during tracking
     indexProviderLocation(session.userId, lat, lng).catch(() => {})
+
+    // Broadcast to realtime WebSocket for client room (best-effort)
+    if (booking.clientId) {
+      sendTrackingPosition({
+        bookingId,
+        clientId: booking.clientId,
+        lat,
+        lng,
+      }).catch(() => {})
+    }
 
     // Broadcast to all SSE clients for this booking
     const clients = sseClients.get(bookingId) ?? []

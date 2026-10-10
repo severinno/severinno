@@ -42,6 +42,14 @@ const mockDb = vi.hoisted(() => ({
   $queryRawUnsafe: vi.fn(),
 }))
 
+const mockRealtime = vi.hoisted(() => ({
+  sendMessageSend: vi.fn().mockResolvedValue(undefined),
+  sendMessageRead: vi.fn().mockResolvedValue(undefined),
+  sendMessageDelivered: vi.fn().mockResolvedValue(undefined),
+  sendTrackingPosition: vi.fn().mockResolvedValue(undefined),
+  emitRealtime: vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock("@/lib/db", () => ({ default: mockDb, db: mockDb }))
 vi.mock("@/lib/auth", () => ({ requireUser: vi.fn() }))
 vi.mock("@/lib/validators", () => ({
@@ -51,12 +59,15 @@ vi.mock("@/lib/logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
+vi.mock("@/lib/realtime-client", () => mockRealtime)
 
 import { requireUser } from "@/lib/auth"
 import { messageSchema } from "@/lib/validators"
+import { sendMessageSend, sendMessageRead } from "@/lib/realtime-client"
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockDb.message.updateMany.mockResolvedValue({ count: 1 })
   vi.mocked(requireUser).mockResolvedValue({ userId: "client-1", role: "CLIENT" })
 })
 
@@ -77,7 +88,7 @@ describe("GET /api/messages", () => {
       expect(data.items).toHaveLength(3)
     })
 
-    it("marks unread inbound messages as read", async () => {
+    it("marks unread inbound messages as read and emits realtime event", async () => {
       await GET(createMockRequest({ searchParams: { with: "prov-1" } }), {
         params: Promise.resolve({}),
       })
@@ -87,6 +98,10 @@ describe("GET /api/messages", () => {
           data: { read: true },
         }),
       )
+      expect(sendMessageRead).toHaveBeenCalledWith({
+        readerId: "client-1",
+        fromId: "prov-1",
+      })
     })
 
     it("returns 404 when peer not found", async () => {
@@ -156,7 +171,7 @@ describe("POST /api/messages", () => {
     })
   })
 
-  it("sends a message and creates notification", async () => {
+  it("sends a message, creates notification and emits realtime event", async () => {
     mockDb.notification.create.mockResolvedValue({})
     const response = await POST(createMockRequest({ method: "POST", body: validMessage }), {
       params: Promise.resolve({}),
@@ -165,6 +180,12 @@ describe("POST /api/messages", () => {
     expect(response.status).toBe(201)
     expect(data.message.fromId).toBe("client-1")
     expect(mockDb.notification.create).toHaveBeenCalled()
+    expect(sendMessageSend).toHaveBeenCalledWith({
+      fromId: "client-1",
+      toId: "prov-1",
+      content: validMessage.content,
+      bookingId: undefined,
+    })
   })
 
   it("throws 400 when sending to self", async () => {

@@ -223,4 +223,31 @@ describe("sendMessageDelivered e sendMessageRead", () => {
       },
     })
   })
+
+  it("chama emitRealtime com evento message:send", async () => {
+    vi.stubEnv("REALTIME_EMIT_API_KEY", "k")
+    const mockFetch = vi.mocked(fetch)
+    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }))
+
+    const { sendMessageSend } = await import("@/lib/realtime-client")
+
+    await sendMessageSend({
+      fromId: "u-1",
+      toId: "u-2",
+      content: "Olá mundo",
+      bookingId: "b-1",
+    })
+
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    const body = JSON.parse(mockFetch.mock.calls[0]![1]!.body as string)
+    expect(body).toEqual({
+      event: "message:send",
+      data: {
+        fromId: "u-1",
+        toId: "u-2",
+        content: "Olá mundo",
+        bookingId: "b-1",
+      },
+    })
+  })
 })

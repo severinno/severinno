@@ -9,6 +9,7 @@ import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { sanitizeText } from "@/lib/sanitize"
 
 import { withRoute } from "@/lib/api-route"
+import { sendMessageSend, sendMessageRead } from "@/lib/realtime-client"
 
 // Authenticated: list messages
 // - If `with` is provided → return conversation between current user and that user
@@ -58,10 +59,16 @@ export const GET = withRoute("api.messages.GET", async (request) => {
     const nextCursor = hasMore ? items[items.length - 1].id : null
 
     // Mark unread inbound messages as read
-    await db.message.updateMany({
+    const updateRes = await db.message.updateMany({
       where: { fromId: withUserId, toId: session.userId, read: false },
       data: { read: true },
     })
+    if (updateRes.count > 0) {
+      sendMessageRead({
+        readerId: session.userId,
+        fromId: withUserId,
+      }).catch(() => {})
+    }
 
     return NextResponse.json({ peer, items, nextCursor })
   }
@@ -161,6 +168,16 @@ export const POST = withRoute("api.messages.POST", async (request) => {
     .catch(() => {
       /* ignore notification errors */
     })
+
+  // Best-effort WebSocket emit via realtime mini-service
+  sendMessageSend({
+    fromId: session.userId,
+    toId: data.toId,
+    content: message.content,
+    bookingId: message.bookingId ?? undefined,
+  }).catch(() => {
+    /* ignore realtime emit errors */
+  })
 
   // Broadcast to recipient via Redis pub/sub (real-time SSE)
   try {

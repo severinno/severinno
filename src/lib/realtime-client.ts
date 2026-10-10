@@ -58,6 +58,15 @@ export async function sendTrackingPosition(opts: {
   await emitRealtime("tracking:position", opts)
 }
 
+export async function sendMessageSend(opts: {
+  fromId: string
+  toId: string
+  content: string
+  bookingId?: string
+}): Promise<void> {
+  await emitRealtime("message:send", opts)
+}
+
 export async function sendMessageDelivered(opts: {
   messageId: string
   toId: string

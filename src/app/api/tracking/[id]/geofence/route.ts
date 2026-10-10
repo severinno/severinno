@@ -12,6 +12,7 @@ import { haversineKm } from "@/lib/geo-server"
 import logger from "@/lib/logger"
 
 import { withParams } from "@/lib/api-route"
+import { sendTrackingPosition } from "@/lib/realtime-client"
 
 const GEOFENCE_DISTANCE_KM = 1.0
 const GEOFENCE_DURATION_MIN = 5
@@ -67,8 +68,16 @@ export const POST = withParams<{ id: string }>(
       throw forbidden("Apenas o prestador do agendamento pode enviar posição")
     }
 
-    // 1. Keep spatial index fresh
+    // 1. Keep spatial index fresh and broadcast live position to client via WebSocket
     indexProviderLocation(session.userId, providerLat, providerLng).catch(() => {})
+    if (booking.clientId) {
+      sendTrackingPosition({
+        bookingId,
+        clientId: booking.clientId,
+        lat: providerLat,
+        lng: providerLng,
+      }).catch(() => {})
+    }
 
     // 2. Run geofencing engine (Haversine enter/exit with distributed lock)
     const engineEvents = await checkGeofences(session.userId, providerLat, providerLng)
