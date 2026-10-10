@@ -332,6 +332,69 @@ export async function POST(request: Request) {
         break
       }
 
+      // ── Status de Entrega da Mensagem (Receipts / ACKs) ──
+      case "messages.update": {
+        // Formato Evolution v2:
+        // data pode ser array de updates ou objeto com key e status / ack
+        // status numérico ou string: 2 / "DELIVERY_ACK", 3 / 4 / "READ"
+        const updates = Array.isArray(data) ? data : [data]
+
+        for (const item of updates) {
+          const messageId = item?.key?.id ?? item?.id
+          const rawStatus = item?.status ?? item?.update?.status ?? item?.ack
+
+          if (!messageId) continue
+
+          let nextStatus: "SENT" | "DELIVERED" | "READ" | "FAILED" | null = null
+
+          if (
+            rawStatus === 2 ||
+            rawStatus === "DELIVERY_ACK" ||
+            rawStatus === "delivered" ||
+            rawStatus === "DELIVERED"
+          ) {
+            nextStatus = "DELIVERED"
+          } else if (
+            rawStatus === 3 ||
+            rawStatus === 4 ||
+            rawStatus === "READ" ||
+            rawStatus === "read" ||
+            rawStatus === "PLAYED"
+          ) {
+            nextStatus = "READ"
+          } else if (rawStatus === "FAILED" || rawStatus === "ERROR" || rawStatus === 0) {
+            nextStatus = "FAILED"
+          }
+
+          if (nextStatus) {
+            try {
+              const updated = await db.whatsAppMessageLog.updateMany({
+                where: { messageId },
+                data: {
+                  status: nextStatus,
+                  ...(nextStatus === "DELIVERED" ? { deliveredAt: new Date() } : {}),
+                  ...(nextStatus === "READ" ? { readAt: new Date() } : {}),
+                },
+              })
+
+              if (updated.count > 0) {
+                evolutionLogger.debug(
+                  { messageId, nextStatus, count: updated.count },
+                  "Webhook Evolution: status de mensagem atualizado no banco",
+                )
+              }
+            } catch (err) {
+              evolutionLogger.warn(
+                { err, messageId },
+                "Webhook Evolution: erro ao atualizar status do log no banco",
+              )
+            }
+          }
+        }
+
+        break
+      }
+
       // ── Status da conexão ──
       case "connection.update": {
         const status = data?.instance?.status ?? "unknown"

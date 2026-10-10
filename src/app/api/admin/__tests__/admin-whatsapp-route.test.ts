@@ -7,6 +7,28 @@ vi.mock("@/lib/auth", () => ({
   requireRole: vi.fn(),
 }))
 
+vi.mock("@/lib/db", () => ({
+  db: {
+    whatsAppMessageLog: {
+      findMany: vi.fn().mockResolvedValue([
+        {
+          id: "log-1",
+          phone: "5511999999999",
+          content: "Olá mundo",
+          context: "test",
+          status: "SENT",
+          createdAt: new Date().toISOString(),
+          sentAt: new Date().toISOString(),
+          deliveredAt: null,
+          readAt: null,
+          user: null,
+        },
+      ]),
+      create: vi.fn().mockResolvedValue({ id: "log-created" }),
+    },
+  },
+}))
+
 vi.mock("@/lib/rate-limit", () => ({
   assertRateLimit: vi.fn().mockResolvedValue(undefined),
   RATE_LIMITS: { admin: { windowMs: 60000, max: 100 } },
@@ -75,6 +97,8 @@ describe("Admin WhatsApp Route (/api/admin/whatsapp)", () => {
       expect(json.instance.status).toBe("connecting")
       expect(json.qrcode.base64).toBe("data:image/png;base64,mockqr")
       expect(json.webhook.enabled).toBe(true)
+      expect(json.logs).toBeDefined()
+      expect(json.logs.length).toBe(1)
     })
 
     it("retorna dados do dispositivo quando já conectado sem tentar buscar novo QR code", async () => {

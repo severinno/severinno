@@ -73,19 +73,19 @@ enum ServiceUnit {
 // CITY — multi-city support
 // ============================================================================
 model City {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  state       String?
-  country     String   @default("BR")
-  lat         Float?
-  lng         Float?
-  active      Boolean  @default(true)
-  timezone    String   @default("America/Sao_Paulo")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  state     String?
+  country   String   @default("BR")
+  lat       Float?
+  lng       Float?
+  active    Boolean  @default(true)
+  timezone  String   @default("America/Sao_Paulo")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  providers   User[]
+  providers User[]
 
   @@index([active])
 }
@@ -94,97 +94,98 @@ model City {
 // USER — base account for CLIENT | PROVIDER | ADMIN
 // ============================================================================
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  name         String
-  role         Role     @default(CLIENT)
-  cpfCnpj      String?
-  whatsapp     String?
-  phone        String?
-  avatarUrl    String?
-  bio          String?
-  coverUrl     String?
+  id                   String                                 @id @default(cuid())
+  email                String                                 @unique
+  passwordHash         String
+  name                 String
+  role                 Role                                   @default(CLIENT)
+  cpfCnpj              String?
+  whatsapp             String?
+  phone                String?
+  avatarUrl            String?
+  bio                  String?
+  coverUrl             String?
   // Geolocation of the provider's operating base (or client home)
-  lat          Float?
-  lng          Float?
+  lat                  Float?
+  lng                  Float?
   // Operating radius (km) — providers only; null for clients/admins
-  radiusKm     Float?
+  radiusKm             Float?
   // Última precisão da fix do GPS (± metros) — desenha o círculo de incerteza
   // no mapa mesmo quando a localização vem salva (sem nova fix).
-  gpsAccuracyM Float?
+  gpsAccuracyM         Float?
   // PostGIS spatial geography column — managed via SQL trigger (sync_user_location)
   // READ-ONLY via Prisma: all spatial access uses $queryRaw (see src/lib/postgis.ts)
-  location     Unsupported("geography(Point, 4326)")?
+  location             Unsupported("geography(Point, 4326)")?
   // Vetor de busca full-text (tsvector) — mantido pelo trigger
   // user_search_vector_update (migration 20260726120000) e consumido por SQL
   // cru em src/lib/sql-builder.ts. Declarado aqui SÓ para o Prisma enxergar a
   // coluna e nunca propor DROP no `db push` (drift destrutivo).
-  search_vector Unsupported("tsvector")?
+  search_vector        Unsupported("tsvector")?
   // Brazilian address fields
-  cep          String?
-  street       String?
-  number       String?
-  complement   String?
-  district     String?
-  city         String?
-  cityId       String?
-  cityRelation City?   @relation(fields: [cityId], references: [id])
-  state        String?
-  slug         String?  @unique
-  verified     Boolean  @default(false)
-  active       Boolean  @default(true)
-  deletedAt    DateTime?
+  cep                  String?
+  street               String?
+  number               String?
+  complement           String?
+  district             String?
+  city                 String?
+  cityId               String?
+  cityRelation         City?                                  @relation(fields: [cityId], references: [id])
+  state                String?
+  slug                 String?                                @unique
+  verified             Boolean                                @default(false)
+  active               Boolean                                @default(true)
+  deletedAt            DateTime?
   // Denormalized fields for performance (see migration SQL for sync triggers)
-  avgRating    Float    @default(0)
-  reviewCount  Int      @default(0)
-  favoriteCount Int     @default(0)
+  avgRating            Float                                  @default(0)
+  reviewCount          Int                                    @default(0)
+  favoriteCount        Int                                    @default(0)
   // Lytex Pagamentos recipient ID for split payments
-  lytexRecipientId String?
+  lytexRecipientId     String?
   // Identity verification (KYC)
-  identityDocUrl    String?
-  identitySelfieUrl String?
-  identityVerifiedAt DateTime?
-  identityStatus    String?  // "pending" | "approved" | "rejected"
+  identityDocUrl       String?
+  identitySelfieUrl    String?
+  identityVerifiedAt   DateTime?
+  identityStatus       String? // "pending" | "approved" | "rejected"
   // Advanced Geolocation: custom polygon area and travel fee policy
-  servicePolygon    Json?
-  travelFeePolicy   Json?
+  servicePolygon       Json?
+  travelFeePolicy      Json?
   // Session version — incremented on password change/reset to revoke all sessions
-  sessionVersion  Int      @default(0)
+  sessionVersion       Int                                    @default(0)
   // Two-factor authentication (TOTP)
-  twoFactorEnabled     Boolean  @default(false)
+  twoFactorEnabled     Boolean                                @default(false)
   twoFactorSecret      String?
-  twoFactorBackupCodes String?  // JSON array of hashed backup codes
+  twoFactorBackupCodes String? // JSON array of hashed backup codes
   // Preferências de UI do painel (som/vibração) — lidas e gravadas via /api/users/me
-  soundEnabled   Boolean @default(true)
-  vibrateEnabled Boolean @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  soundEnabled         Boolean                                @default(true)
+  vibrateEnabled       Boolean                                @default(true)
+  createdAt            DateTime                               @default(now())
+  updatedAt            DateTime                               @updatedAt
 
   // Relations
-  services           Service[]
-  availability       ProviderAvailability[]
-  dateBlocks         DateBlock[]
-  quotesAsClient     QuoteRequest[]   @relation("QuoteRequestClient")
-  quotesAsProvider   QuoteRequest[]   @relation("QuoteRequestProvider")
-  resetTokens        ResetToken[]
-  quoteItems         QuoteItem[]
-  bookingsAsClient   Booking[]        @relation("BookingClient")
-  bookingsAsProvider Booking[]        @relation("BookingProvider")
-  reviewsGiven       Review[]         @relation("ReviewClient")
-  reviewsReceived    Review[]         @relation("ReviewProvider")
-  favorites          Favorite[]       @relation("FavoriteClient")
-  favoritedBy        Favorite[]       @relation("FavoriteProvider")
-  messagesFrom       Message[]        @relation("MessageFrom")
-  messagesTo         Message[]        @relation("MessageTo")
-  notifications      Notification[]
-  settings           Setting[]
-  pushSubscriptions  PushSubscription[]
-  walletTransactions  WalletTransaction[]
+  services                Service[]
+  availability            ProviderAvailability[]
+  dateBlocks              DateBlock[]
+  quotesAsClient          QuoteRequest[]           @relation("QuoteRequestClient")
+  quotesAsProvider        QuoteRequest[]           @relation("QuoteRequestProvider")
+  resetTokens             ResetToken[]
+  quoteItems              QuoteItem[]
+  bookingsAsClient        Booking[]                @relation("BookingClient")
+  bookingsAsProvider      Booking[]                @relation("BookingProvider")
+  reviewsGiven            Review[]                 @relation("ReviewClient")
+  reviewsReceived         Review[]                 @relation("ReviewProvider")
+  favorites               Favorite[]               @relation("FavoriteClient")
+  favoritedBy             Favorite[]               @relation("FavoriteProvider")
+  messagesFrom            Message[]                @relation("MessageFrom")
+  messagesTo              Message[]                @relation("MessageTo")
+  notifications           Notification[]
+  settings                Setting[]
+  pushSubscriptions       PushSubscription[]
+  walletTransactions      WalletTransaction[]
   notificationPreferences NotificationPreference[]
-  settlementProviders ProviderSettlement[]
-  pushSendLogs        PushSendLog[]
-  pushAnalytics      PushAnalytics[]
+  settlementProviders     ProviderSettlement[]
+  pushSendLogs            PushSendLog[]
+  pushAnalytics           PushAnalytics[]
+  whatsAppLogs            WhatsAppMessageLog[]
 
   @@index([role, active, verified])
   @@index([deletedAt])
@@ -197,17 +198,17 @@ model User {
 // CATEGORY — 3-level tree (pai → filha → subcategoria)
 // ============================================================================
 model Category {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  parentId    String?
-  description String?  // SEO description for category pages
-  level       Int      @default(0) // 0=pai, 1=filha, 2=subcategoria
-  icon        String?
-  order       Int      @default(0)
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String                   @id @default(cuid())
+  name          String
+  slug          String                   @unique
+  parentId      String?
+  description   String? // SEO description for category pages
+  level         Int                      @default(0) // 0=pai, 1=filha, 2=subcategoria
+  icon          String?
+  order         Int                      @default(0)
+  active        Boolean                  @default(true)
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
   search_vector Unsupported("tsvector")?
 
   parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
@@ -223,28 +224,28 @@ model Category {
 // SERVICE — provider's offering under a subcategoria
 // ============================================================================
 model Service {
-  id          String   @id @default(cuid())
-  providerId  String
-  categoryId  String
-  title       String
-  description String
-  basePrice   Decimal @db.Decimal(10, 2)
-  unit        ServiceUnit @default(UNIDADE)
+  id            String                   @id @default(cuid())
+  providerId    String
+  categoryId    String
+  title         String
+  description   String
+  basePrice     Decimal                  @db.Decimal(10, 2)
+  unit          ServiceUnit              @default(UNIDADE)
   // photos: JSON array of url strings (max 4)
-  photos      Json     @default("[]")
+  photos        Json                     @default("[]")
   // duration in minutes (e.g. 60, 120, 180)
-  duration    Int?
+  duration      Int?
   search_vector Unsupported("tsvector")?
-  active      Boolean  @default(true)
-  deletedAt   DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  active        Boolean                  @default(true)
+  deletedAt     DateTime?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
 
-  provider  User       @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  category  Category   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  reviews   Review[]
+  provider   User        @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  category   Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  reviews    Review[]
   quoteItems QuoteItem[]
-  bookings  Booking[]
+  bookings   Booking[]
 
   @@index([providerId])
   @@index([categoryId])
@@ -256,12 +257,12 @@ model Service {
 // PROVIDER AVAILABILITY — weekly time windows
 // ============================================================================
 model ProviderAvailability {
-  id         String  @id @default(cuid())
+  id         String   @id @default(cuid())
   providerId String
-  dayOfWeek  Int     // 0=Sunday ... 6=Saturday
-  startTime  String  // "HH:mm"
-  endTime    String  // "HH:mm"
-  active     Boolean @default(true)
+  dayOfWeek  Int // 0=Sunday ... 6=Saturday
+  startTime  String // "HH:mm"
+  endTime    String // "HH:mm"
+  active     Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -275,25 +276,25 @@ model ProviderAvailability {
 // QUOTE REQUEST — client asks one or more providers for prices
 // ============================================================================
 model QuoteRequest {
-  id         String   @id @default(cuid())
+  id         String                                 @id @default(cuid())
   clientId   String
-  providerId String   // primary provider
-  status     QuoteStatus @default(PENDING)
+  providerId String // primary provider
+  status     QuoteStatus                            @default(PENDING)
   address    String
   cep        String
   lat        Float
   lng        Float
   // PostGIS spatial column — managed via SQL trigger (sync_quoterequest_location)
   // READ-ONLY via Prisma: all spatial access uses $queryRaw (see src/lib/postgis.ts)
-  location     Unsupported("geography(Point, 4326)")?
+  location   Unsupported("geography(Point, 4326)")?
   expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime                               @default(now())
+  updatedAt  DateTime                               @updatedAt
 
   client   User        @relation("QuoteRequestClient", fields: [clientId], references: [id], onDelete: Cascade)
   provider User        @relation("QuoteRequestProvider", fields: [providerId], references: [id], onDelete: Cascade)
   items    QuoteItem[]
-  bookings Booking[] @relation("BookingQuote")
+  bookings Booking[]   @relation("BookingQuote")
 
   @@index([clientId])
   @@index([providerId])
@@ -301,19 +302,19 @@ model QuoteRequest {
 }
 
 model QuoteItem {
-  id           String   @id @default(cuid())
+  id           String          @id @default(cuid())
   requestId    String
   providerId   String
   serviceId    String
   description  String
   quantity     Float
-  unit         ServiceUnit @default(UNIDADE)
-  photos       Json     @default("[]")
-  price        Decimal? @db.Decimal(10, 2)   // provider's offer
+  unit         ServiceUnit     @default(UNIDADE)
+  photos       Json            @default("[]")
+  price        Decimal?        @db.Decimal(10, 2) // provider's offer
   providerNote String?
   status       QuoteItemStatus @default(PENDING)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 
   request  QuoteRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   provider User         @relation(fields: [providerId], references: [id], onDelete: Cascade)
@@ -328,51 +329,51 @@ model QuoteItem {
 // BOOKING — scheduled service execution
 // ============================================================================
 model Booking {
-  id            String   @id @default(cuid())
-  clientId      String
-  providerId    String
-  serviceId     String
-  scheduledAt   DateTime
-  status        BookingStatus @default(PENDING)
-  address       String
-  cep           String
-  lat           Float
-  lng           Float
+  id                  String                                 @id @default(cuid())
+  clientId            String
+  providerId          String
+  serviceId           String
+  scheduledAt         DateTime
+  status              BookingStatus                          @default(PENDING)
+  address             String
+  cep                 String
+  lat                 Float
+  lng                 Float
   // PostGIS spatial column — managed via SQL trigger (sync_booking_location)
   // READ-ONLY via Prisma: all spatial access uses $queryRaw (see src/lib/postgis.ts)
-  location     Unsupported("geography(Point, 4326)")?
-  amount        Decimal @db.Decimal(10, 2)
-  paymentMethod PaymentMethod @default(PIX)
-  paymentStatus PaymentStatus @default(PENDING)
-  notes         String?
+  location            Unsupported("geography(Point, 4326)")?
+  amount              Decimal                                @db.Decimal(10, 2)
+  paymentMethod       PaymentMethod                          @default(PIX)
+  paymentStatus       PaymentStatus                          @default(PENDING)
+  notes               String?
   // Quote request that originated this booking
-  quoteId       String?  @unique
+  quoteId             String?                                @unique
   // Completion confirmation PIN code
-  completionPin String?
+  completionPin       String?
   // Timestamp for automated reminders
-  reminderSentAt DateTime?
+  reminderSentAt      DateTime?
   // Timestamp for automated proximity geofence alert (within 1km / 5min)
   geofenceAlertSentAt DateTime?
   // Escrow & custody release
-  escrowReleasedAt DateTime?
+  escrowReleasedAt    DateTime?
   escrowDisputeReason String?
   // Before / After photos for job proof
-  beforePhotos  Json     @default("[]")
-  afterPhotos   Json     @default("[]")
-  completionNote String?
-  deletedAt     DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  beforePhotos        Json                                   @default("[]")
+  afterPhotos         Json                                   @default("[]")
+  completionNote      String?
+  deletedAt           DateTime?
+  createdAt           DateTime                               @default(now())
+  updatedAt           DateTime                               @updatedAt
 
-  client   User        @relation("BookingClient", fields: [clientId], references: [id], onDelete: Cascade)
-  provider User        @relation("BookingProvider", fields: [providerId], references: [id], onDelete: Cascade)
-  service  Service     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
-  quote    QuoteRequest? @relation("BookingQuote", fields: [quoteId], references: [id], onDelete: SetNull)
-  reviews  Review[]
-  payment  Payment?
-  disputes Dispute[]
+  client        User            @relation("BookingClient", fields: [clientId], references: [id], onDelete: Cascade)
+  provider      User            @relation("BookingProvider", fields: [providerId], references: [id], onDelete: Cascade)
+  service       Service         @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  quote         QuoteRequest?   @relation("BookingQuote", fields: [quoteId], references: [id], onDelete: SetNull)
+  reviews       Review[]
+  payment       Payment?
+  disputes      Dispute[]
   pushAnalytics PushAnalytics[]
-  waypoints Waypoint[]
+  waypoints     Waypoint[]
 
   @@index([clientId])
   @@index([providerId])
@@ -389,17 +390,17 @@ model Booking {
 // WAYPOINT — multi-stop tracking for bookings
 // ============================================================================
 model Waypoint {
-  id          String   @id @default(cuid())
-  bookingId   String
-  order       Int
-  label       String?
-  lat         Float
-  lng         Float
-  arrivalEstimate DateTime?
-  arrivedAt   DateTime?
-  geofenceRadiusMeters Int  @default(200)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                   String    @id @default(cuid())
+  bookingId            String
+  order                Int
+  label                String?
+  lat                  Float
+  lng                  Float
+  arrivalEstimate      DateTime?
+  arrivedAt            DateTime?
+  geofenceRadiusMeters Int       @default(200)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
@@ -412,15 +413,15 @@ model Waypoint {
 // DISPUTE — transaction mediation between client and provider
 // ============================================================================
 model Dispute {
-  id          String   @id @default(cuid())
-  bookingId   String
-  reason      String
-  status      String   @default("OPEN") // "OPEN" | "RESOLVED" | "REJECTED"
-  resolution  String?
-  createdAt   DateTime @default(now())
-  resolvedAt  DateTime?
+  id         String    @id @default(cuid())
+  bookingId  String
+  reason     String
+  status     String    @default("OPEN") // "OPEN" | "RESOLVED" | "REJECTED"
+  resolution String?
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
 
-  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@index([bookingId])
   @@index([status])
@@ -430,23 +431,23 @@ model Dispute {
 // REVIEW — one per booking, by client about provider
 // ============================================================================
 model Review {
-  id         String   @id @default(cuid())
-  bookingId  String   @unique
-  clientId   String
-  providerId String
-  rating     Int      // 1-5
-  comment    String?
-  photos     Json     @default("[]")  // Array of photo URLs (max 4)
-  providerReply   String?  // Provider's response to the review
+  id              String    @id @default(cuid())
+  bookingId       String    @unique
+  clientId        String
+  providerId      String
+  rating          Int // 1-5
+  comment         String?
+  photos          Json      @default("[]") // Array of photo URLs (max 4)
+  providerReply   String? // Provider's response to the review
   providerReplyAt DateTime? // When the provider replied
-  providerRating  Int?     // Provider's rating of the client (1-5)
-  providerComment String?  // Provider's comment about the client
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  providerRating  Int? // Provider's rating of the client (1-5)
+  providerComment String? // Provider's comment about the client
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  client    User    @relation("ReviewClient", fields: [clientId], references: [id], onDelete: Cascade)
-  provider  User    @relation("ReviewProvider", fields: [providerId], references: [id], onDelete: Cascade)
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  client    User     @relation("ReviewClient", fields: [clientId], references: [id], onDelete: Cascade)
+  provider  User     @relation("ReviewProvider", fields: [providerId], references: [id], onDelete: Cascade)
   service   Service? @relation(fields: [serviceId], references: [id])
   serviceId String?
 
@@ -503,7 +504,7 @@ model Message {
 model Notification {
   id        String   @id @default(cuid())
   userId    String
-  type      String   // e.g. "BOOKING_CONFIRMED", "QUOTE_RECEIVED", "MESSAGE"
+  type      String // e.g. "BOOKING_CONFIRMED", "QUOTE_RECEIVED", "MESSAGE"
   title     String
   body      String?
   read      Boolean  @default(false)
@@ -524,24 +525,24 @@ model Notification {
 // PAYMENT — one per booking
 // ============================================================================
 model Payment {
-  id            String   @id @default(cuid())
-  bookingId     String   @unique
-  amount        Decimal @db.Decimal(10, 2)
-  method        PaymentMethod @default(PIX)
-  status        PaymentStatus @default(PENDING)
-  transactionId String?
+  id               String        @id @default(cuid())
+  bookingId        String        @unique
+  amount           Decimal       @db.Decimal(10, 2)
+  method           PaymentMethod @default(PIX)
+  status           PaymentStatus @default(PENDING)
+  transactionId    String?
   // Lytex Pagamentos integration fields
-  lytexId       String?  @unique // ID da cobrança no Lytex
-  lytexStatus   String?          // Status no Lytex (pending|waitingPayment|paid|canceled|refunded|expired|failed)
-  qrCode        String?          // PIX QR Code copia-e-cola
-  qrCodeImage   String?          // PIX QR Code image URL
-  cardLastDigits String?         // Últimos 4 dígitos do cartão
-  cardBrand     String?          // Bandeira do cartão
-  installments  Int?             // Número de parcelas
-  paidAt        DateTime?        // Data do pagamento efetivo
-  lytexRawResponse Json?         // Raw response do Lytex (para debug)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  lytexId          String?       @unique // ID da cobrança no Lytex
+  lytexStatus      String? // Status no Lytex (pending|waitingPayment|paid|canceled|refunded|expired|failed)
+  qrCode           String? // PIX QR Code copia-e-cola
+  qrCodeImage      String? // PIX QR Code image URL
+  cardLastDigits   String? // Últimos 4 dígitos do cartão
+  cardBrand        String? // Bandeira do cartão
+  installments     Int? // Número de parcelas
+  paidAt           DateTime? // Data do pagamento efetivo
+  lytexRawResponse Json? // Raw response do Lytex (para debug)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
@@ -584,23 +585,23 @@ model IdempotencyRecord {
 // SETTLEMENT PERIOD — automatic settlement cycles (weekly/monthly)
 // ============================================================================
 model SettlementPeriod {
-  id              String   @id @default(cuid())
+  id               String    @id @default(cuid())
   // type: "WEEKLY" | "MONTHLY"
-  type            String   @default("WEEKLY")
+  type             String    @default("WEEKLY")
   // status: "PENDING" | "FINALIZED"
-  status          String   @default("PENDING")
-  startDate       DateTime
-  endDate         DateTime
-  totalCommission Decimal @db.Decimal(12, 2) @default(0)
-  totalNet        Decimal @db.Decimal(12, 2) @default(0)
-  totalAmount     Decimal @db.Decimal(12, 2) @default(0)
-  providerCount   Int      @default(0)
-  transactionCount Int     @default(0)
-  notes           String?
-  finalizedAt     DateTime?
-  finalizedBy     String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  status           String    @default("PENDING")
+  startDate        DateTime
+  endDate          DateTime
+  totalCommission  Decimal   @default(0) @db.Decimal(12, 2)
+  totalNet         Decimal   @default(0) @db.Decimal(12, 2)
+  totalAmount      Decimal   @default(0) @db.Decimal(12, 2)
+  providerCount    Int       @default(0)
+  transactionCount Int       @default(0)
+  notes            String?
+  finalizedAt      DateTime?
+  finalizedBy      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   providers ProviderSettlement[]
 
@@ -612,20 +613,20 @@ model SettlementPeriod {
 // PROVIDER SETTLEMENT — per-provider amounts within a settlement period
 // ============================================================================
 model ProviderSettlement {
-  id              String   @id @default(cuid())
-  periodId        String
-  providerId      String
+  id               String    @id @default(cuid())
+  periodId         String
+  providerId       String
   // status: "PENDING" | "PAID"
-  status          String   @default("PENDING")
-  totalAmount     Decimal @db.Decimal(12, 2) @default(0)
-  commission      Decimal @db.Decimal(12, 2) @default(0)
-  netAmount       Decimal @db.Decimal(12, 2) @default(0)
-  transactionCount Int     @default(0)
-  paidAt          DateTime?
-  paidBy          String?
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  status           String    @default("PENDING")
+  totalAmount      Decimal   @default(0) @db.Decimal(12, 2)
+  commission       Decimal   @default(0) @db.Decimal(12, 2)
+  netAmount        Decimal   @default(0) @db.Decimal(12, 2)
+  transactionCount Int       @default(0)
+  paidAt           DateTime?
+  paidBy           String?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   period   SettlementPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
   provider User             @relation(fields: [providerId], references: [id], onDelete: Restrict)
@@ -684,9 +685,9 @@ model DateBlock {
 
   provider User @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
+  @@unique([providerId, date, startTime, endTime])
   @@index([providerId])
   @@index([date])
-  @@unique([providerId, date, startTime, endTime])
 }
 
 // ============================================================================
@@ -712,20 +713,20 @@ model PushSubscription {
 // ============================================================================
 // status: "PENDING" | "SENT" | "CANCELLED" | "FAILED"
 model ScheduledPushNotification {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   scheduledAt DateTime
-  status      String   @default("PENDING")
+  status      String    @default("PENDING")
   title       String
   body        String?
-  pushUrl     String   @default("/")
-  type        String   @default("ADMIN_MANUAL")
-  userIds     Json     @default("[]")
+  pushUrl     String    @default("/")
+  type        String    @default("ADMIN_MANUAL")
+  userIds     Json      @default("[]")
   // Results after sending
-  sentCount   Int      @default(0)
-  errorCount  Int      @default(0)
+  sentCount   Int       @default(0)
+  errorCount  Int       @default(0)
   sentAt      DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   createdBy   String?
 
   // Recurring schedule reference (if this was generated by a recurring rule)
@@ -762,28 +763,28 @@ model ScheduledPushNotification {
 //   3. Cria um ScheduledPushNotification avulso e dispara
 //   4. Atualiza lastSentAt
 model RecurringPushSchedule {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   // Recurrence config
-  frequency   String   // "daily" | "weekly" | "monthly"
-  time        String   // "HH:mm"
-  dayOfWeek   Int?     // 0-6, apenas para weekly
-  dayOfMonth  Int?     // 1-31, apenas para monthly
-  timezone    String   @default("America/Sao_Paulo")
+  frequency   String // "daily" | "weekly" | "monthly"
+  time        String // "HH:mm"
+  dayOfWeek   Int? // 0-6, apenas para weekly
+  dayOfMonth  Int? // 1-31, apenas para monthly
+  timezone    String    @default("America/Sao_Paulo")
   // Content
   title       String
   body        String?
-  pushUrl     String   @default("/")
-  type        String   @default("RECURRING")
-  targetRoles Json     @default("[\"CLIENT\",\"PROVIDER\"]")
+  pushUrl     String    @default("/")
+  type        String    @default("RECURRING")
+  targetRoles Json      @default("[\"CLIENT\",\"PROVIDER\"]")
   // Filters (opcional) — filtra usuários por critérios
-  filterCity  String?  // Cidade específica (opcional)
+  filterCity  String? // Cidade específica (opcional)
   // Status
-  status      String   @default("ACTIVE")
+  status      String    @default("ACTIVE")
   lastSentAt  DateTime?
-  totalSent   Int      @default(0)
+  totalSent   Int       @default(0)
   createdBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([status, frequency])
   @@index([status, time])
@@ -803,8 +804,8 @@ model RecurringPushSchedule {
 model EventWebhook {
   id          String   @id @default(cuid())
   event       String
-  title       String   // supports {{variables}}
-  body        String?  // supports {{variables}}
+  title       String // supports {{variables}}
+  body        String? // supports {{variables}}
   pushUrl     String   @default("/")
   targetRoles Json     @default("[\"PROVIDER\"]")
   active      Boolean  @default(true)
@@ -828,28 +829,28 @@ model EventWebhook {
 //   em um botão de ação na notificação push)
 // actionResult: resultado da ação ("CONFIRMED", "CANCELLED", etc.)
 model PushAnalytics {
-  id        String   @id @default(cuid())
-  userId    String
-  title     String
-  body      String?
-  type      String   @default("ADMIN_MANUAL")
-  source    String   @default("manual")
-  status    String   @default("sent")
+  id           String    @id @default(cuid())
+  userId       String
+  title        String
+  body         String?
+  type         String    @default("ADMIN_MANUAL")
+  source       String    @default("manual")
+  status       String    @default("sent")
   // Device info
-  deviceCount Int    @default(0)
+  deviceCount  Int       @default(0)
   // Timing
   latencyMs    Int?
   clickedAt    DateTime?
   errorMessage String?
   // Action tracking — preenchido quando o usuário executa uma ação
   // na notificação push (ex: Aceitar, Recusar, Visualizar)
-  action       String?  // "accept" | "reject" | "view"
-  actionResult String?  // resultado: "CONFIRMED" | "CANCELLED" | "viewed"
+  action       String? // "accept" | "reject" | "view"
+  actionResult String? // resultado: "CONFIRMED" | "CANCELLED" | "viewed"
   bookingId    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
 
   @@index([userId])
@@ -867,8 +868,8 @@ model PushAnalytics {
 model WalletTransaction {
   id          String   @id @default(cuid())
   providerId  String
-  amount      Decimal @db.Decimal(10, 2)
-  status      String   @default("pending")  // "pending" | "completed" | "failed" | "cancelled"
+  amount      Decimal  @db.Decimal(10, 2)
+  status      String   @default("pending") // "pending" | "completed" | "failed" | "cancelled"
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -883,13 +884,13 @@ model WalletTransaction {
 // NOTIFICATION PREFERENCE — per-user per-type notification toggles
 // ============================================================================
 model NotificationPreference {
-  id             String  @id @default(cuid())
-  userId         String
-  type           String
-  pushEnabled    Boolean @default(true)
-  emailEnabled   Boolean @default(true)
+  id              String  @id @default(cuid())
+  userId          String
+  type            String
+  pushEnabled     Boolean @default(true)
+  emailEnabled    Boolean @default(true)
   whatsappEnabled Boolean @default(true)
-  soundEnabled   Boolean @default(true)
+  soundEnabled    Boolean @default(true)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -911,20 +912,20 @@ model NotificationPreference {
 //   - erros individuais (se houver)
 //   - tempo total de processamento
 model PushSendLog {
-  id              String   @id @default(cuid())
-  adminId         String
-  action          String   // "manual_send" | "manual_schedule" | "scheduled_send" | "recurring_send"
-  title           String
-  body            String?
-  pushUrl         String   @default("/")
-  notificationType String  @default("ADMIN_MANUAL")
+  id               String   @id @default(cuid())
+  adminId          String
+  action           String // "manual_send" | "manual_schedule" | "scheduled_send" | "recurring_send"
+  title            String
+  body             String?
+  pushUrl          String   @default("/")
+  notificationType String   @default("ADMIN_MANUAL")
   // Results
-  recipientCount  Int      @default(0)
-  sentCount       Int      @default(0)
-  errorCount      Int      @default(0)
-  directPushCount Int      @default(0)  // fallback direto quando RabbitMQ indisponível
-  metadata        Json?    // detalhes adicionais (scheduleId, recurringId, sample userIds, etc.)
-  createdAt       DateTime @default(now())
+  recipientCount   Int      @default(0)
+  sentCount        Int      @default(0)
+  errorCount       Int      @default(0)
+  directPushCount  Int      @default(0) // fallback direto quando RabbitMQ indisponível
+  metadata         Json? // detalhes adicionais (scheduleId, recurringId, sample userIds, etc.)
+  createdAt        DateTime @default(now())
 
   admin User @relation(fields: [adminId], references: [id], onDelete: Cascade)
 
@@ -946,26 +947,26 @@ model PushSendLog {
 //   partial  → alguns sends falharam
 //   failed   → todos os sends falharam
 model WebhookExecutionLog {
-  id           String   @id @default(cuid())
-  webhookId    String
-  event        String   // denormalized: "booking.created", etc.
-  title        String   // template rendered (denormalized)
-  body         String?
-  pushUrl      String?
-  targetRoles  Json?    // snapshot of targetRoles at execution time
+  id          String  @id @default(cuid())
+  webhookId   String
+  event       String // denormalized: "booking.created", etc.
+  title       String // template rendered (denormalized)
+  body        String?
+  pushUrl     String?
+  targetRoles Json? // snapshot of targetRoles at execution time
 
-  webhook EventWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  webhook      EventWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
   // Results
-  usersFound   Int      @default(0)   // total users matching role + scoped filters
-  usersSent    Int      @default(0)   // successfully sent
-  usersFailed  Int      @default(0)   // push failed
-  errorMessage String?  // primeiro erro (se houver)
-  status       String   @default("success")
+  usersFound   Int          @default(0) // total users matching role + scoped filters
+  usersSent    Int          @default(0) // successfully sent
+  usersFailed  Int          @default(0) // push failed
+  errorMessage String? // primeiro erro (se houver)
+  status       String       @default("success")
   // Metadata
-  context      Json?    // snapshot of EventContext variables
-  executionMs  Int?     // total execution time in ms
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  context      Json? // snapshot of EventContext variables
+  executionMs  Int? // total execution time in ms
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   @@index([webhookId])
   @@index([event])
@@ -977,10 +978,14 @@ model WebhookExecutionLog {
 // SEARCH REINDEX QUEUE — async queue for OpenSearch reindexing
 // ============================================================================
 model SearchReindexQueue {
-  id         BigInt   @id @default(autoincrement())
+  id         BigInt @id @default(autoincrement())
   entityType String
   entityId   String
   action     String
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([createdAt], map: "idx_search_reindex_queue_created")
   // A tabela REAL (criada por 20260724140000_auto_reindex_triggers e usada
   // por SQL cru em src/lib/api-server.ts + src/queue/search-index-consumer.ts)
   // é "search_reindex_queue" (lowercase): TIMESTAMPTZ, SEM updatedAt e com
@@ -988,8 +993,36 @@ model SearchReindexQueue {
   // "SearchReindexQueue" fantasma e o `db push` propunha DROP da tabela real
   // — com dezenas de milhares de rows na fila de reindexação.
   @@map("search_reindex_queue")
+}
 
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+// ============================================================================
+// WHATSAPP MESSAGE LOG — audit trail for WhatsApp notifications & messages
+// ============================================================================
+// Registra cada mensagem disparada via WhatsApp (manual, fila RabbitMQ ou eventos)
+// com status de entrega sincronizado via webhook da Evolution API.
+//
+// status: "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED"
+model WhatsAppMessageLog {
+  id           String    @id @default(cuid())
+  phone        String
+  text         String    @db.Text
+  userId       String?
+  context      String? // ex: "booking:created", "payment:pix", "quote:response", "admin:test"
+  status       String    @default("PENDING") // PENDING | SENT | DELIVERED | READ | FAILED
+  messageId    String?   @unique
+  errorMessage String?
+  sentAt       DateTime?
+  deliveredAt  DateTime?
+  readAt       DateTime?
+  metadata     Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  @@index([createdAt], map: "idx_search_reindex_queue_created")
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([phone])
+  @@index([userId])
+  @@index([status])
+  @@index([context])
+  @@index([createdAt])
 }

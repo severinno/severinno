@@ -5,6 +5,7 @@ import { z } from "zod"
 import { requireRole } from "@/lib/auth"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { withRoute } from "@/lib/api-route"
+import { db } from "@/lib/db"
 import {
   fetchInstance,
   getConnectionStatus,
@@ -83,6 +84,17 @@ export const GET = withRoute("api.admin.whatsapp.GET", async (request) => {
 
     const webhook = await getWebhook()
 
+    // Buscar últimos 25 disparos de mensagens para auditoria
+    const logs = await db.whatsAppMessageLog.findMany({
+      take: 25,
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+    })
+
     return NextResponse.json({
       instance: {
         name: instance?.name ?? process.env.EVOLUTION_INSTANCE ?? "severinno",
@@ -104,6 +116,7 @@ export const GET = withRoute("api.admin.whatsapp.GET", async (request) => {
         url: process.env.EVOLUTION_API_URL ?? "https://whatsapp.severinno.com",
         version: "v2.3.7",
       },
+      logs,
     })
   } catch (error) {
     evolutionLogger.error({ error }, "Falha ao consultar status do WhatsApp")
@@ -128,7 +141,7 @@ export const GET = withRoute("api.admin.whatsapp.GET", async (request) => {
  * - sync_webhook: Sincroniza o webhook da aplicação
  */
 export const POST = withRoute("api.admin.whatsapp.POST", async (request) => {
-  await requireRole("ADMIN")
+  const auth = await requireRole("ADMIN")
   await assertRateLimit(request, RATE_LIMITS.admin)
 
   let body: unknown
@@ -160,10 +173,29 @@ export const POST = withRoute("api.admin.whatsapp.POST", async (request) => {
         }
 
         const res = await sendText(formatted, data.message)
+        const messageId = res.key?.id ?? null
+
+        // Auditoria: salvar log do disparo de teste
+        try {
+          await db.whatsAppMessageLog.create({
+            data: {
+              phone: formatted,
+              text: data.message,
+              context: "admin:test",
+              status: "SENT",
+              messageId,
+              userId: auth.userId,
+              sentAt: new Date(),
+            },
+          })
+        } catch (logErr) {
+          evolutionLogger.warn({ logErr }, "Falha ao gravar WhatsAppMessageLog de teste")
+        }
+
         return NextResponse.json({
           success: true,
           message: "Mensagem enviada com sucesso",
-          messageId: res.key?.id ?? null,
+          messageId,
           recipient: formatted,
         })
       }

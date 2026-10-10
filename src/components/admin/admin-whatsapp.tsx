@@ -26,6 +26,10 @@ import {
   Layers,
   PhoneCall,
   Loader2,
+  History,
+  CheckCheck,
+  Clock,
+  XCircle,
 } from "lucide-react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -47,6 +51,25 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+
+export type WhatsAppLogItem = {
+  id: string
+  phone: string
+  text: string
+  context: string
+  status: "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED"
+  messageId: string | null
+  errorMessage: string | null
+  createdAt: string
+  sentAt: string | null
+  deliveredAt: string | null
+  readAt: string | null
+  user?: {
+    id: string
+    name: string | null
+    email: string | null
+  } | null
+}
 
 export type WhatsAppStatusResponse = {
   instance: {
@@ -73,6 +96,7 @@ export type WhatsAppStatusResponse = {
     url: string
     version: string
   }
+  logs?: WhatsAppLogItem[]
 }
 
 export function AdminWhatsApp() {
@@ -104,6 +128,7 @@ export function AdminWhatsApp() {
       toast.success(res.message || "Mensagem de teste enviada com sucesso!", {
         description: res.messageId ? `ID da mensagem: ${res.messageId}` : undefined,
       })
+      queryClient.invalidateQueries({ queryKey: ["admin-whatsapp-status"] })
     },
     onError: (err: Error) => {
       toast.error("Falha ao enviar mensagem de teste", {
@@ -536,6 +561,145 @@ export function AdminWhatsApp() {
               </p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Auditoria: Histórico de Disparos Recentes ───────────────────── */}
+      <Card className="border-border/60 shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <History className="text-primary h-4 w-4" />
+              Auditoria de Disparos Recentes (Banco de Dados)
+            </CardTitle>
+            <CardDescription>
+              Últimas 25 mensagens transacionais processadas pelo worker assíncrono RabbitMQ e
+              webhook da Evolution API.
+            </CardDescription>
+          </div>
+          <Badge variant="outline" className="text-xs">
+            {data?.logs?.length ?? 0} registros
+          </Badge>
+        </CardHeader>
+        <CardContent>
+          {!data?.logs || data.logs.length === 0 ? (
+            <div className="border-border bg-muted/10 flex flex-col items-center justify-center rounded-lg border border-dashed py-8 text-center">
+              <MessageSquare className="text-muted-foreground mb-2 h-8 w-8 opacity-40" />
+              <p className="text-foreground text-sm font-medium">Nenhum disparo registrado ainda</p>
+              <p className="text-muted-foreground text-xs">
+                As mensagens enviadas pelo sistema ou via teste aparecerão aqui em tempo real.
+              </p>
+            </div>
+          ) : (
+            <div className="border-border/40 overflow-x-auto rounded-lg border">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-muted/50 text-muted-foreground border-b uppercase">
+                  <tr>
+                    <th className="px-3 py-2.5 font-medium">Destinatário</th>
+                    <th className="px-3 py-2.5 font-medium">Contexto</th>
+                    <th className="px-3 py-2.5 font-medium">Status</th>
+                    <th className="px-3 py-2.5 font-medium">Mensagem</th>
+                    <th className="px-3 py-2.5 font-medium">Data / Envio</th>
+                    <th className="px-3 py-2.5 font-medium">Entrega / Leitura</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-border/40 divide-y">
+                  {data.logs.map((log) => {
+                    const statusConfig = {
+                      PENDING: {
+                        label: "Pendente",
+                        color: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+                        icon: Clock,
+                      },
+                      SENT: {
+                        label: "Enviado",
+                        color: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+                        icon: Send,
+                      },
+                      DELIVERED: {
+                        label: "Entregue",
+                        color: "bg-indigo-500/10 text-indigo-600 border-indigo-500/20",
+                        icon: CheckCheck,
+                      },
+                      READ: {
+                        label: "Lido",
+                        color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+                        icon: CheckCheck,
+                      },
+                      FAILED: {
+                        label: "Falhou",
+                        color: "bg-destructive/10 text-destructive border-destructive/20",
+                        icon: XCircle,
+                      },
+                    }[log.status] ?? {
+                      label: log.status,
+                      color: "bg-muted text-muted-foreground",
+                      icon: Clock,
+                    }
+
+                    const StatusIcon = statusConfig.icon
+
+                    return (
+                      <tr key={log.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-3 py-2.5 font-mono font-medium">
+                          +{log.phone}
+                          {log.user?.name && (
+                            <div className="text-muted-foreground font-sans text-[11px]">
+                              {log.user.name}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <Badge variant="outline" className="font-mono text-[10px]">
+                            {log.context}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <Badge
+                            variant="outline"
+                            className={`flex w-fit items-center gap-1 text-[10px] ${statusConfig.color}`}
+                          >
+                            <StatusIcon className="h-3 w-3" />
+                            {statusConfig.label}
+                          </Badge>
+                        </td>
+                        <td className="max-w-xs px-3 py-2.5">
+                          <p className="text-foreground truncate text-[11px]" title={log.text}>
+                            {log.text}
+                          </p>
+                          {log.errorMessage && (
+                            <p className="text-destructive text-[10px]">Erro: {log.errorMessage}</p>
+                          )}
+                        </td>
+                        <td className="text-muted-foreground px-3 py-2.5 text-[11px] whitespace-nowrap">
+                          {new Date(log.createdAt).toLocaleString("pt-BR", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })}
+                        </td>
+                        <td className="text-muted-foreground px-3 py-2.5 text-[10px] whitespace-nowrap">
+                          {log.readAt ? (
+                            <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                              Lido: {new Date(log.readAt).toLocaleTimeString("pt-BR")}
+                            </span>
+                          ) : log.deliveredAt ? (
+                            <span>
+                              Entregue: {new Date(log.deliveredAt).toLocaleTimeString("pt-BR")}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/60">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
 

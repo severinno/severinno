@@ -25,7 +25,12 @@ vi.mock("@/lib/evolution", () => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
-    user: { findFirst: vi.fn() },
+    user: { findFirst: vi.fn(), findUnique: vi.fn() },
+    booking: { findFirst: vi.fn() },
+    quoteRequest: { findFirst: vi.fn() },
+    message: { findFirst: vi.fn(), create: vi.fn() },
+    notification: { create: vi.fn() },
+    whatsAppMessageLog: { updateMany: vi.fn() },
   },
 }))
 
@@ -207,5 +212,44 @@ describe("POST /api/webhooks/evolution", () => {
     expect(parsed.body!.received).toBe(true)
     // Should log and continue without error
     expect(db.user.findFirst).toHaveBeenCalled()
+  })
+
+  it("processes messages.update event and updates delivery status in WhatsAppMessageLog", async () => {
+    ;(vi.mocked(db.whatsAppMessageLog.updateMany) as any).mockResolvedValue({ count: 1 })
+
+    const payload = {
+      event: "messages.update",
+      instance: "severinno-instance",
+      data: [
+        {
+          key: { id: "msg-delivery-123" },
+          status: "DELIVERY_ACK",
+        },
+        {
+          key: { id: "msg-read-456" },
+          status: "READ",
+        },
+      ],
+    }
+
+    const req = createMockRequest({ method: "POST", body: payload })
+    const res = await evolutionWebhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect(parsed.body!.received).toBe(true)
+    expect(db.whatsAppMessageLog.updateMany).toHaveBeenCalledTimes(2)
+    expect(db.whatsAppMessageLog.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { messageId: "msg-delivery-123" },
+        data: expect.objectContaining({ status: "DELIVERED" }),
+      }),
+    )
+    expect(db.whatsAppMessageLog.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { messageId: "msg-read-456" },
+        data: expect.objectContaining({ status: "READ" }),
+      }),
+    )
   })
 })

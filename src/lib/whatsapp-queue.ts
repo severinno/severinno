@@ -13,6 +13,7 @@ import "server-only"
 
 import { publish } from "./queue"
 import { sendText, formatPhone, isValidWhatsApp } from "./evolution"
+import { db } from "./db"
 import logger from "./logger"
 
 const whatsappLogger = logger.child({ module: "whatsapp-queue" })
@@ -22,6 +23,8 @@ export type WhatsAppQueuePayload = {
   to: string
   /** Texto da mensagem a ser enviada */
   text: string
+  /** ID do registro de log na tabela WhatsAppMessageLog */
+  logId?: string
   /** ID do usuário associado (opcional, para correlação/auditoria) */
   userId?: string
   /** Contexto do disparo (ex.: "booking:123:pix", "quote:456:response") */
@@ -32,7 +35,7 @@ export type WhatsAppQueuePayload = {
 
 /**
  * Enfileira uma mensagem WhatsApp para envio assíncrono via RabbitMQ.
- * Retorna imediatamente (<3ms), sem bloquear a resposta HTTP.
+ * Registra o log com status PENDING no banco e retorna imediatamente (<3ms).
  */
 export async function enqueueWhatsApp(payload: {
   to: string
@@ -50,11 +53,28 @@ export async function enqueueWhatsApp(payload: {
     return
   }
 
+  let logId: string | undefined
+  try {
+    const createdLog = await db.whatsAppMessageLog.create({
+      data: {
+        phone: formatted,
+        text: payload.text,
+        userId: payload.userId,
+        context: payload.context,
+        status: "PENDING",
+      },
+    })
+    logId = createdLog.id
+  } catch (err) {
+    whatsappLogger.warn({ err }, "Falha ao gravar WhatsAppMessageLog inicial")
+  }
+
   await publish({
     routingKey: "whatsapp.message",
     payload: {
       to: formatted,
       text: payload.text,
+      logId,
       userId: payload.userId,
       context: payload.context,
       timestamp: new Date().toISOString(),
@@ -62,17 +82,17 @@ export async function enqueueWhatsApp(payload: {
   })
 
   whatsappLogger.debug(
-    { to: formatted.slice(0, 4) + "****", context: payload.context },
+    { to: formatted.slice(0, 4) + "****", context: payload.context, logId },
     "Mensagem WhatsApp enfileirada no RabbitMQ",
   )
 }
 
 /**
  * Consumer do RabbitMQ: processa mensagens da fila 'whatsapp'.
- * Chamado pelo worker de background (notification-worker).
+ * Atualiza o log no banco com SENT ou FAILED.
  */
 export async function handleWhatsAppMessage(msg: Record<string, unknown>): Promise<void> {
-  const { to, text, userId, context } = msg as unknown as WhatsAppQueuePayload
+  const { to, text, logId, userId, context } = msg as unknown as WhatsAppQueuePayload
 
   if (!to || !text) {
     whatsappLogger.warn({ msg }, "Payload de WhatsApp inválido recebido da fila — ignorando")
@@ -86,11 +106,37 @@ export async function handleWhatsAppMessage(msg: Record<string, unknown>): Promi
 
   try {
     const res = await sendText(to, text)
+
+    if (logId) {
+      await db.whatsAppMessageLog
+        .update({
+          where: { id: logId },
+          data: {
+            status: "SENT",
+            messageId: res.key?.id ?? null,
+            sentAt: new Date(),
+          },
+        })
+        .catch((err) => whatsappLogger.warn({ err, logId }, "Erro ao atualizar log como SENT"))
+    }
+
     whatsappLogger.info(
       { to: to.slice(0, 4) + "****", messageId: res.key?.id, context },
       "WhatsApp entregue com sucesso via Evolution API",
     )
   } catch (error) {
+    if (logId) {
+      await db.whatsAppMessageLog
+        .update({
+          where: { id: logId },
+          data: {
+            status: "FAILED",
+            errorMessage: error instanceof Error ? error.message : "Erro desconhecido",
+          },
+        })
+        .catch((err) => whatsappLogger.warn({ err, logId }, "Erro ao atualizar log como FAILED"))
+    }
+
     whatsappLogger.error(
       { err: error, to: to.slice(0, 4) + "****", context },
       "Falha no envio de WhatsApp — mensagem será reenviada pelo RabbitMQ",
