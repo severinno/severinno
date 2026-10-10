@@ -9,6 +9,12 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
+    user: {
+      findMany: vi.fn().mockResolvedValue([
+        { id: "usr-1", name: "Cliente 1", whatsapp: "5511999991111" },
+        { id: "usr-2", name: "Cliente 2", whatsapp: "5511999992222" },
+      ]),
+    },
     whatsAppMessageLog: {
       findMany: vi.fn().mockResolvedValue([
         {
@@ -27,6 +33,10 @@ vi.mock("@/lib/db", () => ({
       create: vi.fn().mockResolvedValue({ id: "log-created" }),
     },
   },
+}))
+
+vi.mock("@/lib/whatsapp-queue", () => ({
+  enqueueWhatsApp: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock("@/lib/rate-limit", () => ({
@@ -221,6 +231,27 @@ describe("Admin WhatsApp Route (/api/admin/whatsapp)", () => {
       expect(res.status).toBe(200)
       expect(json.success).toBe(true)
       expect(evolution.setWebhook).toHaveBeenCalled()
+    })
+
+    it("executa ação broadcast_campaign e enfileira mensagens na fila RabbitMQ", async () => {
+      const req = new Request("http://localhost:3000/api/admin/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "broadcast_campaign",
+          targetAudience: "CLIENTS",
+          message: "Aviso de manutenção programada",
+          templateId: "system_maintenance",
+        }),
+      })
+
+      const res = await POST(req, { params: Promise.resolve({}) })
+      const json = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(json.success).toBe(true)
+      expect(json.count).toBe(2)
+      expect(json.targetAudience).toBe("CLIENTS")
     })
 
     it("retorna 400 para ação desconhecida", async () => {

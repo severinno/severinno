@@ -30,6 +30,9 @@ import {
   CheckCheck,
   Clock,
   XCircle,
+  Megaphone,
+  Users,
+  FileText,
 } from "lucide-react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -71,6 +74,15 @@ export type WhatsAppLogItem = {
   } | null
 }
 
+export type WhatsAppTemplateItem = {
+  id: string
+  title: string
+  description: string
+  category: string
+  variables: string[]
+  defaultText: string
+}
+
 export type WhatsAppStatusResponse = {
   instance: {
     name: string
@@ -97,6 +109,7 @@ export type WhatsAppStatusResponse = {
     version: string
   }
   logs?: WhatsAppLogItem[]
+  templates?: WhatsAppTemplateItem[]
 }
 
 export function AdminWhatsApp() {
@@ -180,6 +193,34 @@ export function AdminWhatsApp() {
     },
     onError: (err: Error) => {
       toast.error("Erro ao sincronizar webhook", { description: err.message })
+    },
+  })
+
+  // Estado da Campanha
+  const [selectedAudience, setSelectedAudience] = React.useState<
+    "ALL_ACTIVE" | "CLIENTS" | "PROVIDERS"
+  >("CLIENTS")
+  const [campaignMessage, setCampaignMessage] = React.useState("")
+  const [selectedTemplateId, setSelectedTemplateId] = React.useState<string>("")
+
+  // Mutação: Disparar Campanha Segmentada
+  const broadcastMutation = useMutation({
+    mutationFn: (variables: {
+      targetAudience: "ALL_ACTIVE" | "CLIENTS" | "PROVIDERS"
+      message: string
+      templateId?: string
+    }) =>
+      apiPost<{ success: boolean; message: string; count?: number }>("/api/admin/whatsapp", {
+        action: "broadcast_campaign",
+        ...variables,
+      }),
+    onSuccess: (res) => {
+      toast.success(res.message || "Campanha disparada com sucesso!")
+      setCampaignMessage("")
+      queryClient.invalidateQueries({ queryKey: ["admin-whatsapp-status"] })
+    },
+    onError: (err: Error) => {
+      toast.error("Falha ao disparar campanha", { description: err.message })
     },
   })
 
@@ -559,6 +600,139 @@ export function AdminWhatsApp() {
               <p className="text-muted-foreground text-[10px]">
                 Timeout 10s · Fallback gracioso ativo
               </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Campanhas & Templates Padronizados ────────────────────────── */}
+      <Card className="border-border/60 shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Megaphone className="text-primary h-4 w-4" />
+              Campanhas Segmentadas & Catálogo de Templates
+            </CardTitle>
+            <CardDescription>
+              Dispare comunicados em massa com segurança assíncrona (RabbitMQ) e aplique templates
+              padronizados por audiência.
+            </CardDescription>
+          </div>
+          <Badge variant="outline" className="gap-1 text-xs">
+            <Users className="h-3 w-3" />
+            {selectedAudience === "ALL_ACTIVE"
+              ? "Todos Ativos"
+              : selectedAudience === "CLIENTS"
+                ? "Apenas Clientes"
+                : "Apenas Prestadores"}
+          </Badge>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Seletor de Templates Rápidos */}
+          <div className="space-y-2">
+            <label className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
+              Templates Padronizados
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {data?.templates?.map((t) => (
+                <Button
+                  key={t.id}
+                  variant={selectedTemplateId === t.id ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setSelectedTemplateId(t.id)
+                    setCampaignMessage(t.defaultText)
+                  }}
+                  className="gap-1.5 text-xs"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  {t.title}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Segmentação & Texto */}
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <label className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
+                Público Alvo
+              </label>
+              <div className="flex flex-col gap-2">
+                <Button
+                  type="button"
+                  variant={selectedAudience === "CLIENTS" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedAudience("CLIENTS")}
+                  className="justify-start gap-2"
+                >
+                  <Users className="h-4 w-4" />
+                  Clientes da Plataforma
+                </Button>
+                <Button
+                  type="button"
+                  variant={selectedAudience === "PROVIDERS" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedAudience("PROVIDERS")}
+                  className="justify-start gap-2"
+                >
+                  <Users className="h-4 w-4" />
+                  Prestadores Cadastrados
+                </Button>
+                <Button
+                  type="button"
+                  variant={selectedAudience === "ALL_ACTIVE" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedAudience("ALL_ACTIVE")}
+                  className="justify-start gap-2"
+                >
+                  <Users className="h-4 w-4" />
+                  Todos os Usuários Ativos
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
+                Conteúdo da Mensagem da Campanha
+              </label>
+              <Textarea
+                rows={4}
+                placeholder="Escreva a mensagem da campanha ou selecione um template acima..."
+                value={campaignMessage}
+                onChange={(e) => setCampaignMessage(e.target.value)}
+                disabled={broadcastMutation.isPending}
+                className="resize-none"
+              />
+              <div className="flex items-center justify-between pt-1">
+                <p className="text-muted-foreground text-[11px]">
+                  As mensagens são enfileiradas na fila assíncrona RabbitMQ para evitar bloqueios do
+                  WhatsApp.
+                </p>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (!campaignMessage.trim()) {
+                      toast.error("Informe a mensagem da campanha")
+                      return
+                    }
+                    broadcastMutation.mutate({
+                      targetAudience: selectedAudience,
+                      message: campaignMessage,
+                      templateId: selectedTemplateId || undefined,
+                    })
+                  }}
+                  disabled={broadcastMutation.isPending || !isConnected}
+                  className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
+                >
+                  {broadcastMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Megaphone className="h-4 w-4" />
+                  )}
+                  {broadcastMutation.isPending ? "Disparando..." : "Disparar Campanha"}
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>

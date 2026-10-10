@@ -6,6 +6,8 @@ import { requireRole } from "@/lib/auth"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { withRoute } from "@/lib/api-route"
 import { db } from "@/lib/db"
+import { enqueueWhatsApp } from "@/lib/whatsapp-queue"
+import { listAvailableTemplates } from "@/lib/whatsapp-templates"
 import {
   fetchInstance,
   getConnectionStatus,
@@ -37,6 +39,12 @@ const ActionSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("sync_webhook"),
+  }),
+  z.object({
+    action: z.literal("broadcast_campaign"),
+    targetAudience: z.enum(["ALL_ACTIVE", "CLIENTS", "PROVIDERS"]),
+    message: z.string().min(1, "Mensagem não pode ser vazia").max(1000),
+    templateId: z.string().optional(),
   }),
 ])
 
@@ -117,6 +125,7 @@ export const GET = withRoute("api.admin.whatsapp.GET", async (request) => {
         version: "v2.3.7",
       },
       logs,
+      templates: listAvailableTemplates(),
     })
   } catch (error) {
     evolutionLogger.error({ error }, "Falha ao consultar status do WhatsApp")
@@ -240,6 +249,71 @@ export const POST = withRoute("api.admin.whatsapp.POST", async (request) => {
           success: true,
           message: "Webhook reconfigurado com sucesso",
           url: webhookUrl,
+        })
+      }
+
+      case "broadcast_campaign": {
+        // Filtro por audiência
+        const whereClause: {
+          active: boolean
+          whatsapp: { not: null }
+          role?: "CLIENT" | "PROVIDER"
+        } = {
+          active: true,
+          whatsapp: { not: null },
+        }
+
+        if (data.targetAudience === "CLIENTS") {
+          whereClause.role = "CLIENT"
+        } else if (data.targetAudience === "PROVIDERS") {
+          whereClause.role = "PROVIDER"
+        }
+
+        const recipients = await db.user.findMany({
+          where: whereClause,
+          select: { id: true, name: true, whatsapp: true },
+          take: 500, // Limite de segurança por lote de disparo
+        })
+
+        if (!recipients.length) {
+          return NextResponse.json({
+            success: false,
+            message: "Nenhum usuário com WhatsApp ativo encontrado para esta audiência.",
+            count: 0,
+          })
+        }
+
+        // Enfileira cada mensagem no RabbitMQ com controle de concorrência e DLQ
+        const campaignContext = `campaign:${data.templateId || "custom"}:${Date.now()}`
+        let enqueuedCount = 0
+
+        for (const recipient of recipients) {
+          if (!recipient.whatsapp) continue
+          await enqueueWhatsApp({
+            to: recipient.whatsapp,
+            text: data.message,
+            userId: recipient.id,
+            context: campaignContext,
+          }).catch((err) => {
+            evolutionLogger.warn(
+              { err, userId: recipient.id },
+              "Falha ao enfileirar disparo de campanha",
+            )
+          })
+          enqueuedCount++
+        }
+
+        evolutionLogger.info(
+          { enqueuedCount, targetAudience: data.targetAudience, adminId: auth.userId },
+          "Campanha de WhatsApp enfileirada no RabbitMQ com sucesso",
+        )
+
+        return NextResponse.json({
+          success: true,
+          message: `Campanha iniciada! ${enqueuedCount} mensagens foram enfileiradas no RabbitMQ para envio assíncrono.`,
+          count: enqueuedCount,
+          targetAudience: data.targetAudience,
+          campaignContext,
         })
       }
     }

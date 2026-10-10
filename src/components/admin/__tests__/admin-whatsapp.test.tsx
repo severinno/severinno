@@ -26,6 +26,9 @@ vi.mock("lucide-react", () => ({
   CheckCheck: MockIcon,
   Clock: MockIcon,
   XCircle: MockIcon,
+  Megaphone: MockIcon,
+  Users: MockIcon,
+  FileText: MockIcon,
 }))
 
 vi.mock("@tanstack/react-query", () => ({
