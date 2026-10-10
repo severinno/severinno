@@ -572,6 +572,8 @@ services:
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER}
+      GLITCHTIP_DSN: ${GLITCHTIP_DSN:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     healthcheck:
       test:
@@ -629,6 +631,8 @@ services:
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
       EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-severinno}
       REALTIME_URL: http://realtime:3003
+      GLITCHTIP_DSN: ${GLITCHTIP_DSN:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
       # ⛳ Consolidação: antes faltava no docker-compose.prod.yml — o
       # notification-worker da produção não autenticava o bridge /emit.
       # Docker secret realtime_emit_api_key, lido via _FILE (mesma chave do
