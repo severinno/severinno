@@ -431,10 +431,12 @@ io.on("connection", (socket: Socket) => {
         console.warn(`[realtime] tracking:position recusado (não autenticado): ${socket.id}`)
         return
       }
-      // Próximo passo: validação de membership contra o banco (o payload não
-      // carrega o providerId — quem envia é o prestador do booking). Hoje:
-      // exige handshake autenticado; o destino (user:{clientId}) não é
-      // controlado pelo remetente.
+      if (socket.data.role !== "PROVIDER" && socket.data.role !== "ADMIN") {
+        console.warn(
+          `[realtime] tracking:position recusado (papel '${socket.data.role}' não autorizado): ${socket.id}`,
+        )
+        return
+      }
       handleTrackingPosition(payload)
     } catch (err) {
       console.error("[realtime] tracking:position error:", err)

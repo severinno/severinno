@@ -80,8 +80,8 @@ send_telegram() {
 }
 
 # ── 1. Encontra o backup mais recente ──────────────────────────────────────
-log "🔍 Procurando backup mais recente (local /tmp → S3/MinIO)..."
-LATEST="$(ls -1t "$BACKUP_DIR"/severinno_*.sql.gz 2>/dev/null | head -1 || true)"
+log "🔍 Procurando backup mais recente (local /tmp ou backups/postgres → S3/MinIO)..."
+LATEST="$(ls -1t "$PROJECT_DIR"/backups/postgres/severinno-*.dump "$PROJECT_DIR"/backups/postgres/severinno-*.sql.gz "$BACKUP_DIR"/severinno_*.sql.gz "$BACKUP_DIR"/severinno_*.dump 2>/dev/null | head -1 || true)"
 
 # Fallback: baixa o mais recente do MinIO/S3 (backup durável — /tmp é staging
 # volátil, limpo no reboot; o backup de verdade vive no bucket)
@@ -89,7 +89,7 @@ if [ -z "$LATEST" ] && command -v mc >/dev/null 2>&1; then
   log "🔎 Local vazio — buscando no MinIO/S3..."
   MINIO_ALIAS="${MINIO_ALIAS:-local}"
   MINIO_BUCKET="${MINIO_BUCKET:-severinno-backups}"
-  REMOTE="$(mc ls "$MINIO_ALIAS/$MINIO_BUCKET/daily/" 2>/dev/null | grep -oE 'severinno_[0-9_]+[0-9]\.sql\.gz' | sort | tail -1 || true)"
+  REMOTE="$(mc ls "$MINIO_ALIAS/$MINIO_BUCKET/daily/" 2>/dev/null | grep -oE 'severinno_[0-9_]+[0-9]\.(sql\.gz|dump)' | sort | tail -1 || true)"
   if [ -n "$REMOTE" ]; then
     mc cp "$MINIO_ALIAS/$MINIO_BUCKET/daily/$REMOTE" "$BACKUP_DIR/$REMOTE" >/dev/null 2>&1 && \
       log "📥 Baixado do S3: $REMOTE" && LATEST="$BACKUP_DIR/$REMOTE"
@@ -108,21 +108,22 @@ if [ "$DRY_RUN" = true ]; then
   exit 0
 fi
 
-# ── Detecta client psql (local ou via container postgis) ───────────────────
+# ── Detecta client psql (local ou via container postgres/postgis) ─────────
 PSQL_BIN=""
+CONTAINER=""
 if command -v psql >/dev/null 2>&1; then
   PSQL_BIN="psql"
   CREATE_DB="createdb"
   DROP_DB="dropdb"
 else
-  CONTAINER="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -i postgis | head -1 || true)"
+  CONTAINER="$(docker ps --format '{{.Names}}' 2>/dev/null | grep -iE 'severinno-postgres|postgis' | head -1 || true)"
   if [ -n "$CONTAINER" ]; then
     PSQL_BIN="docker exec -i $CONTAINER psql"
     CREATE_DB="docker exec $CONTAINER createdb"
     DROP_DB="docker exec $CONTAINER dropdb"
   else
-    log "❌ Sem psql local nem container postgis — impossível testar restore"
-    send_telegram "❌ <b>TESTE DE RESTORE FALHOU</b>%0ASem psql local nem container postgis"
+    log "❌ Sem psql local nem container postgres/postgis — impossível testar restore"
+    send_telegram "❌ <b>TESTE DE RESTORE FALHOU</b>%0ASem psql local nem container postgres"
     exit 1
   fi
 fi
@@ -140,8 +141,18 @@ fi
 
 # ── 3. Restaura o backup no banco de teste ─────────────────────────────────
 log "🔄 Restaurando backup no banco de teste..."
-gunzip -c "$LATEST" | $PSQL_BIN -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$TEST_DB" >/dev/null 2>>"$LOG_FILE"
-RESTORE_STATUS=$?
+if [[ "$LATEST" == *.dump ]]; then
+  if [ -n "$CONTAINER" ]; then
+    cat "$LATEST" | docker exec -i "$CONTAINER" pg_restore -U "$DB_USER" -d "$TEST_DB" --no-owner --no-privileges >/dev/null 2>>"$LOG_FILE"
+    RESTORE_STATUS=$?
+  else
+    pg_restore -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$TEST_DB" --no-owner --no-privileges "$LATEST" >/dev/null 2>>"$LOG_FILE"
+    RESTORE_STATUS=$?
+  fi
+else
+  gunzip -c "$LATEST" | $PSQL_BIN -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$TEST_DB" >/dev/null 2>>"$LOG_FILE"
+  RESTORE_STATUS=$?
+fi
 
 if [ "$RESTORE_STATUS" -ne 0 ]; then
   log "❌ Restore FALHOU (exit $RESTORE_STATUS)"
