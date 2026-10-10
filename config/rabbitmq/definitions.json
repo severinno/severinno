@@ -1,0 +1,139 @@
+{
+  "permissions": [
+    { "configure": ".*", "read": ".*", "user": "severinno", "vhost": "/", "write": ".*" },
+    { "configure": ".*", "read": ".*", "user": "severinno", "vhost": "severinno", "write": ".*" }
+  ],
+  "bindings": [
+    {
+      "arguments": {},
+      "destination": "emails.dlq",
+      "destination_type": "queue",
+      "routing_key": "email",
+      "source": "severinno.dlx",
+      "vhost": "severinno"
+    },
+    {
+      "arguments": {},
+      "destination": "notifications",
+      "destination_type": "queue",
+      "routing_key": "notification",
+      "source": "severinno.direct",
+      "vhost": "severinno"
+    },
+    {
+      "arguments": {},
+      "destination": "notifications.dlq",
+      "destination_type": "queue",
+      "routing_key": "notification",
+      "source": "severinno.dlx",
+      "vhost": "severinno"
+    },
+    {
+      "arguments": {},
+      "destination": "emails",
+      "destination_type": "queue",
+      "routing_key": "email",
+      "source": "severinno.direct",
+      "vhost": "severinno"
+    }
+  ],
+  "queues": [
+    {
+      "arguments": {
+        "x-dead-letter-exchange": "severinno.dlx",
+        "x-dead-letter-routing-key": "notification",
+        "x-queue-type": "classic"
+      },
+      "auto_delete": false,
+      "durable": true,
+      "name": "notifications",
+      "type": "classic",
+      "vhost": "severinno"
+    },
+    {
+      "arguments": {
+        "x-dead-letter-exchange": "severinno.dlx",
+        "x-dead-letter-routing-key": "email",
+        "x-queue-type": "classic"
+      },
+      "auto_delete": false,
+      "durable": true,
+      "name": "emails",
+      "type": "classic",
+      "vhost": "severinno"
+    },
+    {
+      "arguments": { "x-queue-type": "classic" },
+      "auto_delete": false,
+      "durable": true,
+      "name": "notifications.dlq",
+      "type": "classic",
+      "vhost": "severinno"
+    },
+    {
+      "arguments": { "x-queue-type": "classic" },
+      "auto_delete": false,
+      "durable": true,
+      "name": "emails.dlq",
+      "type": "classic",
+      "vhost": "severinno"
+    }
+  ],
+  "parameters": [],
+  "policies": [],
+  "rabbitmq_version": "4.3.6",
+  "rabbit_version": "4.3.6",
+  "exchanges": [
+    {
+      "arguments": {},
+      "auto_delete": false,
+      "durable": true,
+      "name": "amq.rabbitmq.log",
+      "type": "topic",
+      "vhost": "/"
+    },
+    {
+      "arguments": {},
+      "auto_delete": false,
+      "durable": true,
+      "name": "severinno.direct",
+      "type": "direct",
+      "vhost": "severinno"
+    },
+    {
+      "arguments": {},
+      "auto_delete": false,
+      "durable": true,
+      "name": "severinno.dlx",
+      "type": "direct",
+      "vhost": "severinno"
+    }
+  ],
+  "vhosts": [
+    {
+      "limits": {},
+      "metadata": { "description": "", "tags": [], "default_queue_type": "classic" },
+      "name": "severinno"
+    },
+    {
+      "limits": {},
+      "metadata": {
+        "description": "Default virtual host",
+        "tags": [],
+        "default_queue_type": "classic"
+      },
+      "name": "/"
+    }
+  ],
+  "users": [
+    {
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "limits": {},
+      "name": "severinno",
+      "password_hash": "Z2Eh27E/L84TLsELE4vwiL3FdNopaB1JZ6J0EOMLaLto5Ew4",
+      "tags": ["administrator"]
+    }
+  ],
+  "global_parameters": [{ "name": "cluster_tags", "value": [] }],
+  "topic_permissions": []
+}

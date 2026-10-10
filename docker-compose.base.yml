@@ -216,6 +216,8 @@ services:
       RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "+P 1048576"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      - ./config/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./config/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
     networks:
       - backend
     healthcheck:
@@ -329,7 +331,8 @@ services:
       - ./config/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
       - ./config/pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
     healthcheck:
-      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "6432", "-d", "severinno"]
+      test:
+        ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "6432", "-U", "severinno", "-d", "severinno"]
       interval: 10s
       timeout: 5s
       retries: 5
