@@ -394,6 +394,8 @@ docker_up() {
     run docker compose -f "$COMPOSE_FILE" up -d postgres redis rabbitmq minio || return 1
 
     # PgBouncer (depende do postgres)
+    info "Sincronizando credenciais do PgBouncer..."
+    [ -x "./scripts/sync-pgbouncer-users.sh" ] && ./scripts/sync-pgbouncer-users.sh || true
     info "Subindo PgBouncer..."
     run docker compose -f "$COMPOSE_FILE" up -d pgbouncer || return 1
 
