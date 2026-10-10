@@ -656,7 +656,7 @@ services:
   # Servidor REST para conexões WhatsApp e envio de notificações/recibos.
   # Acessível via Caddy em https://whatsapp.severinno.com.
   evolution-api:
-    image: evoapicloud/evolution-api:v2.2.3
+    image: evoapicloud/evolution-api:v2.3.7
     container_name: severinno-evolution-api
     restart: unless-stopped
     expose:
@@ -665,6 +665,9 @@ services:
       SERVER_URL: ${EVOLUTION_SERVER_URL:-https://whatsapp.severinno.com}
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
       AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+      LOG_LEVEL: "WARN,ERROR"
+      QRCODE_LIMIT: "30"
+      DEL_INSTANCE: "false"
       DATABASE_ENABLED: "true"
       DATABASE_PROVIDER: "postgresql"
       DATABASE_CONNECTION_URI: postgresql://${EVOLUTION_DB_USER:-evolution}:${EVOLUTION_DB_PASSWORD}@postgres:5432/${EVOLUTION_DB_NAME:-evolution}
