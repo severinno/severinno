@@ -131,7 +131,18 @@ export function usePushSubscription() {
   const [isSupported] = useState(() => {
     return typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window
   })
+  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return "unsupported"
+    return Notification.permission
+  })
   const [loading, setLoading] = useState(false)
+  const [testing, setTesting] = useState(false)
+
+  const updatePermissionState = useCallback(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setPermission(Notification.permission)
+    }
+  }, [])
 
   useEffect(() => {
     if (!isSupported) return
@@ -147,6 +158,14 @@ export function usePushSubscription() {
     if (!isSupported) return false
     setLoading(true)
     try {
+      if (typeof window !== "undefined" && "Notification" in window) {
+        const perm = await Notification.requestPermission()
+        setPermission(perm)
+        if (perm !== "granted") {
+          return false
+        }
+      }
+
       const res = await fetch("/api/push/subscribe")
       const { publicKey } = (await res.json()) as { publicKey?: string }
       if (!publicKey) throw new Error("VAPID public key not available")
@@ -175,6 +194,7 @@ export function usePushSubscription() {
 
       if (saveRes.ok) {
         setIsSubscribed(true)
+        updatePermissionState()
         return true
       }
       return false
@@ -183,7 +203,7 @@ export function usePushSubscription() {
     } finally {
       setLoading(false)
     }
-  }, [isSupported])
+  }, [isSupported, updatePermissionState])
 
   const unsubscribe = useCallback(async () => {
     if (!isSupported) return false
@@ -199,6 +219,7 @@ export function usePushSubscription() {
         })
         await sub.unsubscribe()
         setIsSubscribed(false)
+        updatePermissionState()
         return true
       }
       return false
@@ -207,7 +228,32 @@ export function usePushSubscription() {
     } finally {
       setLoading(false)
     }
-  }, [isSupported])
+  }, [isSupported, updatePermissionState])
 
-  return { isSubscribed, isSupported, loading, subscribe, unsubscribe }
+  const sendTestNotification = useCallback(async (): Promise<{ ok: boolean; message?: string }> => {
+    setTesting(true)
+    try {
+      const res = await fetch("/api/push/send-test", { method: "POST" })
+      const data = (await res.json()) as { ok?: boolean; message?: string; error?: string }
+      if (res.ok && data.ok) {
+        return { ok: true, message: data.message || "Notificação enviada!" }
+      }
+      return { ok: false, message: data.error || "Erro ao enviar notificação de teste" }
+    } catch {
+      return { ok: false, message: "Falha de rede ao conectar com o servidor" }
+    } finally {
+      setTesting(false)
+    }
+  }, [])
+
+  return {
+    isSubscribed,
+    isSupported,
+    permission,
+    loading,
+    testing,
+    subscribe,
+    unsubscribe,
+    sendTestNotification,
+  }
 }

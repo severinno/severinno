@@ -25,6 +25,7 @@ import { providerProfileSchema, type ProviderProfileInput } from "@/lib/validato
 import { useAuthStore } from "@/store/auth"
 
 import { SafeImage } from "@/components/shared/safe-image"
+import { PushNotificationCard } from "@/components/shared/push-notification-card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -701,6 +702,9 @@ export function ProviderProfile() {
             )}
           </CardContent>
         </Card>
+
+        {/* Native Push Notification preference */}
+        <PushNotificationCard />
 
         {/* Sound preference */}
         <Card className="py-0">

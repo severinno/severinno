@@ -43,6 +43,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Switch } from "@/components/ui/switch"
 import { GeoAddressForm, type AddressFormValue } from "@/components/forms/geo-address-form"
 import { PageHeader } from "@/components/client/client-shared"
+import { PushNotificationCard } from "@/components/shared/push-notification-card"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -377,6 +378,9 @@ export function ClientProfile() {
                 </p>
                 <GeoAddressForm value={address} onChange={setAddress} idPrefix="profile" />
               </div>
+
+              {/* Native Push Notification preference */}
+              <PushNotificationCard />
 
               {/* Sound preference */}
               <Card>

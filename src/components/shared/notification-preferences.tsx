@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 import { PageTransition } from "@/components/shared/page-transition"
+import { PushNotificationCard } from "@/components/shared/push-notification-card"
 
 type CategoryPreference = {
   type: string
@@ -109,6 +110,9 @@ export function NotificationPreferences() {
 
   return (
     <PageTransition className="mx-auto max-w-4xl space-y-6">
+      {/* Device Push Notification Activation */}
+      <PushNotificationCard />
+
       {/* Quiet Hours Card */}
       <Card className="border-border/60 shadow-sm">
         <CardHeader>
