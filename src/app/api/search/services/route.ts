@@ -5,6 +5,7 @@ import { searchServices } from "@/lib/search"
 import { searchServicesDatabase } from "@/lib/search-database-fallback"
 import { cacheControlPublic, handleError, noStoreJson } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { cacheGet, cacheSet } from "@/lib/redis"
 
 /**
  * OpenSearch-powered service search with intelligent Database Fallback.
@@ -31,6 +32,26 @@ export async function GET(request: Request) {
       return noStoreJson({ error: "Parâmetro 'q' é obrigatório" }, { status: 400 })
     }
 
+    const cacheKey = `search:services:${q.toLowerCase()}:${page}:${limit}`
+    const cached = await cacheGet<{
+      items: unknown[]
+      total: number
+      page: number
+      limit: number
+      took: number
+      engine: string
+    }>(cacheKey).catch(() => null)
+
+    if (cached) {
+      return cacheControlPublic(
+        NextResponse.json({
+          ...cached,
+          engine: `${cached.engine}-cached`,
+        }),
+        30,
+      )
+    }
+
     let result = await searchServices(q, page, limit)
     let engine = "opensearch"
 
@@ -39,17 +60,19 @@ export async function GET(request: Request) {
       engine = "database-fallback"
     }
 
-    return cacheControlPublic(
-      NextResponse.json({
-        items: result.items,
-        total: result.total,
-        page: result.page,
-        limit: result.limit,
-        took: result.took,
-        engine,
-      }),
-      30,
-    )
+    const responsePayload = {
+      items: result.items,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      took: result.took,
+      engine,
+    }
+
+    // Grava no Redis em background por 5 minutos (300 segundos)
+    cacheSet(cacheKey, responsePayload, 300).catch(() => {})
+
+    return cacheControlPublic(NextResponse.json(responsePayload), 30)
   } catch (e) {
     return handleError(e)
   }

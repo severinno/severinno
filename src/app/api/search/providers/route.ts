@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { searchProviders, type SearchProviderParams } from "@/lib/search"
 import { cacheControlPublic, handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { cacheGet, cacheSet } from "@/lib/redis"
 
 /**
  * OpenSearch-powered provider search.
@@ -50,6 +51,29 @@ export async function GET(request: Request) {
       Number.isFinite(latNum) &&
       Number.isFinite(lngNum)
 
+    // Chave de cache com arredondamento de geo para 3 casas decimais (~100m) para alto hit rate
+    const geoKey = hasGeo ? `${latNum.toFixed(3)}:${lngNum.toFixed(3)}:${radiusKm ?? 0}` : "none"
+    const cacheKey = `search:providers:${q?.toLowerCase() ?? "all"}:${categoryId ?? "all"}:${geoKey}:${sort}:${page}:${limit}`
+
+    const cached = await cacheGet<{
+      items: unknown[]
+      total: number
+      page: number
+      limit: number
+      took: number
+      engine: string
+    }>(cacheKey).catch(() => null)
+
+    if (cached) {
+      return cacheControlPublic(
+        NextResponse.json({
+          ...cached,
+          engine: `${cached.engine}-cached`,
+        }),
+        30,
+      )
+    }
+
     const result = await searchProviders({
       q,
       categoryId,
@@ -61,17 +85,19 @@ export async function GET(request: Request) {
       limit,
     })
 
-    return cacheControlPublic(
-      NextResponse.json({
-        items: result.items,
-        total: result.total,
-        page: result.page,
-        limit: result.limit,
-        took: result.took,
-        engine: "opensearch",
-      }),
-      30,
-    )
+    const responsePayload = {
+      items: result.items,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      took: result.took,
+      engine: "opensearch",
+    }
+
+    // Grava no Redis em background por 5 minutos (300 segundos)
+    cacheSet(cacheKey, responsePayload, 300).catch(() => {})
+
+    return cacheControlPublic(NextResponse.json(responsePayload), 30)
   } catch (e) {
     return handleError(e)
   }
