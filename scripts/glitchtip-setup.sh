@@ -16,13 +16,11 @@
 
 set -euo pipefail
 
-# O GlitchTip roda como profile dentro do docker-compose.prod.yml principal.
-# Nao existe mais docker-compose.glitchtip.yml separado.
-COMPOSE_FILE="docker-compose.prod.yml"
-COMPOSE_PROFILE="--profile glitchtip"
+# GlitchTip roda isolado via docker-compose.glitchtip.yml
+COMPOSE_FILE="docker-compose.glitchtip.yml"
 COMPOSE_ENV="--env-file .env.glitchtip"
-GLITCHTIP_URL="${GLITCHTIP_URL:-http://localhost:8000}"
-COMPOSE_CMD="docker compose -p glitchtip -f ${COMPOSE_FILE} ${COMPOSE_PROFILE} ${COMPOSE_ENV}"
+GLITCHTIP_URL="${GLITCHTIP_URL:-http://localhost:8001}"
+COMPOSE_CMD="docker compose -p glitchtip -f ${COMPOSE_FILE} ${COMPOSE_ENV}"
 
 # ── Colors ─────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -46,7 +44,7 @@ health_check() {
     retry=$((retry + 1))
     if [ "$retry" -ge "$max_retries" ]; then
       error "GlitchTip did not become healthy after ${max_retries}s"
-      info "Check logs: ${COMPOSE_CMD} logs glitchtip-web"
+      info "Check logs: ${COMPOSE_CMD} logs glitchtip"
       return 1
     fi
     sleep 2
@@ -83,14 +81,14 @@ cmd_create_admin() {
   read -r -p "Name: "          ADMIN_NAME
 
   # Django createsuperuser with --noinput and DJANGO_SUPERUSER_PASSWORD
-  ${COMPOSE_CMD} exec -e DJANGO_SUPERUSER_PASSWORD="${ADMIN_PASSWORD}" glitchtip-web \
+  ${COMPOSE_CMD} exec -e DJANGO_SUPERUSER_PASSWORD="${ADMIN_PASSWORD}" glitchtip \
     ./manage.py createsuperuser \
     --email "${ADMIN_EMAIL}" \
     --noinput 2>/dev/null || {
 
     # Fallback interactive
     info "Trying interactive method..."
-    ${COMPOSE_CMD} exec glitchtip-web \
+    ${COMPOSE_CMD} exec glitchtip \
       ./manage.py createsuperuser \
       --email "${ADMIN_EMAIL}"
   }
