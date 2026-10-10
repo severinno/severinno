@@ -22,7 +22,7 @@ COMPOSE_FILE="docker-compose.prod.yml"
 COMPOSE_PROFILE="--profile glitchtip"
 COMPOSE_ENV="--env-file .env.glitchtip"
 GLITCHTIP_URL="${GLITCHTIP_URL:-http://localhost:8000}"
-COMPOSE_CMD="docker compose -f ${COMPOSE_FILE} ${COMPOSE_PROFILE} ${COMPOSE_ENV}"
+COMPOSE_CMD="docker compose -p glitchtip -f ${COMPOSE_FILE} ${COMPOSE_PROFILE} ${COMPOSE_ENV}"
 
 # ── Colors ─────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -42,7 +42,7 @@ health_check() {
   local retry=0
 
   info "Waiting for GlitchTip to be ready..."
-  until curl -sf "${GLITCHTIP_URL}/api/health/" > /dev/null 2>&1; do
+  until curl -sf "${GLITCHTIP_URL}/_health/" > /dev/null 2>&1 || curl -sf "${GLITCHTIP_URL}/api/0/internal/health" > /dev/null 2>&1; do
     retry=$((retry + 1))
     if [ "$retry" -ge "$max_retries" ]; then
       error "GlitchTip did not become healthy after ${max_retries}s"
@@ -61,7 +61,7 @@ cmd_status() {
 
   echo ""
   info "Health endpoint:"
-  curl -sf "${GLITCHTIP_URL}/api/health/" | python3 -m json.tool 2>/dev/null || echo "  (not ready yet)"
+  curl -sf "${GLITCHTIP_URL}/api/0/internal/health" | python3 -m json.tool 2>/dev/null || curl -sf "${GLITCHTIP_URL}/_health/" 2>/dev/null || echo "  (not ready yet)"
 }
 
 # ── Logs ───────────────────────────────────────────────────────────────────
@@ -82,19 +82,17 @@ cmd_create_admin() {
   echo ""
   read -r -p "Name: "          ADMIN_NAME
 
-  # GlitchTip uses a management command via the Django container
-  ${COMPOSE_CMD} exec glitchtip-web ./bin/run-command \
-    glitchtip/create_admin \
+  # Django createsuperuser with --noinput and DJANGO_SUPERUSER_PASSWORD
+  ${COMPOSE_CMD} exec -e DJANGO_SUPERUSER_PASSWORD="${ADMIN_PASSWORD}" glitchtip-web \
+    ./manage.py createsuperuser \
     --email "${ADMIN_EMAIL}" \
-    --password "${ADMIN_PASSWORD}" \
-    --name "${ADMIN_NAME}" 2>/dev/null || {
+    --noinput 2>/dev/null || {
 
-    # Fallback: run directly in the container
-    info "Trying direct method..."
+    # Fallback interactive
+    info "Trying interactive method..."
     ${COMPOSE_CMD} exec glitchtip-web \
-      python manage.py createsuperuser \
-      --email "${ADMIN_EMAIL}" \
-      --name "${ADMIN_NAME}"
+      ./manage.py createsuperuser \
+      --email "${ADMIN_EMAIL}"
   }
 
   ok "Admin user created!"

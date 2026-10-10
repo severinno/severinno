@@ -703,6 +703,8 @@ services:
       # Database URL without password — entrypoint reads from Docker secret
       DATABASE_URL: postgres://${GLITCHTIP_DB_USER:-glitchtip}@pgbouncer-glitchtip:6432/${GLITCHTIP_DB_NAME:-glitchtip}
       REDIS_URL: redis://glitchtip-redis:6379
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY}
+      PORT: "8000"
       GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-https://glitchtip.severinno.com}
       DEFAULT_FROM_EMAIL: ${GLITCHTIP_FROM_EMAIL:-noreply@severinno.com}
       EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-}
@@ -767,6 +769,7 @@ services:
       # Database URL without password — entrypoint reads from Docker secret
       DATABASE_URL: postgres://${GLITCHTIP_DB_USER:-glitchtip}@pgbouncer-glitchtip:6432/${GLITCHTIP_DB_NAME:-glitchtip}
       REDIS_URL: redis://glitchtip-redis:6379
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY}
       GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-https://glitchtip.severinno.com}
       DEFAULT_FROM_EMAIL: ${GLITCHTIP_FROM_EMAIL:-noreply@severinno.com}
       EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-}
