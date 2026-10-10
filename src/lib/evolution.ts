@@ -523,11 +523,95 @@ export async function getConnectionStatus(
 }
 
 /**
- * Obter QR code para conectar WhatsApp.
+ * Obter QR code / iniciar conexão com WhatsApp (Evolution v2 /instance/connect).
  */
-export async function getQRCode(instanceName?: string): Promise<{ qrcode: string }> {
+export async function connectInstance(
+  instanceName?: string,
+): Promise<{ base64?: string; code?: string; count?: number; pairingCode?: string | null }> {
   const instance = instanceName ?? getConfig().instance
-  return evolutionRequest<{ qrcode: string }>("GET", `/instance/qrcode/${instance}`)
+  return evolutionRequest<{
+    base64?: string
+    code?: string
+    count?: number
+    pairingCode?: string | null
+  }>("GET", `/instance/connect/${instance}`)
+}
+
+/**
+ * Buscar dados completos da instância no Evolution API.
+ */
+export async function fetchInstance(instanceName?: string): Promise<{
+  id?: string
+  name?: string
+  connectionStatus?: string
+  number?: string | null
+  profileName?: string | null
+  profilePicUrl?: string | null
+  integration?: string
+  _count?: { Message?: number; Contact?: number; Chat?: number }
+} | null> {
+  const instance = instanceName ?? getConfig().instance
+  const instances = await evolutionRequest<
+    Array<{
+      id?: string
+      name?: string
+      connectionStatus?: string
+      number?: string | null
+      profileName?: string | null
+      profilePicUrl?: string | null
+      integration?: string
+      _count?: { Message?: number; Contact?: number; Chat?: number }
+    }>
+  >("GET", "/instance/fetchInstances")
+  return instances.find((i) => i.name === instance) ?? null
+}
+
+/**
+ * Reiniciar a instância WhatsApp.
+ */
+export async function restartInstance(
+  instanceName?: string,
+): Promise<{ error: boolean; message: string }> {
+  const instance = instanceName ?? getConfig().instance
+  return evolutionRequest<{ error: boolean; message: string }>(
+    "POST",
+    `/instance/restart/${instance}`,
+  )
+}
+
+/**
+ * Desconectar a sessão WhatsApp da instância (logout).
+ */
+export async function logoutInstance(
+  instanceName?: string,
+): Promise<{ status: string; error: boolean }> {
+  const instance = instanceName ?? getConfig().instance
+  return evolutionRequest<{ status: string; error: boolean }>(
+    "DELETE",
+    `/instance/logout/${instance}`,
+  )
+}
+
+/**
+ * Obter configuração de webhook ativa.
+ */
+export async function getWebhook(instanceName?: string): Promise<{
+  id?: string
+  url?: string
+  enabled?: boolean
+  events?: string[]
+} | null> {
+  const instance = instanceName ?? getConfig().instance
+  try {
+    return await evolutionRequest<{
+      id?: string
+      url?: string
+      enabled?: boolean
+      events?: string[]
+    }>("GET", `/webhook/find/${instance}`)
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -538,7 +622,7 @@ export async function setWebhook(
   instanceName?: string,
 ): Promise<void> {
   const instance = instanceName ?? getConfig().instance
-  await evolutionRequest("POST", `/webhook/set/${instance}`, config)
+  await evolutionRequest("POST", `/webhook/set/${instance}`, { webhook: config })
 }
 
 // ---------------------------------------------------------------------------

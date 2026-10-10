@@ -50,6 +50,7 @@ import {
   ShieldCheck,
   Flame,
   TrendingUp,
+  MessageSquare,
 } from "lucide-react"
 
 import { DashboardShell, type NavItem, type Breadcrumb } from "@/components/shared/dashboard-shell"
@@ -199,6 +200,10 @@ const AdminIdentityReview = dynamic(
   () => import("./admin-identity-review").then((m) => ({ default: m.AdminIdentityReview })),
   { ssr: false },
 )
+const AdminWhatsApp = dynamic(
+  () => import("./admin-whatsapp").then((m) => ({ default: m.AdminWhatsApp })),
+  { ssr: false },
+)
 
 // ---------------------------------------------------------------------------
 // Nav config
@@ -263,6 +268,11 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.bookings",
     label: "Agendamentos",
     icon: CalendarCheck,
+  },
+  {
+    view: "admin.whatsapp",
+    label: "WhatsApp",
+    icon: MessageSquare,
   },
   {
     view: "admin.push",
@@ -467,6 +477,11 @@ const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs:
     subtitle:
       "Histórico de execuções de regras de webhook de eventos: quando cada regra foi executada, quantos usuários notificou e quais erros ocorreram.",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Webhooks" }],
+  },
+  "admin.whatsapp": {
+    title: "WhatsApp & Evolution API",
+    subtitle: "Status da conexão, leitura de QR Code em tempo real e disparos transacionais.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "WhatsApp" }],
   },
   "admin.push": {
     title: "Notificações Push",
@@ -675,6 +690,8 @@ function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: stri
       return <AdminSettlements />
     case "admin.bookings":
       return <AdminBookings />
+    case "admin.whatsapp":
+      return <AdminWhatsApp />
     case "admin.push":
       return <AdminPushNotifications />
     case "admin.push-recurring":
