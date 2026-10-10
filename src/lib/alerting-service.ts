@@ -12,6 +12,8 @@
  */
 
 import logger from "./logger"
+import { enqueueWhatsApp } from "./whatsapp-queue"
+import { db } from "./db"
 
 export type AlertSeverity = "INFO" | "WARNING" | "CRITICAL" | "EMERGENCY"
 
@@ -92,10 +94,57 @@ export const AlertingService = {
         signal: AbortSignal.timeout(4000),
       })
 
+      // ── Alerta proativo via WhatsApp para administradores (CRITICAL e EMERGENCY) ──
+      if (
+        alert.severity === "CRITICAL" ||
+        alert.severity === "EMERGENCY" ||
+        alert.severity === "WARNING"
+      ) {
+        this.notifyAdminsViaWhatsApp(alert).catch((err) => {
+          logger.warn({ err }, "[ALERTING] Falha ao notificar admins via WhatsApp")
+        })
+      }
+
       return res.ok
     } catch (e) {
       logger.error({ err: e }, "[ALERTING] Failed to send webhook alert")
       return false
+    }
+  },
+
+  /**
+   * Envia alerta estruturado de infraestrutura via WhatsApp para administradores cadastrados
+   */
+  async notifyAdminsViaWhatsApp(alert: AlertPayload): Promise<void> {
+    try {
+      const admins = await db.user.findMany({
+        where: { role: "ADMIN", active: true, whatsapp: { not: null } },
+        select: { id: true, whatsapp: true, name: true },
+        take: 5,
+      })
+
+      if (!admins.length) return
+
+      const icon = alert.severity === "CRITICAL" || alert.severity === "EMERGENCY" ? "🚨" : "⚠️"
+      const text =
+        `${icon} *ALERTA DE INFRAESTRUTURA - Severinno*\n\n` +
+        `*Nível:* ${alert.severity}\n` +
+        `*Título:* ${alert.title}\n` +
+        `*Origem:* ${alert.source}\n\n` +
+        `📝 *Detalhes:*\n${alert.message}\n\n` +
+        `⏰ *Horário:* ${new Date().toLocaleTimeString("pt-BR")}`
+
+      for (const admin of admins) {
+        if (!admin.whatsapp) continue
+        await enqueueWhatsApp({
+          to: admin.whatsapp,
+          text,
+          userId: admin.id,
+          context: `alert:${alert.severity.toLowerCase()}:${alert.source}`,
+        }).catch(() => {})
+      }
+    } catch (err) {
+      logger.warn({ err }, "[ALERTING] Erro ao buscar administradores para WhatsApp")
     }
   },
 
