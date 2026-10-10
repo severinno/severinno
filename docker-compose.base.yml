@@ -67,6 +67,8 @@ volumes:
     name: severinno_minio_data
   rabbitmq_data:
     name: severinno_rabbitmq_data
+  evolution_instances:
+    name: severinno_evolution_instances
 
 # ── Docker Secrets ───────────────────────────────────────────────────────
 # Secrets são montados em /run/secrets/<nome> dentro do container.
@@ -644,4 +646,49 @@ services:
       interval: 30s
       timeout: 10s
       start_period: 30s
+      retries: 3
+
+  # ── Evolution API (WhatsApp Gateway) ──────────────────────────────────
+  # Servidor REST para conexões WhatsApp e envio de notificações/recibos.
+  # Acessível via Caddy em https://whatsapp.severinno.com.
+  evolution-api:
+    image: evoapicloud/evolution-api:v2.2.3
+    container_name: severinno-evolution-api
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      SERVER_URL: ${EVOLUTION_SERVER_URL:-https://whatsapp.severinno.com}
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: "postgresql"
+      DATABASE_CONNECTION_URI: postgresql://${EVOLUTION_DB_USER:-evolution}:${EVOLUTION_DB_PASSWORD}@postgres:5432/${EVOLUTION_DB_NAME:-evolution}
+      DATABASE_CONNECTION_CLIENT_NAME: "severinno_evolution"
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: "redis://redis:6379/2"
+      CACHE_REDIS_TTL: "604800"
+      CACHE_REDIS_SAVE_INSTANCES: "true"
+      CONFIG_SESSION_PHONE_CLIENT: "Severinno Marketplace"
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      backend:
+        aliases:
+          - evolution-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      start_period: 45s
       retries: 3
