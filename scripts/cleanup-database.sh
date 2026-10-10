@@ -7,6 +7,13 @@
 # - ResetToken expirados (> 24 horas)
 # - PushSendLog antigos (> 30 dias)
 # - WebhookExecutionLog antigos (> 30 dias)
+#
+# Usage:
+#   ./scripts/cleanup-database.sh
+#
+# Exit codes:
+#   0 — limpeza executada com sucesso
+#   1 — erro de credenciais ou falha no postgres
 # ==============================================================================
 
 set -euo pipefail

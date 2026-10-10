@@ -5,6 +5,13 @@
 # Garante que o userlist.txt montado no PgBouncer sempre contenha a senha
 # atualizada de secrets/postgres_password.secret, evitando divergência após
 # git pull/reset ou rotação de segredos.
+#
+# Usage:
+#   ./scripts/sync-pgbouncer-users.sh
+#
+# Exit codes:
+#   0 — sincronização concluída com sucesso
+#   1 — erro de execução
 # ==============================================================================
 set -euo pipefail
 

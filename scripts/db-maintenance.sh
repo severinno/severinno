@@ -10,12 +10,16 @@
 #   3. Coleta de métricas (tamanho do banco, dead tuples eliminadas, tempo).
 #   4. Notificação multi-canal (Telegram e Discord) com resumo da operação.
 #
-# Uso:
+# Usage:
 #   ./scripts/db-maintenance.sh                    # Executa em todos os bancos
 #   ./scripts/db-maintenance.sh --dry-run          # Apenas exibe bloat e estatísticas
 #   ./scripts/db-maintenance.sh --vacuum-only      # Executa apenas VACUUM ANALYZE
 #   ./scripts/db-maintenance.sh --database <nome>  # Executa apenas em um banco
 #   ./scripts/db-maintenance.sh --quiet            # Notifica apenas em caso de falha
+#
+# Exit codes:
+#   0 — sucesso na manutenção preventiva de todos os bancos
+#   1 — erro na execução ou falha de conexão com PostgreSQL
 #
 # Cron recomendado (Semanal — Domingo às 04:00):
 #   0 4 * * 0 /home/deploy/severinno/scripts/db-maintenance.sh >> /var/log/severinno-db-maintenance.log 2>&1
@@ -226,7 +230,7 @@ for DB in "${DATABASES[@]}"; do
     LIMIT 5;
   " || true)
 
-  if [ -n "$TOP_BLOAT" ] && echo "$TOP_BLOAT" | grep -qv "(0 rows)"; then
+  if [ -n "$TOP_BLOAT" ] && grep -qv "(0 rows)" <<< "$TOP_BLOAT"; then
     log "📋 Tabelas com dead tuples detectadas:"
     echo "$TOP_BLOAT" | while IFS= read -r line; do log "   $line"; done
   fi
