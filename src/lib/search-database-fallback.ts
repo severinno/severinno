@@ -46,22 +46,24 @@ export async function searchServicesDatabase(
     const termArray = Array.from(expandedTerms).slice(0, 5)
     const skip = (page - 1) * limit
 
+    const whereClause = {
+      active: true,
+      OR: [
+        { title: { contains: q, mode: "insensitive" as const } },
+        ...termArray.map((t) => ({ title: { contains: t, mode: "insensitive" as const } })),
+        ...termArray.map((t) => ({
+          description: { contains: t, mode: "insensitive" as const },
+        })),
+        ...termArray.map((t) => ({
+          category: { name: { contains: t, mode: "insensitive" as const } },
+        })),
+      ],
+    }
+
     // 2. Query Prisma with case-insensitive matches across title, description & category
     const [services, total] = await Promise.all([
       db.service.findMany({
-        where: {
-          active: true,
-          OR: [
-            { title: { contains: q, mode: "insensitive" } },
-            ...termArray.map((t) => ({ title: { contains: t, mode: "insensitive" as const } })),
-            ...termArray.map((t) => ({
-              description: { contains: t, mode: "insensitive" as const },
-            })),
-            ...termArray.map((t) => ({
-              category: { name: { contains: t, mode: "insensitive" as const } },
-            })),
-          ],
-        },
+        where: whereClause,
         include: {
           category: { select: { name: true } },
           provider: {
@@ -72,16 +74,10 @@ export async function searchServicesDatabase(
           },
         },
         skip,
-        take: limit,
+        take: Math.min(Math.max(limit, 1), 50),
       }),
       db.service.count({
-        where: {
-          active: true,
-          OR: [
-            { title: { contains: q, mode: "insensitive" } },
-            ...termArray.map((t) => ({ title: { contains: t, mode: "insensitive" as const } })),
-          ],
-        },
+        where: whereClause,
       }),
     ])
 

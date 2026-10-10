@@ -21,10 +21,26 @@
 set -euo pipefail
 
 # ── Config ──────────────────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 APP_URL="${APP_URL:-https://severinno.com}"
 HEALTH_URL="${APP_URL}/api/health"
 STATE_FILE="/tmp/severinno-health-state"
-LOG_FILE="/home/severinno/severinno/logs/health-alert.log"
+LOG_FILE="${PROJECT_DIR}/logs/health-alert.log"
+mkdir -p "$(dirname "$LOG_FILE")"
+
+# Carregar credenciais de alerta de .env.alertas, .env.production.local ou .env
+if [ -f "$PROJECT_DIR/.env.alertas" ]; then
+  # shellcheck disable=SC1090
+  source "$PROJECT_DIR/.env.alertas"
+elif [ -f "$PROJECT_DIR/.env.production.local" ]; then
+  # shellcheck disable=SC1090
+  source <(grep -E "^(TELEGRAM_|DISCORD_|APP_URL)" "$PROJECT_DIR/.env.production.local" 2>/dev/null || true)
+elif [ -f "$PROJECT_DIR/.env" ]; then
+  # shellcheck disable=SC1090
+  source <(grep -E "^(TELEGRAM_|DISCORD_|APP_URL)" "$PROJECT_DIR/.env" 2>/dev/null || true)
+fi
 
 # Telegram & Discord (set via environment or .env)
 TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
