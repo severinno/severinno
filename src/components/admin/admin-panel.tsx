@@ -51,6 +51,7 @@ import {
   Flame,
   TrendingUp,
   MessageSquare,
+  Scale,
 } from "lucide-react"
 
 import { DashboardShell, type NavItem, type Breadcrumb } from "@/components/shared/dashboard-shell"
@@ -204,6 +205,10 @@ const AdminWhatsApp = dynamic(
   () => import("./admin-whatsapp").then((m) => ({ default: m.AdminWhatsApp })),
   { ssr: false },
 )
+const AdminDisputes = dynamic(
+  () => import("./admin-disputes").then((m) => ({ default: m.AdminDisputes })),
+  { ssr: false },
+)
 
 // ---------------------------------------------------------------------------
 // Nav config
@@ -263,6 +268,11 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.settlements",
     label: "Repasses",
     icon: Handshake,
+  },
+  {
+    view: "admin.disputes",
+    label: "Disputas & Escrow",
+    icon: Scale,
   },
   {
     view: "admin.bookings",
@@ -431,6 +441,11 @@ const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs:
     title: "Repasses",
     subtitle: "Períodos de repasse automáticos — gere, finalize e marque como pago.",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Repasses" }],
+  },
+  "admin.disputes": {
+    title: "Mediação & Disputas de Escrow",
+    subtitle: "Arbitragem de conflitos, retenção de custódia e resolução assistida por IA.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Disputas" }],
   },
   "admin.bookings": {
     title: "Agendamentos",
@@ -688,6 +703,8 @@ function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: stri
       return <AdminFinanceDashboard />
     case "admin.settlements":
       return <AdminSettlements />
+    case "admin.disputes":
+      return <AdminDisputes />
     case "admin.bookings":
       return <AdminBookings />
     case "admin.whatsapp":
