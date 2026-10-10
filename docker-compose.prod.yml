@@ -533,6 +533,11 @@ services:
     cap_drop:
       - ALL
     cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
       - NET_BIND_SERVICE
     read_only: true
     tmpfs:
@@ -556,7 +561,7 @@ services:
 
   # ── GlitchTip: MinIO (source maps & cold storage) ─────────────────────
   glitchtip-minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
     restart: unless-stopped
     profiles:
       - glitchtip
@@ -573,6 +578,8 @@ services:
     expose:
       - "9000"
       - "9001"
+    secrets:
+      - glitchtip_s3_secret_key
     environment:
       MINIO_ROOT_USER: ${GLITCHTIP_S3_ACCESS_KEY:-glitchtip_storage}
       MINIO_ROOT_PASSWORD_FILE: /run/secrets/glitchtip_s3_secret_key
@@ -594,7 +601,7 @@ services:
 
   # ── GlitchTip: MinIO Bucket Init ──────────────────────────────────────
   glitchtip-minio-init:
-    image: minio/mc:latest
+    image: minio/mc:RELEASE.2024-12-18T13-15-44Z
     restart: "no"
     profiles:
       - glitchtip
@@ -642,11 +649,12 @@ services:
         condition: service_healthy
     secrets:
       - glitchtip_db_password
-      - session_secret
+      - glitchtip_secret_key
     volumes:
       - ./scripts/glitchtip-entrypoint.sh:/app/scripts/glitchtip-entrypoint.sh:ro
     environment:
-      DATABASE_URL: postgres://${GLITCHTIP_DB_USER:-glitchtip}@glitchtip-db:5432/${GLITCHTIP_DB_NAME:-glitchtip}
+      DATABASE_URL: postgres://${GLITCHTIP_DB_USER:-glitchtip}:${GLITCHTIP_DB_PASSWORD}@glitchtip-db:5432/${GLITCHTIP_DB_NAME:-glitchtip}
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY}
     networks:
       - backend
 
@@ -685,7 +693,7 @@ services:
         condition: service_healthy
     secrets:
       - glitchtip_db_password
-      - session_secret
+      - glitchtip_secret_key
       - glitchtip_s3_secret_key
     volumes:
       - ./scripts/glitchtip-entrypoint.sh:/app/scripts/glitchtip-entrypoint.sh:ro
@@ -693,8 +701,8 @@ services:
       # Database URL without password — entrypoint reads from Docker secret
       DATABASE_URL: postgres://${GLITCHTIP_DB_USER:-glitchtip}@pgbouncer-glitchtip:6432/${GLITCHTIP_DB_NAME:-glitchtip}
       REDIS_URL: redis://glitchtip-redis:6379
-      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-https://glitchtip.severinno.com.br}
-      DEFAULT_FROM_EMAIL: ${GLITCHTIP_FROM_EMAIL:-noreply@severinno.com.br}
+      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-https://glitchtip.severinno.com}
+      DEFAULT_FROM_EMAIL: ${GLITCHTIP_FROM_EMAIL:-noreply@severinno.com}
       EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-}
       CELERY_DEFAULT_QUEUE: glitchtip
       S3_ENABLED: "true"
@@ -749,7 +757,7 @@ services:
         condition: service_healthy
     secrets:
       - glitchtip_db_password
-      - session_secret
+      - glitchtip_secret_key
       - glitchtip_s3_secret_key
     volumes:
       - ./scripts/glitchtip-entrypoint.sh:/app/scripts/glitchtip-entrypoint.sh:ro
@@ -757,8 +765,8 @@ services:
       # Database URL without password — entrypoint reads from Docker secret
       DATABASE_URL: postgres://${GLITCHTIP_DB_USER:-glitchtip}@pgbouncer-glitchtip:6432/${GLITCHTIP_DB_NAME:-glitchtip}
       REDIS_URL: redis://glitchtip-redis:6379
-      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-https://glitchtip.severinno.com.br}
-      DEFAULT_FROM_EMAIL: ${GLITCHTIP_FROM_EMAIL:-noreply@severinno.com.br}
+      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-https://glitchtip.severinno.com}
+      DEFAULT_FROM_EMAIL: ${GLITCHTIP_FROM_EMAIL:-noreply@severinno.com}
       EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-}
       CELERY_DEFAULT_QUEUE: glitchtip
       S3_ENABLED: "true"
