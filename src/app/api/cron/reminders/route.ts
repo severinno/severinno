@@ -158,13 +158,13 @@ export const GET = withRoute("api.cron.reminders.GET", async (request) => {
     reviewRequestsSent++
   }
 
-  // 4. Escrow auto-release (HELD > 72h without open disputes)
-  const threeDaysAgo = new Date(now.getTime() - 72 * 60 * 60 * 1000)
+  // 4. Escrow auto-release & reconciliação (concluído há > 48h sem liberação e sem disputas abertas)
+  const twoDaysAgoRelease = new Date(now.getTime() - 48 * 60 * 60 * 1000)
   const heldBookingsToRelease = await db.booking.findMany({
     where: {
-      paymentStatus: "HELD",
       status: "COMPLETED",
-      updatedAt: { lte: threeDaysAgo },
+      escrowReleasedAt: null,
+      updatedAt: { lte: twoDaysAgoRelease },
       disputes: { none: { status: "OPEN" } },
     },
     take: 20,
