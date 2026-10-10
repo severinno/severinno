@@ -18,6 +18,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { evolutionLogger } from "@/lib/evolution"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { processInteractiveCommand } from "@/lib/whatsapp-autoresponder"
 
 // ---------------------------------------------------------------------------
 // Helper: extrair número do JID (remoteJid)
@@ -140,6 +141,26 @@ export async function POST(request: Request) {
           { userId: user.id, event: "messages.upsert" },
           "Webhook Evolution: mensagem recebida de usuário cadastrado",
         )
+
+        // ── 0. Verificar se a mensagem é um comando interativo / autoresponder ──
+        // Comandos como MENU, AGENDAMENTOS, PIX, 1, 2, 3 etc. recebem resposta imediata
+        // assíncrona via fila RabbitMQ, poupando intervenção humana.
+        const interactiveResult = await processInteractiveCommand({
+          phone: senderNumber,
+          text,
+          user: {
+            id: user.id,
+            name: user.name,
+          },
+        })
+
+        if (interactiveResult.handled) {
+          evolutionLogger.info(
+            { userId: user.id, phone: senderNumber.slice(0, 4) + "****" },
+            "Webhook Evolution: mensagem respondida automaticamente pelo autoresponder",
+          )
+          break
+        }
 
         // ── Roteamento para o destinatário apropriado ────────────────
         // Estratégia (4 níveis):

@@ -61,7 +61,36 @@ describe("POST /api/webhooks/evolution", () => {
           fromMe: false,
         },
         message: {
-          conversation: "Olá, gostaria de um orçamento",
+          conversation: "Qual o horário que você pode vir aqui amanhã para fazer o serviço?",
+        },
+      },
+    }
+
+    const req = createMockRequest({ method: "POST", body: payload })
+    const res = await evolutionWebhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect(parsed.body!.received).toBe(true)
+    expect(db.user.findFirst).toHaveBeenCalled()
+  })
+
+  it("handles interactive menu commands via autoresponder and returns 200", async () => {
+    ;(vi.mocked(db.user.findFirst) as any).mockResolvedValue({
+      id: "user-1",
+      name: "Test User",
+    })
+
+    const payload = {
+      event: "messages.upsert",
+      instance: "severinno-instance",
+      data: {
+        key: {
+          remoteJid: "5511999999999@s.whatsapp.net",
+          fromMe: false,
+        },
+        message: {
+          conversation: "MENU",
         },
       },
     }
