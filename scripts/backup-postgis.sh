@@ -41,7 +41,7 @@ if [[ "${1:-}" == "--restore" ]]; then
     exit 1
   fi
   echo "[$(date)] Restaurando backup do PostgreSQL + PostGIS a partir de $RESTORE_FILE..."
-  CONTAINER=$(docker ps --format '{{.Names}}' | grep postgis | head -1)
+  CONTAINER=$(docker ps --format '{{.Names}}' | grep -iE 'severinno-postgres|postgis' | head -1)
   if command -v psql &>/dev/null; then
     gunzip -c "$RESTORE_FILE" | PGPASSWORD="${DB_PASSWORD:-severinno}" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME"
   elif [ -n "$CONTAINER" ]; then
@@ -68,7 +68,7 @@ echo "[$(date)] Starting backup of ${DB_NAME}..."
 
 # ── pg_dump with PostGIS support ────────────────────────────────────────────
 # Use Docker exec if pg_dump is not installed locally
-CONTAINER=$(docker ps --format '{{.Names}}' | grep postgis | head -1)
+CONTAINER=$(docker ps --format '{{.Names}}' | grep -iE 'severinno-postgres|postgis' | head -1)
 if command -v pg_dump &>/dev/null; then
   PGPASSWORD="${DB_PASSWORD:-severinno}" pg_dump \
     -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \

@@ -109,7 +109,7 @@ send_alert() {
 
 # ── 1. Encontra o backup mais recente ──────────────────────────────────────
 log "🔍 Procurando backup mais recente (local /tmp ou backups/postgres → S3/MinIO)..."
-LATEST="$(ls -1t "$PROJECT_DIR"/backups/postgres/severinno-*.dump "$PROJECT_DIR"/backups/postgres/severinno-*.sql.gz "$BACKUP_DIR"/severinno_*.sql.gz "$BACKUP_DIR"/severinno_*.dump 2>/dev/null | head -1 || true)"
+LATEST="$(find "$PROJECT_DIR/backups/postgres" "$BACKUP_DIR" -maxdepth 1 -type f \( -name "severinno-*.dump" -o -name "severinno_*.sql.gz" -o -name "severinno-*.sql.gz" \) -size +20k -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)"
 
 # Fallback: baixa o mais recente do MinIO/S3 (backup durável — /tmp é staging
 # volátil, limpo no reboot; o backup de verdade vive no bucket)
