@@ -23,6 +23,7 @@ import { apiGet, apiPatch } from "@/lib/api"
 import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
+  SERVICE_UNIT_SHORT,
   type BookingStatus,
   type PaymentMethod,
   type PaymentStatus,
@@ -83,6 +84,8 @@ type Booking = {
   lat: number
   lng: number
   amount: number
+  quantity: number
+  unit: string
   paymentMethod: PaymentMethod
   paymentStatus: PaymentStatus
   notes?: string | null
@@ -211,6 +214,16 @@ function BookingDetailsDialog({
                 {formatBRL(booking.amount)}
               </span>
             </div>
+            {booking.quantity > 1 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Quantidade</span>
+                <span className="text-sm tabular-nums">
+                  {booking.quantity} ×{" "}
+                  {SERVICE_UNIT_SHORT[booking.unit as keyof typeof SERVICE_UNIT_SHORT] ??
+                    booking.unit}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">Data</span>
               <span className="font-medium tabular-nums">
@@ -689,6 +702,12 @@ function BookingCard({
           <span className="text-primary text-sm font-semibold tabular-nums">
             {formatBRL(booking.amount)}
           </span>
+          {booking.quantity > 1 && (
+            <span className="text-muted-foreground text-[11px] tabular-nums">
+              {booking.quantity} ×{" "}
+              {SERVICE_UNIT_SHORT[booking.unit as keyof typeof SERVICE_UNIT_SHORT] ?? booking.unit}
+            </span>
+          )}
           <Badge
             className={cn(
               "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",

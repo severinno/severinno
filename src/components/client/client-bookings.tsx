@@ -95,6 +95,8 @@ type Booking = {
   status: BookingStatus
   scheduledAt: string
   amount: number
+  quantity: number
+  unit: ServiceUnit
   paymentMethod: PaymentMethod
   paymentStatus: PaymentStatus
   address: string
@@ -584,6 +586,11 @@ function BookingCard({
 
           <div className="flex shrink-0 flex-col items-end gap-1">
             <span className="text-sm font-semibold tabular-nums">{formatBRL(booking.amount)}</span>
+            {booking.quantity > 1 && (
+              <span className="text-muted-foreground text-[11px] tabular-nums">
+                {booking.quantity} × {SERVICE_UNIT_SHORT[booking.unit] ?? booking.unit}
+              </span>
+            )}
             <StatusBadge
               tone={paymentTone(booking.paymentStatus as PaymentStatus)}
               icon={paymentIcon(booking.paymentStatus as PaymentStatus)}
@@ -785,6 +792,12 @@ function BookingDetailsDialog({
               label="Valor"
               value={<span className="font-semibold tabular-nums">{formatBRL(b.amount)}</span>}
             />
+            {b.quantity > 1 ? (
+              <Row
+                label="Quantidade"
+                value={`${b.quantity} × ${SERVICE_UNIT_SHORT[b.unit] ?? b.unit}`}
+              />
+            ) : null}
             {b.notes ? <Row label="Observações" value={b.notes} /> : null}
 
             {/* Flow transparency — "what happens now" timeline */}

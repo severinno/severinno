@@ -525,54 +525,8 @@ vi.mock("@/lib/utils", () => ({
   cn: (...c: any[]) => c.filter(Boolean).join(" "),
 }))
 
-vi.mock("zod", async (importOriginal) => {
-  // Endurecido: preserva os exports reais quando funcionam (ex.: após upgrade
-  // do vitest que corrija o interop do runner Bun — issue vitest#10359) e usa
-  // o stub chainable como fallback determinístico.
-  const actual = await importOriginal<typeof import("zod")>().catch(() => null)
-  const chainable = (methods: Record<string, any> = {}) => {
-    const obj: Record<string, any> = { ...methods }
-    ;[
-      "min",
-      "max",
-      "default",
-      "optional",
-      "nullable",
-      "refine",
-      "describe",
-      "email",
-      "url",
-      "regex",
-      "int",
-      "length",
-      "transform",
-    ].forEach((m) => {
-      if (!obj[m]) obj[m] = () => obj
-    })
-    if (!obj.parse) obj.parse = (v: unknown) => v
-    if (!obj.safeParse) obj.safeParse = (v: unknown) => ({ success: true, data: v })
-    return obj
-  }
-  const stubZ = {
-    object: () => chainable({ refine: () => chainable() }),
-    string: () => chainable(),
-    number: () => chainable(),
-    boolean: () => chainable(),
-    date: () => chainable(),
-    array: () => chainable(),
-    coerce: { number: () => chainable(), date: () => chainable() },
-    enum: () => chainable(),
-    literal: () => chainable(),
-    union: () => chainable(),
-    record: () => chainable(),
-    any: () => chainable(),
-    infer: () => ({}),
-  }
-  return {
-    ...(actual ?? {}),
-    z: (actual as { z?: unknown } | null)?.z ?? stubZ,
-  }
-})
+// NOTA: sem mock de "zod" — desde o upgrade para vitest 5 o zod real carrega
+// corretamente no runner Bun (issue vitest#10359 corrigida).
 
 // -----------------------------------------------------------------------
 // Mock data
