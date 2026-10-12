@@ -19,6 +19,12 @@ import {
   dateBlockSchema,
   slugSchema,
   categoryUpdateSchema,
+  bookingValidationRules,
+  paymentValidationRules,
+  paymentSchema,
+  paymentValidator,
+  serviceUnitEnum,
+  serviceSchema,
 } from "@/lib/validators"
 
 // ---------------------------------------------------------------------------
@@ -482,5 +488,140 @@ describe("categoryUpdateSchema", () => {
   it("aceita update com name", () => {
     const result = categoryUpdateSchema.parse({ id: "c1", name: "Nova" })
     expect(result.name).toBe("Nova")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// BOOKING VALIDATION RULES (cliente — usado no handleSubmit)
+// ---------------------------------------------------------------------------
+describe("bookingValidationRules", () => {
+  const future = new Date(Date.now() + 86_400_000)
+
+  it("aceita payload válido (espelha handleSubmit)", () => {
+    const result = bookingValidationRules.safeParse({
+      amount: 150,
+      scheduledAt: future,
+      notes: "Portão azul",
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it("rejeita amount negativo com mensagem em PT", () => {
+    const result = bookingValidationRules.safeParse({ amount: -5 })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toContain("entre 0 e 1.000.000")
+    }
+  })
+
+  it("rejeita amount acima de 1.000.000 (alinhado ao servidor)", () => {
+    const result = bookingValidationRules.safeParse({ amount: 1_000_001 })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejeita data inválida com mensagem em PT", () => {
+    const result = bookingValidationRules.safeParse({ scheduledAt: "xxx" })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe("Data de agendamento inválida")
+    }
+  })
+
+  it("rejeita data no passado (mesma regra do servidor)", () => {
+    const result = bookingValidationRules.safeParse({
+      amount: 100,
+      scheduledAt: new Date(Date.now() - 1000),
+    })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe("A data de agendamento deve ser no futuro")
+    }
+  })
+
+  it("rejeita notes > 1000 chars", () => {
+    const result = bookingValidationRules.safeParse({ notes: "a".repeat(1001) })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe("Notas não podem exceder 1000 caracteres")
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PAYMENT VALIDATION RULES (cliente — usado no handleSubmit)
+// ---------------------------------------------------------------------------
+describe("paymentValidationRules", () => {
+  it("aceita PIX válido", () => {
+    expect(paymentValidationRules.safeParse({ amount: 100, method: "PIX" }).success).toBe(true)
+  })
+
+  it("aceita CARD válido", () => {
+    expect(paymentValidationRules.safeParse({ amount: 100, method: "CARD" }).success).toBe(true)
+  })
+
+  it("rejeita amount negativo com mensagem em PT", () => {
+    const result = paymentValidationRules.safeParse({ amount: -1, method: "PIX" })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toContain("entre 0 e 10.000.000")
+    }
+  })
+
+  it("rejeita método inválido com mensagem em PT", () => {
+    const result = paymentValidationRules.safeParse({ amount: 10, method: "BOLETO" })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toBe("Método de pagamento deve ser CARD ou PIX")
+    }
+  })
+
+  it("bloqueia handleSubmit: amount inválido ou método inválido falham antes do apiPost", () => {
+    // Mesmos payloads montados em booking-modal handleSubmit
+    const badAmount = paymentValidationRules.safeParse({ amount: -1, method: "PIX" })
+    const badMethod = paymentValidationRules.safeParse({ amount: 10, method: "BOLETO" })
+    expect(badAmount.success).toBe(false)
+    expect(badMethod.success).toBe(false)
+  })
+})
+
+describe("paymentSchema / paymentValidator (consolidação)", () => {
+  it("paymentSchema exige bookingId", () => {
+    const result = paymentSchema.safeParse({ amount: 10, method: "PIX" })
+    expect(result.success).toBe(false)
+  })
+
+  it("paymentSchema aceita com bookingId", () => {
+    const result = paymentSchema.safeParse({ bookingId: "b1", amount: 10, method: "PIX" })
+    expect(result.success).toBe(true)
+  })
+
+  it("paymentValidator é alias de paymentValidationRules", () => {
+    expect(paymentValidator).toBe(paymentValidationRules)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SERVICE UNIT (enum canônico — espelha o Prisma, inclui HORA)
+// ---------------------------------------------------------------------------
+describe("serviceUnitEnum", () => {
+  it("aceita os 5 valores do enum do Prisma", () => {
+    for (const unit of ["UNIDADE", "METRO_LINEAR", "METRO_QUADRADO", "METRO_CUBICO", "HORA"]) {
+      expect(serviceUnitEnum.safeParse(unit).success).toBe(true)
+    }
+  })
+
+  it("rejeita valor fora do enum", () => {
+    expect(serviceUnitEnum.safeParse("LITRO").success).toBe(false)
+  })
+
+  it("serviceSchema aceita serviço por hora", () => {
+    const result = serviceSchema.safeParse({
+      title: "Aula particular",
+      description: "Aula de matemática para ensino médio",
+      categoryId: "c1",
+      basePrice: 80,
+      unit: "HORA",
+    })
+    expect(result.success).toBe(true)
   })
 })

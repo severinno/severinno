@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen } from "@/__tests__/test-utils"
+import { cleanup, render, screen, fireEvent, act } from "@/__tests__/test-utils"
 import { BookingModal } from "../booking-modal"
+import { apiPost } from "@/lib/api"
 import { createMockAuthStore, createMockUIStore, createMockViewStore } from "./test-utils"
 import * as React from "react"
 
@@ -129,11 +130,17 @@ vi.mock("@/components/ui/separator", () => ({
   Separator: () => <hr />,
 }))
 
-// Calendar mock – simplified for testing
+// Calendar mock – simplified for testing. Segunda-feira FIXA e distante
+// (03/06/2030, meio-dia): nunca fica no passado (evita bomba-relógio —
+// check-clock-bombs.mjs) e dow=1 casa com o expediente mockado.
+// Precedente: bookings-route.test.ts usa 2030-02-15.
 vi.mock("@/components/ui/calendar", () => ({
   Calendar: ({ onSelect }: any) => (
     <div data-testid="calendar">
-      <button data-testid="calendar-select" onClick={() => onSelect?.(new Date(2026, 6, 20))}>
+      <button
+        data-testid="calendar-select"
+        onClick={() => onSelect?.(new Date(2030, 5, 3, 12, 0, 0, 0))}
+      >
         Select Date
       </button>
     </div>
@@ -179,18 +186,11 @@ vi.mock("@/components/ui/scroll-area", () => ({
 }))
 
 // Select (used by AddressForm)
+const SelectValueContext = React.createContext<((v: string) => void) | undefined>(undefined)
 vi.mock("@/components/ui/select", () => ({
   Select: ({ children, value, onValueChange }: any) => (
     <div data-testid="select" data-value={value}>
-      {React.Children.map(children, (child: any) => {
-        if (
-          child?.type?.displayName === "SelectTrigger" ||
-          child?.type?.displayName === "SelectContent"
-        ) {
-          return React.cloneElement(child, { onValueChange })
-        }
-        return child
-      })}
+      <SelectValueContext.Provider value={onValueChange}>{children}</SelectValueContext.Provider>
     </div>
   ),
   SelectTrigger: ({ children, ...p }: any) => {
@@ -204,15 +204,28 @@ vi.mock("@/components/ui/select", () => ({
   },
   SelectContent: ({ children }: any) => <div data-testid="select-content">{children}</div>,
   SelectItem: ({ value, children }: any) => {
-    const Item = (props: any) => (
-      <button data-testid="select-item" data-value={props.value}>
-        {props.children}
-      </button>
-    )
+    const Item = (props: any) => {
+      const onValueChange = React.useContext(SelectValueContext)
+      return (
+        <button
+          data-testid="select-item"
+          data-value={props.value}
+          onClick={() => onValueChange?.(props.value)}
+        >
+          {props.children}
+        </button>
+      )
+    }
     Item.displayName = "SelectItem"
     return <Item value={value}>{children}</Item>
   },
   SelectValue: ({ placeholder }: any) => <span data-testid="select-value">{placeholder}</span>,
+}))
+
+// AddressAutocomplete (vitrine・地図 — pesado p/ jsdom; irrelevante aqui,
+// o teste preenche os campos manuais do GeoAddressForm)
+vi.mock("@/components/vitrine/address-autocomplete", () => ({
+  default: () => <div data-testid="address-autocomplete-stub" />,
 }))
 
 // API functions
@@ -229,6 +242,7 @@ vi.mock("@/lib/utils", () => ({
 
 // Constants
 vi.mock("@/lib/constants", () => ({
+  SERVICE_UNITS: ["UNIDADE", "METRO_LINEAR", "METRO_QUADRADO", "METRO_CUBICO", "HORA"],
   SERVICE_UNIT_LABELS: { UNIT: "unidade", HOUR: "hora", KG: "kg" },
   SERVICE_UNIT_SHORT: { UNIT: "un", HOUR: "h", KG: "kg" },
   WEEKDAYS_SHORT: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"],
@@ -261,6 +275,7 @@ vi.mock("lucide-react", () => {
     Clock: LucideIcon,
     CreditCard: LucideIcon,
     Loader2: LucideIcon,
+    LocateFixed: LucideIcon,
     MapPin: LucideIcon,
     Moon: LucideIcon,
     Pencil: LucideIcon,
@@ -272,9 +287,12 @@ vi.mock("lucide-react", () => {
   }
 })
 
-vi.mock("date-fns/locale", () => ({
-  ptBR: {},
-}))
+vi.mock("date-fns/locale", async (importOriginal) => {
+  // Locale real: o mock anterior ({}) quebrava date-fns/format ao selecionar
+  // uma data (selectedDateSummary). date-fns não depende de zod — seguro.
+  const actual = await importOriginal<typeof import("date-fns/locale")>()
+  return { ...actual }
+})
 
 // react-hook-form (used by sub-components when editing card details)
 vi.mock("react-hook-form", () => ({
@@ -475,5 +493,69 @@ describe("BookingModal — auth gating", () => {
     renderModal()
 
     expect(mockUIStore.openAuth).not.toHaveBeenCalled()
+  })
+})
+
+describe("BookingModal — submit validation (navegação até o passo 4)", () => {
+  /** Preenche passos 1–3 com dados válidos e avança até a confirmação. */
+  function fillToStep4(notes: string) {
+    mockAuthStore.user = {
+      id: "usr-1",
+      name: "Test User",
+      email: "test@test.com",
+      role: "CLIENT",
+      avatarUrl: null,
+    }
+    mockUIStore.bookingModal = { open: true, providerId: "prov-1", serviceId: "svc-1" }
+    const utils = renderModal()
+
+    // Passo 1 — data (segunda-feira, dentro do expediente mockado) + horário
+    fireEvent.click(screen.getByTestId("calendar-select"))
+    fireEvent.click(screen.getByText("08h00"))
+    fireEvent.click(screen.getByRole("button", { name: /continuar/i }))
+
+    // Passo 2 — endereço + observações (sem blur: evita lookup de CEP async)
+    fireEvent.change(screen.getByLabelText("CEP"), { target: { value: "01310100" } })
+    fireEvent.change(screen.getByLabelText("Rua / Avenida"), { target: { value: "Rua Augusta" } })
+    fireEvent.change(screen.getByLabelText("Número"), { target: { value: "1500" } })
+    fireEvent.change(screen.getByLabelText("Cidade"), { target: { value: "São Paulo" } })
+    const spItem = utils.container.querySelector(
+      '[data-testid="select-item"][data-value="SP"]',
+    ) as HTMLElement
+    fireEvent.click(spItem)
+    fireEvent.change(screen.getByLabelText(/observações/i), { target: { value: notes } })
+    fireEvent.click(screen.getByRole("button", { name: /continuar/i }))
+
+    // Passo 3 — PIX é válido por padrão, avança direto
+    fireEvent.click(screen.getByRole("button", { name: /continuar/i }))
+
+    // Passo 4 — botão de submit visível
+    expect(screen.getByRole("button", { name: /confirmar agendamento/i })).toBeInTheDocument()
+  }
+
+  it("bloqueia submit inválido: banner inline + apiPost NÃO chamado", async () => {
+    fillToStep4("a".repeat(1001))
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /confirmar agendamento/i }))
+    })
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Notas não podem exceder 1000 caracteres")
+    expect(vi.mocked(apiPost)).not.toHaveBeenCalled()
+  })
+
+  it("submete quando válido: apiPost com amount = basePrice × quantity", async () => {
+    fillToStep4("Portão azul")
+    vi.mocked(apiPost).mockResolvedValue({ booking: { id: "b1" } } as never)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /confirmar agendamento/i }))
+    })
+
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith(
+      "/api/bookings",
+      expect.objectContaining({ amount: 100, quantity: 1 }),
+    )
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
 })

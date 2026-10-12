@@ -44,6 +44,8 @@ import {
   type BookingFormState,
 } from "./booking"
 
+import { validateBookingSubmit } from "@/lib/booking-submit"
+
 export function BookingModal() {
   const open = useUIStore((s) => s.bookingModal.open)
   const providerIdPreset = useUIStore((s) => s.bookingModal.providerId)
@@ -58,6 +60,7 @@ export function BookingModal() {
   const [state, setState] = React.useState<BookingFormState>(initialState())
   const [submitting, setSubmitting] = React.useState(false)
   const [touched, setTouched] = React.useState<Set<string>>(new Set())
+  const [submitError, setSubmitError] = React.useState<string | null>(null)
 
   const [prevOpen, setPrevOpen] = React.useState(open)
   if (open && prevOpen !== open) {
@@ -65,6 +68,7 @@ export function BookingModal() {
     setStep(1)
     setState(initialState())
     setTouched(new Set())
+    setSubmitError(null)
   }
 
   const providerQuery = useQuery({
@@ -91,8 +95,11 @@ export function BookingModal() {
     if (selectedService) setState((s) => ({ ...s, quantity: 1 }))
   }
 
-  const set = <K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) =>
+  const set = <K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) => {
+    // Qualquer edição limpa o erro de submit anterior (banner inline).
+    setSubmitError((prev) => (prev === null ? prev : null))
     setState((s) => ({ ...s, [key]: value }))
+  }
 
   const markTouched = (field: string) => setTouched((prev) => new Set(prev).add(field))
 
@@ -166,6 +173,20 @@ export function BookingModal() {
     const scheduledAt = new Date(state.date)
     scheduledAt.setHours(h ?? 0, m ?? 0, 0, 0)
     const amount = (selectedService.basePrice || 0) * (state.quantity || 1)
+
+    const validation = validateBookingSubmit({
+      amount,
+      scheduledAt,
+      notes: state.notes,
+      quantity: state.quantity,
+      paymentMethod: state.paymentMethod,
+    })
+    if (!validation.ok) {
+      setSubmitError(validation.message)
+      toast.error(validation.message)
+      return
+    }
+    setSubmitError(null)
 
     setSubmitting(true)
     try {
@@ -383,6 +404,17 @@ export function BookingModal() {
     </StepWizard>
   )
 
+  const submitErrorBanner = submitError ? (
+    <div className="shrink-0 px-4 pb-2 sm:px-5">
+      <p
+        role="alert"
+        className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-400"
+      >
+        {submitError}
+      </p>
+    </div>
+  ) : null
+
   if (isMobile) {
     return (
       <Sheet open={open} onOpenChange={(o) => !o && close()}>
@@ -400,6 +432,7 @@ export function BookingModal() {
               Escolha data, detalhes e pagamento
             </SheetDescription>
           </SheetHeader>
+          {submitErrorBanner}
           <div className="flex-1 overflow-hidden">{wizardBody}</div>
         </SheetContent>
       </Sheet>
@@ -441,6 +474,7 @@ export function BookingModal() {
           </AnimatePresence>
         </div>
 
+        {submitErrorBanner}
         {footerButtons}
       </DialogContent>
     </Dialog>

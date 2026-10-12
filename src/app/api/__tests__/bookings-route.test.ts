@@ -226,6 +226,56 @@ describe("POST /api/bookings", () => {
 
     expect(res.status).toBe(400)
   })
+
+  it("charges basePrice × quantity calculado no servidor", async () => {
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    ;(vi.mocked(db.service.findUnique) as any).mockResolvedValue(mockService)
+    ;(vi.mocked(db.booking.create) as any).mockResolvedValue(mockBooking)
+
+    const req = createMockRequest({ method: "POST", body: { ...validBody, quantity: 2 } })
+    const res = await createBooking(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(201)
+    expect(db.booking.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amount: 300 }) }),
+    )
+  })
+
+  it("ignora amount enviado pelo cliente (sempre recalcula)", async () => {
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    ;(vi.mocked(db.service.findUnique) as any).mockResolvedValue(mockService)
+    ;(vi.mocked(db.booking.create) as any).mockResolvedValue(mockBooking)
+
+    const req = createMockRequest({ method: "POST", body: { ...validBody, amount: 1 } })
+    const res = await createBooking(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(201)
+    expect(db.booking.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amount: 150 }) }),
+    )
+  })
+
+  it("returns 400 quando unit diverge do serviço", async () => {
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    ;(vi.mocked(db.service.findUnique) as any).mockResolvedValue(mockService)
+
+    const req = createMockRequest({ method: "POST", body: { ...validBody, unit: "HORA" } })
+    const res = await createBooking(req)
+
+    expect(res.status).toBe(400)
+  })
+
+  it("returns 400 para quantity fora de 1..1000", async () => {
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+
+    for (const quantity of [0, 1001]) {
+      const req = createMockRequest({ method: "POST", body: { ...validBody, quantity } })
+      const res = await createBooking(req)
+      expect(res.status).toBe(400)
+    }
+  })
 })
 
 describe("GET /api/bookings", () => {

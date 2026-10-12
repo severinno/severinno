@@ -50,9 +50,19 @@ export const POST = withRoute("api.bookings.POST", async (request, { span }) => 
     throw badRequest("Não é possível agendar com você mesmo")
   }
 
-  // amount: always use server-side price to prevent client-side override
-  const amount = service.basePrice // Decimal — gravado no banco exato
+  // quantity: validada pelo schema (1..1000); unit precisa conferir com o
+  // serviço (evita adulteração — Booking não tem coluna unit).
+  const quantity = data.quantity ?? 1
+  if (data.unit !== undefined && data.unit !== service.unit) {
+    throw badRequest("Unidade do serviço divergente")
+  }
+
+  // amount: sempre calculado no servidor (basePrice × quantity) para impedir
+  // override pelo cliente. O frontend exibe o mesmo cálculo.
+  const rawAmount = Number(service.basePrice) * quantity
+  const amount = Math.round(rawAmount * 100) / 100 // Decimal(10,2) — sem poeira de float
   span.setAttribute("booking.amount", amount.toString())
+  span.setAttribute("booking.quantity", quantity)
 
   const booking = await db.booking.create({
     data: {
@@ -66,6 +76,8 @@ export const POST = withRoute("api.bookings.POST", async (request, { span }) => 
       lat: data.lat,
       lng: data.lng,
       amount,
+      quantity,
+      unit: service.unit,
       paymentMethod: data.paymentMethod,
       paymentStatus: "PENDING",
       notes: data.notes || null,

@@ -343,6 +343,10 @@ model Booking {
   // READ-ONLY via Prisma: all spatial access uses $queryRaw (see src/lib/postgis.ts)
   location            Unsupported("geography(Point, 4326)")?
   amount              Decimal                                @db.Decimal(10, 2)
+  // Quantidade contratada (amount = basePrice × quantity no servidor)
+  quantity            Int                                    @default(1)
+  // Unidade contratada (espelha service.unit no momento do agendamento)
+  unit                ServiceUnit                            @default(UNIDADE)
   paymentMethod       PaymentMethod                          @default(PIX)
   paymentStatus       PaymentStatus                          @default(PENDING)
   notes               String?

@@ -4,7 +4,8 @@ import { type Page } from "@playwright/test"
 // Tipos locais — shapes necessários para os mocks (sem dependência de @/)
 // =========================================================================
 
-export type MockServiceUnit = "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO"
+export type MockServiceUnit =
+  "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO" | "HORA"
 
 export type MockProviderService = {
   id: string

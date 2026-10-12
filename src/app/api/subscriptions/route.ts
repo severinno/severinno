@@ -79,7 +79,7 @@ export const POST = withRoute("api.subscriptions.POST", async (request) => {
 
   const service = await db.service.findUnique({
     where: { id: body.serviceId, active: true },
-    select: { id: true, title: true, basePrice: true, providerId: true },
+    select: { id: true, title: true, basePrice: true, providerId: true, unit: true },
   })
 
   if (!service) {
@@ -104,6 +104,8 @@ export const POST = withRoute("api.subscriptions.POST", async (request) => {
       lat: body.lat ?? 0,
       lng: body.lng ?? 0,
       amount: priceBreakdown.discountedPrice,
+      quantity: 1,
+      unit: service.unit,
       notes: `[RECORRENTE - ${body.frequency}] ${body.notes || ""}`,
       status: "CONFIRMED",
     },

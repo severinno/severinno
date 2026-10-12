@@ -240,6 +240,10 @@ describe("GET /api/admin/geo-metrics", () => {
   describe("benchmark", () => {
     beforeEach(() => {
       setupAdmin(mockRequireUser)
+      // existsSync É mockado (mockExistsSync); sem retorno ele dá undefined
+      // (falsy) e loadBenchmarkData retorna null. Sob vitest 4 o mock de
+      // node:fs não era aplicado e o fs real mascarava isso.
+      mockExistsSync.mockReturnValue(true)
     })
 
     it("retorna dados de benchmark (real ou estruturados)", async () => {

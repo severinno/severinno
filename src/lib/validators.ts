@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { isCommonPassword } from "@/lib/common-passwords"
+import { SERVICE_UNITS } from "@/lib/constants"
 
 // ---------------------------------------------------------------------------
 // AUTH
@@ -100,7 +101,7 @@ export type ProviderProfileInput = z.infer<typeof providerProfileSchema>
 // ---------------------------------------------------------------------------
 // SERVICE
 // ---------------------------------------------------------------------------
-export const serviceUnitEnum = z.enum(["UNIDADE", "METRO_LINEAR", "METRO_QUADRADO", "METRO_CUBICO"])
+export const serviceUnitEnum = z.enum(SERVICE_UNITS)
 
 export const serviceSchema = z.object({
   title: z.string().min(3, "Título muito curto").max(80),
@@ -168,10 +169,10 @@ export const quoteItemResponseSchema = z.object({
   status: z.enum(["QUOTED", "REJECTED"]).default("QUOTED"),
 })
 export type QuoteItemResponse = z.infer<typeof quoteItemResponseSchema>
-
 // ---------------------------------------------------------------------------
 // BOOKING
 // ---------------------------------------------------------------------------
+
 export const bookingSchema = z.object({
   providerId: z.string().min(1),
   serviceId: z.string().min(1),
@@ -182,6 +183,16 @@ export const bookingSchema = z.object({
   lng: z.coerce.number(),
   amount: z.coerce.number().min(0).max(1_000_000),
   paymentMethod: z.enum(["CARD", "PIX"]).default("PIX"),
+  // Quantidade enviada pelo cliente — o servidor recalcula amount a partir
+  // dela (Booking não tem coluna quantity; amount já reflete o total).
+  quantity: z.coerce
+    .number({ message: "Quantidade inválida" })
+    .int("A quantidade deve ser um número inteiro")
+    .min(1, "Quantidade mínima é 1")
+    .max(1000, "Quantidade máxima é 1000")
+    .default(1),
+  // Unidade enviada pelo cliente — conferida contra service.unit, não persistida.
+  unit: z.string().max(30).optional(),
   notes: z
     .string()
     .max(1000)
@@ -196,6 +207,35 @@ export const bookingSchema = z.object({
         .slice(0, 1000)
     }),
 })
+
+// Validador específico para Booking (cliente) - espelha bookingSchema + regra de data futura do servidor
+export const bookingValidationRules = z
+  .object({
+    amount: z.coerce
+      .number({ message: "O valor do booking deve ser um número válido" })
+      .min(0, "O valor do booking deve ser entre 0 e 1.000.000")
+      .max(1_000_000, "O valor do booking deve ser entre 0 e 1.000.000")
+      .optional(),
+    scheduledAt: z.coerce.date({ message: "Data de agendamento inválida" }).optional(),
+    notes: z.string().max(1000, "Notas não podem exceder 1000 caracteres").optional(),
+    quantity: z.coerce
+      .number({ message: "Quantidade inválida" })
+      .int("A quantidade deve ser um número inteiro")
+      .min(1, "Quantidade mínima é 1")
+      .max(1000, "Quantidade máxima é 1000")
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.scheduledAt !== undefined && !isNaN(data.scheduledAt.getTime())) {
+      if (data.scheduledAt <= new Date()) {
+        ctx.addIssue({
+          code: "custom",
+          message: "A data de agendamento deve ser no futuro",
+          path: ["scheduledAt"],
+        })
+      }
+    }
+  })
 export type BookingInput = z.infer<typeof bookingSchema>
 
 // ---------------------------------------------------------------------------
@@ -512,8 +552,47 @@ export const visionDiagnosticSchema = z
 export type VisionDiagnosticInput = z.infer<typeof visionDiagnosticSchema>
 
 // ---------------------------------------------------------------------------
+// PAYMENT
+// ---------------------------------------------------------------------------
+
+// Base única de Payment (cliente não tem bookingId ainda; servidor estende com bookingId)
+// Validador específico para Payment - garante que o valor seja positivo e dentro de limites razoáveis
+export const paymentValidationRules = z.object({
+  amount: z.coerce
+    .number({ message: "O valor do pagamento deve ser um número válido" })
+    .min(0, "O valor do pagamento deve ser entre 0 e 10.000.000")
+    .max(10_000_000, "O valor do pagamento deve ser entre 0 e 10.000.000"),
+  method: z
+    .enum(["CARD", "PIX"], { message: "Método de pagamento deve ser CARD ou PIX" })
+    .default("PIX"),
+  transactionId: z.string().optional(),
+  lytexId: z.string().optional(),
+  lytexStatus: z
+    .enum(["PENDING", "WAITING_PAYMENT", "PAID", "FAILED", "CANCELLED"], {
+      message: "Status do Lytex deve ser válido",
+    })
+    .default("PENDING"),
+  qrCode: z.string().optional(),
+  qrCodeImage: z.string().optional(),
+  cardLastDigits: z.string().optional(),
+  cardBrand: z.string().optional(),
+  installments: z.number().optional(),
+  paidAt: z.coerce.date({ message: "Data de pagamento inválida" }).optional(),
+  lytexRawResponse: z.record(z.string(), z.any()).optional(),
+  createdAt: z.coerce.date().optional(),
+})
+
+export const paymentSchema = paymentValidationRules.extend({
+  bookingId: z.string({ message: "bookingId é obrigatório" }).min(1, "bookingId é obrigatório"),
+})
+
+/** Alias de compatibilidade — use paymentValidationRules diretamente. */
+export const paymentValidator = paymentValidationRules
+
+// ---------------------------------------------------------------------------
 // ROUTE OPTIMIZATION (provider)
 // ---------------------------------------------------------------------------
+
 export const routeOptimizationSchema = z.object({
   baseLocation: z.object({
     lat: z.number().min(-90).max(90),

@@ -30,7 +30,7 @@
  * selectivity to find the real-world threshold.
  */
 
-import { bench, describe } from "vitest"
+import { describe, test } from "vitest"
 import { haversineKm } from "../geo-shared"
 
 // ---------------------------------------------------------------------------
@@ -142,16 +142,22 @@ const data10000 = generateProviders(10000)
 // ---------------------------------------------------------------------------
 
 describe("Haversine JS — pure function (fallback path)", () => {
-  bench("100 providers", () => {
-    haversineAll(CENTER, data100)
+  test("100 providers", async ({ bench }) => {
+    await bench("100 providers", () => {
+      haversineAll(CENTER, data100)
+    }).run()
   })
 
-  bench("1 000 providers", () => {
-    haversineAll(CENTER, data1000)
+  test("1 000 providers", async ({ bench }) => {
+    await bench("1 000 providers", () => {
+      haversineAll(CENTER, data1000)
+    }).run()
   })
 
-  bench("10 000 providers", () => {
-    haversineAll(CENTER, data10000)
+  test("10 000 providers", async ({ bench }) => {
+    await bench("10 000 providers", () => {
+      haversineAll(CENTER, data10000)
+    }).run()
   })
 })
 
@@ -160,16 +166,22 @@ describe("Haversine JS — pure function (fallback path)", () => {
 // ---------------------------------------------------------------------------
 
 describe("PostGIS ST_Distance — simulated DB query", () => {
-  bench("100 providers", () => {
-    simulatedPostgisDistance(100)
+  test("100 providers", async ({ bench }) => {
+    await bench("100 providers", () => {
+      simulatedPostgisDistance(100)
+    }).run()
   })
 
-  bench("1 000 providers", () => {
-    simulatedPostgisDistance(1000)
+  test("1 000 providers", async ({ bench }) => {
+    await bench("1 000 providers", () => {
+      simulatedPostgisDistance(1000)
+    }).run()
   })
 
-  bench("10 000 providers", () => {
-    simulatedPostgisDistance(10000)
+  test("10 000 providers", async ({ bench }) => {
+    await bench("10 000 providers", () => {
+      simulatedPostgisDistance(10000)
+    }).run()
   })
 })
 
@@ -178,16 +190,22 @@ describe("PostGIS ST_Distance — simulated DB query", () => {
 // ---------------------------------------------------------------------------
 
 describe("Haversine JS + data transfer overhead (realistic path)", () => {
-  bench("100 providers (~7.8 KB transfer)", () => {
-    haversineAll(CENTER, data100)
+  test("100 providers (~7.8 KB transfer)", async ({ bench }) => {
+    await bench("100 providers (~7.8 KB transfer)", () => {
+      haversineAll(CENTER, data100)
+    }).run()
   })
 
-  bench("1 000 providers (~78.1 KB transfer)", () => {
-    haversineAll(CENTER, data1000)
+  test("1 000 providers (~78.1 KB transfer)", async ({ bench }) => {
+    await bench("1 000 providers (~78.1 KB transfer)", () => {
+      haversineAll(CENTER, data1000)
+    }).run()
   })
 
-  bench("10 000 providers (~781.3 KB transfer)", () => {
-    haversineAll(CENTER, data10000)
+  test("10 000 providers (~781.3 KB transfer)", async ({ bench }) => {
+    await bench("10 000 providers (~781.3 KB transfer)", () => {
+      haversineAll(CENTER, data10000)
+    }).run()
   })
 })
 
@@ -196,8 +214,10 @@ describe("Haversine JS + data transfer overhead (realistic path)", () => {
 // ---------------------------------------------------------------------------
 
 describe("Unit cost reference", () => {
-  bench("haversineKm × 1", () => {
-    haversineKm(-23.5505, -46.6333, -23.5605, -46.6433)
+  test("haversineKm × 1", async ({ bench }) => {
+    await bench("haversineKm × 1", () => {
+      haversineKm(-23.5505, -46.6333, -23.5605, -46.6433)
+    }).run()
   })
 })
 

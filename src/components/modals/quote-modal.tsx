@@ -110,7 +110,7 @@ const quoteFormSchema = z.object({
         serviceId: z.string().min(1, "Selecione um serviço"),
         description: z.string().min(10, "Descreva com ao menos 10 caracteres").max(400),
         quantity: z.coerce.number().min(0.01, "Quantidade inválida"),
-        unit: z.enum(["UNIDADE", "METRO_LINEAR", "METRO_QUADRADO", "METRO_CUBICO"]),
+        unit: z.enum(SERVICE_UNITS),
         photos: z.array(z.string()).max(4).default([]),
       }),
     )

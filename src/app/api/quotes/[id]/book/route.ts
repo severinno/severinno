@@ -57,6 +57,8 @@ export const POST = withParams<{ id: string }>(
     if (!firstQuoted) throw badRequest("Nenhum item com preço no orçamento")
 
     // Atomic: create booking + accept quote items
+    // Nota: booking agregado de múltiplos itens — quantity/unit por item
+    // permanecem nos QuoteItems; aqui valem os defaults (1/UNIDADE).
     const [booking] = await db.$transaction([
       db.booking.create({
         data: {

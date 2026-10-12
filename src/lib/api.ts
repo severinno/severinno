@@ -9,12 +9,12 @@
  */
 
 import { getCsrfTokenFromCookie, CSRF_HEADER } from "@/lib/csrf"
+import type { ServiceUnit } from "@/lib/constants"
+export type { ServiceUnit } from "@/lib/constants"
 
 // ---------------------------------------------------------------------------
 // Shared API types — mirrored from the API contract in worklog.md
 // ---------------------------------------------------------------------------
-
-export type ServiceUnit = "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO"
 
 export type ProviderService = {
   id: string

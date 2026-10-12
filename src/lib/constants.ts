@@ -17,20 +17,25 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 // ---------------------------------------------------------------------------
 // SERVICE UNITS
 // ---------------------------------------------------------------------------
-export type ServiceUnit = "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO"
-
-export const SERVICE_UNITS: ServiceUnit[] = [
+// Fonte canônica das unidades de serviço — espelha o enum ServiceUnit do
+// Prisma (UNIDADE, METRO_LINEAR, METRO_QUADRADO, METRO_CUBICO, HORA).
+// Não duplicar: importe daqui (tipos em @/lib/api re-exportam este).
+export const SERVICE_UNITS = [
   "UNIDADE",
   "METRO_LINEAR",
   "METRO_QUADRADO",
   "METRO_CUBICO",
-]
+  "HORA",
+] as const
+
+export type ServiceUnit = (typeof SERVICE_UNITS)[number]
 
 export const SERVICE_UNIT_LABELS: Record<ServiceUnit, string> = {
   UNIDADE: "Unidade",
   METRO_LINEAR: "Metro linear",
   METRO_QUADRADO: "Metro quadrado (m²)",
   METRO_CUBICO: "Metro cúbico (m³)",
+  HORA: "Hora",
 }
 
 export const SERVICE_UNIT_SHORT: Record<ServiceUnit, string> = {
@@ -38,6 +43,7 @@ export const SERVICE_UNIT_SHORT: Record<ServiceUnit, string> = {
   METRO_LINEAR: "m",
   METRO_QUADRADO: "m²",
   METRO_CUBICO: "m³",
+  HORA: "h",
 }
 
 // ---------------------------------------------------------------------------

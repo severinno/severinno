@@ -47,6 +47,7 @@ const SERVICE_UNITS = [
   { value: "METRO_LINEAR", label: "Por metro linear" },
   { value: "METRO_QUADRADO", label: "Por metro quadrado" },
   { value: "METRO_CUBICO", label: "Por metro cúbico" },
+  { value: "HORA", label: "Por hora" },
 ] as const
 
 /**
