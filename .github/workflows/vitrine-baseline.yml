@@ -52,6 +52,8 @@ concurrency:
 
 env:
   DATABASE_URL: postgresql://severinno:severinno_test@localhost:5433/severinno_test
+  # schema.prisma exige directUrl (pgbouncer em prod); no CI é conexão direta.
+  DIRECT_URL: postgresql://severinno:severinno_test@localhost:5433/severinno_test
   REDIS_URL: redis://localhost:6381
   SESSION_SECRET: ci-session-secret-vitrine-baseline-32-chars
   VITRINE_BASE_URL: http://localhost:3100
