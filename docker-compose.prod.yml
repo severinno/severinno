@@ -719,7 +719,13 @@ services:
     networks:
       - backend
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/_health/').read()"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/_health/').read()",
+        ]
       interval: 30s
       timeout: 10s
       start_period: 30s

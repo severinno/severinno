@@ -191,7 +191,7 @@ function IpWhitelistCard() {
   const queryClient = useQueryClient()
   const [newIp, setNewIp] = React.useState("")
 
-  const { data, refetch, isFetching } = useQuery({
+  const { data, refetch } = useQuery({
     queryKey: ["admin-maintenance-mode"],
     queryFn: () => apiGet<MaintenanceState>("/api/admin/maintenance-mode"),
   })

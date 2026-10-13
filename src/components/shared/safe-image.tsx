@@ -46,8 +46,10 @@ function SafeImage({
   blurDataURL,
 }: SafeImageProps) {
   if (!isOptimizable(src)) {
-     
     return (
+      // src não-otimizável (data/blob/externo sem loader): next/image não cobre
+      // este ramo por desenho (o componente existe para o fallback).
+      /* eslint-disable-next-line @next/next/no-img-element */
       <img
         src={src}
         alt={alt}

@@ -32,7 +32,6 @@ import {
   MAINTENANCE_MODE_KEY,
   MAINTENANCE_ALLOWED_IPS_KEY,
   isMaintenanceMode,
-  getAllowedMaintenanceIps,
   isClientAllowedDuringMaintenance,
   isMaintenanceAccessible,
   requireMaintenanceAccessible,
