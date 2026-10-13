@@ -88,6 +88,8 @@ type MonthlyRevenue = {
   month: string
   label: string
   total: number
+  commission?: number
+  net?: number
   count: number
 }
 
@@ -130,6 +132,7 @@ type MrrData = {
   current: number
   previous: number
   growth: number
+  annualRunRate?: number
   history: MrrHistoryItem[]
 }
 
@@ -142,6 +145,29 @@ type ProviderStat = {
   count: number
   commission: number
   net: number
+}
+
+type ExecutiveMetrics = {
+  gmv: number
+  platformNetRevenue: number
+  providerNetPayout: number
+  takeRatePercent: number
+  averageTicket: number
+  conversionRate: number
+  annualRunRate: number
+  escrow: {
+    heldAmount: number
+    heldCount: number
+    disputedAmount: number
+    disputesCount: number
+  }
+  gateway: {
+    pixVolume: number
+    pixCount: number
+    cardVolume: number
+    cardCount: number
+    conversionRate: number
+  }
 }
 
 type FinanceResponse = {
@@ -157,6 +183,7 @@ type FinanceResponse = {
   commissionPercent: number
   providerStats: ProviderStat[]
   mrr: MrrData
+  executive?: ExecutiveMetrics
 }
 
 // ---------------------------------------------------------------------------
@@ -279,6 +306,29 @@ export function AdminFinanceDashboard() {
   const grandTotal = summary.PAID.total + summary.PENDING.total
   const _mrrUp = mrr.growth >= 0
 
+  const executive = data.executive ?? {
+    gmv: summary.PAID.total,
+    platformNetRevenue: Math.round(summary.PAID.total * (commissionPercent / 100)),
+    providerNetPayout: Math.round(summary.PAID.total * (1 - commissionPercent / 100)),
+    takeRatePercent: commissionPercent,
+    averageTicket: data.averageTicket,
+    conversionRate: 0,
+    annualRunRate: mrr.current * 12,
+    escrow: {
+      heldAmount: 0,
+      heldCount: 0,
+      disputedAmount: 0,
+      disputesCount: 0,
+    },
+    gateway: {
+      pixVolume: paymentMethods.find((m) => m.method === "PIX")?.total ?? 0,
+      pixCount: paymentMethods.find((m) => m.method === "PIX")?.count ?? 0,
+      cardVolume: paymentMethods.find((m) => m.method === "CARD")?.total ?? 0,
+      cardCount: paymentMethods.find((m) => m.method === "CARD")?.count ?? 0,
+      conversionRate: 0,
+    },
+  }
+
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6">
       {/* Header */}
@@ -319,6 +369,83 @@ export function AdminFinanceDashboard() {
         </div>
       </div>
 
+      {/* Executive Marketplace KPIs */}
+      <section
+        aria-label="Métricas executivas de performance"
+        className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5"
+      >
+        <div className="border-border/50 bg-card rounded-xl border p-4 shadow-sm">
+          <div className="text-muted-foreground flex items-center justify-between text-xs">
+            <span>GMV (Volume Bruto)</span>
+            <DollarSign className="size-4 text-emerald-500" />
+          </div>
+          <p className="mt-2 text-xl font-bold tracking-tight tabular-nums">
+            {formatBRL(executive.gmv)}
+          </p>
+          <p className="text-muted-foreground mt-1 text-[11px]">
+            {summary.PAID.count} transações pagas
+          </p>
+        </div>
+
+        <div className="border-border/50 bg-card rounded-xl border p-4 shadow-sm">
+          <div className="text-muted-foreground flex items-center justify-between text-xs">
+            <span>Receita Plataforma</span>
+            <TrendingUp className="size-4 text-blue-500" />
+          </div>
+          <p className="mt-2 text-xl font-bold tracking-tight text-blue-600 tabular-nums dark:text-blue-400">
+            {formatBRL(executive.platformNetRevenue)}
+          </p>
+          <p className="text-muted-foreground mt-1 text-[11px]">
+            Take Rate: {executive.takeRatePercent}% líquido
+          </p>
+        </div>
+
+        <div className="border-border/50 bg-card rounded-xl border p-4 shadow-sm">
+          <div className="text-muted-foreground flex items-center justify-between text-xs">
+            <span>MRR & Run-Rate</span>
+            <Wallet className="size-4 text-purple-500" />
+          </div>
+          <p className="mt-2 text-xl font-bold tracking-tight text-purple-600 tabular-nums dark:text-purple-400">
+            {formatBRL(mrr.current)}
+          </p>
+          <div className="text-muted-foreground mt-1 flex items-center justify-between text-[11px]">
+            <span>ARR: {formatBRL(executive.annualRunRate)}</span>
+            <span
+              className={cn("font-medium", mrr.growth >= 0 ? "text-emerald-500" : "text-rose-500")}
+            >
+              {mrr.growth >= 0 ? "+" : ""}
+              {mrr.growth}%
+            </span>
+          </div>
+        </div>
+
+        <div className="border-border/50 bg-card rounded-xl border p-4 shadow-sm">
+          <div className="text-muted-foreground flex items-center justify-between text-xs">
+            <span>Custódia Escrow (48h)</span>
+            <Receipt className="size-4 text-amber-500" />
+          </div>
+          <p className="mt-2 text-xl font-bold tracking-tight text-amber-600 tabular-nums dark:text-amber-400">
+            {formatBRL(executive.escrow.heldAmount)}
+          </p>
+          <p className="text-muted-foreground mt-1 text-[11px]">
+            {executive.escrow.heldCount} retidos · {executive.escrow.disputesCount} disputas
+          </p>
+        </div>
+
+        <div className="border-border/50 bg-card col-span-2 rounded-xl border p-4 shadow-sm sm:col-span-3 lg:col-span-1">
+          <div className="text-muted-foreground flex items-center justify-between text-xs">
+            <span>Repasses a Prestadores</span>
+            <Handshake className="size-4 text-teal-500" />
+          </div>
+          <p className="mt-2 text-xl font-bold tracking-tight text-teal-600 tabular-nums dark:text-teal-400">
+            {formatBRL(executive.providerNetPayout)}
+          </p>
+          <p className="text-muted-foreground mt-1 text-[11px]">
+            {100 - executive.takeRatePercent}% repasse direto
+          </p>
+        </div>
+      </section>
+
       {/* Summary cards */}
       <section aria-label="Resumo financeiro" className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {statCards.map((card) => (
@@ -341,6 +468,61 @@ export function AdminFinanceDashboard() {
             <span>Faturamento total (recebido + pendente)</span>
           </div>
           <p className="text-2xl font-bold tabular-nums">{formatBRL(grandTotal)}</p>
+        </div>
+      </div>
+
+      {/* Gateway Lytex & Conversão */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="border-border/50 bg-card/60 flex items-center justify-between rounded-xl border p-4">
+          <div className="flex items-center gap-3">
+            <span className="flex size-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <QrCode className="size-4" />
+            </span>
+            <div>
+              <p className="text-muted-foreground text-xs">Volume Pix (Lytex)</p>
+              <p className="text-base font-semibold tabular-nums">
+                {formatBRL(executive.gateway.pixVolume)}
+              </p>
+            </div>
+          </div>
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {executive.gateway.pixCount} transações
+          </span>
+        </div>
+
+        <div className="border-border/50 bg-card/60 flex items-center justify-between rounded-xl border p-4">
+          <div className="flex items-center gap-3">
+            <span className="flex size-9 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+              <CreditCard className="size-4" />
+            </span>
+            <div>
+              <p className="text-muted-foreground text-xs">Volume Cartão (Lytex)</p>
+              <p className="text-base font-semibold tabular-nums">
+                {formatBRL(executive.gateway.cardVolume)}
+              </p>
+            </div>
+          </div>
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {executive.gateway.cardCount} transações
+          </span>
+        </div>
+
+        <div className="border-border/50 bg-card/60 flex items-center justify-between rounded-xl border p-4">
+          <div className="flex items-center gap-3">
+            <span className="flex size-9 items-center justify-center rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400">
+              <TrendingUp className="size-4" />
+            </span>
+            <div>
+              <p className="text-muted-foreground text-xs">Taxa de Conversão Gateway</p>
+              <p className="text-base font-semibold tabular-nums">
+                {executive.conversionRate > 0 ? `${executive.conversionRate}%` : "—"}
+              </p>
+            </div>
+          </div>
+          <span className="text-muted-foreground text-xs">
+            {summary.PAID.count} de{" "}
+            {summary.PAID.count + summary.PENDING.count + summary.REFUNDED.count}
+          </span>
         </div>
       </div>
 
@@ -698,6 +880,8 @@ function MonthlyRevenueChart({ data }: { data: MonthlyRevenue[] }) {
     )
   }
 
+  const hasCommission = data.some((d) => (d.commission ?? 0) > 0)
+
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={data} margin={{ left: 0, right: 0, top: 8, bottom: 0 }}>
@@ -718,11 +902,29 @@ function MonthlyRevenueChart({ data }: { data: MonthlyRevenue[] }) {
         />
         <RTooltip
           cursor={{ fill: "hsl(var(--accent) / 0.4)" }}
-          formatter={(v: number, _name: string) => [formatBRL(v), "Receita"]}
+          formatter={(v: number, name: string) => [
+            formatBRL(v),
+            name === "commission" ? "Comissão (15%)" : "Receita GMV",
+          ]}
           labelFormatter={(l: string) => `Mês: ${l}`}
           contentStyle={TOOLTIP_STYLE}
         />
-        <Bar dataKey="total" radius={[4, 4, 0, 0]} maxBarSize={36} fill="hsl(var(--primary))" />
+        <Bar
+          dataKey="total"
+          name="Receita GMV"
+          radius={[4, 4, 0, 0]}
+          maxBarSize={36}
+          fill="hsl(var(--primary))"
+        />
+        {hasCommission && (
+          <Bar
+            dataKey="commission"
+            name="Comissão (15%)"
+            radius={[4, 4, 0, 0]}
+            maxBarSize={36}
+            fill="hsl(160, 84%, 39%)"
+          />
+        )}
       </BarChart>
     </ResponsiveContainer>
   )

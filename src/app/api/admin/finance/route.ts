@@ -78,6 +78,8 @@ export const GET = withRoute("api.admin.finance.GET", async (request) => {
     mrrCurrent,
     mrrPrevious,
     providerRaw,
+    escrowHeldStats,
+    openDisputes,
   ] = await Promise.all([
     // Summary: aggregate by payment status
     db.payment.groupBy({
@@ -150,7 +152,7 @@ export const GET = withRoute("api.admin.finance.GET", async (request) => {
       _count: { _all: true },
     }),
 
-    // Per-provider aggregation (PAID payments only) — groupBy providerId
+    // Per-provider aggregation (PAID payments only) — groupBy providerId (corrigido joins e colunas)
     db.$queryRaw<
       Array<{
         providerId: string
@@ -162,20 +164,42 @@ export const GET = withRoute("api.admin.finance.GET", async (request) => {
       }>
     >`
         SELECT
-          p."providerId",
+          b."providerId" AS "providerId",
           u.name,
           u.email,
           u."avatarUrl",
-          SUM(p.amount) AS total,
+          SUM(pay.amount) AS total,
           COUNT(*) AS count
         FROM "Payment" pay
         JOIN "Booking" b ON b.id = pay."bookingId"
-        JOIN "User" p ON p.id = b."providerId"
-        JOIN "User" u ON u.id = p."providerId"
+        JOIN "User" u ON u.id = b."providerId"
         WHERE pay.status = 'PAID' ${dateFilter ? Prisma.sql`AND pay."createdAt" >= ${dateFilter}` : Prisma.empty}
-        GROUP BY p."providerId", u.name, u.email, u."avatarUrl"
+        GROUP BY b."providerId", u.name, u.email, u."avatarUrl"
         ORDER BY total DESC
       `,
+
+    // Escrow custody: fundos retidos em garantia nos agendamentos
+    db.booking
+      ? db.booking.aggregate({
+          where: {
+            paymentStatus: "HELD",
+            escrowReleasedAt: null,
+          },
+          _sum: { amount: true },
+          _count: { id: true },
+        })
+      : Promise.resolve({ _sum: { amount: null }, _count: { id: 0 } }),
+
+    // Disputas abertas / em litígio
+    db.dispute
+      ? db.dispute.findMany({
+          where: { status: "OPEN" },
+          select: {
+            id: true,
+            booking: { select: { amount: true } },
+          },
+        })
+      : Promise.resolve([]),
   ])
 
   // Build summary object
@@ -271,7 +295,14 @@ export const GET = withRoute("api.admin.finance.GET", async (request) => {
   )
 
   // Create full month range for the selected period
-  const monthlyRevenue: Array<{ month: string; label: string; total: number; count: number }> = []
+  const monthlyRevenue: Array<{
+    month: string
+    label: string
+    total: number
+    commission: number
+    net: number
+    count: number
+  }> = []
   if (dateFilter) {
     const start = new Date(dateFilter)
     const end = new Date(now)
@@ -284,10 +315,14 @@ export const GET = withRoute("api.admin.finance.GET", async (request) => {
     while (iter <= end) {
       const key = `${iter.getFullYear()}-${String(iter.getMonth() + 1).padStart(2, "0")}`
       const data = monthlyMap.get(key) ?? { total: 0, count: 0 }
+      const commission = Math.round(data.total * FEE_RATE * 100) / 100
+      const net = Math.round((data.total - commission) * 100) / 100
       monthlyRevenue.push({
         month: key,
         label: `${monthNames[iter.getMonth()]!}/${String(iter.getFullYear()).slice(2)}`,
         total: data.total,
+        commission,
+        net,
         count: data.count,
       })
       iter.setMonth(iter.getMonth() + 1)
@@ -295,10 +330,14 @@ export const GET = withRoute("api.admin.finance.GET", async (request) => {
   } else {
     for (const [key, data] of monthlyMap) {
       const [, m] = key.split("-")
+      const commission = Math.round(data.total * FEE_RATE * 100) / 100
+      const net = Math.round((data.total - commission) * 100) / 100
       monthlyRevenue.push({
         month: key,
         label: `${monthNames[parseInt(m!) - 1]!}/${key.slice(2, 4)}`,
         total: data.total,
+        commission,
+        net,
         count: data.count,
       })
     }
@@ -328,6 +367,52 @@ export const GET = withRoute("api.admin.finance.GET", async (request) => {
     count: r._count._all,
   }))
 
+  // Executive marketplace SaaS metrics
+  const totalAttempts =
+    summaryByStatus.PAID.count + summaryByStatus.PENDING.count + summaryByStatus.REFUNDED.count
+  const conversionRate =
+    totalAttempts > 0 ? Math.round((summaryByStatus.PAID.count / totalAttempts) * 1000) / 10 : 0
+  const pixData = methodStats.find((m) => m.method === "PIX") ?? {
+    method: "PIX",
+    total: 0,
+    count: 0,
+  }
+  const cardData = methodStats.find((m) => m.method === "CARD") ?? {
+    method: "CARD",
+    total: 0,
+    count: 0,
+  }
+  const heldAmount = toMoneyNumber(escrowHeldStats?._sum?.amount, 0)
+  const heldCount = escrowHeldStats?._count?.id ?? 0
+  const disputedAmount = (openDisputes || []).reduce(
+    (acc, d) => acc + toMoneyNumber(d.booking?.amount, 0),
+    0,
+  )
+  const disputesCount = (openDisputes || []).length
+
+  const executive = {
+    gmv: paidTotal,
+    platformNetRevenue: Math.round(paidTotal * FEE_RATE * 100) / 100,
+    providerNetPayout: Math.round(paidTotal * (1 - FEE_RATE) * 100) / 100,
+    takeRatePercent: Math.round(FEE_RATE * 100),
+    averageTicket,
+    conversionRate,
+    annualRunRate: mrrValue * 12,
+    escrow: {
+      heldAmount,
+      heldCount,
+      disputedAmount,
+      disputesCount,
+    },
+    gateway: {
+      pixVolume: pixData.total,
+      pixCount: pixData.count,
+      cardVolume: cardData.total,
+      cardCount: cardData.count,
+      conversionRate,
+    },
+  }
+
   return NextResponse.json({
     summary: summaryByStatus,
     monthlyRevenue,
@@ -344,7 +429,9 @@ export const GET = withRoute("api.admin.finance.GET", async (request) => {
       current: mrrValue,
       previous: previousMrr,
       growth: Math.round(mrrGrowth * 10) / 10,
+      annualRunRate: mrrValue * 12,
       history: mrrHistory,
     },
+    executive,
   })
 })

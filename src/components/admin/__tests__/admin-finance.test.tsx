@@ -384,6 +384,22 @@ describe("AdminFinanceDashboard — data rendering", () => {
     render(<AdminFinanceDashboard />)
     expect(screen.getByText("Ao vivo")).toBeDefined()
   })
+
+  it("renderiza as métricas executivas de SaaS e marketplace", () => {
+    render(<AdminFinanceDashboard />)
+    expect(screen.getByText("GMV (Volume Bruto)")).toBeDefined()
+    expect(screen.getByText("Receita Plataforma")).toBeDefined()
+    expect(screen.getByText("MRR & Run-Rate")).toBeDefined()
+    expect(screen.getByText("Custódia Escrow (48h)")).toBeDefined()
+    expect(screen.getByText("Repasses a Prestadores")).toBeDefined()
+  })
+
+  it("renderiza o painel de métricas do gateway Lytex", () => {
+    render(<AdminFinanceDashboard />)
+    expect(screen.getByText("Volume Pix (Lytex)")).toBeDefined()
+    expect(screen.getByText("Volume Cartão (Lytex)")).toBeDefined()
+    expect(screen.getByText("Taxa de Conversão Gateway")).toBeDefined()
+  })
 })
 
 describe("AdminFinanceDashboard — accessibility", () => {
