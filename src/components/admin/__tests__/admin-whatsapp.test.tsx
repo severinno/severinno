@@ -152,4 +152,51 @@ describe("AdminWhatsApp Component", () => {
     expect(screen.getByText("Aparelho Pareado com Sucesso")).toBeDefined()
     expect(screen.getByText("150")).toBeDefined() // Messages count
   })
+
+  it("renderiza opção de audiência de Clientes Inativos e aciona reativação automática", () => {
+    const mockData: WhatsAppStatusResponse = {
+      instance: {
+        name: "severinno",
+        id: "inst-1",
+        status: "open",
+        number: "5511999999999",
+        profileName: "Severinno Oficial",
+        profilePicUrl: null,
+        integration: "WHATSAPP-BAILEYS",
+        counts: { Message: 150, Contact: 42, Chat: 30 },
+      },
+      qrcode: null,
+      webhook: {
+        enabled: true,
+        url: "https://severinno.com/api/webhooks/evolution",
+        events: ["MESSAGES_UPSERT"],
+      },
+      server: {
+        url: "https://whatsapp.severinno.com",
+        version: "v2.3.7",
+      },
+      templates: [
+        {
+          id: "client_reactivation",
+          title: "Reativação de Clientes Inativos",
+          description: "Mensagem cordial de reativação para clientes sem agendamentos recentes",
+          category: "MARKETING",
+          variables: ["nomeCliente"],
+          defaultText: "👋 Olá, {{nomeCliente}}! Sentimos sua falta no Severinno.",
+        },
+      ],
+    }
+
+    ;(useQuery as any).mockReturnValue({
+      data: mockData,
+      isLoading: false,
+      isFetching: false,
+      refetch: mockRefetch,
+    })
+
+    render(<AdminWhatsApp />)
+
+    expect(screen.getByText("Clientes Inativos (30+ dias)")).toBeDefined()
+    expect(screen.getByText("Executar Reativação Agora")).toBeDefined()
+  })
 })

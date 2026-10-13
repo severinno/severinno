@@ -8,6 +8,7 @@ import { withRoute } from "@/lib/api-route"
 import { db } from "@/lib/db"
 import { enqueueWhatsApp } from "@/lib/whatsapp-queue"
 import { listAvailableTemplates } from "@/lib/whatsapp-templates"
+import { runInactiveClientsReactivation } from "@/lib/whatsapp-flows"
 import {
   fetchInstance,
   getConnectionStatus,
@@ -42,9 +43,14 @@ const ActionSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("broadcast_campaign"),
-    targetAudience: z.enum(["ALL_ACTIVE", "CLIENTS", "PROVIDERS"]),
+    targetAudience: z.enum(["ALL_ACTIVE", "CLIENTS", "PROVIDERS", "INACTIVE_CLIENTS"]),
     message: z.string().min(1, "Mensagem não pode ser vazia").max(1000),
     templateId: z.string().optional(),
+    inactiveDays: z.number().int().min(7).max(365).optional(),
+  }),
+  z.object({
+    action: z.literal("reactivate_inactive"),
+    daysInactive: z.number().int().min(7).max(365).optional(),
   }),
 ])
 
@@ -253,27 +259,60 @@ export const POST = withRoute("api.admin.whatsapp.POST", async (request) => {
       }
 
       case "broadcast_campaign": {
-        // Filtro por audiência
-        const whereClause: {
-          active: boolean
-          whatsapp: { not: null }
-          role?: "CLIENT" | "PROVIDER"
-        } = {
-          active: true,
-          whatsapp: { not: null },
-        }
+        let recipients: Array<{ id: string; name: string; whatsapp: string | null }> = []
 
-        if (data.targetAudience === "CLIENTS") {
-          whereClause.role = "CLIENT"
-        } else if (data.targetAudience === "PROVIDERS") {
-          whereClause.role = "PROVIDER"
-        }
+        if (data.targetAudience === "INACTIVE_CLIENTS") {
+          const inactiveDays = data.inactiveDays || 30
+          const cutoffDate = new Date(Date.now() - inactiveDays * 24 * 60 * 60 * 1000)
 
-        const recipients = await db.user.findMany({
-          where: whereClause,
-          select: { id: true, name: true, whatsapp: true },
-          take: 500, // Limite de segurança por lote de disparo
-        })
+          recipients = await db.user.findMany({
+            where: {
+              role: "CLIENT",
+              active: true,
+              whatsapp: { not: null },
+              OR: [
+                {
+                  bookingsAsClient: {
+                    some: {},
+                    none: {
+                      createdAt: { gte: cutoffDate },
+                    },
+                  },
+                },
+                {
+                  createdAt: { lte: cutoffDate },
+                  bookingsAsClient: {
+                    none: {},
+                  },
+                },
+              ],
+            },
+            select: { id: true, name: true, whatsapp: true },
+            take: 500,
+          })
+        } else {
+          // Filtro por audiência padrão
+          const whereClause: {
+            active: boolean
+            whatsapp: { not: null }
+            role?: "CLIENT" | "PROVIDER"
+          } = {
+            active: true,
+            whatsapp: { not: null },
+          }
+
+          if (data.targetAudience === "CLIENTS") {
+            whereClause.role = "CLIENT"
+          } else if (data.targetAudience === "PROVIDERS") {
+            whereClause.role = "PROVIDER"
+          }
+
+          recipients = await db.user.findMany({
+            where: whereClause,
+            select: { id: true, name: true, whatsapp: true },
+            take: 500, // Limite de segurança por lote de disparo
+          })
+        }
 
         if (!recipients.length) {
           return NextResponse.json({
@@ -289,9 +328,10 @@ export const POST = withRoute("api.admin.whatsapp.POST", async (request) => {
 
         for (const recipient of recipients) {
           if (!recipient.whatsapp) continue
+          const personalizedText = data.message.replace(/\{\{nomeCliente\}\}/g, recipient.name)
           await enqueueWhatsApp({
             to: recipient.whatsapp,
-            text: data.message,
+            text: personalizedText,
             userId: recipient.id,
             context: campaignContext,
           }).catch((err) => {
@@ -314,6 +354,15 @@ export const POST = withRoute("api.admin.whatsapp.POST", async (request) => {
           count: enqueuedCount,
           targetAudience: data.targetAudience,
           campaignContext,
+        })
+      }
+
+      case "reactivate_inactive": {
+        const result = await runInactiveClientsReactivation(data.daysInactive || 30)
+        return NextResponse.json({
+          success: true,
+          message: `Fluxo de reativação concluído! ${result.sent} mensagens enfileiradas de ${result.eligible} clientes inativos elegíveis.`,
+          ...result,
         })
       }
     }

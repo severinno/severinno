@@ -13,6 +13,7 @@ export type WhatsAppTemplateId =
   | "provider_incentive"
   | "client_welcome"
   | "booking_summary"
+  | "client_reactivation"
 
 export type WhatsAppTemplate = {
   id: WhatsAppTemplateId
@@ -107,6 +108,25 @@ export const WHATSAPP_TEMPLATES: Record<WhatsAppTemplateId, WhatsAppTemplate> = 
       `• Profissional: *${vars.profissional || "Profissional"}*\n` +
       `• Horário: *${vars.dataHora || "A combinar"}*\n\n` +
       `Para acompanhar em tempo real, acesse o app: https://severinno.com/?view=client.bookings`,
+  },
+  client_reactivation: {
+    id: "client_reactivation",
+    title: "Reativação de Clientes Inativos",
+    description: "Mensagem cordial de reativação para clientes sem agendamentos recentes",
+    category: "MARKETING",
+    variables: ["nomeCliente"],
+    defaultText:
+      "👋 *Olá, {{nomeCliente}}! Sentimos sua falta no Severinno.*\n\n" +
+      "Faz algum tempo desde seu último serviço. Precisando de alguma manutenção, conserto, reforma ou diarista para sua casa ou empresa?\n\n" +
+      "Nossos profissionais verificados continuam prontos para te atender com agilidade e total garantia de pagamento em custódia (Escrow)!\n\n" +
+      "👉 Veja os serviços disponíveis na sua região: https://severinno.com\n\n" +
+      "Ou responda esta mensagem para tirar dúvidas ou solicitar um orçamento rápido. 🛠️",
+    render: (vars) =>
+      `👋 *Olá, ${vars.nomeCliente || "Cliente"}! Sentimos sua falta no Severinno.*\n\n` +
+      `Faz algum tempo desde seu último serviço. Precisando de alguma manutenção, conserto, reforma ou diarista para sua casa ou empresa?\n\n` +
+      `Nossos profissionais verificados continuam prontos para te atender com agilidade e total garantia de pagamento em custódia (Escrow)!\n\n` +
+      `👉 Veja os serviços disponíveis na sua região: https://severinno.com\n\n` +
+      `Ou responda esta mensagem para tirar dúvidas ou solicitar um orçamento rápido. 🛠️`,
   },
 }
 

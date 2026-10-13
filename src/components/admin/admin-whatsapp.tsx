@@ -198,7 +198,7 @@ export function AdminWhatsApp() {
 
   // Estado da Campanha
   const [selectedAudience, setSelectedAudience] = React.useState<
-    "ALL_ACTIVE" | "CLIENTS" | "PROVIDERS"
+    "ALL_ACTIVE" | "CLIENTS" | "PROVIDERS" | "INACTIVE_CLIENTS"
   >("CLIENTS")
   const [campaignMessage, setCampaignMessage] = React.useState("")
   const [selectedTemplateId, setSelectedTemplateId] = React.useState<string>("")
@@ -206,7 +206,7 @@ export function AdminWhatsApp() {
   // Mutação: Disparar Campanha Segmentada
   const broadcastMutation = useMutation({
     mutationFn: (variables: {
-      targetAudience: "ALL_ACTIVE" | "CLIENTS" | "PROVIDERS"
+      targetAudience: "ALL_ACTIVE" | "CLIENTS" | "PROVIDERS" | "INACTIVE_CLIENTS"
       message: string
       templateId?: string
     }) =>
@@ -221,6 +221,25 @@ export function AdminWhatsApp() {
     },
     onError: (err: Error) => {
       toast.error("Falha ao disparar campanha", { description: err.message })
+    },
+  })
+
+  // Mutação: Reativação Automática de Clientes Inativos (30+ dias)
+  const reactivateMutation = useMutation({
+    mutationFn: (variables?: { daysInactive?: number }) =>
+      apiPost<{ success: boolean; message: string; sent: number; eligible: number }>(
+        "/api/admin/whatsapp",
+        {
+          action: "reactivate_inactive",
+          ...variables,
+        },
+      ),
+    onSuccess: (res) => {
+      toast.success(res.message || "Fluxo de reativação concluído!")
+      queryClient.invalidateQueries({ queryKey: ["admin-whatsapp-status"] })
+    },
+    onError: (err: Error) => {
+      toast.error("Falha ao executar reativação de clientes", { description: err.message })
     },
   })
 
@@ -624,7 +643,9 @@ export function AdminWhatsApp() {
               ? "Todos Ativos"
               : selectedAudience === "CLIENTS"
                 ? "Apenas Clientes"
-                : "Apenas Prestadores"}
+                : selectedAudience === "INACTIVE_CLIENTS"
+                  ? "Clientes Inativos (30+ dias)"
+                  : "Apenas Prestadores"}
           </Badge>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -681,6 +702,25 @@ export function AdminWhatsApp() {
                 </Button>
                 <Button
                   type="button"
+                  variant={selectedAudience === "INACTIVE_CLIENTS" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setSelectedAudience("INACTIVE_CLIENTS")
+                    const reactivationTemplate = data?.templates?.find(
+                      (t) => t.id === "client_reactivation",
+                    )
+                    if (reactivationTemplate) {
+                      setSelectedTemplateId(reactivationTemplate.id)
+                      setCampaignMessage(reactivationTemplate.defaultText)
+                    }
+                  }}
+                  className="justify-start gap-2"
+                >
+                  <Users className="h-4 w-4" />
+                  Clientes Inativos (30+ dias)
+                </Button>
+                <Button
+                  type="button"
                   variant={selectedAudience === "ALL_ACTIVE" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setSelectedAudience("ALL_ACTIVE")}
@@ -689,6 +729,32 @@ export function AdminWhatsApp() {
                   <Users className="h-4 w-4" />
                   Todos os Usuários Ativos
                 </Button>
+
+                {/* Painel de Reativação de Retenção */}
+                <div className="border-border/50 bg-muted/30 mt-2 rounded-lg border p-3">
+                  <div className="text-foreground text-xs font-semibold">
+                    Automação de Retenção (30d)
+                  </div>
+                  <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
+                    Varre clientes inativos há mais de 30 dias com controle de deduplicação
+                    (anti-spam 30d).
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-2.5 w-full gap-1.5 text-xs"
+                    disabled={reactivateMutation.isPending || !isConnected}
+                    onClick={() => reactivateMutation.mutate({})}
+                  >
+                    {reactivateMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    )}
+                    {reactivateMutation.isPending ? "Processando..." : "Executar Reativação Agora"}
+                  </Button>
+                </div>
               </div>
             </div>
 

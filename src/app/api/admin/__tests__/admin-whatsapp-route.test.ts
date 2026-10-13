@@ -2,6 +2,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET, POST } from "@/app/api/admin/whatsapp/route"
 import { requireRole } from "@/lib/auth"
 import * as evolution from "@/lib/evolution"
+import { runInactiveClientsReactivation } from "@/lib/whatsapp-flows"
+
+vi.mock("@/lib/whatsapp-flows", () => ({
+  runInactiveClientsReactivation: vi.fn().mockResolvedValue({
+    sent: 2,
+    errors: 0,
+    eligible: 2,
+  }),
+}))
 
 vi.mock("@/lib/auth", () => ({
   requireRole: vi.fn(),
@@ -137,6 +146,33 @@ describe("Admin WhatsApp Route (/api/admin/whatsapp)", () => {
       expect(json.qrcode).toBeNull()
       expect(evolution.connectInstance).not.toHaveBeenCalled()
     })
+
+    it("inclui o template client_reactivation sem cupom ou desconto Pix", async () => {
+      ;(evolution.fetchInstance as any).mockResolvedValue({
+        id: "inst-1",
+        name: "severinno",
+        connectionStatus: "open",
+        number: "5511999999999",
+        profileName: "Severinno",
+        integration: "WHATSAPP-BAILEYS",
+        _count: { Message: 10, Contact: 5, Chat: 2 },
+      })
+      ;(evolution.getConnectionStatus as any).mockResolvedValue({
+        instance: { instanceName: "severinno", status: "open" },
+      })
+      ;(evolution.getWebhook as any).mockResolvedValue(null)
+
+      const req = new Request("http://localhost:3000/api/admin/whatsapp")
+      const res = await GET(req, { params: Promise.resolve({}) })
+      const json = await res.json()
+
+      expect(res.status).toBe(200)
+      const reactivationTemplate = json.templates.find((t: any) => t.id === "client_reactivation")
+      expect(reactivationTemplate).toBeDefined()
+      expect(reactivationTemplate.title).toBe("Reativação de Clientes Inativos")
+      expect(reactivationTemplate.defaultText.toLowerCase()).not.toContain("cupom")
+      expect(reactivationTemplate.defaultText.toLowerCase()).not.toContain("desconto")
+    })
   })
 
   describe("POST /api/admin/whatsapp", () => {
@@ -252,6 +288,47 @@ describe("Admin WhatsApp Route (/api/admin/whatsapp)", () => {
       expect(json.success).toBe(true)
       expect(json.count).toBe(2)
       expect(json.targetAudience).toBe("CLIENTS")
+    })
+
+    it("executa broadcast_campaign para audiência INACTIVE_CLIENTS com interpolação de nome", async () => {
+      const req = new Request("http://localhost:3000/api/admin/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "broadcast_campaign",
+          targetAudience: "INACTIVE_CLIENTS",
+          message: "Olá {{nomeCliente}}, sentimos sua falta!",
+          templateId: "client_reactivation",
+        }),
+      })
+
+      const res = await POST(req, { params: Promise.resolve({}) })
+      const json = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(json.success).toBe(true)
+      expect(json.count).toBe(2)
+      expect(json.targetAudience).toBe("INACTIVE_CLIENTS")
+    })
+
+    it("executa ação reactivate_inactive chamando runInactiveClientsReactivation", async () => {
+      const req = new Request("http://localhost:3000/api/admin/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reactivate_inactive",
+          daysInactive: 30,
+        }),
+      })
+
+      const res = await POST(req, { params: Promise.resolve({}) })
+      const json = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(json.success).toBe(true)
+      expect(json.sent).toBe(2)
+      expect(json.eligible).toBe(2)
+      expect(runInactiveClientsReactivation).toHaveBeenCalledWith(30)
     })
 
     it("retorna 400 para ação desconhecida", async () => {
