@@ -28,6 +28,8 @@
 #
 # Environment:
 #   DATABASE_URL   Test DB URL (default: postgresql://severinno:severinno_test@localhost:5433/severinno_test)
+#   DIRECT_URL     Direct DB URL (default: = DATABASE_URL — schema.prisma exige
+#                  directUrl; sem ele o db push falha com P1012 em ambiente limpo)
 # =============================================================================
 
 set -euo pipefail
@@ -37,6 +39,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.test.yml}"
 DATABASE_URL="${DATABASE_URL:-postgresql://severinno:severinno_test@localhost:5433/severinno_test}"
+# schema.prisma exige directUrl (pgbouncer em prod); no E2E efêmero é conexão direta.
+DIRECT_URL="${DIRECT_URL:-$DATABASE_URL}"
 
 SKIP_DOCKER=false
 SKIP_CLEANUP=false
@@ -121,7 +125,7 @@ cd "$SCRIPT_DIR"      # Ensure Prisma client is generated first (required for @p
       # SKIP_PRISMA_GENERATE=1 pula o generate quando o client já veio do cache
       # (CI: actions/cache keyed no schema.prisma — economia ~6s por job).
       if [ "${SKIP_PRISMA_GENERATE:-0}" != "1" ]; then
-        DATABASE_URL="$DATABASE_URL" bunx prisma generate 2>&1 | tail -5
+        DATABASE_URL="$DATABASE_URL" DIRECT_URL="$DIRECT_URL" bunx prisma generate 2>&1 | tail -5
       else
         info "STEP 2: Skipping prisma generate (SKIP_PRISMA_GENERATE=1 — cache hit)"
       fi
@@ -133,7 +137,7 @@ cd "$SCRIPT_DIR"      # Ensure Prisma client is generated first (required for @p
         # A pipeline na condição do if: com set -euo pipefail, uma pipeline
         # solta que falha abortaria o script ANTES do if (branch de erro =
         # código morto). Em condição, o set -e não dispara e o else captura.
-        if DATABASE_URL="$DATABASE_URL" bunx prisma db push --accept-data-loss --skip-generate 2>&1 \
+        if DATABASE_URL="$DATABASE_URL" DIRECT_URL="$DIRECT_URL" bunx prisma db push --accept-data-loss --skip-generate 2>&1 \
           | tail -10; then
           pass "Schema synced"
         else
@@ -154,7 +158,7 @@ info "STEP 3: Running seed-prod E2E validator..."
 # Captura a saída completa (não só o exit code) para validar o count real
 # (📊 Resultados) contra a derivação (scripts/seed-e2e-count.ts).
 set +e
-E2E_OUTPUT="$(DATABASE_URL="$DATABASE_URL" bun scripts/test-seed-prod-e2e.ts 2>&1)"
+E2E_OUTPUT="$(DATABASE_URL="$DATABASE_URL" DIRECT_URL="$DIRECT_URL" bun scripts/test-seed-prod-e2e.ts 2>&1)"
 exit_code=$?
 set -e
 echo "$E2E_OUTPUT"

@@ -18,6 +18,8 @@
 #
 # Environment:
 #   DATABASE_URL   Test DB URL (default: postgresql://severinno:severinno_test@localhost:5433/severinno_test)
+#   DIRECT_URL     Direct DB URL (default: = DATABASE_URL — schema.prisma exige
+#                  directUrl; sem ele o db push falha com P1012 em ambiente limpo)
 #   REDIS_URL      Test Redis URL (default: redis://localhost:6381)
 #   BASE_URL       Dev server URL (default: http://localhost:3000)
 # =============================================================================
@@ -29,6 +31,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.test.yml}"
 DATABASE_URL="${DATABASE_URL:-postgresql://severinno:severinno_test@localhost:5433/severinno_test}"
+# schema.prisma exige directUrl (pgbouncer em prod); no E2E efêmero é conexão direta.
+DIRECT_URL="${DIRECT_URL:-$DATABASE_URL}"
 REDIS_URL="${REDIS_URL:-redis://localhost:6381}"
 BASE_URL="${BASE_URL:-http://localhost:3000}"
 PLAYWRIGHT_ARGS="--grep cache --project chromium --reporter list"
@@ -141,9 +145,9 @@ info "STEP 2: Syncing Prisma schema..."
 cd "$SCRIPT_DIR"
 
 # Ensure Prisma client is generated first (required for @prisma/client types)
-DATABASE_URL="$DATABASE_URL" bunx prisma generate 2>&1 | tail -20
+DATABASE_URL="$DATABASE_URL" DIRECT_URL="$DIRECT_URL" bunx prisma generate 2>&1 | tail -20
 echo ""
-DATABASE_URL="$DATABASE_URL" bunx prisma db push --accept-data-loss --skip-generate 2>&1 \
+DATABASE_URL="$DATABASE_URL" DIRECT_URL="$DIRECT_URL" bunx prisma db push --accept-data-loss --skip-generate 2>&1 \
   | tail -10
 
 if [ $? -eq 0 ]; then
@@ -163,7 +167,7 @@ info "STEP 3: Starting Next.js dev server..."
 fuser -k 3000/tcp 2>/dev/null || true
 sleep 1
 
-DATABASE_URL="$DATABASE_URL" \
+DATABASE_URL="$DATABASE_URL" DIRECT_URL="$DIRECT_URL" \
 REDIS_URL="$REDIS_URL" \
 bunx next dev -p 3000 &>/tmp/nextdev-e2e-cache.log &
 DEV_PID=$!

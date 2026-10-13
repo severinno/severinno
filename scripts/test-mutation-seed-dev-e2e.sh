@@ -43,6 +43,8 @@
 #
 # Environment:
 #   DATABASE_URL   Test DB URL (default: postgresql://severinno:severinno_test@localhost:5433/severinno_test)
+#   DIRECT_URL     Direct DB URL (default: = DATABASE_URL — schema.prisma exige
+#                  directUrl; sem ele o db push falha com P1012 em ambiente limpo)
 #   SKIP_PRISMA_GENERATE=1  pula o prisma generate (CI: cache hit do client)
 #   SKIP_DB_PUSH=1          pula o prisma db push (CI: schema já sincronizado)
 # =============================================================================
@@ -65,6 +67,8 @@ mkdir -p "$MUT_SCRATCH" 2>/dev/null || {
 }
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.test.yml}"
 DATABASE_URL="${DATABASE_URL:-postgresql://severinno:severinno_test@localhost:5433/severinno_test}"
+# schema.prisma exige directUrl (pgbouncer em prod); no E2E efêmero é conexão direta.
+DIRECT_URL="${DIRECT_URL:-$DATABASE_URL}"
 
 SEED_FILE="$SCRIPT_DIR/prisma/seed.ts"
 
@@ -193,7 +197,7 @@ cd "$SCRIPT_DIR"
 # SKIP_PRISMA_GENERATE=1 pula o generate quando o client já veio do cache
 # (CI: actions/cache keyed no schema.prisma — economia ~6s por job).
 if [ "${SKIP_PRISMA_GENERATE:-0}" != "1" ]; then
-  DATABASE_URL="$DATABASE_URL" bunx prisma generate 2>&1 | tail -5
+  DATABASE_URL="$DATABASE_URL" DIRECT_URL="$DIRECT_URL" bunx prisma generate 2>&1 | tail -5
 else
   info "STEP 2: Skipping prisma generate (SKIP_PRISMA_GENERATE=1 — cache hit)"
 fi
@@ -205,7 +209,7 @@ if [ "${SKIP_DB_PUSH:-0}" != "1" ]; then
   # Pipeline na condição do if: com set -euo pipefail, uma pipeline solta
   # que falha abortaria o script ANTES do if (branch de erro = código morto).
   # Em condição, o set -e não dispara e o else captura.
-  if DATABASE_URL="$DATABASE_URL" bunx prisma db push --accept-data-loss --skip-generate 2>&1 \
+  if DATABASE_URL="$DATABASE_URL" DIRECT_URL="$DIRECT_URL" bunx prisma db push --accept-data-loss --skip-generate 2>&1 \
     | tail -10; then
     pass "Schema synced"
   else
@@ -252,7 +256,7 @@ info "STEP 4: Running seed-dev E2E contra o seed MUTADO..."
 
 # Captura output + exit code (set +e: a FALHA é o resultado esperado aqui).
 set +e
-E2E_OUTPUT="$(DATABASE_URL="$DATABASE_URL" bun scripts/test-seed-dev-e2e.ts 2>&1)"
+E2E_OUTPUT="$(DATABASE_URL="$DATABASE_URL" DIRECT_URL="$DIRECT_URL" bun scripts/test-seed-dev-e2e.ts 2>&1)"
 E2E_EXIT=$?
 set -e
 
