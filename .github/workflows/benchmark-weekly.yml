@@ -72,10 +72,10 @@ jobs:
     timeout-minutes: 2
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -127,13 +127,13 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -141,7 +141,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -236,7 +236,7 @@ jobs:
       # Create GitHub issue + optional webhook when regression detected
       - name: Create regression issue
         if: steps.compare.outcome == 'failure'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -330,7 +330,7 @@ jobs:
       # depois de resolvida.
       - name: Close regression issue (baseline stable)
         if: steps.compare.outcome == 'success' || steps.baseline.outputs.baseline_exists != 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const repo = context.repo;
@@ -440,7 +440,7 @@ jobs:
       # ── Upload artifact ────────────────────────────────────────────────
       - name: Upload benchmark artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: geo-real-benchmark
           path: |
@@ -470,7 +470,7 @@ jobs:
       actions: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Roda a medição real (cold→warm) e salva o JSON ───────────────
       # gh usa o token padrão do run (GITHUB_TOKEN) para dispatch + jobs API.
@@ -497,7 +497,7 @@ jobs:
       # ── Evidência como artifact (debug de falhas) ────────────────────
       - name: Upload bench JSON (on failure)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bench-setup-bun-warm
           path: /tmp/bench-setup-bun.json
@@ -526,10 +526,10 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -580,7 +580,7 @@ jobs:
       # dispara: mostra run-a-run + cold/warm de ambas as imagens.
       - name: Upload bench log (on failure)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: act-startup-bench
           path: /tmp/act-startup-bench.log
@@ -612,7 +612,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── A imagem tem de estar local: o probe roda DENTRO dela ────────
       # A tag segue a fonte única (`vars.BUN_VERSION`) — o pull falha cedo se
@@ -697,7 +697,7 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # histórico completo — auditamos TODOS os blobs
 
@@ -745,7 +745,7 @@ jobs:
       issues: write # a issue é o canal acionável do alcance (o vermelho é a lembrança)
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # histórico completo — auditamos TODOS os blobs
 
@@ -828,7 +828,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # histórico completo — o audit varre git log -p --all
 
@@ -878,7 +878,7 @@ jobs:
       issues: write # gh issue create para achados novos de drift semântico
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── GATE: nenhum achado NOVO além do baseline commitado ──────────
       # Exit 1 = drift semântico novo detectado → job falha (alerta). O step
@@ -932,7 +932,7 @@ jobs:
       issues: write # a issue é o canal acionável do aviso (o run fica verde de propósito)
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Compara os espelhos do working tree com as repository variables ──
       # `.actrc` e `deploy/env.gitea.example` (o arquivo comitado de onde o
@@ -993,10 +993,10 @@ jobs:
       issues: write # a issue é o canal (o run fica verde de propósito)
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -1004,7 +1004,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -1074,7 +1074,7 @@ jobs:
       issues: write # gh issue create/close para a decisão declarada VENCIDA
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── GATE: decisão de escopo/imagem de terceiros SEM REVISÃO falha o run ──
       - name: Revisar decisões de escopo e imagens de terceiros (--review)
@@ -1166,7 +1166,7 @@ jobs:
       contents: read # gh api repos/X/contents (existência do workflow)
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Valida a existência dos workflows de medição na default ─────
       # NÃO passar --default-branch de propósito: em eventos schedule o
@@ -1187,7 +1187,7 @@ jobs:
       # ── Evidência como artifact (debug + insumo da tabela) ──────────
       - name: Upload guard JSON (artifact)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: default-branch-workflow-guard
           path: /tmp/default-branch-guard.json
@@ -1254,7 +1254,7 @@ jobs:
       actions: read # gh api jobs (read) + gh run list (read) — NÃO publica baseline (faixa soft DERIVA da mediana)
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Mede o tempo real do step no run ATUAL com a faixa soft DERIVADA ──
       # GH_TOKEN explícito: o gh do runner já usa o GITHUB_TOKEN por
@@ -1282,7 +1282,7 @@ jobs:
       # ── Evidência como artifact (debug + insumo da tabela) ─────────
       - name: Upload timing JSON (artifact)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-coord-timing
           path: /tmp/mutation-timing.json
@@ -1353,7 +1353,7 @@ jobs:
       actions: read # gh run list + jobs API (só leitura — não publica baseline)
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Mede o drift de tendência: run atual vs mediana dos N anteriores ──
       # --window N (default 4) e --max-drift X% (default 30) vêm de vars com
@@ -1380,7 +1380,7 @@ jobs:
       # ── Evidência como artifact (debug + histórico da tendência) ─────
       - name: Upload trend JSON (artifact)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-coord-trend
           path: /tmp/mutation-trend.json
@@ -1449,12 +1449,12 @@ jobs:
       issues: write # a issue é o canal do ::warning:: (o run fica verde)
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Os dois relatórios, dos artifacts dos jobs de medição ─────────
       - name: Baixar os relatórios de medição (artifacts)
         if: always()
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: mutation-coord-*
           merge-multiple: true
@@ -1519,12 +1519,12 @@ jobs:
       # não está aqui" — o que a régua lê como "sem idade", nunca como "fresca".
       # Sem a história, o canal semanal ficaria mudo exatamente sobre o que ele
       # existe para cobrar. (O padrão do actions/checkout é depth 1.)
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -1532,7 +1532,7 @@ jobs:
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -1581,7 +1581,7 @@ jobs:
       # ── Evidência: o run medido (o corpo da issue cita este JSON) ──────
       - name: Upload do run medido (artifact)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: guard-timing-latest
           path: docs/benchmarks/guard-timing-latest.json

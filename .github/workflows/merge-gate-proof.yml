@@ -133,7 +133,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── A prova (JSON gravado, exit code guardado) ───────────────────────
       # Node puro (sem deps: a prova e o publicador importam só módulos do
