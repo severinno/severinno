@@ -53,6 +53,16 @@ export const POST = withRoute("api.provider.routes.slot-fit.POST", async (reques
   const start = startOfDay(targetDate)
   const end = endOfDay(targetDate)
 
+  const provider = await db.user.findUnique({
+    where: { id: session.userId },
+    select: { lat: true, lng: true },
+  })
+
+  const baseLocation = {
+    lat: provider?.lat ?? -23.5505,
+    lng: provider?.lng ?? -46.6333,
+  }
+
   const existingBookings = await db.booking.findMany({
     where: {
       providerId: session.userId,
@@ -63,22 +73,31 @@ export const POST = withRoute("api.provider.routes.slot-fit.POST", async (reques
       id: true,
       address: true,
       scheduledAt: true,
+      lat: true,
+      lng: true,
       service: { select: { title: true } },
       client: { select: { name: true } },
     },
     orderBy: { scheduledAt: "asc" },
   })
 
-  const baseLocation = {
-    lat: -23.5505,
-    lng: -46.6333,
-  }
-
   const existingStops = existingBookings.map((b, idx) => {
-    const angle = idx * 1.618 * Math.PI * 2
-    const radius = 0.02 + idx * 0.015
-    const bLat = baseLocation.lat + Math.sin(angle) * radius
-    const bLng = baseLocation.lng + Math.cos(angle) * radius
+    const hasValidCoords =
+      typeof b.lat === "number" &&
+      !isNaN(b.lat) &&
+      typeof b.lng === "number" &&
+      !isNaN(b.lng) &&
+      (b.lat !== 0 || b.lng !== 0)
+
+    let bLat = b.lat
+    let bLng = b.lng
+
+    if (!hasValidCoords) {
+      const angle = idx * 1.618 * Math.PI * 2
+      const radius = 0.02 + idx * 0.015
+      bLat = baseLocation.lat + Math.sin(angle) * radius
+      bLng = baseLocation.lng + Math.cos(angle) * radius
+    }
 
     return {
       id: b.id,

@@ -53,8 +53,8 @@ describe("GET /api/provider/reports/batch-receipts", () => {
     const json = await res.json()
     expect(json.totalBookings).toBe(1)
     expect(json.totalGross).toBe(250)
-    expect(json.totalPlatformFee).toBe(30) // 12%
-    expect(json.totalNet).toBe(220)
+    expect(json.totalPlatformFee).toBe(37.5) // FEE_RATE (15%)
+    expect(json.totalNet).toBe(212.5)
     expect(json.receipts[0].serialNumber).toContain("REC-20261010-")
   })
 

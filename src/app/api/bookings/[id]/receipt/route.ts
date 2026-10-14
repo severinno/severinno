@@ -9,6 +9,7 @@ import { toMoneyNumber } from "@/lib/money"
 import crypto from "crypto"
 
 import { withParams } from "@/lib/api-route"
+import { escapeHtml } from "@/lib/sanitize"
 
 /**
  * GET /api/bookings/[id]/receipt
@@ -117,8 +118,8 @@ export const GET = withParams<{ id: string }>(
         <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">Comprovante de Intermediação & Prestação de Serviços</div>
       </div>
       <div class="serial">
-        <div><strong>${serialNumber}</strong></div>
-        <div style="margin-top: 4px;">Emissão: ${issueDateStr}</div>
+        <div><strong>${escapeHtml(serialNumber)}</strong></div>
+        <div style="margin-top: 4px;">Emissão: ${escapeHtml(issueDateStr)}</div>
       </div>
     </div>
 
@@ -126,27 +127,27 @@ export const GET = withParams<{ id: string }>(
       <div>
         <div class="section-title">Tomador (Cliente)</div>
         <div class="field-label">Nome:</div>
-        <div class="field-val">${booking.client.name}</div>
+        <div class="field-val">${escapeHtml(booking.client.name)}</div>
         <div class="field-label" style="margin-top: 6px;">E-mail:</div>
-        <div class="field-val">${booking.client.email || "Não informado"}</div>
+        <div class="field-val">${escapeHtml(booking.client.email || "Não informado")}</div>
       </div>
       <div>
         <div class="section-title">Prestador de Serviços</div>
         <div class="field-label">Nome / Razão Social:</div>
-        <div class="field-val">${booking.provider.name}</div>
+        <div class="field-val">${escapeHtml(booking.provider.name)}</div>
         <div class="field-label" style="margin-top: 6px;">Documento:</div>
-        <div class="field-val">${booking.provider.cpfCnpj ? `${booking.provider.cpfCnpj.slice(0, 3)}***` : "Cadastrado"}</div>
+        <div class="field-val">${escapeHtml(booking.provider.cpfCnpj ? `${booking.provider.cpfCnpj.slice(0, 3)}***` : "Cadastrado")}</div>
       </div>
     </div>
 
     <div style="margin-bottom: 20px;">
       <div class="section-title">Discriminação do Serviço</div>
       <div class="field-label">Serviço:</div>
-      <div class="field-val" style="font-size: 14px;">${booking.service.title}</div>
+      <div class="field-val" style="font-size: 14px;">${escapeHtml(booking.service.title)}</div>
       <div class="field-label" style="margin-top: 6px;">Endereço de Execução:</div>
-      <div class="field-val">${booking.address || "Local informado pelo cliente"}</div>
+      <div class="field-val">${escapeHtml(booking.address || "Local informado pelo cliente")}</div>
       <div class="field-label" style="margin-top: 6px;">Data do Atendimento:</div>
-      <div class="field-val">${serviceDateStr}</div>
+      <div class="field-val">${escapeHtml(serviceDateStr)}</div>
     </div>
 
     <div class="financials-box">
@@ -155,18 +156,18 @@ export const GET = withParams<{ id: string }>(
           <div style="font-size: 12px; font-weight: 600; color: #065f46;">VALOR TOTAL LIQUIDADO</div>
           <div style="font-size: 11px; color: #047857; margin-top: 2px;">Pagamento garantido via Custódia Escrow (Lytex)</div>
         </div>
-        <div class="total-amount">${formattedTotal}</div>
+        <div class="total-amount">${escapeHtml(formattedTotal)}</div>
       </div>
       <div style="margin-top: 12px; display: flex; gap: 8px;">
-        <span class="badge">Meio: ${booking.paymentMethod || "PIX"}</span>
-        <span class="badge">Status: ${booking.paymentStatus === "PAID" ? "LIQUIDADO" : booking.paymentStatus}</span>
+        <span class="badge">Meio: ${escapeHtml(booking.paymentMethod || "PIX")}</span>
+        <span class="badge">Status: ${escapeHtml(booking.paymentStatus === "PAID" ? "LIQUIDADO" : booking.paymentStatus)}</span>
       </div>
     </div>
 
     <div class="footer">
       <div>
-        <div>Autenticação Digital SHA-256: <code>${authCode}</code></div>
-        <div style="margin-top: 2px;">Valide em: https://severinno.com.br/recibo/${authCode}</div>
+        <div>Autenticação Digital SHA-256: <code>${escapeHtml(authCode)}</code></div>
+        <div style="margin-top: 2px;">Valide em: https://severinno.com.br/recibo/${escapeHtml(authCode)}</div>
       </div>
       <div style="text-align: right;">
         Severinno Marketplace SaaS Ltda.
@@ -178,7 +179,12 @@ export const GET = withParams<{ id: string }>(
 
       return new Response(html, {
         status: 200,
-        headers: { "Content-Type": "text/html; charset=utf-8" },
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Security-Policy":
+            "default-src 'none'; style-src 'unsafe-inline'; font-src data:; img-src data:;",
+          "X-Content-Type-Options": "nosniff",
+        },
       })
     }
 

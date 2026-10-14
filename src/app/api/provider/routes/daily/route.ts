@@ -39,7 +39,7 @@ export const GET = withRoute("api.provider.routes.daily.GET", async (request) =>
   // 1. Fetch provider details
   const provider = await db.user.findUnique({
     where: { id: session.userId },
-    select: { id: true, name: true, city: true },
+    select: { id: true, name: true, city: true, lat: true, lng: true },
   })
 
   // 2. Fetch bookings for this day
@@ -53,25 +53,39 @@ export const GET = withRoute("api.provider.routes.daily.GET", async (request) =>
       id: true,
       address: true,
       scheduledAt: true,
+      lat: true,
+      lng: true,
       service: { select: { title: true } },
       client: { select: { name: true } },
     },
     orderBy: { scheduledAt: "asc" },
   })
 
-  // Default base coordinates (São Paulo center fallback if no geocoded base)
+  // Provider home base coordinates (defaults to SP center if provider has no address fix)
   const baseLocation = {
-    lat: -23.5505,
-    lng: -46.6333,
+    lat: provider?.lat ?? -23.5505,
+    lng: provider?.lng ?? -46.6333,
   }
 
-  // Convert bookings into route stops (simulating/geocoding coords based on hash or offset)
+  // Convert bookings into route stops using real coordinates whenever available
   const stops: RouteStop[] = bookings.map((b, idx) => {
-    // Generate deterministic neighborhood coordinate offset around base for real routing
-    const angle = idx * 1.618 * Math.PI * 2
-    const radius = 0.02 + idx * 0.015 // ~2km to ~8km radius
-    const lat = baseLocation.lat + Math.sin(angle) * radius
-    const lng = baseLocation.lng + Math.cos(angle) * radius
+    const hasValidCoords =
+      typeof b.lat === "number" &&
+      !isNaN(b.lat) &&
+      typeof b.lng === "number" &&
+      !isNaN(b.lng) &&
+      (b.lat !== 0 || b.lng !== 0)
+
+    let lat = b.lat
+    let lng = b.lng
+
+    if (!hasValidCoords) {
+      // Deterministic fallback offset around base only when booking coordinates are missing
+      const angle = idx * 1.618 * Math.PI * 2
+      const radius = 0.02 + idx * 0.015
+      lat = baseLocation.lat + Math.sin(angle) * radius
+      lng = baseLocation.lng + Math.cos(angle) * radius
+    }
 
     return {
       id: b.id,

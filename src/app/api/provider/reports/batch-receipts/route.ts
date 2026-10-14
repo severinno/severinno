@@ -6,6 +6,8 @@ import { db } from "@/lib/db"
 import { getSession } from "@/lib/auth"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { toMoneyNumber } from "@/lib/money"
+import { escapeHtml } from "@/lib/sanitize"
+import { FEE_RATE } from "@/lib/constants"
 import logger from "@/lib/logger"
 
 const log = logger.child({ module: "provider-batch-receipts" })
@@ -61,7 +63,7 @@ export async function GET(request: NextRequest) {
 
     const receipts = bookings.map((b) => {
       const grossAmount = toMoneyNumber(b.amount)
-      const platformFee = Math.round(grossAmount * 0.12 * 100) / 100
+      const platformFee = Math.round(grossAmount * FEE_RATE * 100) / 100
       const netAmount = Math.round((grossAmount - platformFee) * 100) / 100
       const datePart = b.scheduledAt
         ? new Date(b.scheduledAt).toISOString().slice(0, 10).replace(/-/g, "")
@@ -175,14 +177,14 @@ export async function GET(request: NextRequest) {
       .map(
         (r) => `
         <tr>
-          <td class="font-mono">${r.serialNumber}</td>
-          <td>${r.date.split("-").reverse().join("/")}</td>
-          <td>${r.serviceTitle}</td>
-          <td>${r.clientName}</td>
+          <td class="font-mono">${escapeHtml(r.serialNumber)}</td>
+          <td>${escapeHtml(r.date.split("-").reverse().join("/"))}</td>
+          <td>${escapeHtml(r.serviceTitle)}</td>
+          <td>${escapeHtml(r.clientName)}</td>
           <td class="num">R$ ${r.grossAmount.toFixed(2)}</td>
           <td class="num text-muted">- R$ ${r.platformFee.toFixed(2)}</td>
           <td class="num font-bold">R$ ${r.netAmount.toFixed(2)}</td>
-          <td class="font-mono text-muted text-xs">${r.authHash}</td>
+          <td class="font-mono text-muted text-xs">${escapeHtml(r.authHash)}</td>
         </tr>`,
       )
       .join("")
@@ -233,7 +235,7 @@ export async function GET(request: NextRequest) {
     </div>
     <div style="text-align: right;">
       <h1 class="title">Extrato Consolidado de Recibos</h1>
-      <div class="subtitle">Competência: <strong>${monthDisplay}</strong> • Prestador: <strong>${user.name}</strong></div>
+      <div class="subtitle">Competência: <strong>${escapeHtml(monthDisplay)}</strong> • Prestador: <strong>${escapeHtml(user.name)}</strong></div>
     </div>
   </div>
 
@@ -247,7 +249,7 @@ export async function GET(request: NextRequest) {
       <div class="summary-value">R$ ${totalGross.toFixed(2)}</div>
     </div>
     <div class="summary-card">
-      <div class="summary-label">Taxa de Intermediação (12%)</div>
+      <div class="summary-label">Taxa de Intermediação (${Math.round(FEE_RATE * 100)}%)</div>
       <div class="summary-value text-muted">- R$ ${totalPlatformFee.toFixed(2)}</div>
     </div>
     <div class="summary-card">
@@ -288,6 +290,9 @@ export async function GET(request: NextRequest) {
     return new NextResponse(htmlContent, {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy":
+          "default-src 'none'; style-src 'unsafe-inline'; font-src data:; img-src data:;",
+        "X-Content-Type-Options": "nosniff",
       },
     })
   } catch (err) {
