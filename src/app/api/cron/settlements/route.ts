@@ -42,9 +42,61 @@ export async function GET(request: Request) {
       )
     }
 
-    const type = (searchParams.get("type") ?? "MONTHLY") as "WEEKLY" | "MONTHLY"
-
     const now = new Date()
+
+    // ── Liquidação Automática de Custódia (Escrow Release) ──
+    // Libera fundos em custódia (paymentStatus: "HELD") para serviços concluídos (status: "COMPLETED")
+    // cuja janela de contestação (24h) tenha decorrido sem disputas em aberto.
+    let autoReleasedEscrows = 0
+    try {
+      const disputeDeadline = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+      const heldBookings = await db.booking.findMany({
+        where: {
+          status: "COMPLETED",
+          paymentStatus: "HELD",
+          updatedAt: { lte: disputeDeadline },
+        },
+        select: {
+          id: true,
+          providerId: true,
+          amount: true,
+        },
+      })
+
+      for (const b of heldBookings) {
+        await db.$transaction([
+          db.booking.update({
+            where: { id: b.id },
+            data: {
+              paymentStatus: "PAID",
+              escrowReleasedAt: now,
+            },
+          }),
+          db.payment.updateMany({
+            where: { bookingId: b.id },
+            data: {
+              status: "PAID",
+              paidAt: now,
+            },
+          }),
+        ])
+        autoReleasedEscrows++
+      }
+
+      if (autoReleasedEscrows > 0) {
+        logger.info(
+          { count: autoReleasedEscrows },
+          "cron settlements: custódias HELD liberadas automaticamente após janela de 24h",
+        )
+      }
+    } catch (escrowErr) {
+      logger.warn(
+        { err: escrowErr },
+        "cron settlements: liberação automática de escrow falhou (settlement segue)",
+      )
+    }
+
+    const type = (searchParams.get("type") ?? "MONTHLY") as "WEEKLY" | "MONTHLY"
 
     // Determine period boundaries
     let startDate: Date
@@ -73,6 +125,7 @@ export async function GET(request: Request) {
         message: "Período já existe.",
         periodId: existing.id,
         idempotencyPruned,
+        autoReleasedEscrows,
       })
     }
 
@@ -97,6 +150,7 @@ export async function GET(request: Request) {
       return NextResponse.json({
         message: "Nenhum pagamento no período. Nada a gerar.",
         idempotencyPruned,
+        autoReleasedEscrows,
       })
     }
 
@@ -163,6 +217,7 @@ export async function GET(request: Request) {
       message: "Período de repasse gerado automaticamente.",
       periodId: period.id,
       idempotencyPruned,
+      autoReleasedEscrows,
       totalAmount: period.totalAmount,
       totalCommission: period.totalCommission,
       totalNet: period.totalNet,
