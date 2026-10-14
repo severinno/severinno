@@ -44,6 +44,7 @@ const positionBuffer = new Map<
     lng: number
     speed: number | null
     heading: number | null
+    accuracy: number | null
     timestamp: string
     providerId: string
   }
@@ -87,7 +88,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   // Create SSE stream
   const stream = new ReadableStream({
-    start(controller) {
+    async start(controller) {
       const encoder = new TextEncoder()
 
       // Send initial connection event
@@ -119,18 +120,29 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       }
       sseClients.get(bookingId)!.push(client)
 
-      // Send current position if available
-      const currentPos = positionBuffer.get(bookingId)
+      // Send current position if available (from local buffer or Redis)
+      const cachedInitialPos = await cacheGet<{
+        lat: number
+        lng: number
+        speed: number | null
+        heading: number | null
+        accuracy: number | null
+        timestamp: string
+        providerId: string
+      }>(`tracking:position:${bookingId}`)
+      const currentPos = positionBuffer.get(bookingId) ?? cachedInitialPos
+      let lastDispatchedTimestamp = ""
       if (currentPos) {
+        lastDispatchedTimestamp = currentPos.timestamp
         sendEvent("position", currentPos)
       }
 
-      // Subscribe to position updates via Redis Pub/Sub (simulated via polling)
-      // In production, use Redis SUBSCRIBE for true pub/sub
+      // Cross-instance polling via Redis: allows any replica to broadcast to any SSE client
       const pollInterval = setInterval(async () => {
         try {
           const pos = await cacheGet<typeof currentPos>(`tracking:position:${bookingId}`)
-          if (pos && pos.timestamp !== currentPos?.timestamp) {
+          if (pos && pos.timestamp !== lastDispatchedTimestamp) {
+            lastDispatchedTimestamp = pos.timestamp
             sendEvent("position", pos)
 
             // Check geofence via engine
@@ -231,17 +243,33 @@ export const POST = withParams<{ id: string }>(
       return NextResponse.json({ error: "Acesso restrito" }, { status: 403 })
     }
 
-    // Store position
+    // Store position with GNSS accuracy
+    const accuracy =
+      typeof body.accuracy === "number" && Number.isFinite(body.accuracy)
+        ? Math.round(body.accuracy * 10) / 10
+        : null
+
     const position = {
       lat,
       lng,
       speed: typeof body.speed === "number" ? body.speed : null,
       heading: typeof body.heading === "number" ? body.heading : null,
+      accuracy,
       timestamp: new Date().toISOString(),
       providerId: session.userId,
     }
 
     positionBuffer.set(bookingId, position)
+
+    // Update provider's gpsAccuracyM for uncertainty visualization
+    if (accuracy !== null) {
+      db.user
+        .update({
+          where: { id: session.userId },
+          data: { gpsAccuracyM: accuracy },
+        })
+        .catch(() => {})
+    }
 
     // Cache in Redis for cross-instance broadcast
     try {

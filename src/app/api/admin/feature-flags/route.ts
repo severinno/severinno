@@ -2,7 +2,14 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
-import { isEnabled, setFlag, clearFlag, getAllFlags, type FeatureFlag } from "@/lib/feature-flags"
+import {
+  isEnabled,
+  setFlag,
+  clearFlag,
+  getAllFlags,
+  syncFlagsFromRedis,
+  type FeatureFlag,
+} from "@/lib/feature-flags"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 import { withRoute } from "@/lib/api-route"
@@ -29,6 +36,7 @@ const VALID_FLAGS: FeatureFlag[] = [
 
 export const GET = withRoute("api.admin.feature-flags.GET", async (_request) => {
   await requireRole("ADMIN")
+  await syncFlagsFromRedis()
   const flags = getAllFlags()
   return NextResponse.json({ flags })
 })
