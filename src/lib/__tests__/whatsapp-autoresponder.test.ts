@@ -6,20 +6,36 @@ import {
   getQuotesStatusText,
   getPixHelpText,
   processInteractiveCommand,
+  handleEscrowApproval,
+  handleEscrowDispute,
+  processLocationCheckin,
 } from "../whatsapp-autoresponder"
 import { db } from "@/lib/db"
 import { enqueueWhatsApp } from "@/lib/whatsapp-queue"
+import { notifyProviderArrived } from "@/lib/notifications"
 
 vi.mock("@/lib/db", () => ({
   db: {
     booking: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
+      update: vi.fn().mockResolvedValue({}),
+    },
+    payment: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    notification: {
+      create: vi.fn().mockResolvedValue({}),
     },
     quoteRequest: {
       findMany: vi.fn(),
     },
+    $transaction: vi.fn((promises) => Promise.all(promises)),
   },
+}))
+
+vi.mock("@/lib/notifications", () => ({
+  notifyProviderArrived: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock("@/lib/whatsapp-queue", () => ({
@@ -62,14 +78,14 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
 
   describe("getBookingsStatusText", () => {
     it("retorna mensagem informativa quando não há agendamentos", async () => {
-      ;(vi.mocked(db.booking.findMany) as any).mockResolvedValue([])
+      ;(db.booking.findMany as any).mockResolvedValue([])
 
       const res = await getBookingsStatusText("user-1")
       expect(res).toContain("Você ainda não possui nenhum agendamento")
     })
 
     it("retorna lista formatada com agendamentos recentes", async () => {
-      ;(vi.mocked(db.booking.findMany) as any).mockResolvedValue([
+      ;(db.booking.findMany as any).mockResolvedValue([
         {
           id: "book-12345678",
           clientId: "user-1",
@@ -92,7 +108,7 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
 
   describe("getQuotesStatusText", () => {
     it("retorna resumo dos orçamentos quando existem", async () => {
-      ;(vi.mocked(db.quoteRequest.findMany) as any).mockResolvedValue([
+      ;(db.quoteRequest.findMany as any).mockResolvedValue([
         {
           id: "quote-98765432",
           clientId: "user-1",
@@ -113,7 +129,7 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
 
   describe("getPixHelpText", () => {
     it("retorna pendência com valor quando há pagamento pendente", async () => {
-      ;(vi.mocked(db.booking.findFirst) as any).mockResolvedValue({
+      ;(db.booking.findFirst as any).mockResolvedValue({
         id: "book-pending-1",
         amount: 150.0,
         paymentStatus: "PENDING",
@@ -127,7 +143,7 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
     })
 
     it("retorna parabéns quando tudo está pago", async () => {
-      ;(vi.mocked(db.booking.findFirst) as any).mockResolvedValue(null)
+      ;(db.booking.findFirst as any).mockResolvedValue(null)
 
       const res = await getPixHelpText("user-1")
       expect(res).toContain("Você não possui nenhum pagamento pendente")
@@ -154,7 +170,7 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
     })
 
     it("reconhece '1' e responde com agendamentos", async () => {
-      ;(vi.mocked(db.booking.findMany) as any).mockResolvedValue([])
+      ;(db.booking.findMany as any).mockResolvedValue([])
 
       const res = await processInteractiveCommand({
         phone: "5511999999999",
@@ -190,6 +206,122 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
 
       expect(res.handled).toBe(false)
       expect(enqueueWhatsApp).not.toHaveBeenCalled()
+    })
+
+    it("reconhece 'APROVAR' e libera custódia de agendamento concluído", async () => {
+      ;(db.booking.findFirst as any).mockResolvedValue({
+        id: "book-escrow-1",
+        amount: 250.0,
+        clientId: "user-1",
+        status: "COMPLETED",
+        paymentStatus: "HELD",
+        provider: { id: "provider-1", name: "Marcos Eletricista", whatsapp: "5533999998888" },
+        service: { title: "Instalação de Painel" },
+      })
+
+      const res = await processInteractiveCommand({
+        phone: "5533999999999",
+        text: "APROVAR",
+        user: { id: "user-1", name: "Carlos" },
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Pagamento Liberado com Sucesso")
+      expect(db.$transaction).toHaveBeenCalled()
+      expect(enqueueWhatsApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "5533999998888",
+          context: "escrow:released:book-escrow-1",
+        }),
+      )
+    })
+
+    it("reconhece 'CONTESTAR' e bloqueia custódia abrindo chamado", async () => {
+      ;(db.booking.findFirst as any).mockResolvedValue({
+        id: "book-escrow-2",
+        amount: 300.0,
+        clientId: "user-1",
+        status: "COMPLETED",
+        paymentStatus: "HELD",
+        provider: { id: "provider-2", name: "João Encanador" },
+        service: { title: "Reparo Hidráulico" },
+      })
+
+      const res = await processInteractiveCommand({
+        phone: "5533999999999",
+        text: "CONTESTAR",
+        user: { id: "user-1", name: "Carlos" },
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Contestação Registrada com Sucesso")
+      expect(db.notification.create).toHaveBeenCalled()
+    })
+  })
+
+  describe("processLocationCheckin", () => {
+    it("valida check-in do prestador quando dentro do raio estrito de 50m", async () => {
+      ;(db.booking.findFirst as any).mockResolvedValue({
+        id: "book-checkin-1",
+        providerId: "prov-1",
+        clientId: "client-1",
+        status: "CONFIRMED",
+        lat: -18.8548,
+        lng: -41.9482,
+        address: "Rua Peçanha, 450 - Centro",
+        client: { id: "client-1", name: "Carlos Cliente" },
+        service: { title: "Troca de Fiação" },
+      })
+
+      const res = await processLocationCheckin({
+        phone: "5533988887777",
+        lat: -18.85485, // ~10m de distância
+        lng: -41.94822,
+        accuracy: 10,
+        user: { id: "prov-1", name: "Marcos Prestador", role: "PROVIDER" },
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Check-in Presencial Confirmado")
+      expect(db.booking.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "book-checkin-1" },
+          data: { status: "IN_PROGRESS" },
+        }),
+      )
+      expect(notifyProviderArrived).toHaveBeenCalledWith(
+        "client-1",
+        "book-checkin-1",
+        "Marcos Prestador",
+        "Troca de Fiação",
+      )
+    })
+
+    it("rejeita check-in quando prestador está além do raio permitido", async () => {
+      ;(db.booking.findFirst as any).mockResolvedValue({
+        id: "book-checkin-2",
+        providerId: "prov-1",
+        clientId: "client-1",
+        status: "CONFIRMED",
+        lat: -18.8548,
+        lng: -41.9482,
+        address: "Rua Peçanha, 450 - Centro",
+        client: { id: "client-1", name: "Carlos Cliente" },
+        service: { title: "Troca de Fiação" },
+      })
+
+      const res = await processLocationCheckin({
+        phone: "5533988887777",
+        lat: -18.87, // ~1.8km de distância
+        lng: -41.96,
+        accuracy: 15,
+        user: { id: "prov-1", name: "Marcos Prestador", role: "PROVIDER" },
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Check-in Não Validado")
+      expect(db.booking.update).not.toHaveBeenCalled()
+      expect(notifyProviderArrived).not.toHaveBeenCalled()
     })
   })
 })

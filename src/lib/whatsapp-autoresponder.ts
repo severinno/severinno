@@ -14,12 +14,26 @@ import "server-only"
 import { enqueueWhatsApp } from "@/lib/whatsapp-queue"
 import { db } from "@/lib/db"
 import logger from "@/lib/logger"
+import { validateEscrowGeofence } from "@/lib/escrow-geofence"
+import { notifyProviderArrived } from "@/lib/notifications"
 
 const autoresponderLogger = logger.child({ module: "whatsapp-autoresponder" })
 
 export type AutoresponderContext = {
   phone: string
   text: string
+  user: {
+    id: string
+    name: string | null
+    role?: string | null
+  }
+}
+
+export type LocationCheckinContext = {
+  phone: string
+  lat: number
+  lng: number
+  accuracy?: number | null
   user: {
     id: string
     name: string | null
@@ -212,6 +226,245 @@ export async function getPixHelpText(userId: string): Promise<string> {
 }
 
 /**
+ * Trata aprovação e liberação imediata de custódia (Escrow) pelo cliente via WhatsApp.
+ */
+export async function handleEscrowApproval(
+  userId: string,
+  explicitBookingId?: string,
+): Promise<string> {
+  try {
+    const booking = await db.booking.findFirst({
+      where: {
+        clientId: userId,
+        status: "COMPLETED",
+        paymentStatus: "HELD",
+        ...(explicitBookingId
+          ? { OR: [{ id: explicitBookingId }, { id: { startsWith: explicitBookingId } }] }
+          : {}),
+      },
+      orderBy: { updatedAt: "desc" },
+      include: {
+        provider: { select: { id: true, name: true, whatsapp: true } },
+        service: { select: { title: true } },
+      },
+    })
+
+    if (!booking) {
+      return (
+        `ℹ️ Não encontramos nenhum agendamento concluído aguardando aprovação de pagamento no momento.\n\n` +
+        `Para visualizar seus agendamentos, digite *1* ou acesse: https://severinno.com`
+      )
+    }
+
+    const now = new Date()
+    await db.$transaction([
+      db.booking.update({
+        where: { id: booking.id },
+        data: {
+          paymentStatus: "PAID",
+          escrowReleasedAt: now,
+        },
+      }),
+      db.payment.updateMany({
+        where: { bookingId: booking.id },
+        data: {
+          status: "PAID",
+          paidAt: now,
+        },
+      }),
+    ])
+
+    // Notifica o prestador via WhatsApp sobre a liberação imediata
+    if (booking.provider.whatsapp) {
+      await enqueueWhatsApp({
+        to: booking.provider.whatsapp,
+        text:
+          `🎉 *Pagamento Liberado!*\n\n` +
+          `O cliente aprovou a conclusão do serviço *${booking.service?.title || "Serviço"}* (#${booking.id.slice(0, 8)}).\n` +
+          `O valor de R$ ${Number(booking.amount).toFixed(2)} foi liberado da custódia e está disponível para repasse na sua conta! 💰`,
+        userId: booking.provider.id,
+        context: `escrow:released:${booking.id}`,
+      }).catch(() => {})
+    }
+
+    return (
+      `✅ *Pagamento Liberado com Sucesso!*\n\n` +
+      `Obrigado por confirmar! Os fundos do agendamento *#${booking.id.slice(0, 8)}* foram repassados com sucesso para o profissional *${booking.provider.name}*.\n\n` +
+      `Avalie o serviço no app para ajudar outros clientes: https://severinno.com/?view=client.bookings`
+    )
+  } catch (error) {
+    autoresponderLogger.error(
+      { error, userId },
+      "Erro ao processar aprovação de escrow via WhatsApp",
+    )
+    return "❌ Ocorreu um erro ao liberar o pagamento. Por favor, tente pelo aplicativo ou contate o suporte."
+  }
+}
+
+/**
+ * Trata contestação / reporte de problema no serviço pelo cliente via WhatsApp.
+ */
+export async function handleEscrowDispute(
+  userId: string,
+  explicitBookingId?: string,
+): Promise<string> {
+  try {
+    const booking = await db.booking.findFirst({
+      where: {
+        clientId: userId,
+        status: "COMPLETED",
+        paymentStatus: "HELD",
+        ...(explicitBookingId
+          ? { OR: [{ id: explicitBookingId }, { id: { startsWith: explicitBookingId } }] }
+          : {}),
+      },
+      orderBy: { updatedAt: "desc" },
+      include: {
+        provider: { select: { id: true, name: true } },
+        service: { select: { title: true } },
+      },
+    })
+
+    if (!booking) {
+      return (
+        `ℹ️ Não encontramos nenhum agendamento recente concluído com pagamento em custódia para contestar.\n\n` +
+        `Digite *SUPORTE* para relatar um problema diretamente a nossa equipe humana.`
+      )
+    }
+
+    // Registra notificação de contestação para o prestador
+    await db.notification
+      .create({
+        data: {
+          userId: booking.provider.id,
+          title: "⚠️ Contestação de Serviço",
+          body: `O cliente abriu um chamado sobre o agendamento #${booking.id.slice(0, 8)}. A liberação de custódia foi pausada para análise.`,
+          type: "ESCROW_DISPUTE",
+        },
+      })
+      .catch(() => {})
+
+    return (
+      `⚠️ *Contestação Registrada com Sucesso*\n\n` +
+      `Os fundos do agendamento *#${booking.id.slice(0, 8)}* (*${booking.service?.title || "Serviço"}*) foram congelados em custódia segura.\n\n` +
+      `Um atendente da equipe de mediação da Severinno entrará em contato em breve para entender o ocorrido e intermediar a solução.`
+    )
+  } catch (error) {
+    autoresponderLogger.error({ error, userId }, "Erro ao registrar disputa de escrow via WhatsApp")
+    return "❌ Erro ao registrar contestação. Entre em contato digitando *SUPORTE*."
+  }
+}
+
+/**
+ * Trata check-in presencial via compartilhamento de localização do WhatsApp pelo prestador.
+ */
+export async function processLocationCheckin(
+  ctx: LocationCheckinContext,
+): Promise<{ handled: boolean; replyText?: string }> {
+  try {
+    // 1. Busca agendamento ativo onde o usuário é o PRESTADOR
+    const booking = await db.booking.findFirst({
+      where: {
+        providerId: ctx.user.id,
+        status: { in: ["CONFIRMED", "IN_PROGRESS"] },
+      },
+      orderBy: { scheduledAt: "asc" },
+      include: {
+        client: { select: { id: true, name: true } },
+        service: { select: { title: true } },
+      },
+    })
+
+    if (!booking) {
+      const replyText =
+        `📍 Localização recebida (${ctx.lat.toFixed(4)}, ${ctx.lng.toFixed(4)}).\n\n` +
+        `Não encontramos nenhum agendamento confirmado em andamento sob sua responsabilidade neste momento.`
+
+      await enqueueWhatsApp({
+        to: ctx.phone,
+        text: replyText,
+        userId: ctx.user.id,
+        context: "checkin:no_active_booking",
+      }).catch(() => {})
+
+      return { handled: true, replyText }
+    }
+
+    // 2. Valida a presença física usando o motor estrito de Geofence (STRICT: 50m)
+    const geofenceResult = validateEscrowGeofence({
+      providerLocation: {
+        lat: ctx.lat,
+        lng: ctx.lng,
+        accuracyM: ctx.accuracy ?? 15,
+      },
+      serviceLocation: {
+        lat: booking.lat,
+        lng: booking.lng,
+      },
+      precisionTier: "STRICT",
+      maxAllowedAccuracyMeters: 35,
+      bookingId: booking.id,
+    })
+
+    if (geofenceResult.valid) {
+      // 3. Atualiza o status do agendamento caso estivesse apenas CONFIRMED
+      if (booking.status === "CONFIRMED") {
+        await db.booking.update({
+          where: { id: booking.id },
+          data: { status: "IN_PROGRESS" },
+        })
+      }
+
+      // 4. Dispara alerta multi-canal de chegada para o cliente (In-App + Push + WhatsApp)
+      await notifyProviderArrived(
+        booking.clientId,
+        booking.id,
+        ctx.user.name || "Prestador",
+        booking.service?.title || "Serviço",
+      ).catch((err) => {
+        autoresponderLogger.warn({ err }, "Falha ao despachar notificação de chegada do prestador")
+      })
+
+      const distanceM = Math.round(geofenceResult.distanceKm * 1000)
+      const replyText =
+        `📍 *Check-in Presencial Confirmado!* 🛠️\n\n` +
+        `Sua chegada ao local do agendamento *#${booking.id.slice(0, 8)}* foi validada com precisão de ${distanceM}m (limite: 50m).\n\n` +
+        `O cliente (*${booking.client.name}*) já foi avisado da sua presença pelo WhatsApp e aplicativo. Bom atendimento!`
+
+      await enqueueWhatsApp({
+        to: ctx.phone,
+        text: replyText,
+        userId: ctx.user.id,
+        context: `checkin:verified:${booking.id}`,
+      }).catch(() => {})
+
+      return { handled: true, replyText }
+    } else {
+      const distanceM = Math.round(geofenceResult.distanceKm * 1000)
+      const replyText =
+        `⚠️ *Check-in Não Validado*\n\n` +
+        `Você está a *${distanceM}m* do endereço combinado (${booking.address}), mas o raio máximo de presença física é de *50m*.\n\n` +
+        `Por favor, aproxime-se do local do cliente e compartilhe sua localização novamente.`
+
+      await enqueueWhatsApp({
+        to: ctx.phone,
+        text: replyText,
+        userId: ctx.user.id,
+        context: `checkin:deviation:${booking.id}`,
+      }).catch(() => {})
+
+      return { handled: true, replyText }
+    }
+  } catch (error) {
+    autoresponderLogger.error(
+      { error, userId: ctx.user.id },
+      "Erro ao processar checkin por localização",
+    )
+    return { handled: false }
+  }
+}
+
+/**
  * Processa uma mensagem de texto e retorna se foi tratada por um comando interativo.
  * Se reconhecer o comando, despacha a resposta via fila RabbitMQ (`enqueueWhatsApp`)
  * e retorna `true`. Se for uma mensagem conversacional comum, retorna `false` (para que
@@ -221,11 +474,38 @@ export async function processInteractiveCommand(
   ctx: AutoresponderContext,
 ): Promise<{ handled: boolean; replyText?: string }> {
   const normalized = normalizeCommand(ctx.text)
+  const refMatch = ctx.text.match(/#([a-zA-Z0-9]{6,12})/)
+  const explicitRef = refMatch?.[1]
 
   let replyText: string | null = null
 
-  // 1. Menu e Ajuda
+  // 1. Liberação de Escrow / Aprovação de Conclusão do Serviço
   if (
+    normalized === "APROVAR" ||
+    normalized === "LIBERAR" ||
+    normalized === "CONFIRMAR" ||
+    normalized === "SIM" ||
+    normalized === "PAGAR" ||
+    normalized.startsWith("APROVAR ") ||
+    normalized.startsWith("LIBERAR ") ||
+    normalized.startsWith("CONFIRMAR ")
+  ) {
+    replyText = await handleEscrowApproval(ctx.user.id, explicitRef)
+  }
+  // 2. Contestação de Escrow / Abertura de Disputa
+  else if (
+    normalized === "CONTESTAR" ||
+    normalized === "PROBLEMA" ||
+    normalized === "RECLAMAR" ||
+    normalized === "DISPUTA" ||
+    normalized.startsWith("CONTESTAR ") ||
+    normalized.startsWith("PROBLEMA ") ||
+    normalized.startsWith("RECLAMAR ")
+  ) {
+    replyText = await handleEscrowDispute(ctx.user.id, explicitRef)
+  }
+  // 3. Menu e Ajuda
+  else if (
     normalized === "MENU" ||
     normalized === "AJUDA" ||
     normalized === "HELP" ||
@@ -239,7 +519,7 @@ export async function processInteractiveCommand(
   ) {
     replyText = getMainMenuText(ctx.user.name)
   }
-  // 2. Agendamentos
+  // 4. Agendamentos
   else if (
     normalized === "1" ||
     normalized === "AGENDAMENTO" ||
@@ -249,7 +529,7 @@ export async function processInteractiveCommand(
   ) {
     replyText = await getBookingsStatusText(ctx.user.id)
   }
-  // 3. Orçamentos
+  // 5. Orçamentos
   else if (
     normalized === "2" ||
     normalized === "ORCAMENTO" ||
@@ -259,7 +539,7 @@ export async function processInteractiveCommand(
   ) {
     replyText = await getQuotesStatusText(ctx.user.id)
   }
-  // 4. PIX e Pagamentos
+  // 6. PIX e Pagamentos
   else if (
     normalized === "3" ||
     normalized === "PIX" ||
@@ -269,7 +549,7 @@ export async function processInteractiveCommand(
   ) {
     replyText = await getPixHelpText(ctx.user.id)
   }
-  // 5. Suporte Humano
+  // 7. Suporte Humano
   else if (
     normalized === "4" ||
     normalized === "SUPORTE" ||

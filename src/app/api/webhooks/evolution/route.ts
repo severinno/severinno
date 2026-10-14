@@ -37,7 +37,9 @@ function extractNumber(jid: string): string | null {
  * Buscar usuário pelo número de WhatsApp.
  * Tenta match exato e com/sem DDI 55.
  */
-async function findUserByPhone(phone: string): Promise<{ id: string; name: string } | null> {
+async function findUserByPhone(
+  phone: string,
+): Promise<{ id: string; name: string; role: string } | null> {
   const digits = phone.replace(/\D/g, "")
 
   // Tenta várias combinações
@@ -60,7 +62,7 @@ async function findUserByPhone(phone: string): Promise<{ id: string; name: strin
       whatsapp: { in: candidates },
       active: true,
     },
-    select: { id: true, name: true },
+    select: { id: true, name: true, role: true },
   })
 
   return user
@@ -117,16 +119,6 @@ export async function POST(request: Request) {
         const senderNumber = extractNumber(remoteJid)
         if (!senderNumber) break
 
-        // Extrair texto da mensagem
-        let text = ""
-        if (message?.conversation) {
-          text = message.conversation
-        } else if (message?.extendedTextMessage?.text) {
-          text = message.extendedTextMessage.text
-        }
-
-        if (!text) break // ignora mensagens sem texto (mídia, etc)
-
         // Buscar usuário pelo número
         const user = await findUserByPhone(senderNumber)
         if (!user) {
@@ -142,15 +134,54 @@ export async function POST(request: Request) {
           "Webhook Evolution: mensagem recebida de usuário cadastrado",
         )
 
-        // ── 0. Verificar se a mensagem é um comando interativo / autoresponder ──
-        // Comandos como MENU, AGENDAMENTOS, PIX, 1, 2, 3 etc. recebem resposta imediata
-        // assíncrona via fila RabbitMQ, poupando intervenção humana.
+        // ── 0. Verificar se a mensagem é um compartilhamento de localização (Check-in GPS) ──
+        const locMsg = message?.locationMessage || message?.liveLocationMessage
+        if (
+          locMsg &&
+          typeof locMsg.degreesLatitude === "number" &&
+          typeof locMsg.degreesLongitude === "number"
+        ) {
+          const { processLocationCheckin } = await import("@/lib/whatsapp-autoresponder")
+          const locResult = await processLocationCheckin({
+            phone: senderNumber,
+            lat: locMsg.degreesLatitude,
+            lng: locMsg.degreesLongitude,
+            accuracy: locMsg.accuracyInMeters ?? null,
+            user: {
+              id: user.id,
+              name: user.name,
+              role: user.role,
+            },
+          })
+
+          if (locResult.handled) {
+            evolutionLogger.info(
+              { userId: user.id, lat: locMsg.degreesLatitude, lng: locMsg.degreesLongitude },
+              "Webhook Evolution: check-in por localização WhatsApp processado com sucesso",
+            )
+            break
+          }
+        }
+
+        // Extrair texto da mensagem
+        let text = ""
+        if (message?.conversation) {
+          text = message.conversation
+        } else if (message?.extendedTextMessage?.text) {
+          text = message.extendedTextMessage.text
+        }
+
+        if (!text) break // ignora mensagens sem texto e sem localização tratada
+
+        // ── 1. Verificar se a mensagem é um comando interativo / autoresponder ──
+        // Comandos como APROVAR, CONTESTAR, MENU, AGENDAMENTOS, PIX etc.
         const interactiveResult = await processInteractiveCommand({
           phone: senderNumber,
           text,
           user: {
             id: user.id,
             name: user.name,
+            role: user.role,
           },
         })
 
