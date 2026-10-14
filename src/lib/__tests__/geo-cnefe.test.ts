@@ -70,4 +70,16 @@ describe("CNEFE / IBGE Geocoding — Governador Valadares (MG)", () => {
 
     expect(match).toBeNull()
   })
+
+  it("lookupCnefePostGis seamlessly falls back to memory rooftop match", async () => {
+    const { lookupCnefePostGis } = await import("../geo-cnefe")
+    const match = await lookupCnefePostGis({
+      street: "Avenida Minas Gerais",
+      number: 250,
+    })
+
+    expect(match).not.toBeNull()
+    expect(match?.city).toBe("Governador Valadares")
+    expect(match?.source).toBe("cnefe-ibge-rooftop")
+  })
 })

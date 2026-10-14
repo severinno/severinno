@@ -25,7 +25,7 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - osrm_data:/data
+      - ./data/osrm:/data
     command: osrm-routed --algorithm mld /data/brazil-latest.osrm
     environment:
       - OSRM_MAX_TABLE_SIZE=1000
@@ -33,7 +33,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "wget -q -O /dev/null http://127.0.0.1:5000/route/v1/driving/-46.6333,-23.5505;-46.6328,-23.5489 || exit 1",
+          "wget -q -O /dev/null 'http://127.0.0.1:5000/route/v1/driving/-41.9482,-18.8548;-41.9430,-18.8440' || exit 1",
         ]
       interval: 30s
       timeout: 5s

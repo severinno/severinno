@@ -15,18 +15,34 @@ const OSM_TILE_CACHE = "severinno-osm-tiles-v1"
 // API cache — stale-while-revalidate for public endpoints
 const API_CACHE = "severinno-api-v1"
 
+// Pre-cache GV key map tiles for offline resilience
+const GV_OFFLINE_TILES = [
+  "https://tile.openstreetmap.org/13/2464/4364.png",
+  "https://tile.openstreetmap.org/13/2464/4365.png",
+]
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => {
-      // Cache each asset individually so a single failure doesn't block
-      return Promise.allSettled(
-        ASSETS.map((url) =>
-          cache.add(url).catch(() => {
-            console.warn(`[SW] Failed to cache ${url}`)
-          }),
-        ),
-      )
-    }),
+    Promise.all([
+      caches.open(CACHE).then((cache) => {
+        return Promise.allSettled(
+          ASSETS.map((url) =>
+            cache.add(url).catch(() => {
+              console.warn(`[SW] Failed to cache ${url}`)
+            }),
+          ),
+        )
+      }),
+      caches.open(OSM_TILE_CACHE).then((cache) => {
+        return Promise.allSettled(
+          GV_OFFLINE_TILES.map((url) =>
+            cache.add(url).catch(() => {
+              console.warn(`[SW] Failed to pre-cache tile ${url}`)
+            }),
+          ),
+        )
+      }),
+    ]),
   )
   self.skipWaiting()
 })
@@ -308,15 +324,20 @@ function showNotificationFromPayload(data) {
         ? [{ action: "open_chat", title: "💬 Responder" }]
         : []
 
+  const isArrival =
+    data.type === "PROVIDER_ARRIVED" ||
+    data.notificationType === "PROVIDER_ARRIVED" ||
+    (data.data && data.data.notificationType === "PROVIDER_ARRIVED")
+
   const options = {
     body: data.body || "",
     icon: data.icon || "/icon-192.png",
     badge: data.badge || "/icon-192.png",
-    vibrate: [200, 100, 200],
+    vibrate: isArrival ? [300, 100, 300, 100, 300] : [200, 100, 200],
     data: data.data || { url: data.url || "/" },
     tag: data.tag,
     renotify: true,
-    requireInteraction: !!(actions.length > 0),
+    requireInteraction: isArrival || !!(actions.length > 0),
     actions,
   }
 
