@@ -55,6 +55,7 @@ import { PreferenceToggles } from "@/components/shared/preference-toggles"
 import { StatCard } from "@/components/shared/dashboard-shell"
 import ProviderGeoAwarenessBadge from "@/components/provider/provider-geo-awareness-badge"
 import { BookingStatusBadge } from "@/components/admin/admin-shared"
+import { ProviderAnalyticsPanel } from "@/components/provider/provider-analytics-panel"
 
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 8,
@@ -495,6 +496,11 @@ export function ProviderDashboard() {
                 </div>
               </CardContent>
             </Card>
+          </div>
+
+          {/* Analytics Avançado: Escrow, Conversão de Propostas e Demanda Horária */}
+          <div className="pt-2">
+            <ProviderAnalyticsPanel />
           </div>
 
           {/* Recent lists */}

@@ -42,6 +42,8 @@ export default async function Page({ params }: Props) {
       city: true,
       state: true,
       whatsapp: true,
+      verified: true,
+      identityStatus: true,
       services: {
         where: { active: true },
         select: { id: true, title: true, basePrice: true, duration: true, description: true },

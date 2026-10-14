@@ -18,6 +18,8 @@ type Props = {
     city: string | null
     state: string | null
     whatsapp: string | null
+    verified?: boolean
+    identityStatus?: string | null
     rating: number
     reviewCount: number
     completedBookings: number
@@ -66,7 +68,15 @@ export function PublicProfilePage({ provider }: Props) {
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 text-center md:text-left">
-            <h1 className="text-2xl font-bold md:text-3xl">{provider.name}</h1>
+            <div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
+              <h1 className="text-2xl font-bold md:text-3xl">{provider.name}</h1>
+              {(provider.verified || provider.identityStatus === "approved") && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 dark:border-blue-800/40 dark:bg-blue-950/40 dark:text-blue-300">
+                  <ShieldCheck className="size-3.5 text-blue-600 dark:text-blue-400" />
+                  Identidade Verificada
+                </span>
+              )}
+            </div>
             {provider.city && (
               <p className="text-muted-foreground flex items-center justify-center gap-1 text-sm md:justify-start">
                 <MapPin className="size-3.5" />

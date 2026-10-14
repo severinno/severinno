@@ -9,7 +9,20 @@
  */
 
 export type SyncActionType =
-  "CHECKIN" | "STATUS_UPDATE" | "SEND_MESSAGE" | "UPLOAD_PHOTO" | "COMPLETE_JOB" | "GENERATE_PIN"
+  | "CHECKIN"
+  | "STATUS_UPDATE"
+  | "SEND_MESSAGE"
+  | "UPLOAD_PHOTO"
+  | "COMPLETE_JOB"
+  | "GENERATE_PIN"
+  | "REQUEST_QUOTE"
+  | "ADD_REVIEW"
+
+export interface CacheEntry<T> {
+  data: T
+  cachedAt: number
+  expiresAt: number
+}
 
 export interface QueuedMutation<T = Record<string, unknown>> {
   id: string
@@ -155,4 +168,80 @@ export function clearOfflineQueue(): void {
   if (typeof window !== "undefined" && window.localStorage) {
     localStorage.removeItem(STORAGE_KEY)
   }
+}
+
+/**
+ * Stores arbitrary item in local cache with TTL
+ */
+export function cacheItemLocally<T>(
+  key: string,
+  data: T,
+  ttlMs: number = 24 * 60 * 60 * 1000,
+): void {
+  if (typeof window === "undefined" || !window.localStorage) return
+  try {
+    const entry: CacheEntry<T> = {
+      data,
+      cachedAt: Date.now(),
+      expiresAt: Date.now() + ttlMs,
+    }
+    localStorage.setItem(`severinno_cache_${key}`, JSON.stringify(entry))
+  } catch {
+    // Ignore storage quota limits
+  }
+}
+
+/**
+ * Retrieves cached item if not expired
+ */
+export function getCachedItem<T>(key: string): T | null {
+  if (typeof window === "undefined" || !window.localStorage) return null
+  try {
+    const raw = localStorage.getItem(`severinno_cache_${key}`)
+    if (!raw) return null
+    const entry: CacheEntry<T> = JSON.parse(raw)
+    if (Date.now() > entry.expiresAt) {
+      localStorage.removeItem(`severinno_cache_${key}`)
+      return null
+    }
+    return entry.data
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Caches public provider profile for offline viewing (48h TTL)
+ */
+export function cacheProviderProfileLocally(slug: string, profile: unknown): void {
+  cacheItemLocally(`provider_profile_${slug}`, profile, 48 * 60 * 60 * 1000)
+}
+
+/**
+ * Gets cached public provider profile
+ */
+export function getCachedProviderProfile<T = unknown>(slug: string): T | null {
+  return getCachedItem<T>(`provider_profile_${slug}`)
+}
+
+/**
+ * Caches user bookings for offline consultation (12h TTL)
+ */
+export function cacheBookingsLocally(userId: string, bookings: unknown[]): void {
+  cacheItemLocally(`user_bookings_${userId}`, bookings, 12 * 60 * 60 * 1000)
+}
+
+/**
+ * Gets cached bookings
+ */
+export function getCachedBookings<T = unknown[]>(userId: string): T | null {
+  return getCachedItem<T>(`user_bookings_${userId}`)
+}
+
+/**
+ * Checks current browser online connectivity
+ */
+export function isOnline(): boolean {
+  if (typeof navigator === "undefined") return true
+  return navigator.onLine ?? true
 }

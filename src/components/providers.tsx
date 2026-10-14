@@ -8,6 +8,7 @@ import { SoundProvider } from "@/lib/sound-context"
 import { PWASetup } from "@/components/shared/pwa-setup"
 import { PWAInstallBanner } from "@/components/shared/pwa-install"
 import { PushPromptBanner } from "@/components/shared/push-prompt-banner"
+import { OfflineIndicator } from "@/components/shared/offline-indicator"
 import PwaUpdateBanner from "@/components/pwa-update-banner"
 import ActionToastListener from "@/components/shared/action-toast"
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react"
@@ -200,6 +201,9 @@ export function Providers({ children }: { children: ReactNode }) {
 
       {/* Push notification polite prompt banner */}
       <PushPromptBanner />
+
+      {/* PWA offline indicator and background auto-sync */}
+      <OfflineIndicator />
     </ThemeProvider>
   )
 }
