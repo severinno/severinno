@@ -66,6 +66,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    mem_limit: 384m
+    cpus: 0.5
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -94,19 +96,50 @@ services:
       timeout: 10s
       retries: 3
 
-  # ── Divergências legítimas de default de domínio (`.com`) ─────────────
+  # ── Divergências legítimas de default de domínio (`.com`) e limites de recursos ───
   # Este canal historicamente usa `.com` nos defaults (a env real do
   # .env.production prevalece quando definida). O prod usa `.com.br`.
   app:
+    mem_limit: 1536m
+    cpus: 1.5
     environment:
       NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-wss://severinno.com}
       SMTP_FROM: ${SMTP_FROM:-noreply@severinno.com}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@severinno.com}
 
   email-worker:
+    mem_limit: 256m
+    cpus: 0.5
     environment:
       SMTP_FROM: ${SMTP_FROM:-noreply@severinno.com}
 
   notification-worker:
+    mem_limit: 256m
+    cpus: 0.5
     environment:
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@severinno.com}
+
+  # ── Limites de recursos herdados da base (proteção contra OOM do host) ───
+  postgres:
+    mem_limit: 3584m
+    cpus: 1.5
+
+  redis:
+    mem_limit: 768m
+    cpus: 0.5
+
+  pgbouncer:
+    mem_limit: 256m
+    cpus: 0.5
+
+  rabbitmq:
+    mem_limit: 512m
+    cpus: 0.5
+
+  realtime:
+    mem_limit: 384m
+    cpus: 0.5
+
+  minio:
+    mem_limit: 512m
+    cpus: 0.5
