@@ -10,6 +10,7 @@ import {
   TransactionRecord,
 } from "@/lib/streaming-exporter"
 import { toMoneyNumber } from "@/lib/money"
+import { FEE_RATE } from "@/lib/constants"
 
 export async function GET(req: NextRequest) {
   await requireRole("ADMIN")
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
 
     const transactions: TransactionRecord[] = bookings.map((b) => {
       const gross = toMoneyNumber(b.amount)
-      const feeRate = 0.12
+      const feeRate = FEE_RATE
       const feeAmount = gross * feeRate
       const payout = gross - feeAmount
 

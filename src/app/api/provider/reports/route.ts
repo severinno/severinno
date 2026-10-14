@@ -10,6 +10,7 @@ import { db } from "@/lib/db"
 import { getSession } from "@/lib/auth"
 import logger from "@/lib/logger"
 import { toMoneyNumber } from "@/lib/money"
+import { FEE_RATE } from "@/lib/constants"
 
 const log = logger.child({ module: "provider-reports-api" })
 
@@ -159,7 +160,7 @@ export async function GET(request: NextRequest) {
     })
 
     const totalGross = bookingsPaid.reduce((acc, b) => acc + toMoneyNumber(b.amount), 0)
-    const platformFee = totalGross * 0.12 // 12% fee
+    const platformFee = totalGross * FEE_RATE
     const netReceived = totalGross - platformFee
 
     if (format === "json") {
@@ -181,7 +182,7 @@ export async function GET(request: NextRequest) {
     ]
     const rows = bookingsPaid.map((b) => {
       const amount = toMoneyNumber(b.amount)
-      const fee = amount * 0.12
+      const fee = amount * FEE_RATE
       const net = amount - fee
       return [
         b.id,

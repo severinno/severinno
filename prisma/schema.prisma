@@ -386,6 +386,7 @@ model Booking {
   @@index([paymentStatus])
   @@index([paymentStatus, createdAt])
   @@index([scheduledAt])
+  @@index([providerId, scheduledAt])
   @@index([providerId, status, scheduledAt])
   @@index([clientId, status, scheduledAt])
 }

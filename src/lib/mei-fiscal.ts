@@ -58,9 +58,11 @@ export interface MEIAnnualReport {
   generatedAt: string
 }
 
+import { FEE_RATE } from "./constants"
+
 const MEI_ANNUAL_LIMIT_2024 = 81000.0 // R$ 81.000,00 annual cap for MEI
 const FUEL_COST_PER_KM = 0.85 // Estimated fuel cost per km (gasoline average BR)
-const PLATFORM_FEE_RATE = 0.12 // 12% Severinno platform fee
+const PLATFORM_FEE_RATE = FEE_RATE // Canonical platform fee rate from constants
 
 /**
  * Generates a complete MEI annual fiscal report from booking history
