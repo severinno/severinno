@@ -256,7 +256,9 @@ type LytexInvoiceV2 = {
 
 function getConfig() {
   const clientId = process.env.LYTEX_CLIENT_ID
-  const clientSecret = process.env.LYTEX_CLIENT_SECRET
+  const clientSecret = process.env.LYTEX_CLIENT_SECRET || process.env.LYTEX_SECRET
+  const callbackSecret =
+    process.env.LYTEX_CALLBACK_SECRET || process.env.CALLBACK_SECRET || clientSecret
   const env = (process.env.LYTEX_ENV ?? "sandbox") as LytexEnv
 
   if (!clientId || !clientSecret) {
@@ -273,7 +275,7 @@ function getConfig() {
       : (process.env.LYTEX_SANDBOX_AUTH_URL ??
         "https://sandbox-api-pay.lytex.com.br/v2/auth/obtain_token")
 
-  return { clientId, clientSecret, env, baseUrl, authUrl }
+  return { clientId, clientSecret, callbackSecret, env, baseUrl, authUrl }
 }
 
 // ---------------------------------------------------------------------------
@@ -682,8 +684,9 @@ export function verifyWebhookSignature(
   headerSignature?: string | null,
   rawBody?: string,
 ): boolean {
-  const { clientSecret } = getConfig()
-  if (!clientSecret || !payload) return false
+  const { clientSecret, callbackSecret } = getConfig()
+  const secret = callbackSecret || clientSecret
+  if (!secret || !payload) return false
 
   const rawSig = headerSignature || payload?.signature
   if (!rawSig || typeof rawSig !== "string") return false
@@ -709,7 +712,7 @@ export function verifyWebhookSignature(
   }
 
   // HMAC via crypto.createHmac (Node.js) — importado no topo do módulo
-  const expected = createHmac("sha256", clientSecret).update(payloadStr).digest("hex")
+  const expected = createHmac("sha256", secret).update(payloadStr).digest("hex")
 
   try {
     const a = Buffer.from(rawSig, "hex")

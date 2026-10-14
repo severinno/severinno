@@ -98,7 +98,10 @@ export async function GET() {
   }
 
   // 4. External Integrations Readiness Check
-  const hasLytex = !!(process.env.LYTEX_CLIENT_ID && process.env.LYTEX_SECRET)
+  const hasLytex = !!(
+    process.env.LYTEX_CLIENT_ID &&
+    (process.env.LYTEX_SECRET || process.env.LYTEX_CLIENT_SECRET)
+  )
   const hasEvolution = !!(process.env.EVOLUTION_API_KEY && process.env.EVOLUTION_INSTANCE)
   const hasSmtp = !!(process.env.SMTP_HOST && process.env.SMTP_PASS)
   checks.externalIntegrations = {
