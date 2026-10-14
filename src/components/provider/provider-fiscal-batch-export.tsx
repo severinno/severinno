@@ -1,7 +1,16 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { FileText, Download, Printer, FileSpreadsheet, Code, Calendar } from "lucide-react"
+import {
+  FileText,
+  Download,
+  Printer,
+  FileSpreadsheet,
+  Code,
+  Calendar,
+  Share2,
+  Mail,
+} from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -65,6 +74,26 @@ export function ProviderFiscalBatchExport() {
       a.click()
       document.body.removeChild(a)
     }
+  }
+
+  const handleShareWhatsApp = () => {
+    const appUrl =
+      typeof window !== "undefined" ? window.location.origin : "https://severinno.com.br"
+    const receiptUrl = `${appUrl}/api/provider/reports/batch-receipts?month=${selectedMonth}&format=html`
+    const msg = `*Extrato Fiscal e Recibos — Severinno*\nCompetência: ${selectedMonth}\nRecibos emitidos: ${stats?.totalBookings ?? 0}\nFaturamento Bruto: R$ ${(stats?.totalGross ?? 0).toFixed(2)}\nRepasse Líquido: R$ ${(stats?.totalNet ?? 0).toFixed(2)}\n\nAcesse o lote de recibos em:\n${receiptUrl}`
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank")
+  }
+
+  const handleShareEmail = () => {
+    const appUrl =
+      typeof window !== "undefined" ? window.location.origin : "https://severinno.com.br"
+    const receiptUrl = `${appUrl}/api/provider/reports/batch-receipts?month=${selectedMonth}&format=html`
+    const subject = `Extrato de Recibos e Faturamento - Competência ${selectedMonth} - Severinno`
+    const body = `Olá!\n\nSegue o extrato consolidado de prestação de serviços referente à competência ${selectedMonth}.\n\nTotal de atendimentos: ${stats?.totalBookings ?? 0}\nFaturamento Bruto: R$ ${(stats?.totalGross ?? 0).toFixed(2)}\nRepasse Líquido: R$ ${(stats?.totalNet ?? 0).toFixed(2)}\n\nO documento fiscal com recibos e códigos de autenticidade pode ser visualizado e impresso no link:\n${receiptUrl}\n\nAtenciosamente,\nSeverinno Marketplace`
+    window.open(
+      `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+      "_blank",
+    )
   }
 
   return (
@@ -182,12 +211,32 @@ export function ProviderFiscalBatchExport() {
           </div>
         </div>
 
-        <Button onClick={handleExport} className="w-full gap-2">
-          {format === "html" ? <Printer className="size-4" /> : <Download className="size-4" />}
-          {format === "html"
-            ? "Visualizar e Imprimir Lote de Recibos (PDF)"
-            : `Baixar Lote (${format.toUpperCase()})`}
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button onClick={handleExport} className="flex-1 gap-2">
+            {format === "html" ? <Printer className="size-4" /> : <Download className="size-4" />}
+            {format === "html"
+              ? "Visualizar e Imprimir Lote (PDF)"
+              : `Baixar Lote (${format.toUpperCase()})`}
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleShareWhatsApp}
+            className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300"
+          >
+            <Share2 className="size-4" /> WhatsApp
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleShareEmail}
+            className="gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300"
+          >
+            <Mail className="size-4" /> Contador
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )

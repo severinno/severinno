@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth"
 import { withRoute } from "@/lib/api-route"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { evaluateBestSlotFit } from "@/lib/smart-slot-fit"
+import { getProviderTransportMode } from "@/lib/provider-transport-preferences"
 import { formatTime } from "@/lib/format"
 import { parseISO, startOfDay, endOfDay } from "date-fns"
 import { z } from "zod"
@@ -17,6 +18,7 @@ const slotFitSchema = z.object({
   title: z.string().min(2),
   address: z.string().optional(),
   durationMinutes: z.number().optional().default(60),
+  transportMode: z.enum(["MOTO", "CAR", "BICYCLE"]).optional(),
 })
 
 /**
@@ -35,7 +37,17 @@ export const POST = withRoute("api.provider.routes.slot-fit.POST", async (reques
   }
 
   const body = await request.json().catch(() => ({}))
-  const { date, lat, lng, title, address, durationMinutes } = slotFitSchema.parse(body)
+  const {
+    date,
+    lat,
+    lng,
+    title,
+    address,
+    durationMinutes,
+    transportMode: bodyMode,
+  } = slotFitSchema.parse(body)
+
+  const transportMode = bodyMode || (await getProviderTransportMode(session.userId))
 
   const targetDate = parseISO(date)
   const start = startOfDay(targetDate)
@@ -79,13 +91,18 @@ export const POST = withRoute("api.provider.routes.slot-fit.POST", async (reques
     }
   })
 
-  const fitResult = evaluateBestSlotFit(baseLocation, existingStops, {
-    title,
-    address,
-    lat,
-    lng,
-    durationMinutes,
-  })
+  const fitResult = evaluateBestSlotFit(
+    baseLocation,
+    existingStops,
+    {
+      title,
+      address,
+      lat,
+      lng,
+      durationMinutes,
+    },
+    transportMode,
+  )
 
   return NextResponse.json({
     ok: true,

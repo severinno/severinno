@@ -28,6 +28,7 @@ import { formatBRL, formatDate } from "@/lib/format"
 import { useAuthStore } from "@/store/auth"
 
 import { ProviderWallet } from "./provider-wallet"
+import { ProviderFiscalBatchExport } from "./provider-fiscal-batch-export"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -347,6 +348,9 @@ export function ProviderFinance() {
           {filtered.length} transação{filtered.length === 1 ? "" : "ões"}
         </p>
       </div>
+
+      {/* Lote de Recibos Fiscais & Extrato Contábil */}
+      <ProviderFiscalBatchExport />
 
       {/* Table */}
       <Card className="rounded-xl shadow-sm">

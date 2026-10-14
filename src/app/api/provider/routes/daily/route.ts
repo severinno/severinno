@@ -5,7 +5,12 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { withRoute } from "@/lib/api-route"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { optimizeDailyRoute2Opt, type RouteStop } from "@/lib/tsp-route-optimizer"
+import {
+  optimizeDailyRoute2Opt,
+  type RouteStop,
+  type TransportMode,
+} from "@/lib/tsp-route-optimizer"
+import { getProviderTransportMode } from "@/lib/provider-transport-preferences"
 import { formatTime } from "@/lib/format"
 import { parseISO, startOfDay, endOfDay } from "date-fns"
 
@@ -79,7 +84,13 @@ export const GET = withRoute("api.provider.routes.daily.GET", async (request) =>
     }
   })
 
-  const plan = optimizeDailyRoute2Opt(baseLocation, stops)
+  const modeParam = url.searchParams.get("mode") as TransportMode | null
+  const transportMode =
+    modeParam && ["MOTO", "CAR", "BICYCLE"].includes(modeParam)
+      ? modeParam
+      : await getProviderTransportMode(session.userId)
+
+  const plan = optimizeDailyRoute2Opt(baseLocation, stops, transportMode)
 
   return NextResponse.json({
     ok: true,

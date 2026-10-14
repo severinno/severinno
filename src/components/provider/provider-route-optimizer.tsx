@@ -6,7 +6,7 @@ import { Navigation, MapPin, Compass, ExternalLink, Loader2 } from "lucide-react
 import { apiGet } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import type { OptimizedRoutePlan } from "@/lib/tsp-route-optimizer"
+import type { OptimizedRoutePlan, TransportMode } from "@/lib/tsp-route-optimizer"
 
 type DailyRouteResponse = {
   ok: boolean
@@ -21,11 +21,42 @@ export function ProviderRouteOptimizer({ initialDate }: { initialDate?: string }
   }, [initialDate])
 
   const [date, setDate] = React.useState<string>(todayStr)
+  const [mode, setMode] = React.useState<TransportMode>("CAR")
+
+  // Load saved preference on mount
+  React.useEffect(() => {
+    async function loadPref() {
+      try {
+        const res = await fetch("/api/provider/preferences/transport")
+        if (res.ok) {
+          const json = await res.json()
+          if (json.mode) setMode(json.mode)
+        }
+      } catch {
+        // Fallback
+      }
+    }
+    loadPref()
+  }, [])
 
   const { data, isLoading } = useQuery<DailyRouteResponse>({
-    queryKey: ["provider", "daily-route", date],
-    queryFn: () => apiGet<DailyRouteResponse>(`/api/provider/routes/daily?date=${date}`),
+    queryKey: ["provider", "daily-route", date, mode],
+    queryFn: () =>
+      apiGet<DailyRouteResponse>(`/api/provider/routes/daily?date=${date}&mode=${mode}`),
   })
+
+  const handleModeChange = async (newMode: TransportMode) => {
+    setMode(newMode)
+    try {
+      await fetch("/api/provider/preferences/transport", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: newMode }),
+      })
+    } catch {
+      // Fire-and-forget save
+    }
+  }
 
   const plan = data?.plan
   const stopsCount = data?.stopsCount ?? 0
@@ -33,7 +64,7 @@ export function ProviderRouteOptimizer({ initialDate }: { initialDate?: string }
   return (
     <Card className="border-border/60 shadow-sm">
       <CardHeader className="pb-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <div className="rounded-lg bg-emerald-100 p-2 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
               <Navigation className="size-5" />
@@ -45,7 +76,44 @@ export function ProviderRouteOptimizer({ initialDate }: { initialDate?: string }
               </CardDescription>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Modal de Transporte */}
+            <div className="bg-muted/40 flex items-center rounded-lg border p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => handleModeChange("MOTO")}
+                className={`rounded px-2 py-1 font-medium transition-colors ${
+                  mode === "MOTO"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                🏍️ Moto
+              </button>
+              <button
+                type="button"
+                onClick={() => handleModeChange("CAR")}
+                className={`rounded px-2 py-1 font-medium transition-colors ${
+                  mode === "CAR"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                🚗 Carro
+              </button>
+              <button
+                type="button"
+                onClick={() => handleModeChange("BICYCLE")}
+                className={`rounded px-2 py-1 font-medium transition-colors ${
+                  mode === "BICYCLE"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                🚲 Bike
+              </button>
+            </div>
+
             <input
               type="date"
               value={date}

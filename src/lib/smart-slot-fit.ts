@@ -11,9 +11,13 @@ import {
   optimizeDailyRoute2Opt,
   type RouteStop,
   type OptimizedRoutePlan,
+  type TransportMode,
+  type TransportProfile,
+  TRANSPORT_PROFILES,
 } from "@/lib/tsp-route-optimizer"
 
-export type { RouteStop, OptimizedRoutePlan }
+export type { RouteStop, OptimizedRoutePlan, TransportMode, TransportProfile }
+export { TRANSPORT_PROFILES }
 
 export interface CandidateStop {
   id?: string
@@ -39,9 +43,6 @@ export interface BestSlotFitResult {
   optimizedRoute: OptimizedRoutePlan
 }
 
-const URBAN_ROAD_FACTOR = 1.38
-const AVG_CITY_SPEED_KMH = 28.0
-
 /**
  * Evaluates the optimal slot to fit a new candidate appointment into existing stops
  */
@@ -49,7 +50,12 @@ export function evaluateBestSlotFit(
   baseLocation: { lat: number; lng: number },
   existingStops: RouteStop[],
   candidate: CandidateStop,
+  transportMode: TransportMode = "CAR",
 ): BestSlotFitResult {
+  const profile = TRANSPORT_PROFILES[transportMode] ?? TRANSPORT_PROFILES.CAR
+  const roadFactor = profile.urbanRoadFactor
+  const avgSpeed = profile.avgSpeedKmh
+
   const candidateStop: RouteStop = {
     id: candidate.id || `candidate-${Date.now()}`,
     title: candidate.title,
@@ -62,18 +68,17 @@ export function evaluateBestSlotFit(
   if (existingStops.length === 0) {
     const directKm = Number(
       (
-        haversineKm(baseLocation.lat, baseLocation.lng, candidate.lat, candidate.lng) *
-        URBAN_ROAD_FACTOR
+        haversineKm(baseLocation.lat, baseLocation.lng, candidate.lat, candidate.lng) * roadFactor
       ).toFixed(2),
     )
-    const minutes = Math.round((directKm / AVG_CITY_SPEED_KMH) * 60)
+    const minutes = Math.round((directKm / avgSpeed) * 60)
     const singleSlot: SlotEvaluation = {
       slotIndex: 0,
       addedDetourKm: directKm,
       addedTravelMinutes: minutes,
       fitQuality: "PERFECT",
     }
-    const plan = optimizeDailyRoute2Opt(baseLocation, [candidateStop])
+    const plan = optimizeDailyRoute2Opt(baseLocation, [candidateStop], transportMode)
     return {
       bestSlot: singleSlot,
       allEvaluations: [singleSlot],
@@ -102,12 +107,12 @@ export function evaluateBestSlotFit(
         existingStops[0].lat,
         existingStops[0].lng,
       )
-      detourKm = (d1 + d2 - original) * URBAN_ROAD_FACTOR
+      detourKm = (d1 + d2 - original) * roadFactor
     } else if (pos === existingStops.length) {
       // After last stop
       const last = existingStops[existingStops.length - 1]
       const extra = haversineKm(last.lat, last.lng, candidate.lat, candidate.lng)
-      detourKm = extra * URBAN_ROAD_FACTOR
+      detourKm = extra * roadFactor
     } else {
       // Between stop pos-1 and stop pos
       const prev = existingStops[pos - 1]
@@ -115,11 +120,11 @@ export function evaluateBestSlotFit(
       const d1 = haversineKm(prev.lat, prev.lng, candidate.lat, candidate.lng)
       const d2 = haversineKm(candidate.lat, candidate.lng, next.lat, next.lng)
       const original = haversineKm(prev.lat, prev.lng, next.lat, next.lng)
-      detourKm = (d1 + d2 - original) * URBAN_ROAD_FACTOR
+      detourKm = (d1 + d2 - original) * roadFactor
     }
 
     const addedKm = Number(Math.max(0, detourKm).toFixed(2))
-    const addedMinutes = Math.round((addedKm / AVG_CITY_SPEED_KMH) * 60)
+    const addedMinutes = Math.round((addedKm / avgSpeed) * 60)
 
     let fitQuality: "PERFECT" | "GOOD" | "TIGHT" = "GOOD"
     if (addedKm <= 3.0) {
@@ -144,7 +149,7 @@ export function evaluateBestSlotFit(
 
   // Complete optimized route with candidate included
   const allStops = [...existingStops, candidateStop]
-  const optimizedRoute = optimizeDailyRoute2Opt(baseLocation, allStops)
+  const optimizedRoute = optimizeDailyRoute2Opt(baseLocation, allStops, transportMode)
 
   return {
     bestSlot,
