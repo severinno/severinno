@@ -12,7 +12,6 @@ import {
 // Configuration
 // ============================================================================
 
-const OPENSEARCH_URL = process.env.OPENSEARCH_URL ?? "http://localhost:9200"
 const INDEX_PREFIX = "severinno"
 
 export const INDICES = {
@@ -27,9 +26,9 @@ export const INDICES = {
 
 declare const globalThis: { __opensearch?: Client }
 
-function createClient(): Client {
+function createClient(url: string): Client {
   return new Client({
-    node: OPENSEARCH_URL,
+    node: url,
     requestTimeout: 10_000,
     // Single-node dev mode — no auth by default
     ...(process.env.OPENSEARCH_USERNAME
@@ -45,9 +44,11 @@ function createClient(): Client {
 
 export function getClient(): Client | null {
   if (typeof window !== "undefined" && !process.env.VITEST) return null
+  const url = process.env.OPENSEARCH_URL?.trim()
+  if (!url) return null
   // Singleton in all environments (production included) to avoid creating new connections per request
   if (!globalThis.__opensearch) {
-    globalThis.__opensearch = createClient()
+    globalThis.__opensearch = createClient(url)
   }
   return globalThis.__opensearch
 }
