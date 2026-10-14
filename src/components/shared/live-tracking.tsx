@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils"
 import { ensureMaplibreWorker } from "@/lib/maplibre-worker"
 import { syncRadiusCircle, type MapLike } from "@/lib/geo-circle"
 import { snapToRoad } from "@/lib/map-matching"
+import { vibrateSuccess, vibrateWarning } from "@/lib/haptics"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -277,6 +278,7 @@ export function LiveTracking({
           const data = JSON.parse(e.data)
           if (data.type === "enter") {
             setGeofenceEntered(true)
+            vibrateSuccess()
           }
         } catch {
           /* ignore */
@@ -287,7 +289,14 @@ export function LiveTracking({
         if (cancelled) return
         try {
           const data = JSON.parse(e.data)
-          if (data.status) setBookingStatus(data.status)
+          if (data.status) {
+            setBookingStatus(data.status)
+            if (data.status === "COMPLETED") {
+              vibrateSuccess()
+            } else if (data.status === "CANCELLED") {
+              vibrateWarning()
+            }
+          }
         } catch {
           /* ignore */
         }

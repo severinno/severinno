@@ -1,11 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { triggerHaptic, isHapticSupported, cancelHaptic } from "../haptics"
+import {
+  triggerHaptic,
+  isHapticSupported,
+  cancelHaptic,
+  vibrateSuccess,
+  vibrateWarning,
+  vibrateError,
+} from "../haptics"
 
 describe("Haptic Feedback Helper (src/lib/haptics.ts)", () => {
   const originalNavigator = globalThis.navigator
+  const originalWindow = (globalThis as any).window
 
   beforeEach(() => {
     vi.restoreAllMocks()
+    if (typeof (globalThis as any).window === "undefined") {
+      ;(globalThis as any).window = globalThis
+    }
   })
 
   afterEach(() => {
@@ -14,6 +25,11 @@ describe("Haptic Feedback Helper (src/lib/haptics.ts)", () => {
       writable: true,
       configurable: true,
     })
+    if (typeof originalWindow === "undefined") {
+      delete (globalThis as any).window
+    } else {
+      ;(globalThis as any).window = originalWindow
+    }
   })
 
   it("returns false when navigator.vibrate is not available", () => {
@@ -84,5 +100,23 @@ describe("Haptic Feedback Helper (src/lib/haptics.ts)", () => {
 
     expect(triggerHaptic("success")).toBe(false)
     expect(cancelHaptic()).toBe(false)
+  })
+
+  it("triggers helper shortcuts vibrateSuccess, vibrateWarning, vibrateError correctly", () => {
+    const mockVibrate = vi.fn().mockReturnValue(true)
+    Object.defineProperty(globalThis, "navigator", {
+      value: { vibrate: mockVibrate },
+      writable: true,
+      configurable: true,
+    })
+
+    expect(vibrateSuccess()).toBe(true)
+    expect(mockVibrate).toHaveBeenLastCalledWith([15, 40, 15])
+
+    expect(vibrateWarning()).toBe(true)
+    expect(mockVibrate).toHaveBeenLastCalledWith([30, 50, 30])
+
+    expect(vibrateError()).toBe(true)
+    expect(mockVibrate).toHaveBeenLastCalledWith([50, 50, 50, 50, 100])
   })
 })

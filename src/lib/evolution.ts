@@ -463,6 +463,25 @@ export async function sendLiveTrackingNotification(
 }
 
 /**
+ * Enviar notificação de prestador chegou ao local.
+ */
+export async function sendProviderArrivedNotification(
+  to: string,
+  clientName: string,
+  providerName: string,
+  serviceName: string,
+  bookingId: string,
+): Promise<{ key: { id: string } } | null> {
+  const text =
+    `📍 *Prestador Chegou ao Local!*\n\n` +
+    `Olá, ${clientName}! O prestador *${providerName}* acabou de chegar para o seu atendimento de *${serviceName}*.\n\n` +
+    `🆔 Agendamento: #${bookingId.slice(0, 8)}\n\n` +
+    `A presença física foi confirmada via GPS de alta precisão. Bom atendimento! 🛠️`
+
+  return sendText(to, text)
+}
+
+/**
  * Enviar recibo de confirmação de pagamento PIX para o cliente.
  */
 export async function sendPixPaymentReceiptToClient(

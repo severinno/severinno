@@ -62,3 +62,24 @@ export function cancelHaptic(): boolean {
     return false
   }
 }
+
+/**
+ * High-level helper for positive affirmation / arrival / check-in success.
+ */
+export function vibrateSuccess(): boolean {
+  return triggerHaptic("success")
+}
+
+/**
+ * High-level helper for warning / deviation / caution.
+ */
+export function vibrateWarning(): boolean {
+  return triggerHaptic("warning")
+}
+
+/**
+ * High-level helper for critical failure or error state.
+ */
+export function vibrateError(): boolean {
+  return triggerHaptic("error")
+}

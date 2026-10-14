@@ -31,6 +31,31 @@ export const POST = withRoute("api.bookings.checkin-escrow.POST", async (req) =>
         clientAddressLng: parsed.clientAddressLng,
       })
 
+      if (result.success) {
+        // Dispara notificação de chegada (WhatsApp + Push + In-App) para o cliente
+        try {
+          const booking = await db.booking.findUnique({
+            where: { id: parsed.bookingId },
+            select: {
+              clientId: true,
+              provider: { select: { name: true } },
+              service: { select: { title: true } },
+            },
+          })
+          if (booking) {
+            const { notifyProviderArrived } = await import("@/lib/notifications")
+            notifyProviderArrived(
+              booking.clientId,
+              parsed.bookingId,
+              booking.provider.name,
+              booking.service?.title ?? "Serviço",
+            ).catch(() => {})
+          }
+        } catch {
+          // Best effort notification
+        }
+      }
+
       return NextResponse.json({ success: result.success, data: result })
     }
 

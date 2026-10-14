@@ -24,6 +24,7 @@ import {
   sendReviewRequest,
   sendPixPaymentMessage,
   sendLiveTrackingNotification,
+  sendProviderArrivedNotification,
   sendPixPaymentReceiptToClient,
   sendBookingReminder24hNotification,
   formatPhone,
@@ -561,6 +562,34 @@ export async function notifyLiveTrackingStarted(
     clientId,
     (to) => sendLiveTrackingNotification(to, providerName, serviceName, bookingId, trackingUrl),
     `tracking:${bookingId}:started`,
+  )
+}
+
+/**
+ * Notificar cliente que o prestador chegou fisicamente ao local de atendimento.
+ * Canais: in-app + WhatsApp + Push
+ */
+export async function notifyProviderArrived(
+  clientId: string,
+  bookingId: string,
+  providerName: string,
+  serviceName: string,
+): Promise<void> {
+  const client = await db.user.findUnique({
+    where: { id: clientId },
+    select: { name: true },
+  })
+  const clientName = client?.name ?? "Cliente"
+  const title = "📍 Prestador chegou ao local!"
+  const body = `${providerName} está no local do atendimento para "${serviceName}".`
+  const pushUrl = `/dashboard?tab=bookings&booking=${bookingId}`
+
+  await createInAppNotification(clientId, "PROVIDER_ARRIVED", title, body)
+  await sendPushNotification(clientId, title, body, pushUrl).catch(() => {})
+  await sendWhatsApp(
+    clientId,
+    (to) => sendProviderArrivedNotification(to, clientName, providerName, serviceName, bookingId),
+    `booking:${bookingId}:arrived`,
   )
 }
 
