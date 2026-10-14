@@ -44,7 +44,8 @@ export async function calculateRoute(
 ): Promise<OsrmRouteResult> {
   const profile = options.profile ?? "driving"
   const timeoutMs = options.timeoutMs ?? 1500
-  const baseUrl = options.osrmUrl ?? process.env.OSRM_URL ?? "http://127.0.0.1:5000"
+  const baseUrl =
+    options.osrmUrl ?? process.env.OSRM_URL ?? process.env.OSRM_BASE_URL ?? "http://127.0.0.1:5000"
 
   const [originLat, originLng] = origin
   const [destLat, destLng] = destination

@@ -64,7 +64,7 @@ export async function GET() {
   // 3. OSRM Road Routing Check
   const osrmStart = performance.now()
   try {
-    const osrmUrl = process.env.OSRM_URL || "http://127.0.0.1:5000"
+    const osrmUrl = process.env.OSRM_URL || process.env.OSRM_BASE_URL || "http://127.0.0.1:5000"
     const res = await fetch(
       `${osrmUrl}/route/v1/driving/-41.9484,-18.8414;-41.9443,-18.8546?overview=false`,
       {
