@@ -19,6 +19,7 @@ import dynamic from "next/dynamic"
 import {
   Calendar,
   FileText,
+  Gift,
   Heart,
   LayoutDashboard,
   type LucideIcon,
@@ -81,6 +82,17 @@ const ClientSecurity = dynamic(
   () => import("@/components/client/client-security").then((m) => ({ default: m.ClientSecurity })),
   { ssr: false },
 )
+const ReferralCard = dynamic(
+  () => import("@/components/shared/referral-card").then((m) => ({ default: m.ReferralCard })),
+  { ssr: false },
+)
+const ReferralLeaderboard = dynamic(
+  () =>
+    import("@/components/shared/referral-leaderboard").then((m) => ({
+      default: m.ReferralLeaderboard,
+    })),
+  { ssr: false },
+)
 
 // ---------------------------------------------------------------------------
 // Nav items
@@ -92,6 +104,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Orçamentos", icon: FileText, view: "client.quotes" },
   { label: "Serviços", icon: Wrench, view: "client.services" },
   { label: "Financeiro", icon: Wallet, view: "client.finance" },
+  { label: "Indique e Ganhe", icon: Gift, view: "client.referral" },
   { label: "Mensagens", icon: MessageSquare, view: "client.messages" },
   { label: "Avaliações", icon: Star, view: "client.reviews" },
   { label: "Favoritos", icon: Heart, view: "client.favorites" },
@@ -128,6 +141,10 @@ const VIEW_META: Record<string, ViewMeta> = {
   "client.finance": {
     title: "Financeiro",
     subtitle: "Pagamentos e gastos",
+  },
+  "client.referral": {
+    title: "Indique e Ganhe",
+    subtitle: "Convide amigos para o Severinno e acumule recompensas no Clube de Fidelidade",
   },
   "client.messages": {
     title: "Mensagens",
@@ -226,6 +243,13 @@ function renderView(view: string): React.ReactNode {
       return <ClientServices />
     case "client.finance":
       return <ClientFinance />
+    case "client.referral":
+      return (
+        <div className="space-y-6">
+          <ReferralCard />
+          <ReferralLeaderboard />
+        </div>
+      )
     case "client.messages":
       return <ClientMessages />
     case "client.reviews":

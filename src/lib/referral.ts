@@ -43,8 +43,15 @@ export async function getOrCreateReferralCode(userId: string): Promise<string> {
   if (existingCode) return existingCode
 
   // Generate 8-char uppercase code: e.g. SEV + 5 hex chars
-  const hash = crypto.createHash("md5").update(userId).digest("hex").slice(0, 5).toUpperCase()
-  const code = `SEV${hash}`
+  const baseHash = crypto.createHash("md5").update(userId).digest("hex").toUpperCase()
+  let code = `SEV${baseHash.slice(0, 5)}`
+
+  // Collision guard: verify if the code already belongs to another user
+  const existingOwner = await cacheGet<string>(`referral:user:${code}`)
+  if (existingOwner && existingOwner !== userId) {
+    // Collision occurred: take alternative slice
+    code = `SEV${baseHash.slice(5, 10)}`
+  }
 
   await cacheSet(`referral:code:${userId}`, code, 365 * 24 * 60 * 60)
   await cacheSet(`referral:user:${code}`, userId, 365 * 24 * 60 * 60)
@@ -68,6 +75,10 @@ export async function registerReferralInvite(
 ): Promise<boolean> {
   const referrerId = await getReferrerByCode(referralCode)
   if (!referrerId || referrerId === invitedUserId) return false
+
+  // Check if invited user is already bound to a referrer (first referral wins)
+  const existingReferrer = await cacheGet<string>(`referral:invited_by:${invitedUserId}`)
+  if (existingReferrer) return true
 
   // Store referrer for this user
   await cacheSet(`referral:invited_by:${invitedUserId}`, referrerId, 365 * 24 * 60 * 60)

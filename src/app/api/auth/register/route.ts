@@ -14,6 +14,7 @@ import { fireEvent } from "@/lib/event-hub"
 import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
 
 import { withRoute } from "@/lib/api-route"
+import { registerReferralInvite } from "@/lib/referral"
 
 export const POST = withRoute("api.auth.register.POST", async (request) => {
   await assertRateLimit(request, RATE_LIMITS.register)
@@ -75,6 +76,16 @@ export const POST = withRoute("api.auth.register.POST", async (request) => {
   })
 
   await createSession(user.id, user.role as "CLIENT" | "PROVIDER" | "ADMIN")
+
+  // 🎁 Vincular convite de indicação (referral), se informado
+  if (data.referralCode) {
+    registerReferralInvite(user.id, data.referralCode).catch((err) =>
+      logger.warn(
+        { err, userId: user.id, code: data.referralCode },
+        "falha ao vincular convite de indicação no registro",
+      ),
+    )
+  }
 
   // 🔔 Fire provider.registered event — admin webhooks can trigger auto push
   if (user.role === "PROVIDER") {

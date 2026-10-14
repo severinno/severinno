@@ -125,10 +125,15 @@ export function ProviderFiscalBatchExport() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {/* Mês de Competência */}
           <div className="space-y-1.5">
-            <label className="text-muted-foreground flex items-center gap-1 text-xs font-semibold">
+            <label
+              htmlFor="competencia-select"
+              className="text-muted-foreground flex items-center gap-1 text-xs font-semibold"
+            >
               <Calendar className="size-3.5" /> Competência (Mês/Ano)
             </label>
             <select
+              id="competencia-select"
+              aria-label="Competência (Mês/Ano)"
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
               className="border-input bg-background focus:ring-primary w-full rounded-md border px-3 py-2 text-sm shadow-sm focus:ring-1 focus:outline-none"

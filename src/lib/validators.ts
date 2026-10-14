@@ -57,6 +57,8 @@ export const registerSchema = z
     // Provider-only
     bio: z.string().max(600).optional().or(z.literal("")),
     radiusKm: z.coerce.number().min(1).max(200).optional(),
+    // Referral
+    referralCode: z.string().max(32).optional(),
   })
   .refine((d) => d.password === d.confirmPassword, {
     message: "As senhas não conferem",

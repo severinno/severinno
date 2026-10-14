@@ -6,7 +6,9 @@ import {
   CalendarCheck,
   CalendarDays,
   Clock,
+  Compass,
   FileText,
+  Gift,
   LayoutDashboard,
   MessageSquare,
   Shield,
@@ -71,6 +73,21 @@ const ProviderOnboarding = dynamic(
 )
 const ClientSecurity = dynamic(
   () => import("@/components/client/client-security").then((m) => ({ default: m.ClientSecurity })),
+  { ssr: false },
+)
+const ProviderRouteOptimizer = dynamic(
+  () => import("./provider-route-optimizer").then((m) => ({ default: m.ProviderRouteOptimizer })),
+  { ssr: false },
+)
+const ReferralCard = dynamic(
+  () => import("@/components/shared/referral-card").then((m) => ({ default: m.ReferralCard })),
+  { ssr: false },
+)
+const ReferralLeaderboard = dynamic(
+  () =>
+    import("@/components/shared/referral-leaderboard").then((m) => ({
+      default: m.ReferralLeaderboard,
+    })),
   { ssr: false },
 )
 
@@ -156,6 +173,20 @@ const VIEWS: ViewMeta[] = [
     icon: Shield,
     title: "Segurança",
     subtitle: "Senha e autenticação de dois fatores.",
+  },
+  {
+    view: "provider.routes",
+    label: "Rotas & Logística",
+    icon: Compass,
+    title: "Otimização de Rotas",
+    subtitle: "Roteirização inteligente e menor tempo de deslocamento no trânsito.",
+  },
+  {
+    view: "provider.referral",
+    label: "Indique e Ganhe",
+    icon: Gift,
+    title: "Programa de Indicação",
+    subtitle: "Indique colegas prestadores e clientes para acumular benefícios exclusivos.",
   },
   {
     view: "provider.profile",
@@ -290,6 +321,13 @@ export function ProviderPanel() {
       {view === "provider.messages" && <ProviderMessages />}
       {view === "provider.reviews" && <ProviderReviews />}
       {view === "provider.security" && <ClientSecurity />}
+      {view === "provider.routes" && <ProviderRouteOptimizer />}
+      {view === "provider.referral" && (
+        <div className="space-y-6">
+          <ReferralCard />
+          <ReferralLeaderboard />
+        </div>
+      )}
       {view === "provider.profile" && <ProviderProfile />}
     </DashboardShell>
   )

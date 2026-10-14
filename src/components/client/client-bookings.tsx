@@ -26,6 +26,7 @@ import {
   ChevronRight,
   CreditCard,
   Eye,
+  FileText,
   Loader2,
   MapPin,
   MessageSquare,
@@ -77,6 +78,7 @@ import { ReviewDialog } from "@/components/client/review-dialog"
 import { BookingTimeline } from "@/components/shared/flow-timeline"
 import { PixCheckout } from "@/components/shared/pix-checkout"
 import { LiveTracking } from "@/components/shared/live-tracking"
+import { ReceiptModal } from "@/components/shared/receipt-modal"
 import {
   PageHeader,
   StatusBadge,
@@ -176,6 +178,7 @@ export function ClientBookings() {
   const [cancelBooking, setCancelBooking] = React.useState<Booking | null>(null)
   const [pixBooking, setPixBooking] = React.useState<Booking | null>(null)
   const [trackingBooking, setTrackingBooking] = React.useState<Booking | null>(null)
+  const [receiptBookingId, setReceiptBookingId] = React.useState<string | null>(null)
 
   // Reset page when tab changes
   React.useEffect(() => {
@@ -350,6 +353,7 @@ export function ClientBookings() {
               onMessage={() => navigate("client.messages", { with: b.provider.id })}
               onViewProvider={() => openProvider(b.provider.id)}
               onTrack={() => setTrackingBooking(b)}
+              onViewReceipt={() => setReceiptBookingId(b.id)}
               onPay={
                 b.paymentMethod === "PIX" && b.paymentStatus === "PENDING"
                   ? () => setPixBooking(b)
@@ -488,6 +492,15 @@ export function ClientBookings() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Receipt Modal */}
+      {receiptBookingId && (
+        <ReceiptModal
+          bookingId={receiptBookingId}
+          open={!!receiptBookingId}
+          onOpenChange={(o) => !o && setReceiptBookingId(null)}
+        />
+      )}
     </div>
   )
 }
@@ -506,6 +519,7 @@ function BookingCard({
   onViewProvider,
   onTrack,
   onPay,
+  onViewReceipt,
   isCompleting,
 }: {
   booking: Booking
@@ -517,6 +531,7 @@ function BookingCard({
   onViewProvider: () => void
   onTrack?: () => void
   onPay?: () => void
+  onViewReceipt?: () => void
   isCompleting: boolean
 }) {
   const provider = booking.provider
@@ -645,6 +660,12 @@ function BookingCard({
                   Avaliar serviço
                 </DropdownMenuItem>
               ) : null}
+              {status === "COMPLETED" || booking.paymentStatus === "PAID" ? (
+                <DropdownMenuItem onSelect={onViewReceipt}>
+                  <FileText className="size-4 text-blue-600" />
+                  Ver recibo / comprovante
+                </DropdownMenuItem>
+              ) : null}
               {canCancel ? (
                 <DropdownMenuItem variant="destructive" onSelect={onCancel}>
                   <XCircle className="size-4" />
@@ -660,6 +681,17 @@ function BookingCard({
             <Eye className="size-4" />
             Detalhes
           </Button>
+          {(status === "COMPLETED" || booking.paymentStatus === "PAID") && onViewReceipt ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onViewReceipt}
+              className="h-9 gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950/30"
+            >
+              <FileText className="size-4" />
+              Recibo
+            </Button>
+          ) : null}
           {canTrack ? (
             <Button
               variant="outline"
