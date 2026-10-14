@@ -137,6 +137,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         sendEvent("position", currentPos)
       }
 
+      // Inicializa status no Redis para propagação rápida
+      await cacheSet(`tracking:status:${bookingId}`, booking.status, 3600).catch(() => {})
+
+      let tickCount = 0
+
       // Cross-instance polling via Redis: allows any replica to broadcast to any SSE client
       const pollInterval = setInterval(async () => {
         try {
@@ -152,18 +157,33 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             }
           }
 
-          // Check booking status
-          const updatedBooking = await db.booking.findUnique({
-            where: { id: bookingId },
-            select: { status: true },
-          })
-          if (updatedBooking && updatedBooking.status !== booking.status) {
-            sendEvent("status", { status: updatedBooking.status })
-            booking.status = updatedBooking.status
+          // Check booking status via Redis cache to eliminate 2s SQL DB bottleneck
+          let updatedStatus = await cacheGet<string>(`tracking:status:${bookingId}`).catch(
+            () => null,
+          )
+          tickCount++
+
+          // Fallback periódico ao banco (a cada 15 ciclos = 30s) ou se o cache estiver vazio
+          if (!updatedStatus || tickCount % 15 === 0) {
+            const updatedBooking = await db.booking
+              .findUnique({
+                where: { id: bookingId },
+                select: { status: true },
+              })
+              .catch(() => null)
+            if (updatedBooking) {
+              updatedStatus = updatedBooking.status
+              cacheSet(`tracking:status:${bookingId}`, updatedStatus, 3600).catch(() => {})
+            }
+          }
+
+          if (updatedStatus && updatedStatus !== booking.status) {
+            sendEvent("status", { status: updatedStatus })
+            booking.status = updatedStatus
 
             // Stop tracking if booking is completed/cancelled
-            if (["COMPLETED", "CANCELLED", "DISPUTED"].includes(updatedBooking.status)) {
-              sendEvent("end", { reason: updatedBooking.status })
+            if (["COMPLETED", "CANCELLED", "DISPUTED"].includes(updatedStatus)) {
+              sendEvent("end", { reason: updatedStatus })
               clearInterval(pollInterval)
               clearInterval(heartbeatInterval)
               controller.close()
@@ -343,5 +363,17 @@ export function broadcastGeofenceEvent(
     } catch {
       // Client disconnected
     }
+  }
+}
+
+/**
+ * Notifica o stream de tracking sobre uma alteração no status do agendamento
+ * atualizando o cache compartilhado no Redis para propagação imediata.
+ */
+export async function setTrackingStatus(bookingId: string, status: string): Promise<void> {
+  try {
+    await cacheSet(`tracking:status:${bookingId}`, status, 3600)
+  } catch {
+    // Best-effort
   }
 }

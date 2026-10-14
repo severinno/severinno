@@ -233,7 +233,7 @@ export async function handleEscrowApproval(
   explicitBookingId?: string,
 ): Promise<string> {
   try {
-    const booking = await db.booking.findFirst({
+    const eligibleBookings = await db.booking.findMany({
       where: {
         clientId: userId,
         status: "COMPLETED",
@@ -243,36 +243,66 @@ export async function handleEscrowApproval(
           : {}),
       },
       orderBy: { updatedAt: "desc" },
+      take: 2,
       include: {
         provider: { select: { id: true, name: true, whatsapp: true } },
         service: { select: { title: true } },
       },
     })
 
-    if (!booking) {
+    if (!eligibleBookings.length) {
       return (
         `ℹ️ Não encontramos nenhum agendamento concluído aguardando aprovação de pagamento no momento.\n\n` +
         `Para visualizar seus agendamentos, digite *1* ou acesse: https://severinno.com`
       )
     }
 
+    if (eligibleBookings.length > 1 && !explicitBookingId) {
+      const list = eligibleBookings
+        .map(
+          (b) =>
+            `• *#${b.id.slice(0, 8)}* — ${b.service?.title || "Serviço"} com ${b.provider.name}`,
+        )
+        .join("\n")
+      return (
+        `⚠️ Você possui mais de um serviço concluído aguardando liberação:\n\n${list}\n\n` +
+        `Por favor, especifique qual deseja aprovar enviando: *APROVAR #CODIGO* (ex: *APROVAR #${eligibleBookings[0].id.slice(0, 8)}*).`
+      )
+    }
+
+    const booking = eligibleBookings[0]
     const now = new Date()
-    await db.$transaction([
-      db.booking.update({
-        where: { id: booking.id },
+
+    // Atualização atômica condicional para prevenir race conditions e dupla liberação
+    const [bookingUpdateResult] = await db.$transaction([
+      db.booking.updateMany({
+        where: {
+          id: booking.id,
+          paymentStatus: "HELD",
+        },
         data: {
           paymentStatus: "PAID",
           escrowReleasedAt: now,
         },
       }),
       db.payment.updateMany({
-        where: { bookingId: booking.id },
+        where: {
+          bookingId: booking.id,
+          status: { not: "PAID" },
+        },
         data: {
           status: "PAID",
           paidAt: now,
         },
       }),
     ])
+
+    if (bookingUpdateResult.count === 0) {
+      return (
+        `ℹ️ O pagamento do agendamento *#${booking.id.slice(0, 8)}* já foi liberado ou não está mais sob custódia.\n\n` +
+        `Acesse o app para consultar os detalhes: https://severinno.com`
+      )
+    }
 
     // Notifica o prestador via WhatsApp sobre a liberação imediata
     if (booking.provider.whatsapp) {
@@ -309,7 +339,7 @@ export async function handleEscrowDispute(
   explicitBookingId?: string,
 ): Promise<string> {
   try {
-    const booking = await db.booking.findFirst({
+    const eligibleBookings = await db.booking.findMany({
       where: {
         clientId: userId,
         status: "COMPLETED",
@@ -319,18 +349,56 @@ export async function handleEscrowDispute(
           : {}),
       },
       orderBy: { updatedAt: "desc" },
+      take: 2,
       include: {
         provider: { select: { id: true, name: true } },
         service: { select: { title: true } },
+        disputes: { where: { status: "OPEN" } },
       },
     })
 
-    if (!booking) {
+    if (!eligibleBookings.length) {
       return (
         `ℹ️ Não encontramos nenhum agendamento recente concluído com pagamento em custódia para contestar.\n\n` +
         `Digite *SUPORTE* para relatar um problema diretamente a nossa equipe humana.`
       )
     }
+
+    if (eligibleBookings.length > 1 && !explicitBookingId) {
+      const list = eligibleBookings
+        .map(
+          (b) =>
+            `• *#${b.id.slice(0, 8)}* — ${b.service?.title || "Serviço"} com ${b.provider.name}`,
+        )
+        .join("\n")
+      return (
+        `⚠️ Você possui mais de um serviço elegível para contestação:\n\n${list}\n\n` +
+        `Por favor, especifique qual deseja contestar enviando: *CONTESTAR #CODIGO* (ex: *CONTESTAR #${eligibleBookings[0].id.slice(0, 8)}*).`
+      )
+    }
+
+    const booking = eligibleBookings[0]
+
+    if (booking.disputes && booking.disputes.length > 0) {
+      return `ℹ️ O agendamento *#${booking.id.slice(0, 8)}* já possui uma contestação aberta sob análise da nossa equipe.`
+    }
+
+    // Registra disputa formal e anota motivo no agendamento para suspender liberação de repasse
+    await db.$transaction([
+      db.dispute.create({
+        data: {
+          bookingId: booking.id,
+          reason: "Contestação de serviço via WhatsApp",
+          status: "OPEN",
+        },
+      }),
+      db.booking.update({
+        where: { id: booking.id },
+        data: {
+          escrowDisputeReason: "Contestação de serviço via WhatsApp",
+        },
+      }),
+    ])
 
     // Registra notificação de contestação para o prestador
     await db.notification

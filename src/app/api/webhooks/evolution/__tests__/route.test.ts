@@ -58,6 +58,11 @@ vi.mock("@/lib/rate-limit", () => ({
   RATE_LIMITS: new Proxy({}, { get: () => ({ prefix: "test", max: 1000, windowMs: 60_000 }) }),
 }))
 
+vi.mock("@/lib/whatsapp-autoresponder", () => ({
+  processInteractiveCommand: vi.fn().mockResolvedValue({ handled: false }),
+  processLocationCheckin: vi.fn().mockResolvedValue({ handled: false }),
+}))
+
 import { POST, __testing__extractNumber, __testing__findUserByPhone } from "../route"
 
 // ── Fixtures ─────────────────────────────────────────────────────────────
@@ -370,5 +375,90 @@ describe("POST /api/webhooks/evolution — roteamento", () => {
     const res = await POST(req)
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ received: true })
+  })
+
+  // ── Autenticação Fail-Closed e Timing-Safe ──────────────────────────────
+
+  it("retorna 401 quando EVOLUTION_WEBHOOK_SECRET está configurado e token é ausente ou inválido", async () => {
+    const originalSecret = process.env.EVOLUTION_WEBHOOK_SECRET
+    try {
+      process.env.EVOLUTION_WEBHOOK_SECRET = "super-secret-123"
+
+      const reqWithoutAuth = new Request("http://localhost/api/webhooks/evolution", {
+        method: "POST",
+        body: JSON.stringify(buildPayload()),
+        headers: { "Content-Type": "application/json" },
+      })
+      const resWithoutAuth = await POST(reqWithoutAuth)
+      expect(resWithoutAuth.status).toBe(401)
+
+      const reqWithWrongToken = new Request("http://localhost/api/webhooks/evolution", {
+        method: "POST",
+        body: JSON.stringify(buildPayload()),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer wrong-token",
+        },
+      })
+      const resWithWrongToken = await POST(reqWithWrongToken)
+      expect(resWithWrongToken.status).toBe(401)
+    } finally {
+      process.env.EVOLUTION_WEBHOOK_SECRET = originalSecret
+    }
+  })
+
+  it("aceita requisição com Bearer token ou apikey válidos", async () => {
+    const originalSecret = process.env.EVOLUTION_WEBHOOK_SECRET
+    try {
+      process.env.EVOLUTION_WEBHOOK_SECRET = "super-secret-123"
+
+      const reqBearer = new Request("http://localhost/api/webhooks/evolution", {
+        method: "POST",
+        body: JSON.stringify(buildPayload()),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer super-secret-123",
+        },
+      })
+      const resBearer = await POST(reqBearer)
+      expect(resBearer.status).toBe(200)
+
+      const reqApiKey = new Request("http://localhost/api/webhooks/evolution", {
+        method: "POST",
+        body: JSON.stringify(buildPayload()),
+        headers: {
+          "Content-Type": "application/json",
+          apikey: "super-secret-123",
+        },
+      })
+      const resApiKey = await POST(reqApiKey)
+      expect(resApiKey.status).toBe(200)
+    } finally {
+      process.env.EVOLUTION_WEBHOOK_SECRET = originalSecret
+    }
+  })
+
+  it("retorna 500 fail-closed em produção se nenhum secret estiver configurado", async () => {
+    const originalEnv = process.env.NODE_ENV
+    const originalSecret = process.env.EVOLUTION_WEBHOOK_SECRET
+    const originalKey = process.env.EVOLUTION_API_KEY
+    try {
+      ;(process.env as any).NODE_ENV = "production"
+      delete process.env.EVOLUTION_WEBHOOK_SECRET
+      delete process.env.EVOLUTION_API_KEY
+
+      const req = new Request("http://localhost/api/webhooks/evolution", {
+        method: "POST",
+        body: JSON.stringify(buildPayload()),
+        headers: { "Content-Type": "application/json" },
+      })
+      const res = await POST(req)
+      expect(res.status).toBe(500)
+      expect(await res.json()).toEqual({ error: "Webhook authentication unconfigured" })
+    } finally {
+      ;(process.env as any).NODE_ENV = originalEnv
+      process.env.EVOLUTION_WEBHOOK_SECRET = originalSecret
+      process.env.EVOLUTION_API_KEY = originalKey
+    }
   })
 })

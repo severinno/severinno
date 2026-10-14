@@ -23,7 +23,7 @@ services:
     container_name: severinno-osrm
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     volumes:
       - ./osrm-data:/data
     command: osrm-routed --algorithm mld /data/governador-valadares.osrm
@@ -49,7 +49,7 @@ services:
     container_name: severinno-valhalla
     restart: unless-stopped
     ports:
-      - "8002:8002"
+      - "127.0.0.1:8002:8002"
     environment:
       - build_elevation=False
       - build_admins=True

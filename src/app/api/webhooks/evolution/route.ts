@@ -14,6 +14,7 @@ export const dynamic = "force-dynamic"
  * Ou configurar via painel Evolution no ambiente.
  */
 
+import crypto from "node:crypto"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { evolutionLogger } from "@/lib/evolution"
@@ -73,21 +74,43 @@ async function findUserByPhone(
 // ---------------------------------------------------------------------------
 
 /**
+ * Comparação em tempo constante para prevenir timing attacks.
+ */
+function safeCompare(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false
+  const bufA = Buffer.from(a)
+  const bufB = Buffer.from(b)
+  if (bufA.length !== bufB.length) return false
+  return crypto.timingSafeEqual(bufA, bufB)
+}
+
+/**
  * POST /api/webhooks/evolution
  *
  * Recebe eventos da Evolution API.
- * Sempre retorna 200 para evitar reenvios.
+ * Sempre retorna 200 para evitar reenvios quando autenticado.
  */
 export async function POST(request: Request) {
   await assertRateLimit(request, RATE_LIMITS.webhookSentry)
   try {
-    // Verify Evolution API secret (api-key or bearer token)
-    const evolutionSecret = process.env.EVOLUTION_WEBHOOK_SECRET
+    // ── Autenticação Mandatória Fail-Closed da Evolution API ───────────────
+    const evolutionSecret = process.env.EVOLUTION_WEBHOOK_SECRET || process.env.EVOLUTION_API_KEY
+    const isProduction = process.env.NODE_ENV === "production"
+
+    if (isProduction && !evolutionSecret) {
+      evolutionLogger.error(
+        "Webhook Evolution: EVOLUTION_WEBHOOK_SECRET ou EVOLUTION_API_KEY não configurado — rejeitando fail-closed em produção",
+      )
+      return NextResponse.json({ error: "Webhook authentication unconfigured" }, { status: 500 })
+    }
+
     if (evolutionSecret) {
       const authHeader = request.headers.get("authorization")
       const apiKey = request.headers.get("apikey")
-      if (authHeader !== `Bearer ${evolutionSecret}` && apiKey !== evolutionSecret) {
-        evolutionLogger.warn("Webhook Evolution: autenticação inválida")
+      const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : apiKey || ""
+
+      if (!token || !safeCompare(token, evolutionSecret)) {
+        evolutionLogger.warn("Webhook Evolution: autenticação inválida ou ausente")
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
       }
     }

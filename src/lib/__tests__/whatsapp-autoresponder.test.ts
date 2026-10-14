@@ -20,12 +20,16 @@ vi.mock("@/lib/db", () => ({
       findMany: vi.fn(),
       findFirst: vi.fn(),
       update: vi.fn().mockResolvedValue({}),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     payment: {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     notification: {
       create: vi.fn().mockResolvedValue({}),
+    },
+    dispute: {
+      create: vi.fn().mockResolvedValue({ id: "disp-1" }),
     },
     quoteRequest: {
       findMany: vi.fn(),
@@ -209,15 +213,17 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
     })
 
     it("reconhece 'APROVAR' e libera custódia de agendamento concluído", async () => {
-      ;(db.booking.findFirst as any).mockResolvedValue({
-        id: "book-escrow-1",
-        amount: 250.0,
-        clientId: "user-1",
-        status: "COMPLETED",
-        paymentStatus: "HELD",
-        provider: { id: "provider-1", name: "Marcos Eletricista", whatsapp: "5533999998888" },
-        service: { title: "Instalação de Painel" },
-      })
+      ;(db.booking.findMany as any).mockResolvedValue([
+        {
+          id: "book-escrow-1",
+          amount: 250.0,
+          clientId: "user-1",
+          status: "COMPLETED",
+          paymentStatus: "HELD",
+          provider: { id: "provider-1", name: "Marcos Eletricista", whatsapp: "5533999998888" },
+          service: { title: "Instalação de Painel" },
+        },
+      ])
 
       const res = await processInteractiveCommand({
         phone: "5533999999999",
@@ -236,16 +242,76 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
       )
     })
 
-    it("reconhece 'CONTESTAR' e bloqueia custódia abrindo chamado", async () => {
-      ;(db.booking.findFirst as any).mockResolvedValue({
-        id: "book-escrow-2",
-        amount: 300.0,
-        clientId: "user-1",
-        status: "COMPLETED",
-        paymentStatus: "HELD",
-        provider: { id: "provider-2", name: "João Encanador" },
-        service: { title: "Reparo Hidráulico" },
+    it("solicita desambiguação com #CODIGO quando há mais de um agendamento aguardando aprovação", async () => {
+      ;(db.booking.findMany as any).mockResolvedValue([
+        {
+          id: "book-1",
+          amount: 100,
+          provider: { id: "p1", name: "P1", whatsapp: "111" },
+          service: { title: "Serviço 1" },
+        },
+        {
+          id: "book-2",
+          amount: 200,
+          provider: { id: "p2", name: "P2", whatsapp: "222" },
+          service: { title: "Serviço 2" },
+        },
+      ])
+
+      const res = await processInteractiveCommand({
+        phone: "5533999999999",
+        text: "APROVAR",
+        user: { id: "user-1", name: "Carlos" },
       })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Você possui mais de um serviço concluído")
+      expect(res.replyText).toContain("APROVAR #CODIGO")
+      expect(db.$transaction).not.toHaveBeenCalled()
+    })
+
+    it("previne dupla liberação sob concorrência se count == 0", async () => {
+      ;(db.booking.findMany as any).mockResolvedValue([
+        {
+          id: "book-escrow-1",
+          amount: 250.0,
+          clientId: "user-1",
+          status: "COMPLETED",
+          paymentStatus: "HELD",
+          provider: { id: "provider-1", name: "Marcos Eletricista", whatsapp: "5533999998888" },
+          service: { title: "Instalação de Painel" },
+        },
+      ])
+      // Simula que outra transação concorrente já atualizou o status para PAID
+      ;(db.$transaction as any).mockResolvedValueOnce([{ count: 0 }, { count: 0 }])
+
+      const res = await processInteractiveCommand({
+        phone: "5533999999999",
+        text: "APROVAR",
+        user: { id: "user-1", name: "Carlos" },
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("já foi liberado ou não está mais sob custódia")
+      expect(enqueueWhatsApp).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          context: "escrow:released:book-escrow-1",
+        }),
+      )
+    })
+
+    it("reconhece 'CONTESTAR' e bloqueia custódia abrindo chamado", async () => {
+      ;(db.booking.findMany as any).mockResolvedValue([
+        {
+          id: "book-escrow-2",
+          amount: 300.0,
+          clientId: "user-1",
+          status: "COMPLETED",
+          paymentStatus: "HELD",
+          provider: { id: "provider-2", name: "João Encanador" },
+          service: { title: "Reparo Hidráulico" },
+        },
+      ])
 
       const res = await processInteractiveCommand({
         phone: "5533999999999",
