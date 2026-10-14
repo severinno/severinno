@@ -64,9 +64,9 @@ export async function GET() {
   // 3. OSRM Road Routing Check
   const osrmStart = performance.now()
   try {
-    const osrmUrl = process.env.OSRM_URL || "http://router.project-osrm.org"
+    const osrmUrl = process.env.OSRM_URL || "http://127.0.0.1:5000"
     const res = await fetch(
-      `${osrmUrl}/route/v1/driving/-46.6565,-23.5615;-46.6855,-23.5670?overview=false`,
+      `${osrmUrl}/route/v1/driving/-41.9484,-18.8414;-41.9443,-18.8546?overview=false`,
       {
         signal: AbortSignal.timeout(2500),
       },

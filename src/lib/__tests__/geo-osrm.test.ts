@@ -11,6 +11,9 @@ describe("OSRM Routing Engine (src/lib/geo-osrm.ts)", () => {
     const origin: [number, number] = [-18.865, -41.939]
     const dest: [number, number] = [-18.852, -41.942]
 
+    // Simula OSRM indisponível (conexão recusada / timeout)
+    vi.spyOn(global, "fetch").mockRejectedValueOnce(new Error("Connection refused"))
+
     const result = await calculateRoute(origin, dest, { timeoutMs: 50 })
 
     expect(result).toBeDefined()
