@@ -514,7 +514,9 @@ export async function createPixCharge(req: PixChargeRequest): Promise<PixChargeR
     // MUTUAMENTE EXCLUSIVOS (400 "Os campos items e description não podem
     // ser enviados simultaneamente" — provado E2E 2026-10-06) e items já
     // determina o total (fatura R$2 criada sem totalValue → 201).
-    dueDate: req.expiresAt ? req.expiresAt.slice(0, 10) : undefined,
+    dueDate: req.expiresAt
+      ? req.expiresAt.slice(0, 10)
+      : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     // Referência externa (booking.id) — consulta via GET /v2/invoices?referenceId=
     // (formato com ':' aceito e pesquisável — provado E2E 2026-10-06)
     referenceId: req.externalReference,
