@@ -26,12 +26,20 @@ export const GET = withRoute("api.reviews.GET", async (request) => {
     ...(bookingId ? { bookingId } : {}),
   }
 
-  const [items, total] = await Promise.all([
+  const [reviews, total] = await Promise.all([
     db.review.findMany({
       where,
       include: {
         client: { select: { id: true, name: true, avatarUrl: true } },
-        booking: { select: { id: true, serviceId: true } },
+        booking: {
+          select: {
+            id: true,
+            serviceId: true,
+            status: true,
+            paymentStatus: true,
+            escrowReleasedAt: true,
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
       skip,
@@ -39,6 +47,13 @@ export const GET = withRoute("api.reviews.GET", async (request) => {
     }),
     db.review.count({ where }),
   ])
+
+  const items = reviews.map((r) => ({
+    ...r,
+    isVerified:
+      r.booking?.status === "COMPLETED" &&
+      (r.booking?.paymentStatus === "PAID" || r.booking?.escrowReleasedAt != null),
+  }))
 
   return NextResponse.json({ items, total, page, limit })
 })
@@ -59,6 +74,8 @@ export const POST = withRoute("api.reviews.POST", async (request) => {
       providerId: true,
       serviceId: true,
       status: true,
+      paymentStatus: true,
+      escrowReleasedAt: true,
     },
   })
   if (!booking) throw notFound("Agendamento não encontrado")
@@ -128,6 +145,18 @@ export const POST = withRoute("api.reviews.POST", async (request) => {
     throw badRequest("Este agendamento já foi avaliado")
   }
 
+  const photosList: string[] = Array.isArray(data.photos) ? [...data.photos] : []
+  if (data.beforePhotoUrl && !photosList.includes(data.beforePhotoUrl)) {
+    photosList.unshift(data.beforePhotoUrl)
+  }
+  if (data.afterPhotoUrl && !photosList.includes(data.afterPhotoUrl)) {
+    photosList.push(data.afterPhotoUrl)
+  }
+
+  const isVerified =
+    booking.status === "COMPLETED" &&
+    (booking.paymentStatus === "PAID" || booking.escrowReleasedAt != null)
+
   // Update existing review (provider rated first) or create new
   if (existing) {
     const review = await db.review.update({
@@ -135,10 +164,11 @@ export const POST = withRoute("api.reviews.POST", async (request) => {
       data: {
         rating: data.rating,
         comment: data.comment ? sanitizeText(data.comment) : null,
+        ...(photosList.length > 0 ? { photos: photosList.slice(0, 4) } : {}),
       },
     })
     fireEvent("review.created", { reviewId: review.id, bookingId: booking.id })
-    return NextResponse.json({ review }, { status: 200 })
+    return NextResponse.json({ review: { ...review, isVerified } }, { status: 200 })
   }
 
   const rating = data.rating ?? 0
@@ -154,6 +184,7 @@ export const POST = withRoute("api.reviews.POST", async (request) => {
       serviceId: booking.serviceId,
       rating,
       comment: data.comment ? sanitizeText(data.comment) : null,
+      photos: photosList.slice(0, 4),
     },
     include: {
       client: { select: { id: true, name: true, avatarUrl: true } },
@@ -179,5 +210,5 @@ export const POST = withRoute("api.reviews.POST", async (request) => {
     { scopedUserIds: [booking.providerId] },
   ).catch((err) => logger.warn({ err }, "review notification failed (fire-and-forget)"))
 
-  return NextResponse.json({ review }, { status: 201 })
+  return NextResponse.json({ review: { ...review, isVerified } }, { status: 201 })
 })

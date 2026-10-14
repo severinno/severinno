@@ -35,6 +35,7 @@ import {
   idempotencyErrorResponse,
 } from "@/lib/idempotency"
 import { toMoneyNumber } from "@/lib/money"
+import { sendPaymentConfirmed } from "@/lib/realtime-client"
 
 // ---------------------------------------------------------------------------
 // Helper: confirmar pagamento do booking
@@ -157,6 +158,15 @@ async function confirmBookingPayment(
     booking.service?.title ?? "Serviço",
     booking.provider?.name ?? "Prestador",
   ).catch((err) => logger.warn({ err }, "lytex client payment confirmation failed"))
+
+  // ⚡ Emissão Instantânea em Tempo Real via WebSocket
+  sendPaymentConfirmed({
+    bookingId,
+    clientId: booking.clientId,
+    providerId: booking.providerId,
+    amount: toMoneyNumber(booking.amount),
+    paymentMethod: "PIX",
+  }).catch((err) => logger.warn({ err }, "lytex realtime payment confirmation emit failed"))
 }
 
 // ---------------------------------------------------------------------------

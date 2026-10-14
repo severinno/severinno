@@ -1,9 +1,10 @@
 "use client"
 
-import { Star, MapPin, Award } from "lucide-react"
+import { Star, MapPin, Award, ShieldCheck } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { SafeImage } from "@/components/shared/safe-image"
 import { formatBRL } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -31,6 +32,8 @@ type Props = {
       id: string
       rating: number
       comment: string | null
+      photos?: string[]
+      isVerified?: boolean
       createdAt: Date
       client: { name: string; avatarUrl: string | null }
     }>
@@ -174,7 +177,7 @@ export function PublicProfilePage({ provider }: Props) {
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-medium">{r.client.name}</span>
                           <span className="inline-flex gap-0.5">
                             {Array.from({ length: 5 }).map((_, i) => (
@@ -189,9 +192,36 @@ export function PublicProfilePage({ provider }: Props) {
                               />
                             ))}
                           </span>
+                          {r.isVerified && (
+                            <span className="border-border/60 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300">
+                              <ShieldCheck className="size-3 text-emerald-500" />
+                              Serviço Verificado
+                            </span>
+                          )}
                         </div>
                         {r.comment && (
                           <p className="text-muted-foreground mt-1 text-sm">{r.comment}</p>
+                        )}
+                        {r.photos && r.photos.length > 0 && (
+                          <div className="mt-2.5 flex flex-wrap gap-2">
+                            {r.photos.map((photo, pIdx) => (
+                              <div
+                                key={pIdx}
+                                className="border-border/60 relative h-16 w-24 overflow-hidden rounded-md border"
+                              >
+                                <SafeImage
+                                  src={photo}
+                                  alt={`Foto ${pIdx + 1} do serviço`}
+                                  className="object-cover"
+                                />
+                                {r.photos!.length === 2 && (
+                                  <span className="absolute bottom-1 left-1 z-10 rounded bg-black/60 px-1 py-0.5 text-[9px] font-semibold text-white">
+                                    {pIdx === 0 ? "Antes" : "Depois"}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
                     </div>

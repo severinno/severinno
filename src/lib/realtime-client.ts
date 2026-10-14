@@ -84,3 +84,13 @@ export async function sendMessageRead(opts: {
 }): Promise<void> {
   await emitRealtime("message:read", opts)
 }
+
+export async function sendPaymentConfirmed(opts: {
+  bookingId: string
+  clientId: string
+  providerId?: string
+  amount?: number
+  paymentMethod?: string
+}): Promise<void> {
+  await emitRealtime("payment:confirmed", opts)
+}

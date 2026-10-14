@@ -33,6 +33,7 @@ import { describePayError, type PayErrorAction } from "@/lib/idempotency-client"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { playCoinSound } from "@/lib/sounds"
+import { useRealtime } from "@/hooks/use-realtime"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -108,6 +109,53 @@ export function PixCheckout({
       if (recoveryTimeoutRef.current) clearTimeout(recoveryTimeoutRef.current)
     }
   }, [])
+
+  const { on, emit, isConnected } = useRealtime()
+
+  // ⚡ Escuta WebSocket instantânea de confirmação de pagamento
+  React.useEffect(() => {
+    if (!bookingId) return
+
+    if (isConnected) {
+      emit("join:booking", { bookingId })
+    }
+
+    const unsubPayment = on<{ bookingId: string }>("payment:confirmed", (evt) => {
+      if (evt?.bookingId === bookingId && !confirmedRef.current) {
+        confirmedRef.current = true
+        setState("confirmed")
+        playCoinSound({ vibrate: true })
+        toast.success("Pagamento PIX confirmado instantaneamente via WebSocket! 🎉")
+        onPaymentConfirmed?.()
+        if (pollRef.current) clearInterval(pollRef.current)
+        if (timerRef.current) clearInterval(timerRef.current)
+      }
+    })
+
+    const unsubBooking = on<{ bookingId: string; status?: string; paymentStatus?: string }>(
+      "booking:updated",
+      (evt) => {
+        if (
+          evt?.bookingId === bookingId &&
+          (evt?.paymentStatus === "PAID" || evt?.status === "CONFIRMED") &&
+          !confirmedRef.current
+        ) {
+          confirmedRef.current = true
+          setState("confirmed")
+          playCoinSound({ vibrate: true })
+          toast.success("Pagamento PIX confirmado! 🎉")
+          onPaymentConfirmed?.()
+          if (pollRef.current) clearInterval(pollRef.current)
+          if (timerRef.current) clearInterval(timerRef.current)
+        }
+      },
+    )
+
+    return () => {
+      unsubPayment()
+      unsubBooking()
+    }
+  }, [isConnected, bookingId, on, emit, onPaymentConfirmed])
 
   // ── Polling for payment confirmation ──
   const startPolling = React.useCallback(() => {
@@ -426,11 +474,20 @@ export function PixCheckout({
             </div>
           </div>
 
-          {/* Polling indicator */}
-          <p className="text-muted-foreground flex items-center gap-1.5 text-[11px]">
-            <Loader2 className="size-3 animate-spin" />
-            Aguardando confirmação automática…
-          </p>
+          {/* Polling & WebSocket indicator */}
+          <div className="text-muted-foreground flex w-full items-center justify-between pt-1 text-[11px]">
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="size-3 animate-spin" />
+              Aguardando confirmação…
+            </span>
+            <span className="flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex size-2 rounded-full bg-emerald-500"></span>
+              </span>
+              WebSocket Ativo
+            </span>
+          </div>
         </div>
       )}
 

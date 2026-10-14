@@ -16,7 +16,13 @@ const { mockDb, mockReviews, validReviewData, completedBooking, recentReviews } 
       serviceId: "service-1",
       bookingId: "book-1",
       client: { id: "client-1", name: "João", avatarUrl: null },
-      booking: { id: "book-1", serviceId: "service-1" },
+      booking: {
+        id: "book-1",
+        serviceId: "service-1",
+        status: "COMPLETED",
+        paymentStatus: "PAID",
+        escrowReleasedAt: new Date(),
+      },
       provider: { name: "Maria Souza", avatarUrl: null },
       service: { title: "Limpeza Residencial" },
     },
@@ -30,7 +36,12 @@ const { mockDb, mockReviews, validReviewData, completedBooking, recentReviews } 
       serviceId: "service-1",
       bookingId: "book-2",
       client: { id: "client-2", name: "Ana", avatarUrl: null },
-      booking: { id: "book-2", serviceId: "service-1" },
+      booking: {
+        id: "book-2",
+        serviceId: "service-1",
+        status: "COMPLETED",
+        paymentStatus: "PENDING",
+      },
       provider: { name: "Maria Souza", avatarUrl: null },
       service: { title: "Limpeza Residencial" },
     },
@@ -55,6 +66,8 @@ const { mockDb, mockReviews, validReviewData, completedBooking, recentReviews } 
     providerId: "prov-1",
     serviceId: "service-1",
     status: "COMPLETED",
+    paymentStatus: "PAID",
+    escrowReleasedAt: new Date(),
   }
 
   const _recentReviews = [
@@ -253,6 +266,47 @@ describe("POST /api/reviews", () => {
     const response = await POST(req, { params: Promise.resolve({}) })
 
     expect(response.status).toBe(201)
+  })
+
+  it("cria avaliação com fotos de antes/depois e retorna isVerified=true", async () => {
+    const dataWithPhotos = {
+      bookingId: "book-1",
+      rating: 5,
+      comment: "Serviço perfeito com fotos antes e depois",
+      beforePhotoUrl: "https://example.com/before.jpg",
+      afterPhotoUrl: "https://example.com/after.jpg",
+    }
+    vi.mocked(reviewSchema.parse).mockReturnValue(dataWithPhotos as any)
+    mockDb.review.findUnique.mockResolvedValue(null)
+    mockDb.review.create.mockResolvedValue({
+      id: "rev-new",
+      rating: 5,
+      comment: "Serviço perfeito com fotos antes e depois",
+      photos: ["https://example.com/before.jpg", "https://example.com/after.jpg"],
+      clientId: "client-1",
+      providerId: "prov-1",
+      serviceId: "service-1",
+      createdAt: new Date(),
+      client: { id: "client-1", name: "João", avatarUrl: null },
+      booking: {
+        service: { title: "Limpeza Residencial" },
+        provider: { name: "Maria Souza" },
+      },
+    })
+
+    const req = createMockRequest({ method: "POST", body: dataWithPhotos })
+    const response = await POST(req, { params: Promise.resolve({}) })
+    const parsed = await parseResponse<{ review: { isVerified: boolean } }>(response)
+
+    expect(response.status).toBe(201)
+    expect(mockDb.review.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          photos: ["https://example.com/before.jpg", "https://example.com/after.jpg"],
+        }),
+      }),
+    )
+    expect(parsed.body?.review?.isVerified).toBe(true)
   })
 })
 

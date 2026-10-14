@@ -243,6 +243,14 @@ interface MessageReadPayload {
   bookingId?: string
 }
 
+interface PaymentConfirmedPayload {
+  bookingId: string
+  clientId: string
+  providerId?: string
+  amount?: number
+  paymentMethod?: string
+}
+
 // ---------- Helpers ----------
 const generateId = () => randomUUID()
 const nowTimestamp = () => new Date().toISOString()
@@ -352,6 +360,42 @@ function handleMessageRead(payload: MessageReadPayload): void {
   console.log(`[realtime] message:read by ${readerId} -> user:${fromId}`)
 }
 
+function handlePaymentConfirmed(payload: PaymentConfirmedPayload): void {
+  const { bookingId, clientId, providerId, amount, paymentMethod } =
+    payload || ({} as PaymentConfirmedPayload)
+  if (!bookingId || !clientId) return
+  const evt = {
+    bookingId,
+    clientId,
+    providerId: providerId ?? null,
+    amount: amount ?? null,
+    paymentMethod: paymentMethod || "PIX",
+    timestamp: nowTimestamp(),
+  }
+  io.to(`user:${clientId}`).emit("payment:confirmed", evt)
+  io.to(`user:${clientId}`).emit("booking:updated", {
+    bookingId,
+    clientId,
+    providerId: providerId ?? null,
+    status: "CONFIRMED",
+    paymentStatus: "PAID",
+    timestamp: nowTimestamp(),
+  })
+  if (providerId) {
+    io.to(`user:${providerId}`).emit("payment:confirmed", evt)
+    io.to(`user:${providerId}`).emit("booking:updated", {
+      bookingId,
+      clientId,
+      providerId,
+      status: "CONFIRMED",
+      paymentStatus: "PAID",
+      timestamp: nowTimestamp(),
+    })
+  }
+  io.to(`booking:${bookingId}`).emit("payment:confirmed", evt)
+  console.log(`[realtime] payment:confirmed ${bookingId} -> user:${clientId}`)
+}
+
 // ---------- Connection handling ----------
 io.on("connection", (socket: Socket) => {
   console.log(`[realtime] socket connected: ${socket.id}`)
@@ -379,6 +423,24 @@ io.on("connection", (socket: Socket) => {
       ack?.({ ok: false })
     }
   })
+
+  // join:booking -> permite escuta de eventos de um booking específico
+  socket.on(
+    "join:booking",
+    (payload: { bookingId?: string }, ack?: (res: { ok: boolean }) => void) => {
+      try {
+        if (payload?.bookingId) {
+          socket.join(`booking:${payload.bookingId}`)
+          ack?.({ ok: true })
+        } else {
+          ack?.({ ok: false })
+        }
+      } catch (err) {
+        console.error("[realtime] join:booking error:", err)
+        ack?.({ ok: false })
+      }
+    },
+  )
 
   // message:send — o fromId é a identidade do handshake (o payload não
   // decide quem envia); não autenticado não retransmite.
@@ -586,6 +648,9 @@ httpServer.on("request", (req, res) => {
               break
             case "tracking:position":
               handleTrackingPosition(data as TrackingPositionPayload)
+              break
+            case "payment:confirmed":
+              handlePaymentConfirmed(data as PaymentConfirmedPayload)
               break
             default:
               res.writeHead(400, { "Content-Type": "application/json" })

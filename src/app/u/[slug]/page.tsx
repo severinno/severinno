@@ -51,8 +51,16 @@ export default async function Page({ params }: Props) {
           id: true,
           rating: true,
           comment: true,
+          photos: true,
           createdAt: true,
           client: { select: { name: true, avatarUrl: true } },
+          booking: {
+            select: {
+              status: true,
+              paymentStatus: true,
+              escrowReleasedAt: true,
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
         take: 20,
@@ -111,6 +119,23 @@ export default async function Page({ params }: Props) {
     ...profileRow,
     // Decimal → number na fronteira RSC: o contrato do componente é number
     services: profileRow.services.map((s) => ({ ...s, basePrice: toMoneyNumber(s.basePrice) })),
+    reviewsReceived: profileRow.reviewsReceived.map((r) => {
+      const photosArray = Array.isArray(r.photos)
+        ? (r.photos as string[]).filter((p) => typeof p === "string")
+        : []
+      const isVerified =
+        r.booking?.status === "COMPLETED" &&
+        (r.booking?.paymentStatus === "PAID" || r.booking?.escrowReleasedAt != null)
+      return {
+        id: r.id,
+        rating: r.rating,
+        comment: r.comment,
+        photos: photosArray,
+        isVerified,
+        createdAt: r.createdAt,
+        client: r.client,
+      }
+    }),
     rating,
     reviewCount: _count.reviewsReceived,
     completedBookings: _count.bookingsAsProvider,

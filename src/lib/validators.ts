@@ -246,6 +246,9 @@ export const reviewSchema = z
     bookingId: z.string().min(1),
     rating: z.coerce.number().int().min(1).max(5).optional(),
     comment: z.string().max(1000).optional().or(z.literal("")),
+    photos: z.array(z.string()).max(4).optional(),
+    beforePhotoUrl: z.string().optional().or(z.literal("")),
+    afterPhotoUrl: z.string().optional().or(z.literal("")),
     // Bidirectional: provider rates the client
     providerRating: z.coerce.number().int().min(1).max(5).optional(),
     providerComment: z.string().max(1000).optional().or(z.literal("")),

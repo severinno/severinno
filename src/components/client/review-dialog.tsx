@@ -10,11 +10,12 @@
 
 import * as React from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Loader2, Star } from "lucide-react"
+import { Loader2, Star, ShieldCheck, Camera } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiPost } from "@/lib/api"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Dialog,
   DialogContent,
@@ -43,6 +44,8 @@ export function ReviewDialog({ open, onOpenChange, booking, onSubmitted }: Revie
   const qc = useQueryClient()
   const [rating, setRating] = React.useState(0)
   const [comment, setComment] = React.useState("")
+  const [beforePhotoUrl, setBeforePhotoUrl] = React.useState("")
+  const [afterPhotoUrl, setAfterPhotoUrl] = React.useState("")
 
   // Reset when the dialog reopens or the booking changes (adjust state during render)
   const [prevOpen, setPrevOpen] = React.useState(open)
@@ -52,6 +55,8 @@ export function ReviewDialog({ open, onOpenChange, booking, onSubmitted }: Revie
     setPrevBookingId(booking?.id ?? null)
     setRating(0)
     setComment("")
+    setBeforePhotoUrl("")
+    setAfterPhotoUrl("")
   }
 
   const submit = useMutation({
@@ -60,6 +65,8 @@ export function ReviewDialog({ open, onOpenChange, booking, onSubmitted }: Revie
         bookingId: booking?.id,
         rating,
         comment: comment.trim() || undefined,
+        beforePhotoUrl: beforePhotoUrl.trim() || undefined,
+        afterPhotoUrl: afterPhotoUrl.trim() || undefined,
       }),
     onSuccess: () => {
       toast.success("Avaliação enviada. Obrigado pelo seu feedback!")
@@ -147,6 +154,46 @@ export function ReviewDialog({ open, onOpenChange, booking, onSubmitted }: Revie
             <p className="text-muted-foreground text-right text-xs tabular-nums">
               {comment.length}/1000
             </p>
+          </div>
+
+          {/* Fotos de Antes & Depois (Prova Social) */}
+          <div className="border-border/60 bg-muted/20 space-y-3 rounded-lg border p-3">
+            <div className="flex items-center gap-1.5">
+              <Camera className="text-primary size-4" />
+              <Label className="text-xs font-semibold">
+                Fotos do Serviço (Antes & Depois - Opcional)
+              </Label>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="space-y-1">
+                <span className="text-muted-foreground text-[11px] font-medium">
+                  Foto de Antes (URL)
+                </span>
+                <Input
+                  placeholder="https://exemplo.com/antes.jpg"
+                  value={beforePhotoUrl}
+                  onChange={(e) => setBeforePhotoUrl(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <span className="text-muted-foreground text-[11px] font-medium">
+                  Foto de Depois (URL)
+                </span>
+                <Input
+                  placeholder="https://exemplo.com/depois.jpg"
+                  value={afterPhotoUrl}
+                  onChange={(e) => setAfterPhotoUrl(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Selo Prova Social Verificada */}
+          <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+            <ShieldCheck className="size-4 shrink-0 text-emerald-500" />
+            <span>Sua avaliação recebe o selo oficial de Serviço Verificado</span>
           </div>
         </div>
 

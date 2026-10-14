@@ -20,11 +20,13 @@ import React from "react"
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { payBooking, apiGet, toast, playCoinSound } = vi.hoisted(() => ({
+const { payBooking, apiGet, toast, playCoinSound, mockOn, mockEmit } = vi.hoisted(() => ({
   payBooking: vi.fn(),
   apiGet: vi.fn(),
   toast: { error: vi.fn(), success: vi.fn() },
   playCoinSound: vi.fn(),
+  mockOn: vi.fn((_event?: any, _handler?: any) => () => {}),
+  mockEmit: vi.fn(),
 }))
 
 vi.mock("@/lib/api", () => ({
@@ -35,6 +37,14 @@ vi.mock("@/lib/api", () => ({
 
 vi.mock("sonner", () => ({ toast }))
 vi.mock("@/lib/sounds", () => ({ playCoinSound }))
+
+vi.mock("@/hooks/use-realtime", () => ({
+  useRealtime: () => ({
+    isConnected: true,
+    on: mockOn,
+    emit: mockEmit,
+  }),
+}))
 
 // O setup global da vitrine mocka lucide-react com lista fixa (sem os ícones
 // do checkout) — mock local com os que o PixCheckout importa.
@@ -53,7 +63,7 @@ vi.mock("lucide-react", () => ({
 // ── Imports ────────────────────────────────────────────────────────────────
 
 import { PixCheckout } from "../pix-checkout"
-import { render, screen, fireEvent, cleanup, waitFor } from "@/__tests__/test-utils"
+import { render, screen, fireEvent, cleanup, waitFor, act } from "@/__tests__/test-utils"
 
 afterEach(() => cleanup())
 
@@ -106,7 +116,7 @@ describe("PixCheckout — IDEMPOTENCY_IN_FLIGHT", () => {
     // NÃO mostra card de erro
     expect(screen.queryByText("Pagamento já em andamento")).toBeNull()
     // Volta ao fluxo normal de aguardar pagamento
-    expect(screen.getByText(/Aguardando confirmação automática/)).toBeTruthy()
+    expect(screen.getByText(/Aguardando confirmação/)).toBeTruthy()
   })
 
   it("IN_FLIGHT persistente → card amigável 'Pagamento ainda em andamento'", async () => {
@@ -185,7 +195,7 @@ describe("PixCheckout — IDEMPOTENCY_FAILED / CONFLICT", () => {
     await waitFor(() => {
       expect(screen.getByAltText("QR Code PIX").getAttribute("src")).toBe("img://novo")
     })
-    expect(screen.getByText(/Aguardando confirmação automática/)).toBeTruthy()
+    expect(screen.getByText(/Aguardando confirmação/)).toBeTruthy()
   })
 
   it("erro genérico do Lytex mostra a mensagem do servidor (não mais 'instanceof Error')", async () => {
@@ -197,5 +207,45 @@ describe("PixCheckout — IDEMPOTENCY_FAILED / CONFLICT", () => {
       expect(screen.getByText(/Lytex: Saldo insuficiente na conta/)).toBeTruthy()
     })
     expect(screen.getByRole("button", { name: /Tentar novamente/i })).toBeTruthy()
+  })
+
+  it("confirma instantaneamente quando evento payment:confirmed chega via WebSocket", async () => {
+    let capturedHandler: ((evt: any) => void) | null = null
+    mockOn.mockImplementation((event: string, handler: any) => {
+      if (event === "payment:confirmed") {
+        capturedHandler = handler
+      }
+      return () => {}
+    })
+
+    payBooking.mockResolvedValueOnce({
+      paymentMethod: "PIX",
+      status: "PENDING",
+      qrCode: "00020126580014br.gov.bcb.pix0136mock",
+      qrCodeImage: "img://pix-instant",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    })
+
+    const onPaymentConfirmed = vi.fn()
+    render(<PixCheckout bookingId="book-1" amount={150} onPaymentConfirmed={onPaymentConfirmed} />)
+
+    startCheckout()
+
+    await waitFor(() => {
+      expect(screen.getByText(/Copiar código PIX/i)).toBeTruthy()
+      expect(screen.getByText(/WebSocket Ativo/i)).toBeTruthy()
+    })
+
+    // Dispara evento instantâneo via WebSocket
+    expect(capturedHandler).toBeDefined()
+    act(() => {
+      capturedHandler!({ bookingId: "book-1", paymentMethod: "PIX" })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText("Pagamento confirmado!")).toBeTruthy()
+      expect(onPaymentConfirmed).toHaveBeenCalledTimes(1)
+      expect(playCoinSound).toHaveBeenCalled()
+    })
   })
 })
