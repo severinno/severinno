@@ -32,6 +32,7 @@ import {
   Layers,
   LayoutDashboard,
   Map,
+  Navigation,
   Network,
   Users,
   HardHat,
@@ -158,6 +159,10 @@ const AdminCoverageMap = dynamic(
   () => import("./admin-coverage-map").then((m) => ({ default: m.AdminCoverageMap })),
   { ssr: false },
 )
+const AdminOperationsMap = dynamic(
+  () => import("./admin-operations-map").then((m) => ({ default: m.AdminOperationsMap })),
+  { ssr: false },
+)
 const AdminBenchmarkDashboard = dynamic(
   () => import("./admin-benchmark-dashboard").then((m) => ({ default: m.AdminBenchmarkDashboard })),
   { ssr: false },
@@ -218,6 +223,11 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.dashboard",
     label: "Visão geral",
     icon: LayoutDashboard,
+  },
+  {
+    view: "admin.operations",
+    label: "Torre de Controle GV",
+    icon: Navigation,
   },
   {
     view: "admin.project-status",
@@ -396,6 +406,12 @@ const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs:
     title: "Visão geral",
     subtitle: "Indicadores principais e atividade recente do marketplace.",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Visão geral" }],
+  },
+  "admin.operations": {
+    title: "Torre de Controle Operacional — GV",
+    subtitle:
+      "Monitoramento tático em tempo real de Governador Valadares, prestadores em campo e custódia.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Operações GV" }],
   },
   "admin.taxonomy": {
     title: "Taxonomia de categorias",
@@ -685,6 +701,8 @@ function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: stri
   switch (view) {
     case "admin.dashboard":
       return <AdminDashboard onNavigate={onNavigate} />
+    case "admin.operations":
+      return <AdminOperationsMap />
     case "admin.taxonomy":
       return <AdminTaxonomy />
     case "admin.users":
