@@ -21,6 +21,8 @@ export type BroadcasterOptions = {
   onDegradedFix?: (accuracyMeters: number) => void
 }
 
+import { enqueueOfflinePing, flushOfflineGeoQueue } from "@/lib/offline-geo-queue"
+
 export function useLocationBroadcaster(options?: BroadcasterOptions) {
   const bookingId = options?.bookingId
   const intervalMs = options?.intervalMs ?? 10000
@@ -58,6 +60,21 @@ export function useLocationBroadcaster(options?: BroadcasterOptions) {
       accuracy: number | null,
     ) => {
       if (!bookingId) return
+
+      // Offline detection: se dispositivo estiver sem rede, enfileira localmente
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        await enqueueOfflinePing({
+          bookingId,
+          lat,
+          lng,
+          speed,
+          heading,
+          accuracy,
+          timestamp: new Date().toISOString(),
+        })
+        return
+      }
+
       try {
         const res = await fetch(`/api/tracking/${bookingId}/stream`, {
           method: "POST",
@@ -67,9 +84,28 @@ export function useLocationBroadcaster(options?: BroadcasterOptions) {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
           console.warn("[Broadcaster] Erro ao enviar posição:", data.error)
+          // Em caso de erro transitório de rota, salva no buffer offline
+          await enqueueOfflinePing({
+            bookingId,
+            lat,
+            lng,
+            speed,
+            heading,
+            accuracy,
+            timestamp: new Date().toISOString(),
+          })
         }
       } catch (err) {
-        console.warn("[Broadcaster] Falha de rede ao enviar posição:", err)
+        console.warn("[Broadcaster] Falha de rede ao enviar posição — enfileirado offline:", err)
+        await enqueueOfflinePing({
+          bookingId,
+          lat,
+          lng,
+          speed,
+          heading,
+          accuracy,
+          timestamp: new Date().toISOString(),
+        })
       }
     },
     [bookingId],
@@ -150,7 +186,35 @@ export function useLocationBroadcaster(options?: BroadcasterOptions) {
   }, [isBroadcasting, start, stop])
 
   React.useEffect(() => {
+    const handleOnline = () => {
+      if (bookingId) {
+        flushOfflineGeoQueue(async (pings) => {
+          for (const p of pings) {
+            await fetch(`/api/tracking/${p.bookingId}/stream`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                lat: p.lat,
+                lng: p.lng,
+                speed: p.speed,
+                heading: p.heading,
+                accuracy: p.accuracy,
+              }),
+            }).catch(() => {})
+          }
+          return true
+        }, bookingId)
+      }
+    }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handleOnline)
+    }
+
     return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("online", handleOnline)
+      }
       if (
         watchIdRef.current !== null &&
         typeof navigator !== "undefined" &&
@@ -159,7 +223,7 @@ export function useLocationBroadcaster(options?: BroadcasterOptions) {
         navigator.geolocation.clearWatch(watchIdRef.current)
       }
     }
-  }, [])
+  }, [bookingId])
 
   return {
     isBroadcasting,

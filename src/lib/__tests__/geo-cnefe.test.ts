@@ -43,6 +43,25 @@ describe("CNEFE / IBGE Geocoding — Governador Valadares (MG)", () => {
     expect(match?.number).toBeNull()
   })
 
+  it("resolves rooftop addresses in peripheral neighborhoods like Ilha dos Araújos and São Pedro", () => {
+    const ilhaMatch = lookupCnefeGV({
+      street: "Avenida Piracicaba",
+      number: 300,
+    })
+
+    expect(ilhaMatch).not.toBeNull()
+    expect(ilhaMatch?.district).toBe("Ilha dos Araújos")
+    expect(ilhaMatch?.source).toBe("cnefe-ibge-rooftop")
+
+    const saoPedroMatch = lookupCnefeGV({
+      cep: "35041-000",
+      number: 600,
+    })
+
+    expect(saoPedroMatch).not.toBeNull()
+    expect(saoPedroMatch?.district).toBe("São Pedro")
+  })
+
   it("returns null for non-Valadares addresses", () => {
     const match = lookupCnefeGV({
       street: "Avenida Paulista",

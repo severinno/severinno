@@ -15,7 +15,13 @@
 
 set -euo pipefail
 
-REGION="${1:-sudeste}" # default: sudeste (SP, RJ, MG, ES) — mais leve e rápido (~1.5GB)
+REGION="${1:-minas-gerais}" # default: minas-gerais (~500MB) para Governador Valadares e região
+case "$REGION" in
+  mg|valadares|gv)
+    REGION="minas-gerais"
+    ;;
+esac
+
 DATA_DIR="$(pwd)/data/osrm"
 VALHALLA_DIR="$(pwd)/data/valhalla"
 

@@ -201,8 +201,29 @@ export const CNEFE_GV_DIRECTORY: Record<string, CnefeAddressEntry> = {
       },
     ],
   },
+  piracicaba: {
+    street: "Avenida Piracicaba",
+    district: "Ilha dos Araújos",
+    city: "Governador Valadares",
+    state: "MG",
+    cep: "35020-380",
+    numberRanges: [
+      {
+        minNumber: 1,
+        maxNumber: 600,
+        startCoord: [-18.861, -41.936],
+        endCoord: [-18.867, -41.938],
+      },
+      {
+        minNumber: 601,
+        maxNumber: 1500,
+        startCoord: [-18.867, -41.938],
+        endCoord: [-18.873, -41.941],
+      },
+    ],
+  },
 
-  // ── Vila Bretas / São Paulo / Esplanada ────────────────────────────────────
+  // ── Vila Bretas / JK ──────────────────────────────────────────────────────
   "juscelino kubitschek": {
     street: "Avenida Presidente Juscelino Kubitschek",
     district: "Vila Bretas",
@@ -224,6 +245,120 @@ export const CNEFE_GV_DIRECTORY: Record<string, CnefeAddressEntry> = {
       },
     ],
   },
+  "santos dumont": {
+    street: "Avenida Santos Dumont",
+    district: "Vila Bretas",
+    city: "Governador Valadares",
+    state: "MG",
+    cep: "35032-620",
+    numberRanges: [
+      {
+        minNumber: 1,
+        maxNumber: 800,
+        startCoord: [-18.844, -41.943],
+        endCoord: [-18.838, -41.949],
+      },
+      {
+        minNumber: 801,
+        maxNumber: 2000,
+        startCoord: [-18.838, -41.949],
+        endCoord: [-18.831, -41.955],
+      },
+    ],
+  },
+
+  // ── São Pedro ─────────────────────────────────────────────────────────────
+  "moacir paleta": {
+    street: "Avenida Moacir Paleta",
+    district: "São Pedro",
+    city: "Governador Valadares",
+    state: "MG",
+    cep: "35041-000",
+    numberRanges: [
+      {
+        minNumber: 1,
+        maxNumber: 1200,
+        startCoord: [-18.864, -41.965],
+        endCoord: [-18.872, -41.975],
+      },
+      {
+        minNumber: 1201,
+        maxNumber: 3000,
+        startCoord: [-18.872, -41.975],
+        endCoord: [-18.881, -41.986],
+      },
+    ],
+  },
+
+  // ── Santa Rita ────────────────────────────────────────────────────────────
+  "washington luis": {
+    street: "Avenida Washington Luís",
+    district: "Santa Rita",
+    city: "Governador Valadares",
+    state: "MG",
+    cep: "35040-000",
+    numberRanges: [
+      {
+        minNumber: 1,
+        maxNumber: 1000,
+        startCoord: [-18.858, -41.961],
+        endCoord: [-18.865, -41.968],
+      },
+    ],
+  },
+  "eusebio cabral": {
+    street: "Avenida Eusébio Cabral",
+    district: "Santa Rita",
+    city: "Governador Valadares",
+    state: "MG",
+    cep: "35043-000",
+    numberRanges: [
+      {
+        minNumber: 1,
+        maxNumber: 1500,
+        startCoord: [-18.862, -41.963],
+        endCoord: [-18.871, -41.972],
+      },
+    ],
+  },
+
+  // ── Esplanada & Centro Adjacente ──────────────────────────────────────────
+  "sete de setembro": {
+    street: "Avenida Sete de Setembro",
+    district: "Esplanada",
+    city: "Governador Valadares",
+    state: "MG",
+    cep: "35010-300",
+    numberRanges: [
+      {
+        minNumber: 1,
+        maxNumber: 1200,
+        startCoord: [-18.852, -41.938],
+        endCoord: [-18.859, -41.944],
+      },
+      {
+        minNumber: 1201,
+        maxNumber: 3200,
+        startCoord: [-18.859, -41.944],
+        endCoord: [-18.868, -41.952],
+      },
+    ],
+  },
+  "quintino bocaiuva": {
+    street: "Rua Quintino Bocaiúva",
+    district: "Centro",
+    city: "Governador Valadares",
+    state: "MG",
+    cep: "35010-230",
+    numberRanges: [
+      {
+        minNumber: 1,
+        maxNumber: 700,
+        startCoord: [-18.853, -41.943],
+        endCoord: [-18.857, -41.947],
+      },
+    ],
+  },
 
   // ── Grã-Duquesa ───────────────────────────────────────────────────────────
   italia: {
@@ -241,6 +376,21 @@ export const CNEFE_GV_DIRECTORY: Record<string, CnefeAddressEntry> = {
       },
     ],
   },
+  veneza: {
+    street: "Avenida Veneza",
+    district: "Grã-Duquesa",
+    city: "Governador Valadares",
+    state: "MG",
+    cep: "35057-750",
+    numberRanges: [
+      {
+        minNumber: 1,
+        maxNumber: 800,
+        startCoord: [-18.841, -41.958],
+        endCoord: [-18.846, -41.963],
+      },
+    ],
+  },
 }
 
 /** Mapa de CEPs conhecidos do município de Governador Valadares para logradouros CNEFE */
@@ -251,9 +401,17 @@ const CEP_TO_STREET_KEY: Record<string, string> = {
   "35010130": "israel pinheiro",
   "35010040": "barbara heliodora",
   "35010070": "brasil",
+  "35010300": "sete de setembro",
+  "35010230": "quintino bocaiuva",
   "35020560": "rio doce",
+  "35020380": "piracicaba",
   "35030210": "juscelino kubitschek",
+  "35032620": "santos dumont",
+  "35041000": "moacir paleta",
+  "35040000": "washington luis",
+  "35043000": "eusebio cabral",
   "35057300": "italia",
+  "35057750": "veneza",
 }
 
 function normalizeKey(str: string): string {
@@ -346,4 +504,72 @@ export function lookupCnefeGV(query: {
     source: "cnefe-ibge-street",
     confidence: 0.85,
   }
+}
+
+/**
+ * Consulta a tabela estendida CNEFE no banco PostgreSQL com PostGIS (se provisionada).
+ * Faz fallback automático para `lookupCnefeGV` em memória caso a tabela não exista ou o banco falhe.
+ */
+export async function lookupCnefePostGis(query: {
+  street?: string
+  number?: string | number
+  cep?: string
+}): Promise<CnefeMatchResult | null> {
+  // 1. Tentar primeiro o diretório em memória (tempo de resposta < 1ms)
+  const memoryMatch = lookupCnefeGV(query)
+  if (memoryMatch && memoryMatch.source === "cnefe-ibge-rooftop") {
+    return memoryMatch
+  }
+
+  // 2. Se não encontrou rooftop exato em memória, tentar consulta PostGIS caso configurado
+  try {
+    const { db } = await import("@/lib/db")
+    const cleanCep = query.cep ? query.cep.replace(/\D/g, "") : ""
+    const num = query.number ? Number(String(query.number).replace(/\D/g, "")) : null
+
+    if (cleanCep && num) {
+      const rows = await db.$queryRaw<
+        Array<{
+          lat: number
+          lng: number
+          street: string
+          number: string
+          district: string
+          cep: string
+        }>
+      >`
+        SELECT 
+          ST_Y(geom::geometry) as lat, 
+          ST_X(geom::geometry) as lng, 
+          street, 
+          number, 
+          district, 
+          cep
+        FROM "cnefe_gv"
+        WHERE cep = ${cleanCep} AND number = ${String(num)}
+        LIMIT 1
+      `.catch(() => [])
+
+      if (rows.length > 0) {
+        const r = rows[0]
+        return {
+          lat: Number(r.lat),
+          lng: Number(r.lng),
+          displayName: `${r.street}, ${r.number} - ${r.district}, Governador Valadares - MG, ${r.cep}`,
+          street: r.street,
+          number: r.number,
+          district: r.district,
+          city: "Governador Valadares",
+          state: "MG",
+          cep: r.cep,
+          source: "cnefe-ibge-rooftop",
+          confidence: 1.0,
+        }
+      }
+    }
+  } catch {
+    // PostGIS table not yet migrated or offline — graceful degradation to memory match
+  }
+
+  return memoryMatch
 }
