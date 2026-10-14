@@ -41,8 +41,11 @@ async function main() {
       "geom" geometry(Point, 4326) NOT NULL,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
-
+  `)
+  await db.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "cnefe_gv_geom_idx" ON "cnefe_gv" USING GIST ("geom");
+  `)
+  await db.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "cnefe_gv_cep_num_idx" ON "cnefe_gv" ("cep", "number");
   `)
   console.log("✅ Tabela cnefe_gv e índices espaciais configurados.")
