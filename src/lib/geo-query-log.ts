@@ -31,6 +31,7 @@ import "server-only"
 import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 import logger from "./logger"
+import { getClient } from "@/lib/redis"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -203,6 +204,15 @@ export function recordSearch(query: string): void {
     evictIfNeeded("searches")
   }
   markDirty()
+
+  // Incrementa no Redis Sorted Set de forma assíncrona para compartilhamento entre réplicas
+  try {
+    getClient()
+      ?.zincrby("geo:popular:searches", 1, key)
+      .catch(() => {})
+  } catch {
+    // Best-effort
+  }
 }
 
 /**
@@ -221,6 +231,15 @@ export function recordCEP(cep: string): void {
     evictIfNeeded("ceps")
   }
   markDirty()
+
+  // Incrementa no Redis Sorted Set de forma assíncrona
+  try {
+    getClient()
+      ?.zincrby("geo:popular:ceps", 1, key)
+      .catch(() => {})
+  } catch {
+    // Best-effort
+  }
 }
 
 /**
@@ -239,6 +258,15 @@ export function recordReverse(lat: number, lng: number): void {
     evictIfNeeded("reverses")
   }
   markDirty()
+
+  // Incrementa no Redis Sorted Set de forma assíncrona
+  try {
+    getClient()
+      ?.zincrby("geo:popular:reverses", 1, key)
+      .catch(() => {})
+  } catch {
+    // Best-effort
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +285,27 @@ export function getTopSearches(n: number): Array<{ query: string; count: number 
 }
 
 /**
+ * Consulta os termos de busca mais populares do Redis Sorted Set (distribuído).
+ * Fallback transparente para o armazenamento local caso Redis esteja indisponível.
+ */
+export async function getTopSearchesFromRedis(
+  n: number,
+): Promise<Array<{ query: string; count: number }>> {
+  try {
+    const client = getClient()
+    if (!client) return getTopSearches(n)
+    const results = await client.zrevrange("geo:popular:searches", 0, n - 1, "WITHSCORES")
+    const list: Array<{ query: string; count: number }> = []
+    for (let i = 0; i < results.length; i += 2) {
+      list.push({ query: results[i], count: Number(results[i + 1]) || 0 })
+    }
+    return list.length ? list : getTopSearches(n)
+  } catch {
+    return getTopSearches(n)
+  }
+}
+
+/**
  * Get the top N CEPs by frequency.
  * Returns entries sorted by count descending.
  */
@@ -265,6 +314,26 @@ export function getTopCEPs(n: number): Array<{ cep: string; count: number }> {
     .map(([cep, entry]) => ({ cep, count: entry.count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, n)
+}
+
+/**
+ * Consulta os CEPs mais populares do Redis Sorted Set (distribuído).
+ */
+export async function getTopCEPsFromRedis(
+  n: number,
+): Promise<Array<{ cep: string; count: number }>> {
+  try {
+    const client = getClient()
+    if (!client) return getTopCEPs(n)
+    const results = await client.zrevrange("geo:popular:ceps", 0, n - 1, "WITHSCORES")
+    const list: Array<{ cep: string; count: number }> = []
+    for (let i = 0; i < results.length; i += 2) {
+      list.push({ cep: results[i], count: Number(results[i + 1]) || 0 })
+    }
+    return list.length ? list : getTopCEPs(n)
+  } catch {
+    return getTopCEPs(n)
+  }
 }
 
 /**

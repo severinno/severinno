@@ -37,6 +37,8 @@ export async function GET(request: NextRequest) {
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
   const monthParam = searchParams.get("month") || defaultMonth
   const format = searchParams.get("format") || "json"
+  const limitParam = parseInt(searchParams.get("limit") || "100", 10)
+  const limit = Math.min(Math.max(isNaN(limitParam) ? 100 : limitParam, 1), 500)
 
   const [yearStr, monthStr] = monthParam.split("-")
   const year = parseInt(yearStr, 10) || now.getFullYear()
@@ -59,6 +61,7 @@ export async function GET(request: NextRequest) {
         payment: { select: { method: true, amount: true } },
       },
       orderBy: { scheduledAt: "asc" },
+      take: limit,
     })
 
     const receipts = bookings.map((b) => {

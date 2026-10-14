@@ -184,6 +184,22 @@ async function apiStrategy(request) {
   }
 }
 
+const MAX_OSM_TILES = 100
+
+async function pruneTileCache(cache) {
+  try {
+    const keys = await cache.keys()
+    if (keys.length > MAX_OSM_TILES) {
+      const excess = keys.length - MAX_OSM_TILES
+      for (let i = 0; i < excess; i++) {
+        await cache.delete(keys[i])
+      }
+    }
+  } catch {
+    // Best-effort
+  }
+}
+
 async function osmTileStrategy(request) {
   const cache = await caches.open(OSM_TILE_CACHE)
   const cached = await cache.match(request)
@@ -194,8 +210,10 @@ async function osmTileStrategy(request) {
     if (response.ok) {
       // Clone before caching since response can only be consumed once
       const clone = response.clone()
-      // Store without time limit (tiles are immutable)
-      cache.put(request, clone).catch(() => {})
+      cache
+        .put(request, clone)
+        .then(() => pruneTileCache(cache))
+        .catch(() => {})
     }
     return response
   } catch {

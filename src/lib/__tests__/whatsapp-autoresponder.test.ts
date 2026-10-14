@@ -389,5 +389,44 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
       expect(db.booking.update).not.toHaveBeenCalled()
       expect(notifyProviderArrived).not.toHaveBeenCalled()
     })
+
+    it("rejeita check-in quando o prestador envia PIN estático arbitrário (isLiveLocation=false)", async () => {
+      ;(db.booking.findFirst as any).mockResolvedValue({
+        id: "book-checkin-3",
+        providerId: "prov-1",
+        clientId: "client-1",
+        status: "CONFIRMED",
+        lat: -18.8548,
+        lng: -41.9482,
+        address: "Rua Peçanha, 450 - Centro",
+        client: { id: "client-1", name: "Carlos Cliente" },
+        service: { title: "Troca de Fiação" },
+      })
+
+      const res = await processLocationCheckin({
+        phone: "5533988887777",
+        lat: -18.8548,
+        lng: -41.9482,
+        accuracy: 5,
+        isLiveLocation: false, // Pino estático forjado
+        user: { id: "prov-1", name: "Marcos Prestador", role: "PROVIDER" },
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Localização Estática")
+      expect(res.replyText).toContain("Tempo Real (Live)")
+      expect(db.booking.update).not.toHaveBeenCalled()
+    })
+
+    it("não libera custódia para palavras genéricas ambíguas como 'SIM'", async () => {
+      const res = await processInteractiveCommand({
+        phone: "5533999999999",
+        text: "SIM",
+        user: { id: "user-1", name: "Carlos" },
+      })
+
+      expect(res.handled).toBe(false)
+      expect(db.$transaction).not.toHaveBeenCalled()
+    })
   })
 })

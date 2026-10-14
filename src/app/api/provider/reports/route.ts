@@ -36,6 +36,8 @@ export async function GET(request: NextRequest) {
   const reportType = searchParams.get("type") || "bookings"
   const period = searchParams.get("period") || "30d"
   const format = searchParams.get("format") || "csv"
+  const limitParam = parseInt(searchParams.get("limit") || "100", 10)
+  const limit = Math.min(Math.max(isNaN(limitParam) ? 100 : limitParam, 1), 500)
 
   const now = new Date()
   let sinceDate = new Date(0) // all time
@@ -55,6 +57,7 @@ export async function GET(request: NextRequest) {
           service: { select: { title: true } },
         },
         orderBy: { scheduledAt: "desc" },
+        take: limit,
       })
 
       if (format === "json") {
@@ -111,6 +114,7 @@ export async function GET(request: NextRequest) {
           },
         },
         orderBy: { createdAt: "desc" },
+        take: limit,
       })
 
       if (format === "json") {
@@ -157,6 +161,7 @@ export async function GET(request: NextRequest) {
         paymentMethod: true,
         updatedAt: true,
       },
+      take: limit,
     })
 
     const totalGross = bookingsPaid.reduce((acc, b) => acc + toMoneyNumber(b.amount), 0)

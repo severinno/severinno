@@ -267,6 +267,7 @@ function getRateLimitWhitelist(): string[] {
 // ---------------------------------------------------------------------------
 
 const CSRF_SENSITIVE_PREFIXES = [
+  "/api/admin",
   "/api/auth/change-password",
   "/api/auth/2fa/",
   "/api/auth/register",
@@ -287,6 +288,8 @@ function isCsrfSensitive(pathname: string, method: string): boolean {
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return false
   return CSRF_SENSITIVE_PREFIXES.some((p) => pathname.startsWith(p))
 }
+
+export const __testing__CSRF_SENSITIVE_PREFIXES = CSRF_SENSITIVE_PREFIXES
 
 // ---------------------------------------------------------------------------
 // Route protection rules

@@ -158,7 +158,8 @@ export async function POST(request: Request) {
         )
 
         // ── 0. Verificar se a mensagem é um compartilhamento de localização (Check-in GPS) ──
-        const locMsg = message?.locationMessage || message?.liveLocationMessage
+        const isLive = Boolean(message?.liveLocationMessage)
+        const locMsg = message?.liveLocationMessage || message?.locationMessage
         if (
           locMsg &&
           typeof locMsg.degreesLatitude === "number" &&
@@ -170,6 +171,7 @@ export async function POST(request: Request) {
             lat: locMsg.degreesLatitude,
             lng: locMsg.degreesLongitude,
             accuracy: locMsg.accuracyInMeters ?? null,
+            isLiveLocation: isLive,
             user: {
               id: user.id,
               name: user.name,

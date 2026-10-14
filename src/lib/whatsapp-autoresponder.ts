@@ -34,6 +34,7 @@ export type LocationCheckinContext = {
   lat: number
   lng: number
   accuracy?: number | null
+  isLiveLocation?: boolean
   user: {
     id: string
     name: string | null
@@ -458,6 +459,23 @@ export async function processLocationCheckin(
       return { handled: true, replyText }
     }
 
+    // 1.5. Validação Anti-Fraude: Rejeita PIN estático arbitrário
+    if (ctx.isLiveLocation === false) {
+      const replyText =
+        `⚠️ *Check-in Rejeitado (Localização Estática)*\n\n` +
+        `Para garantir a segurança do cliente, o check-in presencial exige o envio de *Localização em Tempo Real (Live)* pelo WhatsApp ou a confirmação direta pelo aplicativo Severinno.\n\n` +
+        `📲 No WhatsApp: toque em 📎 (anexo) > Localização > *Localização em tempo real*.`
+
+      await enqueueWhatsApp({
+        to: ctx.phone,
+        text: replyText,
+        userId: ctx.user.id,
+        context: "checkin:static_location_rejected",
+      }).catch(() => {})
+
+      return { handled: true, replyText }
+    }
+
     // 2. Valida a presença física usando o motor estrito de Geofence (STRICT: 50m)
     const geofenceResult = validateEscrowGeofence({
       providerLocation: {
@@ -547,16 +565,15 @@ export async function processInteractiveCommand(
 
   let replyText: string | null = null
 
-  // 1. Liberação de Escrow / Aprovação de Conclusão do Serviço
+  // 1. Liberação de Escrow / Aprovação de Conclusão do Serviço (Exige intenção explícita — sem "SIM" genérico)
   if (
     normalized === "APROVAR" ||
     normalized === "LIBERAR" ||
-    normalized === "CONFIRMAR" ||
-    normalized === "SIM" ||
+    normalized === "CONFIRMAR PAGAMENTO" ||
     normalized === "PAGAR" ||
     normalized.startsWith("APROVAR ") ||
     normalized.startsWith("LIBERAR ") ||
-    normalized.startsWith("CONFIRMAR ")
+    normalized.startsWith("CONFIRMAR PAGAMENTO ")
   ) {
     replyText = await handleEscrowApproval(ctx.user.id, explicitRef)
   }
