@@ -38,10 +38,26 @@ export type ViaCEPResult = {
 
 // ── Internal implementations ──────────────────────────────────────────────
 
+import { lookupCnefeGV } from "./geo-cnefe"
+
 async function _geocodeCEP(cep: string): Promise<ViaCEPResult> {
   const clean = cep.length === 8 && /^\d{8}$/.test(cep) ? cep : cep.replace(/\D/g, "")
   if (clean.length !== 8) {
     throw new Error("CEP inválido (deve ter 8 dígitos)")
+  }
+
+  // 1. CNEFE/IBGE Local Sovereign Solver for Governador Valadares (MG)
+  if (clean.startsWith("350")) {
+    const cnefe = lookupCnefeGV({ cep: clean })
+    if (cnefe) {
+      return {
+        cep: cnefe.cep,
+        street: cnefe.street,
+        district: cnefe.district,
+        city: cnefe.city,
+        state: cnefe.state,
+      }
+    }
   }
 
   try {

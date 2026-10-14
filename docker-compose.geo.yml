@@ -1,0 +1,62 @@
+# =============================================================================
+# docker-compose.geo.yml — 100% OPEN SOURCE SOBERANIA GEO / ROTEAMENTO / GPS
+# =============================================================================
+# Serviços de Roteamento, Telemetria e Geoprocessamento Soberanos:
+#   - OSRM Backend: http://localhost:5000 (Roteamento sub-milissegundo em malha viária)
+#   - Valhalla:     http://localhost:8002 (Map Matching / Snap-to-Road e Isócronas)
+# =============================================================================
+
+networks:
+  geo:
+    name: severinno_geo
+    driver: bridge
+
+volumes:
+  osrm_data:
+    name: severinno_osrm_data
+  valhalla_data:
+    name: severinno_valhalla_data
+
+services:
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:v5.27.1
+    container_name: severinno-osrm
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - osrm_data:/data
+    command: osrm-routed --algorithm mld /data/brazil-latest.osrm
+    environment:
+      - OSRM_MAX_TABLE_SIZE=1000
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O /dev/null http://127.0.0.1:5000/route/v1/driving/-46.6333,-23.5505;-46.6328,-23.5489 || exit 1",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - geo
+
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    container_name: severinno-valhalla
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      - build_elevation=False
+      - build_admins=True
+      - serve_tiles=True
+    volumes:
+      - valhalla_data:/custom_files
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8002/status || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - geo

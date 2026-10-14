@@ -8,6 +8,7 @@ export type GeoStatus = "idle" | "locating" | "geocoding" | "ready" | "error" | 
 export type GeoState = {
   lat: number | null
   lng: number | null
+  accuracy: number | null
   address: string | null
   cep: string | null
   district: string | null
@@ -19,7 +20,7 @@ export type GeoState = {
   updatedAt: string | null
 
   setFromGPS: () => Promise<void>
-  setFromCoords: (lat: number, lng: number, address?: string) => void
+  setFromCoords: (lat: number, lng: number, address?: string, accuracy?: number | null) => void
   setFromCEP: (cep: string) => Promise<void>
   clear: () => void
 }
@@ -42,6 +43,7 @@ export const useGeoStore = create<GeoState>()(
     (set) => ({
       lat: null,
       lng: null,
+      accuracy: null,
       address: null,
       cep: null,
       district: null,
@@ -63,7 +65,11 @@ export const useGeoStore = create<GeoState>()(
         return new Promise<void>((resolve) => {
           navigator.geolocation.getCurrentPosition(
             async (pos) => {
-              const { latitude: lat, longitude: lng } = pos.coords
+              const { latitude: lat, longitude: lng, accuracy: rawAccuracy } = pos.coords
+              const accuracy =
+                typeof rawAccuracy === "number" && Number.isFinite(rawAccuracy)
+                  ? Math.round(rawAccuracy * 10) / 10
+                  : null
               const now = new Date().toISOString()
 
               // Try reverse geocode to populate address fields
@@ -86,6 +92,7 @@ export const useGeoStore = create<GeoState>()(
               set({
                 lat,
                 lng,
+                accuracy,
                 address: displayName,
                 city,
                 state,
@@ -108,15 +115,16 @@ export const useGeoStore = create<GeoState>()(
               set({ status: "denied", error: message })
               resolve()
             },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 },
           )
         })
       },
 
-      setFromCoords: (lat, lng, address) => {
+      setFromCoords: (lat, lng, address, accuracy) => {
         set({
           lat,
           lng,
+          accuracy: accuracy ?? null,
           address: address ?? null,
           status: "ready",
           error: null,
@@ -159,6 +167,7 @@ export const useGeoStore = create<GeoState>()(
         set({
           lat: null,
           lng: null,
+          accuracy: null,
           address: null,
           cep: null,
           district: null,
@@ -175,6 +184,7 @@ export const useGeoStore = create<GeoState>()(
       partialize: (s) => ({
         lat: s.lat,
         lng: s.lng,
+        accuracy: s.accuracy,
         address: s.address,
         cep: s.cep,
         district: s.district,

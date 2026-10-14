@@ -30,6 +30,7 @@ import {
 import { cn } from "@/lib/utils"
 import { ensureMaplibreWorker } from "@/lib/maplibre-worker"
 import { syncRadiusCircle, type MapLike } from "@/lib/geo-circle"
+import { snapToRoad } from "@/lib/map-matching"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -155,9 +156,10 @@ export function LiveTracking({
   const eventSourceRef = React.useRef<EventSource | null>(null)
   const reconnectAttemptRef = React.useRef(0)
   const reconnectTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const routePolylineRef = React.useRef<[number, number][] | null>(null)
   const maplibreglCacheRef = React.useRef<typeof import("maplibre-gl") | null>(null)
 
-  // ── Update provider marker on map ──
+  // ── Update provider marker on map with snap-to-road ──
   const updateMarker = React.useCallback(
     (pos: Position) => {
       if (!mapRef.current) return
@@ -169,9 +171,20 @@ export function LiveTracking({
         const map = mapRef.current as InstanceType<typeof maplibregl.Map>
         if (!map) return
 
+        const match = snapToRoad([pos.lng, pos.lat], routePolylineRef.current)
+        const targetLngLat: [number, number] = match.isMatched
+          ? match.snappedCoord
+          : [pos.lng, pos.lat]
+
         if (providerMarkerRef.current) {
           const marker = providerMarkerRef.current as InstanceType<typeof maplibregl.Marker>
-          marker.setLngLat([pos.lng, pos.lat])
+          marker.setLngLat(targetLngLat)
+          const el = marker.getElement()
+          const rotation = pos.heading ?? (match.isMatched ? match.bearing : 0)
+          if (el && rotation) {
+            el.style.transform = `rotate(${rotation}deg)`
+            el.style.transition = "transform 0.4s ease"
+          }
         } else {
           const providerEl = document.createElement("div")
           providerEl.style.display = "flex"
@@ -183,17 +196,18 @@ export function LiveTracking({
           providerEl.style.backgroundColor = "#3b82f6"
           providerEl.style.border = "3px solid white"
           providerEl.style.boxShadow = "0 2px 10px rgba(59,130,246,0.5)"
-          providerEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5" fill="white" stroke="#3b82f6" stroke-width="2"/></svg>`
+          providerEl.style.transition = "transform 0.4s ease"
+          providerEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2"><path d="M12 2L19 21L12 17L5 21L12 2Z"/></svg>`
 
           const marker = new maplibregl.Marker({ element: providerEl })
-            .setLngLat([pos.lng, pos.lat])
+            .setLngLat(targetLngLat)
             .addTo(map)
           providerMarkerRef.current = marker
         }
 
         // Fit bounds to show both markers
         const bounds = new maplibregl.LngLatBounds()
-          .extend([pos.lng, pos.lat])
+          .extend(targetLngLat)
           .extend([destinationLng, destinationLat])
         map.fitBounds(bounds, { padding: 50, maxZoom: 16 })
       }
@@ -236,6 +250,19 @@ export function LiveTracking({
           const speedKmh = pos.speed && pos.speed > 0 ? pos.speed * 3.6 : 30
           const eta = (dist / 1000 / speedKmh) * 60
           setEtaMin(eta)
+
+          // Fetch route geometry for map matching if not already cached
+          if (!routePolylineRef.current) {
+            fetch(`/api/tracking/${bookingId}?lat=${pos.lat}&lng=${pos.lng}`)
+              .then((r) => (r.ok ? r.json() : null))
+              .then((data) => {
+                if (data?.route?.polyline) {
+                  routePolylineRef.current = data.route.polyline
+                  updateMarker(pos)
+                }
+              })
+              .catch(() => {})
+          }
 
           // Update map marker
           updateMarker(pos)

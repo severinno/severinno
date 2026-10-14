@@ -229,6 +229,12 @@ export const THIRD_PARTY_ALLOWLIST = [
     reason:
       "OSRM (roteamento) — imagem comunitaria do proprio projeto, sem espelho nosso no registry: o backend de roteamento nao e construido por nos, entao ele nao segue o IMAGE_REGISTRY. Consumir do GHCR publico e a decisao; o que precisa ser revisto de tempo em tempo e ela, nao o consumo",
   },
+  {
+    prefix: "ghcr.io/gis-ops/docker-valhalla/valhalla",
+    addedAt: "2026-10-14",
+    reason:
+      "Valhalla (map matching e isócronas) — imagem comunitária mantida pelo GIS-OPS, sem espelho próprio no registry interno: motor de roteamento/snap-to-road consumido upstream do GHCR",
+  },
 ]
 
 /**
