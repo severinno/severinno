@@ -1,6 +1,6 @@
 "use client"
 
-import { Star, MapPin, Award, ShieldCheck } from "lucide-react"
+import { Star, MapPin, Award, ShieldCheck, Crown } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -20,6 +20,7 @@ type Props = {
     whatsapp: string | null
     verified?: boolean
     identityStatus?: string | null
+    isAmbassador?: boolean
     rating: number
     reviewCount: number
     completedBookings: number
@@ -74,6 +75,12 @@ export function PublicProfilePage({ provider }: Props) {
                 <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 dark:border-blue-800/40 dark:bg-blue-950/40 dark:text-blue-300">
                   <ShieldCheck className="size-3.5 text-blue-600 dark:text-blue-400" />
                   Identidade Verificada
+                </span>
+              )}
+              {provider.isAmbassador && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/40 dark:text-amber-300">
+                  <Crown className="size-3.5 text-amber-600 dark:text-amber-400" />
+                  Embaixador Severinno
                 </span>
               )}
             </div>

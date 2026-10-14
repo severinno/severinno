@@ -4,9 +4,21 @@ import {
   registerReferralInvite,
   processReferralFirstBookingConversion,
   getReferralStats,
+  getReferralLeaderboard,
+  isAmbassador,
 } from "@/lib/referral"
 
 const mockCache = new Map<string, any>()
+
+vi.mock("@/lib/db", () => ({
+  db: {
+    user: {
+      findMany: vi
+        .fn()
+        .mockResolvedValue([{ id: "referrer-1", name: "Carlos Eduardo Silva", avatarUrl: null }]),
+    },
+  },
+}))
 
 vi.mock("@/lib/redis", () => ({
   cacheGet: vi.fn(async (key: string) => mockCache.get(key) ?? null),
@@ -70,5 +82,24 @@ describe("Referral Engine (Indique e Ganhe)", () => {
     expect(stats.totalInvites).toBe(1)
     expect(stats.inviteLink).toContain(`/convite/${code}`)
     expect(stats.whatsappShareUrl).toContain("api.whatsapp.com")
+  })
+
+  it("retorna o ranking do leaderboard e identifica embaixadores", async () => {
+    const code = await getOrCreateReferralCode("referrer-1")
+    await registerReferralInvite("client-a", code)
+    await processReferralFirstBookingConversion("b-1", "client-a")
+
+    const leaderboard = await getReferralLeaderboard(10)
+    expect(leaderboard.length).toBe(1)
+    expect(leaderboard[0].rank).toBe(1)
+    expect(leaderboard[0].userId).toBe("referrer-1")
+    // PII Guard check: "Carlos Eduardo Silva" -> "Carlos S."
+    expect(leaderboard[0].name).toBe("Carlos S.")
+    expect(leaderboard[0].convertedCount).toBe(1)
+
+    // Testa detecção de Embaixador (>= 3 amigos)
+    expect(await isAmbassador("referrer-1")).toBe(false)
+    mockCache.set("referral:converted_count:referrer-1", 4)
+    expect(await isAmbassador("referrer-1")).toBe(true)
   })
 })

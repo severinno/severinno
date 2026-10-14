@@ -6,6 +6,7 @@ import { BreadcrumbJsonLd } from "@/components/shared/breadcrumb-json-ld"
 import { sanitizeForJsonLd } from "@/lib/sanitize"
 import { exactShape } from "@/lib/api-server"
 import { toMoneyNumber } from "@/lib/money"
+import { isAmbassador } from "@/lib/referral"
 
 type Props = { params: Promise<{ slug: string }> }
 
@@ -117,8 +118,10 @@ export default async function Page({ params }: Props) {
   // qualquer coluna sensível) no `select`, isto deixa de compilar em vez de
   // vazar no payload RSC desta página pública e indexável.
   const { _count, ...profileRow } = provider
+  const ambassador = await isAmbassador(provider.id)
   const profile = exactShape<PublicProfileProvider>()({
     ...profileRow,
+    isAmbassador: ambassador,
     // Decimal → number na fronteira RSC: o contrato do componente é number
     services: profileRow.services.map((s) => ({ ...s, basePrice: toMoneyNumber(s.basePrice) })),
     reviewsReceived: profileRow.reviewsReceived.map((r) => {

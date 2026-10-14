@@ -13,6 +13,8 @@ import {
   type OptimizedRoutePlan,
 } from "@/lib/tsp-route-optimizer"
 
+export type { RouteStop, OptimizedRoutePlan }
+
 export interface CandidateStop {
   id?: string
   title: string

@@ -9,6 +9,7 @@ import { bookingSchema } from "@/lib/validators"
 import { badRequest, forbidden, notFound, parsePagination } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { notifyNewBooking } from "@/lib/notifications"
+import { checkAndNotifyBookingSlotFit } from "@/lib/slot-fit-notifications"
 import { withRoute } from "@/lib/api-route"
 import { toMoneyNumber } from "@/lib/money"
 
@@ -109,6 +110,11 @@ export const POST = withRoute("api.bookings.POST", async (request, { span }) => 
     data.scheduledAt,
     booking.client?.name ?? "Cliente",
   ).catch((err) => logger.warn({ err }, "notification failed (fire-and-forget)"))
+
+  // Notificação proativa se for encaixe perfeito na rota do dia
+  checkAndNotifyBookingSlotFit(booking.id).catch((err) =>
+    logger.warn({ err }, "slot-fit proactive check failed (fire-and-forget)"),
+  )
 
   return NextResponse.json({ booking }, { status: 201 })
 })

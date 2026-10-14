@@ -6,12 +6,23 @@
  * both referrers with loyalty points (+50 pts) and platform perks.
  */
 
+import { db } from "@/lib/db"
 import { cacheGet, cacheSet } from "@/lib/redis"
 import { awardPoints } from "@/lib/loyalty"
 import logger from "@/lib/logger"
 import crypto from "crypto"
 
 const log = logger.child({ module: "referral" })
+
+export interface ReferralLeaderboardEntry {
+  rank: number
+  userId: string
+  name: string
+  avatarUrl: string | null
+  convertedCount: number
+  pointsEarned: number
+  badge: "Embaixador Diamante" | "Embaixador Ouro" | "Embaixador Severinno" | "Indicador Ativo"
+}
 
 export interface ReferralStats {
   code: string
@@ -95,6 +106,14 @@ export async function processReferralFirstBookingConversion(
   const currentCount = (await cacheGet<number>(countKey)) ?? 0
   await cacheSet(countKey, currentCount + 1, 365 * 24 * 60 * 60)
 
+  // Track in referral leaderboard list
+  const lbKey = "referral:leaderboard:users"
+  const lbUsers = (await cacheGet<string[]>(lbKey)) ?? []
+  if (!lbUsers.includes(referrerId)) {
+    lbUsers.push(referrerId)
+    await cacheSet(lbKey, lbUsers, 365 * 24 * 60 * 60)
+  }
+
   // Award +50 loyalty points to referrer
   await awardPoints(referrerId, "referral")
 
@@ -134,4 +153,65 @@ export async function getReferralStats(userId: string): Promise<ReferralStats> {
     pointsEarned,
     tierBonusTitle: activeFriends >= 5 ? "Top Embaixador Severinno" : "Indicador Ativo",
   }
+}
+
+/**
+ * Returns the top community referrers for the leaderboard
+ */
+export async function getReferralLeaderboard(limit = 10): Promise<ReferralLeaderboardEntry[]> {
+  const lbKey = "referral:leaderboard:users"
+  const lbUsers = (await cacheGet<string[]>(lbKey)) ?? []
+
+  if (lbUsers.length === 0) return []
+
+  const entries: Array<{ userId: string; count: number }> = []
+  for (const uid of lbUsers) {
+    const count = (await cacheGet<number>(`referral:converted_count:${uid}`)) ?? 0
+    if (count > 0) {
+      entries.push({ userId: uid, count })
+    }
+  }
+
+  entries.sort((a, b) => b.count - a.count)
+  const topSlice = entries.slice(0, limit)
+
+  if (topSlice.length === 0) return []
+
+  const users = await db.user.findMany({
+    where: { id: { in: topSlice.map((e) => e.userId) } },
+    select: { id: true, name: true, avatarUrl: true },
+  })
+  const userMap = new Map(users.map((u) => [u.id, u]))
+
+  return topSlice.map((entry, index) => {
+    const user = userMap.get(entry.userId)
+    const rawName = user?.name || "Usuário"
+    // PII Guard safe masking: "Carlos Silva" -> "Carlos S."
+    const parts = rawName.trim().split(/\s+/)
+    const safeName = parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1][0]}.` : parts[0]
+
+    let badge: ReferralLeaderboardEntry["badge"] = "Indicador Ativo"
+    if (entry.count >= 10) badge = "Embaixador Diamante"
+    else if (entry.count >= 5) badge = "Embaixador Ouro"
+    else if (entry.count >= 3) badge = "Embaixador Severinno"
+
+    return {
+      rank: index + 1,
+      userId: entry.userId,
+      name: safeName,
+      avatarUrl: user?.avatarUrl || null,
+      convertedCount: entry.count,
+      pointsEarned: entry.count * 50,
+      badge,
+    }
+  })
+}
+
+/**
+ * Checks if a user holds the "Embaixador Severinno" tier badge
+ */
+export async function isAmbassador(userId: string): Promise<boolean> {
+  const countKey = `referral:converted_count:${userId}`
+  const activeFriends = (await cacheGet<number>(countKey)) ?? 0
+  return activeFriends >= 3
 }

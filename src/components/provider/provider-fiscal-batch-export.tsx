@@ -1,0 +1,194 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { FileText, Download, Printer, FileSpreadsheet, Code, Calendar } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+
+export function ProviderFiscalBatchExport() {
+  const now = new Date()
+  const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthStr)
+  const [format, setFormat] = useState<"html" | "csv" | "json">("html")
+  const [loading, setLoading] = useState(false)
+  const [stats, setStats] = useState<{
+    totalBookings: number
+    totalGross: number
+    totalNet: number
+  } | null>(null)
+
+  // Generate options for the last 6 months
+  const monthOptions = Array.from({ length: 6 }).map((_, index) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - index, 1)
+    const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+    const label = d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })
+    return {
+      value: val,
+      label: label.charAt(0).toUpperCase() + label.slice(1),
+    }
+  })
+
+  useEffect(() => {
+    async function fetchStats() {
+      setLoading(true)
+      try {
+        const res = await fetch(
+          `/api/provider/reports/batch-receipts?month=${selectedMonth}&format=json`,
+        )
+        if (res.ok) {
+          const data = await res.json()
+          setStats({
+            totalBookings: data.totalBookings,
+            totalGross: data.totalGross,
+            totalNet: data.totalNet,
+          })
+        }
+      } catch {
+        // Fallback
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchStats()
+  }, [selectedMonth])
+
+  const handleExport = () => {
+    const exportUrl = `/api/provider/reports/batch-receipts?month=${selectedMonth}&format=${format}`
+    if (format === "html") {
+      window.open(exportUrl, "_blank")
+    } else {
+      const a = document.createElement("a")
+      a.href = exportUrl
+      a.download = `recibos-lote-${selectedMonth}.${format}`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    }
+  }
+
+  return (
+    <Card className="border shadow-sm">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="rounded-lg bg-blue-100 p-2 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400">
+              <FileText className="size-5" />
+            </div>
+            <div>
+              <CardTitle className="text-base font-semibold">
+                Lote de Recibos Fiscais & Extrato Contábil
+              </CardTitle>
+              <p className="text-muted-foreground text-xs">
+                Exporte recibos consolidados e retenções para MEI, Simples Nacional ou IRPF
+              </p>
+            </div>
+          </div>
+          <Badge
+            variant="outline"
+            className="border-blue-200 text-blue-700 dark:border-blue-800 dark:text-blue-300"
+          >
+            Fiscal
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {/* Mês de Competência */}
+          <div className="space-y-1.5">
+            <label className="text-muted-foreground flex items-center gap-1 text-xs font-semibold">
+              <Calendar className="size-3.5" /> Competência (Mês/Ano)
+            </label>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="border-input bg-background focus:ring-primary w-full rounded-md border px-3 py-2 text-sm shadow-sm focus:ring-1 focus:outline-none"
+            >
+              {monthOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Formato de Exportação */}
+          <div className="space-y-1.5">
+            <label className="text-muted-foreground text-xs font-semibold">Formato de Saída</label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setFormat("html")}
+                className={`flex flex-col items-center justify-center rounded-md border p-2 text-xs font-medium transition-all ${
+                  format === "html"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-input hover:bg-muted/50 text-muted-foreground"
+                }`}
+              >
+                <Printer className="mb-1 size-4" />
+                HTML / PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormat("csv")}
+                className={`flex flex-col items-center justify-center rounded-md border p-2 text-xs font-medium transition-all ${
+                  format === "csv"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-input hover:bg-muted/50 text-muted-foreground"
+                }`}
+              >
+                <FileSpreadsheet className="mb-1 size-4" />
+                Excel (CSV)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormat("json")}
+                className={`flex flex-col items-center justify-center rounded-md border p-2 text-xs font-medium transition-all ${
+                  format === "json"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-input hover:bg-muted/50 text-muted-foreground"
+                }`}
+              >
+                <Code className="mb-1 size-4" />
+                JSON
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Resumo do Mês */}
+        <div className="bg-muted/40 rounded-lg border p-3">
+          <div className="text-muted-foreground mb-2 flex items-center justify-between text-xs">
+            <span>Prévia da Competência</span>
+            {loading && <span className="animate-pulse">Atualizando...</span>}
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <p className="text-muted-foreground text-xs">Recibos Emitidos</p>
+              <p className="text-foreground text-base font-bold">{stats?.totalBookings ?? 0}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground text-xs">Faturamento Bruto</p>
+              <p className="text-foreground text-base font-bold">
+                R$ {(stats?.totalGross ?? 0).toFixed(2)}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground text-xs">Repasse Líquido</p>
+              <p className="text-base font-bold text-emerald-600 dark:text-emerald-400">
+                R$ {(stats?.totalNet ?? 0).toFixed(2)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <Button onClick={handleExport} className="w-full gap-2">
+          {format === "html" ? <Printer className="size-4" /> : <Download className="size-4" />}
+          {format === "html"
+            ? "Visualizar e Imprimir Lote de Recibos (PDF)"
+            : `Baixar Lote (${format.toUpperCase()})`}
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
