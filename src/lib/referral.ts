@@ -1,0 +1,137 @@
+/**
+ * referral.ts — Viral Referral & "Indique e Ganhe" Engine for Severinno
+ *
+ * Drives organic user acquisition and provider network expansion.
+ * Tracks invitations, conversion on first completed booking, and rewards
+ * both referrers with loyalty points (+50 pts) and platform perks.
+ */
+
+import { cacheGet, cacheSet } from "@/lib/redis"
+import { awardPoints } from "@/lib/loyalty"
+import logger from "@/lib/logger"
+import crypto from "crypto"
+
+const log = logger.child({ module: "referral" })
+
+export interface ReferralStats {
+  code: string
+  inviteLink: string
+  shareText: string
+  whatsappShareUrl: string
+  totalInvites: number
+  activeFriends: number
+  pointsEarned: number
+  tierBonusTitle: string
+}
+
+/**
+ * Gets or creates a deterministic, user-friendly 8-char referral code
+ */
+export async function getOrCreateReferralCode(userId: string): Promise<string> {
+  const existingCode = await cacheGet<string>(`referral:code:${userId}`)
+  if (existingCode) return existingCode
+
+  // Generate 8-char uppercase code: e.g. SEV + 5 hex chars
+  const hash = crypto.createHash("md5").update(userId).digest("hex").slice(0, 5).toUpperCase()
+  const code = `SEV${hash}`
+
+  await cacheSet(`referral:code:${userId}`, code, 365 * 24 * 60 * 60)
+  await cacheSet(`referral:user:${code}`, userId, 365 * 24 * 60 * 60)
+  return code
+}
+
+/**
+ * Resolves a referrer's userId by their referral code
+ */
+export async function getReferrerByCode(code: string): Promise<string | null> {
+  if (!code) return null
+  return await cacheGet<string>(`referral:user:${code.toUpperCase().trim()}`)
+}
+
+/**
+ * Links a newly registered/invited user to their referrer
+ */
+export async function registerReferralInvite(
+  invitedUserId: string,
+  referralCode: string,
+): Promise<boolean> {
+  const referrerId = await getReferrerByCode(referralCode)
+  if (!referrerId || referrerId === invitedUserId) return false
+
+  // Store referrer for this user
+  await cacheSet(`referral:invited_by:${invitedUserId}`, referrerId, 365 * 24 * 60 * 60)
+
+  // Add to referrer's invite list
+  const listKey = `referral:list:${referrerId}`
+  const list = (await cacheGet<string[]>(listKey)) ?? []
+  if (!list.includes(invitedUserId)) {
+    list.push(invitedUserId)
+    await cacheSet(listKey, list, 365 * 24 * 60 * 60)
+  }
+
+  log.info({ referrerId, invitedUserId, referralCode }, "referral: invite registered")
+  return true
+}
+
+/**
+ * Rewards the referrer when an invited user completes their first paid service
+ */
+export async function processReferralFirstBookingConversion(
+  bookingId: string,
+  clientId: string,
+): Promise<{ rewarded: boolean; pointsAwarded: number; referrerId?: string }> {
+  const referrerId = await cacheGet<string>(`referral:invited_by:${clientId}`)
+  if (!referrerId) return { rewarded: false, pointsAwarded: 0 }
+
+  const convertedKey = `referral:converted:${clientId}`
+  const alreadyConverted = await cacheGet<boolean>(convertedKey)
+  if (alreadyConverted) return { rewarded: false, pointsAwarded: 0 }
+
+  // Mark converted
+  await cacheSet(convertedKey, true, 365 * 24 * 60 * 60)
+
+  // Increment referrer converted count
+  const countKey = `referral:converted_count:${referrerId}`
+  const currentCount = (await cacheGet<number>(countKey)) ?? 0
+  await cacheSet(countKey, currentCount + 1, 365 * 24 * 60 * 60)
+
+  // Award +50 loyalty points to referrer
+  await awardPoints(referrerId, "referral")
+
+  log.info(
+    { referrerId, clientId, bookingId, points: 50 },
+    "referral: conversion rewarded with loyalty points",
+  )
+
+  return { rewarded: true, pointsAwarded: 50, referrerId }
+}
+
+/**
+ * Returns comprehensive referral metrics for the current user
+ */
+export async function getReferralStats(userId: string): Promise<ReferralStats> {
+  const code = await getOrCreateReferralCode(userId)
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://severinno.com.br"
+  const inviteLink = `${appUrl}/convite/${code}`
+
+  const listKey = `referral:list:${userId}`
+  const invitesList = (await cacheGet<string[]>(listKey)) ?? []
+  const countKey = `referral:converted_count:${userId}`
+  const activeFriends = (await cacheGet<number>(countKey)) ?? 0
+  const pointsEarned = activeFriends * 50
+
+  const shareText = `Olá! Conheça o Severinno, a plataforma mais segura do Brasil para contratar serviços com pagamento em custódia (Escrow) e profissionais verificados. Acesse pelo meu convite: ${inviteLink}`
+
+  const whatsappShareUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`
+
+  return {
+    code,
+    inviteLink,
+    shareText,
+    whatsappShareUrl,
+    totalInvites: invitesList.length,
+    activeFriends,
+    pointsEarned,
+    tierBonusTitle: activeFriends >= 5 ? "Top Embaixador Severinno" : "Indicador Ativo",
+  }
+}

@@ -36,6 +36,7 @@ import {
 } from "@/lib/idempotency"
 import { toMoneyNumber } from "@/lib/money"
 import { sendPaymentConfirmed } from "@/lib/realtime-client"
+import { processReferralFirstBookingConversion } from "@/lib/referral"
 
 // ---------------------------------------------------------------------------
 // Helper: confirmar pagamento do booking
@@ -167,6 +168,11 @@ async function confirmBookingPayment(
     amount: toMoneyNumber(booking.amount),
     paymentMethod: "PIX",
   }).catch((err) => logger.warn({ err }, "lytex realtime payment confirmation emit failed"))
+
+  // 🚀 Referral first booking conversion (reward referrer +50 pts)
+  processReferralFirstBookingConversion(bookingId, booking.clientId).catch((err) =>
+    lytexLogger.warn({ err }, "referral conversion check failed (fire-and-forget)"),
+  )
 }
 
 // ---------------------------------------------------------------------------
