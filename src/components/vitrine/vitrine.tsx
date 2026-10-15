@@ -104,6 +104,12 @@ const TrustPaymentPills = React.lazy(() =>
   import("./trust-payment-pills").then((m) => ({ default: m.TrustPaymentPills })),
 )
 import type { TrustPillId } from "./trust-payment-pills"
+const NeighborhoodSelectorBar = React.lazy(() =>
+  import("./neighborhood-selector-bar").then((m) => ({ default: m.NeighborhoodSelectorBar })),
+)
+const FloatingRecentDock = React.lazy(() =>
+  import("./floating-recent-dock").then((m) => ({ default: m.FloatingRecentDock })),
+)
 const EmergencySosModal = React.lazy(() =>
   import("../shared/emergency-sos-modal").then((m) => ({ default: m.EmergencySosModal })),
 )
@@ -264,6 +270,7 @@ export default function Vitrine() {
   const [cameraModalOpen, setCameraModalOpen] = React.useState(false)
   const [bookingSlot, setBookingSlot] = React.useState<string | null>("hoje-tarde")
   const [activeTrustPills, setActiveTrustPills] = React.useState<TrustPillId[]>([])
+  const [selectedNeighborhood, setSelectedNeighborhood] = React.useState<string>("Centro")
   /** Walk em curso (página funda sem âncora) — isFetching sobe, UI segura. */
   const [walkActive, setWalkActive] = React.useState(false)
   /** Token de geração: qualquer reset/navegação aborta o walk async em curso. */
@@ -1075,6 +1082,35 @@ export default function Vitrine() {
           <ProviderSpotlightGeo onQuote={handleQuote} onBook={handleBook} onView={handleView} />
         </Suspense>
 
+        {/* 3c-2. NeighborhoodSelectorBar — Seletor Rápido de Bairro com Métricas Hiperlocais (Feature #2) */}
+        <div className="mx-auto mb-4 max-w-7xl px-4 sm:px-6 lg:px-8">
+          <Suspense fallback={null}>
+            <NeighborhoodSelectorBar
+              selectedNeighborhood={selectedNeighborhood}
+              onSelectNeighborhood={(bairro) => {
+                setSelectedNeighborhood(bairro)
+                resetToFirstPage()
+                dispatch({
+                  type: "SET_FILTERS",
+                  filters: { ...filters, q: bairro },
+                })
+              }}
+              onSearchService={(serviceName, bairro) => {
+                setSelectedNeighborhood(bairro)
+                resetToFirstPage()
+                dispatch({
+                  type: "SET_FILTERS",
+                  filters: { ...filters, q: `${serviceName} ${bairro}` },
+                })
+                if (typeof window !== "undefined") {
+                  const el = document.getElementById(RESULTS_ANCHOR_ID)
+                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+                }
+              }}
+            />
+          </Suspense>
+        </div>
+
         {/* 3d. TrustPaymentPills — Filtros Rápidos de Confiabilidade & Pagamento */}
         <div className="mx-auto mb-4 max-w-7xl px-4 sm:px-6 lg:px-8">
           <Suspense fallback={null}>
@@ -1203,6 +1239,9 @@ export default function Vitrine() {
       </Suspense>
       <Suspense fallback={null}>
         <FloatingSosButton onClick={() => setSosOpen(true)} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <FloatingRecentDock />
       </Suspense>
 
       {/* Compare modal — portal-mounted by Radix */}

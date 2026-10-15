@@ -106,6 +106,8 @@ vi.mock("lucide-react", () => {
     GitCompare: makeIcon("git-compare"),
     X: makeIcon("x"),
     Navigation: makeIcon("navigation"),
+    Clock: makeIcon("clock"),
+    Sparkles: makeIcon("sparkles"),
   }
 })
 

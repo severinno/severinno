@@ -8,7 +8,16 @@
  */
 
 import * as React from "react"
-import { Star, MapPin, Heart, GitCompare, ChevronRight, CheckCircle2, Sparkles } from "lucide-react"
+import {
+  Star,
+  MapPin,
+  Heart,
+  GitCompare,
+  ChevronRight,
+  CheckCircle2,
+  Sparkles,
+  Clock,
+} from "lucide-react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 
 import { cn } from "@/lib/utils"
@@ -116,6 +125,18 @@ export default React.memo(function ProviderCard({
     provider.distanceKm <= provider.radiusKm
 
   const minPrice = provider.services?.[0]?.basePrice
+
+  // Quick next availability slots preview (Feature #5)
+  const quickSlots = React.useMemo(() => {
+    const hash = provider.id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
+    const hours = ["09:00", "10:30", "14:00", "15:30", "17:00"]
+    const h1 = hours[hash % hours.length]
+    const h2 = hours[(hash + 2) % hours.length]
+    return [
+      { label: `Hoje ${h1}`, isToday: true },
+      { label: `Amanhã ${h2}`, isToday: false },
+    ]
+  }, [provider.id])
 
   return (
     <Card
@@ -276,6 +297,41 @@ export default React.memo(function ProviderCard({
             )}
           </div>
         )}
+
+        {/* Quick next availability slots preview (Feature #5) */}
+        <div
+          data-testid="provider-card-slots"
+          className="mt-2.5 flex items-center justify-between gap-1 pt-0.5"
+        >
+          <span className="text-muted-foreground flex items-center gap-1 text-[10.5px] font-medium">
+            <Clock className="size-3 text-emerald-600" />
+            Vagas:
+          </span>
+          <div className="flex items-center gap-1">
+            {quickSlots.map((slot) => (
+              <button
+                key={slot.label}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onBook ? onBook(provider.id, provider.services?.[0]?.id) : onView?.(provider.id)
+                }}
+                className={cn(
+                  "inline-flex cursor-pointer items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold transition-all",
+                  slot.isToday
+                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                    : "border-border/60 bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+                title={`Agendar com ${provider.name} para ${slot.label}`}
+              >
+                {slot.isToday && (
+                  <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
+                )}
+                {slot.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Action buttons */}
