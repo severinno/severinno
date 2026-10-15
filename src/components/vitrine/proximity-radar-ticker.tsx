@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Navigation, Clock, ShieldCheck, Zap, ArrowRight, UserCheck } from "lucide-react"
+import { Navigation, Clock, ArrowRight, UserCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useRegionalContext } from "@/hooks/use-regional-context"
 
@@ -61,16 +61,23 @@ const SAMPLE_NEARBY_PROVIDERS: Omit<NearbyActiveProvider, "neighborhood">[] = [
 ]
 
 export function ProximityRadarTicker({ onExploreNearby, className }: ProximityRadarTickerProps) {
-  const { context } = useRegionalContext()
-  const { city, neighborhoods, platformEvents } = context
+  const regional = useRegionalContext()
+  const context = regional?.context
+  const city = context?.city || "Governador Valadares"
+  const rawNeighborhoods = context?.neighborhoods
+  const platformEvents = context?.platformEvents
   const activeNearbyCount = platformEvents?.activeProvidersNearby || 42
 
   const providersWithNeighborhoods = React.useMemo(() => {
+    const list =
+      rawNeighborhoods && rawNeighborhoods.length > 0
+        ? rawNeighborhoods
+        : ["Centro", "Ilha dos Araújos"]
     return SAMPLE_NEARBY_PROVIDERS.map((p, idx) => ({
       ...p,
-      neighborhood: neighborhoods[idx % neighborhoods.length] || "Centro",
+      neighborhood: list[idx % list.length] || "Centro",
     }))
-  }, [neighborhoods])
+  }, [rawNeighborhoods])
 
   return (
     <section

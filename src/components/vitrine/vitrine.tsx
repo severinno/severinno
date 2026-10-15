@@ -82,6 +82,18 @@ const TrustComparisonTable = React.lazy(() =>
 const ProximityRadarTicker = React.lazy(() =>
   import("./proximity-radar-ticker").then((m) => ({ default: m.ProximityRadarTicker })),
 )
+const FastBookingFilter = React.lazy(() =>
+  import("./fast-booking-filter").then((m) => ({ default: m.FastBookingFilter })),
+)
+const AiVisualSearchModal = React.lazy(() =>
+  import("./ai-visual-search-modal").then((m) => ({ default: m.AiVisualSearchModal })),
+)
+const ServiceCombosSection = React.lazy(() =>
+  import("./service-combos-section").then((m) => ({ default: m.ServiceCombosSection })),
+)
+const PwaInstallBanner = React.lazy(() =>
+  import("../shared/pwa-install-banner").then((m) => ({ default: m.PwaInstallBanner })),
+)
 const EmergencySosModal = React.lazy(() =>
   import("../shared/emergency-sos-modal").then((m) => ({ default: m.EmergencySosModal })),
 )
@@ -239,6 +251,8 @@ export default function Vitrine() {
   const [pagina, setPaginaState] = React.useState(1)
   const [anchors, setAnchors] = React.useState<Map<number, string>>(new Map())
   const [sosOpen, setSosOpen] = React.useState(false)
+  const [cameraModalOpen, setCameraModalOpen] = React.useState(false)
+  const [bookingSlot, setBookingSlot] = React.useState<string | null>("hoje-tarde")
   /** Walk em curso (página funda sem âncora) — isFetching sobe, UI segura. */
   const [walkActive, setWalkActive] = React.useState(false)
   /** Token de geração: qualquer reset/navegação aborta o walk async em curso. */
@@ -866,6 +880,7 @@ export default function Vitrine() {
           }}
           resultsAnchorId={RESULTS_ANCHOR_ID}
           onEmergencyClick={() => setSosOpen(true)}
+          onCameraSearchClick={() => setCameraModalOpen(true)}
           onSearchSubmit={() => {
             dispatch({ type: "DEBOUNCE_Q", q: filters.q })
             if (typeof window !== "undefined") {
@@ -874,6 +889,21 @@ export default function Vitrine() {
             }
           }}
         />
+
+        {/* 1-slot. FastBookingFilter — Filtro Rápido por Data e Horário em 2 Cliques */}
+        <div className="mx-auto my-3 max-w-7xl px-4 sm:px-6 lg:px-8">
+          <Suspense fallback={null}>
+            <FastBookingFilter
+              activeSlot={bookingSlot}
+              onSelectSlot={(slot) => {
+                setBookingSlot(slot)
+                resetToFirstPage()
+                const el = document.getElementById(RESULTS_ANCHOR_ID)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }}
+            />
+          </Suspense>
+        </div>
 
         {/* 1a. EmergencySosBanner — Plantão de Emergência Noturno e Final de Semana */}
         <div className="mx-auto my-4 max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -957,6 +987,20 @@ export default function Vitrine() {
             onQuote={(_serviceId, providerId) => handleQuote(providerId)}
             onBook={(providerId, serviceId) => handleBook(providerId, serviceId)}
             onViewProvider={(providerId) => handleView(providerId)}
+          />
+        </Suspense>
+
+        {/* 2c-combo. ServiceCombosSection — Combos e Pacotes Residenciais com até 20% OFF */}
+        <Suspense fallback={null}>
+          <ServiceCombosSection
+            onSelectCombo={(comboTitle) => {
+              resetToFirstPage()
+              dispatch({ type: "SET_FILTERS", filters: { ...filters, q: comboTitle } })
+              if (typeof window !== "undefined") {
+                const el = document.getElementById(RESULTS_ANCHOR_ID)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            }}
           />
         </Suspense>
 
@@ -1123,6 +1167,27 @@ export default function Vitrine() {
       {/* SOS Emergência 24h Modal (Sugestão 1) */}
       <Suspense fallback={null}>
         <EmergencySosModal open={sosOpen} onOpenChange={setSosOpen} />
+      </Suspense>
+
+      {/* Diagnóstico Visual com IA por Foto (Sugestão 2) */}
+      <Suspense fallback={null}>
+        <AiVisualSearchModal
+          open={cameraModalOpen}
+          onOpenChange={setCameraModalOpen}
+          onSelectService={(serviceName) => {
+            resetToFirstPage()
+            dispatch({ type: "SET_FILTERS", filters: { ...filters, q: serviceName } })
+            if (typeof window !== "undefined") {
+              const el = document.getElementById(RESULTS_ANCHOR_ID)
+              if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+            }
+          }}
+        />
+      </Suspense>
+
+      {/* Banner Inteligente de Instalação PWA (Sugestão 5) */}
+      <Suspense fallback={null}>
+        <PwaInstallBanner />
       </Suspense>
 
       {/* Cookie consent banner — LGPD compliance */}

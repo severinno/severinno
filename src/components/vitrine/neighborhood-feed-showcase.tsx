@@ -1,17 +1,7 @@
 "use client"
 
 import * as React from "react"
-import {
-  MapPin,
-  Star,
-  ShieldCheck,
-  CheckCircle2,
-  Clock,
-  ArrowRight,
-  Camera,
-  Sparkles,
-  Award,
-} from "lucide-react"
+import { MapPin, Star, ShieldCheck, Clock, ArrowRight, Camera, Award } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useRegionalContext } from "@/hooks/use-regional-context"
 
@@ -112,12 +102,13 @@ export function NeighborhoodFeedShowcase({
   onQuoteService,
   className,
 }: NeighborhoodFeedShowcaseProps) {
-  const { context } = useRegionalContext()
-  const { city, neighborhoods } = context
-
+  const regional = useRegionalContext()
+  const context = regional?.context
+  const city = context?.city || "Governador Valadares"
+  const rawNeighborhoods = context?.neighborhoods
   const availableNeighborhoods: string[] = React.useMemo(() => {
-    return (neighborhoods || []).slice(0, 5)
-  }, [neighborhoods])
+    return (rawNeighborhoods || ["Centro", "Ilha dos Araújos", "Grã-Duquesa"]).slice(0, 5)
+  }, [rawNeighborhoods])
 
   const [activeDistrict, setActiveDistrict] = React.useState<string>("Todos")
 

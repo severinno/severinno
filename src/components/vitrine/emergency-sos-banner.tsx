@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Siren, Zap, Droplets, Key, ShieldAlert, ArrowRight, Clock, Sparkles } from "lucide-react"
+import { Siren, Zap, Droplets, Key, ShieldAlert, ArrowRight, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useRegionalContext } from "@/hooks/use-regional-context"
 
@@ -11,8 +11,12 @@ interface EmergencySosBannerProps {
 }
 
 export function EmergencySosBanner({ onTriggerSos, className }: EmergencySosBannerProps) {
-  const { context } = useRegionalContext()
-  const { city, solarPeriod, tone } = context
+  const regional = useRegionalContext()
+  const context = regional?.context
+  const city = context?.city || "Governador Valadares"
+  const solarPeriod = context?.solarPeriod || "morning"
+  const tone = context?.tone
+  const emergencyBadge = tone?.emergencyBadge || "🚨 Plantão Rápido na Sua Cidade"
   const isNight = solarPeriod === "night_emergency" || solarPeriod === "weekend"
 
   return (
@@ -49,7 +53,7 @@ export function EmergencySosBanner({ onTriggerSos, className }: EmergencySosBann
             Cano estourou, luz apagou ou chave travou?
           </h3>
           <p className="text-muted-foreground max-w-2xl text-xs sm:text-sm">
-            {tone.emergencyBadge}: Técnicos credenciados de prontidão agora em{" "}
+            {emergencyBadge}: Técnicos credenciados de prontidão agora em{" "}
             <strong className="text-foreground">{city}</strong> com ferramentas prontas para
             socorrer você sem burocracia.
           </p>

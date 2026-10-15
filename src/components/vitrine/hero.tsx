@@ -46,6 +46,7 @@ import {
   MessageCircle,
   Moon,
   Siren,
+  Camera,
 } from "lucide-react"
 
 import { useGeoStore } from "@/store/geo"
@@ -98,6 +99,7 @@ export type HeroProps = {
   onSearchSubmit?: () => void
   resultsAnchorId?: string
   onEmergencyClick?: () => void
+  onCameraSearchClick?: () => void
 }
 
 // Popular services — recognition over recall (H6).
@@ -136,6 +138,7 @@ export default function Hero({
   onSearchSubmit,
   resultsAnchorId,
   onEmergencyClick,
+  onCameraSearchClick,
 }: HeroProps) {
   const { city } = useGeoStore()
   const openAuth = useUIStore((s) => s.openAuth)
@@ -282,15 +285,26 @@ export default function Hero({
               className="text-foreground mt-7 w-full max-w-xl rounded-2xl bg-white p-2 shadow-2xl ring-1 ring-black/5"
             >
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <div className="relative flex-1">
-                  <Search className="text-muted-foreground absolute top-1/2 left-3.5 size-4 -translate-y-1/2" />
+                <div className="relative flex flex-1 items-center">
+                  <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2" />
                   <Input
                     value={query}
                     onChange={(e) => onQueryChange(e.target.value)}
                     placeholder="O que você precisa? Ex.: encanador, pintura…"
-                    className="h-12 border-0 bg-transparent pl-10 text-left shadow-none focus-visible:ring-0"
+                    className="h-12 border-0 bg-transparent pr-10 pl-10 text-left shadow-none focus-visible:ring-0"
                     aria-label="Serviço buscado"
                   />
+                  {onCameraSearchClick && (
+                    <button
+                      type="button"
+                      onClick={onCameraSearchClick}
+                      title="Diagnóstico visual por foto com IA"
+                      aria-label="Buscar serviço por foto com IA"
+                      className="text-muted-foreground hover:text-primary hover:bg-muted/60 mr-2 flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors"
+                    >
+                      <Camera className="size-4" />
+                    </button>
+                  )}
                 </div>
                 <div className="relative flex items-center sm:w-56">
                   <AddressAutocomplete

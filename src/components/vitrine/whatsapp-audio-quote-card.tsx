@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Mic, MessageCircle, Sparkles, CheckCircle2, ShieldCheck, Zap } from "lucide-react"
+import { Mic, MessageCircle, Sparkles, ShieldCheck, Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useRegionalContext } from "@/hooks/use-regional-context"
 
@@ -10,8 +10,10 @@ interface WhatsappAudioQuoteCardProps {
 }
 
 export function WhatsappAudioQuoteCard({ className }: WhatsappAudioQuoteCardProps) {
-  const { context } = useRegionalContext()
-  const { city, neighborhoods } = context
+  const regional = useRegionalContext()
+  const context = regional?.context
+  const city = context?.city || "Governador Valadares"
+  const neighborhoods = context?.neighborhoods || ["Centro"]
   const primaryNeighborhood = neighborhoods[0] || "Centro"
 
   const defaultWhatsappMessage = encodeURIComponent(
