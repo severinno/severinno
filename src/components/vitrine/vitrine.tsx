@@ -119,6 +119,9 @@ const WhatsappAudioTestimonials = React.lazy(() =>
 const PreventiveRoiBar = React.lazy(() =>
   import("./preventive-roi-bar").then((m) => ({ default: m.PreventiveRoiBar })),
 )
+const HomeHealthScoreQuiz = React.lazy(() =>
+  import("./home-health-score-quiz").then((m) => ({ default: m.HomeHealthScoreQuiz })),
+)
 const EmergencySosModal = React.lazy(() =>
   import("../shared/emergency-sos-modal").then((m) => ({ default: m.EmergencySosModal })),
 )
@@ -1054,6 +1057,23 @@ export default function Vitrine() {
             onSelectService={(serviceQuery) => {
               resetToFirstPage()
               dispatch({ type: "SET_FILTERS", filters: { ...filters, q: serviceQuery } })
+              if (typeof window !== "undefined") {
+                const el = document.getElementById(RESULTS_ANCHOR_ID)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            }}
+          />
+        </Suspense>
+
+        {/* 2c-score. HomeHealthScoreQuiz — Diagnóstico / Score de Saúde da Casa */}
+        <Suspense fallback={null}>
+          <HomeHealthScoreQuiz
+            onScheduleCheckup={(recommendation) => {
+              resetToFirstPage()
+              dispatch({
+                type: "SET_FILTERS",
+                filters: { ...filters, q: recommendation },
+              })
               if (typeof window !== "undefined") {
                 const el = document.getElementById(RESULTS_ANCHOR_ID)
                 if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })

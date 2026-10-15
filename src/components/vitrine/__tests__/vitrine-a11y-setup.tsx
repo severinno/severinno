@@ -12,6 +12,7 @@ vi.mock("lucide-react", () => {
   const Icon = (p: any) => <svg aria-hidden="true" {...p} />
   Icon.displayName = "LucideIcon"
   return {
+    Activity: Icon,
     AlertCircle: Icon,
     AlertTriangle: Icon,
     Armchair: Icon,
@@ -93,6 +94,7 @@ vi.mock("lucide-react", () => {
     Plug: Icon,
     Quote: Icon,
     RefreshCw: Icon,
+    RotateCcw: Icon,
     Route: Icon,
     Ruler: Icon,
     Scissors: Icon,
