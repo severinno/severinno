@@ -43,6 +43,7 @@ import {
   UserPlus,
   FileText,
   Sparkles,
+  MessageCircle,
 } from "lucide-react"
 
 import { useGeoStore } from "@/store/geo"
@@ -306,6 +307,22 @@ export default function Hero({ query, onQueryChange, onSearchSubmit, resultsAnch
                 Cadastrar grátis
                 <ArrowRight className="size-4" />
               </Button>
+              <button
+                type="button"
+                onClick={() => {
+                  const text =
+                    "Olá! Gostaria de pedir um orçamento rápido com garantia de custódia em Governador Valadares."
+                  window.open(
+                    `https://wa.me/5533999999999?text=${encodeURIComponent(text)}`,
+                    "_blank",
+                    "noopener,noreferrer",
+                  )
+                }}
+                className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-xl bg-emerald-500/30 px-4 text-sm font-bold text-white shadow-md ring-1 ring-emerald-300/40 backdrop-blur transition-all hover:scale-[1.02] hover:bg-emerald-500/40"
+              >
+                <MessageCircle className="size-4 text-emerald-300" />
+                <span>Orçar pelo WhatsApp</span>
+              </button>
               <button
                 type="button"
                 onClick={scrollToResults}

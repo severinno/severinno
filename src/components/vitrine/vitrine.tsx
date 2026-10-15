@@ -60,6 +60,10 @@ const CtaBanner = React.lazy(() => import("./cta-banner"))
 const ProviderSpotlight = React.lazy(() => import("./provider-spotlight"))
 const CompareModal = React.lazy(() => import("./compare-modal"))
 const BeforeAfterShowcase = React.lazy(() => import("./before-after-showcase"))
+const CategoryGridSection = React.lazy(() => import("./category-grid-section"))
+const TrendingServices = React.lazy(() => import("./trending-services"))
+const TopProvidersShowcase = React.lazy(() => import("./top-providers-showcase"))
+const EscrowGuaranteeBanner = React.lazy(() => import("./escrow-guarantee-banner"))
 const EmergencySosModal = React.lazy(() =>
   import("../shared/emergency-sos-modal").then((m) => ({ default: m.EmergencySosModal })),
 )
@@ -842,13 +846,51 @@ export default function Vitrine() {
           }}
         />
 
-        {/* 2. CategoryShowcase — browse by category */}
+        {/* 2. CategoryShowcase — sticky category filter bar */}
         <CategoryShowcase
           categories={categories}
           activeId={filters.categoryId}
           onSelect={handleCategorySelect}
           isLoading={categoriesQuery.isLoading}
         />
+
+        {/* 2b. CategoryGridSection — Categorias 2.0 em cartões visuais ricos com contagens de GV */}
+        <Suspense fallback={null}>
+          <CategoryGridSection
+            categories={categories}
+            activeId={filters.categoryId}
+            onSelect={(id) => {
+              handleCategorySelect(id)
+              if (typeof window !== "undefined") {
+                const el = document.getElementById(RESULTS_ANCHOR_ID)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            }}
+            onEmergencyClick={() => setSosOpen(true)}
+          />
+        </Suspense>
+
+        {/* 2c. TrendingServices — Serviços Mais Contratados em Governador Valadares com preço transparente */}
+        <Suspense fallback={null}>
+          <TrendingServices
+            onQuote={(_serviceId, providerId) => handleQuote(providerId)}
+            onBook={(providerId, serviceId) => handleBook(providerId, serviceId)}
+            onViewProvider={(providerId) => handleView(providerId)}
+          />
+        </Suspense>
+
+        {/* 2d. EscrowGuaranteeBanner — Selo de Garantia Blindada (Zero Risco, R$ 0 adiantado) */}
+        <Suspense fallback={null}>
+          <EscrowGuaranteeBanner />
+        </Suspense>
+
+        {/* 2e. TopProvidersShowcase — Prestadores Mais Requisitados e Bem Avaliados de GV */}
+        <Suspense fallback={null}>
+          <TopProvidersShowcase
+            onViewProvider={(providerId) => handleView(providerId)}
+            onQuote={(providerId) => handleQuote(providerId)}
+          />
+        </Suspense>
 
         <Suspense fallback={null}>
           <RecentlyViewed />
