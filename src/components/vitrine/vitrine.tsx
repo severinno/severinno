@@ -94,6 +94,12 @@ const ServiceCombosSection = React.lazy(() =>
 const PwaInstallBanner = React.lazy(() =>
   import("../shared/pwa-install-banner").then((m) => ({ default: m.PwaInstallBanner })),
 )
+const ProblemSolverWizard = React.lazy(() =>
+  import("./problem-solver-wizard").then((m) => ({ default: m.ProblemSolverWizard })),
+)
+const LiveSocialProofToast = React.lazy(() =>
+  import("./live-social-proof-toast").then((m) => ({ default: m.LiveSocialProofToast })),
+)
 const EmergencySosModal = React.lazy(() =>
   import("../shared/emergency-sos-modal").then((m) => ({ default: m.EmergencySosModal })),
 )
@@ -905,6 +911,22 @@ export default function Vitrine() {
           </Suspense>
         </div>
 
+        {/* 1-problems. ProblemSolverWizard — Resolva em 3 Cliques (Guia Visual Interativo) */}
+        <div className="mx-auto my-3 max-w-7xl px-4 sm:px-6 lg:px-8">
+          <Suspense fallback={null}>
+            <ProblemSolverWizard
+              onSelectProblem={(searchTerm) => {
+                resetToFirstPage()
+                dispatch({ type: "SET_FILTERS", filters: { ...filters, q: searchTerm } })
+                if (typeof window !== "undefined") {
+                  const el = document.getElementById(RESULTS_ANCHOR_ID)
+                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+                }
+              }}
+            />
+          </Suspense>
+        </div>
+
         {/* 1a. EmergencySosBanner — Plantão de Emergência Noturno e Final de Semana */}
         <div className="mx-auto my-4 max-w-7xl px-4 sm:px-6 lg:px-8">
           <Suspense fallback={null}>
@@ -1188,6 +1210,11 @@ export default function Vitrine() {
       {/* Banner Inteligente de Instalação PWA (Sugestão 5) */}
       <Suspense fallback={null}>
         <PwaInstallBanner />
+      </Suspense>
+
+      {/* Social Proof em Tempo Real — Toasts de Atividade */}
+      <Suspense fallback={null}>
+        <LiveSocialProofToast />
       </Suspense>
 
       {/* Cookie consent banner — LGPD compliance */}
