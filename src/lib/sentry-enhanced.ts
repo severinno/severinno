@@ -8,6 +8,7 @@
  */
 import "server-only"
 import logger from "./logger"
+import { captureError } from "./sentry"
 
 const isProd = process.env.NODE_ENV === "production"
 
@@ -49,7 +50,10 @@ export async function captureErrorEnhanced(error: unknown, context?: SentryConte
 
   if (!isProd) return
   const Sentry = await getSentry()
-  if (!Sentry) return
+  if (!Sentry) {
+    await captureError(error, context as Record<string, unknown>)
+    return
+  }
 
   Sentry.withScope((scope) => {
     // User context
