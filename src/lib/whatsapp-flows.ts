@@ -63,6 +63,7 @@ export async function runBookingReminders(): Promise<{ sent: number; errors: num
         provider: { select: { id: true, name: true, whatsapp: true } },
         service: { select: { title: true } },
       },
+      take: 100,
     })
 
     for (const booking of upcomingBookings) {
@@ -142,6 +143,7 @@ export async function runQuoteFollowups(): Promise<{ sent: number; errors: numbe
           },
         },
       },
+      take: 100,
     })
 
     for (const quote of pendingQuotes) {
@@ -200,6 +202,7 @@ export async function runReviewRequests(): Promise<{ sent: number; errors: numbe
         provider: { select: { name: true } },
         service: { select: { title: true } },
       },
+      take: 100,
     })
 
     for (const booking of completedBookings) {

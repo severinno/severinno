@@ -25,7 +25,10 @@ export const GET = withRoute("api.services.GET", async (request) => {
 
   const q = searchParams.get("q")
   if (q) {
-    where.OR = [{ title: { contains: q } }, { description: { contains: q } }]
+    where.OR = [
+      { title: { contains: q, mode: "insensitive" } },
+      { description: { contains: q, mode: "insensitive" } },
+    ]
   }
 
   const cacheKey = `services:${createHash("sha256").update(JSON.stringify(where)).digest("hex").slice(0, 8)}`

@@ -127,16 +127,21 @@ export const GET = withRoute("api.bookings.GET", async (request, { span }) => {
   const role = (searchParams.get("role") || session.role) as "CLIENT" | "PROVIDER" | "ADMIN"
   const status = (searchParams.get("status") || undefined) as BookingStatus | undefined
   const { page, limit, skip, take } = parsePagination(searchParams)
+
+  if (role === "ADMIN" && session.role !== "ADMIN") {
+    throw forbidden("Apenas administradores podem visualizar todos os agendamentos")
+  }
+
   span.setAttribute("booking.role", role)
   span.setAttribute("booking.status", status ?? "all")
   span.setAttribute("booking.page", page)
 
   const where =
-    role === "CLIENT"
-      ? { clientId: session.userId, ...(status ? { status } : {}) }
-      : role === "PROVIDER"
+    session.role === "ADMIN" && role === "ADMIN"
+      ? { ...(status ? { status } : {}) } // ADMIN sees all
+      : session.role === "PROVIDER" || role === "PROVIDER"
         ? { providerId: session.userId, ...(status ? { status } : {}) }
-        : { ...(status ? { status } : {}) } // ADMIN sees all
+        : { clientId: session.userId, ...(status ? { status } : {}) }
 
   const [items, total] = await Promise.all([
     db.booking.findMany({

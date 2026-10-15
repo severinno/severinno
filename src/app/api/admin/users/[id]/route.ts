@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { requireRole, invalidateUserCache } from "@/lib/auth"
+import { requireRole, invalidateUserCache, invalidateSessionCache } from "@/lib/auth"
 import { notFound, USER_PUBLIC_SELECT } from "@/lib/api-server"
 import { z } from "zod"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
@@ -49,12 +49,20 @@ export const PATCH = withParams<{ id: string }>(
     if (body.city !== undefined) data.city = body.city
     if (body.state !== undefined) data.state = body.state
 
+    const shouldInvalidateSession = body.active === false || body.role !== undefined
+    if (shouldInvalidateSession) {
+      data.sessionVersion = { increment: 1 }
+    }
+
     const updated = await db.user.update({
       where: { id },
       data,
       select: USER_PUBLIC_SELECT,
     })
     await invalidateUserCache(id)
+    if (shouldInvalidateSession) {
+      await invalidateSessionCache(id)
+    }
     return NextResponse.json({ user: updated })
   },
 )
@@ -73,8 +81,12 @@ export const DELETE = withParams<{ id: string }>(
     })
     if (!user) throw notFound("Usuário não encontrado")
 
-    await db.user.update({ where: { id }, data: { deletedAt: new Date() } })
+    await db.user.update({
+      where: { id },
+      data: { deletedAt: new Date(), active: false, sessionVersion: { increment: 1 } },
+    })
     await invalidateUserCache(id)
+    await invalidateSessionCache(id)
     return NextResponse.json({ ok: true })
   },
 )

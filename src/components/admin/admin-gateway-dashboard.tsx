@@ -33,13 +33,25 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import { Banknote, DollarSign, Loader2, Percent, RotateCw, TrendingUp, Zap } from "lucide-react"
+import {
+  Banknote,
+  DollarSign,
+  Loader2,
+  Percent,
+  RotateCw,
+  TrendingUp,
+  Zap,
+  Receipt,
+  BarChart3,
+} from "lucide-react"
 
 import { apiGet } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ErrorState, TableSkeleton } from "./_shared"
 import { TOOLTIP_STYLE } from "./admin-chart-theme"
+import { AdminGateway } from "./admin-gateway"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -155,6 +167,7 @@ function formatCompactBRL(cents: number): string {
 // ---------------------------------------------------------------------------
 
 export function AdminGatewayDashboard() {
+  const [activeTab, setActiveTab] = React.useState<"metrics" | "invoices">("metrics")
   const [period, setPeriod] = React.useState<Period>("30d")
 
   const { data, isLoading, isError, isFetching, refetch } = useQuery({
@@ -212,248 +225,283 @@ export function AdminGatewayDashboard() {
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Gateway de Pagamento</h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">
-            Métricas agregadas do Lytex — receita, volume de transações e conversão
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {isFetching && <Loader2 className="text-muted-foreground size-4 animate-spin" />}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            onClick={() => void refetch()}
-            disabled={isFetching}
-            aria-label="Atualizar"
-          >
-            <RotateCw className={cn("size-4", isFetching && "animate-spin")} />
-          </Button>
-
-          <div className="bg-muted/50 inline-flex h-8 items-center rounded-lg border p-0.5">
-            {PERIOD_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setPeriod(opt.value)}
-                className={cn(
-                  "h-7 rounded-md px-2.5 text-xs font-medium transition-colors",
-                  period === opt.value
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Summary cards */}
-      <section
-        aria-label="Métricas do gateway"
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as "metrics" | "invoices")}
+        className="w-full"
       >
-        <StatCard
-          icon={DollarSign}
-          label="Volume total"
-          value={formatBRL(totalVolume)}
-          sub={`${totalCount} fatura${totalCount !== 1 ? "s" : ""}`}
-          accent="emerald"
-        />
-        <StatCard
-          icon={TrendingUp}
-          label="Pagas"
-          value={formatBRL(paidTotalValue)}
-          sub={`${paidCount} de ${totalCount} fatura${totalCount !== 1 ? "s" : ""}`}
-          accent="primary"
-        />
-        <StatCard
-          icon={Percent}
-          label="Taxa de conversão"
-          value={`${conversionRate}%`}
-          sub={`${paidCount} pagas / ${totalCount} total`}
-          accent="violet"
-        />
-        <StatCard
-          icon={Zap}
-          label="Ticket médio"
-          value={formatBRL(averageTicketCents)}
-          sub="por transação"
-          accent="cyan"
-        />
-      </section>
-
-      {/* Charts row 1: Monthly volume + Status distribution */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Monthly volume bar chart */}
-        <div className="border-border/50 bg-card rounded-xl border">
-          <div className="border-b px-5 py-4">
-            <h2 className="text-sm font-semibold">Volume mensal</h2>
-            <p className="text-muted-foreground text-xs">Valor total das faturas geradas por mês</p>
-          </div>
-          <div className="p-4">
-            <MonthlyVolumeChart data={monthly} />
-          </div>
-        </div>
-
-        {/* Status distribution donut */}
-        <div className="border-border/50 bg-card rounded-xl border">
-          <div className="border-b px-5 py-4">
-            <h2 className="text-sm font-semibold">Distribuição por status</h2>
-            <p className="text-muted-foreground text-xs">
-              Volume financeiro agregado por status da fatura
+        {/* Header com Abas */}
+        <div className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-xl font-bold tracking-tight">Gateway de Pagamento</h1>
+            <p className="text-muted-foreground mt-0.5 text-sm">
+              Métricas agregadas do Lytex — receita, volume de transações e conversão
             </p>
           </div>
-          <div className="p-4">
-            <StatusPieChart data={statusChartData} />
-          </div>
-        </div>
-      </section>
 
-      {/* Charts row 2: Transaction volume + Conversion trend */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Transaction volume area chart */}
-        <div className="border-border/50 bg-card rounded-xl border">
-          <div className="border-b px-5 py-4">
-            <h2 className="text-sm font-semibold">Volume de transações</h2>
-            <p className="text-muted-foreground text-xs">
-              Quantidade de transações ao longo do tempo
-            </p>
-          </div>
-          <div className="p-4">
-            <TransactionVolumeChart data={monthly} />
-          </div>
+          <TabsList className="grid w-full grid-cols-2 sm:w-auto">
+            <TabsTrigger value="metrics" className="flex items-center gap-2">
+              <BarChart3 className="size-4" />
+              Métricas & Volume
+            </TabsTrigger>
+            <TabsTrigger value="invoices" className="flex items-center gap-2">
+              <Receipt className="size-4" />
+              Faturas & Cobranças
+            </TabsTrigger>
+          </TabsList>
         </div>
 
-        {/* Conversion rate trend line chart */}
-        <div className="border-border/50 bg-card rounded-xl border">
-          <div className="border-b px-5 py-4">
-            <h2 className="text-sm font-semibold">Conversão ao longo do tempo</h2>
-            <p className="text-muted-foreground text-xs">
-              Taxa de conversão (pagas / total) por mês
-            </p>
-          </div>
-          <div className="p-4">
-            <ConversionTrendChart data={trend} />
-          </div>
-        </div>
-      </section>
+        <TabsContent value="metrics" className="mt-4 flex flex-col gap-6">
+          <div className="flex items-center justify-end gap-2">
+            {isFetching && <Loader2 className="text-muted-foreground size-4 animate-spin" />}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={() => void refetch()}
+              disabled={isFetching}
+              aria-label="Atualizar"
+            >
+              <RotateCw className={cn("size-4", isFetching && "animate-spin")} />
+            </Button>
 
-      {/* Payment method distribution + Detailed table */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Payment method bar chart */}
-        <div className="border-border/50 bg-card rounded-xl border">
-          <div className="border-b px-5 py-4">
-            <h2 className="text-sm font-semibold">Métodos de pagamento</h2>
-            <p className="text-muted-foreground text-xs">Volume por método de pagamento</p>
+            <div className="bg-muted/50 inline-flex h-8 items-center rounded-lg border p-0.5">
+              {PERIOD_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setPeriod(opt.value)}
+                  className={cn(
+                    "h-7 rounded-md px-2.5 text-xs font-medium transition-colors",
+                    period === opt.value
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="p-4">
-            <MethodChart data={methodDistribution} />
-          </div>
-        </div>
 
-        {/* Status breakdown table */}
-        <div className="border-border/50 bg-card rounded-xl border">
-          <div className="border-b px-5 py-4">
-            <h2 className="text-sm font-semibold">Detalhamento por status</h2>
-            <p className="text-muted-foreground text-xs">
-              Volume e quantidade por status da fatura
-            </p>
-          </div>
-          <div className="overflow-x-auto p-4 pt-2">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="text-muted-foreground border-b">
-                  <th className="pb-2 font-semibold tracking-wide uppercase">Status</th>
-                  <th className="pb-2 text-right font-semibold tracking-wide uppercase">Faturas</th>
-                  <th className="pb-2 text-right font-semibold tracking-wide uppercase">Volume</th>
-                  <th className="pb-2 text-right font-semibold tracking-wide uppercase">%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byStatus.map((s) => {
-                  const pct = totalVolume > 0 ? ((s.total / totalVolume) * 100).toFixed(1) : "0"
-                  return (
-                    <tr key={s.status} className="border-border/30 border-b last:border-0">
-                      <td className="py-2.5">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="size-2.5 shrink-0 rounded-full"
-                            style={{
-                              backgroundColor:
-                                STATUS_PIE_COLORS[s.status] ?? "hsl(var(--muted-foreground))",
-                            }}
-                          />
-                          <span className="font-medium">{STATUS_LABELS[s.status] ?? s.status}</span>
-                        </div>
-                      </td>
-                      <td className="text-muted-foreground py-2.5 text-right tabular-nums">
-                        {s.count}
-                      </td>
-                      <td className="py-2.5 text-right font-semibold tabular-nums">
-                        {formatCompactBRL(s.total)}
-                      </td>
-                      <td className="text-muted-foreground py-2.5 text-right tabular-nums">
-                        {pct}%
-                      </td>
+          {/* Summary cards */}
+          <section
+            aria-label="Métricas do gateway"
+            className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+          >
+            <StatCard
+              icon={DollarSign}
+              label="Volume total"
+              value={formatBRL(totalVolume)}
+              sub={`${totalCount} fatura${totalCount !== 1 ? "s" : ""}`}
+              accent="emerald"
+            />
+            <StatCard
+              icon={TrendingUp}
+              label="Pagas"
+              value={formatBRL(paidTotalValue)}
+              sub={`${paidCount} de ${totalCount} fatura${totalCount !== 1 ? "s" : ""}`}
+              accent="primary"
+            />
+            <StatCard
+              icon={Percent}
+              label="Taxa de conversão"
+              value={`${conversionRate}%`}
+              sub={`${paidCount} pagas / ${totalCount} total`}
+              accent="violet"
+            />
+            <StatCard
+              icon={Zap}
+              label="Ticket médio"
+              value={formatBRL(averageTicketCents)}
+              sub="por transação"
+              accent="cyan"
+            />
+          </section>
+
+          {/* Charts row 1: Monthly volume + Status distribution */}
+          <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Monthly volume bar chart */}
+            <div className="border-border/50 bg-card rounded-xl border">
+              <div className="border-b px-5 py-4">
+                <h2 className="text-sm font-semibold">Volume mensal</h2>
+                <p className="text-muted-foreground text-xs">
+                  Valor total das faturas geradas por mês
+                </p>
+              </div>
+              <div className="p-4">
+                <MonthlyVolumeChart data={monthly} />
+              </div>
+            </div>
+
+            {/* Status distribution donut */}
+            <div className="border-border/50 bg-card rounded-xl border">
+              <div className="border-b px-5 py-4">
+                <h2 className="text-sm font-semibold">Distribuição por status</h2>
+                <p className="text-muted-foreground text-xs">
+                  Volume financeiro agregado por status da fatura
+                </p>
+              </div>
+              <div className="p-4">
+                <StatusPieChart data={statusChartData} />
+              </div>
+            </div>
+          </section>
+
+          {/* Charts row 2: Transaction volume + Conversion trend */}
+          <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Transaction volume area chart */}
+            <div className="border-border/50 bg-card rounded-xl border">
+              <div className="border-b px-5 py-4">
+                <h2 className="text-sm font-semibold">Volume de transações</h2>
+                <p className="text-muted-foreground text-xs">
+                  Quantidade de transações ao longo do tempo
+                </p>
+              </div>
+              <div className="p-4">
+                <TransactionVolumeChart data={monthly} />
+              </div>
+            </div>
+
+            {/* Conversion rate trend line chart */}
+            <div className="border-border/50 bg-card rounded-xl border">
+              <div className="border-b px-5 py-4">
+                <h2 className="text-sm font-semibold">Conversão ao longo do tempo</h2>
+                <p className="text-muted-foreground text-xs">
+                  Taxa de conversão (pagas / total) por mês
+                </p>
+              </div>
+              <div className="p-4">
+                <ConversionTrendChart data={trend} />
+              </div>
+            </div>
+          </section>
+
+          {/* Payment method distribution + Detailed table */}
+          <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Payment method bar chart */}
+            <div className="border-border/50 bg-card rounded-xl border">
+              <div className="border-b px-5 py-4">
+                <h2 className="text-sm font-semibold">Métodos de pagamento</h2>
+                <p className="text-muted-foreground text-xs">Volume por método de pagamento</p>
+              </div>
+              <div className="p-4">
+                <MethodChart data={methodDistribution} />
+              </div>
+            </div>
+
+            {/* Status breakdown table */}
+            <div className="border-border/50 bg-card rounded-xl border">
+              <div className="border-b px-5 py-4">
+                <h2 className="text-sm font-semibold">Detalhamento por status</h2>
+                <p className="text-muted-foreground text-xs">
+                  Volume e quantidade por status da fatura
+                </p>
+              </div>
+              <div className="overflow-x-auto p-4 pt-2">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="text-muted-foreground border-b">
+                      <th className="pb-2 font-semibold tracking-wide uppercase">Status</th>
+                      <th className="pb-2 text-right font-semibold tracking-wide uppercase">
+                        Faturas
+                      </th>
+                      <th className="pb-2 text-right font-semibold tracking-wide uppercase">
+                        Volume
+                      </th>
+                      <th className="pb-2 text-right font-semibold tracking-wide uppercase">%</th>
                     </tr>
-                  )
-                })}
-                {/* Total row */}
-                <tr className="font-semibold">
-                  <td className="text-foreground pt-2.5">Total</td>
-                  <td className="pt-2.5 text-right tabular-nums">{totalCount}</td>
-                  <td className="text-foreground pt-2.5 text-right tabular-nums">
-                    {formatCompactBRL(totalVolume)}
-                  </td>
-                  <td className="pt-2.5 text-right tabular-nums">100%</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
+                  </thead>
+                  <tbody>
+                    {byStatus.map((s) => {
+                      const pct = totalVolume > 0 ? ((s.total / totalVolume) * 100).toFixed(1) : "0"
+                      return (
+                        <tr key={s.status} className="border-border/30 border-b last:border-0">
+                          <td className="py-2.5">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="size-2.5 shrink-0 rounded-full"
+                                style={{
+                                  backgroundColor:
+                                    STATUS_PIE_COLORS[s.status] ?? "hsl(var(--muted-foreground))",
+                                }}
+                              />
+                              <span className="font-medium">
+                                {STATUS_LABELS[s.status] ?? s.status}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="text-muted-foreground py-2.5 text-right tabular-nums">
+                            {s.count}
+                          </td>
+                          <td className="py-2.5 text-right font-semibold tabular-nums">
+                            {formatCompactBRL(s.total)}
+                          </td>
+                          <td className="text-muted-foreground py-2.5 text-right tabular-nums">
+                            {pct}%
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {/* Total row */}
+                    <tr className="font-semibold">
+                      <td className="text-foreground pt-2.5">Total</td>
+                      <td className="pt-2.5 text-right tabular-nums">{totalCount}</td>
+                      <td className="text-foreground pt-2.5 text-right tabular-nums">
+                        {formatCompactBRL(totalVolume)}
+                      </td>
+                      <td className="pt-2.5 text-right tabular-nums">100%</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
 
-      {/* Summary quick stats */}
-      <div className="border-border/50 from-primary/5 rounded-xl border bg-gradient-to-r to-emerald-500/5 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="text-muted-foreground flex items-center gap-2 text-sm">
-            <Banknote className="text-primary size-5" />
-            <span>Resumo do período:</span>
+          {/* Summary quick stats */}
+          <div className="border-border/50 from-primary/5 rounded-xl border bg-gradient-to-r to-emerald-500/5 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="text-muted-foreground flex items-center gap-2 text-sm">
+                <Banknote className="text-primary size-5" />
+                <span>Resumo do período:</span>
+              </div>
+              <div className="flex flex-wrap gap-6">
+                <div className="text-center">
+                  <p className="text-lg font-bold tabular-nums">{formatCompactBRL(totalVolume)}</p>
+                  <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
+                    Volume total
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold tabular-nums">{totalCount}</p>
+                  <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
+                    Faturas
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold tabular-nums">{conversionRate}%</p>
+                  <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
+                    Conversão
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold tabular-nums">
+                    {formatCompactBRL(averageTicketCents)}
+                  </p>
+                  <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
+                    Ticket médio
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-6">
-            <div className="text-center">
-              <p className="text-lg font-bold tabular-nums">{formatCompactBRL(totalVolume)}</p>
-              <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
-                Volume total
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-lg font-bold tabular-nums">{totalCount}</p>
-              <p className="text-muted-foreground text-[10px] tracking-wide uppercase">Faturas</p>
-            </div>
-            <div className="text-center">
-              <p className="text-lg font-bold tabular-nums">{conversionRate}%</p>
-              <p className="text-muted-foreground text-[10px] tracking-wide uppercase">Conversão</p>
-            </div>
-            <div className="text-center">
-              <p className="text-lg font-bold tabular-nums">
-                {formatCompactBRL(averageTicketCents)}
-              </p>
-              <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
-                Ticket médio
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+        </TabsContent>
+
+        <TabsContent value="invoices" className="mt-4">
+          <AdminGateway />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

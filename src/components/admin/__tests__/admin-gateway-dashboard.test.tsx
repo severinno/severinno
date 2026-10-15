@@ -94,6 +94,12 @@ vi.mock("lucide-react", () => ({
   TrendingDown: () => <svg data-testid="icon-trendingdown" />,
   TrendingUp: () => <svg data-testid="icon-trendingup" />,
   Zap: () => <svg data-testid="icon-zap" />,
+  BarChart3: () => <svg data-testid="icon-barchart3" />,
+  Receipt: () => <svg data-testid="icon-receipt" />,
+}))
+
+vi.mock("../admin-gateway", () => ({
+  AdminGateway: () => <div data-testid="admin-gateway-invoices">Faturas Lytex</div>,
 }))
 
 vi.mock("@/components/ui/button", () => ({

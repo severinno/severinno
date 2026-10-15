@@ -130,6 +130,7 @@ export const POST = withParams<{ id: string }>(
         await tx.booking.update({
           where: { id: booking.id },
           data: {
+            ...(decision === "SPLIT" ? { amount: providerPayout } : {}),
             paymentStatus: "PAID",
             escrowReleasedAt: now,
           },
@@ -138,6 +139,7 @@ export const POST = withParams<{ id: string }>(
           await tx.payment.update({
             where: { id: booking.payment.id },
             data: {
+              ...(decision === "SPLIT" ? { amount: providerPayout } : {}),
               status: "PAID",
               paidAt: now,
             },

@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { getClient } from "@/lib/redis"
 import logger from "@/lib/logger"
 import { sendMail, bookingReminderHtml } from "@/lib/mail"
 import { sendPushNotification } from "@/lib/push"
@@ -43,6 +44,7 @@ export const GET = withRoute("api.cron.reminders.GET", async (request) => {
       provider: { select: { id: true, name: true } },
       service: { select: { title: true } },
     },
+    take: 50,
   })
 
   let sent = 0
@@ -126,8 +128,15 @@ export const GET = withRoute("api.cron.reminders.GET", async (request) => {
     take: 20,
   })
 
+  const redisClient = getClient()
   let paymentRemindersSent = 0
   for (const ub of unpaidBookings) {
+    if (redisClient) {
+      const dedupKey = `cron:payment-reminder:${ub.id}`
+      const acquired = await redisClient.set(dedupKey, "1", "EX", 86400 * 7, "NX")
+      if (!acquired) continue
+    }
+
     notifyPaymentReminder(
       ub.clientId,
       ub.id,
@@ -152,6 +161,12 @@ export const GET = withRoute("api.cron.reminders.GET", async (request) => {
 
   let reviewRequestsSent = 0
   for (const cwr of completedWithoutReview) {
+    if (redisClient) {
+      const dedupKey = `cron:review-reminder:${cwr.id}`
+      const acquired = await redisClient.set(dedupKey, "1", "EX", 86400 * 30, "NX")
+      if (!acquired) continue
+    }
+
     notifyReviewRequest(cwr.clientId, cwr.id, cwr.provider.name).catch((err) =>
       logger.warn({ err }, "cron notification failed (fire-and-forget)"),
     )

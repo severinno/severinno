@@ -337,6 +337,28 @@ describe("GET /api/bookings", () => {
     expect(item.payment.amount).toBe(621)
     expect(typeof item.payment.amount).toBe("number")
   })
+
+  it("anti-idor: returns 403 when CLIENT tries to query with role=ADMIN", async () => {
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    const req = createMockRequest({ searchParams: { role: "ADMIN" } })
+    const res = await listBookings(req, { params: Promise.resolve({}) })
+    expect(res.status).toBe(403)
+  })
+
+  it("permits ADMIN to query with role=ADMIN", async () => {
+    _mockSession = { userId: "admin-1", role: "ADMIN" } as any
+    ;(vi.mocked(db.booking.findMany) as any).mockResolvedValue([])
+    ;(vi.mocked(db.booking.count) as any).mockResolvedValue(0)
+
+    const req = createMockRequest({ searchParams: { role: "ADMIN" } })
+    const res = await listBookings(req, { params: Promise.resolve({}) })
+    expect(res.status).toBe(200)
+    expect(db.booking.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {},
+      }),
+    )
+  })
 })
 
 describe("GET /api/bookings/[id]", () => {

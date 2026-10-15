@@ -160,16 +160,17 @@ function cli(
   args: string[],
   { stdin = "", detached = false }: { stdin?: string; detached?: boolean } = {},
 ): { code: number; out: string; err: string } {
-  const r = spawnSync(process.execPath, [SCRIPT, ...args], {
+  // `detached` = sessão própria (`setsid`), SEM terminal de controle: é assim
+  // que se mede o caminho "não há a quem perguntar" mesmo na máquina de um
+  // operador que está num terminal (onde o `/dev/tty` abriria).
+  // No Linux, spawnSync ignora options.detached (apenas spawn respeita).
+  // Por isso, invocamos diretamente via binário `setsid` quando detached=true.
+  const cmd = detached ? "setsid" : process.execPath
+  const cmdArgs = detached ? [process.execPath, SCRIPT, ...args] : [SCRIPT, ...args]
+  const r = spawnSync(cmd, cmdArgs, {
     cwd: ROOT,
     encoding: "utf8",
     input: stdin,
-    // `detached` = sessão própria (`setsid`), SEM terminal de controle: é assim
-    // que se mede o caminho "não há a quem perguntar" mesmo na máquina de um
-    // operador que está num terminal (onde o `/dev/tty` abriria). O cast é
-    // declarado: o runtime honra `detached`, e o `@types/node` 26 o declara só em
-    // `SpawnOptions`, não em `SpawnSyncOptions`.
-    detached,
     // E a variável de desligamento vai VAZIA (o default): o que se mede aqui é o
     // desfecho do `/dev/tty` AUSENTE, não o da pergunta desligada por ambiente.
     env: { ...process.env, [NO_PROMPT_ENV]: "" },

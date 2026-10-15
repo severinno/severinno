@@ -92,6 +92,11 @@ export type NavItem = {
   badge?: number | string
 }
 
+export type NavGroup = {
+  label: string
+  items: NavItem[]
+}
+
 export type Breadcrumb = { label: string; onClick?: () => void }
 
 type ShellUser = {
@@ -103,7 +108,8 @@ type ShellUser = {
 }
 
 export type DashboardShellProps = {
-  navItems: NavItem[]
+  navItems?: NavItem[]
+  navGroups?: NavGroup[]
   currentView: string
   title: string
   subtitle?: string
@@ -250,7 +256,8 @@ const NAV_ICON_INACTIVE = "!text-muted-foreground"
 // ---------------------------------------------------------------------------
 
 export function DashboardShell({
-  navItems,
+  navItems = [],
+  navGroups,
   currentView,
   title,
   subtitle,
@@ -326,7 +333,52 @@ export function DashboardShell({
   )
 
   // ---- Sidebar nav (desktop) -----------------------------------------------
-  const navList = (
+  const navList = navGroups ? (
+    <div className="flex flex-col gap-1 py-1">
+      {navGroups.map((group) => (
+        <SidebarGroup key={group.label} className="py-1">
+          <SidebarGroupLabel className="text-muted-foreground/70 h-7 px-3 text-[11px] font-semibold tracking-wider uppercase">
+            {group.label}
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu className="gap-0.5 px-2">
+              {group.items.map((item) => {
+                const Icon = item.icon
+                const active = currentView === item.view
+                return (
+                  <SidebarMenuItem key={item.view}>
+                    <SidebarMenuButton
+                      isActive={active}
+                      onClick={() => handleNav(item.view)}
+                      tooltip={item.label}
+                      size="default"
+                      className={cn(
+                        "relative h-9 rounded-lg text-sm font-normal transition-colors duration-150",
+                        active ? NAV_ITEM_ACTIVE : NAV_ITEM_INACTIVE,
+                      )}
+                    >
+                      <Icon
+                        className={cn(
+                          "!size-[16px] shrink-0 transition-colors duration-150",
+                          active ? NAV_ICON_ACTIVE : NAV_ICON_INACTIVE,
+                        )}
+                      />
+                      <span className="truncate text-[13px]">{item.label}</span>
+                      {item.badge != null && item.badge !== 0 ? (
+                        <span className="bg-primary text-primary-foreground ml-auto inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-semibold">
+                          {item.badge}
+                        </span>
+                      ) : null}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      ))}
+    </div>
+  ) : (
     <SidebarGroup>
       <SidebarGroupLabel className="text-muted-foreground/70 h-7 px-3 text-[11px] font-medium tracking-wider uppercase">
         Navegação
@@ -404,8 +456,8 @@ export function DashboardShell({
     </SidebarFooter>
   )
 
-  // ---- Mobile nav items (shared styling) ------------------------------------
-  const mobileNavItems = navItems.map((item) => {
+  // ---- Mobile nav item renderer -------------------------------------------
+  const renderMobileItem = (item: NavItem) => {
     const Icon = item.icon
     const active = currentView === item.view
     return (
@@ -414,27 +466,27 @@ export function DashboardShell({
         type="button"
         onClick={() => handleNav(item.view)}
         className={cn(
-          "flex h-10 w-full min-w-0 items-center gap-3 rounded-lg px-3 text-sm font-normal transition-colors duration-150 outline-none",
+          "flex h-9 w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-sm font-normal transition-colors duration-150 outline-none",
           active
-            ? "bg-primary/5 text-foreground font-medium"
+            ? "bg-primary/10 text-foreground font-medium"
             : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
         )}
       >
         <Icon
           className={cn(
-            "!size-[18px] shrink-0 transition-colors duration-150",
+            "!size-[16px] shrink-0 transition-colors duration-150",
             active ? "text-primary" : "text-muted-foreground",
           )}
         />
-        <span className="truncate text-[14px]">{item.label}</span>
+        <span className="truncate text-[13px]">{item.label}</span>
         {item.badge != null && item.badge !== 0 ? (
-          <span className="bg-primary text-primary-foreground ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold">
+          <span className="bg-primary text-primary-foreground ml-auto inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-semibold">
             {item.badge}
           </span>
         ) : null}
       </button>
     )
-  })
+  }
 
   // ---- Mobile sidebar user footer -------------------------------------------
   const mobileFooter = (
@@ -509,12 +561,25 @@ export function DashboardShell({
                 </div>
                 {/* Mobile nav */}
                 <ScrollArea className="flex-1">
-                  <div className="flex flex-col gap-px p-3">
-                    <p className="text-muted-foreground/70 mb-2 px-3 text-[11px] font-medium tracking-wider uppercase">
-                      Navegação
-                    </p>
-                    {mobileNavItems}
-                  </div>
+                  {navGroups ? (
+                    <div className="flex flex-col gap-3.5 p-3">
+                      {navGroups.map((group) => (
+                        <div key={group.label} className="flex flex-col gap-0.5">
+                          <p className="text-muted-foreground/70 mb-1 px-2.5 text-[11px] font-semibold tracking-wider uppercase">
+                            {group.label}
+                          </p>
+                          {group.items.map(renderMobileItem)}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-px p-3">
+                      <p className="text-muted-foreground/70 mb-2 px-3 text-[11px] font-medium tracking-wider uppercase">
+                        Navegação
+                      </p>
+                      {navItems.map(renderMobileItem)}
+                    </div>
+                  )}
                 </ScrollArea>
                 {/* Mobile wallet balance — provider only */}
                 {user?.role === "PROVIDER" ? (

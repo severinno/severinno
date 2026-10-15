@@ -7,7 +7,7 @@ vi.mock("@/lib/logger", () => ({
 }))
 
 vi.mock("@/lib/auth", () => ({
-  requireUser: vi.fn().mockResolvedValue({ id: "user-1", role: "CLIENT" }),
+  requireUser: vi.fn().mockResolvedValue({ id: "client-1", userId: "client-1", role: "CLIENT" }),
 }))
 
 vi.mock("@/lib/rate-limit", () => ({
@@ -106,5 +106,19 @@ describe("GET /api/tracking/[id]", () => {
     const req = new Request("http://localhost")
     const res = await GET(req, { params: Promise.resolve({ id: "book-1" }) })
     expect(res.status).toBe(200)
+  })
+
+  it("returns 403 when user is neither client nor provider nor admin (anti-IDOR)", async () => {
+    const { requireUser } = await import("@/lib/auth")
+    vi.mocked(requireUser).mockResolvedValueOnce({
+      id: "stranger-1",
+      userId: "stranger-1",
+      role: "CLIENT",
+    } as any)
+    ;(vi.mocked(db.booking.findUnique) as any).mockResolvedValue(mockBooking)
+
+    const req = new Request("http://localhost")
+    const res = await GET(req, { params: Promise.resolve({ id: "book-1" }) })
+    expect(res.status).toBe(403)
   })
 })

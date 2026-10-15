@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
-import { type Role } from "@prisma/client"
+import type { Role, Prisma } from "@prisma/client"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { parsePagination, USER_PUBLIC_SELECT } from "@/lib/api-server"
@@ -42,13 +42,17 @@ export const GET = withRoute("api.admin.users.GET", async (request) => {
   const lng = lngParam ? Number(lngParam) : null
   const radiusKm = radiusParam ? Number(radiusParam) : null
 
-  const where = {
+  const where: Prisma.UserWhereInput = {
     ...(role ? { role } : {}),
-    ...(city ? { city: { contains: city } } : {}),
+    ...(city ? { city: { contains: city, mode: "insensitive" } } : {}),
     ...(state ? { state } : {}),
     ...(q
       ? {
-          OR: [{ name: { contains: q } }, { email: { contains: q } }, { city: { contains: q } }],
+          OR: [
+            { name: { contains: q, mode: "insensitive" } },
+            { email: { contains: q, mode: "insensitive" } },
+            { city: { contains: q, mode: "insensitive" } },
+          ],
         }
       : {}),
   }
@@ -84,7 +88,7 @@ export const GET = withRoute("api.admin.users.GET", async (request) => {
   let filtered = itemsWithDistance
   if (radiusKm != null && radiusKm > 0 && lat != null && lng != null) {
     filtered = itemsWithDistance.filter(
-      (item) => item.distanceKm == null || item.distanceKm <= radiusKm,
+      (item) => item.distanceKm != null && item.distanceKm <= radiusKm,
     )
   }
 

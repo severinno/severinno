@@ -53,9 +53,16 @@ import {
   TrendingUp,
   MessageSquare,
   Scale,
+  Coins,
+  UserPlus,
 } from "lucide-react"
 
-import { DashboardShell, type NavItem, type Breadcrumb } from "@/components/shared/dashboard-shell"
+import {
+  DashboardShell,
+  type NavItem,
+  type NavGroup,
+  type Breadcrumb,
+} from "@/components/shared/dashboard-shell"
 import { useAuthStore, useViewStore } from "@/store"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -214,192 +221,242 @@ const AdminDisputes = dynamic(
   () => import("./admin-disputes").then((m) => ({ default: m.AdminDisputes })),
   { ssr: false },
 )
+const AdminCommissions = dynamic(
+  () => import("./admin-commissions").then((m) => ({ default: m.AdminCommissions })),
+  { ssr: false },
+)
+const AdminGTMFunnel = dynamic(
+  () => import("./admin-gtm-funnel").then((m) => ({ default: m.AdminGTMFunnel })),
+  { ssr: false },
+)
 
 // ---------------------------------------------------------------------------
-// Nav config
+// Nav config — Arquitetura da Informação em 6 Domínios Estratégicos
 // ---------------------------------------------------------------------------
-const NAV_ITEMS: NavItem[] = [
+export const NAV_GROUPS: NavGroup[] = [
   {
-    view: "admin.dashboard",
-    label: "Visão geral",
-    icon: LayoutDashboard,
+    label: "Visão Executiva & Operações",
+    items: [
+      {
+        view: "admin.dashboard",
+        label: "Visão geral",
+        icon: LayoutDashboard,
+      },
+      {
+        view: "admin.operations",
+        label: "Torre de Controle GV",
+        icon: Navigation,
+      },
+      {
+        view: "admin.analytics",
+        label: "Funil & Analytics",
+        icon: TrendingUp,
+      },
+      {
+        view: "admin.demand",
+        label: "Mapa de Demanda",
+        icon: Flame,
+      },
+      {
+        view: "admin.project-status",
+        label: "Status do Projeto",
+        icon: Target,
+      },
+    ],
   },
   {
-    view: "admin.operations",
-    label: "Torre de Controle GV",
-    icon: Navigation,
+    label: "Marketplace & Catálogo",
+    items: [
+      {
+        view: "admin.users",
+        label: "Usuários",
+        icon: Users,
+      },
+      {
+        view: "admin.providers",
+        label: "Prestadores",
+        icon: HardHat,
+      },
+      {
+        view: "admin.verifications",
+        label: "Verificações KYC",
+        icon: ShieldCheck,
+      },
+      {
+        view: "admin.services",
+        label: "Serviços",
+        icon: Wrench,
+      },
+      {
+        view: "admin.taxonomy",
+        label: "Taxonomia",
+        icon: Network,
+      },
+      {
+        view: "admin.bookings",
+        label: "Agendamentos",
+        icon: CalendarCheck,
+      },
+      {
+        view: "admin.gtm-leads",
+        label: "Prospecção GTM",
+        icon: UserPlus,
+      },
+    ],
   },
   {
-    view: "admin.project-status",
-    label: "Status do Projeto",
-    icon: Target,
+    label: "Financeiro, Repasses & Custódia",
+    items: [
+      {
+        view: "admin.finance",
+        label: "Financeiro",
+        icon: Banknote,
+      },
+      {
+        view: "admin.commissions",
+        label: "Comissões & Take-Rate",
+        icon: Coins,
+      },
+      {
+        view: "admin.disputes",
+        label: "Disputas & Escrow",
+        icon: Scale,
+      },
+      {
+        view: "admin.settlements",
+        label: "Repasses",
+        icon: Handshake,
+      },
+      {
+        view: "admin.gateway",
+        label: "Gateway & Faturas",
+        icon: CreditCard,
+      },
+    ],
   },
   {
-    view: "admin.taxonomy",
-    label: "Taxonomia",
-    icon: Network,
+    label: "Comunicação & Notificações",
+    items: [
+      {
+        view: "admin.whatsapp",
+        label: "WhatsApp",
+        icon: MessageSquare,
+      },
+      {
+        view: "admin.push",
+        label: "Enviar Push",
+        icon: Bell,
+      },
+      {
+        view: "admin.push-recurring",
+        label: "Push Recorrente",
+        icon: CalendarClock,
+      },
+      {
+        view: "admin.push-metrics",
+        label: "Push Metrics",
+        icon: BarChart3,
+      },
+      {
+        view: "admin.push-history",
+        label: "Push Log",
+        icon: List,
+      },
+    ],
   },
   {
-    view: "admin.users",
-    label: "Usuários",
-    icon: Users,
+    label: "Inteligência Geo & Mapas",
+    items: [
+      {
+        view: "admin.coverage",
+        label: "Mapa de Cobertura",
+        icon: Map,
+      },
+      {
+        view: "admin.geo-metrics",
+        label: "Geo Metrics",
+        icon: Globe,
+      },
+      {
+        view: "admin.geo-cache",
+        label: "Cache Geo",
+        icon: Layers,
+      },
+      {
+        view: "admin.geo-rate-limit-status",
+        label: "Rate Limit Geo",
+        icon: Shield,
+      },
+      {
+        view: "admin.geo-debug",
+        label: "Geo Debug",
+        icon: Activity,
+      },
+      {
+        view: "admin.benchmarks",
+        label: "Benchmarks",
+        icon: BarChart3,
+      },
+      {
+        view: "admin.benchmark-evolution",
+        label: "Evolução Geo",
+        icon: Activity,
+      },
+    ],
   },
   {
-    view: "admin.providers",
-    label: "Prestadores",
-    icon: HardHat,
-  },
-  {
-    view: "admin.verifications",
-    label: "Verificações KYC",
-    icon: ShieldCheck,
-  },
-  {
-    view: "admin.analytics",
-    label: "Funil & Analytics",
-    icon: TrendingUp,
-  },
-  {
-    view: "admin.demand",
-    label: "Mapa de Demanda",
-    icon: Flame,
-  },
-  {
-    view: "admin.services",
-    label: "Serviços",
-    icon: Wrench,
-  },
-  {
-    view: "admin.finance",
-    label: "Financeiro",
-    icon: Banknote,
-  },
-  {
-    view: "admin.settlements",
-    label: "Repasses",
-    icon: Handshake,
-  },
-  {
-    view: "admin.disputes",
-    label: "Disputas & Escrow",
-    icon: Scale,
-  },
-  {
-    view: "admin.bookings",
-    label: "Agendamentos",
-    icon: CalendarCheck,
-  },
-  {
-    view: "admin.whatsapp",
-    label: "WhatsApp",
-    icon: MessageSquare,
-  },
-  {
-    view: "admin.push",
-    label: "Enviar Push",
-    icon: Bell,
-  },
-  {
-    view: "admin.push-recurring",
-    label: "Push Recorrente",
-    icon: CalendarClock,
-  },
-  {
-    view: "admin.push-metrics",
-    label: "Push Metrics",
-    icon: BarChart3,
-  },
-  {
-    view: "admin.push-history",
-    label: "Push Log",
-    icon: List,
-  },
-  {
-    view: "admin.push-audit",
-    label: "Auditoria",
-    icon: ClipboardCheck,
-  },
-  {
-    view: "admin.webhook-audit",
-    label: "Webhooks",
-    icon: Webhook,
-  },
-  {
-    view: "admin.gateway",
-    label: "Gateway",
-    icon: CreditCard,
-  },
-  {
-    view: "admin.coverage",
-    label: "Cobertura",
-    icon: Map,
-  },
-  {
-    view: "admin.redis-diagnostics",
-    label: "Redis",
-    icon: Database,
-  },
-  {
-    view: "admin.geo-rate-limit-status",
-    label: "Rate Limit Geo",
-    icon: Shield,
-  },
-  {
-    view: "admin.geo-cache",
-    label: "Cache Geo",
-    icon: Layers,
-  },
-  {
-    view: "admin.geo-metrics",
-    label: "Geo Metrics",
-    icon: Globe,
-  },
-  {
-    view: "admin.geo-debug",
-    label: "Geo Debug",
-    icon: Activity,
-  },
-  {
-    view: "admin.benchmarks",
-    label: "Benchmarks",
-    icon: BarChart3,
-  },
-  {
-    view: "admin.benchmark-evolution",
-    label: "Evolução Geo",
-    icon: Activity,
-  },
-  {
-    view: "admin.performance",
-    label: "Performance",
-    icon: Activity,
-  },
-  {
-    view: "admin.pgbouncer",
-    label: "PgBouncer",
-    icon: Database,
-  },
-  {
-    view: "admin.errors",
-    label: "Erros",
-    icon: AlertTriangle,
-  },
-  {
-    view: "admin.health",
-    label: "Saúde",
-    icon: Heart,
-  },
-  {
-    view: "admin.settings",
-    label: "Configurações",
-    icon: SettingsIcon,
-  },
-  {
-    view: "admin.maintenance",
-    label: "Manutenção",
-    icon: HardHat,
+    label: "DevOps & Confiabilidade",
+    items: [
+      {
+        view: "admin.health",
+        label: "Saúde",
+        icon: Heart,
+      },
+      {
+        view: "admin.performance",
+        label: "Performance",
+        icon: Activity,
+      },
+      {
+        view: "admin.pgbouncer",
+        label: "PgBouncer",
+        icon: Database,
+      },
+      {
+        view: "admin.redis-diagnostics",
+        label: "Redis",
+        icon: Database,
+      },
+      {
+        view: "admin.errors",
+        label: "Erros",
+        icon: AlertTriangle,
+      },
+      {
+        view: "admin.webhook-audit",
+        label: "Webhooks",
+        icon: Webhook,
+      },
+      {
+        view: "admin.push-audit",
+        label: "Auditoria",
+        icon: ClipboardCheck,
+      },
+      {
+        view: "admin.settings",
+        label: "Configurações",
+        icon: SettingsIcon,
+      },
+      {
+        view: "admin.maintenance",
+        label: "Manutenção",
+        icon: HardHat,
+      },
+    ],
   },
 ]
+
+export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items)
 
 const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs: Breadcrumb[] }> = {
   "admin.dashboard": {
@@ -453,6 +510,12 @@ const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs:
     subtitle: "Resumo de transações, faturamento mensal e extrato por período.",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Financeiro" }],
   },
+  "admin.commissions": {
+    title: "Comissões & Modelo de Negócio",
+    subtitle:
+      "Receita bruta da plataforma, taxa de comissão (Take-Rate de 15%), repasse líquido e ranking de prestadores.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Comissões" }],
+  },
   "admin.settlements": {
     title: "Repasses",
     subtitle: "Períodos de repasse automáticos — gere, finalize e marque como pago.",
@@ -467,6 +530,12 @@ const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs:
     title: "Agendamentos",
     subtitle: "Supervisão de todos os agendamentos (somente leitura).",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Agendamentos" }],
+  },
+  "admin.gtm-leads": {
+    title: "Prospecção & Funil de Aquisição GTM",
+    subtitle:
+      "Captação ativa de profissionais, status de contato, métricas de funil e integração de WhatsApp.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Prospecção GTM" }],
   },
   "admin.maintenance": {
     title: "Modo de manutenção",
@@ -670,6 +739,7 @@ export function AdminPanel() {
 
   return (
     <DashboardShell
+      navGroups={NAV_GROUPS}
       navItems={NAV_ITEMS}
       currentView={view}
       title={meta.title}
@@ -719,12 +789,16 @@ function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: stri
       return <AdminServices />
     case "admin.finance":
       return <AdminFinanceDashboard />
+    case "admin.commissions":
+      return <AdminCommissions />
     case "admin.settlements":
       return <AdminSettlements />
     case "admin.disputes":
       return <AdminDisputes />
     case "admin.bookings":
       return <AdminBookings />
+    case "admin.gtm-leads":
+      return <AdminGTMFunnel />
     case "admin.whatsapp":
       return <AdminWhatsApp />
     case "admin.push":

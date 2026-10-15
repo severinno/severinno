@@ -8,15 +8,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { runAllWhatsAppFlows } from "@/lib/whatsapp-flows"
 import logger from "@/lib/logger"
+import { withRoute } from "@/lib/api-route"
 
 const log = logger.child({ module: "cron-whatsapp-flows" })
 
-export async function GET(request: NextRequest) {
-  // Validate bearer secret if configured
+export const GET = withRoute("api.cron.whatsapp-flows.GET", async (request: Request) => {
+  // Fail-closed bearer secret validation
   const authHeader = request.headers.get("authorization")
   const cronSecret = process.env.CRON_SECRET
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
   }
 
@@ -30,8 +31,8 @@ export async function GET(request: NextRequest) {
       { status: 500 },
     )
   }
-}
+})
 
-export async function POST(request: NextRequest) {
+export const POST = withRoute("api.cron.whatsapp-flows.POST", async (request: Request) => {
   return GET(request)
-}
+})

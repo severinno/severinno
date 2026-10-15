@@ -6,6 +6,7 @@ import { requireRole } from "@/lib/auth"
 import { parsePagination } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
+import type { Prisma } from "@prisma/client"
 import { withRoute } from "@/lib/api-route"
 
 /**
@@ -22,8 +23,15 @@ export const GET = withRoute("api.admin.services.GET", async (request) => {
   const active = searchParams.get("active")
   const { page, limit, skip, take } = parsePagination(searchParams)
 
-  const where = {
-    ...(q ? { OR: [{ title: { contains: q } }, { description: { contains: q } }] } : {}),
+  const where: Prisma.ServiceWhereInput = {
+    ...(q
+      ? {
+          OR: [
+            { title: { contains: q, mode: "insensitive" } },
+            { description: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : {}),
     ...(providerId ? { providerId } : {}),
     ...(categoryId ? { categoryId } : {}),
     ...(active === "true" ? { active: true } : active === "false" ? { active: false } : {}),

@@ -46,7 +46,7 @@ export const PATCH = withParams<{ id: string }>(
 
     const service = await db.service.findUnique({
       where: { id },
-      select: { id: true, providerId: true, basePrice: true },
+      select: { id: true, providerId: true, basePrice: true, categoryId: true },
     })
     if (!service) throw notFound("Serviço não encontrado")
 
@@ -70,7 +70,7 @@ export const PATCH = withParams<{ id: string }>(
     }
 
     // Validate category if changed
-    if (data.categoryId && data.categoryId !== service.providerId) {
+    if (data.categoryId && data.categoryId !== service.categoryId) {
       const category = await db.category.findUnique({
         where: { id: data.categoryId },
         select: { id: true },

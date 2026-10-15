@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { notFound } from "@/lib/api-server"
+import { forbidden, notFound } from "@/lib/api-server"
 import { getRoute } from "@/lib/routing"
 import { requireUser } from "@/lib/auth"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
@@ -13,7 +13,7 @@ import { toMoneyNumber } from "@/lib/money"
 export const GET = withParams<{ id: string }>(
   "api.tracking.:id.GET",
   async (request, { params }) => {
-    await requireUser()
+    const session = await requireUser()
     await assertRateLimit(request, RATE_LIMITS.general)
     const { id } = await params
     const { searchParams } = new URL(request.url)
@@ -24,6 +24,8 @@ export const GET = withParams<{ id: string }>(
       where: { id },
       select: {
         id: true,
+        clientId: true,
+        providerId: true,
         status: true,
         paymentStatus: true,
         scheduledAt: true,
@@ -39,6 +41,15 @@ export const GET = withParams<{ id: string }>(
     })
 
     if (!booking) throw notFound("Agendamento não encontrado")
+
+    const userId = session.userId || (session as unknown as { id?: string }).id
+    const isClient = booking.clientId === userId || booking.client?.id === userId
+    const isProvider = booking.providerId === userId || booking.provider?.id === userId
+    const isAdmin = session.role === "ADMIN"
+
+    if (!isClient && !isProvider && !isAdmin) {
+      throw forbidden("Acesso restrito a este agendamento")
+    }
 
     // money_decimal: amount/basePrice são Decimal — serializam como STRING
     // cru no JSON; a fronteira converte para number (contrato do frontend).

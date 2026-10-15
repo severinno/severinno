@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
           createdAt: { gte: sinceDate },
         },
         include: {
-          client: { select: { name: true, phone: true, email: true } },
+          client: { select: { name: true, phone: true } },
           service: { select: { title: true } },
         },
         orderBy: { scheduledAt: "desc" },
