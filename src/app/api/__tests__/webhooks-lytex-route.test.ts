@@ -53,6 +53,11 @@ vi.mock("@/lib/notification-queue", () => ({
 
 vi.mock("@/lib/realtime-client", () => ({
   emitRealtime: vi.fn().mockResolvedValue(undefined),
+  sendPaymentConfirmed: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock("@/lib/referral", () => ({
+  processReferralFirstBookingConversion: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock("@/lib/lytex", () => ({
