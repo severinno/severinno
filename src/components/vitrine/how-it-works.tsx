@@ -1,12 +1,12 @@
 "use client"
 
 /**
- * HowItWorks — Clean 3-step process explanation.
- * Minimal, direct, no over-engineering.
+ * HowItWorks — Formato Horizontal Interativo 95% (Enxuto & Escaneável).
+ * Inclui fluxo de Busca -> Agendamento -> Custódia PIX + Garantia de 90 dias.
  */
 
 import * as React from "react"
-import { Search, CalendarCheck, ShieldCheck, ArrowRight } from "lucide-react"
+import { Search, CalendarCheck, ShieldCheck, ArrowRight, CheckCircle2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useUIStore } from "@/store/ui"
 import { Button } from "@/components/ui/button"
@@ -15,89 +15,128 @@ const STEPS = [
   {
     number: "01",
     icon: Search,
+    badge: "30 segundos",
     title: "Busque e filtre",
     description:
-      "Encontre prestadores verificados perto de você. Filtre por categoria, distância, avaliação e disponibilidade.",
+      "Encontre prestadores verificados perto de você em GV. Filtre por categoria, bairro, nota e disponibilidade.",
+    highlight: "100% Antecedentes e CPF/CNPJ Checados",
   },
   {
     number: "02",
     icon: CalendarCheck,
+    badge: "Sem compromisso",
     title: "Agende com confiança",
     description:
-      "Solicite um orçamento sem compromisso ou agende diretamente pelo calendário. Confirmação instantânea.",
+      "Peça orçamento grátis em 1 clique ou escolha o horário direto na agenda do profissional.",
+    highlight: "Resposta média em menos de 15 minutos",
   },
   {
     number: "03",
     icon: ShieldCheck,
+    badge: "Risco Zero",
     title: "Pague com segurança",
     description:
-      "O pagamento fica retido em garantia e é liberado apenas após a conclusão do serviço. Sem risco.",
+      "O valor fica protegido em custódia PIX e só é liberado ao técnico quando você aprovar o serviço.",
+    highlight: "Garantia de 90 dias + Recibo Digital",
   },
 ]
 
 export default function HowItWorks() {
   const openAuth = useUIStore((s) => s.openAuth)
+  const [activeStep, setActiveStep] = React.useState<number>(0)
 
   return (
-    <section className="border-border/40 bg-background border-t py-20 sm:py-24">
-      <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mx-auto mb-14 max-w-2xl text-center">
-          <p className="text-primary mb-3 text-xs font-semibold tracking-widest uppercase">
-            Como funciona
-          </p>
-          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Simples como deveria ser
-          </h2>
-          <p className="text-muted-foreground mt-4 text-base leading-relaxed">
-            Do serviço ao pagamento em 3 passos. Sem burocracia, sem surpresas.
-          </p>
-        </div>
+    <section className="border-border/40 bg-background border-t py-10 sm:py-12">
+      <div className="mx-auto w-full max-w-[95%] px-2 sm:px-4">
+        <div className="border-border/60 bg-card/60 rounded-3xl border p-5 shadow-xs sm:p-7">
+          {/* Header Compacto Horizontal */}
+          <div className="mb-6 flex flex-col justify-between gap-4 border-b pb-5 lg:flex-row lg:items-center">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-primary text-xs font-bold tracking-widest uppercase">
+                  Como funciona
+                </span>
+                <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                  Fluxo Blindado em 3 Passos
+                </span>
+              </div>
+              <h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
+                Simples como deveria ser — do chamado à garantia
+              </h2>
+            </div>
 
-        {/* Steps */}
-        <div className="relative grid gap-8 sm:grid-cols-3">
-          {/* Connector line */}
-          <div className="absolute top-8 right-1/6 left-1/6 hidden h-px sm:block">
-            <div className="border-border/50 h-full border-t border-dashed" />
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="text-muted-foreground hidden items-center gap-2 text-xs sm:flex">
+                <CheckCircle2 className="size-4 text-emerald-600" />
+                <span>Sem burocracia • Pagamento retido até a conclusão</span>
+              </div>
+              <Button
+                size="default"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-6 font-semibold shadow-xs"
+                onClick={() => openAuth("register", "CLIENT")}
+              >
+                Começar agora
+                <ArrowRight className="ml-2 size-4" />
+              </Button>
+            </div>
           </div>
 
-          {STEPS.map((step, i) => {
-            const Icon = step.icon
-            return (
-              <div
-                key={step.number}
-                className={cn(
-                  "relative flex flex-col items-center text-center",
-                  i < STEPS.length - 1 && "sm:after:hidden",
-                )}
-              >
-                {/* Icon Circle */}
-                <div className="border-primary/20 bg-primary/8 ring-background relative mb-5 flex size-16 items-center justify-center rounded-full border ring-4">
-                  <Icon className="text-primary size-7" />
-                  <span className="bg-primary text-primary-foreground absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full text-[10px] font-bold tabular-nums">
-                    {i + 1}
-                  </span>
+          {/* 3 Passos Horizontais Interativos */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            {STEPS.map((step, i) => {
+              const Icon = step.icon
+              const isSelected = activeStep === i
+              return (
+                <div
+                  key={step.number}
+                  onClick={() => setActiveStep(i)}
+                  onMouseEnter={() => setActiveStep(i)}
+                  className={cn(
+                    "group relative flex cursor-pointer flex-col justify-between rounded-2xl border p-5 transition-all duration-200",
+                    isSelected
+                      ? "border-primary/50 bg-primary/5 shadow-sm ring-1 ring-emerald-500/20"
+                      : "border-border/50 bg-background/70 hover:border-primary/30 hover:bg-muted/30",
+                  )}
+                >
+                  <div>
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={cn(
+                            "flex size-11 items-center justify-center rounded-xl border transition-colors",
+                            isSelected
+                              ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                              : "border-primary/20 bg-primary/10 text-primary",
+                          )}
+                        >
+                          <Icon className="size-5" />
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground text-[11px] font-bold uppercase">
+                            Passo {step.number}
+                          </span>
+                          <h3 className="text-base font-bold tracking-tight">{step.title}</h3>
+                        </div>
+                      </div>
+
+                      <span className="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-[10px] font-bold">
+                        {step.badge}
+                      </span>
+                    </div>
+
+                    <p className="text-muted-foreground text-xs leading-relaxed sm:text-sm">
+                      {step.description}
+                    </p>
+                  </div>
+
+                  <div className="border-border/40 mt-4 flex items-center gap-1.5 border-t pt-3 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                    <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600" />
+                    <span>{step.highlight}</span>
+                  </div>
                 </div>
-
-                <h3 className="text-base font-semibold tracking-tight">{step.title}</h3>
-                <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-                  {step.description}
-                </p>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* CTA */}
-        <div className="mt-12 flex justify-center">
-          <Button
-            size="lg"
-            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-8 font-semibold"
-            onClick={() => openAuth("register", "CLIENT")}
-          >
-            Começar agora
-            <ArrowRight className="ml-2 size-4" />
-          </Button>
+              )
+            })}
+          </div>
         </div>
       </div>
     </section>

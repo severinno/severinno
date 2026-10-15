@@ -101,6 +101,7 @@ vi.mock("lucide-react", () => {
     Printer: Icon,
     QrCode: Icon,
     Quote: Icon,
+    Radar: Icon,
     Radio: Icon,
     RefreshCw: Icon,
     RotateCcw: Icon,

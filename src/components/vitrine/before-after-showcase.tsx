@@ -113,8 +113,8 @@ export default function BeforeAfterShowcase() {
   const activeItem = SHOWCASE_ITEMS.find((it) => it.id === activeId) ?? SHOWCASE_ITEMS[0]
 
   return (
-    <section className="bg-muted/30 border-border/60 relative border-y py-16 sm:py-24">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <section className="bg-muted/30 border-border/60 relative border-y py-12 sm:py-16">
+      <div className="mx-auto w-full max-w-[95%] px-2 sm:px-4">
         {/* Cabeçalho da Seção */}
         <div className="mx-auto max-w-3xl text-center">
           <Badge

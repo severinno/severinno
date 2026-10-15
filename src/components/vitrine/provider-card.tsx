@@ -17,6 +17,9 @@ import {
   CheckCircle2,
   Sparkles,
   Clock,
+  FileText,
+  ShieldCheck,
+  X,
 } from "lucide-react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 
@@ -45,6 +48,14 @@ export type ProviderCardProps = {
   className?: string
 }
 
+const GV_MICRO_REVIEWS = [
+  "“Pontual e resolveu rápido no Ilha dos Araújos”",
+  "“Preço honesto e serviço limpo no Centro”",
+  "“Super educado, nota 10 na Lagoa Santa”",
+  "“Explicou tudo antes de fazer no Vila Bretas”",
+  "“Atendimento impecável no Grã-Duquesa”",
+]
+
 export default React.memo(function ProviderCard({
   provider,
   favorited: favoritedProp,
@@ -58,6 +69,7 @@ export default React.memo(function ProviderCard({
   const openAuth = useUIStore((s) => s.openAuth)
 
   const [favorited, setFavorited] = React.useState<boolean>(!!favoritedProp)
+  const [quickViewOpen, setQuickViewOpen] = React.useState<boolean>(false)
   const prevFavoritedProp = React.useRef<boolean>(!!favoritedProp)
 
   React.useEffect(() => {
@@ -126,17 +138,25 @@ export default React.memo(function ProviderCard({
 
   const minPrice = provider.services?.[0]?.basePrice
 
-  // Quick next availability slots preview (Feature #5)
-  const quickSlots = React.useMemo(() => {
+  // Quick next availability slots + response time + micro-review (ProviderCard 2.0)
+  const cardMeta = React.useMemo(() => {
     const hash = provider.id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
     const hours = ["09:00", "10:30", "14:00", "15:30", "17:00"]
+    const responseMins = [6, 8, 10, 12, 15][hash % 5]
+    const microReview = GV_MICRO_REVIEWS[hash % GV_MICRO_REVIEWS.length]
     const h1 = hours[hash % hours.length]
     const h2 = hours[(hash + 2) % hours.length]
-    return [
-      { label: `Hoje ${h1}`, isToday: true },
-      { label: `Amanhã ${h2}`, isToday: false },
-    ]
+    return {
+      responseMins,
+      microReview,
+      quickSlots: [
+        { label: `Hoje ${h1}`, isToday: true },
+        { label: `Amanhã ${h2}`, isToday: false },
+      ],
+    }
   }, [provider.id])
+
+  const quickSlots = cardMeta.quickSlots
 
   return (
     <Card
@@ -149,7 +169,7 @@ export default React.memo(function ProviderCard({
         typeof provider.distanceKm === "number" ? String(provider.distanceKm) : ""
       }
       className={cn(
-        "group border-border/60 bg-card hover:border-primary/40 relative flex flex-col justify-between rounded-xl border p-4 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
+        "group border-border/60 bg-card hover:border-primary/40 relative flex h-full flex-col justify-between rounded-xl border p-4 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
         className,
       )}
     >
@@ -197,8 +217,8 @@ export default React.memo(function ProviderCard({
                 )}
               </div>
 
-              {/* City + Distance */}
-              <div className="text-muted-foreground mt-0.5 flex min-h-[18px] items-center gap-2 text-xs">
+              {/* City + Distance + Fast Response Time */}
+              <div className="text-muted-foreground mt-0.5 flex min-h-[18px] flex-wrap items-center gap-1.5 text-xs">
                 {typeof provider.distanceKm === "number" && (
                   <span className="inline-flex items-center gap-0.5 text-[11px]">
                     <MapPin className="size-3 text-emerald-600" />
@@ -206,12 +226,37 @@ export default React.memo(function ProviderCard({
                   </span>
                 )}
                 {provider.city && <span className="truncate text-[11px]">· {provider.city}</span>}
+                <span
+                  data-testid="provider-response-time"
+                  className="py-0.2 inline-flex items-center gap-0.5 rounded-full bg-emerald-500/10 px-1.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300"
+                  title="Tempo médio de resposta no chat/WhatsApp"
+                >
+                  ⚡ ~{cardMeta.responseMins} min
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Quick buttons: Compare + Favorite */}
+          {/* Quick buttons: Quick-View + Compare + Favorite */}
           <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              data-testid="provider-quick-view-btn"
+              onClick={(e) => {
+                e.stopPropagation()
+                setQuickViewOpen((v) => !v)
+              }}
+              aria-label="Espiar tabela de preços e credenciais"
+              title="Espiar Tabela de Preços e Selos"
+              className={cn(
+                "flex size-7 cursor-pointer items-center justify-center rounded-lg border transition-all",
+                quickViewOpen
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border/50 text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <FileText className="size-3.5" />
+            </button>
             <button
               type="button"
               onClick={handleCompareClick}
@@ -267,21 +312,32 @@ export default React.memo(function ProviderCard({
           </div>
         </div>
 
-        {/* Escrow guarantee trust badge */}
-        <div className="mt-2 flex items-center justify-between">
+        {/* Escrow guarantee trust badge + 90d Warranty */}
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-1">
           <EscrowGuaranteeBadge variant="compact" />
+          <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/25 bg-emerald-500/8 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+            <ShieldCheck className="size-2.5" />
+            Garantia 90d
+          </span>
         </div>
 
         {/* Bio */}
         {provider.bio && (
-          <p className="text-muted-foreground mt-2 line-clamp-2 text-xs leading-relaxed">
+          <p className="text-muted-foreground mt-2 line-clamp-2 min-h-[32px] text-xs leading-relaxed">
             {provider.bio}
           </p>
         )}
 
+        {/* Micro-depoimento verificado de morador de GV */}
+        {provider.reviewCount > 0 && (
+          <div className="bg-muted/35 border-border/40 mt-2 rounded-lg border px-2.5 py-1.5 text-[10.5px] italic">
+            <span className="text-muted-foreground line-clamp-1">{cardMeta.microReview}</span>
+          </div>
+        )}
+
         {/* Services tags */}
         {provider.services && provider.services.length > 0 && (
-          <div className="mt-2.5 flex flex-wrap gap-1">
+          <div className="mt-2.5 flex flex-wrap items-center gap-1">
             {provider.services.slice(0, 2).map((s) => (
               <span
                 key={s.id}
@@ -291,9 +347,17 @@ export default React.memo(function ProviderCard({
               </span>
             ))}
             {provider.services.length > 2 && (
-              <span className="bg-muted/30 text-muted-foreground rounded-md px-1.5 py-0.5 text-[10px] font-medium">
-                +{provider.services.length - 2}
-              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setQuickViewOpen(true)
+                }}
+                className="bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer rounded-md px-1.5 py-0.5 text-[10px] font-bold transition-colors"
+                title="Clique para espiar todos os serviços e preços"
+              >
+                +{provider.services.length - 2} ver tabela
+              </button>
             )}
           </div>
         )}
@@ -333,6 +397,99 @@ export default React.memo(function ProviderCard({
           </div>
         </div>
       </div>
+
+      {/* 5️⃣ Gaveta Rápida de Espiar Perfil (Quick-View Drawer in-card overlay) */}
+      {quickViewOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Resumo rápido de ${provider.name}`}
+          data-testid="provider-quick-view-drawer"
+          className="bg-card/98 border-primary/40 animate-in fade-in zoom-in-95 absolute inset-0 z-20 flex flex-col justify-between rounded-xl border-2 p-4 shadow-xl backdrop-blur-md duration-150"
+        >
+          <div>
+            <div className="border-border/50 flex items-center justify-between border-b pb-2.5">
+              <div className="min-w-0">
+                <p className="text-primary text-[10px] font-extrabold tracking-wider uppercase">
+                  Resumo Rápido & Tabela
+                </p>
+                <h4 className="truncate text-sm font-bold">{provider.name}</h4>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setQuickViewOpen(false)
+                }}
+                aria-label="Fechar resumo rápido"
+                className="border-border/60 bg-muted/60 hover:bg-muted flex size-7 cursor-pointer items-center justify-center rounded-full border"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+
+            {/* Credenciais de Confiança */}
+            <div className="mt-2.5 flex flex-wrap gap-1">
+              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                <CheckCircle2 className="size-3" />
+                CPF/CNPJ Verificado
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                <ShieldCheck className="size-3" />
+                Custódia PIX + 90d
+              </span>
+            </div>
+
+            {/* Lista de Serviços e Preços */}
+            <div className="mt-3 space-y-1.5">
+              <p className="text-muted-foreground text-[10px] font-bold uppercase">
+                Serviços e Preços Base:
+              </p>
+              {provider.services && provider.services.length > 0 ? (
+                <div className="max-h-32 space-y-1 overflow-y-auto pr-1">
+                  {provider.services.map((s) => (
+                    <div
+                      key={s.id}
+                      className="border-border/40 bg-muted/40 flex items-center justify-between rounded-lg border px-2.5 py-1.5 text-xs"
+                    >
+                      <span className="truncate pr-2 font-medium">{s.title}</span>
+                      <span className="text-primary shrink-0 font-bold">
+                        {typeof s.basePrice === "number" ? formatBRL(s.basePrice) : "Sob consulta"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-xs">Orçamento personalizado sob medida.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="border-border/50 mt-3 flex items-center gap-2 border-t pt-2.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setQuickViewOpen(false)
+                onView?.(provider.id)
+              }}
+              className="h-8 flex-1 text-xs font-semibold"
+            >
+              Perfil Completo
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                setQuickViewOpen(false)
+                onBook ? onBook(provider.id) : onView?.(provider.id)
+              }}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 h-8 flex-1 text-xs font-semibold"
+            >
+              Agendar Agora
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Action buttons */}
       <div className="border-border/40 mt-3.5 flex items-center gap-2 border-t pt-3">

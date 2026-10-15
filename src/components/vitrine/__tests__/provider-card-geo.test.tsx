@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { render, screen, cleanup } from "@/__tests__/test-utils"
+import { render, screen, cleanup, fireEvent } from "@/__tests__/test-utils"
 import type { ProviderCard as ProviderCardType } from "@/lib/api"
 
 // ---------------------------------------------------------------------------
@@ -320,5 +320,18 @@ describe("ProviderCard — compare data attributes", () => {
     const card = screen.getByTestId("card")
     expect(card.getAttribute("data-compare-distance")).toBe("420 m")
     expect(card.getAttribute("data-compare-distance-km")).toBe("0.42")
+  })
+
+  it("renders ProviderCard 2.0 response time and toggles Quick-View Drawer", () => {
+    render(<ProviderCard provider={provider()} />)
+    expect(screen.getByTestId("provider-response-time")).toBeTruthy()
+    expect(screen.getByText("Garantia 90d")).toBeTruthy()
+
+    const quickViewBtn = screen.getByTestId("provider-quick-view-btn")
+    fireEvent.click(quickViewBtn)
+
+    expect(screen.getByTestId("provider-quick-view-drawer")).toBeTruthy()
+    expect(screen.getByText("Resumo Rápido & Tabela")).toBeTruthy()
+    expect(screen.getByText("CPF/CNPJ Verificado")).toBeTruthy()
   })
 })

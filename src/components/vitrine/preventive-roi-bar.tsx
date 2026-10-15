@@ -87,8 +87,8 @@ export function PreventiveRoiBar({ onSelectService, className }: PreventiveRoiBa
   }, [])
 
   return (
-    <section className={cn("bg-background relative py-12", className)}>
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <section className={cn("bg-background relative py-10", className)}>
+      <div className="mx-auto w-full max-w-[95%] px-2 sm:px-4">
         {/* Header */}
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>

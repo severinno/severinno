@@ -58,6 +58,15 @@ describe("VisualProofHub", () => {
     const audiosTab = screen.getByRole("tab", { name: /Depoimentos em Áudio/i })
     fireEvent.click(audiosTab)
     expect(screen.getByText(/Ouça o que os moradores de Valadares dizem/i)).toBeDefined()
+
+    // Switch to 4th tab: Radar Ao Vivo (Bairros GV)
+    const radarTab = screen.getByRole("tab", { name: /Radar Ao Vivo \(Bairros GV\)/i })
+    fireEvent.click(radarTab)
+    expect(
+      screen.getByRole("region", {
+        name: "Radar Ao Vivo de Técnicos em Governador Valadares",
+      }),
+    ).toBeDefined()
   })
 })
 
@@ -117,5 +126,48 @@ describe("GvLiveRadarMap", () => {
     const callBtn = screen.getByText("Ver Prestadores de Centro")
     fireEvent.click(callBtn)
     expect(onSelectMock).toHaveBeenCalledWith("Centro")
+  })
+})
+
+describe("CategoryShowcase Turbo & HowItWorks Horizontal", () => {
+  it("renders category counts, scroll arrows, and clear button when a category is active", async () => {
+    const CategoryShowcase = (await import("../category-showcase")).default
+    const onSelect = vi.fn()
+    const categories = [
+      {
+        id: "cat-1",
+        name: "Reparos e Instalações",
+        slug: "reparos-e-instalacoes",
+        level: 0,
+        children: [],
+      },
+      {
+        id: "cat-2",
+        name: "Emergência 24h",
+        slug: "emergencia-24h",
+        level: 0,
+        children: [],
+      },
+    ]
+
+    render(<CategoryShowcase categories={categories} activeId="cat-1" onSelect={onSelect} />)
+
+    expect(screen.getByText("48")).toBeDefined()
+    expect(screen.getByText("14")).toBeDefined()
+    expect(screen.getByLabelText("Rolar categorias para a esquerda")).toBeDefined()
+    expect(screen.getByLabelText("Rolar categorias para a direita")).toBeDefined()
+
+    const clearBtn = screen.getByLabelText("Limpar categoria selecionada")
+    fireEvent.click(clearBtn)
+    expect(onSelect).toHaveBeenCalledWith(null)
+  })
+
+  it("renders HowItWorks horizontal interactive steps with Escrow PIX and 90-day warranty highlights", async () => {
+    const HowItWorks = (await import("../how-it-works")).default
+    render(<HowItWorks />)
+
+    expect(screen.getByText("Fluxo Blindado em 3 Passos")).toBeDefined()
+    expect(screen.getByText("Garantia de 90 dias + Recibo Digital")).toBeDefined()
+    expect(screen.getByText("100% Antecedentes e CPF/CNPJ Checados")).toBeDefined()
   })
 })

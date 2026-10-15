@@ -126,8 +126,8 @@ export function WhatsappAudioTestimonials({
   }
 
   return (
-    <section className={cn("bg-muted/20 border-border/50 border-y py-12 sm:py-16", className)}>
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <section className={cn("bg-muted/20 border-border/50 border-y py-10 sm:py-14", className)}>
+      <div className="mx-auto w-full max-w-[95%] px-2 sm:px-4">
         {/* Header */}
         <div className="mx-auto mb-10 max-w-3xl text-center">
           <Badge

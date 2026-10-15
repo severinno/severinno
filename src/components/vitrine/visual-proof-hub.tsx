@@ -1,13 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { Flame, Sparkles, Volume2, SplitSquareVertical } from "lucide-react"
+import { Flame, Sparkles, Volume2, SplitSquareVertical, Radar } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { GvReelsShowcase } from "./gv-reels-showcase"
 import BeforeAfterShowcase from "./before-after-showcase"
 import { WhatsappAudioTestimonials } from "./whatsapp-audio-testimonials"
+import { GvLiveRadarMap } from "./gv-live-radar-map"
 
-export type VisualProofHubTab = "reels" | "before_after" | "audios"
+export type VisualProofHubTab = "reels" | "before_after" | "audios" | "live_radar"
 
 export type VisualProofHubProps = {
   onQuoteProvider?: (providerName: string) => void
@@ -35,6 +36,12 @@ const TABS: { id: VisualProofHubTab; label: string; icon: React.ElementType; bad
     icon: Volume2,
     badge: "WhatsApp Real",
   },
+  {
+    id: "live_radar",
+    label: "Radar Ao Vivo (Bairros GV)",
+    icon: Radar,
+    badge: "GPS Ativo",
+  },
 ]
 
 export function VisualProofHub({
@@ -61,7 +68,7 @@ export function VisualProofHub({
         </h2>
         <p className="text-muted-foreground mt-1.5 max-w-2xl text-xs sm:text-sm">
           Acompanhe mini-vídeos gravados nos bairros de GV, compare transformações reais com slider
-          de arraste e ouça os áudios enviados por clientes satisfeitos.
+          de arraste, ouça áudios de clientes e localize técnicos livres no radar ao vivo.
         </p>
 
         {/* Tab Switcher Pills */}
@@ -118,6 +125,17 @@ export function VisualProofHub({
             <WhatsappAudioTestimonials
               onQuoteService={onQuoteService}
               className="my-0 max-w-full"
+            />
+          </div>
+        )}
+
+        {activeTab === "live_radar" && (
+          <div className="animate-in fade-in duration-300">
+            <GvLiveRadarMap
+              onSelectDistrict={(districtName) =>
+                onQuoteService?.("Profissional Disponível", districtName)
+              }
+              className="my-0 max-w-full px-0"
             />
           </div>
         )}
