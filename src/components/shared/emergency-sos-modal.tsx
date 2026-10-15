@@ -4,9 +4,11 @@
  * EmergencySosModal — Severinno Express / SOS Emergência 24h em 1 Toque
  *
  * Aplicação das Heurísticas de Nielsen:
- * - H1 Visibilidade do status (localização detectada por GPS, raio de alcance em GV).
+ * - H1 Visibilidade do status (localização detectada por GPS, status de conexão online/offline).
  * - H5 Prevenção de erros e pânico (4 opções claras e imediatas).
  * - H7 Flexibilidade e eficiência de uso (contratação em 1 toque sem burocracia).
+ * - H9 Recuperação de erros & Modo Offline: Fallback resiliente via SMS / WhatsApp / Ligação
+ *   quando a rede estiver instável ou sem sinal de dados 4G (PWA Offline First).
  */
 
 import * as React from "react"
@@ -21,6 +23,10 @@ import {
   PhoneCall,
   CheckCircle2,
   Sparkles,
+  WifiOff,
+  MessageSquare,
+  Smartphone,
+  Send,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -29,11 +35,15 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { EscrowGuaranteeBadge } from "./escrow-guarantee-badge"
 import { useGeoStore } from "@/store/geo"
+import { useOnlineStatus } from "@/hooks/use-online-status"
+import { queueMutation } from "@/lib/offline-sync"
 import { cn } from "@/lib/utils"
 
 export type EmergencyType = "hidraulica" | "eletrica" | "chaveiro" | "desentupimento"
 
-const EMERGENCY_OPTIONS: Array<{
+export const EMERGENCY_PHONE = "5533999999999"
+
+export const EMERGENCY_OPTIONS: Array<{
   id: EmergencyType
   title: string
   subtitle: string
@@ -80,6 +90,34 @@ const EMERGENCY_OPTIONS: Array<{
   },
 ]
 
+/**
+ * Constrói a mensagem padronizada de socorro para envio via SMS ou WhatsApp
+ */
+export function buildSosDispatchMessage({
+  emergencyTitle,
+  price,
+  city,
+  neighborhood,
+  lat,
+  lng,
+}: {
+  emergencyTitle: string
+  price: string
+  city: string
+  neighborhood: string
+  lat?: number | null
+  lng?: number | null
+}): string {
+  const gpsStr = lat && lng ? `\n📍 GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}` : ""
+  return `🚨 *SOS SEVERINNO 24H (EMERGÊNCIA)*
+Ocorrência: ${emergencyTitle}
+Valor Estimado: ${price}
+Local: ${neighborhood}, ${city}${gpsStr}
+Horário: ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+
+Por favor, enviem o profissional de plantão mais próximo! (Mensagem gerada pelo App Severinno PWA)`
+}
+
 export function EmergencySosModal({
   open,
   onOpenChange,
@@ -90,23 +128,77 @@ export function EmergencySosModal({
   const [selectedType, setSelectedType] = React.useState<EmergencyType>("hidraulica")
   const [dispatching, setDispatching] = React.useState(false)
   const [dispatched, setDispatched] = React.useState(false)
+  const [channelUsed, setChannelUsed] = React.useState<"app" | "whatsapp" | "sms" | "call">("app")
 
-  const city = useGeoStore((s) => s.city) || "Governador Valadares"
+  const isOnline = useOnlineStatus()
+  const { city: storedCity, lat, lng } = useGeoStore()
+  const city = storedCity || "Governador Valadares"
   const neighborhood = "Ilha dos Araújos / Centro"
 
   const selectedOpt = EMERGENCY_OPTIONS.find((o) => o.id === selectedType) ?? EMERGENCY_OPTIONS[0]!
 
-  const handleDispatch = () => {
+  // Enfileira mutação no PWA offline-sync e dispara o canal selecionado
+  const handleOfflineOrDirectDispatch = (channel: "whatsapp" | "sms" | "call") => {
+    const textMsg = buildSosDispatchMessage({
+      emergencyTitle: selectedOpt.title,
+      price: selectedOpt.basePrice,
+      city,
+      neighborhood,
+      lat,
+      lng,
+    })
+
+    // Registra na fila persistida do PWA para auditoria/reconexão
+    queueMutation({
+      action: "EMERGENCY_SOS",
+      entityId: `sos-${Date.now()}`,
+      payload: {
+        type: selectedType,
+        channel,
+        city,
+        neighborhood,
+        lat,
+        lng,
+        textMsg,
+      },
+    })
+
+    setChannelUsed(channel)
+    setDispatched(true)
+
+    if (channel === "whatsapp") {
+      const waUrl = `https://wa.me/${EMERGENCY_PHONE}?text=${encodeURIComponent(textMsg)}`
+      window.open(waUrl, "_blank", "noopener,noreferrer")
+      toast.success("Mensagem de emergência preparada no WhatsApp!")
+    } else if (channel === "sms") {
+      // Formato SMS com body pré-preenchido para iOS e Android
+      const smsUrl = `sms:+${EMERGENCY_PHONE}?body=${encodeURIComponent(textMsg)}`
+      window.location.href = smsUrl
+      toast.success("Mensagem SMS aberta no aplicativo de mensagens!")
+    } else if (channel === "call") {
+      window.location.href = `tel:+${EMERGENCY_PHONE}`
+      toast.info("Iniciando chamada para a Central 24h...")
+    }
+  }
+
+  const handleOnlineDispatch = () => {
+    if (!isOnline) {
+      handleOfflineOrDirectDispatch("sms")
+      return
+    }
+
     setDispatching(true)
     setTimeout(() => {
       setDispatching(false)
+      setChannelUsed("app")
       setDispatched(true)
-      toast.success("Socorro acionado! Prestadores de plantão notificados via WhatsApp.")
+      toast.success("Socorro acionado! Prestadores de plantão notificados via WhatsApp e App.")
     }, 1200)
   }
 
   const handleReset = () => {
     setDispatched(false)
+    setChannelUsed("app")
     onOpenChange(false)
   }
 
@@ -129,11 +221,29 @@ export function EmergencySosModal({
                 </DialogDescription>
               </div>
             </div>
-            <Badge className="border-0 bg-white/20 text-[10px] font-bold text-white">
-              PLANTÃO ATIVO
-            </Badge>
+            {!isOnline ? (
+              <Badge className="border-0 bg-amber-500 text-[10px] font-bold text-white shadow-xs">
+                <WifiOff className="mr-1 size-3" />
+                MODO OFFLINE
+              </Badge>
+            ) : (
+              <Badge className="border-0 bg-white/20 text-[10px] font-bold text-white">
+                PLANTÃO ATIVO
+              </Badge>
+            )}
           </div>
         </div>
+
+        {/* Faixa de aviso offline resiliente */}
+        {!isOnline && !dispatched && (
+          <div className="flex items-center gap-2.5 border-b border-amber-500/30 bg-amber-500/10 px-5 py-2.5 text-xs text-amber-800 dark:text-amber-300">
+            <WifiOff className="size-4 shrink-0 text-amber-600" />
+            <span className="leading-snug">
+              <strong>Sem conexão com a internet.</strong> O sistema usará as coordenadas salvas e
+              acionará socorro direto via <strong>SMS</strong> ou <strong>WhatsApp</strong>.
+            </span>
+          </div>
+        )}
 
         <div className="flex flex-col gap-4 p-5">
           {dispatched ? (
@@ -142,11 +252,18 @@ export function EmergencySosModal({
                 <CheckCircle2 className="size-8" />
               </div>
               <h4 className="text-foreground text-base font-bold">
-                Chamado de Emergência Confirmado!
+                {channelUsed === "sms"
+                  ? "SOS Disparado via SMS!"
+                  : channelUsed === "whatsapp"
+                    ? "SOS Encaminhado via WhatsApp!"
+                    : "Chamado de Emergência Confirmado!"}
               </h4>
               <p className="text-muted-foreground mt-1 max-w-sm text-xs">
-                Os 3 profissionais mais próximos da sua localização foram alertados via WhatsApp e
-                aplicativo com alta prioridade.
+                {channelUsed === "sms"
+                  ? "Sua mensagem com coordenadas GPS foi direcionada para a rede de socorro expressa de Valadares."
+                  : channelUsed === "whatsapp"
+                    ? "Os dados de emergência foram preparados no WhatsApp para envio com prioridade máxima."
+                    : "Os 3 profissionais mais próximos da sua localização foram alertados com alta prioridade."}
               </p>
 
               <div className="bg-muted/40 mt-4 w-full rounded-xl border p-3 text-left text-xs">
@@ -162,18 +279,36 @@ export function EmergencySosModal({
                   <MapPin className="size-3 text-emerald-600" />
                   Local: {neighborhood}, {city}
                 </p>
+                {lat && lng && (
+                  <p className="text-muted-foreground mt-0.5 flex items-center gap-1 text-[10px]">
+                    <Sparkles className="size-2.5 text-blue-500" />
+                    GPS salvo: {lat.toFixed(4)}, {lng.toFixed(4)}
+                  </p>
+                )}
               </div>
 
               <div className="mt-4 w-full">
                 <EscrowGuaranteeBadge variant="card" />
               </div>
 
-              <Button
-                onClick={handleReset}
-                className="mt-4 w-full bg-emerald-600 text-white hover:bg-emerald-500"
-              >
-                Entendido, acompanhar no mapa
-              </Button>
+              <div className="mt-4 flex w-full flex-col gap-2">
+                <Button
+                  onClick={handleReset}
+                  className="w-full bg-emerald-600 text-white hover:bg-emerald-500"
+                >
+                  Entendido, voltar para o aplicativo
+                </Button>
+
+                {/* Opção secundária para reforçar por telefone se necessário */}
+                <Button
+                  variant="outline"
+                  onClick={() => handleOfflineOrDirectDispatch("call")}
+                  className="w-full gap-2 text-xs"
+                >
+                  <PhoneCall className="size-3.5 text-rose-600" />
+                  Ligar para a Central de Plantão (Ligação Gratuita)
+                </Button>
+              </div>
             </div>
           ) : (
             <>
@@ -238,34 +373,85 @@ export function EmergencySosModal({
                 </div>
                 <Badge
                   variant="outline"
-                  className="border-emerald-500/30 text-[10px] text-emerald-600"
+                  className={cn(
+                    "text-[10px]",
+                    isOnline
+                      ? "border-emerald-500/30 text-emerald-600"
+                      : "border-amber-500/30 text-amber-600",
+                  )}
                 >
-                  GPS Ativo
+                  {isOnline ? "GPS Ao Vivo" : "GPS em Cache"}
                 </Badge>
               </div>
 
               {/* Selo Escrow Protegido */}
               <EscrowGuaranteeBadge variant="card" />
 
-              {/* Botão de Disparo Imediato */}
-              <Button
-                size="lg"
-                onClick={handleDispatch}
-                disabled={dispatching}
-                className="h-12 w-full gap-2 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 font-bold text-white shadow-md hover:from-rose-500 hover:to-red-500"
-              >
-                {dispatching ? (
-                  <>
-                    <span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Localizando prestador de plantão...
-                  </>
-                ) : (
-                  <>
-                    <PhoneCall className="size-4" />
-                    Chamar Socorro Agora ({selectedOpt.basePrice})
-                  </>
-                )}
-              </Button>
+              {/* Ações de Disparo: Online vs Offline */}
+              {!isOnline ? (
+                <div className="flex flex-col gap-2 pt-1">
+                  <Button
+                    size="lg"
+                    onClick={() => handleOfflineOrDirectDispatch("sms")}
+                    className="h-12 w-full gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-rose-600 font-bold text-white shadow-md hover:from-amber-500 hover:to-rose-500"
+                  >
+                    <Smartphone className="size-4.5" />
+                    Enviar SOS via SMS (100% Sem Internet)
+                  </Button>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => handleOfflineOrDirectDispatch("whatsapp")}
+                      className="gap-1.5 border-emerald-500/40 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                    >
+                      <MessageSquare className="size-3.5" />
+                      WhatsApp Direto
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleOfflineOrDirectDispatch("call")}
+                      className="gap-1.5 border-rose-500/40 text-xs font-semibold text-rose-700 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                    >
+                      <PhoneCall className="size-3.5" />
+                      Ligar Central 24h
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <Button
+                    size="lg"
+                    onClick={handleOnlineDispatch}
+                    disabled={dispatching}
+                    className="h-12 w-full gap-2 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 font-bold text-white shadow-md hover:from-rose-500 hover:to-red-500"
+                  >
+                    {dispatching ? (
+                      <>
+                        <span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        Localizando prestador de plantão...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="size-4" />
+                        Chamar Socorro Agora ({selectedOpt.basePrice})
+                      </>
+                    )}
+                  </Button>
+
+                  {/* Fallback direto se preferir SMS ou WhatsApp */}
+                  <div className="text-muted-foreground flex items-center justify-between px-1 text-[11px]">
+                    <span>Sem conexão estável?</span>
+                    <button
+                      type="button"
+                      onClick={() => handleOfflineOrDirectDispatch("sms")}
+                      className="font-semibold text-rose-600 underline hover:text-rose-700 dark:text-rose-400"
+                    >
+                      Disparar via SMS / WhatsApp
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -278,15 +464,26 @@ export function EmergencySosModal({
  * FloatingSosButton — Botão flutuante de SOS que abre o modal de emergência.
  */
 export function FloatingSosButton({ onClick }: { onClick: () => void }) {
+  const isOnline = useOnlineStatus()
+
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label="SOS Emergência 24h"
-      className="fixed right-4 bottom-20 z-40 flex items-center gap-2 rounded-full bg-gradient-to-r from-rose-600 to-red-600 px-4 py-2.5 text-xs font-bold text-white shadow-xl transition-all hover:scale-105 hover:from-rose-500 hover:to-red-500 active:scale-95 sm:right-6 sm:bottom-6"
+      className={cn(
+        "fixed right-4 bottom-20 z-40 flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold text-white shadow-xl transition-all hover:scale-105 active:scale-95 sm:right-6 sm:bottom-6",
+        isOnline
+          ? "bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500"
+          : "bg-gradient-to-r from-amber-600 via-rose-600 to-red-600 ring-2 ring-amber-400/50 hover:from-amber-500 hover:to-red-500",
+      )}
     >
-      <Siren className="size-4 animate-bounce" />
-      <span>SOS Emergência</span>
+      {!isOnline ? (
+        <WifiOff className="size-4 animate-pulse text-amber-200" />
+      ) : (
+        <Siren className="size-4 animate-bounce" />
+      )}
+      <span>{!isOnline ? "SOS Offline (SMS)" : "SOS Emergência"}</span>
       <Sparkles className="size-3 text-amber-300" />
     </button>
   )

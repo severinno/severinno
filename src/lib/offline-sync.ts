@@ -17,6 +17,7 @@ export type SyncActionType =
   | "GENERATE_PIN"
   | "REQUEST_QUOTE"
   | "ADD_REVIEW"
+  | "EMERGENCY_SOS"
 
 export interface CacheEntry<T> {
   data: T
@@ -82,19 +83,37 @@ function saveOfflineQueue(): void {
  * Enqueues a new mutation to be processed when online
  */
 export function enqueueOfflineMutation<T extends Record<string, unknown>>(
-  action: SyncActionType,
-  entityId: string,
-  payload: T,
+  actionOrOpts:
+    SyncActionType | { action: SyncActionType; entityId: string; payload: T; maxAttempts?: number },
+  entityId?: string,
+  payload?: T,
   maxAttempts: number = 5,
 ): QueuedMutation<T> {
+  let action: SyncActionType
+  let entId: string
+  let pl: T
+  let maxAtt: number
+
+  if (typeof actionOrOpts === "object" && actionOrOpts !== null) {
+    action = actionOrOpts.action
+    entId = actionOrOpts.entityId
+    pl = actionOrOpts.payload
+    maxAtt = actionOrOpts.maxAttempts ?? 5
+  } else {
+    action = actionOrOpts
+    entId = entityId!
+    pl = payload!
+    maxAtt = maxAttempts
+  }
+
   const mutation: QueuedMutation<T> = {
     id: `sync-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     action,
-    entityId,
-    payload,
+    entityId: entId,
+    payload: pl,
     createdAt: Date.now(),
     attempts: 0,
-    maxAttempts,
+    maxAttempts: maxAtt,
     status: "PENDING",
   }
 
@@ -102,6 +121,8 @@ export function enqueueOfflineMutation<T extends Record<string, unknown>>(
   saveOfflineQueue()
   return mutation
 }
+
+export const queueMutation = enqueueOfflineMutation
 
 /**
  * Returns all pending mutations sorted by creation timestamp
