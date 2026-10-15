@@ -392,7 +392,7 @@ export default function Topbar({
         {/* ── Main bar ─────────────────────────────────────────────────────── */}
         <div
           className={cn(
-            "mx-auto flex max-w-7xl items-center gap-2 px-4 transition-all duration-300 ease-out sm:gap-3 sm:px-6 lg:px-8",
+            "mx-auto flex w-full max-w-[95%] items-center gap-2 px-4 transition-all duration-300 ease-out sm:gap-3 sm:px-6 lg:px-8",
             scrolled ? "h-14" : "h-16",
           )}
         >
@@ -436,7 +436,7 @@ export default function Topbar({
                 >
                   <Popover open={searchOpen} onOpenChange={setSearchOpen}>
                     <PopoverAnchor asChild>
-                      <div className="relative mx-auto w-full max-w-xl">
+                      <div className="relative mx-auto w-full max-w-xl xl:max-w-2xl">
                         <Search className="text-muted-foreground group-focus-within:text-primary pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 transition-colors duration-200" />
                         <Input
                           value={query}
@@ -459,7 +459,7 @@ export default function Topbar({
                             "hover:bg-muted/70 hover:shadow-sm",
                             "focus-visible:bg-background focus-visible:ring-primary/30 focus-visible:shadow-md focus-visible:ring-2",
                             searchOpen && "bg-background ring-primary/20 shadow-md ring-2",
-                            searchFocused && "max-w-xl scale-[1.02]",
+                            searchFocused && "max-w-xl scale-[1.02] xl:max-w-2xl",
                           )}
                           aria-label="Buscar prestadores"
                         />

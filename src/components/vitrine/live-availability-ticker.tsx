@@ -66,7 +66,7 @@ export function LiveAvailabilityTicker({ onActionClick, className }: LiveAvailab
         className,
       )}
     >
-      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2.5 text-xs sm:flex-row">
+      <div className="mx-auto flex w-full max-w-[95%] flex-col items-center justify-between gap-2.5 text-xs sm:flex-row">
         {/* Left Live Pulse */}
         <div className="flex shrink-0 items-center gap-2.5">
           <span className="relative flex size-2.5">
