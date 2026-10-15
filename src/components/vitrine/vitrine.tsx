@@ -122,6 +122,18 @@ const PreventiveRoiBar = React.lazy(() =>
 const HomeHealthScoreQuiz = React.lazy(() =>
   import("./home-health-score-quiz").then((m) => ({ default: m.HomeHealthScoreQuiz })),
 )
+const InstantQuoteStepWizard = React.lazy(() =>
+  import("./instant-quote-step-wizard").then((m) => ({ default: m.InstantQuoteStepWizard })),
+)
+const GvReelsShowcase = React.lazy(() =>
+  import("./gv-reels-showcase").then((m) => ({ default: m.GvReelsShowcase })),
+)
+const FipeServicesIndex = React.lazy(() =>
+  import("./fipe-services-index").then((m) => ({ default: m.FipeServicesIndex })),
+)
+const DigitalContractGenerator = React.lazy(() =>
+  import("./digital-contract-generator").then((m) => ({ default: m.DigitalContractGenerator })),
+)
 const EmergencySosModal = React.lazy(() =>
   import("../shared/emergency-sos-modal").then((m) => ({ default: m.EmergencySosModal })),
 )
@@ -1028,6 +1040,20 @@ export default function Vitrine() {
           />
         </Suspense>
 
+        {/* 2b-wizard. InstantQuoteStepWizard — Orçamentômetro em 3 Passos com Disparo WhatsApp */}
+        <Suspense fallback={null}>
+          <InstantQuoteStepWizard
+            onFilterResults={(serviceQuery) => {
+              resetToFirstPage()
+              dispatch({ type: "SET_FILTERS", filters: { ...filters, q: serviceQuery } })
+              if (typeof window !== "undefined") {
+                const el = document.getElementById(RESULTS_ANCHOR_ID)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            }}
+          />
+        </Suspense>
+
         {/* 2c. TrendingServices — Serviços Mais Contratados em Governador Valadares com preço transparente */}
         <Suspense fallback={null}>
           <TrendingServices
@@ -1104,6 +1130,20 @@ export default function Vitrine() {
                 type: "SET_FILTERS",
                 filters: { ...filters, q: `${serviceName} ${neighborhood}` },
               })
+              if (typeof window !== "undefined") {
+                const el = document.getElementById(RESULTS_ANCHOR_ID)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            }}
+          />
+        </Suspense>
+
+        {/* 2f-reels. GvReelsShowcase — Reels / Mini-Vídeos de Serviços Reais em GV */}
+        <Suspense fallback={null}>
+          <GvReelsShowcase
+            onQuoteProvider={(providerName) => {
+              resetToFirstPage()
+              dispatch({ type: "SET_FILTERS", filters: { ...filters, q: providerName } })
               if (typeof window !== "undefined") {
                 const el = document.getElementById(RESULTS_ANCHOR_ID)
                 if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
@@ -1248,6 +1288,20 @@ export default function Vitrine() {
           <QuickQuoteCalculator />
         </LazySection>
 
+        {/* 5c. FipeServicesIndex — A "Tabela FIPE" dos Serviços de GV (Índice Transparente) */}
+        <LazySection>
+          <FipeServicesIndex
+            onFilterService={(serviceName) => {
+              resetToFirstPage()
+              dispatch({ type: "SET_FILTERS", filters: { ...filters, q: serviceName } })
+              if (typeof window !== "undefined") {
+                const el = document.getElementById(RESULTS_ANCHOR_ID)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            }}
+          />
+        </LazySection>
+
         {/* 6. PartnersTrust — H6/H9: press logos, trust signals */}
         <LazySection>
           <PartnersTrust />
@@ -1289,6 +1343,18 @@ export default function Vitrine() {
         <LazySection>
           <TrustComparisonTable
             onCtaClick={() => {
+              if (typeof window !== "undefined") {
+                const el = document.getElementById(RESULTS_ANCHOR_ID)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            }}
+          />
+        </LazySection>
+
+        {/* 8d. DigitalContractGenerator — Gerador de Pré-Contrato & Recibo Oficial em 1 Clique */}
+        <LazySection>
+          <DigitalContractGenerator
+            onExploreProtectedProviders={() => {
               if (typeof window !== "undefined") {
                 const el = document.getElementById(RESULTS_ANCHOR_ID)
                 if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
