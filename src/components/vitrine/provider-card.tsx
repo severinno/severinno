@@ -16,6 +16,7 @@ import { formatBRL } from "@/lib/format"
 import { formatDistance } from "@/lib/geo-client"
 import { toggleFavorite, type ProviderCard as ProviderCardType } from "@/lib/api"
 import { VerifiedBadge } from "@/components/shared/verified-badge"
+import { EscrowGuaranteeBadge } from "@/components/shared/escrow-guarantee-badge"
 import { useAuthStore } from "@/store/auth"
 import { useUIStore } from "@/store/ui"
 import { useCompareStore, MAX_COMPARE } from "@/store/compare"
@@ -243,6 +244,11 @@ export default React.memo(function ProviderCard({
               {typeof minPrice === "number" ? formatBRL(minPrice) : "Sob consulta"}
             </span>
           </div>
+        </div>
+
+        {/* Escrow guarantee trust badge */}
+        <div className="mt-2 flex items-center justify-between">
+          <EscrowGuaranteeBadge variant="compact" />
         </div>
 
         {/* Bio */}

@@ -28,6 +28,8 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import ProviderCard, { ProviderCardSkeleton } from "@/components/vitrine/provider-card"
 import Footer from "@/components/shared/footer"
+import { matchSynonymSuggestions } from "@/lib/search-synonyms"
+import { EscrowGuaranteeBadge } from "@/components/shared/escrow-guarantee-badge"
 import {
   Pagination,
   PaginationContent,
@@ -58,6 +60,10 @@ export function SearchPage() {
   const [query, setQuery] = React.useState(initialQ)
   const [debouncedQ, setDebouncedQ] = React.useState(initialQ)
   const [page, setPage] = React.useState(initialPage)
+
+  const synonymSuggestions = React.useMemo(() => {
+    return matchSynonymSuggestions(query, 3)
+  }, [query])
 
   // Debounce query para evitar requests a cada tecla
   React.useEffect(() => {
@@ -141,6 +147,32 @@ export function SearchPage() {
               Buscar
             </Button>
           </form>
+
+          {/* Sugestões preditivas populares */}
+          {synonymSuggestions.length > 0 && (
+            <div className="mx-auto mt-3 flex max-w-2xl flex-wrap items-center justify-center gap-1.5 text-xs">
+              <span className="font-medium text-emerald-100/90">Você quis dizer:</span>
+              {synonymSuggestions.map((s) => (
+                <button
+                  key={s.keyword}
+                  type="button"
+                  onClick={() => handlePopularClick(s.targetCategoryName)}
+                  className="rounded-full bg-white/20 px-3 py-1 font-semibold text-white backdrop-blur-xs transition-colors hover:bg-white/30"
+                >
+                  ✨ {s.keyword} →{" "}
+                  <span className="underline decoration-emerald-300">{s.targetCategoryName}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Selo de Garantia e Confiança Escrow */}
+          <div className="mt-4 flex justify-center">
+            <div className="inline-flex items-center gap-2 rounded-full bg-black/20 px-3.5 py-1 text-xs text-white/90 backdrop-blur-xs">
+              <EscrowGuaranteeBadge variant="compact" className="bg-white/20 text-white" />
+              <span>Pagamento 100% protegido — Liberado só após a sua aprovação</span>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -164,12 +164,12 @@ function WithdrawDialog({
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ArrowDownLeft className="size-4" />
-            Simular Saque
+            <ArrowDownLeft className="size-4 text-emerald-600" />
+            Solicitar Saque PIX Instantâneo
           </DialogTitle>
           <DialogDescription>
-            Digite o valor que deseja sacar da sua carteira virtual. Saldo disponível:{" "}
-            <strong>{formatBRL(balance)}</strong>
+            Informe o valor a transferir via PIX para sua conta cadastrada. Saldo disponível:{" "}
+            <strong className="text-foreground">{formatBRL(balance)}</strong>
           </DialogDescription>
         </DialogHeader>
 
@@ -301,12 +301,12 @@ export function ProviderWallet() {
         </div>
         <Button
           size="sm"
-          className="h-9 gap-1.5"
+          className="h-9 gap-1.5 bg-emerald-600 font-medium text-white shadow-xs hover:bg-emerald-500"
           disabled={data.balance <= 0}
           onClick={() => setWithdrawOpen(true)}
         >
           <ArrowDownLeft className="size-3.5" />
-          Simular Saque
+          Solicitar Saque PIX
         </Button>
       </div>
 
@@ -320,15 +320,15 @@ export function ProviderWallet() {
           subtitle={
             data.totalWithdrawn > 0
               ? `Total sacado: ${formatBRL(data.totalWithdrawn)}`
-              : "Disponível para saque"
+              : "Disponível para saque PIX"
           }
         />
         <WalletStatCard
-          label="A receber"
+          label="Em Custódia (Escrow)"
           value={formatBRL(data.pendingBalance)}
           icon={Clock}
           accent="amber"
-          subtitle="Serviços em andamento"
+          subtitle="Liberado após aprovação do cliente"
         />
         <WalletStatCard
           label="Total recebido"

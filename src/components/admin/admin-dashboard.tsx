@@ -52,6 +52,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { BookingStatusBadge, ErrorState, FreshnessLabel, initials } from "./_shared"
 import { TOOLTIP_STYLE } from "./admin-chart-theme"
+import { AdminUnitEconomicsCard } from "./admin-unit-economics-card"
 
 // ---------------------------------------------------------------------------
 // Types — mirrors /api/admin/stats response
@@ -217,6 +218,9 @@ export function AdminDashboard({ onNavigate }: { onNavigate: (view: string) => v
           </div>
         </div>
       </div>
+
+      {/* Unit Economics & Expansion Simulator (Investor Pitch Mode) */}
+      <AdminUnitEconomicsCard />
 
       {/* KPI Cards */}
       <section
