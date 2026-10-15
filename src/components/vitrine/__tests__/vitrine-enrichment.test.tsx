@@ -195,7 +195,7 @@ describe("Vitrine High-Converting Components", () => {
       const onAction = vi.fn()
       render(<LiveAvailabilityTicker onActionClick={onAction} />)
 
-      expect(screen.getByText("Agenda Ao Vivo em GV:")).toBeDefined()
+      expect(screen.getByText(/Agenda Ao Vivo em/i)).toBeDefined()
       const actionBtn = screen.getByText("Chamar Agora")
       actionBtn.click()
       expect(onAction).toHaveBeenCalled()

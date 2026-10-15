@@ -58,6 +58,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useCountUp } from "@/hooks/use-animation"
 import { cn } from "@/lib/utils"
 import { AiQuoteWizard } from "@/components/shared/ai-quote-wizard"
+import { useRegionalContext } from "@/hooks/use-regional-context"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -139,66 +140,9 @@ export default function Hero({
   const { city } = useGeoStore()
   const openAuth = useUIStore((s) => s.openAuth)
 
-  // Contexto temporal adaptativo: modo noturno (18h-06h) ou fim de semana
-  const isClient = React.useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  )
-
-  const temporalContext = React.useMemo(() => {
-    if (!isClient) {
-      return {
-        isNight: false,
-        isWeekend: false,
-        greetingBadge: "Marketplace de serviços verificados",
-        headline: "Prestadores de serviço verificados,",
-        highlight: "perto de você.",
-        subtext:
-          "Compare avaliações reais, peça orçamento grátis e agende — encanador, eletricista, pintor e mais. Você escolhe o profissional.",
-      }
-    }
-
-    const now = new Date()
-    const hours = now.getHours()
-    const day = now.getDay()
-    const isNight = hours >= 18 || hours < 6
-    const isWeekend = day === 0 || day === 6
-
-    if (isNight) {
-      return {
-        isNight: true,
-        isWeekend,
-        greetingBadge: "🌙 Plantão Noturno & Emergência em GV",
-        headline: "Precisa de conserto urgente agora à noite?",
-        highlight: "Plantão chega em até 30 min.",
-        subtext:
-          "Chaveiros, eletricistas e encanadores de plantão agora com chegada rápida em Governador Valadares.",
-      }
-    }
-
-    if (isWeekend) {
-      return {
-        isWeekend: true,
-        isNight: false,
-        greetingBadge: "☀️ Atendimento no Fim de Semana em GV",
-        headline: "Serviços e reparos no fim de semana,",
-        highlight: "com agenda aberta hoje.",
-        subtext:
-          "Diaristas, montadores de móveis e técnicos com horários disponíveis para atendimento neste sábado e domingo.",
-      }
-    }
-
-    return {
-      isNight: false,
-      isWeekend: false,
-      greetingBadge: "Marketplace de serviços verificados",
-      headline: "Prestadores de serviço verificados,",
-      highlight: "perto de você.",
-      subtext:
-        "Compare avaliações reais, peça orçamento grátis e agende — encanador, eletricista, pintor e mais. Você escolhe o profissional.",
-    }
-  }, [isClient])
+  // Motor de Inteligência e Contexto Regional da Vitrine (Brasil Continental)
+  const { context: regionalContext } = useRegionalContext()
+  const isNight = regionalContext.solarPeriod === "night_emergency"
 
   // H1 — Live social proof numbers
   const { data: stats } = useQuery<PublicStats>({
@@ -288,17 +232,23 @@ export default function Hero({
               <span
                 className={cn(
                   "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ring-1 backdrop-blur transition-all",
-                  temporalContext.isNight
+                  isNight
                     ? "bg-rose-500/30 text-rose-200 shadow-sm shadow-rose-950/40 ring-rose-400/40"
-                    : "bg-white/15 text-white ring-white/20",
+                    : regionalContext.weather === "heatwave"
+                      ? "bg-amber-500/20 text-amber-200 ring-amber-400/30"
+                      : regionalContext.weather === "rainstorm"
+                        ? "bg-cyan-500/20 text-cyan-200 ring-cyan-400/30"
+                        : "bg-white/15 text-white ring-white/20",
                 )}
               >
-                {temporalContext.isNight ? (
+                {isNight ? (
                   <Moon className="size-3.5 text-rose-300" />
+                ) : regionalContext.weather === "heatwave" ? (
+                  <Sparkles className="size-3.5 text-amber-300" />
                 ) : (
                   <BadgeCheck className="size-3.5" />
                 )}
-                {temporalContext.greetingBadge}
+                {regionalContext.weatherBadge}
               </span>
               {stats && stats.providers > 0 && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-400/20 px-3 py-1 text-xs font-medium ring-1 ring-emerald-300/30">
@@ -319,11 +269,11 @@ export default function Hero({
 
             {/* H2 — Linguagem do mundo real adaptativa */}
             <h1 className="mt-5 text-3xl leading-[1.1] font-bold tracking-tight text-balance sm:text-4xl md:text-5xl">
-              {temporalContext.headline}{" "}
-              <span className="text-emerald-200">{temporalContext.highlight}</span>
+              {regionalContext.heroHeadline}{" "}
+              <span className="text-emerald-200">{regionalContext.heroHighlight}</span>
             </h1>
             <p className="mt-4 max-w-xl text-sm font-light text-pretty text-emerald-50/90 sm:text-base md:text-lg">
-              {temporalContext.subtext}
+              {regionalContext.heroSubtext}
             </p>
 
             {/* Search bar */}
@@ -365,16 +315,16 @@ export default function Hero({
             {/* Popular service chips adaptativos */}
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <span className="text-xs font-medium text-emerald-100/80">
-                {temporalContext.isNight ? "Plantão noturno:" : "Mais buscados:"}
+                {isNight ? "Plantão noturno:" : "Mais buscados:"}
               </span>
-              {(temporalContext.isNight ? NIGHT_SERVICES : POPULAR_SERVICES).map((s) => (
+              {(isNight ? NIGHT_SERVICES : POPULAR_SERVICES).map((s) => (
                 <button
                   key={s.label}
                   type="button"
                   onClick={() => handlePopularClick(s.label)}
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium text-white ring-1 transition-colors focus-visible:outline-none",
-                    temporalContext.isNight
+                    isNight
                       ? "bg-rose-500/20 ring-rose-400/30 hover:bg-rose-500/30"
                       : "bg-white/10 ring-white/15 hover:bg-white/20",
                   )}
@@ -386,7 +336,7 @@ export default function Hero({
             </div>
 
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              {temporalContext.isNight && onEmergencyClick && (
+              {isNight && onEmergencyClick && (
                 <Button
                   size="lg"
                   onClick={onEmergencyClick}

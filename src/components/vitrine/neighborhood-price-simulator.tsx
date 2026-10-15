@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useRegionalContext } from "@/hooks/use-regional-context"
 
 export type NeighborhoodPriceSimulatorProps = {
   onQuote: (serviceName: string, district: string) => void
@@ -126,7 +127,19 @@ export function NeighborhoodPriceSimulator({
   onQuote,
   className,
 }: NeighborhoodPriceSimulatorProps) {
-  const [selectedNeighborhood, setSelectedNeighborhood] = React.useState("Centro")
+  const { context: regionalContext } = useRegionalContext()
+  const city = regionalContext?.city || "Governador Valadares"
+  const neighborhoods =
+    regionalContext?.neighborhoods && regionalContext.neighborhoods.length > 0
+      ? regionalContext.neighborhoods
+      : GV_NEIGHBORHOODS
+
+  const [userNeighborhood, setUserNeighborhood] = React.useState<string>("")
+  const selectedNeighborhood =
+    userNeighborhood && neighborhoods.includes(userNeighborhood)
+      ? userNeighborhood
+      : neighborhoods[0] || "Centro"
+
   const [selectedServiceId, setSelectedServiceId] = React.useState("ar-condicionado")
 
   const currentService = React.useMemo(() => {
@@ -134,7 +147,7 @@ export function NeighborhoodPriceSimulator({
   }, [selectedServiceId])
 
   const handleWhatsAppLockPrice = () => {
-    const text = `Olá! Simulei na Severinno o serviço *${currentService.name}* no bairro *${selectedNeighborhood}* em Governador Valadares (faixa estimada de R$ ${currentService.minPrice} a R$ ${currentService.maxPrice}). Gostaria de travar este orçamento com a Garantia de Custódia.`
+    const text = `Olá! Simulei na Severinno o serviço *${currentService.name}* no bairro *${selectedNeighborhood}* em ${city} (faixa estimada de R$ ${currentService.minPrice} a R$ ${currentService.maxPrice}). Gostaria de travar este orçamento com a Garantia de Custódia.`
     const url = `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(text)}`
     window.open(url, "_blank", "noopener,noreferrer")
   }
@@ -150,7 +163,7 @@ export function NeighborhoodPriceSimulator({
       <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
         <div className="bg-primary/10 text-primary border-primary/20 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold">
           <Calculator className="size-3.5" />
-          <span>Simulador de Preço Médio em Governador Valadares</span>
+          <span>Simulador de Preço Médio em {city}</span>
         </div>
         <span className="text-muted-foreground flex items-center gap-1 text-xs font-medium">
           <ShieldCheck className="size-3.5 text-emerald-600" />
@@ -189,14 +202,14 @@ export function NeighborhoodPriceSimulator({
             <div>
               <label className="text-muted-foreground mb-1.5 block flex items-center gap-1 text-xs font-bold tracking-wider uppercase">
                 <MapPin className="text-primary size-3" />
-                Em qual bairro de GV?
+                Em qual bairro de {city}?
               </label>
               <select
                 value={selectedNeighborhood}
-                onChange={(e) => setSelectedNeighborhood(e.target.value)}
+                onChange={(e) => setUserNeighborhood(e.target.value)}
                 className="border-border/80 bg-background text-foreground focus:ring-primary h-11 w-full rounded-xl border px-3.5 text-sm font-semibold shadow-xs transition-all focus:ring-2 focus:outline-none"
               >
-                {GV_NEIGHBORHOODS.map((nh) => (
+                {neighborhoods.map((nh) => (
                   <option key={nh} value={nh}>
                     {nh}
                   </option>

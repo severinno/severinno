@@ -18,7 +18,6 @@
  */
 
 import { AsyncLocalStorage } from "async_hooks"
-import { headers } from "next/headers"
 
 export interface RequestContextData {
   /** Unique request ID (UUID v4) */
@@ -90,6 +89,7 @@ export function runWithContext<T>(context: RequestContextData, fn: () => T): T {
 export async function establishRequestContext(): Promise<string> {
   let hdrs: Headers
   try {
+    const { headers } = await import("next/headers")
     hdrs = await headers()
   } catch {
     // Fora de request scope — contexto mínimo com requestId sintético.

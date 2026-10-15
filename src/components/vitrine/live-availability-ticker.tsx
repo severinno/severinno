@@ -1,69 +1,62 @@
 "use client"
 
 import * as React from "react"
-import { Clock, Zap, AlertCircle, Calendar, ArrowRight, ShieldCheck } from "lucide-react"
+import { Zap, AlertCircle, Calendar, ArrowRight, ShieldCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useRegionalContext } from "@/hooks/use-regional-context"
 
 export type LiveAvailabilityTickerProps = {
   onActionClick?: () => void
   className?: string
 }
 
-type LiveNotice = {
-  id: string
-  icon: typeof Zap
-  color: string
-  badge: string
-  text: string
-  actionLabel: string
-}
-
-const LIVE_NOTICES: LiveNotice[] = [
-  {
-    id: "eletricista-tarde",
-    icon: Zap,
-    color: "text-amber-500",
-    badge: "Plantão Hoje",
-    text: "3 eletricistas com horário livre para hoje à tarde no Centro e Ilha dos Araújos.",
-    actionLabel: "Chamar Agora",
-  },
-  {
-    id: "faxina-sabado",
-    icon: Calendar,
-    color: "text-emerald-500",
-    badge: "Alta Procura",
-    text: "85% das agendas de diaristas para este sábado em GV já estão preenchidas.",
-    actionLabel: "Garantir Vaga",
-  },
-  {
-    id: "plantao-emergencia",
-    icon: AlertCircle,
-    color: "text-rose-500",
-    badge: "Socorro 24h",
-    text: "Encanadores e chaveiros de plantão em GV com chegada estimada em até 20 minutos.",
-    actionLabel: "Ver Plantão",
-  },
-  {
-    id: "clima-ar",
-    icon: Clock,
-    color: "text-blue-500",
-    badge: "Encaixe Rápido",
-    text: "Técnico de Ar-Condicionado disponível para higienização e conserto hoje.",
-    actionLabel: "Agendar",
-  },
-]
-
 export function LiveAvailabilityTicker({ onActionClick, className }: LiveAvailabilityTickerProps) {
+  const { context: regionalContext } = useRegionalContext()
   const [currentIndex, setCurrentIndex] = React.useState(0)
+
+  const city = regionalContext?.city || "Governador Valadares"
+  const activeCount = regionalContext?.platformEvents?.activeProvidersNearby ?? 18
+
+  const notices = React.useMemo(
+    () => [
+      {
+        id: "profissionais-ativos",
+        icon: Zap,
+        color: "text-amber-500",
+        badge: "Plantão Hoje",
+        text: `${activeCount} profissionais com agenda livre para hoje em ${city} e região.`,
+        actionLabel: "Chamar Agora",
+      },
+      {
+        id: "social-proof-24h",
+        icon: Calendar,
+        color: "text-emerald-500",
+        badge: "Alta Procura",
+        text:
+          regionalContext?.platformEvents?.recentSocialProofNotice ||
+          `Agendas da semana em ${city} sendo preenchidas agora.`,
+        actionLabel: "Garantir Vaga",
+      },
+      {
+        id: "plantao-emergencia",
+        icon: AlertCircle,
+        color: "text-rose-500",
+        badge: "Socorro 24h",
+        text: `Encanadores, chaveiros e eletricistas em ${city} com chegada estimada em até 30 minutos.`,
+        actionLabel: "Ver Plantão",
+      },
+    ],
+    [activeCount, city, regionalContext?.platformEvents?.recentSocialProofNotice],
+  )
 
   React.useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % LIVE_NOTICES.length)
+      setCurrentIndex((prev) => (prev + 1) % notices.length)
     }, 5500)
     return () => clearInterval(timer)
-  }, [])
+  }, [notices.length])
 
-  const current = LIVE_NOTICES[currentIndex]
+  const current = notices[currentIndex] || notices[0]
   const Icon = current.icon
 
   return (
@@ -81,7 +74,7 @@ export function LiveAvailabilityTicker({ onActionClick, className }: LiveAvailab
             <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500"></span>
           </span>
           <span className="text-[11px] font-extrabold tracking-wider text-emerald-400 uppercase">
-            Agenda Ao Vivo em GV:
+            Agenda Ao Vivo em {city}:
           </span>
         </div>
 
