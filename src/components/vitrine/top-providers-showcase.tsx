@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { apiGet } from "@/lib/api"
+import { formatBRL } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { useCompareStore } from "@/store/compare"
 import type { VitrineHighlightsResponse } from "@/app/api/vitrine/highlights/route"
@@ -49,7 +50,7 @@ export function TopProvidersShowcase({
           <Skeleton className="mb-8 h-4 w-96" />
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {[1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="h-80 w-full rounded-2xl" />
+              <Skeleton key={i} className="h-64 w-full rounded-2xl" />
             ))}
           </div>
         </div>
@@ -62,27 +63,27 @@ export function TopProvidersShowcase({
   }
 
   return (
-    <section className={cn("bg-muted/15 border-border/40 border-b py-10", className)}>
+    <section className={cn("bg-muted/10 border-border/40 border-b py-10", className)}>
       <div className="mx-auto w-full max-w-[95%] px-2 sm:px-4">
         {/* Header */}
-        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+            <div className="text-muted-foreground mb-1.5 inline-flex items-center gap-1.5 text-xs font-semibold">
               <Trophy className="size-3.5 text-amber-500" />
               <span>Destaques de Confiança em Governador Valadares</span>
             </div>
-            <h2 className="text-foreground text-2xl font-bold tracking-tight sm:text-3xl">
+            <h2 className="text-foreground text-xl font-bold tracking-tight sm:text-2xl">
               Prestadores Mais Requisitados da Cidade
             </h2>
             <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
-              Profissionais com antecedentes checados, histórico de excelência e centenas de
-              atendimentos sem reclamações.
+              Profissionais com antecedentes checados, histórico de excelência e atendimentos sem
+              reclamações.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 text-xs">
-            <span className="text-foreground inline-flex items-center gap-1 font-semibold">
-              <FileBadge className="size-4 text-emerald-600" />
+            <span className="text-muted-foreground inline-flex items-center gap-1 font-medium">
+              <FileBadge className="size-3.5 text-emerald-600" />
               100% Antecedentes Checados
             </span>
             {providers.length >= 2 && (
@@ -94,104 +95,111 @@ export function TopProvidersShowcase({
                   useCompareStore.getState().setIds(topIds)
                   useCompareStore.getState().openCompare()
                 }}
-                className="cursor-pointer gap-1.5 border-emerald-500/30 bg-emerald-500/10 text-xs font-bold text-emerald-700 shadow-xs hover:bg-emerald-500/20 dark:text-emerald-300"
+                className="border-border/60 hover:bg-muted/60 cursor-pointer gap-1.5 rounded-xl text-xs font-medium"
               >
-                <GitCompare className="size-3.5 text-emerald-600" />
+                <GitCompare className="text-primary size-3.5" />
                 Comparar os Melhores Lado a Lado
               </Button>
             )}
           </div>
         </div>
 
-        {/* Cards */}
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Cards Minimalistas */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {providers.map((provider) => {
             return (
               <div
                 key={provider.id}
-                className="group border-border/60 bg-card hover:border-primary/50 relative flex flex-col justify-between rounded-2xl border p-5 shadow-xs transition-all duration-200 hover:-translate-y-1 hover:shadow-lg"
+                className="group border-border/50 bg-card hover:border-border relative flex flex-col justify-between rounded-2xl border p-5 shadow-2xs transition-all duration-200 hover:shadow-md"
               >
                 <div>
-                  {/* Avatar & Badges */}
-                  <div className="mb-4 flex items-start justify-between gap-2">
-                    <div className="relative">
-                      <div className="flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 text-xl font-extrabold text-white shadow-md">
+                  {/* Header Minimalista: Avatar + Nome + Meta Unificada */}
+                  <div className="flex items-center gap-3">
+                    <div className="relative shrink-0">
+                      <div className="bg-primary/10 text-primary flex size-12 items-center justify-center rounded-full text-base font-bold">
                         {provider.name.charAt(0)}
                       </div>
                       <div
                         title="Identidade & Documentos Verificados"
-                        className="ring-card absolute -right-1 -bottom-1 flex size-5 items-center justify-center rounded-full bg-emerald-600 text-white shadow-xs ring-2"
+                        className="ring-card absolute -right-0.5 -bottom-0.5 flex size-4 items-center justify-center rounded-full bg-emerald-600 text-white ring-2"
                       >
-                        <BadgeCheck className="size-3.5" />
+                        <BadgeCheck className="size-3" />
                       </div>
                     </div>
 
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-bold text-amber-700 dark:text-amber-300">
-                      <Star className="size-3 fill-amber-500" />
-                      <span>{provider.avgRating.toFixed(1)}</span>
-                      <span className="text-muted-foreground">({provider.reviewCount})</span>
-                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h3
+                        onClick={() => onViewProvider(provider.id)}
+                        className="text-foreground hover:text-primary cursor-pointer truncate text-[15px] font-semibold tracking-tight transition-colors"
+                      >
+                        {provider.name}
+                      </h3>
+
+                      <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                        <span className="text-foreground inline-flex items-center gap-1 font-medium">
+                          <Star className="size-3.5 fill-amber-400 text-amber-400" />
+                          <span>{provider.avgRating.toFixed(1)}</span>
+                          <span className="text-muted-foreground font-normal">
+                            ({provider.reviewCount})
+                          </span>
+                        </span>
+                        <span className="inline-flex items-center gap-0.5 truncate">
+                          <MapPin className="text-muted-foreground/70 size-3 shrink-0" />
+                          <span className="truncate">
+                            {provider.district ? `${provider.district}, GV` : "GV"}
+                          </span>
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Name & Location */}
-                  <h3 className="text-foreground group-hover:text-primary line-clamp-1 text-base font-bold transition-colors">
-                    {provider.name}
-                  </h3>
-
-                  <div className="text-muted-foreground mt-1 flex items-center gap-1 text-xs">
-                    <MapPin className="text-primary size-3 shrink-0" />
-                    <span className="truncate">
-                      {provider.district ? `${provider.district}, GV` : "Governador Valadares"}
-                    </span>
-                  </div>
-
-                  {/* Trust pills */}
-                  <div className="mt-3 flex flex-wrap gap-1">
-                    <span className="flex items-center gap-1 rounded-md border border-emerald-200/60 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300">
-                      <ShieldCheck className="size-3" />
-                      Antecedentes OK
-                    </span>
-                    <span className="bg-muted/60 text-muted-foreground border-border/40 flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium">
-                      <CalendarCheck className="size-3" />
-                      {provider.completedBookingsCount}+ serviços
-                    </span>
-                  </div>
-
-                  {/* Main Service */}
+                  {/* Especialidade & Preço em Linha Limpa */}
                   {provider.topServiceTitle && (
-                    <div className="bg-muted/30 border-border/30 mt-3.5 rounded-xl border p-2 text-xs">
-                      <p className="text-muted-foreground text-[10px] font-medium">
-                        Especialidade em destaque:
-                      </p>
-                      <p className="text-foreground mt-0.5 truncate font-semibold">
+                    <div className="mt-3.5 flex items-center justify-between gap-2">
+                      <span className="bg-muted/50 text-foreground/85 truncate rounded-md px-2 py-0.5 text-[11px] font-medium">
                         {provider.topServiceTitle}
-                      </p>
-                      <p className="text-primary mt-0.5 text-[11px] font-extrabold">
-                        A partir de R$ {provider.topServicePrice}
-                      </p>
+                      </span>
+                      {provider.topServicePrice != null && (
+                        <span className="text-foreground shrink-0 text-xs font-bold">
+                          {formatBRL(provider.topServicePrice)}
+                        </span>
+                      )}
                     </div>
                   )}
+
+                  {/* Linha Sutil de Confiança */}
+                  <div className="text-muted-foreground mt-3 flex items-center justify-between text-[11px]">
+                    <span className="inline-flex items-center gap-1">
+                      <ShieldCheck className="size-3.5 text-emerald-600/80" />
+                      <span>Antecedentes OK</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <CalendarCheck className="size-3" />
+                      <span>{provider.completedBookingsCount}+ serviços</span>
+                    </span>
+                  </div>
                 </div>
 
-                {/* Actions */}
-                <div className="border-border/40 mt-5 flex flex-col gap-2 border-t pt-3">
+                {/* Ações Lado a Lado */}
+                <div className="border-border/40 mt-4 flex items-center gap-2 border-t pt-3.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onQuote(provider.id)}
+                    className="border-border/60 hover:bg-muted/60 h-9 flex-1 rounded-xl text-xs font-medium"
+                  >
+                    <CheckCircle2 className="text-primary mr-1 size-3.5" />
+                    Orçamento
+                  </Button>
+
                   <Button
                     size="sm"
                     onClick={() => onViewProvider(provider.id)}
-                    className="flex w-full items-center justify-center gap-1.5 font-bold shadow-xs"
+                    className="bg-primary text-primary-foreground hover:bg-primary/90 h-9 flex-1 rounded-xl text-xs font-semibold shadow-2xs"
                   >
-                    <span>Ver Perfil & Avaliações</span>
-                    <ArrowRight className="size-3.5" />
+                    <span>Ver Perfil</span>
+                    <ArrowRight className="ml-1 size-3.5" />
                   </Button>
-
-                  <button
-                    type="button"
-                    onClick={() => onQuote(provider.id)}
-                    className="text-foreground/80 hover:text-foreground bg-muted/60 hover:bg-muted flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors"
-                  >
-                    <CheckCircle2 className="text-primary size-3.5" />
-                    <span>Pedir Orçamento Grátis</span>
-                  </button>
                 </div>
               </div>
             )
