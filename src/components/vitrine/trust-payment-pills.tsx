@@ -1,11 +1,11 @@
 "use client"
 
 import * as React from "react"
-import { CreditCard, Zap, FileText, ShieldCheck, Star, X } from "lucide-react"
+import { CreditCard, Zap, FileText, ShieldCheck, Star, Siren, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export type TrustPillId =
-  "parcela12x" | "pix_desconto" | "emite_nf" | "garantia90d" | "top_avaliado"
+  "parcela12x" | "pix_desconto" | "emite_nf" | "garantia90d" | "top_avaliado" | "plantao_agora"
 
 export interface TrustPill {
   id: TrustPillId
@@ -16,6 +16,13 @@ export interface TrustPill {
 }
 
 export const TRUST_PAYMENT_PILLS: TrustPill[] = [
+  {
+    id: "plantao_agora",
+    label: "🚨 Atendendo Agora / Plantão Noturno & Domingo",
+    shortLabel: "🚨 Plantão Agora",
+    icon: Siren,
+    badgeText: "24h & Domingo",
+  },
   {
     id: "parcela12x",
     label: "Parcela em até 12x",

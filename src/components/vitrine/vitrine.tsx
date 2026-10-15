@@ -113,6 +113,12 @@ const FloatingRecentDock = React.lazy(() =>
 const EscrowShieldModal = React.lazy(() =>
   import("./escrow-shield-modal").then((m) => ({ default: m.EscrowShieldModal })),
 )
+const WhatsappAudioTestimonials = React.lazy(() =>
+  import("./whatsapp-audio-testimonials").then((m) => ({ default: m.WhatsappAudioTestimonials })),
+)
+const PreventiveRoiBar = React.lazy(() =>
+  import("./preventive-roi-bar").then((m) => ({ default: m.PreventiveRoiBar })),
+)
 const EmergencySosModal = React.lazy(() =>
   import("../shared/emergency-sos-modal").then((m) => ({ default: m.EmergencySosModal })),
 )
@@ -1042,6 +1048,20 @@ export default function Vitrine() {
           />
         </Suspense>
 
+        {/* 2c-roi. PreventiveRoiBar — Calculadora de Manutenção Preventiva vs Prejuízo */}
+        <Suspense fallback={null}>
+          <PreventiveRoiBar
+            onSelectService={(serviceQuery) => {
+              resetToFirstPage()
+              dispatch({ type: "SET_FILTERS", filters: { ...filters, q: serviceQuery } })
+              if (typeof window !== "undefined") {
+                const el = document.getElementById(RESULTS_ANCHOR_ID)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            }}
+          />
+        </Suspense>
+
         {/* 2d. EscrowGuaranteeBanner — Selo de Garantia Blindada (Zero Risco, R$ 0 adiantado) */}
         <Suspense fallback={null}>
           <EscrowGuaranteeBanner onLearnMore={() => setEscrowModalOpen(true)} />
@@ -1131,6 +1151,33 @@ export default function Vitrine() {
                 resetToFirstPage()
               }}
             />
+            {activeTrustPills.includes("plantao_agora") && (
+              <div
+                data-testid="emergency-duty-active-banner"
+                className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-rose-300 bg-rose-50/80 px-4 py-2.5 text-xs text-rose-900 shadow-xs dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="relative flex size-2.5">
+                    <span className="absolute inline-flex size-full animate-ping rounded-full bg-rose-400 opacity-75" />
+                    <span className="relative inline-flex size-2.5 rounded-full bg-rose-600" />
+                  </span>
+                  <span className="font-bold">Modo Plantão 24h & Domingo Ativo:</span>
+                  <span className="hidden sm:inline">
+                    Priorizando profissionais com atendimento emergencial imediato em Governador
+                    Valadares.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveTrustPills((prev) => prev.filter((p) => p !== "plantao_agora"))
+                  }
+                  className="cursor-pointer font-bold underline hover:opacity-80"
+                >
+                  Desativar
+                </button>
+              </div>
+            )}
           </Suspense>
         </div>
 
@@ -1189,6 +1236,23 @@ export default function Vitrine() {
         {/* 7. Testimonials — social proof from real users */}
         <LazySection>
           <Testimonials />
+        </LazySection>
+
+        {/* 7b. WhatsappAudioTestimonials — Prova Social Humanizada em Áudios do WhatsApp */}
+        <LazySection>
+          <WhatsappAudioTestimonials
+            onQuoteService={(serviceName, neighborhood) => {
+              resetToFirstPage()
+              dispatch({
+                type: "SET_FILTERS",
+                filters: { ...filters, q: `${serviceName} ${neighborhood}` },
+              })
+              if (typeof window !== "undefined") {
+                const el = document.getElementById(RESULTS_ANCHOR_ID)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            }}
+          />
         </LazySection>
 
         {/* 8. WhySeverinno — value proposition */}
