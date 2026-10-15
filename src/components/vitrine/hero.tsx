@@ -258,8 +258,8 @@ export default function Hero({
         style={{ animationDuration: "8s", animationDelay: "0.8s" }}
       />
 
-      <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 md:py-16 lg:px-8 lg:py-20">
-        <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-12">
+      <div className="relative mx-auto w-full max-w-[95%] px-4 py-12 sm:px-6 md:py-16 lg:px-8 lg:py-20">
+        <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-12 xl:gap-16">
           {/* ============ LEFT: copy + search + CTA ============ */}
           <div className="flex flex-col items-start">
             {/* H1 — Status badges */}
@@ -303,18 +303,18 @@ export default function Hero({
             </div>
 
             {/* H2 — Linguagem do mundo real adaptativa */}
-            <h1 className="mt-5 text-3xl leading-[1.1] font-bold tracking-tight text-balance sm:text-4xl md:text-5xl">
+            <h1 className="mt-5 text-3xl leading-[1.1] font-bold tracking-tight text-balance sm:text-4xl md:text-5xl lg:text-6xl">
               {regionalContext.heroHeadline}{" "}
               <span className="text-emerald-200">{regionalContext.heroHighlight}</span>
             </h1>
-            <p className="mt-4 max-w-xl text-sm font-light text-pretty text-emerald-50/90 sm:text-base md:text-lg">
+            <p className="mt-4 max-w-2xl text-sm font-light text-pretty text-emerald-50/90 sm:text-base md:text-lg">
               {regionalContext.heroSubtext}
             </p>
 
             {/* Search bar */}
             <form
               onSubmit={handleSearch}
-              className="text-foreground mt-7 w-full max-w-xl rounded-2xl bg-white p-2 shadow-2xl ring-1 ring-black/5"
+              className="text-foreground mt-7 w-full max-w-2xl rounded-2xl bg-white p-2 shadow-2xl ring-1 ring-black/5 xl:max-w-3xl"
             >
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <div className="relative flex flex-1 items-center">
