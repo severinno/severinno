@@ -436,6 +436,7 @@ export function AdminTaxonomy() {
         description: `${res.total} categorias canônicas (${res.roots} macro-domínios, ${res.subcategories} subcategorias e ${res.specialties} especialidades) estão atualizadas.`,
       })
       invalidate()
+      refetch()
     },
     onError: (e: unknown) => {
       toast.error(errMsg(e, "Não foi possível sincronizar o catálogo canônico."))
