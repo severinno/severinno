@@ -16,8 +16,10 @@ import {
   X,
   Info,
   Radio,
+  ClipboardCheck,
 } from "lucide-react"
 
+import { ServiceDeliveryReportModal } from "@/components/shared/service-delivery-report-modal"
 import { useLocationBroadcaster } from "@/hooks/use-location-broadcaster"
 import { apiGet, apiPatch } from "@/lib/api"
 import {
@@ -89,6 +91,9 @@ type Booking = {
   paymentMethod: PaymentMethod
   paymentStatus: PaymentStatus
   notes?: string | null
+  beforePhotos?: string[] | null
+  afterPhotos?: string[] | null
+  completionNote?: string | null
   createdAt: string
   updatedAt: string
   service: {
@@ -149,11 +154,13 @@ function BookingDetailsDialog({
   open,
   onOpenChange,
   onMessage,
+  onReport,
 }: {
   booking: Booking | null
   open: boolean
   onOpenChange: (v: boolean) => void
   onMessage: (clientId: string) => void
+  onReport?: () => void
 }) {
   if (!booking) return null
   const mapsUrl = `https://www.openstreetmap.org/?mlat=${booking.lat}&mlon=${booking.lng}#map=16/${booking.lat}/${booking.lng}`
@@ -264,7 +271,19 @@ function BookingDetailsDialog({
             </p>
           )}
         </div>
-        <DialogFooter>
+        <DialogFooter className="flex-wrap gap-2">
+          {onReport && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                onOpenChange(false)
+                onReport()
+              }}
+              className="gap-1.5 border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+            >
+              <ClipboardCheck className="size-4" /> Laudo & Checklist
+            </Button>
+          )}
           <Button variant="outline" onClick={() => onMessage(booking.clientId)} className="gap-1.5">
             <MessageSquare className="size-4" /> Enviar mensagem
           </Button>
@@ -286,7 +305,14 @@ export function ProviderBookings() {
   const [page, setPage] = React.useState(1)
   const [detail, setDetail] = React.useState<Booking | null>(null)
   const [detailOpen, setDetailOpen] = React.useState(false)
+  const [reportBooking, setReportBooking] = React.useState<Booking | null>(null)
+  const [reportOpen, setReportOpen] = React.useState(false)
   const [actioningId, setActioningId] = React.useState<string | null>(null)
+
+  const openReport = (b: Booking) => {
+    setReportBooking(b)
+    setReportOpen(true)
+  }
 
   // Fetch all bookings once for tab counts + table data
   const allQuery = useQuery<{ items: Booking[]; total: number }>({
@@ -477,6 +503,7 @@ export function ProviderBookings() {
                         onConfirm={() => updateStatus(b, "CONFIRMED", "Confirmado")}
                         onStart={() => updateStatus(b, "IN_PROGRESS", "Iniciado")}
                         onCancel={() => updateStatus(b, "CANCELLED", "Cancelado")}
+                        onReport={() => openReport(b)}
                       />
                     </TableCell>
                   </TableRow>
@@ -497,6 +524,7 @@ export function ProviderBookings() {
                 onConfirm={() => updateStatus(b, "CONFIRMED", "Confirmado")}
                 onStart={() => updateStatus(b, "IN_PROGRESS", "Iniciado")}
                 onCancel={() => updateStatus(b, "CANCELLED", "Cancelado")}
+                onReport={() => openReport(b)}
               />
             ))}
           </div>
@@ -532,7 +560,26 @@ export function ProviderBookings() {
         open={detailOpen}
         onOpenChange={setDetailOpen}
         onMessage={messageClient}
+        onReport={() => detail && openReport(detail)}
       />
+
+      {reportBooking && (
+        <ServiceDeliveryReportModal
+          open={reportOpen}
+          onOpenChange={setReportOpen}
+          bookingId={reportBooking.id}
+          serviceTitle={reportBooking.service.title}
+          clientName={reportBooking.client.name}
+          userRole="PROVIDER"
+          initialBeforePhotos={reportBooking.beforePhotos || []}
+          initialAfterPhotos={reportBooking.afterPhotos || []}
+          initialNotes={reportBooking.completionNote || ""}
+          isCompleted={reportBooking.status === "COMPLETED"}
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["provider", "bookings"] })
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -549,6 +596,7 @@ function BookingActions({
   onConfirm,
   onStart,
   onCancel,
+  onReport,
 }: {
   booking: Booking
   actioning: boolean
@@ -557,6 +605,7 @@ function BookingActions({
   onConfirm: () => void
   onStart: () => void
   onCancel: () => void
+  onReport?: () => void
 }) {
   return (
     <div className="flex items-center justify-end gap-1.5">
@@ -583,6 +632,19 @@ function BookingActions({
         </Button>
       )}
       {booking.status === "IN_PROGRESS" && <LocationBroadcastButton bookingId={booking.id} />}
+      {onReport &&
+        (booking.status === "IN_PROGRESS" ||
+          booking.status === "CONFIRMED" ||
+          booking.status === "COMPLETED") && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onReport}
+            className="h-8 gap-1.5 border-emerald-500/40 px-2.5 text-xs text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+          >
+            <ClipboardCheck className="size-3.5" /> Laudo
+          </Button>
+        )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" className="size-8" aria-label="Mais ações">
@@ -593,6 +655,11 @@ function BookingActions({
           <DropdownMenuItem onClick={onDetail}>
             <Info className="mr-2 size-4" /> Ver detalhes
           </DropdownMenuItem>
+          {onReport && (
+            <DropdownMenuItem onClick={onReport}>
+              <ClipboardCheck className="mr-2 size-4 text-emerald-600" /> Laudo & Checklist
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={onMessage}>
             <MessageSquare className="mr-2 size-4" /> Enviar mensagem
           </DropdownMenuItem>
@@ -659,6 +726,7 @@ function BookingCard({
   onConfirm,
   onStart,
   onCancel,
+  onReport,
 }: {
   booking: Booking
   actioning: boolean
@@ -667,6 +735,7 @@ function BookingCard({
   onConfirm: () => void
   onStart: () => void
   onCancel: () => void
+  onReport?: () => void
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border p-4">
@@ -725,6 +794,7 @@ function BookingCard({
           onConfirm={onConfirm}
           onStart={onStart}
           onCancel={onCancel}
+          onReport={onReport}
         />
       </div>
     </div>

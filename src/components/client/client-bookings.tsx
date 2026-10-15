@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ClipboardCheck,
   CreditCard,
   Eye,
   FileText,
@@ -79,6 +80,7 @@ import { BookingTimeline } from "@/components/shared/flow-timeline"
 import { PixCheckout } from "@/components/shared/pix-checkout"
 import { LiveTracking } from "@/components/shared/live-tracking"
 import { ReceiptModal } from "@/components/shared/receipt-modal"
+import { ServiceDeliveryReportModal } from "@/components/shared/service-delivery-report-modal"
 import {
   PageHeader,
   StatusBadge,
@@ -104,6 +106,9 @@ type Booking = {
   address: string
   cep: string
   notes?: string | null
+  beforePhotos?: string[] | null
+  afterPhotos?: string[] | null
+  completionNote?: string | null
   service: {
     id: string
     title: string
@@ -179,6 +184,7 @@ export function ClientBookings() {
   const [pixBooking, setPixBooking] = React.useState<Booking | null>(null)
   const [trackingBooking, setTrackingBooking] = React.useState<Booking | null>(null)
   const [receiptBookingId, setReceiptBookingId] = React.useState<string | null>(null)
+  const [reportBooking, setReportBooking] = React.useState<Booking | null>(null)
 
   // Reset page when tab changes
   React.useEffect(() => {
@@ -354,6 +360,7 @@ export function ClientBookings() {
               onViewProvider={() => openProvider(b.provider.id)}
               onTrack={() => setTrackingBooking(b)}
               onViewReceipt={() => setReceiptBookingId(b.id)}
+              onOpenReport={() => setReportBooking(b)}
               onPay={
                 b.paymentMethod === "PIX" && b.paymentStatus === "PENDING"
                   ? () => setPixBooking(b)
@@ -501,6 +508,28 @@ export function ClientBookings() {
           onOpenChange={(o) => !o && setReceiptBookingId(null)}
         />
       )}
+
+      {/* Service Delivery Report / Inspection Modal */}
+      {reportBooking && (
+        <ServiceDeliveryReportModal
+          open={!!reportBooking}
+          onOpenChange={(o) => !o && setReportBooking(null)}
+          bookingId={reportBooking.id}
+          serviceTitle={reportBooking.service.title}
+          serviceCategory={reportBooking.service.category?.name}
+          clientName="Você"
+          providerName={reportBooking.provider.name}
+          userRole="CLIENT"
+          initialBeforePhotos={reportBooking.beforePhotos || []}
+          initialAfterPhotos={reportBooking.afterPhotos || []}
+          initialNotes={reportBooking.completionNote || ""}
+          isCompleted={reportBooking.status === "COMPLETED"}
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["bookings"] })
+            qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -520,6 +549,7 @@ function BookingCard({
   onTrack,
   onPay,
   onViewReceipt,
+  onOpenReport,
   isCompleting,
 }: {
   booking: Booking
@@ -532,6 +562,7 @@ function BookingCard({
   onTrack?: () => void
   onPay?: () => void
   onViewReceipt?: () => void
+  onOpenReport?: () => void
   isCompleting: boolean
 }) {
   const provider = booking.provider
@@ -660,6 +691,12 @@ function BookingCard({
                   Avaliar serviço
                 </DropdownMenuItem>
               ) : null}
+              {onOpenReport ? (
+                <DropdownMenuItem onSelect={onOpenReport}>
+                  <ClipboardCheck className="size-4 text-emerald-600" />
+                  Laudo & Checklist
+                </DropdownMenuItem>
+              ) : null}
               {status === "COMPLETED" || booking.paymentStatus === "PAID" ? (
                 <DropdownMenuItem onSelect={onViewReceipt}>
                   <FileText className="size-4 text-blue-600" />
@@ -681,6 +718,18 @@ function BookingCard({
             <Eye className="size-4" />
             Detalhes
           </Button>
+          {onOpenReport &&
+          (status === "CONFIRMED" || status === "IN_PROGRESS" || status === "COMPLETED") ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onOpenReport}
+              className="h-9 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+            >
+              <ClipboardCheck className="size-4" />
+              Laudo / Fotos
+            </Button>
+          ) : null}
           {(status === "COMPLETED" || booking.paymentStatus === "PAID") && onViewReceipt ? (
             <Button
               variant="outline"
