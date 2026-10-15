@@ -67,6 +67,21 @@ const EscrowGuaranteeBanner = React.lazy(() => import("./escrow-guarantee-banner
 const LiveAvailabilityTicker = React.lazy(() => import("./live-availability-ticker"))
 const NeighborhoodPriceSimulator = React.lazy(() => import("./neighborhood-price-simulator"))
 const ProviderStoriesStrip = React.lazy(() => import("./provider-stories-strip"))
+const EmergencySosBanner = React.lazy(() =>
+  import("./emergency-sos-banner").then((m) => ({ default: m.EmergencySosBanner })),
+)
+const WhatsappAudioQuoteCard = React.lazy(() =>
+  import("./whatsapp-audio-quote-card").then((m) => ({ default: m.WhatsappAudioQuoteCard })),
+)
+const NeighborhoodFeedShowcase = React.lazy(() =>
+  import("./neighborhood-feed-showcase").then((m) => ({ default: m.NeighborhoodFeedShowcase })),
+)
+const TrustComparisonTable = React.lazy(() =>
+  import("./trust-comparison-table").then((m) => ({ default: m.TrustComparisonTable })),
+)
+const ProximityRadarTicker = React.lazy(() =>
+  import("./proximity-radar-ticker").then((m) => ({ default: m.ProximityRadarTicker })),
+)
 const EmergencySosModal = React.lazy(() =>
   import("../shared/emergency-sos-modal").then((m) => ({ default: m.EmergencySosModal })),
 )
@@ -860,7 +875,37 @@ export default function Vitrine() {
           }}
         />
 
-        {/* 1b. ProviderStoriesStrip — Stories / Mini-Vídeos dos profissionais de GV em ação */}
+        {/* 1a. EmergencySosBanner — Plantão de Emergência Noturno e Final de Semana */}
+        <div className="mx-auto my-4 max-w-7xl px-4 sm:px-6 lg:px-8">
+          <Suspense fallback={null}>
+            <EmergencySosBanner onTriggerSos={() => setSosOpen(true)} />
+          </Suspense>
+        </div>
+
+        {/* 1b. ProximityRadarTicker — Radar de Proximidade em Tempo Real (< 15 min) */}
+        <div className="mx-auto my-4 max-w-7xl px-4 sm:px-6 lg:px-8">
+          <Suspense fallback={null}>
+            <ProximityRadarTicker
+              onExploreNearby={() => {
+                resetToFirstPage()
+                dispatch({ type: "SET_FILTERS", filters: { ...filters, sort: "distance" } })
+                if (typeof window !== "undefined") {
+                  const el = document.getElementById(RESULTS_ANCHOR_ID)
+                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+                }
+              }}
+            />
+          </Suspense>
+        </div>
+
+        {/* 1c. WhatsappAudioQuoteCard — Orçamento por Áudio no WhatsApp (Zero Fricção) */}
+        <div className="mx-auto my-4 max-w-7xl px-4 sm:px-6 lg:px-8">
+          <Suspense fallback={null}>
+            <WhatsappAudioQuoteCard />
+          </Suspense>
+        </div>
+
+        {/* 1d. ProviderStoriesStrip — Stories / Mini-Vídeos dos profissionais de GV em ação */}
         <Suspense fallback={null}>
           <ProviderStoriesStrip onQuoteProvider={(providerId) => handleQuote(providerId)} />
         </Suspense>
@@ -925,6 +970,23 @@ export default function Vitrine() {
           <TopProvidersShowcase
             onViewProvider={(providerId) => handleView(providerId)}
             onQuote={(providerId) => handleQuote(providerId)}
+          />
+        </Suspense>
+
+        {/* 2f. NeighborhoodFeedShowcase — Feed de Serviços Concluídos no Seu Bairro (Hiperlocal) */}
+        <Suspense fallback={null}>
+          <NeighborhoodFeedShowcase
+            onQuoteService={(serviceName, neighborhood) => {
+              resetToFirstPage()
+              dispatch({
+                type: "SET_FILTERS",
+                filters: { ...filters, q: `${serviceName} ${neighborhood}` },
+              })
+              if (typeof window !== "undefined") {
+                const el = document.getElementById(RESULTS_ANCHOR_ID)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            }}
           />
         </Suspense>
 
@@ -1007,6 +1069,18 @@ export default function Vitrine() {
         {/* 8b. BeforeAfterShowcase — Real visual transformations (Sugestão 3) */}
         <LazySection>
           <BeforeAfterShowcase />
+        </LazySection>
+
+        {/* 8c. TrustComparisonTable — Comparativo Boca a Boca vs Severinno */}
+        <LazySection>
+          <TrustComparisonTable
+            onCtaClick={() => {
+              if (typeof window !== "undefined") {
+                const el = document.getElementById(RESULTS_ANCHOR_ID)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            }}
+          />
         </LazySection>
 
         {/* 9. ProviderSpotlight — featured provider */}
