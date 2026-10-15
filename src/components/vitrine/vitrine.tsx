@@ -122,17 +122,14 @@ const PreventiveRoiBar = React.lazy(() =>
 const HomeHealthScoreQuiz = React.lazy(() =>
   import("./home-health-score-quiz").then((m) => ({ default: m.HomeHealthScoreQuiz })),
 )
-const InstantQuoteStepWizard = React.lazy(() =>
-  import("./instant-quote-step-wizard").then((m) => ({ default: m.InstantQuoteStepWizard })),
+const QuotePricingHub = React.lazy(() =>
+  import("./quote-pricing-hub").then((m) => ({ default: m.QuotePricingHub })),
 )
-const GvReelsShowcase = React.lazy(() =>
-  import("./gv-reels-showcase").then((m) => ({ default: m.GvReelsShowcase })),
+const VisualProofHub = React.lazy(() =>
+  import("./visual-proof-hub").then((m) => ({ default: m.VisualProofHub })),
 )
-const FipeServicesIndex = React.lazy(() =>
-  import("./fipe-services-index").then((m) => ({ default: m.FipeServicesIndex })),
-)
-const DigitalContractGenerator = React.lazy(() =>
-  import("./digital-contract-generator").then((m) => ({ default: m.DigitalContractGenerator })),
+const TrustShieldHub = React.lazy(() =>
+  import("./trust-shield-hub").then((m) => ({ default: m.TrustShieldHub })),
 )
 const EmergencySosModal = React.lazy(() =>
   import("../shared/emergency-sos-modal").then((m) => ({ default: m.EmergencySosModal })),
@@ -933,90 +930,7 @@ export default function Vitrine() {
           }}
         />
 
-        {/* 1-slot. FastBookingFilter — Filtro Rápido por Data e Horário em 2 Cliques */}
-        <div className="mx-auto my-3 max-w-7xl px-4 sm:px-6 lg:px-8">
-          <Suspense fallback={null}>
-            <FastBookingFilter
-              activeSlot={bookingSlot}
-              onSelectSlot={(slot) => {
-                setBookingSlot(slot)
-                resetToFirstPage()
-                const el = document.getElementById(RESULTS_ANCHOR_ID)
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
-              }}
-            />
-          </Suspense>
-        </div>
-
-        {/* 1-problems. ProblemSolverWizard — Resolva em 3 Cliques (Guia Visual Interativo) */}
-        <div className="mx-auto my-3 max-w-7xl px-4 sm:px-6 lg:px-8">
-          <Suspense fallback={null}>
-            <ProblemSolverWizard
-              onSelectProblem={(searchTerm) => {
-                resetToFirstPage()
-                dispatch({ type: "SET_FILTERS", filters: { ...filters, q: searchTerm } })
-                if (typeof window !== "undefined") {
-                  const el = document.getElementById(RESULTS_ANCHOR_ID)
-                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
-                }
-              }}
-            />
-          </Suspense>
-        </div>
-
-        {/* 1a. EmergencySosBanner — Plantão de Emergência Noturno e Final de Semana */}
-        <div className="mx-auto my-4 max-w-7xl px-4 sm:px-6 lg:px-8">
-          <Suspense fallback={null}>
-            <EmergencySosBanner onTriggerSos={() => setSosOpen(true)} />
-          </Suspense>
-        </div>
-
-        {/* 1b. ProximityRadarTicker — Radar de Proximidade em Tempo Real (< 15 min) */}
-        <div className="mx-auto my-4 max-w-7xl px-4 sm:px-6 lg:px-8">
-          <Suspense fallback={null}>
-            <ProximityRadarTicker
-              onExploreNearby={() => {
-                resetToFirstPage()
-                dispatch({ type: "SET_FILTERS", filters: { ...filters, sort: "distance" } })
-                if (typeof window !== "undefined") {
-                  const el = document.getElementById(RESULTS_ANCHOR_ID)
-                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
-                }
-              }}
-            />
-          </Suspense>
-        </div>
-
-        {/* 1c. WhatsappAudioQuoteCard — Orçamento por Áudio no WhatsApp (Zero Fricção) */}
-        <div className="mx-auto my-4 max-w-7xl px-4 sm:px-6 lg:px-8">
-          <Suspense fallback={null}>
-            <WhatsappAudioQuoteCard />
-          </Suspense>
-        </div>
-
-        {/* 1d. ProviderStoriesStrip — Stories / Mini-Vídeos dos profissionais de GV em ação */}
-        <Suspense fallback={null}>
-          <ProviderStoriesStrip onQuoteProvider={(providerId) => handleQuote(providerId)} />
-        </Suspense>
-
-        {/* 1c. NeighborhoodPriceSimulator — Simulador de Preço Inteligente por Bairro em GV */}
-        <div className="mx-auto my-8 max-w-7xl px-4 sm:px-6 lg:px-8">
-          <Suspense fallback={null}>
-            <NeighborhoodPriceSimulator
-              onQuote={(serviceName, district) => {
-                resetToFirstPage()
-                dispatch({
-                  type: "SET_FILTERS",
-                  filters: { ...filters, q: `${serviceName} ${district}` },
-                })
-                const el = document.getElementById(RESULTS_ANCHOR_ID)
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
-              }}
-            />
-          </Suspense>
-        </div>
-
-        {/* 2. CategoryShowcase — sticky category filter bar */}
+        {/* 2. CategoryShowcase — barra sticky de categorias oficiais de GV */}
         <CategoryShowcase
           categories={categories}
           activeId={filters.categoryId}
@@ -1024,224 +938,7 @@ export default function Vitrine() {
           isLoading={categoriesQuery.isLoading}
         />
 
-        {/* 2b. CategoryGridSection — Categorias 2.0 em cartões visuais ricos com contagens de GV */}
-        <Suspense fallback={null}>
-          <CategoryGridSection
-            categories={categories}
-            activeId={filters.categoryId}
-            onSelect={(id) => {
-              handleCategorySelect(id)
-              if (typeof window !== "undefined") {
-                const el = document.getElementById(RESULTS_ANCHOR_ID)
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
-              }
-            }}
-            onEmergencyClick={() => setSosOpen(true)}
-          />
-        </Suspense>
-
-        {/* 2b-wizard. InstantQuoteStepWizard — Orçamentômetro em 3 Passos com Disparo WhatsApp */}
-        <Suspense fallback={null}>
-          <InstantQuoteStepWizard
-            onFilterResults={(serviceQuery) => {
-              resetToFirstPage()
-              dispatch({ type: "SET_FILTERS", filters: { ...filters, q: serviceQuery } })
-              if (typeof window !== "undefined") {
-                const el = document.getElementById(RESULTS_ANCHOR_ID)
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
-              }
-            }}
-          />
-        </Suspense>
-
-        {/* 2c. TrendingServices — Serviços Mais Contratados em Governador Valadares com preço transparente */}
-        <Suspense fallback={null}>
-          <TrendingServices
-            onQuote={(_serviceId, providerId) => handleQuote(providerId)}
-            onBook={(providerId, serviceId) => handleBook(providerId, serviceId)}
-            onViewProvider={(providerId) => handleView(providerId)}
-          />
-        </Suspense>
-
-        {/* 2c-combo. ServiceCombosSection — Combos e Pacotes Residenciais com até 20% OFF */}
-        <Suspense fallback={null}>
-          <ServiceCombosSection
-            onSelectCombo={(comboTitle) => {
-              resetToFirstPage()
-              dispatch({ type: "SET_FILTERS", filters: { ...filters, q: comboTitle } })
-              if (typeof window !== "undefined") {
-                const el = document.getElementById(RESULTS_ANCHOR_ID)
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
-              }
-            }}
-          />
-        </Suspense>
-
-        {/* 2c-roi. PreventiveRoiBar — Calculadora de Manutenção Preventiva vs Prejuízo */}
-        <Suspense fallback={null}>
-          <PreventiveRoiBar
-            onSelectService={(serviceQuery) => {
-              resetToFirstPage()
-              dispatch({ type: "SET_FILTERS", filters: { ...filters, q: serviceQuery } })
-              if (typeof window !== "undefined") {
-                const el = document.getElementById(RESULTS_ANCHOR_ID)
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
-              }
-            }}
-          />
-        </Suspense>
-
-        {/* 2c-score. HomeHealthScoreQuiz — Diagnóstico / Score de Saúde da Casa */}
-        <Suspense fallback={null}>
-          <HomeHealthScoreQuiz
-            onScheduleCheckup={(recommendation) => {
-              resetToFirstPage()
-              dispatch({
-                type: "SET_FILTERS",
-                filters: { ...filters, q: recommendation },
-              })
-              if (typeof window !== "undefined") {
-                const el = document.getElementById(RESULTS_ANCHOR_ID)
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
-              }
-            }}
-          />
-        </Suspense>
-
-        {/* 2d. EscrowGuaranteeBanner — Selo de Garantia Blindada (Zero Risco, R$ 0 adiantado) */}
-        <Suspense fallback={null}>
-          <EscrowGuaranteeBanner onLearnMore={() => setEscrowModalOpen(true)} />
-        </Suspense>
-
-        {/* 2e. TopProvidersShowcase — Prestadores Mais Requisitados e Bem Avaliados de GV */}
-        <Suspense fallback={null}>
-          <TopProvidersShowcase
-            onViewProvider={(providerId) => handleView(providerId)}
-            onQuote={(providerId) => handleQuote(providerId)}
-          />
-        </Suspense>
-
-        {/* 2f. NeighborhoodFeedShowcase — Feed de Serviços Concluídos no Seu Bairro (Hiperlocal) */}
-        <Suspense fallback={null}>
-          <NeighborhoodFeedShowcase
-            onQuoteService={(serviceName, neighborhood) => {
-              resetToFirstPage()
-              dispatch({
-                type: "SET_FILTERS",
-                filters: { ...filters, q: `${serviceName} ${neighborhood}` },
-              })
-              if (typeof window !== "undefined") {
-                const el = document.getElementById(RESULTS_ANCHOR_ID)
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
-              }
-            }}
-          />
-        </Suspense>
-
-        {/* 2f-reels. GvReelsShowcase — Reels / Mini-Vídeos de Serviços Reais em GV */}
-        <Suspense fallback={null}>
-          <GvReelsShowcase
-            onQuoteProvider={(providerName) => {
-              resetToFirstPage()
-              dispatch({ type: "SET_FILTERS", filters: { ...filters, q: providerName } })
-              if (typeof window !== "undefined") {
-                const el = document.getElementById(RESULTS_ANCHOR_ID)
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
-              }
-            }}
-          />
-        </Suspense>
-
-        <Suspense fallback={null}>
-          <RecentlyViewed />
-        </Suspense>
-
-        {/* 3b. NearbyProviders — Perto de você (geo-aware) */}
-        <Suspense fallback={null}>
-          <NearbyProviders />
-        </Suspense>
-
-        {/* 3c. ProviderSpotlightGeo — prestadores próximos em destaque */}
-        <Suspense fallback={null}>
-          <ProviderSpotlightGeo onQuote={handleQuote} onBook={handleBook} onView={handleView} />
-        </Suspense>
-
-        {/* 3c-2. NeighborhoodSelectorBar — Seletor Rápido de Bairro com Métricas Hiperlocais (Feature #2) */}
-        <div className="mx-auto mb-4 max-w-7xl px-4 sm:px-6 lg:px-8">
-          <Suspense fallback={null}>
-            <NeighborhoodSelectorBar
-              selectedNeighborhood={selectedNeighborhood}
-              onSelectNeighborhood={(bairro) => {
-                setSelectedNeighborhood(bairro)
-                resetToFirstPage()
-                dispatch({
-                  type: "SET_FILTERS",
-                  filters: { ...filters, q: bairro },
-                })
-              }}
-              onSearchService={(serviceName, bairro) => {
-                setSelectedNeighborhood(bairro)
-                resetToFirstPage()
-                dispatch({
-                  type: "SET_FILTERS",
-                  filters: { ...filters, q: `${serviceName} ${bairro}` },
-                })
-                if (typeof window !== "undefined") {
-                  const el = document.getElementById(RESULTS_ANCHOR_ID)
-                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
-                }
-              }}
-            />
-          </Suspense>
-        </div>
-
-        {/* 3d. TrustPaymentPills — Filtros Rápidos de Confiabilidade & Pagamento */}
-        <div className="mx-auto mb-4 max-w-7xl px-4 sm:px-6 lg:px-8">
-          <Suspense fallback={null}>
-            <TrustPaymentPills
-              activePills={activeTrustPills}
-              onTogglePill={(pillId) => {
-                setActiveTrustPills((prev) =>
-                  prev.includes(pillId) ? prev.filter((p) => p !== pillId) : [...prev, pillId],
-                )
-                resetToFirstPage()
-              }}
-              onClearPills={() => {
-                setActiveTrustPills([])
-                resetToFirstPage()
-              }}
-            />
-            {activeTrustPills.includes("plantao_agora") && (
-              <div
-                data-testid="emergency-duty-active-banner"
-                className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-rose-300 bg-rose-50/80 px-4 py-2.5 text-xs text-rose-900 shadow-xs dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="relative flex size-2.5">
-                    <span className="absolute inline-flex size-full animate-ping rounded-full bg-rose-400 opacity-75" />
-                    <span className="relative inline-flex size-2.5 rounded-full bg-rose-600" />
-                  </span>
-                  <span className="font-bold">Modo Plantão 24h & Domingo Ativo:</span>
-                  <span className="hidden sm:inline">
-                    Priorizando profissionais com atendimento emergencial imediato em Governador
-                    Valadares.
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setActiveTrustPills((prev) => prev.filter((p) => p !== "plantao_agora"))
-                  }
-                  className="cursor-pointer font-bold underline hover:opacity-80"
-                >
-                  Desativar
-                </button>
-              </div>
-            )}
-          </Suspense>
-        </div>
-
-        {/* 4. VitrineResults — provider listings */}
+        {/* 3. VitrineResults — A GRADE DE RESULTADOS NA 2ª DOBRA IMEDIATA (95% Desktop, 4 Colunas, Barra Horizontal de Filtros) */}
         <VitrineResults
           providers={providerItems}
           total={providerTotal}
@@ -1278,43 +975,41 @@ export default function Vitrine() {
           expandedRadius={pagedData?.expandedRadius}
         />
 
-        {/* 5. HowItWorks — process explanation */}
-        <LazySection>
-          <HowItWorks />
-        </LazySection>
+        {/* 4. TopProvidersShowcase — Prestadores Mais Requisitados e Bem Avaliados de GV */}
+        <div className="mx-auto my-6 w-full max-w-[95%] px-2 sm:px-4">
+          <Suspense fallback={null}>
+            <TopProvidersShowcase
+              onViewProvider={(providerId) => handleView(providerId)}
+              onQuote={(providerId) => handleQuote(providerId)}
+            />
+          </Suspense>
+        </div>
 
-        {/* 5b. QuickQuoteCalculator — instant price estimate */}
-        <LazySection>
-          <QuickQuoteCalculator />
-        </LazySection>
-
-        {/* 5c. FipeServicesIndex — A "Tabela FIPE" dos Serviços de GV (Índice Transparente) */}
-        <LazySection>
-          <FipeServicesIndex
-            onFilterService={(serviceName) => {
+        {/* 5. HUB 1: Cotação Inteligente & Preço Justo de GV (Orçamentômetro WhatsApp + Tabela FIPE + Prevenção) */}
+        <Suspense fallback={null}>
+          <QuotePricingHub
+            onSearchService={(serviceQuery) => {
               resetToFirstPage()
-              dispatch({ type: "SET_FILTERS", filters: { ...filters, q: serviceName } })
+              dispatch({ type: "SET_FILTERS", filters: { ...filters, q: serviceQuery } })
               if (typeof window !== "undefined") {
                 const el = document.getElementById(RESULTS_ANCHOR_ID)
                 if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
               }
             }}
           />
-        </LazySection>
+        </Suspense>
 
-        {/* 6. PartnersTrust — H6/H9: press logos, trust signals */}
-        <LazySection>
-          <PartnersTrust />
-        </LazySection>
-
-        {/* 7. Testimonials — social proof from real users */}
-        <LazySection>
-          <Testimonials />
-        </LazySection>
-
-        {/* 7b. WhatsappAudioTestimonials — Prova Social Humanizada em Áudios do WhatsApp */}
-        <LazySection>
-          <WhatsappAudioTestimonials
+        {/* 6. HUB 2: Prova Visual & Transformações Reais em GV (Reels 9:16 + Slider Antes/Depois + Áudios WhatsApp) */}
+        <Suspense fallback={null}>
+          <VisualProofHub
+            onQuoteProvider={(providerName) => {
+              resetToFirstPage()
+              dispatch({ type: "SET_FILTERS", filters: { ...filters, q: providerName } })
+              if (typeof window !== "undefined") {
+                const el = document.getElementById(RESULTS_ANCHOR_ID)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            }}
             onQuoteService={(serviceName, neighborhood) => {
               resetToFirstPage()
               dispatch({
@@ -1327,33 +1022,12 @@ export default function Vitrine() {
               }
             }}
           />
-        </LazySection>
+        </Suspense>
 
-        {/* 8. WhySeverinno — value proposition */}
-        <LazySection>
-          <WhySeverinno />
-        </LazySection>
-
-        {/* 8b. BeforeAfterShowcase — Real visual transformations (Sugestão 3) */}
-        <LazySection>
-          <BeforeAfterShowcase />
-        </LazySection>
-
-        {/* 8c. TrustComparisonTable — Comparativo Boca a Boca vs Severinno */}
-        <LazySection>
-          <TrustComparisonTable
-            onCtaClick={() => {
-              if (typeof window !== "undefined") {
-                const el = document.getElementById(RESULTS_ANCHOR_ID)
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
-              }
-            }}
-          />
-        </LazySection>
-
-        {/* 8d. DigitalContractGenerator — Gerador de Pré-Contrato & Recibo Oficial em 1 Clique */}
-        <LazySection>
-          <DigitalContractGenerator
+        {/* 7. HUB 3: Segurança Jurídica & Integridade Operacional (Central de Transparência + Pré-Contrato Oficial + Comparativo) */}
+        <Suspense fallback={null}>
+          <TrustShieldHub
+            onLearnMoreEscrow={() => setEscrowModalOpen(true)}
             onExploreProtectedProviders={() => {
               if (typeof window !== "undefined") {
                 const el = document.getElementById(RESULTS_ANCHOR_ID)
@@ -1361,21 +1035,34 @@ export default function Vitrine() {
               }
             }}
           />
+        </Suspense>
+
+        {/* 8. HowItWorks — Processo explicativo em 3 passos */}
+        <LazySection>
+          <div className="mx-auto w-full max-w-[95%]">
+            <HowItWorks />
+          </div>
         </LazySection>
 
-        {/* 9. ProviderSpotlight — featured provider */}
+        {/* 9. PartnersTrust — Selos e autoridade de imprensa */}
         <LazySection>
-          <ProviderSpotlight />
+          <div className="mx-auto w-full max-w-[95%]">
+            <PartnersTrust />
+          </div>
         </LazySection>
 
-        {/* 10. FAQ — common questions */}
+        {/* 10. FAQ — Dúvidas comuns */}
         <LazySection>
-          <FAQ />
+          <div className="mx-auto w-full max-w-[95%]">
+            <FAQ />
+          </div>
         </LazySection>
 
-        {/* 11. CtaBanner — final conversion CTA */}
+        {/* 11. CtaBanner — Chamada final para conversão */}
         <LazySection>
-          <CtaBanner />
+          <div className="mx-auto w-full max-w-[95%]">
+            <CtaBanner />
+          </div>
         </LazySection>
       </main>
 
