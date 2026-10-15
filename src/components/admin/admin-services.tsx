@@ -199,7 +199,7 @@ export function AdminServices() {
   // Full category list (incl. parentId/level — usado p/ resolver caminho)
   const { data: categories } = useQuery({
     queryKey: ["categories", "all-flat"],
-    queryFn: () => apiGet<CategoryOption[]>("/api/categories"),
+    queryFn: () => apiGet<CategoryOption[]>("/api/categories?flat=true"),
     staleTime: 60_000,
   })
 

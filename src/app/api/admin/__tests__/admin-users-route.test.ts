@@ -59,7 +59,7 @@ describe("GET /api/admin/users", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           role: "PROVIDER",
-          city: { contains: "Sao Paulo" },
+          city: { contains: "Sao Paulo", mode: "insensitive" },
           OR: expect.any(Array),
         }),
       }),

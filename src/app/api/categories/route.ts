@@ -23,10 +23,28 @@ type CategoryNode = Prisma.CategoryGetPayload<Record<string, never>> & {
   children: CategoryNode[]
 }
 
-// GET: list categories (public, cached)
+// GET: list categories (public, cached or flat for admin/selectors)
 export async function GET(request?: Request) {
   try {
     await assertRateLimit(request!, RATE_LIMITS.general)
+    const url = request ? new URL(request.url) : null
+    const isFlat = url?.searchParams.get("flat") === "true"
+    const includeAll = url?.searchParams.get("all") === "true"
+    const includeCount = url?.searchParams.get("includeCount") === "true"
+
+    if (isFlat) {
+      const all = await db.category.findMany({
+        where: includeAll ? {} : { active: true },
+        orderBy: [{ level: "asc" }, { order: "asc" }, { name: "asc" }],
+        include: includeCount ? { _count: { select: { services: true } } } : undefined,
+      })
+      const mapped = all.map((c) => ({
+        ...c,
+        serviceCount: (c as unknown as { _count?: { services?: number } })._count?.services ?? 0,
+      }))
+      return noStoreJson(mapped)
+    }
+
     const categories = await withCache(
       "categories:all",
       async () => {
