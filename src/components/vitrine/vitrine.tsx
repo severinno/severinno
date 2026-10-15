@@ -110,6 +110,9 @@ const NeighborhoodSelectorBar = React.lazy(() =>
 const FloatingRecentDock = React.lazy(() =>
   import("./floating-recent-dock").then((m) => ({ default: m.FloatingRecentDock })),
 )
+const EscrowShieldModal = React.lazy(() =>
+  import("./escrow-shield-modal").then((m) => ({ default: m.EscrowShieldModal })),
+)
 const EmergencySosModal = React.lazy(() =>
   import("../shared/emergency-sos-modal").then((m) => ({ default: m.EmergencySosModal })),
 )
@@ -271,6 +274,7 @@ export default function Vitrine() {
   const [bookingSlot, setBookingSlot] = React.useState<string | null>("hoje-tarde")
   const [activeTrustPills, setActiveTrustPills] = React.useState<TrustPillId[]>([])
   const [selectedNeighborhood, setSelectedNeighborhood] = React.useState<string>("Centro")
+  const [escrowModalOpen, setEscrowModalOpen] = React.useState(false)
   /** Walk em curso (página funda sem âncora) — isFetching sobe, UI segura. */
   const [walkActive, setWalkActive] = React.useState(false)
   /** Token de geração: qualquer reset/navegação aborta o walk async em curso. */
@@ -1040,7 +1044,7 @@ export default function Vitrine() {
 
         {/* 2d. EscrowGuaranteeBanner — Selo de Garantia Blindada (Zero Risco, R$ 0 adiantado) */}
         <Suspense fallback={null}>
-          <EscrowGuaranteeBanner />
+          <EscrowGuaranteeBanner onLearnMore={() => setEscrowModalOpen(true)} />
         </Suspense>
 
         {/* 2e. TopProvidersShowcase — Prestadores Mais Requisitados e Bem Avaliados de GV */}
@@ -1247,6 +1251,20 @@ export default function Vitrine() {
       {/* Compare modal — portal-mounted by Radix */}
       <Suspense fallback={null}>
         <CompareModal />
+      </Suspense>
+
+      {/* Central de Garantia Blindada & Anti-Golpe (Escrow) */}
+      <Suspense fallback={null}>
+        <EscrowShieldModal
+          open={escrowModalOpen}
+          onOpenChange={setEscrowModalOpen}
+          onExploreProviders={() => {
+            if (typeof window !== "undefined") {
+              const el = document.getElementById(RESULTS_ANCHOR_ID)
+              if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+            }
+          }}
+        />
       </Suspense>
 
       {/* SOS Emergência 24h Modal (Sugestão 1) */}

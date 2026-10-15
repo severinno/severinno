@@ -121,6 +121,7 @@ vi.mock("lucide-react", () => {
     Wind: Icon,
     Wrench: Icon,
     X: Icon,
+    XCircle: Icon,
     Zap: Icon,
   }
 })

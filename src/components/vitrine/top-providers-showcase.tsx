@@ -12,12 +12,14 @@ import {
   CalendarCheck,
   ArrowRight,
   FileBadge,
+  GitCompare,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { apiGet } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { useCompareStore } from "@/store/compare"
 import type { VitrineHighlightsResponse } from "@/app/api/vitrine/highlights/route"
 
 export type TopProvidersShowcaseProps = {
@@ -78,11 +80,26 @@ export function TopProvidersShowcase({
             </p>
           </div>
 
-          <div className="text-muted-foreground flex items-center gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-3 text-xs">
             <span className="text-foreground inline-flex items-center gap-1 font-semibold">
               <FileBadge className="size-4 text-emerald-600" />
               100% Antecedentes Checados
             </span>
+            {providers.length >= 2 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const topIds = providers.slice(0, 3).map((p) => p.id)
+                  useCompareStore.getState().setIds(topIds)
+                  useCompareStore.getState().openCompare()
+                }}
+                className="cursor-pointer gap-1.5 border-emerald-500/30 bg-emerald-500/10 text-xs font-bold text-emerald-700 shadow-xs hover:bg-emerald-500/20 dark:text-emerald-300"
+              >
+                <GitCompare className="size-3.5 text-emerald-600" />
+                Comparar os Melhores Lado a Lado
+              </Button>
+            )}
           </div>
         </div>
 

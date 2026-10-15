@@ -52,19 +52,35 @@ export function EscrowGuaranteeBanner({ className, onLearnMore }: EscrowGuarante
                 <strong>só é liberado para o prestador após a sua aprovação final</strong>.
               </p>
 
-              <div className="text-foreground mt-6 flex flex-wrap items-center gap-4 text-xs font-semibold">
-                <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="size-4 text-emerald-600" />
-                  R$ 0 adiantado sem proteção
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="size-4 text-emerald-600" />
-                  Laudo com fotos antes e depois
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="size-4 text-emerald-600" />
-                  Devolução 100% garantida
-                </span>
+              <div className="mt-6 space-y-3">
+                <div className="text-foreground flex flex-wrap items-center gap-4 text-xs font-semibold">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="size-4 text-emerald-600" />
+                    R$ 0 adiantado sem proteção
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="size-4 text-emerald-600" />
+                    Laudo com fotos antes e depois
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="size-4 text-emerald-600" />
+                    Devolução 100% garantida
+                  </span>
+                </div>
+
+                {onLearnMore && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={onLearnMore}
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-3.5 py-1.5 text-xs font-bold text-emerald-800 transition-all hover:bg-emerald-500/25 dark:text-emerald-200"
+                    >
+                      <ShieldAlert className="size-3.5 text-emerald-600" />
+                      <span>Entenda a Proteção Anti-Golpe</span>
+                      <ArrowRight className="size-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 

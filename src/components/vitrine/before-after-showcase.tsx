@@ -10,7 +10,7 @@
  */
 
 import * as React from "react"
-import { Sparkles, ArrowRight, CheckCircle } from "lucide-react"
+import { Sparkles, ArrowRight, CheckCircle, Clock } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 
 import { BeforeAfterSlider } from "@/components/shared/before-after-slider"
@@ -30,6 +30,7 @@ type ShowcaseItem = {
   description: string
   rating: number
   price: string
+  executionTime: string
 }
 
 const SHOWCASE_ITEMS: ShowcaseItem[] = [
@@ -45,6 +46,7 @@ const SHOWCASE_ITEMS: ShowcaseItem[] = [
       "Eliminação total de aquecimento excessivo e fiação exposta, com novo barramento pente e disjuntores DIN certificados.",
     rating: 5.0,
     price: "R$ 420,00",
+    executionTime: "3 horas",
   },
   {
     id: "hidraulica-1",
@@ -58,6 +60,7 @@ const SHOWCASE_ITEMS: ShowcaseItem[] = [
       "Localização precisa do cano rompido com geofone sem quebrar a parede toda, troca de registros e acabamento.",
     rating: 4.9,
     price: "R$ 350,00",
+    executionTime: "4 horas",
   },
   {
     id: "pintura-1",
@@ -71,6 +74,35 @@ const SHOWCASE_ITEMS: ShowcaseItem[] = [
       "Aplicação de fundo preparador anti-mofo, massa acrílica impermeável e duas demãos de tinta lavável de alta cobertura.",
     rating: 5.0,
     price: "R$ 680,00",
+    executionTime: "1 dia",
+  },
+  {
+    id: "estofados-1",
+    category: "Higienização de Estofados",
+    title: "Restauração & Higienização de Sofá Retrátil",
+    neighborhood: "Vila Bretas, GV",
+    providerName: "LimpaSofá Pro GV",
+    beforeImage: "https://picsum.photos/seed/sofa-before/800/600",
+    afterImage: "https://picsum.photos/seed/sofa-after/800/600",
+    description:
+      "Extração profunda de ácaros e manchas com produto bactericida neutro e secagem acelerada no próprio dia.",
+    rating: 5.0,
+    price: "R$ 220,00",
+    executionTime: "2 horas",
+  },
+  {
+    id: "ar-condicionado-1",
+    category: "Climatização & Ar",
+    title: "Limpeza Química & Desbacterização de Split",
+    neighborhood: "São Pedro, GV",
+    providerName: "ClimaFrio GV",
+    beforeImage: "https://picsum.photos/seed/ac-before/800/600",
+    afterImage: "https://picsum.photos/seed/ac-after/800/600",
+    description:
+      "Desmontagem da turbina, lavagem da serpentina com desincrustante ecológico e medição do gás refrigerante.",
+    rating: 4.9,
+    price: "R$ 160,00",
+    executionTime: "1h30",
   },
 ]
 
@@ -109,7 +141,7 @@ export default function BeforeAfterShowcase() {
                   key={item.id}
                   type="button"
                   onClick={() => setActiveId(item.id)}
-                  className={`rounded-full px-4 py-2 text-xs font-medium transition-all ${
+                  className={`cursor-pointer rounded-full px-4 py-2 text-xs font-medium transition-all ${
                     isSelected
                       ? "bg-foreground text-background scale-105 shadow-md"
                       : "bg-background text-muted-foreground hover:text-foreground border-border/80 hover:border-foreground/30 border"
@@ -164,12 +196,19 @@ export default function BeforeAfterShowcase() {
                 {activeItem.description}
               </p>
 
-              <div className="border-border/60 mt-5 space-y-2 border-t pt-4 text-xs">
+              <div className="border-border/60 mt-5 space-y-2.5 border-t pt-4 text-xs">
                 <div className="text-muted-foreground flex items-center justify-between">
                   <span>Profissional Responsável:</span>
                   <span className="text-foreground flex items-center gap-1 font-semibold">
                     <CheckCircle className="size-3.5 text-emerald-600" />
                     {activeItem.providerName}
+                  </span>
+                </div>
+                <div className="text-muted-foreground flex items-center justify-between">
+                  <span>Tempo de Execução:</span>
+                  <span className="text-foreground flex items-center gap-1 font-semibold">
+                    <Clock className="size-3.5 text-emerald-600" />
+                    {activeItem.executionTime}
                   </span>
                 </div>
                 <div className="text-muted-foreground flex items-center justify-between">
@@ -191,7 +230,14 @@ export default function BeforeAfterShowcase() {
 
             {/* Ação: Pedir Orçamento Semelhante */}
             <div className="border-border/60 mt-6 border-t pt-4">
-              <Button onClick={() => openQuote()} className="w-full gap-2 font-semibold shadow-sm">
+              <Button
+                onClick={() =>
+                  openQuote({
+                    initialDescription: `Gostaria de solicitar orçamento para serviço similar a: ${activeItem.title} (${activeItem.category}) em ${activeItem.neighborhood}.`,
+                  })
+                }
+                className="w-full cursor-pointer gap-2 font-semibold shadow-sm"
+              >
                 Solicitar Orçamento com Proteção Escrow
                 <ArrowRight className="size-4" />
               </Button>
