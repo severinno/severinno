@@ -18,6 +18,7 @@
  */
 
 import { PrismaClient, Role, ServiceUnit, BookingStatus, PaymentStatus } from "@prisma/client"
+import { backfillAvatars } from "./lib/backfill-avatars"
 
 const db = new PrismaClient()
 
@@ -824,6 +825,7 @@ async function main() {
         passwordHash: "$2b$10$placeholder",
         phone: c.phone,
         whatsapp: c.whatsapp,
+        avatarUrl: `https://i.pravatar.cc/150?u=${c.id}`,
         role: Role.CLIENT,
         city: c.city,
         cityId: city.id,
@@ -839,6 +841,7 @@ async function main() {
         city: c.city,
         cityId: city.id,
         district: c.district,
+        avatarUrl: `https://i.pravatar.cc/150?u=${c.id}`,
       },
     })
   }
@@ -963,6 +966,9 @@ async function main() {
     })
   }
   console.log(`✅ ${sampleReviews.length} avaliações autênticas associadas aos agendamentos de GV.`)
+
+  // 7. Backfill de Avatares para garantir fotos em 100% dos usuários
+  await backfillAvatars(db)
 
   console.log("================================================================================")
   console.log("🎉 SEED DE GOVERNADOR VALADARES CONCLUÍDO COM SUCESSO!")

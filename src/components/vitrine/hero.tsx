@@ -59,6 +59,7 @@ import { HowItWorksModal } from "@/components/vitrine/how-it-works-modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useCountUp } from "@/hooks/use-animation"
 import { cn } from "@/lib/utils"
 import { AiQuoteWizard } from "@/components/shared/ai-quote-wizard"
@@ -129,6 +130,32 @@ const ACTIVITY_META: Record<string, { icon: React.ElementType; color: string; bg
   review: { icon: Star, color: "text-amber-600", bg: "bg-amber-50" },
   signup: { icon: UserPlus, color: "text-blue-600", bg: "bg-blue-50" },
   quote: { icon: FileText, color: "text-violet-600", bg: "bg-violet-50" },
+}
+
+function getInitials(name: string): string {
+  const clean = name.trim().replace(/^Dra?\.\s*/i, "")
+  const parts = clean.split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return "U"
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+const AVATAR_GRADIENTS = [
+  "from-emerald-500 to-teal-700",
+  "from-blue-500 to-indigo-700",
+  "from-violet-500 to-purple-700",
+  "from-amber-500 to-orange-700",
+  "from-rose-500 to-pink-700",
+  "from-teal-500 to-cyan-700",
+]
+
+function getAvatarBg(name: string): string {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const index = Math.abs(hash) % AVATAR_GRADIENTS.length
+  return AVATAR_GRADIENTS[index]
 }
 
 // ---------------------------------------------------------------------------
@@ -627,32 +654,56 @@ function LiveActivityPanel({
 
       {/* ── Floating toast notification ── */}
       <AnimatePresence mode="wait">
-        {activities.length > 0 && (
-          <motion.div
-            key={`toast-${toastIndex}`}
-            initial={{ opacity: 0, y: 12, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.95 }}
-            transition={{ duration: 0.35, ease: "easeOut" }}
-            className="absolute -bottom-4 -left-4 z-10 flex items-center gap-2.5 rounded-2xl bg-white px-4 py-3 shadow-2xl ring-1 ring-black/5"
-          >
-            <span className="text-lg" aria-hidden>
-              {activities[toastIndex % activities.length].emoji}
-            </span>
-            <div className="leading-tight">
-              <p className="text-xs font-semibold text-slate-900">
-                {activities[toastIndex % activities.length].userName}{" "}
-                {activities[toastIndex % activities.length].action}
-              </p>
-              <p className="text-[11px] text-slate-500">
-                {activities[toastIndex % activities.length].target}
-              </p>
-            </div>
-            <span className="ml-2 text-[10px] whitespace-nowrap text-slate-400">
-              {activities[toastIndex % activities.length].timeAgo}
-            </span>
-          </motion.div>
-        )}
+        {activities.length > 0 &&
+          (() => {
+            const current = activities[toastIndex % activities.length]
+            return (
+              <motion.div
+                key={`toast-${toastIndex}`}
+                initial={{ opacity: 0, y: 12, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                transition={{ duration: 0.35, ease: "easeOut" }}
+                className="absolute -bottom-4 -left-4 z-10 flex items-center gap-2.5 rounded-2xl bg-white px-3.5 py-2.5 shadow-2xl ring-1 ring-black/5"
+              >
+                <div className="relative shrink-0">
+                  <Avatar className="size-9 shadow-sm ring-2 ring-emerald-500/20">
+                    {current.userAvatar ? (
+                      <AvatarImage
+                        src={current.userAvatar}
+                        alt={current.userName}
+                        className="size-full object-cover"
+                      />
+                    ) : null}
+                    <AvatarFallback
+                      className={cn(
+                        "flex size-full items-center justify-center bg-gradient-to-br text-xs font-bold text-white shadow-inner",
+                        getAvatarBg(current.userName),
+                      )}
+                    >
+                      {getInitials(current.userName)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span
+                    className="absolute -right-1 -bottom-1 flex size-4 items-center justify-center rounded-full bg-white text-[9px] shadow-sm ring-1 ring-black/10"
+                    aria-hidden
+                  >
+                    {current.emoji}
+                  </span>
+                </div>
+                <div className="leading-tight">
+                  <p className="text-xs font-semibold text-slate-900">
+                    {current.userName}{" "}
+                    <span className="font-medium text-emerald-700">{current.action}</span>
+                  </p>
+                  <p className="text-[11px] text-slate-500">{current.target}</p>
+                </div>
+                <span className="ml-2 text-[10px] whitespace-nowrap text-slate-400">
+                  {current.timeAgo}
+                </span>
+              </motion.div>
+            )
+          })()}
       </AnimatePresence>
 
       {/* ── Floating rating badge ── */}
@@ -674,9 +725,6 @@ function LiveActivityPanel({
 // ---------------------------------------------------------------------------
 
 function ActivityCard({ activity, index }: { activity: ActivityItem; index: number }) {
-  const meta = ACTIVITY_META[activity.type] ?? ACTIVITY_META.booking
-  const Icon = meta.icon
-
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -684,28 +732,30 @@ function ActivityCard({ activity, index }: { activity: ActivityItem; index: numb
       transition={{ delay: index * 0.08, duration: 0.35, ease: "easeOut" }}
       className="group flex items-start gap-3 rounded-xl bg-white/5 p-3 transition-colors hover:bg-white/10"
     >
-      {/* Avatar or icon */}
+      {/* Avatar with photo and action badge */}
       <div className="relative shrink-0">
-        {activity.userAvatar ? (
-          <Image
-            src={activity.userAvatar}
-            alt={activity.userName}
-            width={40}
-            height={40}
-            className="size-10 rounded-full object-cover ring-2 ring-white/20"
-          />
-        ) : (
-          <div
+        <Avatar className="size-10 shadow-sm ring-2 ring-white/20">
+          {activity.userAvatar ? (
+            <AvatarImage
+              src={activity.userAvatar}
+              alt={activity.userName}
+              className="size-full object-cover"
+            />
+          ) : null}
+          <AvatarFallback
             className={cn(
-              "flex size-10 items-center justify-center rounded-full ring-1 ring-white/10",
-              meta.bg,
+              "flex size-full items-center justify-center bg-gradient-to-br text-xs font-bold text-white shadow-inner",
+              getAvatarBg(activity.userName),
             )}
           >
-            <Icon className={cn("size-4", meta.color)} />
-          </div>
-        )}
+            {getInitials(activity.userName)}
+          </AvatarFallback>
+        </Avatar>
         {/* Activity type badge */}
-        <span className="absolute -right-1 -bottom-1 flex size-5 items-center justify-center rounded-full bg-white/20 text-[10px] ring-1 ring-white/10">
+        <span
+          className="absolute -right-1 -bottom-1 flex size-5 items-center justify-center rounded-full bg-slate-900/80 text-[10px] shadow-sm ring-1 ring-white/20"
+          aria-hidden
+        >
           {activity.emoji}
         </span>
       </div>
