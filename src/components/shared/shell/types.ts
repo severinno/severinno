@@ -27,6 +27,7 @@ export type DashboardShellProps = {
   panelIcon: LucideIcon
   user?: ShellUser | null
   onNavigate: (view: string) => void
+  headerActions?: React.ReactNode
   children: React.ReactNode
   className?: string
 }

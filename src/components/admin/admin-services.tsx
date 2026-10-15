@@ -32,15 +32,20 @@ import * as React from "react"
 import {
   AlertTriangle,
   ArrowUpDown,
+  Briefcase,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
+  DollarSign,
   Eye,
   ImageIcon,
+  Layers,
   MoreHorizontal,
   Power,
   SearchX,
   Trash2,
   X,
+  XCircle,
 } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -49,6 +54,7 @@ import { apiDelete, apiGet, apiPatch } from "@/lib/api"
 import { type ServiceUnit, SERVICE_UNIT_SHORT } from "@/lib/constants"
 import { formatBRL, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { getCategoryIcon } from "@/components/vitrine/category-showcase"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -175,6 +181,7 @@ export function AdminServices() {
 
   const [q, setQ] = React.useState("")
   const [debouncedQ, setDebouncedQ] = React.useState("")
+  const [selectedMacro, setSelectedMacro] = React.useState<string>("ALL")
   const [active, setActive] = React.useState<ActiveFilter>("ALL")
   const [categoryFilter, setCategoryFilter] = React.useState<string>("ALL")
   const [providerFilter, setProviderFilter] = React.useState<string>("ALL")
@@ -239,8 +246,77 @@ export function AdminServices() {
     mutationFn: (id: string) => apiDelete(`/api/services/${id}`),
   })
 
+  // Macro-domínios canônicos (nível 0)
+  const macroDomains = React.useMemo(() => {
+    return (categories ?? [])
+      .filter((c) => c.level === 0)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name))
+  }, [categories])
+
+  // Conjunto de IDs pertencentes ao macro-domínio selecionado (raiz + filhas + especialidades)
+  const macroCategoryIds = React.useMemo(() => {
+    if (selectedMacro === "ALL" || !categories) return null
+    const targetMacro = categories.find((c) => c.id === selectedMacro || c.slug === selectedMacro)
+    if (!targetMacro) return null
+    const ids = new Set<string>([targetMacro.id])
+    let added = true
+    while (added) {
+      added = false
+      for (const cat of categories) {
+        if (cat.parentId && ids.has(cat.parentId) && !ids.has(cat.id)) {
+          ids.add(cat.id)
+          added = true
+        }
+      }
+    }
+    return ids
+  }, [selectedMacro, categories])
+
+  // Contagem de serviços por macro-domínio para exibição nas pílulas
+  const serviceCountByMacro = React.useMemo(() => {
+    const rawItems = data?.items ?? []
+    if (!categories || categories.length === 0) return new Map<string, number>()
+
+    const byId = new Map(categories.map((c) => [c.id, c]))
+    const findMacroId = (catId?: string | null): string | null => {
+      if (!catId) return null
+      let curr = byId.get(catId)
+      let safety = 0
+      while (curr && safety < 5) {
+        if (curr.level === 0) return curr.id
+        curr = curr.parentId ? byId.get(curr.parentId) : undefined
+        safety++
+      }
+      return null
+    }
+
+    const counts = new Map<string, number>()
+    for (const item of rawItems) {
+      const macroId = findMacroId(item.category?.id)
+      if (macroId) {
+        counts.set(macroId, (counts.get(macroId) ?? 0) + 1)
+      }
+    }
+    return counts
+  }, [data?.items, categories])
+
+  // Estatísticas do catálogo (H1 Visibilidade)
+  const stats = React.useMemo(() => {
+    const rawItems = data?.items ?? []
+    const total = rawItems.length
+    const active = rawItems.filter((s) => s.active).length
+    const inactive = total - active
+    const avgPrice = total > 0 ? rawItems.reduce((acc, s) => acc + s.basePrice, 0) / total : 0
+    return { total, active, inactive, avgPrice }
+  }, [data?.items])
+
   // ---- Derived: sort + paginate client-side --------------------------------
-  const allItems = React.useMemo(() => data?.items ?? [], [data?.items])
+  const allItems = React.useMemo(() => {
+    const raw = data?.items ?? []
+    if (!macroCategoryIds) return raw
+    return raw.filter((item) => item.category?.id && macroCategoryIds.has(item.category.id))
+  }, [data?.items, macroCategoryIds])
+
   const total = allItems.length
 
   const sortedItems = React.useMemo(() => {
@@ -264,6 +340,7 @@ export function AdminServices() {
 
   const activeFilterCount =
     (debouncedQ ? 1 : 0) +
+    (selectedMacro !== "ALL" ? 1 : 0) +
     (active !== "ALL" ? 1 : 0) +
     (categoryFilter !== "ALL" ? 1 : 0) +
     (providerFilter !== "ALL" ? 1 : 0)
@@ -271,6 +348,7 @@ export function AdminServices() {
   const clearFilters = () => {
     setQ("")
     setDebouncedQ("")
+    setSelectedMacro("ALL")
     setActive("ALL")
     setCategoryFilter("ALL")
     setProviderFilter("ALL")
@@ -356,8 +434,118 @@ export function AdminServices() {
     <div className="flex flex-col gap-4">
       <PageSectionHeader
         title="Serviços"
-        description="Gerencie o catálogo de serviços oferecidos pelos prestadores."
+        description="Gerencie o catálogo de serviços oferecidos pelos prestadores vinculados à taxonomia canônica."
       />
+
+      {/* Cards de Métricas — H1 Visibilidade */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Card className="border-border/50 bg-card/60 backdrop-blur-xs">
+          <CardContent className="flex items-center gap-3 p-3.5">
+            <div className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
+              <Briefcase className="size-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-muted-foreground text-xs">Total de Serviços</p>
+              <p className="text-foreground text-lg font-bold tracking-tight">{stats.total}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/50 bg-card/60 backdrop-blur-xs">
+          <CardContent className="flex items-center gap-3 p-3.5">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="size-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-muted-foreground text-xs">Serviços Ativos</p>
+              <p className="text-foreground text-lg font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
+                {stats.active}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/50 bg-card/60 backdrop-blur-xs">
+          <CardContent className="flex items-center gap-3 p-3.5">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              <XCircle className="size-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-muted-foreground text-xs">Serviços Inativos</p>
+              <p className="text-foreground text-lg font-bold tracking-tight text-amber-600 dark:text-amber-400">
+                {stats.inactive}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/50 bg-card/60 backdrop-blur-xs">
+          <CardContent className="flex items-center gap-3 p-3.5">
+            <div className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
+              <DollarSign className="size-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-muted-foreground text-xs">Preço Médio</p>
+              <p className="text-foreground text-lg font-bold tracking-tight">
+                {formatBRL(stats.avgPrice)}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Pílulas Rápidas por Macro-Domínio (Hiperfofo / Nielsen H7) */}
+      <div className="flex scrollbar-none items-center gap-2 overflow-x-auto pb-1">
+        <Button
+          variant={selectedMacro === "ALL" ? "default" : "outline"}
+          size="sm"
+          onClick={() => {
+            setSelectedMacro("ALL")
+            setPage(1)
+          }}
+          className={cn(
+            "h-8 shrink-0 gap-1.5 rounded-full text-xs font-medium transition-all",
+            selectedMacro === "ALL"
+              ? "bg-foreground text-background shadow-xs"
+              : "border-border/60 hover:bg-muted/60",
+          )}
+        >
+          <Layers className="size-3.5" />
+          Todos os Macro-Domínios ({stats.total})
+        </Button>
+        {macroDomains.map((macro) => {
+          const isSelected = selectedMacro === macro.id || selectedMacro === macro.slug
+          const count = serviceCountByMacro.get(macro.id) ?? 0
+          const Icon = getCategoryIcon(macro.slug, macro.name)
+          return (
+            <Button
+              key={macro.id}
+              variant={isSelected ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                setSelectedMacro(isSelected ? "ALL" : macro.id)
+                setPage(1)
+              }}
+              className={cn(
+                "h-8 shrink-0 gap-1.5 rounded-full text-xs font-medium transition-all",
+                isSelected
+                  ? "bg-primary text-primary-foreground shadow-xs"
+                  : "border-border/60 hover:bg-muted/60",
+              )}
+            >
+              <Icon className="size-3.5" />
+              {macro.name}
+              <span
+                className={cn(
+                  "py-0.2 rounded-full px-1.5 text-[10px] font-semibold tabular-nums",
+                  isSelected
+                    ? "bg-primary-foreground/20 text-primary-foreground"
+                    : "bg-muted text-muted-foreground",
+                )}
+              >
+                {count}
+              </span>
+            </Button>
+          )
+        })}
+      </div>
 
       {/* Error banner (dismissible) — H9 */}
       {errorBanner ? (
@@ -571,21 +759,31 @@ export function AdminServices() {
                         </TableCell>
                         <TableCell className="hidden px-4 py-3 md:table-cell">
                           {leaf ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="inline-flex cursor-help">
-                                  <StatusBadge tone={categoryTone(leaf.level)}>
-                                    {leaf.name}
-                                  </StatusBadge>
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent side="top" className="max-w-xs text-xs">
-                                <span className="font-semibold">Caminho da categoria</span>
-                                <span className="text-muted-foreground mt-0.5 block">
-                                  {pathStr}
-                                </span>
-                              </TooltipContent>
-                            </Tooltip>
+                            <div className="flex items-center gap-2">
+                              {(() => {
+                                const Icon = getCategoryIcon(leaf.slug, leaf.name)
+                                return (
+                                  <div className="bg-muted/70 text-primary flex size-6 shrink-0 items-center justify-center rounded-md border">
+                                    <Icon className="size-3.5" />
+                                  </div>
+                                )
+                              })()}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex cursor-help">
+                                    <StatusBadge tone={categoryTone(leaf.level)}>
+                                      {leaf.name}
+                                    </StatusBadge>
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="max-w-xs text-xs">
+                                  <span className="font-semibold">Caminho canônico</span>
+                                  <span className="text-muted-foreground mt-0.5 block">
+                                    {pathStr}
+                                  </span>
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
                           ) : (
                             <span className="text-muted-foreground text-xs">—</span>
                           )}

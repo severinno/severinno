@@ -118,6 +118,7 @@ export type DashboardShellProps = {
   panelIcon: LucideIcon
   user?: ShellUser | null
   onNavigate: (view: string) => void
+  headerActions?: React.ReactNode
   children: React.ReactNode
   className?: string
 }
@@ -266,6 +267,7 @@ export function DashboardShell({
   panelIcon: PanelIcon,
   user,
   onNavigate,
+  headerActions,
   children,
   className,
 }: DashboardShellProps) {
@@ -652,7 +654,8 @@ export function DashboardShell({
               </div>
 
               {/* Right section */}
-              <div className="flex items-center gap-0.5">
+              <div className="flex items-center gap-1.5">
+                {headerActions}
                 {/* Wallet balance — provider only */}
                 {user?.role === "PROVIDER" ? <WalletBalancePill /> : null}
 

@@ -109,7 +109,7 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
   saude: HeartPulse,
 }
 
-function getCategoryIcon(slug?: string, name?: string): LucideIcon {
+export function getCategoryIcon(slug?: string, name?: string): LucideIcon {
   const key = (slug || name || "").toLowerCase()
   for (const [k, icon] of Object.entries(CATEGORY_ICONS)) {
     if (key.includes(k)) return icon
