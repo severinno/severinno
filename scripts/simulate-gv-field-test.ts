@@ -26,9 +26,16 @@ import { calculateRoute } from "../src/lib/geo-osrm"
 import { KalmanFilter2D } from "../src/lib/geo-kalman"
 import { snapToRoad } from "../src/lib/map-matching"
 import { validateEscrowGeofence, GEOFENCE_TIERS } from "../src/lib/escrow-geofence"
-import { normalizeCommand } from "../src/lib/whatsapp-autoresponder"
 import { HAPTIC_PATTERNS } from "../src/lib/haptics"
 import { FEE_RATE } from "../src/lib/constants"
+
+function normalizeCommand(input: string): string {
+  return input
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+}
 
 async function runFieldSimulation() {
   console.log("================================================================================")

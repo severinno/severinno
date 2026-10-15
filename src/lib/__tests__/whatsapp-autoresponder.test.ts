@@ -5,6 +5,7 @@ import {
   getBookingsStatusText,
   getQuotesStatusText,
   getPixHelpText,
+  getServicesCatalogText,
   processInteractiveCommand,
   handleEscrowApproval,
   handleEscrowDispute,
@@ -77,6 +78,18 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
       expect(menu).toContain("2️⃣ *2* ou *ORCAMENTOS*")
       expect(menu).toContain("3️⃣ *3* ou *PIX*")
       expect(menu).toContain("4️⃣ *4* ou *SUPORTE*")
+      expect(menu).toContain("5️⃣ *5* ou *SERVICOS*")
+    })
+  })
+
+  describe("getServicesCatalogText", () => {
+    it("retorna catálogo de serviços com destaque para Governador Valadares", () => {
+      const catalog = getServicesCatalogText()
+      expect(catalog).toContain("Governador Valadares (MG)")
+      expect(catalog).toContain("Climatização")
+      expect(catalog).toContain("Limpeza & Diarista")
+      expect(catalog).toContain("Eletricista")
+      expect(catalog).toContain("Hidráulica")
     })
   })
 
@@ -427,6 +440,24 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
 
       expect(res.handled).toBe(false)
       expect(db.$transaction).not.toHaveBeenCalled()
+    })
+
+    it("responde catálogo de serviços quando usuário digita '5' ou 'SERVICOS'", async () => {
+      const res = await processInteractiveCommand({
+        phone: "5533999999999",
+        text: "5",
+        user: { id: "user-1", name: "Carlos" },
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Governador Valadares (MG)")
+      expect(res.replyText).toContain("Climatização")
+      expect(enqueueWhatsApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "5533999999999",
+          context: "autoresponder:5",
+        }),
+      )
     })
   })
 })

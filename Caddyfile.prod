@@ -108,6 +108,14 @@
   }
 
   # ── API e App (Next.js) ─────────────────────────────────────────────
+  # ── Cache de assets estáticos imutáveis (Next.js) ───────────────────
+  @immutable path /_next/static/*
+  header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+  # ── Cache de assets públicos estáticos (ícones PWA, logos, manifest) ─
+  @static_assets path /icons/* /images/* /favicon.svg /logo.svg /manifest.json
+  header @static_assets Cache-Control "public, max-age=86400, stale-while-revalidate=604800"
+
   handle {
     reverse_proxy app:3000 {
       header_up Host {host}

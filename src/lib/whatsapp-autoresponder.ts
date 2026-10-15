@@ -64,8 +64,31 @@ export function getMainMenuText(userName?: string | null): string {
     `1️⃣ *1* ou *AGENDAMENTOS* — Meus agendamentos recentes\n` +
     `2️⃣ *2* ou *ORCAMENTOS* — Minhas solicitações de orçamento\n` +
     `3️⃣ *3* ou *PIX* — Instruções e pagamentos pendentes\n` +
-    `4️⃣ *4* ou *SUPORTE* — Falar com suporte humano\n\n` +
+    `4️⃣ *4* ou *SUPORTE* — Falar com suporte humano\n` +
+    `5️⃣ *5* ou *SERVICOS* — Catálogo de serviços em Governador Valadares\n\n` +
     `💡 _Dica: Digite *MENU* a qualquer momento para ver estas opções novamente._`
+  )
+}
+
+/**
+ * Catálogo resumido de serviços e profissionais em Governador Valadares
+ */
+export function getServicesCatalogText(): string {
+  return (
+    `📍 *Serviços em Governador Valadares (MG) - Severinno*\n\n` +
+    `Encontre profissionais verificados nos bairros de GV com pagamento protegido (Escrow):\n\n` +
+    `❄️ *Climatização* — Instalação e limpeza de ar split (Centro e Vila Bretas)\n` +
+    `🧹 *Limpeza & Diarista* — Faxina residencial e pós-obra (Ilha dos Araújos)\n` +
+    `⚡ *Eletricista* — Quadro, fiação e tomadas 220V (Centro)\n` +
+    `🔧 *Hidráulica* — Caça-vazamentos, torneiras e registros (Vila Bretas)\n` +
+    `🎨 *Pintura* — Grafiato, textura e cimento queimado (Grã-Duquesa)\n` +
+    `🔨 *Pedreiro* — Reformas rápidas, alvenaria e pisos (São Pedro)\n` +
+    `🪑 *Marcenaria* — Montagem de móveis e prateleiras (Esplanada)\n` +
+    `🛋️ *Estofados* — Higienização a seco de sofás e colchões (Ilha dos Araújos)\n` +
+    `🌿 *Jardinagem* — Poda de árvores e roçagem de lotes (Santa Rita)\n` +
+    `🛠️ *Marido de Aluguel* — Pequenos reparos e instalações (Lourdes)\n\n` +
+    `👉 Conheça a vitrine completa e agende online:\n` +
+    `🔗 https://severinno.com.br`
   )
 }
 
@@ -646,6 +669,18 @@ export async function processInteractiveCommand(
       `👨‍💼 *Suporte Humano - Severinno*\n\n` +
       `Sua solicitação de atendimento foi registrada! Nossa equipe entrará em contato por aqui ou pelo aplicativo em instantes.\n\n` +
       `Caso prefira, envie uma mensagem detalhada com o que precisa.`
+  }
+  // 8. Catálogo de Serviços em Governador Valadares
+  else if (
+    normalized === "5" ||
+    normalized === "SERVICO" ||
+    normalized === "SERVICOS" ||
+    normalized === "CATALOGO" ||
+    normalized === "VALADARES" ||
+    normalized === "GV" ||
+    normalized === "PRESTADORES"
+  ) {
+    replyText = getServicesCatalogText()
   }
 
   if (replyText) {
