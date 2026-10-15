@@ -22,9 +22,12 @@
  */
 
 // Mock server-only when running as standalone script in Bun
-if (typeof Bun !== "undefined") {
+if (typeof (globalThis as Record<string, unknown>).Bun !== "undefined") {
   try {
-    const { mock } = await import("bun:test")
+    const bunTestModule = "bun:test"
+    const { mock } = (await import(bunTestModule)) as {
+      mock: { module: (name: string, fn: () => Record<string, unknown>) => void }
+    }
     mock.module("server-only", () => ({}))
   } catch {}
 }
