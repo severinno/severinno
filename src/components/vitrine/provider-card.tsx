@@ -307,7 +307,9 @@ export default React.memo(function ProviderCard({
           <div>
             <span className="text-muted-foreground mr-1 text-[10px]">a partir de</span>
             <span className="text-primary text-xs font-bold">
-              {typeof minPrice === "number" ? formatBRL(minPrice) : "Sob consulta"}
+              {minPrice != null && Number.isFinite(Number(minPrice))
+                ? formatBRL(Number(minPrice))
+                : "Sob consulta"}
             </span>
           </div>
         </div>

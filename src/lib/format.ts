@@ -4,11 +4,12 @@ import { ptBR } from "date-fns/locale"
 /**
  * Format a number as BRL currency.
  */
-export function formatBRL(value: number): string {
+export function formatBRL(value: number | string): string {
+  const num = typeof value === "string" ? Number(value) : value
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
-  }).format(Number.isFinite(value) ? value : 0)
+  }).format(Number.isFinite(num) ? num : 0)
 }
 
 /**
