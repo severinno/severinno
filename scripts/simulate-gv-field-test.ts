@@ -21,6 +21,14 @@
  *   1 — falha na simulação
  */
 
+// Mock server-only when running as standalone script in Bun
+if (typeof Bun !== "undefined") {
+  try {
+    const { mock } = await import("bun:test")
+    mock.module("server-only", () => ({}))
+  } catch {}
+}
+
 import { lookupCnefeGV } from "../src/lib/geo-cnefe"
 import { calculateRoute } from "../src/lib/geo-osrm"
 import { KalmanFilter2D } from "../src/lib/geo-kalman"
