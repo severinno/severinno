@@ -21,6 +21,8 @@
  *   1 — falha na simulação
  */
 
+export {}
+
 // Mock server-only when running as standalone script in Bun
 if (typeof (globalThis as Record<string, unknown>).Bun !== "undefined") {
   try {
@@ -32,13 +34,13 @@ if (typeof (globalThis as Record<string, unknown>).Bun !== "undefined") {
   } catch {}
 }
 
-import { lookupCnefeGV } from "../src/lib/geo-cnefe"
-import { calculateRoute } from "../src/lib/geo-osrm"
-import { KalmanFilter2D } from "../src/lib/geo-kalman"
-import { snapToRoad } from "../src/lib/map-matching"
-import { validateEscrowGeofence, GEOFENCE_TIERS } from "../src/lib/escrow-geofence"
-import { HAPTIC_PATTERNS } from "../src/lib/haptics"
-import { FEE_RATE } from "../src/lib/constants"
+const { lookupCnefeGV } = await import("../src/lib/geo-cnefe")
+const { calculateRoute } = await import("../src/lib/geo-osrm")
+const { KalmanFilter2D } = await import("../src/lib/geo-kalman")
+const { snapToRoad } = await import("../src/lib/map-matching")
+const { validateEscrowGeofence, GEOFENCE_TIERS } = await import("../src/lib/escrow-geofence")
+const { HAPTIC_PATTERNS } = await import("../src/lib/haptics")
+const { FEE_RATE } = await import("../src/lib/constants")
 
 function normalizeCommand(input: string): string {
   return input
