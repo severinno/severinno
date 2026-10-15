@@ -311,6 +311,7 @@ export async function notifyQuoteResponse(
   quoteId: string,
   providerName: string,
   total: number,
+  providerNote?: string | null,
 ): Promise<void> {
   const title = "Orçamento respondido"
   const body = `${providerName} respondeu ao orçamento — R$ ${total.toFixed(2)}.`
@@ -322,10 +323,29 @@ export async function notifyQuoteResponse(
   // Push notification
   await sendPushNotification(clientId, title, body, pushUrl).catch(() => {})
 
+  // Extrai discriminação de mão de obra e materiais se disponível
+  let breakdownText: string | undefined = undefined
+  if (providerNote) {
+    const { parseTransparentQuoteNote, getPartnerStoresForCategory } =
+      await import("@/lib/materials-breakdown")
+    const breakdown = parseTransparentQuoteNote(providerNote)
+    if (breakdown) {
+      let storeName = ""
+      if (breakdown.suggestedStoreId) {
+        const stores = getPartnerStoresForCategory()
+        const store = stores.find((s) => s.id === breakdown.suggestedStoreId)
+        if (store) storeName = ` (${store.name})`
+      }
+      breakdownText =
+        `• 🛠️ Mão de obra (100% Escrow): R$ ${breakdown.laborCost.toFixed(2)}\n` +
+        `• 📦 Materiais: R$ ${breakdown.materialsCost.toFixed(2)}${storeName}`
+    }
+  }
+
   // WhatsApp
   await sendWhatsApp(
     clientId,
-    (to) => sendQuoteResponseNotification(to, providerName, total, quoteId),
+    (to) => sendQuoteResponseNotification(to, providerName, total, quoteId, breakdownText),
     `quote:${quoteId}:responded`,
   )
 

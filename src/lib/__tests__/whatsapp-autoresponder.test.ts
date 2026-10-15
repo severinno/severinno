@@ -10,6 +10,7 @@ import {
   processLocationCheckin,
   extractGvNeighborhood,
   processDemandSearch,
+  handleInstantQuoteHiring,
 } from "../whatsapp-autoresponder"
 import { db } from "@/lib/db"
 import { enqueueWhatsApp } from "@/lib/whatsapp-queue"
@@ -20,11 +21,17 @@ vi.mock("@/lib/db", () => ({
     booking: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
+      create: vi
+        .fn()
+        .mockImplementation((data) =>
+          Promise.resolve({ id: "book-new-1", amount: 150, ...data.data }),
+        ),
       update: vi.fn().mockResolvedValue({}),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     payment: {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      upsert: vi.fn().mockResolvedValue({ id: "pay-1" }),
     },
     notification: {
       create: vi.fn().mockResolvedValue({}),
@@ -34,13 +41,34 @@ vi.mock("@/lib/db", () => ({
     },
     quoteRequest: {
       findMany: vi.fn(),
+      findFirst: vi.fn(),
+      update: vi.fn().mockResolvedValue({}),
+    },
+    quoteItem: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     $transaction: vi.fn((promises) => Promise.all(promises)),
   },
 }))
 
+vi.mock("@/lib/lytex", () => ({
+  createPixCharge: vi.fn().mockResolvedValue({
+    id: "lytex-chg-1",
+    status: "waitingPayment",
+    transactionId: "tx-1",
+    qrCode: "00020126580014br.gov.bcb.pix0136test-qr-code",
+    qrCodeImage: "",
+    pixKey: "",
+    expiresAt: "2026-10-16",
+    amount: 15000,
+    lytexStatus: "waitingPayment",
+    createdAt: new Date().toISOString(),
+  }),
+}))
+
 vi.mock("@/lib/notifications", () => ({
   notifyProviderArrived: vi.fn().mockResolvedValue(undefined),
+  notifyNewBooking: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock("@/lib/whatsapp-queue", () => ({
@@ -515,6 +543,124 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
       })
 
       expect(res.handled).toBe(false)
+    })
+  })
+
+  describe("handleInstantQuoteHiring & Comandos de Contratação", () => {
+    it("retorna mensagem informativa quando não há orçamentos aguardando contratação", async () => {
+      vi.mocked(db.quoteRequest.findFirst).mockResolvedValueOnce(null)
+
+      const reply = await handleInstantQuoteHiring("user-1", "5533999991111")
+      expect(reply).toContain("Não encontramos nenhum orçamento aguardando contratação")
+    })
+
+    it("retorna aviso quando o orçamento ainda não tem preço definido pelo prestador", async () => {
+      vi.mocked(db.quoteRequest.findFirst).mockResolvedValueOnce({
+        id: "quote-pending-val",
+        clientId: "user-1",
+        providerId: "prov-1",
+        items: [{ price: null, service: { title: "Pintura" } }],
+        bookings: [],
+      } as any)
+
+      const reply = await handleInstantQuoteHiring("user-1", "5533999991111", "quote-pe")
+      expect(reply).toContain("ainda não possui valores definidos pelo profissional")
+    })
+
+    it("retorna aviso quando o agendamento já foi pago anteriormente", async () => {
+      vi.mocked(db.quoteRequest.findFirst).mockResolvedValueOnce({
+        id: "quote-paid-1",
+        clientId: "user-1",
+        providerId: "prov-1",
+        items: [{ price: 180, service: { title: "Pintura" } }],
+        bookings: [{ id: "book-paid-1", paymentStatus: "PAID" }],
+      } as any)
+
+      const reply = await handleInstantQuoteHiring("user-1", "5533999991111", "quote-paid")
+      expect(reply).toContain("já foi pago e está confirmado")
+    })
+
+    it("cria agendamento, gera PIX via Lytex e retorna código com garantia Escrow", async () => {
+      vi.mocked(db.quoteRequest.findFirst).mockResolvedValueOnce({
+        id: "quote-hire-ok",
+        clientId: "user-client",
+        providerId: "user-prov",
+        address: "Centro, Gov. Valadares",
+        cep: "35010-000",
+        lat: -18.85,
+        lng: -41.95,
+        client: {
+          id: "user-client",
+          name: "Mariana",
+          email: "mari@severinno.com",
+          cpfCnpj: "12345678900",
+          whatsapp: "5533999991111",
+        },
+        provider: { id: "user-prov", name: "Carlos Eletricista", whatsapp: "5533988887777" },
+        items: [{ price: 150, service: { id: "srv-1", title: "Troca de Quadro" } }],
+        bookings: [],
+      } as any)
+
+      const reply = await handleInstantQuoteHiring("user-client", "5533999991111", "quote-hire")
+
+      expect(reply).toContain("Contratação Confirmada com Sucesso!")
+      expect(reply).toContain("Carlos Eletricista")
+      expect(reply).toContain("Troca de Quadro")
+      expect(reply).toContain("R$ 150.00")
+      expect(reply).toContain("00020126580014br.gov.bcb.pix0136test-qr-code")
+      expect(reply).toContain("Garantia Severinno Escrow")
+      expect(db.$transaction).toHaveBeenCalled()
+      expect(db.payment.upsert).toHaveBeenCalled()
+    })
+
+    it("processInteractiveCommand reconhece CONTRATAR e despacha contratação rápida", async () => {
+      vi.mocked(db.quoteRequest.findFirst).mockResolvedValueOnce({
+        id: "quote-hire-2",
+        clientId: "user-client",
+        providerId: "user-prov",
+        address: "Ilha dos Araújos",
+        cep: "35010-000",
+        lat: -18.85,
+        lng: -41.95,
+        client: {
+          id: "user-client",
+          name: "Mariana",
+          email: "mari@severinno.com",
+          cpfCnpj: "12345678900",
+          whatsapp: "5533999991111",
+        },
+        provider: { id: "user-prov", name: "Carlos Eletricista", whatsapp: "5533988887777" },
+        items: [{ price: 200, service: { id: "srv-1", title: "Instalação Split" } }],
+        bookings: [],
+      } as any)
+
+      const res = await processInteractiveCommand({
+        phone: "5533999991111",
+        text: "CONTRATAR #quote-hire-2",
+        user: { id: "user-client", name: "Mariana" },
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Contratação Confirmada com Sucesso!")
+      expect(enqueueWhatsApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "5533999991111",
+          context: "autoresponder:CONTRATAR #QUOTE-HIRE-2",
+        }),
+      )
+    })
+
+    it("processInteractiveCommand reconhece ORCAR e inicia wizard de solicitação", async () => {
+      const res = await processInteractiveCommand({
+        phone: "5533999991111",
+        text: "ORCAR",
+        user: { id: "user-client", name: "Mariana" },
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Solicitação de Orçamento - Severinno")
+      expect(res.replyText).toContain("Mariana")
+      expect(res.replyText).toContain("O que você precisa que seja feito?")
     })
   })
 })

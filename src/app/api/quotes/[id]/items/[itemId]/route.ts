@@ -69,6 +69,7 @@ export const PATCH = withParams<{ id: string; itemId: string }>(
           id,
           quote.provider?.name ?? "Prestador",
           data.price,
+          data.providerNote,
         ).catch((err) => logger.warn({ err }, "quote item notification failed"))
       }
     }

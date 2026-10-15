@@ -361,13 +361,17 @@ export async function sendQuoteResponseNotification(
   providerName: string,
   total: number,
   quoteId: string,
+  breakdownText?: string,
 ): Promise<{ key: { id: string } } | null> {
+  const shortId = quoteId.slice(0, 8)
   const text =
     `💰 *Orçamento respondido!*\n\n` +
     `👤 Prestador: ${providerName}\n` +
     `💵 Total: R$ ${total.toFixed(2)}\n` +
-    `🆔 #${quoteId.slice(0, 8)}\n\n` +
-    `Acesse o app para aprovar ou recusar o orçamento.`
+    (breakdownText ? `${breakdownText}\n` : "") +
+    `🆔 Pedido: #${shortId}\n\n` +
+    `👉 Para aprovar e contratar com garantia de custódia (Escrow), responda:\n` +
+    `*CONTRATAR #${shortId}*`
 
   return sendText(to, text)
 }

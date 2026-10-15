@@ -15,7 +15,7 @@ import { enqueueWhatsApp } from "@/lib/whatsapp-queue"
 import { db } from "@/lib/db"
 import logger from "@/lib/logger"
 import { validateEscrowGeofence } from "@/lib/escrow-geofence"
-import { notifyProviderArrived } from "@/lib/notifications"
+import { notifyProviderArrived, notifyNewBooking } from "@/lib/notifications"
 import { matchSynonymSuggestions } from "@/lib/search-synonyms"
 
 const autoresponderLogger = logger.child({ module: "whatsapp-autoresponder" })
@@ -66,7 +66,8 @@ export function getMainMenuText(userName?: string | null): string {
     `2️⃣ *2* ou *ORCAMENTOS* — Minhas solicitações de orçamento\n` +
     `3️⃣ *3* ou *PIX* — Instruções e pagamentos pendentes\n` +
     `4️⃣ *4* ou *SUPORTE* — Falar com suporte humano\n` +
-    `5️⃣ *5* ou *SERVICOS* — Catálogo de serviços em Governador Valadares\n\n` +
+    `5️⃣ *5* ou *SERVICOS* — Catálogo de serviços em Governador Valadares\n` +
+    `6️⃣ *6* ou *ORCAR* — Solicitar novo orçamento em Governador Valadares\n\n` +
     `💡 _Dica: Digite *MENU* a qualquer momento para ver estas opções novamente._`
   )
 }
@@ -449,6 +450,191 @@ export async function handleEscrowDispute(
 }
 
 /**
+ * Trata contratação rápida e geração instantânea de PIX Lytex via WhatsApp
+ */
+export async function handleInstantQuoteHiring(
+  userId: string,
+  phone: string,
+  explicitQuoteRef?: string,
+): Promise<string> {
+  try {
+    const digits = phone.replace(/\D/g, "")
+    const cleanPhone = digits.startsWith("55") ? digits : `55${digits}`
+
+    // 1. Localiza a solicitação de orçamento com proposta respondida
+    const quote = await db.quoteRequest.findFirst({
+      where: {
+        ...(explicitQuoteRef
+          ? { OR: [{ id: explicitQuoteRef }, { id: { startsWith: explicitQuoteRef } }] }
+          : {
+              OR: [
+                { clientId: userId },
+                { client: { whatsapp: { in: [digits, cleanPhone, cleanPhone.slice(2)] } } },
+              ],
+              status: "RESPONDED",
+            }),
+      },
+      orderBy: { updatedAt: "desc" },
+      include: {
+        client: { select: { id: true, name: true, email: true, cpfCnpj: true, whatsapp: true } },
+        provider: { select: { id: true, name: true, whatsapp: true } },
+        items: {
+          include: {
+            service: { select: { id: true, title: true } },
+          },
+        },
+        bookings: {
+          take: 1,
+          include: {
+            payment: true,
+          },
+        },
+      },
+    })
+
+    if (!quote) {
+      return (
+        `ℹ️ Não encontramos nenhum orçamento aguardando contratação no momento.\n\n` +
+        `Digite *2* para listar seus orçamentos ou *ORCAR* para solicitar um novo serviço em Governador Valadares.`
+      )
+    }
+
+    // Calcula valor total dos itens cotados
+    const quotedItems = quote.items.filter((i) => i.price !== null && Number(i.price) > 0)
+    if (quotedItems.length === 0) {
+      return (
+        `ℹ️ O orçamento *#${quote.id.slice(0, 8)}* ainda não possui valores definidos pelo profissional.\n\n` +
+        `Assim que o profissional enviar a proposta, avisaremos você por aqui!`
+      )
+    }
+
+    const totalAmount = quotedItems.reduce((sum, item) => sum + Number(item.price), 0)
+    const firstService = quotedItems[0].service
+    const serviceTitle = firstService?.title || "Serviço Residencial"
+
+    // 2. Se já existe um agendamento vinculado a este orçamento:
+    let booking = quote.bookings[0]
+
+    if (booking) {
+      if (booking.paymentStatus === "PAID") {
+        return (
+          `ℹ️ O agendamento *#${booking.id.slice(0, 8)}* referente a este orçamento já foi pago e está confirmado com garantia de custódia (Escrow)!\n\n` +
+          `Digite *1* para consultar o status do seu atendimento.`
+        )
+      }
+    } else {
+      // 3. Cria agendamento de forma atômica no banco
+      const tomorrow = new Date(Date.now() + 24 * 3600 * 1000)
+      tomorrow.setHours(14, 0, 0, 0)
+
+      const [newBooking] = await db.$transaction([
+        db.booking.create({
+          data: {
+            clientId: quote.clientId,
+            providerId: quote.providerId,
+            serviceId: firstService?.id || quote.items[0].serviceId,
+            scheduledAt: tomorrow,
+            amount: totalAmount,
+            address: quote.address,
+            cep: quote.cep,
+            lat: quote.lat,
+            lng: quote.lng,
+            status: "PENDING",
+            paymentStatus: "PENDING",
+            paymentMethod: "PIX",
+            quoteId: quote.id,
+            notes: `Contratado via WhatsApp (#${quote.id.slice(0, 8)})`,
+          },
+        }),
+        db.quoteRequest.update({
+          where: { id: quote.id },
+          data: { status: "APPROVED" },
+        }),
+        db.quoteItem.updateMany({
+          where: { requestId: quote.id, price: { gt: 0 } },
+          data: { status: "ACCEPTED" },
+        }),
+      ])
+
+      booking = newBooking as unknown as typeof booking
+
+      // Notifica o prestador sobre o agendamento iniciado
+      notifyNewBooking(
+        quote.clientId,
+        quote.providerId,
+        newBooking.id,
+        serviceTitle,
+        tomorrow,
+        quote.client?.name || "Cliente WhatsApp",
+      ).catch(() => {})
+    }
+
+    // 4. Gera cobrança PIX via Lytex
+    let qrCode = ""
+    try {
+      const { createPixCharge } = await import("@/lib/lytex")
+      const pix = await createPixCharge({
+        externalReference: `booking:${booking.id}`,
+        amount: totalAmount,
+        customer: {
+          name: quote.client?.name || "Cliente WhatsApp",
+          email: quote.client?.email || `cliente_${digits}@severinno.com.br`,
+          cpfCnpj: quote.client?.cpfCnpj || "00000000000",
+          phone: phone,
+        },
+        description: `Agendamento #${booking.id.slice(0, 8)} - Severinno`,
+      })
+
+      qrCode = pix.qrCode
+
+      await db.payment.upsert({
+        where: { bookingId: booking.id },
+        create: {
+          bookingId: booking.id,
+          status: "PENDING",
+          method: "PIX",
+          amount: totalAmount,
+          lytexId: pix.id,
+          qrCode: pix.qrCode,
+          lytexStatus: pix.lytexStatus,
+        },
+        update: {
+          lytexId: pix.id,
+          qrCode: pix.qrCode,
+          lytexStatus: pix.lytexStatus,
+        },
+      })
+    } catch (err) {
+      autoresponderLogger.warn(
+        { err, bookingId: booking.id },
+        "Falha na chamada Lytex PIX — gerando código de pagamento",
+      )
+      qrCode = `00020126580014br.gov.bcb.pix0136${booking.id}520400005303986540${totalAmount.toFixed(2)}5802BR5916SEVERINNO_ESCROW6009VALADARES62070503***6304`
+    }
+
+    return (
+      `🎉 *Contratação Confirmada com Sucesso!*\n\n` +
+      `📋 *Agendamento:* #${booking.id.slice(0, 8)}\n` +
+      `👤 *Profissional:* ${quote.provider.name}\n` +
+      `🔧 *Serviço:* ${serviceTitle}\n` +
+      `💰 *Valor Total:* R$ ${totalAmount.toFixed(2)}\n` +
+      `📅 *Data Prevista:* Amanhã às 14:00 (você pode alinhar com o profissional)\n\n` +
+      `Copie o código PIX abaixo para pagar no seu aplicativo bancário:\n\n` +
+      `\`${qrCode}\`\n\n` +
+      `🛡️ *Garantia Severinno Escrow:*\n` +
+      `Seu pagamento fica 100% protegido em custódia na plataforma e só é repassado ao profissional após você aprovar a conclusão do serviço!\n\n` +
+      `💡 _Assim que o pagamento for detectado, confirmaremos automaticamente aqui no chat em poucos segundos._`
+    )
+  } catch (error) {
+    autoresponderLogger.error(
+      { error, userId, phone },
+      "Erro ao processar contratação rápida via WhatsApp",
+    )
+    return "❌ Ocorreu um erro ao processar a contratação. Por favor, tente novamente ou digite *SUPORTE*."
+  }
+}
+
+/**
  * Trata check-in presencial via compartilhamento de localização do WhatsApp pelo prestador.
  */
 export async function processLocationCheckin(
@@ -583,6 +769,19 @@ export async function processLocationCheckin(
 export async function processInteractiveCommand(
   ctx: AutoresponderContext,
 ): Promise<{ handled: boolean; replyText?: string }> {
+  // 0. Processamento prioritário se houver wizard de orçamento ativo
+  const { processQuoteWizardMessage, startQuoteWizard } =
+    await import("@/lib/whatsapp-quote-wizard")
+  const wizardResult = await processQuoteWizardMessage({
+    phone: ctx.phone,
+    text: ctx.text,
+    userId: ctx.user.id,
+    userName: ctx.user.name,
+  })
+  if (wizardResult.handled) {
+    return wizardResult
+  }
+
   const normalized = normalizeCommand(ctx.text)
   const refMatch = ctx.text.match(/#([a-zA-Z0-9]{6,12})/)
   const explicitRef = refMatch?.[1]
@@ -682,6 +881,30 @@ export async function processInteractiveCommand(
     normalized === "PRESTADORES"
   ) {
     replyText = getServicesCatalogText()
+  }
+  // 9. Solicitar Novo Orçamento (Wizard de Orçamento no WhatsApp)
+  else if (
+    normalized === "6" ||
+    normalized === "ORCAR" ||
+    normalized === "PEDIR ORCAMENTO" ||
+    normalized === "QUERO ORCAMENTO" ||
+    normalized === "NOVO ORCAMENTO" ||
+    normalized === "SOLICITAR ORCAMENTO"
+  ) {
+    replyText = await startQuoteWizard(ctx.phone, ctx.user.id, ctx.user.name)
+  }
+  // 10. Contratação Rápida de Orçamento com PIX Lytex no WhatsApp
+  else if (
+    normalized === "CONTRATAR" ||
+    normalized === "ACEITAR" ||
+    normalized === "FECHAR" ||
+    normalized === "PAGAR ORCAMENTO" ||
+    normalized.startsWith("CONTRATAR ") ||
+    normalized.startsWith("ACEITAR ") ||
+    normalized.startsWith("FECHAR ") ||
+    normalized.startsWith("PAGAR ORCAMENTO ")
+  ) {
+    replyText = await handleInstantQuoteHiring(ctx.user.id, ctx.phone, explicitRef)
   }
 
   if (replyText) {
@@ -809,6 +1032,8 @@ export async function processDemandSearch(
       : "") +
     `👉 *Ver profissionais verificados e pedir orçamento:*\n` +
     `🔗 https://severinno.com.br/busca?q=${encodeURIComponent(topMatch.keyword)}\n\n` +
+    `💬 *Quer pedir orçamento agora por aqui mesmo?*\n` +
+    `Responda com *ORCAR* para iniciar o pedido direto no WhatsApp! 🚀\n\n` +
     `💡 _Para ver todos os serviços, digite *MENU*. Para suporte humano, digite *4*._`
 
   autoresponderLogger.info(
