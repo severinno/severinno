@@ -50,6 +50,7 @@ import { useCompareStore, MAX_COMPARE } from "@/store/compare"
 import { useGeoStore } from "@/store/geo"
 import { useUIStore } from "@/store/ui"
 import { toast } from "sonner"
+import { EscrowGuaranteeBadge } from "@/components/shared/escrow-guarantee-badge"
 
 import {
   Dialog,
@@ -235,6 +236,12 @@ export default function CompareModal() {
           </div>
         )
       },
+    },
+    {
+      key: "escrow",
+      label: "Proteção Financeira",
+      icon: <ShieldCheck className="size-4 text-emerald-600" />,
+      render: () => <EscrowGuaranteeBadge variant="compact" />,
     },
     {
       key: "completed",

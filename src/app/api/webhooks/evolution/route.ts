@@ -19,7 +19,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { evolutionLogger } from "@/lib/evolution"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { processInteractiveCommand } from "@/lib/whatsapp-autoresponder"
+import { processInteractiveCommand, processDemandSearch } from "@/lib/whatsapp-autoresponder"
 
 // ---------------------------------------------------------------------------
 // Helper: extrair número do JID (remoteJid)
@@ -144,23 +144,18 @@ export async function POST(request: Request) {
 
         // Buscar usuário pelo número
         const user = await findUserByPhone(senderNumber)
-        if (!user) {
+        if (user) {
           evolutionLogger.info(
-            { number: senderNumber.slice(0, 6) + "****" },
-            "Webhook Evolution: mensagem de número não cadastrado",
+            { userId: user.id, event: "messages.upsert" },
+            "Webhook Evolution: mensagem recebida de usuário cadastrado",
           )
-          break
         }
-
-        evolutionLogger.info(
-          { userId: user.id, event: "messages.upsert" },
-          "Webhook Evolution: mensagem recebida de usuário cadastrado",
-        )
 
         // ── 0. Verificar se a mensagem é um compartilhamento de localização (Check-in GPS) ──
         const isLive = Boolean(message?.liveLocationMessage)
         const locMsg = message?.liveLocationMessage || message?.locationMessage
         if (
+          user &&
           locMsg &&
           typeof locMsg.degreesLatitude === "number" &&
           typeof locMsg.degreesLongitude === "number"
@@ -188,12 +183,41 @@ export async function POST(request: Request) {
           }
         }
 
-        // Extrair texto da mensagem
+        // Extrair texto ou transcrição de áudio da mensagem
         let text = ""
+        const isAudio = Boolean(message?.audioMessage || message?.voiceMessage)
         if (message?.conversation) {
           text = message.conversation
         } else if (message?.extendedTextMessage?.text) {
           text = message.extendedTextMessage.text
+        } else if (isAudio) {
+          // Transcrição de áudio se disponível nos campos da Evolution API
+          text =
+            message.audioMessage?.text ||
+            message.audioMessage?.caption ||
+            message.voiceMessage?.text ||
+            ""
+        }
+
+        // Se for áudio sem transcrição direta de texto:
+        if (isAudio && !text) {
+          const { enqueueWhatsApp } = await import("@/lib/whatsapp-queue")
+          const audioReply =
+            `🎙️ *Áudio Recebido no Severinno!*\n\n` +
+            `Olá! Recebemos sua mensagem de voz.\n\n` +
+            `Para localizarmos o melhor profissional verificado em Governador Valadares (Eletricista, Encanador, Chaveiro 24h, Faxina ou Frete):\n\n` +
+            `1️⃣ Digite em poucas palavras o que precisa (ex: _"trocar chuveiro na Ilha"_, _"vazamento pia"_, _"chaveiro urgente"_)\n` +
+            `2️⃣ Digite *MENU* para ver as opções interativas\n` +
+            `3️⃣ Ou acesse a vitrine direta com garantia Escrow: https://severinno.com.br\n\n` +
+            `🚨 Para emergência imediata: https://severinno.com.br/?sos=1`
+
+          await enqueueWhatsApp({
+            to: senderNumber,
+            text: audioReply,
+            userId: user?.id,
+            context: "audio:auto-guidance",
+          }).catch(() => {})
+          break
         }
 
         if (!text) break // ignora mensagens sem texto e sem localização tratada
@@ -203,17 +227,43 @@ export async function POST(request: Request) {
         const interactiveResult = await processInteractiveCommand({
           phone: senderNumber,
           text,
-          user: {
-            id: user.id,
-            name: user.name,
-            role: user.role,
+          user: user ?? {
+            id: `anon-${senderNumber}`,
+            name: null,
+            role: "CLIENT",
           },
         })
 
         if (interactiveResult.handled) {
           evolutionLogger.info(
-            { userId: user.id, phone: senderNumber.slice(0, 4) + "****" },
+            { userId: user?.id, phone: senderNumber.slice(0, 4) + "****" },
             "Webhook Evolution: mensagem respondida automaticamente pelo autoresponder",
+          )
+          break
+        }
+
+        // ── 1b. Transcrição / Parsing de Demanda de Serviços (Sugestão 4) ──
+        // Mapeia termos cotidianos ("chuveiro queimado", "chaveiro urgente") para especialidades e bairros de GV
+        const demandResult = await processDemandSearch({
+          phone: senderNumber,
+          text,
+          userId: user?.id,
+          userName: user?.name,
+        })
+
+        if (demandResult.handled) {
+          evolutionLogger.info(
+            { userId: user?.id, phone: senderNumber.slice(0, 4) + "****" },
+            "Webhook Evolution: demanda de serviço identificada e atendida automaticamente",
+          )
+          break
+        }
+
+        // Se o usuário não está cadastrado e a mensagem não foi tratada por comando ou demanda:
+        if (!user) {
+          evolutionLogger.info(
+            { number: senderNumber.slice(0, 6) + "****" },
+            "Webhook Evolution: mensagem de número não cadastrado não tratada por autoresponder",
           )
           break
         }

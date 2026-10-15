@@ -59,6 +59,13 @@ const WhySeverinno = React.lazy(() => import("./why-severinno"))
 const CtaBanner = React.lazy(() => import("./cta-banner"))
 const ProviderSpotlight = React.lazy(() => import("./provider-spotlight"))
 const CompareModal = React.lazy(() => import("./compare-modal"))
+const BeforeAfterShowcase = React.lazy(() => import("./before-after-showcase"))
+const EmergencySosModal = React.lazy(() =>
+  import("../shared/emergency-sos-modal").then((m) => ({ default: m.EmergencySosModal })),
+)
+const FloatingSosButton = React.lazy(() =>
+  import("../shared/emergency-sos-modal").then((m) => ({ default: m.FloatingSosButton })),
+)
 const AIChatWidget = React.lazy(() => import("../shared/ai-chat-widget"))
 const CookieConsent = React.lazy(() => import("../shared/cookie-consent"))
 import { DEFAULT_FILTERS, type FiltersState } from "./filters"
@@ -209,6 +216,7 @@ export default function Vitrine() {
   // pelo walk.
   const [pagina, setPaginaState] = React.useState(1)
   const [anchors, setAnchors] = React.useState<Map<number, string>>(new Map())
+  const [sosOpen, setSosOpen] = React.useState(false)
   /** Walk em curso (página funda sem âncora) — isFetching sobe, UI segura. */
   const [walkActive, setWalkActive] = React.useState(false)
   /** Token de geração: qualquer reset/navegação aborta o walk async em curso. */
@@ -355,6 +363,10 @@ export default function Vitrine() {
     if (parsed.cursor) {
       const target = parsed.pagina
       setAnchors((prev) => new Map(prev).set(target, parsed.cursor as string))
+    }
+    const searchParams = new URLSearchParams(window.location.search)
+    if (searchParams.get("sos") === "1" || searchParams.get("sos") === "true") {
+      setSosOpen(true)
     }
     // Página funda SEM âncora (nem ?cursor= nem memória da sessão): walk a
     // partir da página 1 — idêntico na hidratação e no popstate. A página
@@ -914,6 +926,11 @@ export default function Vitrine() {
           <WhySeverinno />
         </LazySection>
 
+        {/* 8b. BeforeAfterShowcase — Real visual transformations (Sugestão 3) */}
+        <LazySection>
+          <BeforeAfterShowcase />
+        </LazySection>
+
         {/* 9. ProviderSpotlight — featured provider */}
         <LazySection>
           <ProviderSpotlight />
@@ -932,7 +949,7 @@ export default function Vitrine() {
 
       <Footer />
 
-      {/* Floating UI — compare bar + back-to-top + AI chat */}
+      {/* Floating UI — compare bar + back-to-top + AI chat + SOS Emergência */}
       <Suspense fallback={null}>
         <CompareBar />
       </Suspense>
@@ -942,10 +959,18 @@ export default function Vitrine() {
       <Suspense fallback={null}>
         <AIChatWidget />
       </Suspense>
+      <Suspense fallback={null}>
+        <FloatingSosButton onClick={() => setSosOpen(true)} />
+      </Suspense>
 
       {/* Compare modal — portal-mounted by Radix */}
       <Suspense fallback={null}>
         <CompareModal />
+      </Suspense>
+
+      {/* SOS Emergência 24h Modal (Sugestão 1) */}
+      <Suspense fallback={null}>
+        <EmergencySosModal open={sosOpen} onOpenChange={setSosOpen} />
       </Suspense>
 
       {/* Cookie consent banner — LGPD compliance */}

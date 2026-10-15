@@ -7,9 +7,9 @@ import {
   getPixHelpText,
   getServicesCatalogText,
   processInteractiveCommand,
-  handleEscrowApproval,
-  handleEscrowDispute,
   processLocationCheckin,
+  extractGvNeighborhood,
+  processDemandSearch,
 } from "../whatsapp-autoresponder"
 import { db } from "@/lib/db"
 import { enqueueWhatsApp } from "@/lib/whatsapp-queue"
@@ -458,6 +458,63 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
           context: "autoresponder:5",
         }),
       )
+    })
+  })
+
+  describe("extractGvNeighborhood", () => {
+    it("identifica corretamente bairros de Governador Valadares", () => {
+      expect(extractGvNeighborhood("preciso de eletricista na Ilha dos Araújos")).toBe(
+        "Ilha dos Araújos",
+      )
+      expect(extractGvNeighborhood("tem encanador no centro?")).toBe("Centro")
+      expect(extractGvNeighborhood("moro na vila bretas")).toBe("Vila Bretas")
+      expect(extractGvNeighborhood("serviço em belo horizonte")).toBeNull()
+    })
+  })
+
+  describe("processDemandSearch", () => {
+    it("identifica demanda de chuveiro queimado e responde com link preditivo e garantia escrow", async () => {
+      const res = await processDemandSearch({
+        phone: "5533988881234",
+        text: "meu chuveiro queimou preciso trocar a resistência no Centro de GV",
+        userId: "user-123",
+        userName: "Renata",
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Severinno Match Inteligente")
+      expect(res.replyText).toContain("Renata")
+      expect(res.replyText).toContain("Elétrica & Instalações")
+      expect(res.replyText).toContain("Centro")
+      expect(res.replyText).toContain("Garantia em Custódia (Escrow)")
+      expect(res.replyText).toContain("https://severinno.com.br/busca?q=")
+      expect(enqueueWhatsApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "5533988881234",
+          context: "demand:eletrica",
+        }),
+      )
+    })
+
+    it("identifica emergência 24h e inclui link direto para SOS", async () => {
+      const res = await processDemandSearch({
+        phone: "5533988881234",
+        text: "chaveiro urgente porta trancada com criança dentro na ilha dos araujos",
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Chaveiro 24 Horas")
+      expect(res.replyText).toContain("Atendimento SOS Emergência 24h Disponível")
+      expect(res.replyText).toContain("https://severinno.com.br/?sos=1")
+    })
+
+    it("retorna handled=false para mensagens genéricas sem intenção de serviço", async () => {
+      const res = await processDemandSearch({
+        phone: "5533988881234",
+        text: "qual o horário de funcionamento do banco do brasil?",
+      })
+
+      expect(res.handled).toBe(false)
     })
   })
 })

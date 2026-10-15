@@ -61,8 +61,10 @@ vi.mock("@/lib/rate-limit", () => ({
 vi.mock("@/lib/whatsapp-autoresponder", () => ({
   processInteractiveCommand: vi.fn().mockResolvedValue({ handled: false }),
   processLocationCheckin: vi.fn().mockResolvedValue({ handled: false }),
+  processDemandSearch: vi.fn().mockResolvedValue({ handled: false }),
 }))
 
+import { processDemandSearch } from "@/lib/whatsapp-autoresponder"
 import { POST, __testing__extractNumber, __testing__findUserByPhone } from "../route"
 
 // ── Fixtures ─────────────────────────────────────────────────────────────
@@ -338,6 +340,51 @@ describe("POST /api/webhooks/evolution — roteamento", () => {
       }),
     )
 
+    expect(db.message.create).not.toHaveBeenCalled()
+  })
+
+  it("trata demanda de serviço com processDemandSearch sem repassar para mensagens", async () => {
+    vi.mocked(processDemandSearch).mockResolvedValueOnce({
+      handled: true,
+      replyText: "Sugestão enviada",
+    })
+
+    const res = await post(
+      buildPayload({
+        data: {
+          key: { remoteJid: JID, fromMe: false },
+          message: { conversation: "preciso de encanador na ilha dos araujos" },
+        },
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ received: true })
+    expect(processDemandSearch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "preciso de encanador na ilha dos araujos",
+      }),
+    )
+    expect(db.message.create).not.toHaveBeenCalled()
+  })
+
+  it("responde com orientação quando recebe mensagem de áudio sem transcrição", async () => {
+    const res = await post(
+      buildPayload({
+        data: {
+          key: { remoteJid: JID, fromMe: false },
+          message: {
+            audioMessage: {
+              url: "https://mmg.whatsapp.net/v/t62.7114-24/...",
+              mimetype: "audio/ogg; codecs=opus",
+            },
+          },
+        },
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ received: true })
     expect(db.message.create).not.toHaveBeenCalled()
   })
 

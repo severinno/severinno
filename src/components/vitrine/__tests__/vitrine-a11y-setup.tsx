@@ -26,6 +26,7 @@ vi.mock("lucide-react", () => {
     CalendarCheck: Icon,
     CalendarClock: Icon,
     Camera: Icon,
+    CheckCircle: Icon,
     CheckCircle2: Icon,
     ChevronDown: Icon,
     ChevronLeft: Icon,

@@ -16,6 +16,7 @@ import { db } from "@/lib/db"
 import logger from "@/lib/logger"
 import { validateEscrowGeofence } from "@/lib/escrow-geofence"
 import { notifyProviderArrived } from "@/lib/notifications"
+import { matchSynonymSuggestions } from "@/lib/search-synonyms"
 
 const autoresponderLogger = logger.child({ module: "whatsapp-autoresponder" })
 
@@ -703,4 +704,132 @@ export async function processInteractiveCommand(
   }
 
   return { handled: false }
+}
+
+const GV_NEIGHBORHOODS = [
+  "Ilha dos Araújos",
+  "Ilha dos Araujos",
+  "Ilha",
+  "Centro",
+  "Vila Bretas",
+  "Bretas",
+  "Grã-Duquesa",
+  "Gra-Duquesa",
+  "Gra Duquesa",
+  "Lourdes",
+  "São Pedro",
+  "Sao Pedro",
+  "Santa Rita",
+  "Esplanada",
+  "Universitário",
+  "Universitario",
+  "Morada do Acúrcio",
+  "Esperança",
+  "Esperanca",
+  "Castanheiras",
+  "Santo Agostinho",
+  "Altinópolis",
+  "Altinopolis",
+  "SIR",
+]
+
+/**
+ * Detecta se uma mensagem menciona algum bairro de Governador Valadares.
+ */
+export function extractGvNeighborhood(text: string): string | null {
+  if (!text) return null
+  const clean = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+  for (const b of GV_NEIGHBORHOODS) {
+    const bNorm = b
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+    const regex = new RegExp(`\\b${bNorm}\\b`, "i")
+    if (regex.test(clean)) {
+      return b
+    }
+  }
+  return null
+}
+
+export type DemandSearchContext = {
+  phone: string
+  text: string
+  userId?: string | null
+  userName?: string | null
+}
+
+/**
+ * Processa uma mensagem de demanda do cliente (voz transcrita ou texto corrido)
+ * usando o dicionário de sinônimos populares e heurísticas de intenção (Nielsen H2/H6).
+ */
+export async function processDemandSearch(
+  ctx: DemandSearchContext,
+): Promise<{ handled: boolean; replyText?: string }> {
+  if (!ctx.text || ctx.text.trim().length < 3) {
+    return { handled: false }
+  }
+
+  const suggestions = matchSynonymSuggestions(ctx.text, 2)
+  if (suggestions.length === 0) {
+    return { handled: false }
+  }
+
+  const topMatch = suggestions[0]
+  const neighborhood = extractGvNeighborhood(ctx.text)
+
+  const normalized = normalizeCommand(ctx.text)
+  const isEmergency =
+    topMatch.macroDomainSlug === "emergencia-24h" ||
+    normalized.includes("URGENTE") ||
+    normalized.includes("EMERGENCIA") ||
+    normalized.includes("ESTOUROU") ||
+    normalized.includes("VAZAMENTO") ||
+    normalized.includes("DESENTUPIR") ||
+    normalized.includes("TRANCADA")
+
+  const greeting = ctx.userName ? `Olá, *${ctx.userName}*! ` : "Olá! "
+
+  const replyText =
+    `🔍 *Severinno Match Inteligente*\n\n` +
+    `${greeting}Identificamos que você precisa de *${topMatch.targetCategoryName}*` +
+    (neighborhood ? ` próximo a *${neighborhood}*` : "") +
+    ` em Governador Valadares.\n\n` +
+    `✨ *Serviços frequentes atendidos:*\n` +
+    topMatch.exampleServices.map((s) => `• ${s}`).join("\n") +
+    `\n\n🛡️ *Garantia em Custódia (Escrow):*\n` +
+    `Seu pagamento fica 100% protegido pela plataforma e só é repassado ao profissional após você aprovar o serviço finalizado.\n\n` +
+    (isEmergency
+      ? `🚨 *Atendimento SOS Emergência 24h Disponível*\n` +
+        `Para socorro imediato (tempo médio 15 a 30 min):\n` +
+        `🔗 https://severinno.com.br/?sos=1\n\n`
+      : "") +
+    `👉 *Ver profissionais verificados e pedir orçamento:*\n` +
+    `🔗 https://severinno.com.br/busca?q=${encodeURIComponent(topMatch.keyword)}\n\n` +
+    `💡 _Para ver todos os serviços, digite *MENU*. Para suporte humano, digite *4*._`
+
+  autoresponderLogger.info(
+    {
+      phone: ctx.phone.slice(0, 4) + "****",
+      keyword: topMatch.keyword,
+      category: topMatch.targetCategorySlug,
+      neighborhood,
+      isEmergency,
+    },
+    "Demanda WhatsApp identificada e respondida com sugestão de serviço",
+  )
+
+  await enqueueWhatsApp({
+    to: ctx.phone,
+    text: replyText,
+    userId: ctx.userId ?? undefined,
+    context: `demand:${topMatch.targetCategorySlug}`,
+  }).catch((err) => {
+    autoresponderLogger.warn({ err }, "Falha ao enfileirar resposta de demanda WhatsApp")
+  })
+
+  return { handled: true, replyText }
 }
