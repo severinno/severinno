@@ -233,6 +233,18 @@ vi.mock("@/lib/api", () => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(),
   apiPut: vi.fn(),
+  payBooking: vi.fn(),
+}))
+
+vi.mock("@/components/shared/pix-checkout", () => ({
+  PixCheckout: ({ bookingId, amount, onPaymentConfirmed }: any) => (
+    <div data-testid="pix-checkout" data-booking-id={bookingId} data-amount={amount}>
+      <span>Pix Checkout Stub</span>
+      <button data-testid="simulate-pix-paid" onClick={onPaymentConfirmed}>
+        Confirmar Pagamento PIX
+      </button>
+    </div>
+  ),
 }))
 
 // Utils
@@ -544,7 +556,7 @@ describe("BookingModal — submit validation (navegação até o passo 4)", () =
     expect(vi.mocked(apiPost)).not.toHaveBeenCalled()
   })
 
-  it("submete quando válido: apiPost com amount = basePrice × quantity", async () => {
+  it("submete quando válido: apiPost com amount = basePrice × quantity e transiciona para PixCheckout in-modal", async () => {
     fillToStep4("Portão azul")
     vi.mocked(apiPost).mockResolvedValue({ booking: { id: "b1" } } as never)
 
@@ -557,5 +569,37 @@ describe("BookingModal — submit validation (navegação até o passo 4)", () =
       expect.objectContaining({ amount: 100, quantity: 1 }),
     )
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+
+    // Verifica que o checkout PIX foi renderizado diretamente no modal
+    expect(screen.getByTestId("pix-checkout")).toBeInTheDocument()
+    expect(screen.getByTestId("pix-checkout")).toHaveAttribute("data-booking-id", "b1")
+    expect(screen.getByTestId("pix-checkout")).toHaveAttribute("data-amount", "100")
+  })
+
+  it("ao confirmar o pagamento no checkout PIX, exibe tela de celebração e botão de agendamentos", async () => {
+    fillToStep4("Portão azul")
+    vi.mocked(apiPost).mockResolvedValue({ booking: { id: "b1" } } as never)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /confirmar agendamento/i }))
+    })
+
+    expect(screen.getByTestId("pix-checkout")).toBeInTheDocument()
+
+    // Simula a confirmação do pagamento pelo WebSocket/Polling
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("simulate-pix-paid"))
+    })
+
+    expect(
+      screen.getByRole("heading", { level: 3, name: /pagamento confirmado/i }),
+    ).toBeInTheDocument()
+    const btnAcompanhar = screen.getByRole("button", { name: /acompanhar em meus agendamentos/i })
+    expect(btnAcompanhar).toBeInTheDocument()
+
+    // Ao clicar, fecha e navega
+    fireEvent.click(btnAcompanhar)
+    expect(mockUIStore.closeBooking).toHaveBeenCalled()
+    expect(mockViewStore.navigate).toHaveBeenCalledWith("client.bookings")
   })
 })
