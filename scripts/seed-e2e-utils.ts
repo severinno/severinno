@@ -49,7 +49,7 @@ import type { TreeReporter } from "./seed-e2e-common"
 /** Patch de UPDATE (icon/order) — usado nos cenários 7 (prod) e 9 (dev). */
 export const UPDATE_PATCHES: SpecPatchInput[] = [
   { name: "Elétrica", icon: "bolt" },
-  { name: "Reparos", order: 5 },
+  { name: "Reparos e Instalações", order: 5 },
 ]
 
 /** JSON enviado ao seed via SEED_SPEC_PATCH para o cenário de update. */
@@ -65,16 +65,20 @@ export const RENAME_PATCH = JSON.stringify(RENAME_PATCHES)
 // Slugs canônicos — derivados do spec (nunca hardcoded)
 // ---------------------------------------------------------------------------
 
-/** Slug de 'Elétrica' sob 'Reparos' (antes do rename). */
-export const ELETRICA_SLUG = categorySlug({ name: "Elétrica", parent: "Reparos", level: 1 })
+/** Slug de 'Elétrica' sob 'Reparos e Instalações' (antes do rename). */
+export const ELETRICA_SLUG = categorySlug({
+  name: "Elétrica",
+  parent: "Reparos e Instalações",
+  level: 1,
+})
 
-/** Slug de 'Reparos' (level 0). */
-export const REPAROS_SLUG = categorySlug({ name: "Reparos", level: 0 })
+/** Slug de 'Reparos e Instalações' (level 0). */
+export const REPAROS_SLUG = categorySlug({ name: "Reparos e Instalações", level: 0 })
 
-/** Slug de 'Eletricidade' sob 'Reparos' (depois do rename). */
+/** Slug de 'Eletricidade' sob 'Reparos e Instalações' (depois do rename). */
 export const ELETRICIDADE_SLUG = categorySlug({
   name: "Eletricidade",
-  parent: "Reparos",
+  parent: "Reparos e Instalações",
   level: 1,
 })
 

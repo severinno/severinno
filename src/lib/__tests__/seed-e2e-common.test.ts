@@ -111,22 +111,22 @@ describe("seed-e2e-common — validateTree (db mockado)", () => {
 
   it("categoria ausente: 3 falhas (total + level + entry) e passed reduz em 4", async () => {
     const rows = canonicalRows()
-    removeRow(rows, "Poda de árvores")
+    removeRow(rows, "Poda de Árvores")
 
     const db = mockDb(rows)
     const rep = createReporter()
 
     await validateTree(db, rep)
 
-    // total (26 ≠ 27) + distribuição do level 2 (16 ≠ 17) + entry ausente
+    // total (128 ≠ 129) + distribuição do level 2 (85 ≠ 86) + entry ausente
     expect(rep.failed).toBe(3)
-    // 59 canônicos − 2 (level+parent do entry removido) − 1 (total) − 1 (level) = 55
+    // total canônicos − 2 (level+parent do entry removido) − 1 (total) − 1 (level)
     expect(rep.passed).toBe(canonicalCheckCount() - 4)
   })
 
   it("categoria ausente: mensagem de falha identifica o slug esperado", async () => {
     const rows = canonicalRows()
-    removeRow(rows, "Poda de árvores")
+    removeRow(rows, "Poda de Árvores")
 
     const rep = createReporter()
     await validateTree(mockDb(rows), rep)
@@ -135,7 +135,7 @@ describe("seed-e2e-common — validateTree (db mockado)", () => {
     expect(msgs.some((m: string) => m.includes("ausente"))).toBe(true)
     expect(
       msgs.some((m: string) =>
-        m.includes(categorySlug({ name: "Poda de árvores", parent: "Alvenaria", level: 2 })),
+        m.includes(categorySlug({ name: "Poda de Árvores", parent: "Jardim", level: 2 })),
       ),
     ).toBe(true)
   })
@@ -144,13 +144,13 @@ describe("seed-e2e-common — validateTree (db mockado)", () => {
     const rows = canonicalRows()
     const pintura = rows.find((r) => r.name === "Pintura")!
     // Slug CANÔNICO preservado (senão vira 'ausente'); só o parent é corrompido.
-    pintura.parent = { name: "Reforma" }
+    pintura.parent = { name: "Reforma e Construção" }
 
     const rep = createReporter()
     await validateTree(mockDb(rows), rep)
 
     expect(rep.failed).toBe(1)
-    expect(rep.passed).toBe(canonicalCheckCount() - 1) // 58
+    expect(rep.passed).toBe(canonicalCheckCount() - 1)
   })
 
   it("level errado: 3 falhas (entry level + 2 distribuições de level)", async () => {
@@ -161,24 +161,24 @@ describe("seed-e2e-common — validateTree (db mockado)", () => {
     const rep = createReporter()
     await validateTree(mockDb(rows), rep)
 
-    // entry level (2 ≠ 1) + level 1 (6 ≠ 7) + level 2 (18 ≠ 17)
+    // entry level + 2 distribuições afetadas
     expect(rep.failed).toBe(3)
-    expect(rep.passed).toBe(canonicalCheckCount() - 3) // 56
+    expect(rep.passed).toBe(canonicalCheckCount() - 3)
   })
 
   it("slug duplicado (linha extra): 3 falhas (total + level + unique)", async () => {
     // Duplicar uma linha qualquer produz EXATAMENTE 3 falhas previsíveis:
-    // total (28 ≠ 27) + distribuição do level 2 (18 ≠ 17) + slugs únicos
-    // (27 únicos ≠ 28 linhas). O bySlug mantém 27 chaves, então todas as
-    // 27 entries do spec continuam encontradas (54 checks passam).
+    // total (130 ≠ 129) + distribuição do level 2 (87 ≠ 86) + slugs únicos
+    // (129 únicos ≠ 130 linhas). O bySlug mantém 129 chaves, então todas as
+    // 129 entries do spec continuam encontradas.
     const rows = canonicalRows()
-    const leaf = rows.find((r) => r.name === "Poda de árvores")!
-    rows.push(leaf) // mesma referência 2× → slug duplicado, 28 linhas
+    const leaf = rows.find((r) => r.name === "Poda de Árvores")!
+    rows.push(leaf) // mesma referência 2× → slug duplicado, 130 linhas
 
     const rep = createReporter()
     await validateTree(mockDb(rows), rep)
 
     expect(rep.failed).toBe(3)
-    expect(rep.passed).toBe(canonicalCheckCount() - 3) // 56
+    expect(rep.passed).toBe(canonicalCheckCount() - 3)
   })
 })

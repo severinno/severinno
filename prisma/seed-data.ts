@@ -29,41 +29,290 @@ export type CategorySeedInput = {
   parent?: string
   level: number
   icon?: string
+  description?: string
   /** Ordem de exibição explícita (opcional) — sobrescreve o default do level 0. */
   order?: number
 }
 
+export const CATEGORY_ROOTS = [
+  "Reforma e Construção",
+  "Reparos e Instalações",
+  "Acabamento e Decoração",
+  "Limpeza e Casa",
+  "Jardim e Piscina",
+  "Mudança e Organização",
+  "Emergência 24h",
+] as const
+
 export const CATEGORY_SPEC: CategorySeedInput[] = [
-  // pais (level 0)
-  { name: "Reparos", level: 0, icon: "wrench" },
-  { name: "Limpeza", level: 0, icon: "sparkles" },
-  { name: "Reforma", level: 0, icon: "hammer" },
-  // filhas (level 1)
-  { name: "Elétrica", parent: "Reparos", level: 1, icon: "zap" },
-  { name: "Hidráulica", parent: "Reparos", level: 1, icon: "droplet" },
-  { name: "Pintura", parent: "Reparos", level: 1, icon: "brush" },
-  { name: "Residencial", parent: "Limpeza", level: 1, icon: "home" },
-  { name: "Pós-Obra", parent: "Limpeza", level: 1, icon: "broom" },
-  { name: "Pisos", parent: "Reforma", level: 1, icon: "square" },
-  { name: "Alvenaria", parent: "Reforma", level: 1, icon: "brick" },
-  // subcategorias (level 2)
-  { name: "Tomadas e interruptores", parent: "Elétrica", level: 2 },
-  { name: "Curto-circuito", parent: "Elétrica", level: 2 },
-  { name: "Quadro elétrico", parent: "Elétrica", level: 2 },
+  // ── 1. 🏗️ Reforma e Construção ──────────────────────────────────────────
+  {
+    name: "Reforma e Construção",
+    level: 0,
+    icon: "hard-hat",
+    description: "Do projeto à obra pronta",
+    order: 0,
+  },
+  {
+    name: "Projetos e Regularização",
+    parent: "Reforma e Construção",
+    level: 1,
+    icon: "ruler",
+    description: "Projetos arquitetônicos, estruturais e laudos técnicos",
+  },
+  { name: "Arquiteto e Projetos", parent: "Projetos e Regularização", level: 2 },
+  { name: "Design de Interiores", parent: "Projetos e Regularização", level: 2 },
+  { name: "Projeto de Iluminação", parent: "Projetos e Regularização", level: 2 },
+  { name: "Projeto Estrutural", parent: "Projetos e Regularização", level: 2 },
+  { name: "Laudos e Perícias", parent: "Projetos e Regularização", level: 2 },
+  { name: "ART e RRT", parent: "Projetos e Regularização", level: 2 },
+  { name: "Legalização de Obra", parent: "Projetos e Regularização", level: 2 },
+  { name: "Vistoria de Imóvel Novo", parent: "Projetos e Regularização", level: 2 },
+  { name: "Fiscalização de Obra", parent: "Projetos e Regularização", level: 2 },
+  {
+    name: "Obra",
+    parent: "Reforma e Construção",
+    level: 1,
+    icon: "brick",
+    description: "Estruturas, fundações, alvenaria e demolição",
+  },
+  { name: "Fundações", parent: "Obra", level: 2 },
+  { name: "Lajes e Estruturas", parent: "Obra", level: 2 },
+  { name: "Mezaninos Metálicos", parent: "Obra", level: 2 },
+  { name: "Alvenaria", parent: "Obra", level: 2 },
+  { name: "Reboco", parent: "Obra", level: 2 },
+  { name: "Demolição", parent: "Obra", level: 2 },
+  { name: "Remoção de Entulho", parent: "Obra", level: 2 },
+
+  // ── 2. 🔧 Reparos e Instalações ─────────────────────────────────────────
+  {
+    name: "Reparos e Instalações",
+    level: 0,
+    icon: "wrench",
+    description: "Consertos rápidos e instalações",
+    order: 1,
+  },
+  {
+    name: "Elétrica",
+    parent: "Reparos e Instalações",
+    level: 1,
+    icon: "zap",
+    description: "Instalações elétricas, quadros e energia",
+  },
+  { name: "Eletricista", parent: "Elétrica", level: 2 },
+  { name: "Quadro de Energia", parent: "Elétrica", level: 2 },
+  { name: "Aumento de Carga", parent: "Elétrica", level: 2 },
+  { name: "Para-raios e Aterramento", parent: "Elétrica", level: 2 },
+  { name: "Carregador para Carro Elétrico", parent: "Elétrica", level: 2 },
+  { name: "Energia Solar", parent: "Elétrica", level: 2 },
+  { name: "Gerador e Nobreak", parent: "Elétrica", level: 2 },
+  {
+    name: "Hidráulica",
+    parent: "Reparos e Instalações",
+    level: 1,
+    icon: "droplet",
+    description: "Encanamento, desentupimento e caça-vazamentos",
+  },
+  { name: "Encanador", parent: "Hidráulica", level: 2 },
+  { name: "Detecção de Vazamentos", parent: "Hidráulica", level: 2 },
   { name: "Desentupimento", parent: "Hidráulica", level: 2 },
-  { name: "Vazamento", parent: "Hidráulica", level: 2 },
-  { name: "Caixa de descarga", parent: "Hidráulica", level: 2 },
-  { name: "Pintura interna", parent: "Pintura", level: 2 },
-  { name: "Pintura externa", parent: "Pintura", level: 2 },
-  { name: "Textura e grafiato", parent: "Pintura", level: 2 },
-  { name: "Limpeza geral", parent: "Residencial", level: 2 },
-  { name: "Organização", parent: "Residencial", level: 2 },
-  { name: "Limpeza pós-obra", parent: "Pós-Obra", level: 2 },
-  { name: "Assentamento de piso", parent: "Pisos", level: 2 },
-  { name: "Rejunte", parent: "Pisos", level: 2 },
-  { name: "Pequenas reformas", parent: "Alvenaria", level: 2 },
-  { name: "Contrapiso", parent: "Alvenaria", level: 2 },
-  { name: "Poda de árvores", parent: "Alvenaria", level: 2 }, // for jardineiro fallback
+  { name: "Louças e Metais", parent: "Hidráulica", level: 2 },
+  { name: "Bombas d'Água", parent: "Hidráulica", level: 2 },
+  { name: "Prumadas", parent: "Hidráulica", level: 2 },
+  {
+    name: "Clima e Gás",
+    parent: "Reparos e Instalações",
+    level: 1,
+    icon: "fan",
+    description: "Ar-condicionado, ventilação e aquecedores a gás",
+  },
+  { name: "Instalação de Ar-Condicionado", parent: "Clima e Gás", level: 2 },
+  { name: "Manutenção de Ar-Condicionado", parent: "Clima e Gás", level: 2 },
+  { name: "Higienização de Ar-Condicionado", parent: "Clima e Gás", level: 2 },
+  { name: "Rede de Gás", parent: "Clima e Gás", level: 2 },
+  { name: "Aquecedor", parent: "Clima e Gás", level: 2 },
+  { name: "Conversão de Fogão", parent: "Clima e Gás", level: 2 },
+  { name: "Exaustores e Ventiladores", parent: "Clima e Gás", level: 2 },
+  {
+    name: "Tecnologia e Acesso",
+    parent: "Reparos e Instalações",
+    level: 1,
+    icon: "shield",
+    description: "Câmeras, alarmes, redes Wi-Fi e fechaduras digitais",
+  },
+  { name: "Wi-Fi e Redes", parent: "Tecnologia e Acesso", level: 2 },
+  { name: "Câmeras e Alarmes", parent: "Tecnologia e Acesso", level: 2 },
+  { name: "Cerca Elétrica", parent: "Tecnologia e Acesso", level: 2 },
+  { name: "Fechadura Digital", parent: "Tecnologia e Acesso", level: 2 },
+  { name: "Interfone", parent: "Tecnologia e Acesso", level: 2 },
+  { name: "Portão Automático", parent: "Tecnologia e Acesso", level: 2 },
+  { name: "Portaria Remota", parent: "Tecnologia e Acesso", level: 2 },
+  { name: "Suporte de TI", parent: "Tecnologia e Acesso", level: 2 },
+  {
+    name: "Pequenos Reparos",
+    parent: "Reparos e Instalações",
+    level: 1,
+    icon: "tool",
+    description: "Marido de aluguel, montagem de móveis e fixações",
+  },
+  { name: "Marido de Aluguel", parent: "Pequenos Reparos", level: 2 },
+  { name: "Montagem de Móveis", parent: "Pequenos Reparos", level: 2 },
+  { name: "Fixar TV e Prateleiras", parent: "Pequenos Reparos", level: 2 },
+  { name: "Acessórios e Vedação", parent: "Pequenos Reparos", level: 2 },
+
+  // ── 3. 🎨 Acabamento e Decoração ────────────────────────────────────────
+  {
+    name: "Acabamento e Decoração",
+    level: 0,
+    icon: "paint-roller",
+    description: "Deixe sua casa como nova",
+    order: 2,
+  },
+  {
+    name: "Pintura",
+    parent: "Acabamento e Decoração",
+    level: 1,
+    icon: "brush",
+    description: "Pintura residencial, predial e texturas",
+  },
+  { name: "Pintura Residencial", parent: "Pintura", level: 2 },
+  { name: "Pintura Predial", parent: "Pintura", level: 2 },
+  { name: "Textura e Efeitos", parent: "Pintura", level: 2 },
+  {
+    name: "Pisos",
+    parent: "Acabamento e Decoração",
+    level: 1,
+    icon: "square",
+    description: "Porcelanatos, laminados, vinílicos e decks",
+  },
+  { name: "Porcelanato e Cerâmica", parent: "Pisos", level: 2 },
+  { name: "Piso Vinílico e Laminado", parent: "Pisos", level: 2 },
+  { name: "Piso de Madeira", parent: "Pisos", level: 2 },
+  { name: "Deck", parent: "Pisos", level: 2 },
+  { name: "Epóxi e Cimento Queimado", parent: "Pisos", level: 2 },
+  { name: "Mármores e Granitos", parent: "Pisos", level: 2 },
+  {
+    name: "Forro e Divisórias",
+    parent: "Acabamento e Decoração",
+    level: 1,
+    icon: "box",
+    description: "Gesso, sancas, drywall e acústica",
+  },
+  { name: "Gesso e Sancas", parent: "Forro e Divisórias", level: 2 },
+  { name: "Drywall", parent: "Forro e Divisórias", level: 2 },
+  { name: "Isolamento Acústico", parent: "Forro e Divisórias", level: 2 },
+  {
+    name: "Marcenaria e Vidro",
+    parent: "Acabamento e Decoração",
+    level: 1,
+    icon: "door-closed",
+    description: "Móveis planejados, box, espelhos e esquadrias",
+  },
+  { name: "Móveis Planejados", parent: "Marcenaria e Vidro", level: 2 },
+  { name: "Restauração de Móveis", parent: "Marcenaria e Vidro", level: 2 },
+  { name: "Box e Espelhos", parent: "Marcenaria e Vidro", level: 2 },
+  { name: "Vidro de Sacada", parent: "Marcenaria e Vidro", level: 2 },
+  { name: "Esquadrias de Vidro", parent: "Marcenaria e Vidro", level: 2 },
+  { name: "Reparo de Vidro", parent: "Marcenaria e Vidro", level: 2 },
+  {
+    name: "Estofados e Têxteis",
+    parent: "Acabamento e Decoração",
+    level: 1,
+    icon: "sofa",
+    description: "Limpeza, impermeabilização, reforma e cortinas",
+  },
+  { name: "Limpeza de Estofados", parent: "Estofados e Têxteis", level: 2 },
+  { name: "Reforma de Estofados", parent: "Estofados e Têxteis", level: 2 },
+  { name: "Impermeabilização", parent: "Estofados e Têxteis", level: 2 },
+  { name: "Limpeza de Tapetes e Cortinas", parent: "Estofados e Têxteis", level: 2 },
+  { name: "Cortinas e Persianas", parent: "Estofados e Têxteis", level: 2 },
+
+  // ── 4. 🧼 Limpeza e Casa (Itens diretos level 1) ─────────────────────────
+  {
+    name: "Limpeza e Casa",
+    level: 0,
+    icon: "sparkles",
+    description: "Casa limpa e protegida",
+    order: 3,
+  },
+  { name: "Diarista e Faxina", parent: "Limpeza e Casa", level: 1 },
+  { name: "Faxina Pós-Obra", parent: "Limpeza e Casa", level: 1 },
+  { name: "Vidros e Fachadas", parent: "Limpeza e Casa", level: 1 },
+  { name: "Lavanderia e Passadoria", parent: "Limpeza e Casa", level: 1 },
+  { name: "Personal Chef", parent: "Limpeza e Casa", level: 1 },
+  { name: "Dedetização", parent: "Limpeza e Casa", level: 1 },
+  { name: "Cupim", parent: "Limpeza e Casa", level: 1 },
+  { name: "Roedores", parent: "Limpeza e Casa", level: 1 },
+  { name: "Pombos e Morcegos", parent: "Limpeza e Casa", level: 1 },
+  { name: "Captura de Enxames", parent: "Limpeza e Casa", level: 1 },
+  { name: "Sanitização", parent: "Limpeza e Casa", level: 1 },
+
+  // ── 5. 🌿 Jardim e Piscina ──────────────────────────────────────────────
+  {
+    name: "Jardim e Piscina",
+    level: 0,
+    icon: "trees",
+    description: "Sua área externa dos sonhos",
+    order: 4,
+  },
+  {
+    name: "Jardim",
+    parent: "Jardim e Piscina",
+    level: 1,
+    icon: "leaf",
+    description: "Jardinagem, paisagismo, podas e irrigação",
+  },
+  { name: "Jardineiro", parent: "Jardim", level: 2 },
+  { name: "Poda de Árvores", parent: "Jardim", level: 2 },
+  { name: "Paisagismo", parent: "Jardim", level: 2 },
+  { name: "Jardim Vertical", parent: "Jardim", level: 2 },
+  { name: "Tratamento de Jardins", parent: "Jardim", level: 2 },
+  { name: "Irrigação", parent: "Jardim", level: 2 },
+  { name: "Lago e Fonte", parent: "Jardim", level: 2 },
+  {
+    name: "Piscina e Lazer",
+    parent: "Jardim e Piscina",
+    level: 1,
+    icon: "waves",
+    description: "Piscina, ofurô, churrasqueira e lazer externo",
+  },
+  { name: "Limpeza de Piscina", parent: "Piscina e Lazer", level: 2 },
+  { name: "Manutenção de Piscina", parent: "Piscina e Lazer", level: 2 },
+  { name: "Aquecimento de Piscina", parent: "Piscina e Lazer", level: 2 },
+  { name: "Spa e Ofurô", parent: "Piscina e Lazer", level: 2 },
+  { name: "Churrasqueira", parent: "Piscina e Lazer", level: 2 },
+  { name: "Forno de Pizza", parent: "Piscina e Lazer", level: 2 },
+  { name: "Lareira", parent: "Piscina e Lazer", level: 2 },
+  { name: "Limpeza de Coifas", parent: "Piscina e Lazer", level: 2 },
+
+  // ── 6. 📦 Mudança e Organização (Itens diretos level 1) ─────────────────
+  {
+    name: "Mudança e Organização",
+    level: 0,
+    icon: "truck",
+    description: "Mude sem estresse",
+    order: 5,
+  },
+  { name: "Frete e Mudança", parent: "Mudança e Organização", level: 1 },
+  { name: "Içamento de Móveis", parent: "Mudança e Organização", level: 1 },
+  { name: "Personal Organizer", parent: "Mudança e Organização", level: 1 },
+  { name: "Descarte Ecológico", parent: "Mudança e Organização", level: 1 },
+  { name: "Aluguel de Equipamentos", parent: "Mudança e Organização", level: 1 },
+
+  // ── 7. 🚨 Emergência 24h (Card fixo de atendimento imediato) ────────────
+  {
+    name: "Emergência 24h",
+    level: 0,
+    icon: "siren",
+    description: "Atendimento imediato",
+    order: 6,
+  },
+  { name: "Eletricista 24h", parent: "Emergência 24h", level: 1 },
+  { name: "Encanador 24h", parent: "Emergência 24h", level: 1 },
+  { name: "Desentupimento 24h", parent: "Emergência 24h", level: 1 },
+  { name: "Chaveiro 24h", parent: "Emergência 24h", level: 1 },
+  { name: "Extintores e Hidrantes", parent: "Emergência 24h", level: 1 },
+  { name: "Luz de Emergência", parent: "Emergência 24h", level: 1 },
 ]
 
 /**
@@ -76,13 +325,12 @@ export function categorySlug(c: CategorySeedInput): string {
 
 /**
  * Ordem de exibição de uma categoria — 0 por padrão.
- * Um `order` explícito no spec (ex.: via SEED_SPEC_PATCH no E2E de update)
- * sobrescreve o default; sem ele, pais seguem a ordem canônica
- * ["Reparos", "Limpeza", "Reforma"] e demais níveis ficam em 0.
+ * Um `order` explícito no spec sobrescreve o default; sem ele,
+ * pais seguem a ordem canônica dos 7 macro-domínios e demais níveis ficam em 0.
  */
 export function categoryOrder(c: CategorySeedInput): number {
   if (c.order !== undefined) return c.order
-  return c.level === 0 ? ["Reparos", "Limpeza", "Reforma"].indexOf(c.name) : 0
+  return c.level === 0 ? CATEGORY_ROOTS.indexOf(c.name as (typeof CATEGORY_ROOTS)[number]) : 0
 }
 
 // ---------------------------------------------------------------------------
