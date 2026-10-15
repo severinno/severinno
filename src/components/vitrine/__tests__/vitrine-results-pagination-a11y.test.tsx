@@ -30,6 +30,11 @@ vi.mock("lucide-react", () => ({
   X: () => <span data-testid="icon" />,
   XIcon: () => <span data-testid="icon" />,
   Loader2: () => <span data-testid="icon" />,
+  ChevronDown: () => <span data-testid="icon" />,
+  BadgeCheck: () => <span data-testid="icon" />,
+  Star: () => <span data-testid="icon" />,
+  Zap: () => <span data-testid="icon" />,
+  Check: () => <span data-testid="icon" />,
 }))
 vi.mock("next/dynamic", () => ({
   default: () => () => <div data-testid="map-stub" />,
@@ -39,6 +44,9 @@ vi.mock("../provider-card", () => ({
     <div data-provider-id={provider.id}>{provider.name}</div>
   ),
   ProviderCardSkeleton: () => <div data-testid="card-skeleton" />,
+}))
+vi.mock("../horizontal-filter-bar", () => ({
+  HorizontalFilterBar: () => <div data-testid="horizontal-filter-bar-stub" />,
 }))
 vi.mock("../filters", () => ({
   default: () => <div data-testid="filters-stub" />,
