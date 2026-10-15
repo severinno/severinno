@@ -64,6 +64,9 @@ const CategoryGridSection = React.lazy(() => import("./category-grid-section"))
 const TrendingServices = React.lazy(() => import("./trending-services"))
 const TopProvidersShowcase = React.lazy(() => import("./top-providers-showcase"))
 const EscrowGuaranteeBanner = React.lazy(() => import("./escrow-guarantee-banner"))
+const LiveAvailabilityTicker = React.lazy(() => import("./live-availability-ticker"))
+const NeighborhoodPriceSimulator = React.lazy(() => import("./neighborhood-price-simulator"))
+const ProviderStoriesStrip = React.lazy(() => import("./provider-stories-strip"))
 const EmergencySosModal = React.lazy(() =>
   import("../shared/emergency-sos-modal").then((m) => ({ default: m.EmergencySosModal })),
 )
@@ -829,7 +832,17 @@ export default function Vitrine() {
       />
 
       <main className="flex-1">
-        {/* 1. Hero — trust engine, search, CTA */}
+        {/* 0. LiveAvailabilityTicker — Fita de agenda aberta para hoje em tempo real */}
+        <Suspense fallback={null}>
+          <LiveAvailabilityTicker
+            onActionClick={() => {
+              const el = document.getElementById(RESULTS_ANCHOR_ID)
+              if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+            }}
+          />
+        </Suspense>
+
+        {/* 1. Hero — trust engine, search, CTA, temporal night/weekend adapter */}
         <Hero
           query={filters.q}
           onQueryChange={(q) => {
@@ -837,6 +850,7 @@ export default function Vitrine() {
             dispatch({ type: "SET_FILTERS", filters: { ...filters, q } })
           }}
           resultsAnchorId={RESULTS_ANCHOR_ID}
+          onEmergencyClick={() => setSosOpen(true)}
           onSearchSubmit={() => {
             dispatch({ type: "DEBOUNCE_Q", q: filters.q })
             if (typeof window !== "undefined") {
@@ -845,6 +859,28 @@ export default function Vitrine() {
             }
           }}
         />
+
+        {/* 1b. ProviderStoriesStrip — Stories / Mini-Vídeos dos profissionais de GV em ação */}
+        <Suspense fallback={null}>
+          <ProviderStoriesStrip onQuoteProvider={(providerId) => handleQuote(providerId)} />
+        </Suspense>
+
+        {/* 1c. NeighborhoodPriceSimulator — Simulador de Preço Inteligente por Bairro em GV */}
+        <div className="mx-auto my-8 max-w-7xl px-4 sm:px-6 lg:px-8">
+          <Suspense fallback={null}>
+            <NeighborhoodPriceSimulator
+              onQuote={(serviceName, district) => {
+                resetToFirstPage()
+                dispatch({
+                  type: "SET_FILTERS",
+                  filters: { ...filters, q: `${serviceName} ${district}` },
+                })
+                const el = document.getElementById(RESULTS_ANCHOR_ID)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }}
+            />
+          </Suspense>
+        </div>
 
         {/* 2. CategoryShowcase — sticky category filter bar */}
         <CategoryShowcase

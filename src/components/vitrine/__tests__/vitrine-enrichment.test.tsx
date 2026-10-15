@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen } from "@/__tests__/test-utils"
+import { render, screen, fireEvent } from "@/__tests__/test-utils"
 import CategoryGridSection from "../category-grid-section"
 import EscrowGuaranteeBanner from "../escrow-guarantee-banner"
 import TrendingServices from "../trending-services"
 import TopProvidersShowcase from "../top-providers-showcase"
+import NeighborhoodPriceSimulator from "../neighborhood-price-simulator"
+import LiveAvailabilityTicker from "../live-availability-ticker"
+import ProviderStoriesStrip from "../provider-stories-strip"
 import type { Category } from "@/lib/api"
 
 const mockUseQuery = vi.hoisted(() => vi.fn())
@@ -14,6 +17,14 @@ vi.mock("@tanstack/react-query", () => ({
 
 vi.mock("@/lib/api", () => ({
   apiGet: vi.fn(),
+}))
+
+vi.mock("@/components/ui/dialog", () => ({
+  Dialog: ({ children, open }: any) => (open ? <div data-testid="dialog">{children}</div> : null),
+  DialogContent: ({ children }: any) => <div data-testid="dialog-content">{children}</div>,
+  DialogTitle: ({ children }: any) => <h2 data-testid="dialog-title">{children}</h2>,
+  DialogHeader: ({ children }: any) => <div>{children}</div>,
+  DialogDescription: ({ children }: any) => <p>{children}</p>,
 }))
 
 const mockCategories: Category[] = [
@@ -161,6 +172,51 @@ describe("Vitrine High-Converting Components", () => {
       const viewBtn = screen.getByText("Ver Perfil & Avaliações")
       viewBtn.click()
       expect(onView).toHaveBeenCalledWith("prov-1")
+    })
+  })
+
+  describe("NeighborhoodPriceSimulator", () => {
+    it("renders GV price simulator and handles quote trigger with selected neighborhood", () => {
+      const onQuote = vi.fn()
+      render(<NeighborhoodPriceSimulator onQuote={onQuote} />)
+
+      expect(screen.getByText("Simulador de Preço Médio em Governador Valadares")).toBeDefined()
+      expect(screen.getByText("Descubra quanto custa seu conserto no seu bairro:")).toBeDefined()
+      expect(screen.getByText(/Garantia Severinno/i)).toBeDefined()
+
+      const quoteBtn = screen.getByText(/Ver Profissionais Disponíveis em Centro/i)
+      quoteBtn.click()
+      expect(onQuote).toHaveBeenCalledWith("Técnico de Ar-Condicionado", "Centro")
+    })
+  })
+
+  describe("LiveAvailabilityTicker", () => {
+    it("renders live ticker bar and triggers action callback", () => {
+      const onAction = vi.fn()
+      render(<LiveAvailabilityTicker onActionClick={onAction} />)
+
+      expect(screen.getByText("Agenda Ao Vivo em GV:")).toBeDefined()
+      const actionBtn = screen.getByText("Chamar Agora")
+      actionBtn.click()
+      expect(onAction).toHaveBeenCalled()
+    })
+  })
+
+  describe("ProviderStoriesStrip", () => {
+    it("renders provider story bubbles and opens interactive story modal", () => {
+      const onQuote = vi.fn()
+      render(<ProviderStoriesStrip onQuoteProvider={onQuote} />)
+
+      expect(screen.getByText(/Serviços Entregues em GV/i)).toBeDefined()
+      expect(screen.getByText("Camila")).toBeDefined()
+
+      // Click on Camila story bubble
+      const storyBubble = screen.getByText("Camila").closest("button")
+      expect(storyBubble).not.toBeNull()
+      fireEvent.click(storyBubble!)
+
+      expect(screen.getByText("Higienização Profunda de Sofá Retrátil")).toBeDefined()
+      expect(screen.getByText("Transformação Real")).toBeDefined()
     })
   })
 })

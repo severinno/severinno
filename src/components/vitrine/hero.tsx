@@ -44,6 +44,8 @@ import {
   FileText,
   Sparkles,
   MessageCircle,
+  Moon,
+  Siren,
 } from "lucide-react"
 
 import { useGeoStore } from "@/store/geo"
@@ -94,6 +96,7 @@ export type HeroProps = {
   onQueryChange: (q: string) => void
   onSearchSubmit?: () => void
   resultsAnchorId?: string
+  onEmergencyClick?: () => void
 }
 
 // Popular services — recognition over recall (H6).
@@ -104,6 +107,14 @@ const POPULAR_SERVICES = [
   { label: "Diarista", emoji: "🧹" },
   { label: "Pedreiro", emoji: "🧱" },
   { label: "Jardineiro", emoji: "🌿" },
+]
+
+const NIGHT_SERVICES = [
+  { label: "Chaveiro 24h", emoji: "🔑" },
+  { label: "Curto-Circuito / Luz", emoji: "⚡" },
+  { label: "Vazamento / Cano", emoji: "🚿" },
+  { label: "Desentupimento 24h", emoji: "🪠" },
+  { label: "Ar-Condicionado", emoji: "❄️" },
 ]
 
 // Map activity types to icons and colors
@@ -118,9 +129,76 @@ const ACTIVITY_META: Record<string, { icon: React.ElementType; color: string; bg
 // Component
 // ---------------------------------------------------------------------------
 
-export default function Hero({ query, onQueryChange, onSearchSubmit, resultsAnchorId }: HeroProps) {
+export default function Hero({
+  query,
+  onQueryChange,
+  onSearchSubmit,
+  resultsAnchorId,
+  onEmergencyClick,
+}: HeroProps) {
   const { city } = useGeoStore()
   const openAuth = useUIStore((s) => s.openAuth)
+
+  // Contexto temporal adaptativo: modo noturno (18h-06h) ou fim de semana
+  const isClient = React.useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  )
+
+  const temporalContext = React.useMemo(() => {
+    if (!isClient) {
+      return {
+        isNight: false,
+        isWeekend: false,
+        greetingBadge: "Marketplace de serviços verificados",
+        headline: "Prestadores de serviço verificados,",
+        highlight: "perto de você.",
+        subtext:
+          "Compare avaliações reais, peça orçamento grátis e agende — encanador, eletricista, pintor e mais. Você escolhe o profissional.",
+      }
+    }
+
+    const now = new Date()
+    const hours = now.getHours()
+    const day = now.getDay()
+    const isNight = hours >= 18 || hours < 6
+    const isWeekend = day === 0 || day === 6
+
+    if (isNight) {
+      return {
+        isNight: true,
+        isWeekend,
+        greetingBadge: "🌙 Plantão Noturno & Emergência em GV",
+        headline: "Precisa de conserto urgente agora à noite?",
+        highlight: "Plantão chega em até 30 min.",
+        subtext:
+          "Chaveiros, eletricistas e encanadores de plantão agora com chegada rápida em Governador Valadares.",
+      }
+    }
+
+    if (isWeekend) {
+      return {
+        isWeekend: true,
+        isNight: false,
+        greetingBadge: "☀️ Atendimento no Fim de Semana em GV",
+        headline: "Serviços e reparos no fim de semana,",
+        highlight: "com agenda aberta hoje.",
+        subtext:
+          "Diaristas, montadores de móveis e técnicos com horários disponíveis para atendimento neste sábado e domingo.",
+      }
+    }
+
+    return {
+      isNight: false,
+      isWeekend: false,
+      greetingBadge: "Marketplace de serviços verificados",
+      headline: "Prestadores de serviço verificados,",
+      highlight: "perto de você.",
+      subtext:
+        "Compare avaliações reais, peça orçamento grátis e agende — encanador, eletricista, pintor e mais. Você escolhe o profissional.",
+    }
+  }, [isClient])
 
   // H1 — Live social proof numbers
   const { data: stats } = useQuery<PublicStats>({
@@ -207,9 +285,20 @@ export default function Hero({ query, onQueryChange, onSearchSubmit, resultsAnch
           <div className="flex flex-col items-start">
             {/* H1 — Status badges */}
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium ring-1 ring-white/20 backdrop-blur">
-                <BadgeCheck className="size-3.5" />
-                Marketplace de serviços verificados
+              <span
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ring-1 backdrop-blur transition-all",
+                  temporalContext.isNight
+                    ? "bg-rose-500/30 text-rose-200 shadow-sm shadow-rose-950/40 ring-rose-400/40"
+                    : "bg-white/15 text-white ring-white/20",
+                )}
+              >
+                {temporalContext.isNight ? (
+                  <Moon className="size-3.5 text-rose-300" />
+                ) : (
+                  <BadgeCheck className="size-3.5" />
+                )}
+                {temporalContext.greetingBadge}
               </span>
               {stats && stats.providers > 0 && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-400/20 px-3 py-1 text-xs font-medium ring-1 ring-emerald-300/30">
@@ -228,14 +317,13 @@ export default function Hero({ query, onQueryChange, onSearchSubmit, resultsAnch
               )}
             </div>
 
-            {/* H2 — Linguagem do mundo real */}
+            {/* H2 — Linguagem do mundo real adaptativa */}
             <h1 className="mt-5 text-3xl leading-[1.1] font-bold tracking-tight text-balance sm:text-4xl md:text-5xl">
-              Prestadores de serviço verificados,{" "}
-              <span className="text-emerald-200">perto de você.</span>
+              {temporalContext.headline}{" "}
+              <span className="text-emerald-200">{temporalContext.highlight}</span>
             </h1>
             <p className="mt-4 max-w-xl text-sm font-light text-pretty text-emerald-50/90 sm:text-base md:text-lg">
-              Compare avaliações reais, peça orçamento grátis e agende — encanador, eletricista,
-              pintor e mais. Você escolhe o profissional.
+              {temporalContext.subtext}
             </p>
 
             {/* Search bar */}
@@ -274,15 +362,22 @@ export default function Hero({ query, onQueryChange, onSearchSubmit, resultsAnch
               </div>
             </form>
 
-            {/* Popular service chips */}
+            {/* Popular service chips adaptativos */}
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium text-emerald-100/80">Mais buscados:</span>
-              {POPULAR_SERVICES.map((s) => (
+              <span className="text-xs font-medium text-emerald-100/80">
+                {temporalContext.isNight ? "Plantão noturno:" : "Mais buscados:"}
+              </span>
+              {(temporalContext.isNight ? NIGHT_SERVICES : POPULAR_SERVICES).map((s) => (
                 <button
                   key={s.label}
                   type="button"
                   onClick={() => handlePopularClick(s.label)}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white ring-1 ring-white/15 transition-colors hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium text-white ring-1 transition-colors focus-visible:outline-none",
+                    temporalContext.isNight
+                      ? "bg-rose-500/20 ring-rose-400/30 hover:bg-rose-500/30"
+                      : "bg-white/10 ring-white/15 hover:bg-white/20",
+                  )}
                 >
                   <span aria-hidden>{s.emoji}</span>
                   {s.label}
@@ -291,6 +386,16 @@ export default function Hero({ query, onQueryChange, onSearchSubmit, resultsAnch
             </div>
 
             <div className="mt-6 flex flex-wrap items-center gap-3">
+              {temporalContext.isNight && onEmergencyClick && (
+                <Button
+                  size="lg"
+                  onClick={onEmergencyClick}
+                  className="h-11 rounded-xl bg-rose-600 px-5 text-base font-extrabold text-white shadow-xl ring-2 ring-rose-400/50 transition-all hover:scale-[1.02] hover:bg-rose-500"
+                >
+                  <Siren className="size-4" />
+                  Chamar Plantão Noturno
+                </Button>
+              )}
               <Button
                 size="lg"
                 onClick={() => setAiWizardOpen(true)}
