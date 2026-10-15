@@ -23,8 +23,9 @@ const VALID_ROLES = ["CLIENT", "PROVIDER", "ADMIN"]
  *   targetRoles — array de roles alvo
  *   active      — booleano
  */
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
+export const PATCH = withParams<{ id: string }>(
+  "api.admin.push.webhooks.:id.PATCH",
+  async (request, { params }) => {
     await requireRole("ADMIN")
     await assertRateLimit(request, RATE_LIMITS.admin)
     const { id } = await params
@@ -85,10 +86,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         updatedAt: updated.updatedAt.toISOString(),
       },
     })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)
 
 /**
  * DELETE /api/admin/push/webhooks/[id]

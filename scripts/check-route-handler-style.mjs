@@ -85,76 +85,6 @@ export const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "O
  */
 export const ALLOWLIST = [
   {
-    route: "src/app/api/calendar/feed/[token]/route.ts",
-    handler: "GET",
-    addedAt: "2026-10-01",
-    reason:
-      "legado anterior ao wrapper (feed ICS por token de calendário) — migração para withRoute pendente; a entrada congela o conjunto até lá",
-  },
-  {
-    route: "src/app/api/notifications/route.ts",
-    handler: "GET",
-    addedAt: "2026-10-01",
-    reason:
-      "legado anterior ao wrapper — migração para withRoute pendente; a entrada congela o conjunto até lá",
-  },
-  {
-    route: "src/app/api/providers/[id]/route.ts",
-    handler: "GET",
-    addedAt: "2026-10-01",
-    reason:
-      "legado anterior ao wrapper (detail de provider com cache-control próprio) — migração para withRoute pendente",
-  },
-  {
-    route: "src/app/api/push/payload/[id]/route.ts",
-    handler: "GET",
-    addedAt: "2026-10-01",
-    reason:
-      "legado anterior ao wrapper (payload efêmero de push com 404 custom) — migração para withRoute pendente",
-  },
-  {
-    route: "src/app/api/push/click/route.ts",
-    handler: "POST",
-    addedAt: "2026-10-01",
-    reason:
-      "legado anterior ao wrapper (best-effort: fire-and-forget de tracking com .catch próprio) — migração para withRoute pendente",
-  },
-  {
-    route: "src/app/api/availability/route.ts",
-    handler: "GET",
-    addedAt: "2026-10-01",
-    reason:
-      "legado anterior ao wrapper — migração para withRoute pendente; a entrada congela o conjunto até lá",
-  },
-  {
-    route: "src/app/api/availability/route.ts",
-    handler: "POST",
-    addedAt: "2026-10-01",
-    reason:
-      "legado anterior ao wrapper — migração para withRoute pendente; a entrada congela o conjunto até lá",
-  },
-  {
-    route: "src/app/api/availability/blocks/route.ts",
-    handler: "GET",
-    addedAt: "2026-10-01",
-    reason:
-      "legado anterior ao wrapper — migração para withRoute pendente; a entrada congela o conjunto até lá",
-  },
-  {
-    route: "src/app/api/availability/blocks/route.ts",
-    handler: "POST",
-    addedAt: "2026-10-01",
-    reason:
-      "legado anterior ao wrapper — migração para withRoute pendente; a entrada congela o conjunto até lá",
-  },
-  {
-    route: "src/app/api/admin/push/webhooks/[id]/route.ts",
-    handler: "PATCH",
-    addedAt: "2026-10-01",
-    reason:
-      "migração a MEIO: o DELETE deste arquivo já usa withParams, o PATCH ficou no padrão manual — entrada congela até o PATCH migrar; handler NOVO neste arquivo reprova",
-  },
-  {
     route: "src/app/api/cron/geo-health-alert/route.ts",
     handler: "GET",
     addedAt: "2026-10-01",
@@ -162,53 +92,11 @@ export const ALLOWLIST = [
       "cron de alerta de geo-health: auth própria de cron + agregação de falhas parciais (catch por sub-passo) — catch custom intencional; migração decide depois se o wrapper comporta o agregado",
   },
   {
-    route: "src/app/api/search/providers/route.ts",
-    handler: "GET",
-    addedAt: "2026-10-01",
-    reason:
-      "legado anterior ao wrapper (busca com fallback de upstream) — migração para withRoute pendente",
-  },
-  {
-    route: "src/app/api/search/services/route.ts",
-    handler: "GET",
-    addedAt: "2026-10-01",
-    reason:
-      "legado anterior ao wrapper (busca com fallback de upstream) — migração para withRoute pendente",
-  },
-  {
-    route: "src/app/api/search/route.ts",
-    handler: "GET",
-    addedAt: "2026-10-01",
-    reason:
-      "legado anterior ao wrapper (busca com fallback para lista vazia) — migração para withRoute pendente",
-  },
-  {
     route: "src/app/api/admin/benchmarks/route.ts",
     handler: "GET",
     addedAt: "2026-10-01",
     reason:
       "benchmark admin: telemetria fire-and-forget com .catch próprio ao longo do corpo — catch custom intencional; migração decide depois se o wrapper comporta",
-  },
-  {
-    route: "src/app/api/admin/settings/route.ts",
-    handler: "GET",
-    addedAt: "2026-10-01",
-    reason:
-      "legado anterior ao wrapper — migração para withRoute pendente; a entrada congela o conjunto até lá",
-  },
-  {
-    route: "src/app/api/admin/settings/route.ts",
-    handler: "POST",
-    addedAt: "2026-10-01",
-    reason:
-      "legado anterior ao wrapper — migração para withRoute pendente; a entrada congela o conjunto até lá",
-  },
-  {
-    route: "src/app/api/geo/search/route.ts",
-    handler: "GET",
-    addedAt: "2026-10-01",
-    reason:
-      "proxy geo (OSRM/Nominatim): fallback de upstream com resposta própria por modo (free-form vs estruturado) — catch custom intencional",
   },
 ]
 

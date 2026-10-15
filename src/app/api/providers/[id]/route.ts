@@ -14,8 +14,7 @@ import {
 } from "@/lib/api-server"
 import { getOptionalSession } from "@/lib/auth"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-
-type Params = { params: Promise<{ id: string }> }
+import { withParams } from "@/lib/api-route"
 
 /**
  * Busca do detalhe público. O `select` ABAIXO é a fonte do tipo da resposta
@@ -98,9 +97,11 @@ type ProviderDetailBody = PublicProviderPayload & {
  * recent reviews (with client name/avatar), favoriteCount.
  * If logged-in client, include `favorited` flag.
  */
-export async function GET(request: Request, { params }: Params) {
-  await assertRateLimit(request, RATE_LIMITS.providers)
-  try {
+export const GET = withParams<{ id: string }>(
+  "api.providers.:id.GET",
+  async (request: Request, { params }) => {
+    await assertRateLimit(request, RATE_LIMITS.providers)
+
     const { id } = await params
     const { searchParams } = new URL(request.url)
     const lat = searchParams.get("lat")
@@ -157,11 +158,6 @@ export async function GET(request: Request, { params }: Params) {
 
     // Return the provider object directly (the typed fetch wrapper expects
     // a `ProviderDetail`, not `{ provider: ProviderDetail }`).
-    //
-    // `exactShape` é a trava de compilação: espalhar aqui qualquer coisa que
-    // carregue campo fora da allowlist (ex.: `...provider` vindo de um `include`)
-    // deixa de compilar — o TypeScript não barra isso sozinho, só barra o que
-    // passa por aqui. `toPublicProvider` é a barreira de runtime equivalente.
     const body = exactShape<ProviderDetailBody>()({
       ...toPublicProvider(scalars),
       services,
@@ -175,7 +171,5 @@ export async function GET(request: Request, { params }: Params) {
     })
 
     return cacheControlPrivate(NextResponse.json(body), 60)
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

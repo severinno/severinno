@@ -1,30 +1,68 @@
 export const dynamic = "force-dynamic"
 
+import { createHmac, timingSafeEqual } from "crypto"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { generateIcsFeed, type CalendarEvent } from "@/lib/calendar-sync"
-import { notFound, handleError } from "@/lib/api-server"
+import { notFound } from "@/lib/api-server"
 import { addHours } from "date-fns"
 import { getTimezoneFromCoords } from "@/lib/geo-timezone"
+import { withParams } from "@/lib/api-route"
 
 /**
  * GET /api/calendar/feed/[token]
  * Serves live RFC 5545 iCalendar feed to external calendar clients (Google Calendar, Apple, Outlook).
  */
-export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
-  await assertRateLimit(_request, RATE_LIMITS.general)
-  try {
-    const { token } = await params
 
-    if (!token || token.length < 8) {
-      throw notFound("Token de calendário inválido")
+function verifyCalendarToken(token: string): string | null {
+  if (!token || token.length < 8) return null
+
+  // Token assinado: providerId_signature
+  if (token.includes("_")) {
+    const [providerId, sig] = token.split("_")
+    const secret = process.env.AUTH_SECRET || "severinno-calendar-secret"
+    const expected = createHmac("sha256", secret)
+      .update(`cal:${providerId}`)
+      .digest("hex")
+      .slice(0, 24)
+
+    if (
+      sig &&
+      sig.length === expected.length &&
+      timingSafeEqual(Buffer.from(sig), Buffer.from(expected))
+    ) {
+      return providerId
+    }
+  }
+
+  // Fallback seguro: se for apenas o ID, aceita apenas se for cuid válido
+  if (/^[a-z0-9]{20,32}$/i.test(token)) {
+    return token
+  }
+
+  return null
+}
+
+/**
+ * GET /api/calendar/feed/[token]
+ * Serves live RFC 5545 iCalendar feed to external calendar clients (Google Calendar, Apple, Outlook).
+ */
+export const GET = withParams<{ token: string }>(
+  "api.calendar.feed.:token.GET",
+  async (request, { params }) => {
+    await assertRateLimit(request, RATE_LIMITS.general)
+
+    const { token } = await params
+    const providerId = verifyCalendarToken(token)
+
+    if (!providerId) {
+      throw notFound("Token de calendário inválido ou expirado")
     }
 
-    // Find provider by id or slug matching token prefix
     const provider = await db.user.findFirst({
       where: {
-        OR: [{ id: token }, { slug: token }],
+        id: providerId,
         role: "PROVIDER",
         active: true,
       },
@@ -59,17 +97,26 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
       take: 100,
     })
 
+    const isSignedToken = token.includes("_")
+
     const events: CalendarEvent[] = bookings.map((b) => {
       const start = new Date(b.scheduledAt)
-      const end = addHours(start, 2) // Default 2h duration
+      const end = addHours(start, 2)
+      // Se não for token assinado HMAC, ofusca o telefone
+      const clientPhoneDisplay = isSignedToken
+        ? b.client.phone || "Não informado"
+        : b.client.phone
+          ? b.client.phone.replace(/(\d{2})(\d{4,5})(\d{4})/, "($1) *****-$3")
+          : "Não informado"
+
       return {
         id: b.id,
         title: `${b.service.title} — ${b.client.name}`,
-        description: `Cliente: ${b.client.name}\\nTelefone: ${b.client.phone || "Não informado"}\\nStatus: ${b.status}`,
+        description: `Cliente: ${b.client.name}\nTelefone: ${clientPhoneDisplay}\nStatus: ${b.status}`,
         location: b.address,
         start,
         end,
-        status: b.status === "COMPLETED" ? "CONFIRMED" : "CONFIRMED",
+        status: "CONFIRMED",
         timezone: getTimezoneFromCoords(b.lat, b.lng),
       }
     })
@@ -84,7 +131,5 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
         "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
       },
     })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

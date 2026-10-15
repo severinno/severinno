@@ -201,10 +201,20 @@ export const POST = withRoute("api.admin.operations.live.POST", async (request: 
 
   const booking = await db.booking.findUnique({
     where: { id: bookingId },
+    select: { id: true, paymentStatus: true, status: true },
   })
 
   if (!booking) {
     return NextResponse.json({ error: "Agendamento não encontrado" }, { status: 404 })
+  }
+
+  if (booking.paymentStatus !== "HELD") {
+    return NextResponse.json(
+      {
+        error: `O agendamento não está em custódia (status de pagamento atual: ${booking.paymentStatus})`,
+      },
+      { status: 409 },
+    )
   }
 
   const now = new Date()

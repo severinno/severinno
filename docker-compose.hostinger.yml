@@ -106,6 +106,9 @@ services:
       NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-wss://severinno.com}
       SMTP_FROM: ${SMTP_FROM:-noreply@severinno.com}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@severinno.com}
+      CALLBACK_SECRET: ${CALLBACK_SECRET}
+      LYTEX_CALLBACK_SECRET: ${LYTEX_CALLBACK_SECRET:-${CALLBACK_SECRET}}
+      LYTEX_SECRET: ${LYTEX_SECRET}
 
   email-worker:
     mem_limit: 256m

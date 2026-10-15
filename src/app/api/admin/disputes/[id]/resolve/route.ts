@@ -11,6 +11,9 @@ import { sanitizeText } from "@/lib/sanitize"
 import { enqueueWhatsApp } from "@/lib/whatsapp-queue"
 import { toMoneyNumber } from "@/lib/money"
 
+import { refundCharge } from "@/lib/lytex"
+import logger from "@/lib/logger"
+
 const resolveDisputeSchema = z.object({
   decision: z.enum(["FULL_REFUND", "RELEASE_TO_PROVIDER", "SPLIT"]),
   refundPercentage: z.number().min(0).max(100).optional(),
@@ -35,6 +38,7 @@ export const POST = withParams<{ id: string }>(
             client: { select: { id: true, name: true, phone: true, whatsapp: true } },
             provider: { select: { id: true, name: true, phone: true, whatsapp: true } },
             service: { select: { title: true } },
+            payment: true,
           },
         },
       },
@@ -69,6 +73,27 @@ export const POST = withParams<{ id: string }>(
       resolutionSummary = `Decisão: Acordo Parcial / Split (Cliente: ${pct}% - R$ ${clientRefund.toFixed(2)} | Prestador: ${100 - pct}% - R$ ${providerPayout.toFixed(2)}). Motivo: ${sanitizedNotes}`
     }
 
+    // Processamento do estorno via gateway Lytex quando aplicável
+    let lytexRefundResult: { success: boolean; refundId?: string; error?: string } | null = null
+    if (clientRefund > 0 && booking.payment?.lytexId && booking.payment.status === "PAID") {
+      try {
+        const cents = Math.round(clientRefund * 100)
+        const res = await refundCharge(booking.payment.lytexId, cents)
+        lytexRefundResult = { success: true, refundId: res.refundId }
+        logger.info(
+          { disputeId, refundId: res.refundId, cents },
+          "Estorno Lytex solicitado com sucesso",
+        )
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        lytexRefundResult = { success: false, error: msg }
+        logger.warn(
+          { disputeId, err: msg },
+          "Falha na solicitação automática de estorno Lytex (necessário repasse manual)",
+        )
+      }
+    }
+
     const now = new Date()
 
     // Atualização atômica
@@ -83,7 +108,7 @@ export const POST = withParams<{ id: string }>(
         },
       })
 
-      // 2. Atualiza booking
+      // 2. Atualiza booking e payment
       if (decision === "FULL_REFUND") {
         await tx.booking.update({
           where: { id: booking.id },
@@ -92,6 +117,15 @@ export const POST = withParams<{ id: string }>(
             status: "CANCELLED",
           },
         })
+        if (booking.payment) {
+          await tx.payment.update({
+            where: { id: booking.payment.id },
+            data: {
+              status: "REFUNDED",
+              lytexStatus: lytexRefundResult?.success ? "refunded" : booking.payment.lytexStatus,
+            },
+          })
+        }
       } else {
         await tx.booking.update({
           where: { id: booking.id },
@@ -100,6 +134,15 @@ export const POST = withParams<{ id: string }>(
             escrowReleasedAt: now,
           },
         })
+        if (booking.payment) {
+          await tx.payment.update({
+            where: { id: booking.payment.id },
+            data: {
+              status: "PAID",
+              paidAt: now,
+            },
+          })
+        }
       }
 
       // 3. Notificações in-app

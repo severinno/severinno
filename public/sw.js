@@ -15,34 +15,17 @@ const OSM_TILE_CACHE = "severinno-osm-tiles-v1"
 // API cache — stale-while-revalidate for public endpoints
 const API_CACHE = "severinno-api-v1"
 
-// Pre-cache GV key map tiles for offline resilience
-const GV_OFFLINE_TILES = [
-  "https://tile.openstreetmap.org/13/2464/4364.png",
-  "https://tile.openstreetmap.org/13/2464/4365.png",
-]
-
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    Promise.all([
-      caches.open(CACHE).then((cache) => {
-        return Promise.allSettled(
-          ASSETS.map((url) =>
-            cache.add(url).catch(() => {
-              console.warn(`[SW] Failed to cache ${url}`)
-            }),
-          ),
-        )
-      }),
-      caches.open(OSM_TILE_CACHE).then((cache) => {
-        return Promise.allSettled(
-          GV_OFFLINE_TILES.map((url) =>
-            cache.add(url).catch(() => {
-              console.warn(`[SW] Failed to pre-cache tile ${url}`)
-            }),
-          ),
-        )
-      }),
-    ]),
+    caches.open(CACHE).then((cache) => {
+      return Promise.allSettled(
+        ASSETS.map((url) =>
+          cache.add(url).catch(() => {
+            console.warn(`[SW] Failed to cache ${url}`)
+          }),
+        ),
+      )
+    }),
   )
   self.skipWaiting()
 })
