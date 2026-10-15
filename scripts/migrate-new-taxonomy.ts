@@ -168,6 +168,19 @@ async function main() {
     "alvenaria-reforma": "alvenaria-obra",
     "pequenas-reformas-alvenaria": "alvenaria-obra",
     "poda-de-arvores-alvenaria": "poda-de-arvores-jardim",
+
+    // Slugs filhos adicionais de seeds legados
+    "tomadas-e-interruptores-eletrica": "eletricista-eletrica",
+    "curto-circuito-eletrica": "eletricista-eletrica",
+    "quadro-eletrico-eletrica": "quadro-de-energia-eletrica",
+    "vazamento-hidraulica": "encanador-hidraulica",
+    "caixa-de-descarga-hidraulica": "encanador-hidraulica",
+    "organizacao-residencial": "personal-organizer-mudanca-e-organizacao",
+    "rejunte-pisos": "porcelanato-e-ceramica-pisos",
+    "instalacao-ar-condicionado-clima": "instalacao-de-ar-condicionado-climatizacao",
+    "higienizacao-ar-condicionado-clima": "limpeza-de-ar-condicionado-climatizacao",
+    "montagem-de-moveis-marcenaria": "montador-de-moveis-reparos-gerais",
+    "corte-grama-jardinagem": "jardineiro-jardim",
   }
 
   let remappedCount = 0
