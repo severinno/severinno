@@ -100,6 +100,10 @@ const ProblemSolverWizard = React.lazy(() =>
 const LiveSocialProofToast = React.lazy(() =>
   import("./live-social-proof-toast").then((m) => ({ default: m.LiveSocialProofToast })),
 )
+const TrustPaymentPills = React.lazy(() =>
+  import("./trust-payment-pills").then((m) => ({ default: m.TrustPaymentPills })),
+)
+import type { TrustPillId } from "./trust-payment-pills"
 const EmergencySosModal = React.lazy(() =>
   import("../shared/emergency-sos-modal").then((m) => ({ default: m.EmergencySosModal })),
 )
@@ -259,6 +263,7 @@ export default function Vitrine() {
   const [sosOpen, setSosOpen] = React.useState(false)
   const [cameraModalOpen, setCameraModalOpen] = React.useState(false)
   const [bookingSlot, setBookingSlot] = React.useState<string | null>("hoje-tarde")
+  const [activeTrustPills, setActiveTrustPills] = React.useState<TrustPillId[]>([])
   /** Walk em curso (página funda sem âncora) — isFetching sobe, UI segura. */
   const [walkActive, setWalkActive] = React.useState(false)
   /** Token de geração: qualquer reset/navegação aborta o walk async em curso. */
@@ -1069,6 +1074,25 @@ export default function Vitrine() {
         <Suspense fallback={null}>
           <ProviderSpotlightGeo onQuote={handleQuote} onBook={handleBook} onView={handleView} />
         </Suspense>
+
+        {/* 3d. TrustPaymentPills — Filtros Rápidos de Confiabilidade & Pagamento */}
+        <div className="mx-auto mb-4 max-w-7xl px-4 sm:px-6 lg:px-8">
+          <Suspense fallback={null}>
+            <TrustPaymentPills
+              activePills={activeTrustPills}
+              onTogglePill={(pillId) => {
+                setActiveTrustPills((prev) =>
+                  prev.includes(pillId) ? prev.filter((p) => p !== pillId) : [...prev, pillId],
+                )
+                resetToFirstPage()
+              }}
+              onClearPills={() => {
+                setActiveTrustPills([])
+                resetToFirstPage()
+              }}
+            />
+          </Suspense>
+        </div>
 
         {/* 4. VitrineResults — provider listings */}
         <VitrineResults

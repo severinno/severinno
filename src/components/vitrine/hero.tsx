@@ -47,12 +47,15 @@ import {
   Moon,
   Siren,
   Camera,
+  Play,
 } from "lucide-react"
 
 import { useGeoStore } from "@/store/geo"
 import { useUIStore } from "@/store/ui"
 import { apiGet } from "@/lib/api"
 import AddressAutocomplete from "@/components/vitrine/address-autocomplete"
+import { PredictiveSearchDropdown } from "@/components/vitrine/predictive-search-dropdown"
+import { HowItWorksModal } from "@/components/vitrine/how-it-works-modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -165,6 +168,8 @@ export default function Hero({
   const userLat = useGeoStore((s) => s.lat) ?? -23.5505
   const userLng = useGeoStore((s) => s.lng) ?? -46.6333
   const [aiWizardOpen, setAiWizardOpen] = React.useState(false)
+  const [howItWorksOpen, setHowItWorksOpen] = React.useState(false)
+  const [searchDropdownOpen, setSearchDropdownOpen] = React.useState(false)
 
   // ---- Actions -------------------------------------------------------------
 
@@ -289,7 +294,11 @@ export default function Hero({
                   <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2" />
                   <Input
                     value={query}
-                    onChange={(e) => onQueryChange(e.target.value)}
+                    onFocus={() => setSearchDropdownOpen(true)}
+                    onChange={(e) => {
+                      onQueryChange(e.target.value)
+                      setSearchDropdownOpen(true)
+                    }}
                     placeholder="O que você precisa? Ex.: encanador, pintura…"
                     className="h-12 border-0 bg-transparent pr-10 pl-10 text-left shadow-none focus-visible:ring-0"
                     aria-label="Serviço buscado"
@@ -305,6 +314,17 @@ export default function Hero({
                       <Camera className="size-4" />
                     </button>
                   )}
+                  <PredictiveSearchDropdown
+                    query={query}
+                    isOpen={searchDropdownOpen}
+                    onSelect={(val) => {
+                      onQueryChange(val)
+                      setSearchDropdownOpen(false)
+                      onSearchSubmit?.()
+                      scrollToResults()
+                    }}
+                    onClose={() => setSearchDropdownOpen(false)}
+                  />
                 </div>
                 <div className="relative flex items-center sm:w-56">
                   <AddressAutocomplete
@@ -394,10 +414,11 @@ export default function Hero({
               </button>
               <button
                 type="button"
-                onClick={scrollToResults}
-                className="inline-flex h-11 items-center gap-1.5 rounded-xl px-4 text-sm font-medium text-emerald-50 underline-offset-4 transition-colors hover:text-white hover:underline"
+                onClick={() => setHowItWorksOpen(true)}
+                className="inline-flex h-11 items-center gap-1.5 rounded-xl px-4 text-sm font-semibold text-emerald-50 underline-offset-4 transition-colors hover:text-white hover:underline"
               >
-                Ver como funciona
+                <Play className="size-3.5 fill-emerald-200 text-emerald-200" />
+                <span>Como funciona em 40s</span>
               </button>
             </div>
 
@@ -479,6 +500,11 @@ export default function Hero({
           scrollToResults()
           onSearchSubmit?.()
         }}
+      />
+      <HowItWorksModal
+        open={howItWorksOpen}
+        onOpenChange={setHowItWorksOpen}
+        onExploreServices={scrollToResults}
       />
     </section>
   )
