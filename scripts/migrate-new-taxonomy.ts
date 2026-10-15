@@ -177,9 +177,9 @@ async function main() {
     "caixa-de-descarga-hidraulica": "encanador-hidraulica",
     "organizacao-residencial": "personal-organizer-mudanca-e-organizacao",
     "rejunte-pisos": "porcelanato-e-ceramica-pisos",
-    "instalacao-ar-condicionado-clima": "instalacao-de-ar-condicionado-climatizacao",
-    "higienizacao-ar-condicionado-clima": "limpeza-de-ar-condicionado-climatizacao",
-    "montagem-de-moveis-marcenaria": "montador-de-moveis-reparos-gerais",
+    "instalacao-ar-condicionado-clima": "instalacao-de-ar-condicionado-clima-e-gas",
+    "higienizacao-ar-condicionado-clima": "higienizacao-de-ar-condicionado-clima-e-gas",
+    "montagem-de-moveis-marcenaria": "montagem-de-moveis-pequenos-reparos",
     "corte-grama-jardinagem": "jardineiro-jardim",
   }
 
