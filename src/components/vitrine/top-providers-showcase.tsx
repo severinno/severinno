@@ -110,6 +110,7 @@ export function TopProvidersShowcase({
             return (
               <div
                 key={provider.id}
+                data-provider-id={provider.id}
                 className="group border-border/50 bg-card hover:border-border relative flex flex-col justify-between rounded-2xl border p-5 shadow-2xs transition-all duration-200 hover:shadow-md"
               >
                 <div>
