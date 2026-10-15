@@ -34,6 +34,7 @@ import {
   MoreHorizontal,
   Navigation,
   QrCode,
+  Sparkles,
   Star,
   XCircle,
 } from "lucide-react"
@@ -81,6 +82,7 @@ import { PixCheckout } from "@/components/shared/pix-checkout"
 import { LiveTracking } from "@/components/shared/live-tracking"
 import { ReceiptModal } from "@/components/shared/receipt-modal"
 import { ServiceDeliveryReportModal } from "@/components/shared/service-delivery-report-modal"
+import { CarePlanModal } from "@/components/shared/care-plan-modal"
 import {
   PageHeader,
   StatusBadge,
@@ -105,6 +107,8 @@ type Booking = {
   paymentStatus: PaymentStatus
   address: string
   cep: string
+  lat?: number | null
+  lng?: number | null
   notes?: string | null
   beforePhotos?: string[] | null
   afterPhotos?: string[] | null
@@ -185,6 +189,7 @@ export function ClientBookings() {
   const [trackingBooking, setTrackingBooking] = React.useState<Booking | null>(null)
   const [receiptBookingId, setReceiptBookingId] = React.useState<string | null>(null)
   const [reportBooking, setReportBooking] = React.useState<Booking | null>(null)
+  const [carePlanBooking, setCarePlanBooking] = React.useState<Booking | null>(null)
 
   // Reset page when tab changes
   React.useEffect(() => {
@@ -361,6 +366,7 @@ export function ClientBookings() {
               onTrack={() => setTrackingBooking(b)}
               onViewReceipt={() => setReceiptBookingId(b.id)}
               onOpenReport={() => setReportBooking(b)}
+              onCarePlan={() => setCarePlanBooking(b)}
               onPay={
                 b.paymentMethod === "PIX" && b.paymentStatus === "PENDING"
                   ? () => setPixBooking(b)
@@ -530,6 +536,29 @@ export function ClientBookings() {
           }}
         />
       )}
+
+      {/* Care Plan (Recurring Residential Subscription) Modal */}
+      {carePlanBooking && (
+        <CarePlanModal
+          isOpen={!!carePlanBooking}
+          onClose={() => setCarePlanBooking(null)}
+          service={{
+            id: carePlanBooking.service.id,
+            title: carePlanBooking.service.title,
+            basePrice: carePlanBooking.amount,
+            providerId: carePlanBooking.provider.id,
+            providerName: carePlanBooking.provider.name,
+          }}
+          defaultAddress={carePlanBooking.address}
+          defaultCep={carePlanBooking.cep}
+          defaultLat={carePlanBooking.lat ?? undefined}
+          defaultLng={carePlanBooking.lng ?? undefined}
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["bookings"] })
+            qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -550,6 +579,7 @@ function BookingCard({
   onPay,
   onViewReceipt,
   onOpenReport,
+  onCarePlan,
   isCompleting,
 }: {
   booking: Booking
@@ -563,6 +593,7 @@ function BookingCard({
   onPay?: () => void
   onViewReceipt?: () => void
   onOpenReport?: () => void
+  onCarePlan?: () => void
   isCompleting: boolean
 }) {
   const provider = booking.provider
@@ -697,6 +728,12 @@ function BookingCard({
                   Laudo & Checklist
                 </DropdownMenuItem>
               ) : null}
+              {onCarePlan ? (
+                <DropdownMenuItem onSelect={onCarePlan}>
+                  <Sparkles className="size-4 text-emerald-600" />
+                  Plano de Cuidado (-15%)
+                </DropdownMenuItem>
+              ) : null}
               {status === "COMPLETED" || booking.paymentStatus === "PAID" ? (
                 <DropdownMenuItem onSelect={onViewReceipt}>
                   <FileText className="size-4 text-blue-600" />
@@ -718,6 +755,17 @@ function BookingCard({
             <Eye className="size-4" />
             Detalhes
           </Button>
+          {onCarePlan ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onCarePlan}
+              className="h-9 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+            >
+              <Sparkles className="size-4" />
+              Plano Recorrente
+            </Button>
+          ) : null}
           {onOpenReport &&
           (status === "CONFIRMED" || status === "IN_PROGRESS" || status === "COMPLETED") ? (
             <Button

@@ -13,9 +13,17 @@ import {
   Loader2,
   MapPin,
   MessageSquare,
+  Package,
   Send,
   Wrench,
 } from "lucide-react"
+
+import { TransparentQuoteModal } from "@/components/shared/transparent-quote-modal"
+import {
+  formatTransparentQuoteNote,
+  parseTransparentQuoteNote,
+  type TransparentQuoteBreakdown,
+} from "@/lib/materials-breakdown"
 
 import { apiGet, apiPatch } from "@/lib/api"
 import {
@@ -177,6 +185,10 @@ function QuoteItemCard({ item }: { item: QuoteItem }) {
   const [price, setPrice] = React.useState<string>(item.price != null ? String(item.price) : "")
   const [note, setNote] = React.useState<string>(item.providerNote ?? "")
   const [sending, setSending] = React.useState(false)
+  const [breakdownModalOpen, setBreakdownModalOpen] = React.useState(false)
+  const [breakdown, setBreakdown] = React.useState<TransparentQuoteBreakdown | null>(() =>
+    parseTransparentQuoteNote(item.providerNote),
+  )
 
   const respond = async () => {
     const num = Number(price)
@@ -238,10 +250,24 @@ function QuoteItemCard({ item }: { item: QuoteItem }) {
 
       {item.status === "PENDING" ? (
         <div className="border-primary/20 bg-primary/5 grid gap-2 rounded-lg border p-3">
-          <p className="text-primary text-xs font-semibold">Responder orçamento</p>
+          <div className="flex flex-wrap items-center justify-between gap-1 pb-1">
+            <p className="text-primary text-xs font-semibold">Responder orçamento</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setBreakdownModalOpen(true)}
+              className="h-7 gap-1 border-blue-300 bg-blue-50/50 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300"
+            >
+              <Package className="size-3 text-blue-600" />
+              {breakdown
+                ? "Mão de Obra + Materiais (Configurado)"
+                : "Discriminar Mão de Obra e Materiais (GV)"}
+            </Button>
+          </div>
           <div className="grid gap-2 sm:grid-cols-[160px_1fr] sm:items-start">
             <div>
-              <label className="text-muted-foreground text-xs">Preço (R$)</label>
+              <label className="text-muted-foreground text-xs">Preço Total (R$)</label>
               <Input
                 type="number"
                 step="0.01"
@@ -283,6 +309,24 @@ function QuoteItemCard({ item }: { item: QuoteItem }) {
               {item.price != null ? formatBRL(item.price) : "—"}
             </span>
           </div>
+          {breakdown && (
+            <div className="mt-1 flex items-center justify-between border-t pt-2">
+              <span className="text-muted-foreground text-xs">
+                Discriminação Mão de Obra vs Materiais:
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setBreakdownModalOpen(true)}
+                className="h-6 gap-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+              >
+                <Package className="size-3" />
+                Ver Detalhes ({formatBRL(breakdown.laborCost)} +{" "}
+                {formatBRL(breakdown.materialsCost)})
+              </Button>
+            </div>
+          )}
           {item.providerNote && (
             <div className="mt-1 border-t pt-2">
               <p className="text-muted-foreground text-xs">Sua nota:</p>
@@ -290,6 +334,27 @@ function QuoteItemCard({ item }: { item: QuoteItem }) {
             </div>
           )}
         </div>
+      )}
+
+      {/* Transparent Quote Modal */}
+      {breakdownModalOpen && (
+        <TransparentQuoteModal
+          open={breakdownModalOpen}
+          onOpenChange={setBreakdownModalOpen}
+          mode={item.status === "PENDING" ? "compose" : "view"}
+          serviceTitle={item.service.title}
+          initialBreakdown={breakdown}
+          onSave={(bd, total) => {
+            setBreakdown(bd)
+            setPrice(total.toFixed(2))
+            setNote((prev) =>
+              formatTransparentQuoteNote(
+                bd,
+                prev.replace(/\[ORCAMENTO_TRANSPARENTE:.*?:ORCAMENTO_TRANSPARENTE\]/g, "").trim(),
+              ),
+            )
+          }}
+        />
       )}
     </div>
   )

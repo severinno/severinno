@@ -27,6 +27,7 @@ import {
   Loader2,
   MapPin,
   MessageSquare,
+  Package,
   Plus,
   X,
 } from "lucide-react"
@@ -34,6 +35,11 @@ import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
 import { apiGet, apiPatch } from "@/lib/api"
+import { TransparentQuoteModal } from "@/components/shared/transparent-quote-modal"
+import {
+  parseTransparentQuoteNote,
+  type TransparentQuoteBreakdown,
+} from "@/lib/materials-breakdown"
 import {
   QUOTE_ITEM_STATUS_LABELS,
   QUOTE_STATUS_LABELS,
@@ -150,6 +156,11 @@ export function ClientQuotes() {
 
   const [tab, setTab] = React.useState("ALL")
   const [page, setPage] = React.useState(1)
+  const [viewBreakdownItem, setViewBreakdownItem] = React.useState<{
+    title: string
+    category?: string
+    breakdown: TransparentQuoteBreakdown
+  } | null>(null)
 
   React.useEffect(() => setPage(1), [tab])
 
@@ -312,6 +323,7 @@ export function ClientQuotes() {
               onReject={() => rejectMutation.mutate(q.id)}
               onViewProvider={() => openProvider(q.provider.id)}
               onMessage={() => navigate("client.messages", { with: q.provider.id })}
+              onViewBreakdown={(info) => setViewBreakdownItem(info)}
               isApproving={approveMutation.isPending}
               isRejecting={rejectMutation.isPending}
             />
@@ -351,6 +363,18 @@ export function ClientQuotes() {
           </div>
         </div>
       ) : null}
+
+      {/* Transparent Quote Breakdown Modal (Client View) */}
+      {viewBreakdownItem && (
+        <TransparentQuoteModal
+          open={!!viewBreakdownItem}
+          onOpenChange={(o) => !o && setViewBreakdownItem(null)}
+          mode="view"
+          serviceTitle={viewBreakdownItem.title}
+          serviceCategory={viewBreakdownItem.category}
+          initialBreakdown={viewBreakdownItem.breakdown}
+        />
+      )}
     </div>
   )
 }
@@ -365,6 +389,7 @@ function QuoteCard({
   onReject,
   onViewProvider,
   onMessage,
+  onViewBreakdown,
   isApproving,
   isRejecting,
 }: {
@@ -373,6 +398,11 @@ function QuoteCard({
   onReject: () => void
   onViewProvider: () => void
   onMessage: () => void
+  onViewBreakdown?: (info: {
+    title: string
+    category?: string
+    breakdown: TransparentQuoteBreakdown
+  }) => void
   isApproving: boolean
   isRejecting: boolean
 }) {
@@ -498,9 +528,48 @@ function QuoteCard({
                       </p>
                       <p className="text-muted-foreground line-clamp-2 text-xs">{it.description}</p>
                       {it.providerNote ? (
-                        <p className="bg-muted/50 rounded-md px-2 py-1 text-xs">
-                          <span className="font-medium">Nota do prestador:</span> {it.providerNote}
-                        </p>
+                        <div className="space-y-1 pt-0.5">
+                          {(() => {
+                            const breakdown = parseTransparentQuoteNote(it.providerNote)
+                            const cleanNote = it.providerNote
+                              .replace(/\[ORCAMENTO_TRANSPARENTE:.*?:ORCAMENTO_TRANSPARENTE\]/g, "")
+                              .trim()
+
+                            return (
+                              <>
+                                {breakdown ? (
+                                  <div>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() =>
+                                        onViewBreakdown?.({
+                                          title: it.service.title,
+                                          category: it.service.title,
+                                          breakdown,
+                                        })
+                                      }
+                                      className="h-7 gap-1.5 border-blue-300 bg-blue-50/50 text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300"
+                                    >
+                                      <Package className="size-3.5 text-blue-600" />
+                                      Ver Mão de Obra vs Materiais ({formatBRL(
+                                        breakdown.laborCost,
+                                      )}{" "}
+                                      + {formatBRL(breakdown.materialsCost)})
+                                    </Button>
+                                  </div>
+                                ) : null}
+                                {cleanNote ? (
+                                  <p className="bg-muted/50 rounded-md px-2 py-1 text-xs">
+                                    <span className="font-medium">Nota do prestador:</span>{" "}
+                                    {cleanNote}
+                                  </p>
+                                ) : null}
+                              </>
+                            )
+                          })()}
+                        </div>
                       ) : null}
                     </div>
                     <div className="self-start text-right text-sm">
