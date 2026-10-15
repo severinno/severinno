@@ -243,7 +243,7 @@ export function AdminTaxonomy() {
 
   // Desdobra / achata qualquer resposta defensivamente (caso venha aninhada)
   const flat = React.useMemo<CategoryRow[]>(() => {
-    if (!rawData) return []
+    if (!rawData || !Array.isArray(rawData)) return []
     const result: CategoryRow[] = []
     const seen = new Set<string>()
     function walk(list: CategoryRow[]) {

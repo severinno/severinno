@@ -12,6 +12,7 @@ import {
   cacheControlPublic,
   syncEntitySearch,
   invalidateCategoryCache,
+  HttpError,
 } from "@/lib/api-server"
 import { withCache, cacheInvalidate } from "@/lib/redis"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
@@ -42,7 +43,11 @@ export async function GET(request?: Request) {
         ...c,
         serviceCount: (c as unknown as { _count?: { services?: number } })._count?.services ?? 0,
       }))
-      return noStoreJson(mapped)
+      return NextResponse.json(mapped, {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      })
     }
 
     const categories = await withCache(
@@ -69,7 +74,11 @@ export async function GET(request?: Request) {
       60,
     )
     return cacheControlPublic(NextResponse.json(categories), 120, 600)
-  } catch {
+  } catch (err) {
+    if (err instanceof HttpError) {
+      return noStoreJson({ error: err.message }, { status: err.status, headers: err.headers })
+    }
+    logger.error({ err }, "Erro em GET /api/categories")
     return noStoreJson({ error: "Erro interno" }, { status: 500 })
   }
 }
