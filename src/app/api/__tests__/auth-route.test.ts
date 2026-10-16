@@ -30,10 +30,19 @@ vi.mock("@/lib/auth-rate-limit", () => ({
   })),
 }))
 
-vi.mock("@/lib/logger", () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}))
+vi.mock("@/lib/logger", () => {
+  const instance: any = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    child: vi.fn(() => instance),
+  }
+  return {
+    default: instance,
+    logger: instance,
+  }
+})
 
 // Auth functions — use mutable module-level variables so per-test setup works
 let _mockSession: any = null
@@ -43,6 +52,8 @@ import { makeAuthError } from "@/lib/__tests__/helpers/auth-mock"
 vi.mock("@/lib/auth", () => ({
   createSession: vi.fn().mockResolvedValue(undefined),
   destroySession: vi.fn().mockResolvedValue(undefined),
+  revokeAllUserSessions: vi.fn().mockResolvedValue(undefined),
+  getSession: vi.fn().mockImplementation(async () => _mockSession),
   requireUser: vi.fn().mockImplementation(async () => {
     const s = _mockSession
     if (!s) throw makeAuthError("UNAUTHORIZED")

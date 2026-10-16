@@ -26,6 +26,12 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { io, Socket } from "socket.io-client"
+import {
+  getPendingMessages,
+  enqueuePendingMessage,
+  removePendingMessage,
+  getPendingCount,
+} from "@/lib/realtime-offline-queue"
 
 // ---------- Types ----------
 export type ConnectionStatus =
@@ -188,6 +194,7 @@ function getSocket(): Socket | null {
 export interface UseRealtimeResult {
   isConnected: boolean
   status: ConnectionStatus
+  pendingMessagesCount: number
   // helpers
   join: (payload: JoinPayload) => Promise<boolean>
   sendMessage: (payload: MessageSendPayload) => void
@@ -207,14 +214,34 @@ export interface UseRealtimeResult {
 export function useRealtime(): UseRealtimeResult {
   const [isConnected, setIsConnected] = useState(false)
   const [status, setStatus] = useState<ConnectionStatus>("connecting")
+  const [pendingMessagesCount, setPendingMessagesCount] = useState<number>(() => {
+    return typeof window !== "undefined" ? getPendingCount() : 0
+  })
 
   useEffect(() => {
     const s = getSocket()
     if (!s) return // SSR guard
 
+    const flushPending = () => {
+      const pending = getPendingMessages()
+      if (pending.length > 0 && s.connected) {
+        for (const item of pending) {
+          s.emit("message:send", {
+            fromId: item.fromId,
+            toId: item.toId,
+            content: item.content,
+            bookingId: item.bookingId,
+          })
+          removePendingMessage(item.clientMessageId)
+        }
+        setPendingMessagesCount(0)
+      }
+    }
+
     const onConnect = () => {
       setIsConnected(true)
       setStatus("connected")
+      flushPending()
     }
     const onDisconnect = () => {
       setIsConnected(false)
@@ -230,6 +257,7 @@ export function useRealtime(): UseRealtimeResult {
     const onReconnect = () => {
       setIsConnected(true)
       setStatus("connected")
+      flushPending()
     }
     // Sync component state with the singleton socket's current status
     // (e.g. when reused across mounts / hot reload). Wrapped in a function so
@@ -238,6 +266,7 @@ export function useRealtime(): UseRealtimeResult {
       if (s.connected) {
         setIsConnected(true)
         setStatus("connected")
+        flushPending()
       } else if (!s.active) {
         setStatus("connecting")
       }
@@ -260,6 +289,40 @@ export function useRealtime(): UseRealtimeResult {
     }
   }, [])
 
+  // Heartbeat Watchdog: ping a cada 15s para detectar conexão zumbi (half-open TCP)
+  useEffect(() => {
+    if (!isConnected) return
+
+    let missedPings = 0
+    const interval = setInterval(() => {
+      const s = socketRef
+      if (!s || !s.connected) return
+
+      let answered = false
+      const timeoutId = setTimeout(() => {
+        if (!answered) {
+          missedPings++
+          if (missedPings >= 2) {
+            console.warn(
+              "[realtime-watchdog] Conexão zumbi detectada (2 pings sem ack). Forçando reconexão...",
+            )
+            s.disconnect()
+            s.connect()
+            missedPings = 0
+          }
+        }
+      }, 5000)
+
+      s.emit("ping", () => {
+        answered = true
+        clearTimeout(timeoutId)
+        missedPings = 0
+      })
+    }, 15000)
+
+    return () => clearInterval(interval)
+  }, [isConnected])
+
   // ---------- Helpers ----------
   const join = useMemo<UseRealtimeResult["join"]>(
     () => (payload: JoinPayload) =>
@@ -280,6 +343,12 @@ export function useRealtime(): UseRealtimeResult {
 
   const sendMessage = useMemo<UseRealtimeResult["sendMessage"]>(
     () => (payload: MessageSendPayload) => {
+      const s = socketRef
+      if (!s || !s.connected) {
+        enqueuePendingMessage(payload)
+        setPendingMessagesCount(getPendingCount())
+        return
+      }
       socketRef?.emit("message:send", payload)
     },
     [],
@@ -376,6 +445,7 @@ export function useRealtime(): UseRealtimeResult {
     () => ({
       isConnected,
       status,
+      pendingMessagesCount,
       join,
       sendMessage,
       confirmDelivery,
@@ -392,6 +462,7 @@ export function useRealtime(): UseRealtimeResult {
     [
       isConnected,
       status,
+      pendingMessagesCount,
       join,
       sendMessage,
       confirmDelivery,

@@ -1,5 +1,5 @@
 import { cookies } from "next/headers"
-import { createHmac, randomBytes, timingSafeEqual } from "crypto"
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto"
 import { db } from "@/lib/db"
 import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/redis"
 import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
@@ -144,6 +144,12 @@ export async function getSession(): Promise<SessionPayload | null> {
         return null
       }
 
+      // Check if this specific session token signature was blacklisted on logout
+      if (await isSessionRevoked(signature)) {
+        span.setAttribute("auth.session", "revoked")
+        return null
+      }
+
       const expiresAt = Number(expiresAtStr)
       if (!Number.isFinite(expiresAt)) return null
       if (expiresAt * 1000 < Date.now()) {
@@ -178,12 +184,72 @@ export async function getSession(): Promise<SessionPayload | null> {
   })
 }
 
+export const REVOKED_SESSION_PREFIX = "auth:revoked-session:"
+
+export function hashSessionSignature(signature: string): string {
+  return createHash("sha256").update(signature).digest("hex")
+}
+
 /**
- * Clear the session cookie (logout).
+ * Blacklist a specific session signature in Redis until its natural expiration.
  */
-export async function destroySession() {
-  const store = await cookies()
-  store.delete(COOKIE_NAME)
+export async function revokeSessionSignature(
+  signature: string,
+  ttlSeconds = COOKIE_MAX_AGE_SECONDS,
+): Promise<void> {
+  const hash = hashSessionSignature(signature)
+  await cacheSet(`${REVOKED_SESSION_PREFIX}${hash}`, { revokedAt: Date.now() }, ttlSeconds)
+}
+
+/**
+ * Check whether a session signature has been revoked.
+ */
+export async function isSessionRevoked(signature: string): Promise<boolean> {
+  const hash = hashSessionSignature(signature)
+  const cached = await cacheGet<{ revokedAt: number }>(`${REVOKED_SESSION_PREFIX}${hash}`)
+  return cached !== null
+}
+
+/**
+ * Revoke all sessions for a user by bumping sessionVersion in PostgreSQL
+ * and busting the Redis session cache.
+ */
+export async function revokeAllUserSessions(userId: string): Promise<void> {
+  await db.user.update({
+    where: { id: userId },
+    data: { sessionVersion: { increment: 1 } },
+  })
+  await invalidateSessionCache(userId)
+}
+
+/**
+ * Clear the session cookie and blacklists the token signature in Redis (instant logout).
+ */
+export async function destroySession(): Promise<void> {
+  try {
+    const store = await cookies()
+    const cookie = store.get(COOKIE_NAME)
+    if (cookie?.value) {
+      const parts = cookie.value.split(".")
+      const signature = parts[parts.length - 1]
+      const expiresAtStr = parts[2]
+      const expiresAt = Number(expiresAtStr)
+      if (signature) {
+        const remaining = Number.isFinite(expiresAt)
+          ? Math.max(1, expiresAt - Math.floor(Date.now() / 1000))
+          : COOKIE_MAX_AGE_SECONDS
+        await revokeSessionSignature(signature, remaining)
+      }
+    }
+    store.delete(COOKIE_NAME)
+  } catch {
+    try {
+      const store = await cookies()
+      store.delete(COOKIE_NAME)
+    } catch {
+      // ignore
+    }
+  }
 }
 
 // ── Ticket de socket (handshake autenticado do realtime) ────────────────────

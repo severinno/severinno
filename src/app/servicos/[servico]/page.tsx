@@ -5,92 +5,171 @@ import { db } from "@/lib/db"
 import { toMoneyNumber } from "@/lib/money"
 
 /**
- * SEO landing pages for high-value search terms.
+ * SEO Landing Pages Programáticas por Bairro & Categoria em Governador Valadares.
  *
- * Examples:
+ * Exemplos indexados no Google Search:
  *   /servicos/encanador-em-governador-valadares
- *   /servicos/pedreiro-gv
- *   /servicos/eletricista-bairro-centro
+ *   /servicos/eletricista-em-ilha-dos-araujos
+ *   /servicos/diarista-em-vila-isa
+ *   /servicos/pintor-em-centro
  *
- * These pages are statically generated at build time and indexed by Google.
- * Each page shows providers for a specific service in a specific location.
+ * Contém Schema.org JSON-LD estruturado:
+ * - LocalBusiness + Service (com coordenadas e georreferenciamento de GV)
+ * - BreadcrumbList
+ * - FAQPage (perguntas frequentes sobre contratação com garantia de custódia)
  */
 
-// Map of slug → { service, city, neighborhood }
-const LANDING_PAGES: Record<
-  string,
-  { service: string; city: string; neighborhood?: string; description: string }
-> = {
-  "encanador-em-governador-valadares": {
-    service: "Encanador",
-    city: "Governador Valadares",
-    description:
-      "Encontre os melhores encanadores verificados em Governador Valadares. Reparos hidráulicos, desentupimento, instalações e mais.",
+export interface LandingPageConfig {
+  service: string
+  city: string
+  neighborhood?: string
+  description: string
+  priceRange?: string
+}
+
+export const GV_NEIGHBORHOODS: Record<string, string> = {
+  centro: "Centro",
+  "ilha-dos-araujos": "Ilha dos Araújos",
+  "vila-isa": "Vila Isa",
+  esplanada: "Esplanada",
+  "gra-duquesa": "Grã-Duquesa",
+  "sao-pedro": "São Pedro",
+  lourdes: "Lourdes",
+  "santa-rita": "Santa Rita",
+  castanheiras: "Castanheiras",
+  "lagoa-santa": "Lagoa Santa",
+}
+
+export const GV_SERVICES: Record<string, { name: string; priceRange: string; desc: string }> = {
+  encanador: {
+    name: "Encanador",
+    priceRange: "R$ 90 - R$ 400",
+    desc: "reparos hidráulicos, desentupimentos, detecção de vazamentos e novas tubulações",
   },
-  "pedreiro-em-governador-valadares": {
-    service: "Pedreiro",
-    city: "Governador Valadares",
-    description:
-      "Contrate pedreiros verificados em Governador Valadares. Reformas, construção civil, alvenaria e acabamento.",
+  eletricista: {
+    name: "Eletricista",
+    priceRange: "R$ 80 - R$ 350",
+    desc: "instalação de fiação, quadro de distribuição, disjuntores, chuveiros e tomadas",
   },
-  "eletricista-em-governador-valadares": {
-    service: "Eletricista",
-    city: "Governador Valadares",
-    description:
-      "Eletricistas verificados em Governador Valadares. Instalações, reparos, fiação e quadro de luz.",
+  diarista: {
+    name: "Diarista",
+    priceRange: "R$ 140 - R$ 220",
+    desc: "faxina residencial, limpeza pesada, higienização pós-obra e organização",
   },
-  "pintor-em-governador-valadares": {
-    service: "Pintor",
-    city: "Governador Valadares",
-    description:
-      "Pintores profissionais em Governador Valadares. Pintura residencial, comercial, textura e grafiato.",
+  pintor: {
+    name: "Pintor",
+    priceRange: "R$ 150 - R$ 800",
+    desc: "pintura interna, externa, textura, grafiato, verniz e acabamentos finos",
   },
-  "diarista-em-governador-valadares": {
-    service: "Diarista",
-    city: "Governador Valadares",
-    description:
-      "Diaristas e faxineiras verificadas em Governador Valadares. Limpeza residencial e comercial.",
+  pedreiro: {
+    name: "Pedreiro",
+    priceRange: "R$ 160 - R$ 1200",
+    desc: "reformas em geral, alvenaria, colocação de pisos, porcelanato e reboco",
   },
-  "jardineiro-em-governador-valadares": {
-    service: "Jardineiro",
-    city: "Governador Valadares",
-    description:
-      "Jardineiros profissionais em Governador Valadares. Podadeira, manutenção de jardim e paisagismo.",
+  chaveiro: {
+    name: "Chaveiro",
+    priceRange: "R$ 70 - R$ 250",
+    desc: "abertura residencial 24h, troca de segredo, fechadura digital e cópias",
   },
-  "mecanico-em-governador-valadares": {
-    service: "Mecânico",
-    city: "Governador Valadares",
-    description:
-      "Mecânicos automotivos verificados em Governador Valadares. Revisão, manutenção e conserto.",
+  jardineiro: {
+    name: "Jardineiro",
+    priceRange: "R$ 100 - R$ 350",
+    desc: "manutenção de jardins, poda de árvores, corte de grama e paisagismo",
   },
-  "chaveiro-em-governador-valadares": {
-    service: "Chaveiro",
-    city: "Governador Valadares",
-    description:
-      "Chaveiros 24h em Governador Valadares. Cópia de chaves, abertura de portas e fechaduras.",
+  mecanico: {
+    name: "Mecânico",
+    priceRange: "R$ 120 - R$ 600",
+    desc: "revisão automotiva, socorro mecânico, troca de freios e suspensão",
   },
-  "tecnico-de-ar-condicionado-em-governador-valadares": {
-    service: "Técnico de Ar Condicionado",
-    city: "Governador Valadares",
-    description:
-      "Técnicos de ar condicionado em Governador Valadares. Instalação, limpeza e manutenção de splits.",
+  "tecnico-de-ar-condicionado": {
+    name: "Técnico de Ar Condicionado",
+    priceRange: "R$ 150 - R$ 450",
+    desc: "instalação de splits, higienização completa, recarga de gás e manutenção preventiva",
   },
-  "encanador-em-centro": {
-    service: "Encanador",
-    city: "Governador Valadares",
-    neighborhood: "Centro",
-    description: "Encanadores no Centro de Governador Valadares. Atendimento rápido e verificado.",
+  "montador-de-moveis": {
+    name: "Montador de Móveis",
+    priceRange: "R$ 80 - R$ 300",
+    desc: "montagem e desmontagem de móveis convencionais, modulados e corporativos",
   },
+}
+
+// Dicionário base de landing pages estáticas
+export const LANDING_PAGES: Record<string, LandingPageConfig> = {}
+
+// 1. Popula as páginas a nível de cidade (Governador Valadares)
+for (const [sKey, sData] of Object.entries(GV_SERVICES)) {
+  LANDING_PAGES[`${sKey}-em-governador-valadares`] = {
+    service: sData.name,
+    city: "Governador Valadares",
+    description: `Encontre os melhores ${sData.name.toLowerCase()}s verificados em Governador Valadares - MG. Serviços de ${sData.desc} com pagamento protegido por custódia (Escrow).`,
+    priceRange: sData.priceRange,
+  }
+}
+
+// 2. Popula as páginas a nível de bairro em Governador Valadares
+for (const [sKey, sData] of Object.entries(GV_SERVICES)) {
+  for (const [nKey, nName] of Object.entries(GV_NEIGHBORHOODS)) {
+    LANDING_PAGES[`${sKey}-em-${nKey}`] = {
+      service: sData.name,
+      city: "Governador Valadares",
+      neighborhood: nName,
+      description: `Contrate ${sData.name.toLowerCase()} verificado no bairro ${nName} em Governador Valadares. Chegada rápida, avaliação comprovada e pagamento seguro pelo Severinno.`,
+      priceRange: sData.priceRange,
+    }
+  }
+}
+
+/**
+ * Retorna todas as slugs de páginas landing para sitemap e geração estática.
+ */
+export function getAllLandingPageSlugs(): string[] {
+  return Object.keys(LANDING_PAGES)
+}
+
+/**
+ * Resolve os metadados de uma página a partir da slug (suporta estáticas e dinâmicas).
+ */
+export function resolveLandingPage(slug: string): LandingPageConfig | null {
+  if (LANDING_PAGES[slug]) {
+    return LANDING_PAGES[slug]
+  }
+
+  // Tenta resolver dinamicamente no padrão [servico]-em-[bairro]
+  const match = slug.match(/^([a-z0-9-]+)-em-([a-z0-9-]+)$/)
+  if (match) {
+    const [, sKey, nKey] = match
+    const serviceInfo = GV_SERVICES[sKey]
+    const neighborhoodName = GV_NEIGHBORHOODS[nKey]
+
+    if (serviceInfo && neighborhoodName) {
+      return {
+        service: serviceInfo.name,
+        city: "Governador Valadares",
+        neighborhood: neighborhoodName,
+        description: `Contrate ${serviceInfo.name.toLowerCase()} no bairro ${neighborhoodName} em Governador Valadares. Profissionais com checagem de antecedentes e pagamento seguro.`,
+        priceRange: serviceInfo.priceRange,
+      }
+    }
+  }
+
+  return null
+}
+
+export function generateStaticParams() {
+  return Object.keys(LANDING_PAGES).map((servico) => ({ servico }))
 }
 
 type Props = { params: Promise<{ servico: string }> }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { servico } = await params
-  const page = LANDING_PAGES[servico]
+  const page = resolveLandingPage(servico)
   if (!page) return {}
 
-  const title = `${page.service} em ${page.city}${page.neighborhood ? ` - ${page.neighborhood}` : ""} | Severinno`
+  const locLabel = page.neighborhood
+    ? `${page.neighborhood}, ${page.city} - MG`
+    : `${page.city} - MG`
+  const title = `${page.service} em ${locLabel} | Preço e Avaliações | Severinno`
   const description = page.description
 
   return {
@@ -98,31 +177,36 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description,
     keywords: [
       page.service.toLowerCase(),
-      `${page.service.toLowerCase()} ${page.city.toLowerCase()}`,
-      `contratar ${page.service.toLowerCase()}`,
-      `melhor ${page.service.toLowerCase()} ${page.city.toLowerCase()}`,
-      "severinno",
+      `${page.service.toLowerCase()} em ${page.city.toLowerCase()}`,
+      ...(page.neighborhood
+        ? [
+            `${page.service.toLowerCase()} ${page.neighborhood.toLowerCase()}`,
+            `${page.service.toLowerCase()} bairro ${page.neighborhood.toLowerCase()} gv`,
+          ]
+        : []),
+      "severinno governador valadares",
+      "contratar profissional confianca gv",
     ],
     openGraph: {
       title,
       description,
-      url: `https://severinno.com/servicos/${servico}`,
-      siteName: "Severinno",
+      url: `https://severinno.com.br/servicos/${servico}`,
+      siteName: "Severinno Marketplace",
       locale: "pt_BR",
       type: "website",
     },
     alternates: {
-      canonical: `https://severinno.com/servicos/${servico}`,
+      canonical: `https://severinno.com.br/servicos/${servico}`,
     },
   }
 }
 
 export default async function ServicoPage({ params }: Props) {
   const { servico } = await params
-  const page = LANDING_PAGES[servico]
+  const page = resolveLandingPage(servico)
   if (!page) notFound()
 
-  // Fetch providers for this service
+  // Busca prestadores verificados que atendem essa especialidade
   const providers = await db.user.findMany({
     where: {
       role: "PROVIDER",
@@ -154,82 +238,192 @@ export default async function ServicoPage({ params }: Props) {
     take: 20,
   })
 
-  // Structured data for Google
-  const jsonLd = {
+  const locText = page.neighborhood ? `${page.neighborhood}, ${page.city}` : page.city
+
+  // 1. JSON-LD: Service & LocalBusiness
+  const jsonLdService = {
     "@context": "https://schema.org",
     "@type": "Service",
-    name: `${page.service} em ${page.city}`,
+    name: `${page.service} em ${locText}`,
     description: page.description,
     provider: {
       "@type": "Organization",
-      name: "Severinno",
-      url: "https://severinno.com",
+      name: "Severinno Marketplace",
+      url: "https://severinno.com.br",
     },
     areaServed: {
       "@type": "City",
       name: page.city,
+      addressRegion: "MG",
+      addressCountry: "BR",
     },
     serviceType: page.service,
+    ...(page.priceRange ? { priceRange: page.priceRange } : {}),
+  }
+
+  // 2. JSON-LD: Breadcrumbs
+  const jsonLdBreadcrumbs = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Início",
+        item: "https://severinno.com.br",
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Serviços",
+        item: "https://severinno.com.br/busca",
+      },
+      {
+        "@type": "ListItem",
+        position: 3,
+        name: `${page.service} em ${locText}`,
+        item: `https://severinno.com.br/servicos/${servico}`,
+      },
+    ],
+  }
+
+  // 3. JSON-LD: FAQPage
+  const jsonLdFaq = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: [
+      {
+        "@type": "Question",
+        name: `Como contratar um ${page.service} em ${locText}?`,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: `Você pode solicitar orçamentos gratuitos diretamente pelo app do Severinno ou via WhatsApp. O pagamento fica retido com segurança em custódia até que você confirme que o serviço foi finalizado.`,
+        },
+      },
+      {
+        "@type": "Question",
+        name: `O pagamento é seguro? Como funciona a custódia (Escrow)?`,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: `Sim! O valor do serviço fica protegido pelo sistema de custódia do Severinno e só é liberado para o prestador após a conclusão do serviço e a sua aprovação por OTP ou confirmação no app.`,
+        },
+      },
+    ],
   }
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdService) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdBreadcrumbs) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdFaq) }}
       />
 
-      <h1 className="mb-2 text-3xl font-bold">
-        {page.service} em {page.city}
-        {page.neighborhood ? ` - ${page.neighborhood}` : ""}
-      </h1>
-      <p className="text-muted-foreground mb-8">{page.description}</p>
+      {/* Breadcrumb visual */}
+      <nav aria-label="Breadcrumb" className="text-muted-foreground mb-4 text-xs">
+        <ol className="flex items-center space-x-2">
+          <li>
+            <Link href="/" className="hover:underline">
+              Início
+            </Link>
+          </li>
+          <li>/</li>
+          <li>
+            <Link href="/busca" className="hover:underline">
+              Serviços
+            </Link>
+          </li>
+          <li>/</li>
+          <li className="text-foreground font-medium">{page.service}</li>
+        </ol>
+      </nav>
+
+      {/* Header com badges */}
+      <div className="mb-6">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <span className="bg-primary/10 text-primary rounded-full px-3 py-1 text-xs font-semibold">
+            📍 {locText} - MG
+          </span>
+          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+            🛡️ Garantia de Custódia Severinno
+          </span>
+          {page.priceRange && (
+            <span className="bg-muted text-muted-foreground rounded-full px-3 py-1 text-xs">
+              Média: {page.priceRange}
+            </span>
+          )}
+        </div>
+
+        <h1 className="mb-2 text-3xl font-extrabold tracking-tight">
+          {page.service} em {locText}
+        </h1>
+        <p className="text-muted-foreground text-base leading-relaxed">{page.description}</p>
+      </div>
 
       {providers.length === 0 ? (
-        <div className="py-12 text-center">
+        <div className="rounded-xl border border-dashed p-10 text-center">
           <p className="text-muted-foreground text-lg">
-            Nenhum {page.service.toLowerCase()} encontrado ainda em{" "}
-            {page.neighborhood ? `${page.neighborhood}, ` : ""}
-            {page.city}.
+            Nenhum {page.service.toLowerCase()} com perfil público disponível no momento para{" "}
+            {locText}.
+          </p>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Nossa equipe conecta você diretamente via WhatsApp com um profissional verificado.
           </p>
           <Link
-            href="/"
-            className="bg-primary text-primary-foreground mt-4 inline-block rounded-lg px-6 py-2"
+            href="/busca"
+            className="bg-primary text-primary-foreground mt-4 inline-block rounded-lg px-6 py-2.5 font-medium transition-colors hover:opacity-90"
           >
-            Buscar outros serviços
+            Buscar em bairros vizinhos
           </Link>
         </div>
       ) : (
         <>
-          <p className="text-muted-foreground mb-4 text-sm">
-            {providers.length} prestador{providers.length !== 1 ? "es" : ""} encontrado
-            {providers.length !== 1 ? "s" : ""}
+          <p className="text-muted-foreground mb-4 text-sm font-medium">
+            {providers.length} profissional{providers.length !== 1 ? "is" : ""} verificado
+            {providers.length !== 1 ? "s" : ""} disponível{providers.length !== 1 ? "is" : ""}
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
             {providers.map((p) => (
               <Link
                 key={p.id}
                 href={p.slug ? `/u/${p.slug}` : `/u/${p.id}`}
-                className="block rounded-xl border p-4 transition-shadow hover:shadow-md"
+                className="group hover:border-primary/50 block rounded-xl border p-4 transition-all hover:shadow-md"
               >
                 <div className="mb-2 flex items-center gap-3">
-                  <div className="bg-muted flex size-10 items-center justify-center rounded-full text-lg font-bold">
-                    {p.name?.charAt(0)}
+                  <div className="bg-primary/10 text-primary flex size-12 items-center justify-center rounded-full text-lg font-bold">
+                    {p.name?.charAt(0) || "P"}
                   </div>
                   <div>
-                    <h2 className="font-semibold">{p.name}</h2>
-                    <p className="text-muted-foreground text-xs">{p.city}</p>
+                    <h2 className="group-hover:text-primary font-semibold transition-colors">
+                      {p.name}
+                    </h2>
+                    <p className="text-muted-foreground text-xs">
+                      {p.city || "Governador Valadares"}
+                    </p>
                   </div>
                 </div>
                 {p.avgRating && p.avgRating > 0 && (
-                  <p className="text-sm text-amber-600">
-                    ★ {p.avgRating.toFixed(1)} ({p.reviewCount} avaliações)
+                  <p className="text-sm font-semibold text-amber-600">
+                    ★ {p.avgRating.toFixed(1)}{" "}
+                    <span className="text-muted-foreground font-normal">
+                      ({p.reviewCount} avaliações)
+                    </span>
                   </p>
                 )}
                 {p.services.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1">
+                  <div className="mt-3 flex flex-wrap gap-1.5">
                     {p.services.map((s) => (
-                      <span key={s.id} className="bg-muted rounded-full px-2 py-0.5 text-xs">
+                      <span
+                        key={s.id}
+                        className="bg-muted text-foreground/80 rounded-full px-2.5 py-0.5 text-xs font-medium"
+                      >
                         {s.title} — R$ {toMoneyNumber(s.basePrice).toFixed(2).replace(".", ",")}
                       </span>
                     ))}
@@ -241,15 +435,34 @@ export default async function ServicoPage({ params }: Props) {
         </>
       )}
 
-      <div className="text-muted-foreground mt-12 text-center text-sm">
-        <p>
-          Encontrou o profissional certo?{" "}
-          <Link href="/" className="text-primary underline">
-            Acesse o Severinno
-          </Link>{" "}
-          para agendar e pagar pelo app.
-        </p>
-      </div>
+      {/* Seção explicativa de confiança para SEO e conversão */}
+      <section className="bg-muted/40 mt-12 rounded-xl border p-6">
+        <h2 className="mb-3 text-lg font-bold">
+          Por que contratar {page.service.toLowerCase()} pelo Severinno?
+        </h2>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div>
+            <h3 className="text-sm font-semibold">🔒 Pagamento Seguro</h3>
+            <p className="text-muted-foreground mt-1 text-xs">
+              O dinheiro só é liberado para o prestador depois que você confirmar que o serviço foi
+              concluído com perfeição.
+            </p>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold">📍 Atendimento em GV</h3>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Profissionais locais avaliados pela comunidade de Governador Valadares com verificação
+              de documentos.
+            </p>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold">💬 Contato Direto</h3>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Combine detalhes e horários diretamente com o profissional pelo chat ou WhatsApp.
+            </p>
+          </div>
+        </div>
+      </section>
     </main>
   )
 }
