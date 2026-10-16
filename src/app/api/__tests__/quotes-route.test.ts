@@ -57,6 +57,11 @@ const mockDb = vi.hoisted(() => ({
   quoteItem: { findUnique: vi.fn(), update: vi.fn() },
   user: { findFirst: vi.fn() },
   service: { findMany: vi.fn() },
+  idempotencyRecord: {
+    findUnique: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  },
 }))
 
 vi.mock("@/lib/db", () => ({ default: mockDb, db: mockDb }))
@@ -163,6 +168,61 @@ describe("POST /api/quotes (create)", () => {
       params: Promise.resolve({}),
     })
     expect(response.status).toBe(400)
+  })
+
+  it("replays response when valid Idempotency-Key was already completed", async () => {
+    mockDb.idempotencyRecord.findUnique.mockResolvedValueOnce({
+      key: "key-quote-123456",
+      scope: "quote:create",
+      context: {
+        clientId: "client-1",
+        providerId: "prov-1",
+        itemsCount: 2,
+        address: undefined,
+      },
+      status: "completed",
+      response: { quote: { id: "quote-cached-1" } },
+      expiresAt: new Date(Date.now() + 100000),
+    })
+
+    const response = await POST(
+      createMockRequest({
+        method: "POST",
+        body: validQuoteInput,
+        headers: { "idempotency-key": "key-quote-123456" },
+      }),
+      { params: Promise.resolve({}) },
+    )
+    expect(response.status).toBe(201)
+    const data = await response.json()
+    expect(data.quote.id).toBe("quote-cached-1")
+    expect(mockDb.quoteRequest.create).not.toHaveBeenCalled()
+  })
+
+  it("returns 409 when request with same Idempotency-Key is currently in flight", async () => {
+    mockDb.idempotencyRecord.findUnique.mockResolvedValueOnce({
+      key: "key-quote-in-flight",
+      scope: "quote:create",
+      context: {
+        clientId: "client-1",
+        providerId: "prov-1",
+        itemsCount: 2,
+        address: undefined,
+      },
+      status: "processing",
+      response: null,
+      expiresAt: new Date(Date.now() + 100000),
+    })
+
+    const response = await POST(
+      createMockRequest({
+        method: "POST",
+        body: validQuoteInput,
+        headers: { "idempotency-key": "key-quote-in-flight" },
+      }),
+      { params: Promise.resolve({}) },
+    )
+    expect(response.status).toBe(409)
   })
 })
 

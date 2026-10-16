@@ -89,6 +89,23 @@ export type AcquireResult =
 export function isDeepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true
   if (a === null || typeof a !== "object" || b === null || typeof b !== "object") return false
+
+  if (a instanceof Date || b instanceof Date) {
+    const timeA =
+      a instanceof Date
+        ? a.getTime()
+        : typeof a === "string" || typeof a === "number"
+          ? new Date(a).getTime()
+          : NaN
+    const timeB =
+      b instanceof Date
+        ? b.getTime()
+        : typeof b === "string" || typeof b === "number"
+          ? new Date(b).getTime()
+          : NaN
+    return !isNaN(timeA) && !isNaN(timeB) && timeA === timeB
+  }
+
   if (Array.isArray(a) !== Array.isArray(b)) return false
 
   if (Array.isArray(a)) {
@@ -236,7 +253,10 @@ export async function pruneExpiredIdempotencyRecords(): Promise<number> {
  * Resposta HTTP padronizada para os estados que NÃO executam a criação.
  * A rota retorna isso direto quando acquire não devolve "fresh".
  */
-export function idempotencyErrorResponse(result: AcquireResult): {
+export function idempotencyErrorResponse(
+  result: AcquireResult,
+  actionName = "Pagamento",
+): {
   status: number
   body: Record<string, unknown>
 } | null {
@@ -247,7 +267,7 @@ export function idempotencyErrorResponse(result: AcquireResult): {
       return {
         status: 409,
         body: {
-          error: "Pagamento já em processamento para esta chave. Tente novamente em instantes.",
+          error: `${actionName} já em processamento para esta chave. Tente novamente em instantes.`,
           code: "IDEMPOTENCY_IN_FLIGHT",
         },
       }

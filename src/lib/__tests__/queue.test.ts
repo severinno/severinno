@@ -103,6 +103,23 @@ describe("publish", () => {
     })
     await expect(publish({ routingKey: "test", payload: { data: "x" } })).resolves.toBeUndefined()
   })
+
+  it("propagates message headers through AMQP properties", async () => {
+    const opts: PublishOptions = {
+      routingKey: "test.trace",
+      payload: { ok: true },
+      headers: { "x-custom-origin": "test-runner" },
+    }
+    await publish(opts)
+    expect(mockChannel.publish).toHaveBeenCalledWith(
+      EXCHANGE,
+      "test.trace",
+      expect.any(Buffer),
+      expect.objectContaining({
+        headers: expect.objectContaining({ "x-custom-origin": "test-runner" }),
+      }),
+    )
+  })
 })
 
 describe("reconexão", () => {

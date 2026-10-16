@@ -259,17 +259,22 @@ export async function handleEscrowApproval(
   explicitBookingId?: string,
 ): Promise<string> {
   try {
+    const numericChoice =
+      explicitBookingId && /^[1-9]\d*$/.test(explicitBookingId.trim())
+        ? parseInt(explicitBookingId.trim(), 10)
+        : null
+
     const eligibleBookings = await db.booking.findMany({
       where: {
         clientId: userId,
         status: "COMPLETED",
         paymentStatus: "HELD",
-        ...(explicitBookingId
+        ...(explicitBookingId && !numericChoice
           ? { OR: [{ id: explicitBookingId }, { id: { startsWith: explicitBookingId } }] }
           : {}),
       },
       orderBy: { updatedAt: "desc" },
-      take: 2,
+      take: 5,
       include: {
         provider: { select: { id: true, name: true, whatsapp: true } },
         service: { select: { title: true } },
@@ -283,20 +288,28 @@ export async function handleEscrowApproval(
       )
     }
 
-    if (eligibleBookings.length > 1 && !explicitBookingId) {
+    if (numericChoice !== null) {
+      if (numericChoice > eligibleBookings.length) {
+        return (
+          `⚠️ Opção inválida. Escolha um número entre 1 e ${eligibleBookings.length}.\n\n` +
+          `Envie *APROVAR 1* para a primeira opção ou acesse o app: https://severinno.com`
+        )
+      }
+    } else if (eligibleBookings.length > 1 && !explicitBookingId) {
       const list = eligibleBookings
         .map(
-          (b) =>
-            `• *#${b.id.slice(0, 8)}* — ${b.service?.title || "Serviço"} com ${b.provider.name}`,
+          (b, idx) =>
+            `${idx + 1}️⃣ *#${b.id.slice(0, 8)}* — ${b.service?.title || "Serviço"} com ${b.provider.name} (R$ ${Number(b.amount).toFixed(2)})`,
         )
         .join("\n")
       return (
         `⚠️ Você possui mais de um serviço concluído aguardando liberação:\n\n${list}\n\n` +
-        `Por favor, especifique qual deseja aprovar enviando: *APROVAR #CODIGO* (ex: *APROVAR #${eligibleBookings[0].id.slice(0, 8)}*).`
+        `Por favor, especifique qual deseja aprovar enviando: *APROVAR #CODIGO* ou o número da opção (ex: *APROVAR 1* ou *APROVAR #${eligibleBookings[0].id.slice(0, 8)}*).`
       )
     }
 
-    const booking = eligibleBookings[0]
+    const booking =
+      numericChoice !== null ? eligibleBookings[numericChoice - 1] : eligibleBookings[0]
     const now = new Date()
 
     // Atualização atômica condicional para prevenir race conditions e dupla liberação
@@ -365,17 +378,22 @@ export async function handleEscrowDispute(
   explicitBookingId?: string,
 ): Promise<string> {
   try {
+    const numericChoice =
+      explicitBookingId && /^[1-9]\d*$/.test(explicitBookingId.trim())
+        ? parseInt(explicitBookingId.trim(), 10)
+        : null
+
     const eligibleBookings = await db.booking.findMany({
       where: {
         clientId: userId,
         status: "COMPLETED",
         paymentStatus: "HELD",
-        ...(explicitBookingId
+        ...(explicitBookingId && !numericChoice
           ? { OR: [{ id: explicitBookingId }, { id: { startsWith: explicitBookingId } }] }
           : {}),
       },
       orderBy: { updatedAt: "desc" },
-      take: 2,
+      take: 5,
       include: {
         provider: { select: { id: true, name: true } },
         service: { select: { title: true } },
@@ -390,20 +408,28 @@ export async function handleEscrowDispute(
       )
     }
 
-    if (eligibleBookings.length > 1 && !explicitBookingId) {
+    if (numericChoice !== null) {
+      if (numericChoice > eligibleBookings.length) {
+        return (
+          `⚠️ Opção inválida. Escolha um número entre 1 e ${eligibleBookings.length}.\n\n` +
+          `Envie *CONTESTAR 1* para a primeira opção ou digite *SUPORTE*.`
+        )
+      }
+    } else if (eligibleBookings.length > 1 && !explicitBookingId) {
       const list = eligibleBookings
         .map(
-          (b) =>
-            `• *#${b.id.slice(0, 8)}* — ${b.service?.title || "Serviço"} com ${b.provider.name}`,
+          (b, idx) =>
+            `${idx + 1}️⃣ *#${b.id.slice(0, 8)}* — ${b.service?.title || "Serviço"} com ${b.provider.name} (R$ ${Number(b.amount).toFixed(2)})`,
         )
         .join("\n")
       return (
         `⚠️ Você possui mais de um serviço elegível para contestação:\n\n${list}\n\n` +
-        `Por favor, especifique qual deseja contestar enviando: *CONTESTAR #CODIGO* (ex: *CONTESTAR #${eligibleBookings[0].id.slice(0, 8)}*).`
+        `Por favor, especifique qual deseja contestar enviando: *CONTESTAR #CODIGO* ou o número da opção (ex: *CONTESTAR 1* ou *CONTESTAR #${eligibleBookings[0].id.slice(0, 8)}*).`
       )
     }
 
-    const booking = eligibleBookings[0]
+    const booking =
+      numericChoice !== null ? eligibleBookings[numericChoice - 1] : eligibleBookings[0]
 
     if (booking.disputes && booking.disputes.length > 0) {
       return `ℹ️ O agendamento *#${booking.id.slice(0, 8)}* já possui uma contestação aberta sob análise da nossa equipe.`
@@ -783,20 +809,28 @@ export async function processInteractiveCommand(
   }
 
   const normalized = normalizeCommand(ctx.text)
-  const refMatch = ctx.text.match(/#([a-zA-Z0-9]{6,12})/)
-  const explicitRef = refMatch?.[1]
+  const refMatch = ctx.text.match(/#([a-zA-Z0-9_-]{4,36})/)
+  const commandArgMatch = ctx.text
+    .trim()
+    .match(
+      /^(?:APROVAR|LIBERAR|CONFIRMAR PAGAMENTO|CONTESTAR|PROBLEMA|RECLAMAR)\s+(?:#)?([a-zA-Z0-9_-]{1,36})$/i,
+    )
+  const explicitRef = refMatch?.[1] || commandArgMatch?.[1]
 
   let replyText: string | null = null
 
-  // 1. Liberação de Escrow / Aprovação de Conclusão do Serviço (Exige intenção explícita — sem "SIM" genérico)
+  // 1. Liberação de Escrow / Aprovação de Conclusão do Serviço (Exige intenção explícita — sem "SIM" ou "PAGAR" genérico)
   if (
     normalized === "APROVAR" ||
     normalized === "LIBERAR" ||
     normalized === "CONFIRMAR PAGAMENTO" ||
-    normalized === "PAGAR" ||
+    normalized === "CONFIRMAR CONCLUSAO" ||
+    normalized === "LIBERAR CUSTODIA" ||
     normalized.startsWith("APROVAR ") ||
     normalized.startsWith("LIBERAR ") ||
-    normalized.startsWith("CONFIRMAR PAGAMENTO ")
+    normalized.startsWith("CONFIRMAR PAGAMENTO ") ||
+    normalized.startsWith("CONFIRMAR CONCLUSAO ") ||
+    normalized.startsWith("LIBERAR CUSTODIA ")
   ) {
     replyText = await handleEscrowApproval(ctx.user.id, explicitRef)
   }
@@ -851,6 +885,7 @@ export async function processInteractiveCommand(
   else if (
     normalized === "3" ||
     normalized === "PIX" ||
+    normalized === "PAGAR" ||
     normalized === "PAGAMENTO" ||
     normalized === "PAGAMENTOS" ||
     normalized === "COBRANCA"

@@ -13,6 +13,14 @@ import { checkAndNotifyBookingSlotFit } from "@/lib/slot-fit-notifications"
 import { withRoute } from "@/lib/api-route"
 import { toMoneyNumber } from "@/lib/money"
 
+import {
+  getIdempotencyKey,
+  acquireIdempotency,
+  completeIdempotency,
+  failIdempotency,
+  idempotencyErrorResponse,
+} from "@/lib/idempotency"
+
 // CLIENT: create a booking + a PENDING payment record
 export const POST = withRoute("api.bookings.POST", async (request, { span }) => {
   await assertRateLimit(request, RATE_LIMITS.bookings)
@@ -65,38 +73,81 @@ export const POST = withRoute("api.bookings.POST", async (request, { span }) => 
   span.setAttribute("booking.amount", amount.toString())
   span.setAttribute("booking.quantity", quantity)
 
-  const booking = await db.booking.create({
-    data: {
+  // Idempotência opcional/suportada via header Idempotency-Key
+  const idempotencyKey = getIdempotencyKey(request)
+  if (idempotencyKey) {
+    const idemContext = {
       clientId: session.userId,
       providerId: data.providerId,
       serviceId: data.serviceId,
-      scheduledAt: data.scheduledAt,
-      status: "PENDING",
-      address: data.address,
-      cep: data.cep,
-      lat: data.lat,
-      lng: data.lng,
+      scheduledAt:
+        data.scheduledAt instanceof Date
+          ? data.scheduledAt.toISOString()
+          : String(data.scheduledAt),
       amount,
       quantity,
-      unit: service.unit,
-      paymentMethod: data.paymentMethod,
-      paymentStatus: "PENDING",
-      notes: data.notes || null,
-      payment: {
-        create: {
-          amount,
-          method: data.paymentMethod,
-          status: "PENDING",
+    }
+    const acquired = await acquireIdempotency(idempotencyKey, idemContext, "booking:create")
+    if (acquired.kind === "replay") {
+      logger.info(
+        {
+          bookingId: (acquired.response as { booking?: { id?: string } })?.booking?.id,
+          idempotencyKey,
+        },
+        "Bookings: replay de resposta idempotente",
+      )
+      return NextResponse.json(acquired.response as Record<string, unknown>, { status: 201 })
+    }
+    const idemError = idempotencyErrorResponse(acquired, "Agendamento")
+    if (idemError) {
+      return NextResponse.json(idemError.body, { status: idemError.status })
+    }
+  }
+
+  let booking
+  try {
+    booking = await db.booking.create({
+      data: {
+        clientId: session.userId,
+        providerId: data.providerId,
+        serviceId: data.serviceId,
+        scheduledAt: data.scheduledAt,
+        status: "PENDING",
+        address: data.address,
+        cep: data.cep,
+        lat: data.lat,
+        lng: data.lng,
+        amount,
+        quantity,
+        unit: service.unit,
+        paymentMethod: data.paymentMethod,
+        paymentStatus: "PENDING",
+        notes: data.notes || null,
+        payment: {
+          create: {
+            amount,
+            method: data.paymentMethod,
+            status: "PENDING",
+          },
         },
       },
-    },
-    include: {
-      service: true,
-      provider: { select: { id: true, name: true, avatarUrl: true } },
-      client: { select: { id: true, name: true, avatarUrl: true } },
-      payment: true,
-    },
-  })
+      include: {
+        service: true,
+        provider: { select: { id: true, name: true, avatarUrl: true } },
+        client: { select: { id: true, name: true, avatarUrl: true } },
+        payment: true,
+      },
+    })
+
+    if (idempotencyKey) {
+      await completeIdempotency(idempotencyKey, { booking })
+    }
+  } catch (err) {
+    if (idempotencyKey) {
+      await failIdempotency(idempotencyKey, (err as Error).message)
+    }
+    throw err
+  }
 
   span.setAttribute("booking.id", booking.id)
   logger.info({ bookingId: booking.id, providerId: data.providerId, amount }, "booking created")

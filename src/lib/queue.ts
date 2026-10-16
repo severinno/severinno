@@ -28,6 +28,7 @@
 
 import "server-only"
 import amqp from "amqplib"
+import { propagation, context, trace, SpanKind, SpanStatusCode } from "@opentelemetry/api"
 import logger from "./logger"
 
 // ── Configuration ──────────────────────────────────────────────────────────
@@ -287,14 +288,25 @@ export type PublishOptions = {
   routingKey: string
   payload: Record<string, unknown>
   persistent?: boolean
+  headers?: Record<string, unknown>
 }
 
 export async function publish(opts: PublishOptions): Promise<void> {
   try {
     const ch = await ensureChannel()
+    const headers: Record<string, unknown> = { ...(opts.headers ?? {}) }
+
+    // Injetar contexto W3C Trace Context (traceparent / tracestate) nos cabeçalhos da mensagem AMQP
+    try {
+      propagation.inject(context.active(), headers)
+    } catch {
+      // Falhas no tracer OTel nunca devem quebrar a publicação
+    }
+
     ch.publish(EXCHANGE, opts.routingKey, Buffer.from(JSON.stringify(opts.payload)), {
       persistent: opts.persistent ?? true,
       contentType: "application/json",
+      headers,
     })
   } catch (err) {
     logger.error(
@@ -308,7 +320,7 @@ export async function publish(opts: PublishOptions): Promise<void> {
 // ── Consumer helpers ───────────────────────────────────────────────────────
 
 function getDeathCount(msg: ConsumeMessage): number {
-  const deaths = msg.properties.headers?.["x-death"] as Array<{ count: number }> | undefined
+  const deaths = msg.properties?.headers?.["x-death"] as Array<{ count: number }> | undefined
   if (!deaths?.length) return 0
   return deaths.reduce((sum, d) => sum + (d.count ?? 0), 0)
 }
@@ -348,7 +360,42 @@ export async function consume(opts: ConsumeOptions): Promise<void> {
     if (!raw) return
     try {
       const msg = JSON.parse(raw.content.toString()) as Record<string, unknown>
-      await opts.handler(msg)
+      const headers = (raw.properties?.headers ?? {}) as Record<string, string>
+
+      // Extrair contexto W3C traceparent propagado pelo produtor
+      let parentContext = context.active()
+      try {
+        parentContext = propagation.extract(context.active(), headers)
+      } catch {
+        // Fallback seguro se cabeçalhos forem inválidos
+      }
+
+      const tracer = trace.getTracer("rabbitmq-queue")
+      await context.with(parentContext, async () => {
+        const span = tracer.startSpan(`amqp.consume ${opts.queue}`, {
+          kind: SpanKind.CONSUMER,
+          attributes: {
+            "messaging.system": "rabbitmq",
+            "messaging.destination": opts.queue,
+            "messaging.routing_key": opts.routingKey,
+            "messaging.operation": "process",
+          },
+        })
+        try {
+          await opts.handler(msg)
+          span.setStatus({ code: SpanStatusCode.OK })
+        } catch (err) {
+          span.recordException(err as Error)
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: err instanceof Error ? err.message : String(err),
+          })
+          throw err
+        } finally {
+          span.end()
+        }
+      })
+
       ch.ack(raw)
     } catch (err) {
       const retries = getDeathCount(raw)

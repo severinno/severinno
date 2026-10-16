@@ -276,6 +276,66 @@ describe("POST /api/bookings", () => {
       expect(res.status).toBe(400)
     }
   })
+
+  it("replays response when valid Idempotency-Key was already completed", async () => {
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    ;(vi.mocked(db.service.findUnique) as any).mockResolvedValue(mockService)
+    ;(vi.mocked(db.idempotencyRecord.findUnique) as any).mockResolvedValueOnce({
+      key: "key-book-123456",
+      scope: "booking:create",
+      context: {
+        clientId: "client-1",
+        providerId: "prov-1",
+        serviceId: "svc-1",
+        scheduledAt: validBody.scheduledAt,
+        amount: 150,
+        quantity: 1,
+      },
+      status: "completed",
+      response: { booking: { id: "book-cached-1", amount: 150 } },
+      expiresAt: new Date(Date.now() + 100000),
+    })
+
+    const req = createMockRequest({
+      method: "POST",
+      body: validBody,
+      headers: { "idempotency-key": "key-book-123456" },
+    })
+    const res = await createBooking(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(201)
+    expect((parsed.body as any).booking.id).toBe("book-cached-1")
+    expect(db.booking.create).not.toHaveBeenCalled()
+  })
+
+  it("returns 409 when request with same Idempotency-Key is currently in flight", async () => {
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    ;(vi.mocked(db.service.findUnique) as any).mockResolvedValue(mockService)
+    ;(vi.mocked(db.idempotencyRecord.findUnique) as any).mockResolvedValueOnce({
+      key: "key-book-in-flight",
+      scope: "booking:create",
+      context: {
+        clientId: "client-1",
+        providerId: "prov-1",
+        serviceId: "svc-1",
+        scheduledAt: validBody.scheduledAt,
+        amount: 150,
+        quantity: 1,
+      },
+      status: "processing",
+      response: null,
+      expiresAt: new Date(Date.now() + 100000),
+    })
+
+    const req = createMockRequest({
+      method: "POST",
+      body: validBody,
+      headers: { "idempotency-key": "key-book-in-flight" },
+    })
+    const res = await createBooking(req)
+    expect(res.status).toBe(409)
+  })
 })
 
 describe("GET /api/bookings", () => {

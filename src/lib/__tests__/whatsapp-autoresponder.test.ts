@@ -311,6 +311,48 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
       expect(db.$transaction).not.toHaveBeenCalled()
     })
 
+    it("permite aprovar usando o número da opção (APROVAR 1) quando há múltiplos agendamentos", async () => {
+      ;(db.booking.findMany as any).mockResolvedValue([
+        {
+          id: "book-1",
+          amount: 100,
+          provider: { id: "p1", name: "P1", whatsapp: "111" },
+          service: { title: "Serviço 1" },
+        },
+        {
+          id: "book-2",
+          amount: 200,
+          provider: { id: "p2", name: "P2", whatsapp: "222" },
+          service: { title: "Serviço 2" },
+        },
+      ])
+
+      const res = await processInteractiveCommand({
+        phone: "5533999999999",
+        text: "APROVAR 1",
+        user: { id: "user-1", name: "Carlos" },
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Pagamento Liberado com Sucesso")
+      expect(res.replyText).toContain("#book-1")
+      expect(db.$transaction).toHaveBeenCalled()
+    })
+
+    it("direciona comando PAGAR para instruções de pagamento e PIX sem liberar custódia indevida", async () => {
+      ;(db.booking.findMany as any).mockResolvedValue([])
+
+      const res = await processInteractiveCommand({
+        phone: "5533999999999",
+        text: "PAGAR",
+        user: { id: "user-1", name: "Carlos" },
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Pagamentos e PIX")
+      expect(db.$transaction).not.toHaveBeenCalled()
+    })
+
     it("previne dupla liberação sob concorrência se count == 0", async () => {
       ;(db.booking.findMany as any).mockResolvedValue([
         {

@@ -13,6 +13,13 @@ import { notifyNewQuote } from "@/lib/notifications"
 import { sanitizeText } from "@/lib/sanitize"
 
 import { withRoute } from "@/lib/api-route"
+import {
+  getIdempotencyKey,
+  acquireIdempotency,
+  completeIdempotency,
+  failIdempotency,
+  idempotencyErrorResponse,
+} from "@/lib/idempotency"
 
 // CLIENT: create a quote request with N items
 export const POST = withRoute("api.quotes.POST", async (request) => {
@@ -48,39 +55,77 @@ export const POST = withRoute("api.quotes.POST", async (request) => {
 
   const expiresAt = data.expiresAt ?? new Date(Date.now() + 7 * 24 * 3600 * 1000)
 
-  const quote = await db.quoteRequest.create({
-    data: {
+  // Idempotência opcional/suportada via header Idempotency-Key
+  const idempotencyKey = getIdempotencyKey(request)
+  if (idempotencyKey) {
+    const idemContext = {
       clientId: session.userId,
       providerId: data.providerId,
+      itemsCount: data.items.length,
       address: data.address,
-      cep: data.cep,
-      lat: data.lat,
-      lng: data.lng,
-      expiresAt,
-      status: "PENDING",
-      items: {
-        create: data.items.map((item) => ({
-          providerId: data.providerId,
-          serviceId: item.serviceId,
-          description: item.description ? sanitizeText(item.description) : item.description,
-          quantity: item.quantity,
-          unit: item.unit,
-          photos: item.photos,
-          status: "PENDING",
-        })),
-      },
-    },
-    include: {
-      items: {
-        include: {
-          service: true,
-          provider: { select: { id: true, name: true, avatarUrl: true } },
+    }
+    const acquired = await acquireIdempotency(idempotencyKey, idemContext, "quote:create")
+    if (acquired.kind === "replay") {
+      logger.info(
+        {
+          quoteId: (acquired.response as { quote?: { id?: string } })?.quote?.id,
+          idempotencyKey,
+        },
+        "Quotes: replay de resposta idempotente",
+      )
+      return NextResponse.json(acquired.response as Record<string, unknown>, { status: 201 })
+    }
+    const idemError = idempotencyErrorResponse(acquired, "Orçamento")
+    if (idemError) {
+      return NextResponse.json(idemError.body, { status: idemError.status })
+    }
+  }
+
+  let quote
+  try {
+    quote = await db.quoteRequest.create({
+      data: {
+        clientId: session.userId,
+        providerId: data.providerId,
+        address: data.address,
+        cep: data.cep,
+        lat: data.lat,
+        lng: data.lng,
+        expiresAt,
+        status: "PENDING",
+        items: {
+          create: data.items.map((item) => ({
+            providerId: data.providerId,
+            serviceId: item.serviceId,
+            description: item.description ? sanitizeText(item.description) : item.description,
+            quantity: item.quantity,
+            unit: item.unit,
+            photos: item.photos,
+            status: "PENDING",
+          })),
         },
       },
-      provider: { select: { id: true, name: true, avatarUrl: true } },
-      client: { select: { id: true, name: true, avatarUrl: true } },
-    },
-  })
+      include: {
+        items: {
+          include: {
+            service: true,
+            provider: { select: { id: true, name: true, avatarUrl: true } },
+          },
+        },
+        provider: { select: { id: true, name: true, avatarUrl: true } },
+        client: { select: { id: true, name: true, avatarUrl: true } },
+      },
+    })
+
+    if (idempotencyKey) {
+      await completeIdempotency(idempotencyKey, { quote })
+    }
+  } catch (err) {
+    if (idempotencyKey) {
+      await failIdempotency(idempotencyKey, (err as Error).message)
+    }
+    throw err
+  }
 
   // Notificar provider sobre novo orçamento (best-effort)
   notifyNewQuote(
