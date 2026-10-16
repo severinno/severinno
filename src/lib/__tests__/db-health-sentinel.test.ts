@@ -31,6 +31,17 @@ describe("db-health-sentinel", () => {
       .mockResolvedValueOnce([{ cacheHitRatioPct: 99.8 }])
       .mockResolvedValueOnce([{ activeCount: 12 }])
       .mockResolvedValueOnce([{ maxConn: 150 }])
+      .mockResolvedValueOnce([
+        { indexname: "idx_booking_pending_partial" },
+        { indexname: "idx_booking_in_progress_partial" },
+        { indexname: "idx_booking_active_partial" },
+        { indexname: "idx_notification_unread_partial" },
+        { indexname: "idx_payment_held_escrow_partial" },
+        { indexname: "idx_payment_pending_partial" },
+        { indexname: "idx_quoterequest_pending_partial" },
+        { indexname: "idx_dispute_open_partial" },
+        { indexname: "idx_user_active_provider_partial" },
+      ])
 
     const report = await getDatabaseHealthReport()
 
@@ -40,6 +51,8 @@ describe("db-health-sentinel", () => {
     expect(report.maxConnections).toBe(150)
     expect(report.tables).toHaveLength(1)
     expect(report.tables[0].bloatRisk).toBe("LOW")
+    expect(report.partialIndexes).toHaveLength(9)
+    expect(report.partialIndexes.every((p) => p.active)).toBe(true)
     expect(report.warnings).toHaveLength(0)
   })
 
@@ -90,6 +103,31 @@ describe("db-health-sentinel", () => {
     )
   })
 
+  it("retorna status correto para índices parciais ativos e inativos", async () => {
+    vi.mocked(db.$queryRaw)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ cacheHitRatioPct: 99.0 }])
+      .mockResolvedValueOnce([{ activeCount: 5 }])
+      .mockResolvedValueOnce([{ maxConn: 100 }])
+      .mockResolvedValueOnce([
+        { indexname: "idx_booking_pending_partial" },
+        // outros 8 ausentes
+      ])
+
+    const report = await getDatabaseHealthReport()
+
+    expect(report.partialIndexes).toHaveLength(9)
+    const bookingPending = report.partialIndexes.find(
+      (idx) => idx.name === "idx_booking_pending_partial",
+    )
+    expect(bookingPending?.active).toBe(true)
+
+    const paymentHeld = report.partialIndexes.find(
+      (idx) => idx.name === "idx_payment_held_escrow_partial",
+    )
+    expect(paymentHeld?.active).toBe(false)
+  })
+
   it("retorna fallback gracioso quando o banco de dados falha", async () => {
     vi.mocked(db.$queryRaw).mockRejectedValueOnce(new Error("Connection timeout"))
 
@@ -98,5 +136,6 @@ describe("db-health-sentinel", () => {
     expect(report).toBeDefined()
     expect(report.timestamp).toBeDefined()
     expect(Array.isArray(report.tables)).toBe(true)
+    expect(report.partialIndexes).toHaveLength(9)
   })
 })

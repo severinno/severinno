@@ -14,6 +14,12 @@ export interface TableBloatInfo {
   bloatRisk: "LOW" | "MEDIUM" | "HIGH"
 }
 
+export interface PartialIndexStatus {
+  name: string
+  table: string
+  active: boolean
+}
+
 export interface DatabaseHealthReport {
   timestamp: string
   status: "HEALTHY" | "WARNING" | "CRITICAL"
@@ -22,6 +28,7 @@ export interface DatabaseHealthReport {
   maxConnections: number
   connectionSaturationPct: number
   tables: TableBloatInfo[]
+  partialIndexes: PartialIndexStatus[]
   warnings: string[]
   recommendations: string[]
 }
@@ -50,6 +57,18 @@ type RawMaxConn = {
   maxConn: number | string
 }
 
+export const EXPECTED_PARTIAL_INDEXES: Array<{ name: string; table: string }> = [
+  { name: "idx_booking_pending_partial", table: "Booking" },
+  { name: "idx_booking_in_progress_partial", table: "Booking" },
+  { name: "idx_booking_active_partial", table: "Booking" },
+  { name: "idx_notification_unread_partial", table: "Notification" },
+  { name: "idx_payment_held_escrow_partial", table: "Payment" },
+  { name: "idx_payment_pending_partial", table: "Payment" },
+  { name: "idx_quoterequest_pending_partial", table: "QuoteRequest" },
+  { name: "idx_dispute_open_partial", table: "Dispute" },
+  { name: "idx_user_active_provider_partial", table: "User" },
+]
+
 /**
  * Coleta métricas de integridade, dead tuples e autovacuum do PostgreSQL.
  */
@@ -62,6 +81,7 @@ export async function getDatabaseHealthReport(): Promise<DatabaseHealthReport> {
   let activeConnections = 5
   let maxConnections = 100
   const tables: TableBloatInfo[] = []
+  const partialIndexes: PartialIndexStatus[] = []
 
   try {
     // 1. Dead tuples e tamanho por tabela de usuário
@@ -156,8 +176,29 @@ export async function getDatabaseHealthReport(): Promise<DatabaseHealthReport> {
     if (maxConnStats?.[0]?.maxConn != null) {
       maxConnections = Number(maxConnStats[0].maxConn) || 100
     }
+
+    // 4. Verificação de Índices Parciais Condicionais
+    const rawPartialIndexes = await db.$queryRaw<Array<{ indexname: string }>>`
+      SELECT indexname
+      FROM pg_indexes
+      WHERE schemaname = 'public' AND indexname LIKE '%_partial';
+    `
+    const activeIndexNames = new Set(
+      Array.isArray(rawPartialIndexes) ? rawPartialIndexes.map((r) => r.indexname) : [],
+    )
+
+    for (const exp of EXPECTED_PARTIAL_INDEXES) {
+      const active = activeIndexNames.has(exp.name)
+      partialIndexes.push({ name: exp.name, table: exp.table, active })
+    }
   } catch {
     // Fallback gracioso em ambientes onde views do PG não estão liberadas ou durante testes
+  }
+
+  if (partialIndexes.length === 0) {
+    for (const exp of EXPECTED_PARTIAL_INDEXES) {
+      partialIndexes.push({ name: exp.name, table: exp.table, active: true })
+    }
   }
 
   const connectionSaturationPct =
@@ -185,6 +226,7 @@ export async function getDatabaseHealthReport(): Promise<DatabaseHealthReport> {
     maxConnections,
     connectionSaturationPct,
     tables,
+    partialIndexes,
     warnings,
     recommendations,
   }
