@@ -48,6 +48,8 @@ import {
   Sparkles,
   ShieldCheck,
   History,
+  Briefcase,
+  MapPin,
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 
@@ -453,8 +455,8 @@ export default function Topbar({
         className={cn(
           "sticky top-0 z-40 w-full transition-all duration-300 ease-out",
           scrolled
-            ? "bg-background/95 supports-[backdrop-filter]:bg-background/90 border-b shadow-sm backdrop-blur-xl"
-            : "bg-background/70 supports-[backdrop-filter]:bg-background/55 border-b border-transparent backdrop-blur-md",
+            ? "bg-background/95 supports-[backdrop-filter]:bg-background/85 border-border/60 border-b shadow-xs backdrop-blur-xl"
+            : "bg-background/75 supports-[backdrop-filter]:bg-background/60 border-border/20 border-b backdrop-blur-md",
         )}
       >
         {/* ── Main bar ─────────────────────────────────────────────────────── */}
@@ -464,30 +466,36 @@ export default function Topbar({
             scrolled ? "h-14" : "h-16",
           )}
         >
-          {/* ── Logo ──── */}
-          <button
-            type="button"
-            onClick={() => onSelectCategory(null)}
-            className="focus-visible:ring-ring flex shrink-0 items-center rounded-lg px-1.5 py-1.5 transition-opacity outline-none hover:opacity-85 focus-visible:ring-2 focus-visible:ring-offset-2"
-            aria-label="Severinno — página inicial"
-          >
-            <Image
-              src="/logo-severinno-black.png"
-              alt="Severinno"
-              width={1150}
-              height={204}
-              className="h-7 w-auto object-contain dark:hidden"
-              priority
-            />
-            <Image
-              src="/logo-severinno-white.png"
-              alt="Severinno"
-              width={1150}
-              height={204}
-              className="hidden h-7 w-auto object-contain dark:block"
-              priority
-            />
-          </button>
+          {/* ── Logo + Trust Pill ──── */}
+          <div className="flex shrink-0 items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => onSelectCategory(null)}
+              className="focus-visible:ring-ring flex shrink-0 items-center rounded-xl p-1 transition-transform outline-none hover:scale-[1.02] focus-visible:ring-2 focus-visible:ring-offset-2 active:scale-[0.98]"
+              aria-label="Severinno — página inicial"
+            >
+              <Image
+                src="/logo-severinno-black.png"
+                alt="Severinno"
+                width={1150}
+                height={204}
+                className="h-7 w-auto object-contain dark:hidden"
+                priority
+              />
+              <Image
+                src="/logo-severinno-white.png"
+                alt="Severinno"
+                width={1150}
+                height={204}
+                className="hidden h-7 w-auto object-contain dark:block"
+                priority
+              />
+            </button>
+            <div className="hidden items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 shadow-2xs xl:flex dark:border-emerald-600/30 dark:bg-emerald-950/40 dark:text-emerald-300">
+              <MapPin className="size-3 text-emerald-600 dark:text-emerald-400" />
+              <span>Valadares & Região</span>
+            </div>
+          </div>
 
           {/* ── Desktop search — full bar or mini bar (H7: efficiency) ──── */}
           <div className="hidden flex-1 items-center justify-center md:flex">
@@ -505,7 +513,7 @@ export default function Topbar({
                   <Popover open={searchOpen} onOpenChange={setSearchOpen}>
                     <PopoverAnchor asChild>
                       <div className="relative mx-auto w-full max-w-xl xl:max-w-2xl">
-                        <Search className="text-muted-foreground group-focus-within:text-primary pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 transition-colors duration-200" />
+                        <Search className="text-muted-foreground/70 group-focus-within:text-primary pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 transition-colors duration-200" />
                         <Input
                           ref={searchInputRef}
                           value={query}
@@ -522,42 +530,44 @@ export default function Topbar({
                               triggerSearch()
                             }
                           }}
-                          placeholder="Buscar serviço ou prestador…"
+                          placeholder="Buscar serviço ou prestador em GV…"
                           className={cn(
-                            "bg-muted/50 h-11 w-full rounded-2xl border-0 pr-10 pl-11 text-sm shadow-none transition-all duration-300",
+                            "bg-muted/40 hover:bg-muted/60 focus-visible:bg-background border-border/70 hover:border-primary/40 focus-visible:border-primary/60 h-10 w-full rounded-full border pr-24 pl-10 text-sm shadow-2xs transition-all duration-200",
                             "placeholder:text-muted-foreground/60",
-                            "hover:bg-muted/70 hover:shadow-sm",
-                            "focus-visible:bg-background focus-visible:ring-primary/30 focus-visible:shadow-md focus-visible:ring-2",
-                            searchOpen && "bg-background ring-primary/20 shadow-md ring-2",
-                            searchFocused && "max-w-xl scale-[1.02] xl:max-w-2xl",
+                            "focus-visible:ring-primary/20 focus-visible:shadow-xs focus-visible:ring-2",
+                            searchOpen &&
+                              "bg-background ring-primary/20 border-primary/40 shadow-xs ring-2",
+                            searchFocused && "scale-[1.01]",
                           )}
                           aria-label="Buscar prestadores"
                         />
-                        <AnimatePresence>
-                          {query ? (
-                            <motion.button
-                              type="button"
-                              aria-label="Limpar busca"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                onQueryChange("")
-                              }}
-                              initial={{ scale: 0, opacity: 0 }}
-                              animate={{ scale: 1, opacity: 1 }}
-                              exit={{ scale: 0, opacity: 0 }}
-                              transition={{ duration: 0.15 }}
-                              className="bg-muted text-muted-foreground hover:bg-destructive/10 hover:text-destructive absolute top-1/2 right-3 flex size-6 -translate-y-1/2 items-center justify-center rounded-full transition-colors"
-                            >
-                              <X className="size-3.5" />
-                            </motion.button>
-                          ) : null}
-                        </AnimatePresence>
-                        {/* Search shortcut hint */}
-                        {!query && !searchOpen && (
-                          <kbd className="bg-muted text-muted-foreground pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 rounded-md border px-1.5 py-0.5 text-[10px] font-medium lg:inline-block">
-                            ⌘K / Ctrl+K
-                          </kbd>
-                        )}
+                        <div className="absolute top-1/2 right-2.5 flex -translate-y-1/2 items-center gap-1">
+                          <AnimatePresence>
+                            {query ? (
+                              <motion.button
+                                type="button"
+                                aria-label="Limpar busca"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  onQueryChange("")
+                                  searchInputRef.current?.focus()
+                                }}
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0, opacity: 0 }}
+                                transition={{ duration: 0.15 }}
+                                className="bg-muted text-muted-foreground hover:bg-destructive/10 hover:text-destructive flex size-6 items-center justify-center rounded-full transition-colors"
+                              >
+                                <X className="size-3.5" />
+                              </motion.button>
+                            ) : null}
+                          </AnimatePresence>
+                          {!query && !searchOpen && (
+                            <kbd className="bg-background text-muted-foreground border-border/80 pointer-events-none hidden rounded-md border px-1.5 py-0.5 text-[10px] font-semibold shadow-2xs lg:inline-block">
+                              ⌘K / Ctrl+K
+                            </kbd>
+                          )}
+                        </div>
                       </div>
                     </PopoverAnchor>
                     <PopoverContent
@@ -659,20 +669,20 @@ export default function Topbar({
               ) : (
                 <motion.div
                   key="mini-search"
-                  initial={{ opacity: 0, scale: 0.9 }}
+                  initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ duration: 0.2 }}
                   className="w-full max-w-sm"
                 >
                   <div className="relative">
-                    <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2" />
+                    <Search className="text-muted-foreground/70 pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2" />
                     <Input
                       value={query}
                       onChange={(e) => onQueryChange(e.target.value)}
                       onFocus={() => {
-                        // Scroll back to top to reveal full search if needed
                         setSearchFocused(true)
+                        if (categories.length > 0 || recentSearches.length > 0) setSearchOpen(true)
                       }}
                       onBlur={() => setSearchFocused(false)}
                       onKeyDown={(e) => {
@@ -681,13 +691,12 @@ export default function Topbar({
                           triggerSearch()
                         }
                       }}
-                      placeholder="Buscar…"
+                      placeholder="Buscar serviço ou prestador…"
                       className={cn(
-                        "bg-muted/50 h-9 w-full rounded-xl border-0 pr-3 pl-9 text-xs shadow-none transition-all duration-300",
+                        "bg-muted/40 hover:bg-muted/60 focus-visible:bg-background border-border/70 h-9 w-full rounded-full border pr-3 pl-8 text-xs shadow-2xs transition-all duration-200",
                         "placeholder:text-muted-foreground/60",
-                        "hover:bg-muted/70",
-                        "focus-visible:bg-background focus-visible:ring-primary/30 focus-visible:shadow-sm focus-visible:ring-2",
-                        searchFocused && "scale-[1.03]",
+                        "focus-visible:border-primary/50 focus-visible:ring-primary/20 focus-visible:ring-2",
+                        searchFocused && "scale-[1.02]",
                       )}
                       aria-label="Buscar prestadores (compacto)"
                     />
@@ -698,13 +707,25 @@ export default function Topbar({
           </div>
 
           {/* ── Location / AddressAutocomplete (desktop) ────────────────────── */}
-          <div className="hidden md:flex">
-            <div className="relative w-52">
+          <div className="hidden items-center gap-2 md:flex">
+            <div className="relative w-56 lg:w-64">
               <AddressAutocomplete
-                placeholder={city || "CEP, cidade ou endereço…"}
+                placeholder={city || "CEP, bairro ou cidade…"}
                 onSelect={() => onSearchSubmit?.()}
               />
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                const el =
+                  document.getElementById("como-funciona") ||
+                  document.getElementById("how-it-works")
+                if (el) el.scrollIntoView({ behavior: "smooth" })
+              }}
+              className="text-muted-foreground hover:text-foreground hover:bg-muted/50 hidden cursor-pointer items-center rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors 2xl:inline-flex"
+            >
+              Como funciona
+            </button>
           </div>
 
           {/* ── Sort indicator (desktop) — mostra quando ordenação por distância está ativa ── */}
@@ -931,7 +952,7 @@ export default function Topbar({
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className="group bg-background/80 hover:border-primary/30 hover:bg-accent/50 focus-visible:ring-ring flex items-center gap-2 rounded-xl border py-1.5 pr-3 pl-1.5 text-sm transition-all duration-200 outline-none hover:shadow-sm focus-visible:ring-2 focus-visible:ring-offset-2"
+                      className="group bg-background/80 hover:border-primary/40 hover:bg-accent/40 focus-visible:ring-ring border-border/70 flex items-center gap-2 rounded-full border py-1 pr-3 pl-1.5 text-sm transition-all duration-200 outline-none hover:shadow-xs focus-visible:ring-2 focus-visible:ring-offset-2"
                       aria-label="Menu da conta"
                     >
                       <div className="relative">
@@ -1006,15 +1027,25 @@ export default function Topbar({
                 <Button
                   variant="ghost"
                   size="sm"
+                  onClick={() => openAuth("register", "PROVIDER")}
+                  className="hidden h-9 gap-1.5 rounded-xl px-3 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50/80 hover:text-emerald-800 lg:inline-flex dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                  title="Cadastre-se como prestador de serviços"
+                >
+                  <Briefcase className="size-3.5" />
+                  <span>Seja um Prestador</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => openAuth("login")}
-                  className="hover:bg-primary/5 hover:text-primary h-9 rounded-xl px-4 font-medium transition-all duration-200"
+                  className="hover:bg-accent hover:text-foreground h-9 rounded-xl px-4 text-xs font-semibold transition-all duration-200"
                 >
                   Entrar
                 </Button>
                 <Button
                   size="sm"
                   onClick={() => openAuth("register", "CLIENT")}
-                  className="from-primary shadow-primary/20 hover:shadow-primary/30 h-9 rounded-xl bg-gradient-to-r to-emerald-600 px-5 font-medium shadow-md transition-all duration-200 hover:shadow-lg hover:brightness-110"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 h-9 rounded-xl px-4 text-xs font-semibold shadow-xs transition-all duration-200 hover:shadow-md hover:brightness-105"
                 >
                   Cadastrar
                 </Button>
