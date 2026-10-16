@@ -125,7 +125,7 @@ export default function VitrineResults({
     return selectedId
   }, [selectedId, providers])
 
-  const activeChips = buildChips(filters, categories)
+  const activeChips = buildChips(filters)
 
   const handleChipRemove = (key: keyof FiltersState) => {
     const next = { ...filters }
@@ -221,28 +221,30 @@ export default function VitrineResults({
       {/* Main content */}
       <div className="min-w-0">
         {/* Header: count + chips + mobile filter button */}
-        <div className="flex flex-col gap-3">
+        <div className="mb-4 flex flex-col gap-2.5">
           <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
+            <div className="flex min-w-0 items-baseline gap-2">
               <h2
                 ref={headingResultadosRef}
                 tabIndex={-1}
-                className="text-lg font-semibold tracking-tight outline-none"
+                className="text-base font-bold tracking-tight text-slate-900 outline-none sm:text-lg dark:text-slate-100"
               >
                 {isLoading ? (
-                  <Skeleton className="h-6 w-40" />
+                  <Skeleton className="h-6 w-36" />
                 ) : (
                   <>
                     {total}{" "}
-                    <span className="text-muted-foreground">
+                    <span className="text-muted-foreground text-sm font-normal">
                       {total === 1 ? "prestador encontrado" : "prestadores encontrados"}
                     </span>
                   </>
                 )}
               </h2>
-              <p className="text-muted-foreground mt-0.5 text-xs">
-                Exibindo {providers.length} de {total}
-              </p>
+              {!isLoading && (
+                <span className="text-muted-foreground hidden text-xs font-medium sm:inline">
+                  • Exibindo {providers.length}
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -284,24 +286,24 @@ export default function VitrineResults({
             </div>
           </div>
 
-          {/* Active filter chips bar */}
+          {/* Active filter chips bar (only for secondary search filters, category is handled by CategoryShowcase) */}
           {activeChips.length > 0 ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/50">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/60 bg-slate-50/50 px-3 py-1.5 dark:border-slate-800/60 dark:bg-slate-900/30">
               <ul className="flex flex-wrap items-center gap-1.5">
                 <li className="text-muted-foreground mr-1 text-[11px] font-medium">
-                  Filtros ativos ({activeChips.length}):
+                  Filtros ativos:
                 </li>
                 {activeChips.map((chip) => (
                   <li key={chip.key}>
-                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white py-1 pr-1.5 pl-2.5 text-xs font-medium text-slate-700 shadow-2xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/80 bg-white py-0.5 pr-1 pl-2 text-xs font-medium text-slate-700 shadow-2xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                       <span>{chip.label}</span>
                       <button
                         type="button"
                         onClick={() => handleChipRemove(chip.key)}
-                        className="flex size-4 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                        className="flex size-3.5 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
                         aria-label={`Remover filtro ${chip.label}`}
                       >
-                        <X className="size-3" />
+                        <X className="size-2.5" />
                       </button>
                     </span>
                   </li>
@@ -309,10 +311,16 @@ export default function VitrineResults({
               </ul>
               <button
                 type="button"
-                onClick={() => onFiltersChange({ ...DEFAULT_FILTERS })}
+                onClick={() =>
+                  onFiltersChange({
+                    ...DEFAULT_FILTERS,
+                    categoryId: filters.categoryId,
+                    sort: filters.sort,
+                  })
+                }
                 className="text-xs font-medium text-emerald-700 underline-offset-2 transition-colors hover:underline dark:text-emerald-400"
               >
-                Limpar tudo
+                Limpar filtros
               </button>
             </div>
           ) : null}
@@ -600,23 +608,13 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 
 type Chip = { key: keyof FiltersState; label: string }
 
-function buildChips(filters: FiltersState, categories: Category[]): Chip[] {
+function buildChips(filters: FiltersState): Chip[] {
   const chips: Chip[] = []
   if (filters.q.trim()) {
     chips.push({ key: "q", label: `“${filters.q.trim()}”` })
   }
-  if (filters.categoryId) {
-    const name = resolveCategoryName(filters.categoryId, categories)
-    if (name) chips.push({ key: "categoryId", label: `Categoria: ${name}` })
-  }
   if (filters.radius !== DEFAULT_FILTERS.radius) {
     chips.push({ key: "radius", label: `Raio: ${filters.radius} km` })
-  }
-  if (filters.sort !== DEFAULT_FILTERS.sort) {
-    chips.push({
-      key: "sort",
-      label: filters.sort === "distance" ? "Mais próximos" : "Melhor avaliação",
-    })
   }
   if (filters.verifiedOnly) {
     chips.push({ key: "verifiedOnly", label: "Verificados" })
@@ -625,15 +623,4 @@ function buildChips(filters: FiltersState, categories: Category[]): Chip[] {
     chips.push({ key: "minRating", label: `★ ${filters.minRating}+` })
   }
   return chips
-}
-
-function resolveCategoryName(id: string, categories: Category[]): string | null {
-  for (const c of categories) {
-    if (c.id === id) return c.name
-    if (c.children?.length) {
-      const found = resolveCategoryName(id, c.children)
-      if (found) return found
-    }
-  }
-  return null
 }

@@ -79,18 +79,17 @@ export function HorizontalFilterBar({
     return categories.filter((c) => c.name.toLowerCase().includes(term))
   }, [categories, categorySearch])
 
-  // Check if any filter is active compared to defaults
+  // Check if any filter is active compared to defaults (excluding presentation sort)
   const isFiltered =
-    value.categoryId !== null ||
+    (showCategorySelector && value.categoryId !== null) ||
     value.radius !== DEFAULT_FILTERS.radius ||
-    value.sort !== DEFAULT_FILTERS.sort ||
     value.verifiedOnly !== false ||
     value.minRating !== 0
 
   return (
     <div
       className={cn(
-        "relative z-20 mb-6 flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-sm backdrop-blur-md transition-all lg:sticky lg:top-[7.8rem] dark:border-slate-800 dark:bg-slate-900/95",
+        "relative z-20 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-sm backdrop-blur-md transition-all lg:sticky lg:top-[7.8rem] dark:border-slate-800 dark:bg-slate-900/95",
         className,
       )}
     >
@@ -230,77 +229,6 @@ export function HorizontalFilterBar({
           </PopoverContent>
         </Popover>
 
-        {/* 3. Sort Order Popover */}
-        <Popover open={sortOpen} onOpenChange={setSortOpen}>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              className={cn(
-                "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
-                value.sort === "distance"
-                  ? "border-emerald-500 bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
-                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
-              )}
-            >
-              <Zap className="size-3.5 text-amber-500" />
-              <span>{value.sort === "distance" ? "Mais próximos" : "Melhor avaliação"}</span>
-              <ChevronDown className="size-3.5 opacity-60" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-64 p-2">
-            <div className="space-y-1">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!hasGeo) {
-                    onRequestGeo?.()
-                    return
-                  }
-                  onChange({ ...value, sort: "distance" })
-                  setSortOpen(false)
-                }}
-                className={cn(
-                  "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors",
-                  value.sort === "distance"
-                    ? "bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
-                    : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
-                  !hasGeo && "cursor-pointer opacity-60",
-                )}
-              >
-                <div>
-                  <p className="font-medium">📍 Mais próximos (por GPS)</p>
-                  {!hasGeo && (
-                    <p className="text-[10px] text-amber-600 dark:text-amber-400">
-                      Compartilhe localização para ativar
-                    </p>
-                  )}
-                </div>
-                {value.sort === "distance" && <Check className="size-3.5 text-emerald-600" />}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  onChange({ ...value, sort: "rating" })
-                  setSortOpen(false)
-                }}
-                className={cn(
-                  "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors",
-                  value.sort === "rating"
-                    ? "bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
-                    : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
-                )}
-              >
-                <div>
-                  <p className="font-medium">⭐ Melhor avaliação</p>
-                  <p className="text-[10px] text-slate-400">Ordena por estrelas e feedbacks</p>
-                </div>
-                {value.sort === "rating" && <Check className="size-3.5 text-emerald-600" />}
-              </button>
-            </div>
-          </PopoverContent>
-        </Popover>
-
         {/* 4. Rating Popover */}
         <Popover open={ratingOpen} onOpenChange={setRatingOpen}>
           <PopoverTrigger asChild>
@@ -385,7 +313,14 @@ export function HorizontalFilterBar({
         {isFiltered && (
           <button
             type="button"
-            onClick={() => onChange({ ...DEFAULT_FILTERS, q: value.q })}
+            onClick={() =>
+              onChange({
+                ...DEFAULT_FILTERS,
+                q: value.q,
+                categoryId: value.categoryId,
+                sort: value.sort,
+              })
+            }
             className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs underline-offset-2 transition-colors hover:underline"
           >
             <X className="size-3" />
@@ -394,8 +329,86 @@ export function HorizontalFilterBar({
         )}
       </div>
 
-      {/* ── Right: View Mode Toggle (Lista / Mapa) ── */}
+      {/* ── Right: Sort Order & View Mode Toggle (Lista / Mapa) ── */}
       <div className="flex shrink-0 items-center gap-2">
+        {/* Sort Order Popover */}
+        <Popover open={sortOpen} onOpenChange={setSortOpen}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
+                value.sort === "distance"
+                  ? "border-emerald-500 bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
+              )}
+            >
+              <Zap className="size-3.5 text-amber-500" />
+              <span>{value.sort === "distance" ? "Mais próximos" : "Melhor avaliação"}</span>
+              <ChevronDown className="size-3.5 opacity-60" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-64 p-2">
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!hasGeo) {
+                    onRequestGeo?.()
+                    return
+                  }
+                  onChange({ ...value, sort: "distance" })
+                  setSortOpen(false)
+                }}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors",
+                  value.sort === "distance"
+                    ? "bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                    : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+                  !hasGeo && "cursor-pointer opacity-60",
+                )}
+              >
+                <div>
+                  <p className="font-medium">📍 Mais próximos (por GPS)</p>
+                  {!hasGeo && (
+                    <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                      Compartilhe localização para ativar
+                    </p>
+                  )}
+                </div>
+                {value.sort === "distance" && <Check className="size-3.5 text-emerald-600" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onChange({ ...value, sort: "rating" })
+                  setSortOpen(false)
+                }}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors",
+                  value.sort === "rating"
+                    ? "bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                    : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+                )}
+              >
+                <div>
+                  <p className="font-medium">⭐ Melhor avaliação</p>
+                  <p className="text-[10px] text-slate-400">Ordena por estrelas e feedbacks</p>
+                </div>
+                {value.sort === "rating" && <Check className="size-3.5 text-emerald-600" />}
+              </button>
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        {/* Subtle divider */}
+        <div
+          className="hidden h-5 w-px bg-slate-200 sm:block dark:bg-slate-700"
+          aria-hidden="true"
+        />
+
+        {/* View Mode Toggle */}
         <div
           role="tablist"
           aria-label="Visualização"
