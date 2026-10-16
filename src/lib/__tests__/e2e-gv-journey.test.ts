@@ -151,4 +151,47 @@ describe("E2E Simulation: Jornada Completa do Prestador em Governador Valadares 
     expect(platformFee).toBe(30.0) // 15% de 200
     expect(providerPayout).toBe(170.0) // 85% para o profissional
   })
+
+  it("rejeita check-in presencial quando o prestador está fora do perímetro de 50m (Anti-Fraude)", () => {
+    // Cliente no Centro de Valadares
+    const customerCoord = { lat: -18.854624, lng: -41.944373 }
+
+    // Prestador a 500m de distância tentando check-in falso
+    const distantLat = customerCoord.lat + 0.0045
+    const distantLng = customerCoord.lng + 0.0035
+
+    const audit = validateEscrowGeofence({
+      providerLocation: {
+        lat: distantLat,
+        lng: distantLng,
+        accuracyM: 8,
+      },
+      serviceLocation: customerCoord,
+      precisionTier: "STRICT",
+      maxAllowedAccuracyMeters: 35,
+    })
+
+    expect(audit.valid).toBe(false)
+    expect(audit.status).toBe("DEVIATION_DETECTED")
+    expect(audit.distanceKm * 1000).toBeGreaterThan(GEOFENCE_TIERS.STRICT * 1000)
+  })
+
+  it("rejeita check-in quando a precisão do sensor GPS estiver degradada (>35m)", () => {
+    const customerCoord = { lat: -18.854624, lng: -41.944373 }
+
+    // Prestador está perto (10m), mas com precisão ruim (45m)
+    const audit = validateEscrowGeofence({
+      providerLocation: {
+        lat: customerCoord.lat + 0.00008,
+        lng: customerCoord.lng + 0.00005,
+        accuracyM: 45, // Excede o limite máximo de confiança de 35m
+      },
+      serviceLocation: customerCoord,
+      precisionTier: "STRICT",
+      maxAllowedAccuracyMeters: 35,
+    })
+
+    expect(audit.valid).toBe(false)
+    expect(audit.status).toBe("INACCURATE_GPS_FIX")
+  })
 })
