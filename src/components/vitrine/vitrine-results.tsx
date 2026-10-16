@@ -13,7 +13,7 @@
 
 import * as React from "react"
 import dynamic from "next/dynamic"
-import { MapPin, SlidersHorizontal, SearchX, X, Loader2 } from "lucide-react"
+import { MapPin, SlidersHorizontal, SearchX, X, Loader2, LayoutGrid, Rows, Zap } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { triggerHaptic } from "@/lib/haptics"
@@ -26,6 +26,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import Filters, { DEFAULT_FILTERS, type FiltersState } from "./filters"
 import { HorizontalFilterBar } from "./horizontal-filter-bar"
 import ProviderCard, { ProviderCardSkeleton } from "./provider-card"
+import ProviderCompactRow from "./provider-compact-row"
 
 // MapLibre is client-only — dynamic import with ssr:false to be safe
 const ProvidersMap = dynamic(() => import("./enhanced-providers-map"), {
@@ -117,8 +118,22 @@ export default function VitrineResults({
   expandedRadius,
 }: VitrineResultsProps) {
   const [view, setView] = React.useState<ViewMode>("list")
+  const [layoutMode, setLayoutMode] = React.useState<"grid" | "compact">("grid")
+  const [availableToday, setAvailableToday] = React.useState(false)
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false)
+
+  // Filter providers if availableToday filter is active
+  const displayedProviders = React.useMemo(() => {
+    if (!availableToday) return providers
+    const currentDay = new Date().getDay()
+    return providers.filter((p) => {
+      if (!p.availability || p.availability.length === 0) {
+        return currentDay >= 1 && currentDay <= 6
+      }
+      return p.availability.some((a) => a.dayOfWeek === currentDay)
+    })
+  }, [providers, availableToday])
   // Derive valid selection — automatically clears if the selected provider
   // is no longer in the current results (e.g. after pagination or filter change).
   const activeSelectedId = React.useMemo(() => {
@@ -249,6 +264,81 @@ export default function VitrineResults({
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Layout mode switcher: Grid vs Compact List */}
+              {view === "list" && providers.length > 0 && (
+                <div
+                  className="hidden items-center rounded-lg border border-slate-200 bg-slate-100/90 p-0.5 text-xs shadow-2xs sm:inline-flex dark:border-slate-800 dark:bg-slate-900/60"
+                  role="group"
+                  aria-label="Modo de visualização dos resultados"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      setLayoutMode("grid")
+                    }}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all",
+                      layoutMode === "grid"
+                        ? "bg-white font-bold text-slate-900 shadow-xs dark:bg-slate-800 dark:text-white"
+                        : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white",
+                    )}
+                    aria-pressed={layoutMode === "grid"}
+                    aria-label="Visualização em grade de cards"
+                    title="Exibição em Cards"
+                  >
+                    <LayoutGrid className="size-3.5" />
+                    <span>Cards</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      setLayoutMode("compact")
+                    }}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all",
+                      layoutMode === "compact"
+                        ? "bg-white font-bold text-slate-900 shadow-xs dark:bg-slate-800 dark:text-white"
+                        : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white",
+                    )}
+                    aria-pressed={layoutMode === "compact"}
+                    aria-label="Visualização em lista compacta"
+                    title="Exibição em Linhas"
+                  >
+                    <Rows className="size-3.5" />
+                    <span>Linhas</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Quick Filter: Atende Hoje */}
+              {view === "list" && providers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    setAvailableToday((v) => !v)
+                  }}
+                  className={cn(
+                    "flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-all",
+                    availableToday
+                      ? "border-amber-500/60 bg-amber-500/10 font-bold text-amber-800 shadow-2xs dark:text-amber-300"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400",
+                  )}
+                  aria-pressed={availableToday}
+                  title="Filtrar prestadores com expediente hoje"
+                >
+                  <Zap
+                    className={cn(
+                      "size-3.5",
+                      availableToday ? "fill-amber-500 text-amber-500" : "text-slate-400",
+                    )}
+                  />
+                  <span className="hidden sm:inline">Atende Hoje</span>
+                </button>
+              )}
+
               {/* Mobile filters trigger */}
               <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
                 <SheetTrigger asChild>
@@ -368,11 +458,34 @@ export default function VitrineResults({
           {error ? (
             <ErrorState onRetry={() => onFiltersChange({ ...filters })} />
           ) : isLoading ? (
-            <ResultsGrid>
-              {Array.from({ length: 6 }).map((_, i) => (
-                <ProviderCardSkeleton key={i} />
-              ))}
-            </ResultsGrid>
+            layoutMode === "grid" ? (
+              <ResultsGrid>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <ProviderCardSkeleton key={i} />
+                ))}
+              </ResultsGrid>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="border-border/50 bg-card flex animate-pulse items-center justify-between gap-4 rounded-2xl border p-4 shadow-2xs"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="size-11 rounded-xl" />
+                      <div className="space-y-1.5">
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-3 w-24" />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Skeleton className="h-8.5 w-20 rounded-xl" />
+                      <Skeleton className="h-8.5 w-20 rounded-xl" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
           ) : providers.length === 0 ? (
             <EmptyState
               hasFilters={
@@ -387,18 +500,52 @@ export default function VitrineResults({
             />
           ) : view === "list" ? (
             <div className="animate-in fade-in duration-200">
-              <ResultsGrid>
-                {providers.map((p) => (
-                  <ProviderCard
-                    key={p.id}
-                    provider={p}
-                    favorited={favorites.has(p.id)}
-                    onQuote={onQuote}
-                    onBook={onBook}
-                    onView={onView}
-                  />
-                ))}
-              </ResultsGrid>
+              {availableToday && displayedProviders.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-amber-500/10 text-amber-600">
+                    <Zap className="size-6" />
+                  </div>
+                  <p className="text-base font-bold">Nenhum prestador disponível hoje</p>
+                  <p className="text-muted-foreground mt-1 max-w-sm text-xs">
+                    Nenhum dos {providers.length} profissionais encontrados possui expediente
+                    cadastrado para hoje.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAvailableToday(false)}
+                    className="mt-4 text-xs font-semibold"
+                  >
+                    Exibir todos os {providers.length} prestadores
+                  </Button>
+                </div>
+              ) : layoutMode === "grid" ? (
+                <ResultsGrid>
+                  {displayedProviders.map((p) => (
+                    <ProviderCard
+                      key={p.id}
+                      provider={p}
+                      favorited={favorites.has(p.id)}
+                      onQuote={onQuote}
+                      onBook={onBook}
+                      onView={onView}
+                    />
+                  ))}
+                </ResultsGrid>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {displayedProviders.map((p) => (
+                    <ProviderCompactRow
+                      key={p.id}
+                      provider={p}
+                      favorited={favorites.has(p.id)}
+                      onQuote={onQuote}
+                      onBook={onBook}
+                      onView={onView}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <div className="animate-in fade-in duration-200">

@@ -18,12 +18,44 @@ import { useCompareStore, MAX_COMPARE } from "@/store/compare"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useQueryClient } from "@tanstack/react-query"
+import { fetchProviderDetail } from "@/lib/api"
+import { useGeoStore } from "@/store/geo"
 
 export default function CompareBar() {
+  let qc: ReturnType<typeof useQueryClient> | null = null
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    qc = useQueryClient()
+  } catch {
+    qc = null
+  }
+  const { lat, lng } = useGeoStore()
   const ids = useCompareStore((s) => s.ids)
   const clear = useCompareStore((s) => s.clear)
   const remove = useCompareStore((s) => s.remove)
   const openCompare = useCompareStore((s) => s.openCompare)
+
+  const handlePrefetch = React.useCallback(() => {
+    if (!qc || ids.length === 0) return
+    const { lat: currentLat, lng: currentLng } = useGeoStore.getState()
+    qc.prefetchQuery({
+      queryKey: ["compare-providers", ids, currentLat, currentLng],
+      queryFn: async () => {
+        return Promise.all(
+          ids.map((id) =>
+            fetchProviderDetail(id, {
+              lat: currentLat ?? undefined,
+              lng: currentLng ?? undefined,
+            })
+              .then((data) => ({ id, data, error: null }))
+              .catch((e: unknown) => ({ id, data: null, error: e as Error })),
+          ),
+        )
+      },
+      staleTime: 30 * 1000,
+    })
+  }, [ids, qc])
 
   // Resolve names/avatars/distance from the DOM via data-attributes on cards.
   // Each ProviderCard sets `data-compare-name`, `data-compare-avatar`,
@@ -169,6 +201,9 @@ export default function CompareBar() {
               <Button
                 size="sm"
                 onClick={openCompare}
+                onMouseEnter={handlePrefetch}
+                onFocus={handlePrefetch}
+                onTouchStart={handlePrefetch}
                 disabled={!canCompare}
                 className="gap-2 rounded-full px-4"
               >

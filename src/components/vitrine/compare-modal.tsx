@@ -44,6 +44,8 @@ import {
   MessageCircle,
   Columns3,
   Rows,
+  Share2,
+  Copy,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -160,6 +162,40 @@ export default function CompareModal() {
     },
     [closeCompare, openQuote],
   )
+  // Deep-link check for ?comparar=id1,id2,id3 or ?compare=...
+  React.useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const compareParam = params.get("comparar") || params.get("compare")
+    if (compareParam) {
+      const idsFromUrl = compareParam
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+      if (idsFromUrl.length > 0) {
+        useCompareStore.getState().setIds(idsFromUrl)
+        useCompareStore.getState().openCompare()
+      }
+    }
+  }, [])
+
+  // Keyboard shortcut: C to open comparison, Escape to close
+  React.useEffect(() => {
+    if (typeof window === "undefined") return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+      if ((e.key === "c" || e.key === "C") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (!open && ids.length > 0) {
+          e.preventDefault()
+          useCompareStore.getState().openCompare()
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [open, ids.length])
 
   // Fetch each provider in parallel
   const queries = useQuery({
@@ -192,6 +228,45 @@ export default function CompareModal() {
       .filter((r): r is { id: string; data: ProviderDetail; error: null } => !!r.data)
       .map((r) => r.data)
   }, [queries.data])
+
+  // Share comparison on WhatsApp
+  const handleShareWhatsApp = React.useCallback(() => {
+    if (providers.length === 0 || typeof window === "undefined") return
+    const idsParam = providers.map((p) => p.id).join(",")
+    const shareUrl = `${window.location.origin}/?comparar=${idsParam}`
+    const summaryLines = providers
+      .map((p, idx) => {
+        const price = cheapestService(p)
+        const priceStr = price ? formatBRL(price) : "Sob consulta"
+        const distStr = p.distanceKm ? ` (~${p.distanceKm.toFixed(1)} km)` : ""
+        return `${idx + 1}. *${p.name}* — ★ ${p.rating > 0 ? Number(p.rating).toFixed(1) : "Novo"} — a partir de ${priceStr}${distStr}`
+      })
+      .join("\n")
+
+    const text = encodeURIComponent(
+      `📋 Olá! Veja o comparativo de prestadores que selecionei no Severinno (Governador Valadares):\n\n${summaryLines}\n\n🔗 Acesse o comparativo completo:\n${shareUrl}`,
+    )
+    window.open(`https://wa.me/?text=${text}`, "_blank", "noopener,noreferrer")
+  }, [providers])
+
+  // Copy comparison link
+  const handleCopyLink = React.useCallback(() => {
+    if (providers.length === 0 || typeof window === "undefined") return
+    const idsParam = providers.map((p) => p.id).join(",")
+    const shareUrl = `${window.location.origin}/?comparar=${idsParam}`
+    if (navigator.clipboard) {
+      navigator.clipboard
+        .writeText(shareUrl)
+        .then(() => {
+          toast.success("Link do comparativo copiado!")
+        })
+        .catch(() => {
+          toast.info(shareUrl)
+        })
+    } else {
+      toast.info(shareUrl)
+    }
+  }, [providers])
 
   // Loading state — show skeletons matching the number of selected providers
   const isLoading = queries.isLoading || (queries.isFetching && providers.length === 0)
@@ -512,6 +587,30 @@ export default function CompareModal() {
                   <Trophy className="size-3.5 text-amber-500" />
                   Destaques automáticos por critério
                 </span>
+              )}
+              {providers.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleShareWhatsApp}
+                    className="h-8 cursor-pointer gap-1.5 rounded-full border-emerald-500/30 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300"
+                    title="Compartilhar comparativo no WhatsApp"
+                  >
+                    <MessageCircle className="size-3.5" />
+                    <span className="hidden sm:inline">Compartilhar</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCopyLink}
+                    className="text-muted-foreground hover:text-foreground h-8 cursor-pointer gap-1 rounded-full px-2 text-xs font-semibold"
+                    title="Copiar link compartilhável"
+                  >
+                    <Copy className="size-3.5" />
+                    <span className="hidden md:inline">Copiar Link</span>
+                  </Button>
+                </div>
               )}
               {ids.length > 0 ? (
                 <Button

@@ -36,6 +36,7 @@ export type ProviderCard = {
   reviewCount: number
   verified: boolean
   city?: string | null
+  district?: string | null
   distanceKm?: number | null
   radiusKm?: number | null
   lat?: number | null
@@ -46,6 +47,7 @@ export type ProviderCard = {
   matchScore?: number | null
   matchReasons?: string[] | null
   whatsapp?: string | null
+  availability?: ProviderAvailability[]
 }
 
 export type ProviderAvailability = {

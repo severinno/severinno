@@ -35,6 +35,8 @@ vi.mock("lucide-react", () => ({
   Star: () => <span data-testid="icon" />,
   Zap: () => <span data-testid="icon" />,
   Check: () => <span data-testid="icon" />,
+  LayoutGrid: () => <span data-testid="icon" />,
+  Rows: () => <span data-testid="icon" />,
 }))
 vi.mock("next/dynamic", () => ({
   default: () => () => <div data-testid="map-stub" />,

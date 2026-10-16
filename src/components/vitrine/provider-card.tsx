@@ -65,6 +65,7 @@ export default React.memo(function ProviderCard({
   const qc = useQueryClient()
   const { user } = useAuthStore()
   const openAuth = useUIStore((s) => s.openAuth)
+  const userDistrict = useGeoStore((s) => s.district)
 
   const [favorited, setFavorited] = React.useState<boolean>(!!favoritedProp)
   const [quickViewOpen, setQuickViewOpen] = React.useState<boolean>(false)
@@ -150,6 +151,17 @@ export default React.memo(function ProviderCard({
     typeof provider.distanceKm === "number" &&
     typeof provider.radiusKm === "number" &&
     provider.distanceKm <= provider.radiusKm
+
+  const isSameNeighborhood = Boolean(
+    userDistrict &&
+    provider.district &&
+    provider.district.trim().toLowerCase() === userDistrict.trim().toLowerCase(),
+  )
+
+  const driveTimeMin =
+    typeof provider.distanceKm === "number" && provider.distanceKm > 0
+      ? Math.max(3, Math.round(provider.distanceKm * 2.2))
+      : null
 
   const minPrice = provider.services?.[0]?.basePrice
 
@@ -257,17 +269,29 @@ export default React.memo(function ProviderCard({
                   <span className="inline-flex items-center gap-0.5">
                     <MapPin className="text-muted-foreground/70 size-3" />
                     {formatDistance(provider.distanceKm)}
+                    {driveTimeMin && (
+                      <span className="text-muted-foreground/80 font-normal">
+                        (~{driveTimeMin} min)
+                      </span>
+                    )}
                   </span>
                 )}
 
                 {provider.city && <span className="truncate">· {provider.city}</span>}
 
-                {isNearby && (
+                {isSameNeighborhood ? (
+                  <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300">
+                    <span>·</span>
+                    <span>No seu bairro ({provider.district})</span>
+                  </span>
+                ) : isNearby ? (
                   <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
                     <span>·</span>
                     <span>Perto de você</span>
                   </span>
-                )}
+                ) : provider.district ? (
+                  <span className="truncate">· {provider.district}</span>
+                ) : null}
               </div>
             </div>
           </div>

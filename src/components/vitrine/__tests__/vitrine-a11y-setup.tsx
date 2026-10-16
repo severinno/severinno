@@ -114,6 +114,7 @@ vi.mock("lucide-react", () => {
     Search: Icon,
     SearchX: Icon,
     Send: Icon,
+    Share2: Icon,
     Shield: Icon,
     ShieldAlert: Icon,
     ShieldCheck: Icon,

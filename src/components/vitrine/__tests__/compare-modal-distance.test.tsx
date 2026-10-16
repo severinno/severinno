@@ -119,6 +119,8 @@ vi.mock("lucide-react", () => {
     MessageCircle: makeIcon("message-circle"),
     Columns3: makeIcon("columns-3"),
     Rows: makeIcon("rows"),
+    Share2: makeIcon("share-2"),
+    Copy: makeIcon("copy"),
   }
 })
 
