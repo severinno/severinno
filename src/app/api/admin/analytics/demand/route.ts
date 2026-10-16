@@ -69,11 +69,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // 1. Fetch quote requests with coordinates
+    // 1. Fetch quote requests with coordinates (bounded to prevent heap exhaustion)
     const quoteRequests = await db.quoteRequest.findMany({
       where: {
         createdAt: { gte: sinceDate },
       },
+      take: 2000,
       select: {
         id: true,
         lat: true,
@@ -93,11 +94,12 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // 2. Fetch bookings with coordinates
+    // 2. Fetch bookings with coordinates (bounded to prevent heap exhaustion)
     const bookings = await db.booking.findMany({
       where: {
         createdAt: { gte: sinceDate },
       },
+      take: 2000,
       select: {
         id: true,
         lat: true,

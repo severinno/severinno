@@ -14,6 +14,7 @@ import { haversineKm } from "@/lib/geo-server"
 
 import { withRoute } from "@/lib/api-route"
 import { toMoneyNumber } from "@/lib/money"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * ⚠️ NUNCA troque o `select` por `include`: descreve TERCEIROS para o cliente
@@ -53,6 +54,7 @@ type FavoriteProviderBody = PublicProviderPayload & {
 // CLIENT: list favorited providers (with optional distance computation).
 // Returns `ProviderCard[]` directly (UI: `apiGet<ProviderCard[]>("/api/favorites")`).
 export const GET = withRoute("api.favorites.GET", async (request) => {
+  await assertRateLimit(request, RATE_LIMITS.general)
   const session = await requireUser()
   if (session.role !== "CLIENT") {
     throw forbidden("Apenas clientes têm favoritos")

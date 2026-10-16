@@ -98,6 +98,33 @@ describe("handleError", () => {
     expect(body.error).toBe("Acesso proibido")
   })
 
+  it("maps Prisma P2002 error to 409 Conflict", async () => {
+    const prismaErr = Object.assign(new Error("Unique constraint failed"), { code: "P2002" })
+    const res = handleError(prismaErr)
+    const body = await res.json()
+    expect(res.status).toBe(409)
+    expect(body.error).toContain("Conflito")
+    expect(body.code).toBe("P2002")
+  })
+
+  it("maps Prisma P2025 error to 404 Not Found", async () => {
+    const prismaErr = Object.assign(new Error("Record not found"), { code: "P2025" })
+    const res = handleError(prismaErr)
+    const body = await res.json()
+    expect(res.status).toBe(404)
+    expect(body.error).toBe("Recurso não encontrado")
+    expect(body.code).toBe("P2025")
+  })
+
+  it("maps Prisma P2003 error to 400 Bad Request", async () => {
+    const prismaErr = Object.assign(new Error("Foreign key constraint failed"), { code: "P2003" })
+    const res = handleError(prismaErr)
+    const body = await res.json()
+    expect(res.status).toBe(400)
+    expect(body.error).toContain("integridade referencial")
+    expect(body.code).toBe("P2003")
+  })
+
   it("returns 500 for unknown errors", async () => {
     const res = handleError(new Error("Something unexpected"))
     const body = await res.json()

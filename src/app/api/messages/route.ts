@@ -82,10 +82,10 @@ export const GET = withRoute("api.messages.GET", async (request) => {
   >(
     `SELECT DISTINCT ON (peer_id) peer_id, content, created_at, unread
        FROM (
-         SELECT "toId" AS peer_id, content, "createdAt" AS created_at, read AS unread, 0 AS ord
+         SELECT "toId" AS peer_id, content, "createdAt" AS created_at, false AS unread, 0 AS ord
          FROM "Message" WHERE "fromId" = $1
          UNION ALL
-         SELECT "fromId" AS peer_id, content, "createdAt" AS created_at, false AS unread, 1 AS ord
+         SELECT "fromId" AS peer_id, content, "createdAt" AS created_at, (NOT read) AS unread, 1 AS ord
          FROM "Message" WHERE "toId" = $1
        ) sub
        ORDER BY peer_id, created_at DESC

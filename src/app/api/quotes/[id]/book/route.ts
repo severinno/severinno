@@ -4,7 +4,8 @@ import { captureErrorEnhanced } from "@/lib/sentry-enhanced"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { badRequest, forbidden, notFound } from "@/lib/api-server"
+import { badRequest, forbidden, notFound, conflict } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { saveAndQueueNotification } from "@/lib/notification-queue"
 import { captureError as _captureError } from "@/lib/sentry"
 import { emitRealtime } from "@/lib/realtime-client"
@@ -16,6 +17,7 @@ import { withParams } from "@/lib/api-route"
 export const POST = withParams<{ id: string }>(
   "api.quotes.:id.book.POST",
   async (request, { params }) => {
+    await assertRateLimit(request, RATE_LIMITS.general)
     const session = await requireUser()
     const { id } = await params
     if (session.role !== "CLIENT") {
@@ -42,6 +44,12 @@ export const POST = withParams<{ id: string }>(
     if (!quote) throw notFound("Orçamento não encontrado")
     if (quote.clientId !== session.userId) throw forbidden("Este orçamento não é seu")
     if (quote.status !== "APPROVED") throw badRequest("Orçamento precisa estar aprovado")
+
+    const existingBooking = await db.booking.findUnique({
+      where: { quoteId: id },
+      select: { id: true },
+    })
+    if (existingBooking) throw conflict("Este orçamento já possui um agendamento vinculado")
 
     const body = (await request.json()) as { scheduledAt?: string; address?: string }
     if (!body.scheduledAt) throw badRequest("Data e horário são obrigatórios")

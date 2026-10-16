@@ -133,7 +133,10 @@ describe("GET /api/services (list)", () => {
     expect(mockDb.service.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          OR: [{ title: { contains: "limpeza" } }, { description: { contains: "limpeza" } }],
+          OR: [
+            { title: { contains: "limpeza", mode: "insensitive" } },
+            { description: { contains: "limpeza", mode: "insensitive" } },
+          ],
         }),
       }),
     )

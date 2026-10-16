@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { withRoute } from "@/lib/api-route"
 import { getSession } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * GET /api/users/me/data-export — LGPD art. 18 (II): portabilidade.
@@ -15,7 +16,8 @@ import { db } from "@/lib/db"
  * Resposta: attachment JSON (download direto), `Cache-Control: no-store`.
  */
 
-export const GET = withRoute("api.users.me.data-export.GET", async () => {
+export const GET = withRoute("api.users.me.data-export.GET", async (request) => {
+  await assertRateLimit(request, RATE_LIMITS.general)
   const session = await getSession()
   if (!session?.userId) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 })

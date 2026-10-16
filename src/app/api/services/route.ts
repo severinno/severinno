@@ -50,6 +50,7 @@ export const GET = withRoute("api.services.GET", async (request) => {
 
 // POST: create a new service (provider only)
 export const POST = withRoute("api.services.POST", async (request) => {
+  await assertRateLimit(request, RATE_LIMITS.general)
   const session = await requireUser()
   if (session.role !== "PROVIDER") throw forbidden("Only providers can create services")
 

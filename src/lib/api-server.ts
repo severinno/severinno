@@ -345,6 +345,25 @@ export function handleError(e: unknown) {
       return noStoreJson({ error: "Acesso proibido" }, { status: 403 })
     }
   }
+
+  // Duck-type Prisma known request errors (P2002, P2025, P2003)
+  const prismaErr = e as { code?: string; clientVersion?: string; meta?: Record<string, unknown> }
+  if (prismaErr?.code === "P2002") {
+    return noStoreJson(
+      { error: "Conflito: registro duplicado já existente", code: "P2002" },
+      { status: 409 },
+    )
+  }
+  if (prismaErr?.code === "P2025") {
+    return noStoreJson({ error: "Recurso não encontrado", code: "P2025" }, { status: 404 })
+  }
+  if (prismaErr?.code === "P2003") {
+    return noStoreJson(
+      { error: "Restrição de integridade referencial violada", code: "P2003" },
+      { status: 400 },
+    )
+  }
+
   logger.error({ err: e, requestId: getRequestId() }, "unhandled api error")
   return noStoreJson(
     { error: "Erro interno do servidor", requestId: getRequestId() },

@@ -6,6 +6,7 @@ import { requireRole } from "@/lib/auth"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { withRoute } from "@/lib/api-route"
 import { toMoneyNumber } from "@/lib/money"
+import { parsePagination } from "@/lib/api-server"
 
 export const GET = withRoute("api.admin.disputes.GET", async (request) => {
   await requireRole("ADMIN")
@@ -13,6 +14,7 @@ export const GET = withRoute("api.admin.disputes.GET", async (request) => {
 
   const { searchParams } = new URL(request.url)
   const statusParam = searchParams.get("status") || "OPEN"
+  const { page, limit, skip, take } = parsePagination(searchParams)
 
   const whereClause =
     statusParam === "ALL"
@@ -24,6 +26,8 @@ export const GET = withRoute("api.admin.disputes.GET", async (request) => {
   const disputes = await db.dispute.findMany({
     where: whereClause,
     orderBy: { createdAt: "desc" },
+    skip,
+    take,
     include: {
       booking: {
         select: {
@@ -101,6 +105,8 @@ export const GET = withRoute("api.admin.disputes.GET", async (request) => {
   return NextResponse.json({
     items,
     meta: {
+      page,
+      limit,
       total: allDisputesCount,
       open: openDisputesCount,
       totalAmountInDispute: Number(totalAmountInDispute.toFixed(2)),

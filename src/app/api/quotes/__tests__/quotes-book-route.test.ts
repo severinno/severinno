@@ -13,6 +13,7 @@ vi.mock("@/lib/db", () => {
     },
     booking: {
       create: vi.fn(),
+      findUnique: vi.fn(),
     },
     quoteItem: {
       updateMany: vi.fn(),
@@ -115,5 +116,30 @@ describe("POST /api/quotes/[id]/book", () => {
 
     const res = await POST(req, { params: Promise.resolve({ id: "q-1" }) })
     expect(res.status).toBe(400)
+  })
+
+  it("rejeita com 409 se o orçamento já foi previamente agendado", async () => {
+    vi.mocked(db.user.findUnique).mockResolvedValue({ id: "c-1", name: "Cliente Teste" } as any)
+    vi.mocked(db.quoteRequest.findUnique).mockResolvedValue({
+      id: "q-1",
+      clientId: "c-1",
+      providerId: "p-1",
+      status: "APPROVED",
+      items: [{ id: "qi-1", serviceId: "s-1", price: 100, status: "ACCEPTED" }],
+    } as any)
+    vi.mocked(db.booking.findUnique).mockResolvedValue({ id: "existing-booking-1" } as any)
+
+    const futureDate = new Date()
+    futureDate.setDate(futureDate.getDate() + 2)
+
+    const req = new Request("http://localhost:3000/api/quotes/q-1/book", {
+      method: "POST",
+      body: JSON.stringify({ scheduledAt: futureDate.toISOString() }),
+    })
+
+    const res = await POST(req, { params: Promise.resolve({ id: "q-1" }) })
+    expect(res.status).toBe(409)
+    const json = await res.json()
+    expect(json.error).toContain("já possui um agendamento vinculado")
   })
 })
