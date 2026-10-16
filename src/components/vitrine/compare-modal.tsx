@@ -42,6 +42,8 @@ import {
   Sparkles,
   Navigation,
   MessageCircle,
+  Columns3,
+  Rows,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -138,6 +140,26 @@ export default function CompareModal() {
   const openQuote = useUIStore((s) => s.openQuote)
   const openBooking = useUIStore((s) => s.openBooking)
   const { lat, lng } = useGeoStore()
+
+  // Layout mode: "columns" (side-by-side table) or "vertical" (stacked cards)
+  const [layoutMode, setLayoutMode] = React.useState<"columns" | "vertical">("columns")
+
+  const handleWhatsAppContact = React.useCallback(
+    (p: ProviderDetail) => {
+      if (p.whatsapp) {
+        const digits = p.whatsapp.replace(/\D/g, "")
+        const num = digits.startsWith("55") ? digits : `55${digits}`
+        const text = encodeURIComponent(
+          `Olá ${p.name}, vi seu perfil no Comparador Severinno e gostaria de solicitar um orçamento.`,
+        )
+        window.open(`https://wa.me/${num}?text=${text}`, "_blank", "noopener,noreferrer")
+      } else {
+        closeCompare()
+        openQuote({ providerId: p.id })
+      }
+    },
+    [closeCompare, openQuote],
+  )
 
   // Fetch each provider in parallel
   const queries = useQuery({
@@ -430,7 +452,9 @@ export default function CompareModal() {
               </span>
               <div>
                 <DialogTitle className="text-lg font-extrabold tracking-tight sm:text-xl">
-                  Comparativo Lado a Lado de Prestadores
+                  {layoutMode === "vertical"
+                    ? "Comparativo Vertical de Prestadores"
+                    : "Comparativo Lado a Lado de Prestadores"}
                 </DialogTitle>
                 <DialogDescription className="text-xs font-medium">
                   {providers.length > 0
@@ -441,8 +465,50 @@ export default function CompareModal() {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Toggle de Modo: Lado a Lado (Colunas) vs Vertical (Cards) */}
               {providers.length > 0 && (
-                <span className="hidden items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] font-bold text-amber-700 sm:inline-flex dark:text-amber-300">
+                <div
+                  className="bg-muted/70 border-border/60 inline-flex items-center rounded-lg border p-0.5 text-xs shadow-2xs"
+                  role="group"
+                  aria-label="Modo de visualização do comparativo"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setLayoutMode("columns")}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all",
+                      layoutMode === "columns"
+                        ? "bg-background text-foreground font-bold shadow-xs"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    aria-pressed={layoutMode === "columns"}
+                    aria-label="Visualização em colunas lado a lado"
+                    title="Lado a Lado (Colunas)"
+                  >
+                    <Columns3 className="size-3.5" />
+                    <span className="hidden sm:inline">Lado a Lado</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLayoutMode("vertical")}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all",
+                      layoutMode === "vertical"
+                        ? "bg-background text-foreground font-bold shadow-xs"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    aria-pressed={layoutMode === "vertical"}
+                    aria-label="Visualização vertical um abaixo do outro"
+                    title="Vertical (Cards)"
+                  >
+                    <Rows className="size-3.5" />
+                    <span className="hidden sm:inline">Vertical</span>
+                  </button>
+                </div>
+              )}
+
+              {providers.length > 0 && (
+                <span className="hidden items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] font-bold text-amber-700 md:inline-flex dark:text-amber-300">
                   <Trophy className="size-3.5 text-amber-500" />
                   Destaques automáticos por critério
                 </span>
@@ -471,7 +537,7 @@ export default function CompareModal() {
           <ScrollArea className="max-h-[calc(92vh-82px)] flex-1 overflow-y-auto">
             <div className="p-4 sm:p-6">
               {isLoading ? (
-                <CompareSkeleton count={ids.length} rows={rows.length} />
+                <CompareSkeleton count={ids.length} rows={rows.length} layoutMode={layoutMode} />
               ) : providers.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <X className="text-muted-foreground size-10" />
@@ -479,7 +545,324 @@ export default function CompareModal() {
                     Não foi possível carregar os prestadores selecionados.
                   </p>
                 </div>
+              ) : layoutMode === "vertical" ? (
+                /* Visualização Vertical — Prestadores empilhados um debaixo do outro em cards ricos */
+                <div className="flex flex-col gap-4">
+                  {providers.map((p) => {
+                    const avatarSrc = p.avatarUrl || `https://i.pravatar.cc/150?u=${p.id}`
+                    const price = cheapestService(p)
+                    const isPriceWinner =
+                      bestPrice !== null && price !== null && price === bestPrice
+                    const isRatingWinner =
+                      bestRating !== null && p.rating === bestRating && p.rating > 0
+                    const count = p.completedBookings ?? (p.reviewCount > 0 ? p.reviewCount * 4 : 0)
+                    const isCompletedWinner =
+                      bestCompleted !== null && count === bestCompleted && bestCompleted > 0
+                    const isDistanceWinner =
+                      closestDistance !== null &&
+                      p.distanceKm === closestDistance &&
+                      closestDistance < 9999
+                    const cats = categoriesCovered(p)
+                    const rawDate =
+                      p.memberSince || (p as unknown as { createdAt?: string }).createdAt
+
+                    return (
+                      <div
+                        key={p.id}
+                        className="border-border/70 bg-card relative flex flex-col gap-4 rounded-2xl border p-4 shadow-xs transition-all duration-200 hover:border-emerald-500/40 sm:p-5"
+                      >
+                        {/* Topo do Card: Identidade do Prestador + Ações Rápidas */}
+                        <div className="border-border/40 flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <Avatar className="border-primary/20 size-12 shrink-0 rounded-2xl border-2 shadow-sm sm:size-14">
+                              <AvatarImage src={avatarSrc} alt={p.name} />
+                              <AvatarFallback className="bg-primary text-primary-foreground rounded-2xl text-xs font-bold sm:text-sm">
+                                {initialsOf(p.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-foreground truncate text-base font-extrabold tracking-tight sm:text-lg">
+                                  {p.name}
+                                </p>
+                                {p.verified && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="gap-1 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300"
+                                  >
+                                    <ShieldCheck className="size-3" />
+                                    Verificado
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium">
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="text-muted-foreground size-3" />
+                                  {[p.district, p.city].filter(Boolean).join(", ") ||
+                                    "Governador Valadares"}
+                                </span>
+                                {rawDate && (
+                                  <span className="hidden items-center gap-1 capitalize sm:inline-flex">
+                                    <CalendarClock className="text-muted-foreground size-3" />
+                                    Desde{" "}
+                                    {new Date(rawDate).toLocaleDateString("pt-BR", {
+                                      month: "short",
+                                      year: "numeric",
+                                    })}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* CTAs Diretos (WhatsApp, Orçamento, Agendar) + Remover */}
+                          <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
+                            <button
+                              type="button"
+                              onClick={() => handleWhatsAppContact(p)}
+                              className="flex h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-50 px-3 text-xs font-bold text-emerald-700 shadow-2xs transition-colors hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300"
+                              title={`Chamar ${p.name} no WhatsApp`}
+                              aria-label={`Chamar ${p.name} no WhatsApp`}
+                            >
+                              <MessageCircle className="size-3.5" />
+                              <span className="hidden md:inline">WhatsApp</span>
+                            </button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                closeCompare()
+                                openQuote({ providerId: p.id })
+                              }}
+                              className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10 h-9 gap-1.5 rounded-xl text-xs font-semibold"
+                            >
+                              <FileText className="size-3.5" />
+                              <span>Orçar</span>
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                closeCompare()
+                                openBooking({ providerId: p.id })
+                              }}
+                              className="h-9 gap-1.5 rounded-xl text-xs font-bold shadow-2xs"
+                            >
+                              <Calendar className="size-3.5" />
+                              <span>Agendar</span>
+                            </Button>
+                            <button
+                              type="button"
+                              onClick={() => remove(p.id)}
+                              aria-label={`Remover ${p.name} da comparação`}
+                              title={`Remover ${p.name}`}
+                              className="border-border/60 bg-background/80 text-muted-foreground hover:bg-destructive/10 hover:text-destructive flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition"
+                            >
+                              <X className="size-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Grade de Critérios Estruturados */}
+                        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+                          {/* Preço inicial */}
+                          <div
+                            className={cn(
+                              "flex flex-col justify-between rounded-xl border p-3 transition-colors",
+                              isPriceWinner
+                                ? "border-emerald-500/40 bg-emerald-500/8 dark:bg-emerald-500/12"
+                                : "border-border/50 bg-muted/20",
+                            )}
+                          >
+                            <span className="text-muted-foreground flex items-center gap-1 text-[11px] font-bold tracking-wide uppercase">
+                              <span className="text-xs font-extrabold text-emerald-600">R$</span> A
+                              partir de
+                            </span>
+                            <div className="mt-1 flex flex-col gap-1">
+                              <span className="text-base font-extrabold text-emerald-700 dark:text-emerald-400">
+                                {price !== null && price > 0 ? formatBRL(price) : "Sob consulta"}
+                              </span>
+                              {isPriceWinner && (
+                                <span className="inline-flex w-fit items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                  <Trophy className="size-3 text-amber-500" />
+                                  Menor valor
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Avaliação */}
+                          <div
+                            className={cn(
+                              "flex flex-col justify-between rounded-xl border p-3 transition-colors",
+                              isRatingWinner
+                                ? "border-amber-500/40 bg-amber-500/8 dark:bg-amber-500/12"
+                                : "border-border/50 bg-muted/20",
+                            )}
+                          >
+                            <span className="text-muted-foreground flex items-center gap-1 text-[11px] font-bold tracking-wide uppercase">
+                              <Star className="size-3.5 fill-amber-400 text-amber-400" /> Avaliação
+                            </span>
+                            <div className="mt-1 flex flex-col gap-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-foreground text-base font-extrabold">
+                                  {p.rating > 0 ? Number(p.rating).toFixed(1) : "—"}
+                                </span>
+                                <span className="text-muted-foreground text-xs font-medium">
+                                  ({p.reviewCount})
+                                </span>
+                              </div>
+                              {isRatingWinner && (
+                                <span className="inline-flex w-fit items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                                  <Trophy className="size-3 text-amber-500" />
+                                  Melhor nota
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Distância */}
+                          <div
+                            className={cn(
+                              "flex flex-col justify-between rounded-xl border p-3 transition-colors",
+                              isDistanceWinner
+                                ? "border-blue-500/40 bg-blue-500/8 dark:bg-blue-500/12"
+                                : "border-border/50 bg-muted/20",
+                            )}
+                          >
+                            <span className="text-muted-foreground flex items-center gap-1 text-[11px] font-bold tracking-wide uppercase">
+                              <Navigation className="size-3.5 text-emerald-600" /> Distância
+                            </span>
+                            <div className="mt-1 flex flex-col gap-1">
+                              <span className="text-foreground text-base font-extrabold">
+                                {p.distanceKm != null
+                                  ? p.distanceKm < 1
+                                    ? `${Math.round(p.distanceKm * 1000)} m`
+                                    : `${p.distanceKm.toFixed(1)} km`
+                                  : "—"}
+                              </span>
+                              {isDistanceWinner && (
+                                <span className="inline-flex w-fit items-center gap-0.5 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                                  <Navigation className="size-2.5" />
+                                  Mais próximo
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Atendimentos Concluídos */}
+                          <div
+                            className={cn(
+                              "flex flex-col justify-between rounded-xl border p-3 transition-colors",
+                              isCompletedWinner
+                                ? "border-emerald-500/40 bg-emerald-500/8 dark:bg-emerald-500/12"
+                                : "border-border/50 bg-muted/20",
+                            )}
+                          >
+                            <span className="text-muted-foreground flex items-center gap-1 text-[11px] font-bold tracking-wide uppercase">
+                              <CheckCircle2 className="size-3.5 text-emerald-600" /> Atendimentos
+                            </span>
+                            <div className="mt-1 flex flex-col gap-1">
+                              <span className="text-foreground text-base font-extrabold">
+                                {count} realizados
+                              </span>
+                              {isCompletedWinner && (
+                                <span className="inline-flex w-fit items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                                  <Trophy className="size-3 text-amber-500" />
+                                  Mais experiente
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Proteção Financeira */}
+                          <div className="border-border/50 bg-muted/20 flex flex-col justify-between rounded-xl border p-3">
+                            <span className="text-muted-foreground flex items-center gap-1 text-[11px] font-bold tracking-wide uppercase">
+                              <ShieldCheck className="size-3.5 text-emerald-600" /> Garantia
+                            </span>
+                            <div className="mt-1 flex flex-col gap-1">
+                              <EscrowGuaranteeBadge variant="compact" />
+                              <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                Garantia 90d
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Expediente & Raio */}
+                          <div className="border-border/50 bg-muted/20 flex flex-col justify-between rounded-xl border p-3">
+                            <span className="text-muted-foreground flex items-center gap-1 text-[11px] font-bold tracking-wide uppercase">
+                              <Clock className="text-muted-foreground size-3.5" /> Expediente
+                            </span>
+                            <div className="mt-1 flex flex-col gap-0.5">
+                              <span className="text-foreground text-xs font-bold">
+                                {weeklySummary(p)}
+                              </span>
+                              {p.radiusKm ? (
+                                <span className="text-muted-foreground text-[10px] font-medium">
+                                  Atende até {p.radiusKm} km
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Serviços Ativos e Especialidades */}
+                        {p.services && p.services.length > 0 && (
+                          <div className="border-border/30 flex flex-col gap-2 border-t pt-1">
+                            <div className="text-muted-foreground flex items-center justify-between text-xs font-bold">
+                              <span className="flex items-center gap-1.5">
+                                <Wrench className="size-3.5 text-emerald-600" />
+                                {p.services.length}{" "}
+                                {p.services.length === 1
+                                  ? "serviço cadastrado"
+                                  : "serviços cadastrados"}
+                              </span>
+                              {cats.length > 0 && (
+                                <div className="hidden items-center gap-1 sm:flex">
+                                  {cats.slice(0, 3).map((c) => (
+                                    <Badge
+                                      key={c}
+                                      variant="secondary"
+                                      className="bg-emerald-50 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                    >
+                                      {c}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {p.services.slice(0, 6).map((s) => {
+                                const sPrice = Number(s.basePrice)
+                                return (
+                                  <div
+                                    key={s.id}
+                                    className="border-border/50 bg-muted/30 inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors hover:border-emerald-500/40"
+                                  >
+                                    <span className="text-foreground font-semibold">{s.title}</span>
+                                    <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                                      {Number.isFinite(sPrice) && sPrice > 0
+                                        ? formatBRL(sPrice)
+                                        : "Sob consulta"}
+                                    </span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Bio / Apresentação */}
+                        {p.bio && (
+                          <p className="text-muted-foreground border-border/20 border-t pt-2 text-xs leading-relaxed italic">
+                            &ldquo;{p.bio}&rdquo;
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               ) : (
+                /* Visualização Lado a Lado (Colunas) */
                 <div className="border-border/60 bg-card overflow-x-auto rounded-2xl border shadow-xs">
                   <table className="w-full min-w-[680px] border-separate border-spacing-0 text-sm lg:table-fixed">
                     <thead>
@@ -535,23 +918,7 @@ export default function CompareModal() {
                                 <div className="flex items-center gap-1.5 pt-1">
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      if (p.whatsapp) {
-                                        const digits = p.whatsapp.replace(/\D/g, "")
-                                        const num = digits.startsWith("55") ? digits : `55${digits}`
-                                        const text = encodeURIComponent(
-                                          `Olá ${p.name}, vi seu perfil no Comparador Severinno e gostaria de solicitar um orçamento.`,
-                                        )
-                                        window.open(
-                                          `https://wa.me/${num}?text=${text}`,
-                                          "_blank",
-                                          "noopener,noreferrer",
-                                        )
-                                      } else {
-                                        closeCompare()
-                                        openQuote({ providerId: p.id })
-                                      }
-                                    }}
+                                    onClick={() => handleWhatsAppContact(p)}
                                     className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-50 text-emerald-700 shadow-2xs transition-colors hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300"
                                     title={`Chamar ${p.name} no WhatsApp`}
                                     aria-label={`Chamar ${p.name} no WhatsApp`}
@@ -683,7 +1050,44 @@ function EmptyCompare() {
 // Loading skeleton
 // ---------------------------------------------------------------------------
 
-function CompareSkeleton({ count, rows }: { count: number; rows: number }) {
+function CompareSkeleton({
+  count,
+  rows,
+  layoutMode = "columns",
+}: {
+  count: number
+  rows: number
+  layoutMode?: "columns" | "vertical"
+}) {
+  if (layoutMode === "vertical") {
+    return (
+      <div className="flex flex-col gap-4">
+        {Array.from({ length: count }).map((_, i) => (
+          <div key={i} className="border-border/60 bg-card space-y-4 rounded-2xl border p-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Skeleton className="size-12 rounded-2xl sm:size-14" />
+                <div className="space-y-1.5">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-9 w-20 rounded-xl" />
+                <Skeleton className="h-9 w-24 rounded-xl" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+              {Array.from({ length: 6 }).map((_, j) => (
+                <Skeleton key={j} className="h-16 rounded-xl" />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-separate border-spacing-0 text-sm">
