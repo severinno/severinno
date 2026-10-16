@@ -48,6 +48,8 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting()
+  } else if (event.data && event.data.type === "TRIGGER_OFFLINE_SYNC") {
+    event.waitUntil(syncOfflineActions())
   }
 })
 
@@ -423,7 +425,7 @@ async function openOrFocusUrl(url) {
 const SYNC_QUEUE = "severinno-sync-v1"
 
 self.addEventListener("sync", (event) => {
-  if (event.tag === "sync-offline-actions") {
+  if (event.tag === "sync-offline-actions" || event.tag === "sync-offline-batch") {
     event.waitUntil(syncOfflineActions())
   }
 })
@@ -431,6 +433,8 @@ self.addEventListener("sync", (event) => {
 async function syncOfflineActions() {
   const cache = await caches.open(SYNC_QUEUE)
   const keys = await cache.keys()
+  let syncedCount = 0
+
   for (const request of keys) {
     try {
       const body = await request.clone().text()
@@ -441,9 +445,20 @@ async function syncOfflineActions() {
       })
       if (response.ok) {
         await cache.delete(request)
+        syncedCount++
       }
     } catch {
-      // Will retry on next sync
+      // Will retry on next sync event
     }
+  }
+
+  // Notify active window clients that sync has completed
+  const clientsList = await clients.matchAll({ type: "window", includeUncontrolled: true })
+  for (const client of clientsList) {
+    client.postMessage({
+      type: "OFFLINE_SYNC_COMPLETED",
+      syncedCount,
+      timestamp: Date.now(),
+    })
   }
 }
