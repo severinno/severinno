@@ -35,15 +35,26 @@ export interface MetricCardProps {
   className?: string
 }
 
+function renderMetricIcon(icon: React.ElementType | ReactNode, sizeClass = "size-4") {
+  if (icon === null || icon === undefined || typeof icon === "boolean") {
+    return null
+  }
+  if (typeof icon === "string" || typeof icon === "number" || React.isValidElement(icon)) {
+    return (
+      <span className={cn("text-primary [&>svg]:size-4", sizeClass && `[&>svg]:${sizeClass}`)}>
+        {icon}
+      </span>
+    )
+  }
+  const IconComponent = icon as React.ElementType
+  return <IconComponent className={cn("text-primary", sizeClass)} />
+}
+
 export function MetricCard({ icon: Icon, title, children, className }: MetricCardProps) {
   return (
     <div className={cn("border-border/50 bg-card rounded-xl border", className)}>
       <div className="flex items-center gap-2 border-b px-5 py-4">
-        {typeof Icon === "function" ? (
-          <Icon className="text-primary size-4" />
-        ) : (
-          <span className="text-primary [&>svg]:size-4">{Icon}</span>
-        )}
+        {renderMetricIcon(Icon, "size-4")}
         <h2 className="text-foreground text-sm font-semibold">{title}</h2>
       </div>
       <div className="p-4">{children}</div>
@@ -54,8 +65,8 @@ export function MetricCard({ icon: Icon, title, children, className }: MetricCar
 // ── KpiCard ───────────────────────────────────────────────────────────────
 
 export interface KpiCardProps {
-  /** Lucide icon component. */
-  icon: React.ElementType
+  /** Lucide icon component (or any React element type). */
+  icon: React.ElementType | ReactNode
   /** KPI label text. */
   label: string
   /** KPI value string (formatted). */
@@ -64,21 +75,35 @@ export interface KpiCardProps {
   subtitle?: string
   /** Optional trend indicator. */
   trend?: "up" | "down"
+  /** Optional trend label text. */
+  trendLabel?: string
 }
 
-export function KpiCard({ icon: Icon, label, value, subtitle, trend }: KpiCardProps) {
+export function KpiCard({ icon: Icon, label, value, subtitle, trend, trendLabel }: KpiCardProps) {
   return (
     <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
       <div className="flex items-start justify-between">
         <span className="bg-primary/8 text-primary flex size-10 items-center justify-center rounded-lg">
-          <Icon className="size-5" />
+          {renderMetricIcon(Icon, "size-5")}
         </span>
         {trend ? (
-          trend === "up" ? (
-            <TrendingUp className="size-4 text-emerald-500" />
-          ) : (
-            <TrendingDown className="size-4 text-red-500" />
-          )
+          <div className="flex items-center gap-1">
+            {trend === "up" ? (
+              <TrendingUp className="size-4 text-emerald-500" />
+            ) : (
+              <TrendingDown className="size-4 text-red-500" />
+            )}
+            {trendLabel ? (
+              <span
+                className={cn(
+                  "text-[10px] font-medium",
+                  trend === "up" ? "text-emerald-500" : "text-red-500",
+                )}
+              >
+                {trendLabel}
+              </span>
+            ) : null}
+          </div>
         ) : null}
       </div>
       <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>

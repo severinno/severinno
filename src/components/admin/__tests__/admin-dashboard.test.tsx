@@ -35,23 +35,69 @@ vi.mock("@/store/auth", () => ({
 }))
 
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: vi.fn(() => ({
-    data: {
-      usersByRole: { CLIENT: 10, PROVIDER: 5, ADMIN: 1 },
-      providers: 5,
-      services: 20,
-      bookingsByStatus: { PENDING: 3, CONFIRMED: 5, IN_PROGRESS: 2, COMPLETED: 10, CANCELLED: 1 },
-      quotesByStatus: { PENDING: 4, ACCEPTED: 6, REJECTED: 2 },
-      revenue: { total: 50000, paymentsPaid: 35000 },
-      recentBookings: [],
-      topProviders: [],
-    },
-    isLoading: false,
-    isError: false,
-    isFetching: false,
-    refetch: vi.fn(),
-    dataUpdatedAt: Date.now(),
-  })),
+  useQuery: vi.fn((options?: { queryKey?: unknown[] }) => {
+    const key = Array.isArray(options?.queryKey) ? options?.queryKey : []
+    if (key.includes("unit-economics")) {
+      return {
+        data: {
+          gmv: {
+            total: 50000,
+            today: 1200,
+            last30Days: 45000,
+            paidBookingsCount: 120,
+            totalBookingsCount: 150,
+          },
+          takeRate: {
+            rate: 0.12,
+            percentage: 12,
+            totalRevenue: 6000,
+            projectedAnnualRevenue: 72000,
+          },
+          unitEconomics: {
+            ticketMedio: 250,
+            cacProjetado: 35,
+            ltvProjetado: 480,
+            ltvCacRatio: 13.7,
+            tempoMedioMatchMinutos: 4.2,
+            satisfacaoNps: 94,
+          },
+          pilotoGV: {
+            cidade: "Governador Valadares",
+            estado: "MG",
+            populacao: 280000,
+            bairrosAtivos: ["Centro", "Ilha dos Araújos"],
+            prestadoresAtivos: 45,
+            clientesAtivos: 180,
+            servicosAtivos: 90,
+          },
+          expansionCities: [],
+        },
+        isLoading: false,
+        isError: false,
+        isFetching: false,
+        refetch: vi.fn(),
+        dataUpdatedAt: Date.now(),
+      }
+    }
+
+    return {
+      data: {
+        usersByRole: { CLIENT: 10, PROVIDER: 5, ADMIN: 1 },
+        providers: 5,
+        services: 20,
+        bookingsByStatus: { PENDING: 3, CONFIRMED: 5, IN_PROGRESS: 2, COMPLETED: 10, CANCELLED: 1 },
+        quotesByStatus: { PENDING: 4, ACCEPTED: 6, REJECTED: 2 },
+        revenue: { total: 50000, paymentsPaid: 35000 },
+        recentBookings: [],
+        topProviders: [],
+      },
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      refetch: vi.fn(),
+      dataUpdatedAt: Date.now(),
+    }
+  }),
   useQueryClient: vi.fn(() => ({
     invalidateQueries: vi.fn(),
   })),
@@ -67,16 +113,12 @@ vi.mock("@/lib/sounds", () => ({
   tryVibrate: mockTryVibrate,
 }))
 
-vi.mock("lucide-react", () => ({
-  ArrowRight: () => <svg />,
-  CalendarCheck: () => <svg />,
-  Clock: () => <svg />,
-  DollarSign: () => <svg />,
-  RotateCw: () => <svg />,
-  Star: () => <svg />,
-  Users: () => <svg />,
-  Wrench: () => <svg />,
-}))
+vi.mock("lucide-react", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, any>>()
+  return {
+    ...actual,
+  }
+})
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },

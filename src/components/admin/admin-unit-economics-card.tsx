@@ -103,7 +103,7 @@ export function AdminUnitEconomicsCard() {
     )
   }
 
-  if (isError || !data) {
+  if (isError || !data || !data.gmv || !data.takeRate || !data.unitEconomics || !data.pilotoGV) {
     return null
   }
 
@@ -127,8 +127,10 @@ export function AdminUnitEconomicsCard() {
               Piloto GV Validado
             </Badge>
           </div>
-          <CardTitle className="text-foreground mt-2 text-xl font-bold tracking-tight">
-            Métricas de Crescimento & Modelo de Negócio
+          <CardTitle className="mt-2">
+            <h2 className="text-foreground text-xl font-bold tracking-tight">
+              Métricas de Crescimento & Modelo de Negócio
+            </h2>
           </CardTitle>
           <CardDescription className="text-muted-foreground text-xs">
             Consolidação em tempo real de Gross Merchandise Volume (GMV), Take-Rate e projeção
@@ -238,9 +240,9 @@ export function AdminUnitEconomicsCard() {
           <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
             <div className="flex items-center gap-2">
               <Compass className="text-primary size-4" />
-              <h4 className="text-foreground text-sm font-bold">
+              <h3 className="text-foreground text-sm font-bold">
                 Simulador de Expansão Territorial: Vale do Aço & Leste de Minas
-              </h4>
+              </h3>
             </div>
             <span className="text-muted-foreground text-xs font-medium">
               Projeção calculada com base no piloto de {data.pilotoGV.cidade}
@@ -258,6 +260,7 @@ export function AdminUnitEconomicsCard() {
                   </span>
                 </div>
                 <Slider
+                  aria-label="Cidades Ativadas em Simultâneo"
                   min={1}
                   max={6}
                   step={1}
@@ -275,6 +278,7 @@ export function AdminUnitEconomicsCard() {
                   </span>
                 </div>
                 <Slider
+                  aria-label="Prestadores Verificados por Cidade"
                   min={15}
                   max={100}
                   step={5}
@@ -291,6 +295,7 @@ export function AdminUnitEconomicsCard() {
                     <span className="text-foreground font-semibold">{bookingsPerProvider}</span>
                   </div>
                   <Slider
+                    aria-label="Chamados por Mês por Prestador"
                     min={6}
                     max={30}
                     step={1}
@@ -308,6 +313,7 @@ export function AdminUnitEconomicsCard() {
                     </span>
                   </div>
                   <Slider
+                    aria-label="Ticket Médio por Chamado"
                     min={120}
                     max={280}
                     step={10}
