@@ -26,7 +26,7 @@ type OsrmApiResponse = {
 }
 
 function getOsrmUrl(): string {
-  return process.env.OSRM_URL || "https://router.project-osrm.org"
+  return process.env.OSRM_URL || process.env.OSRM_BASE_URL || "http://127.0.0.1:5000"
 }
 
 /**

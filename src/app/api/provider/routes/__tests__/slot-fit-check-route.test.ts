@@ -2,6 +2,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { NextRequest } from "next/server"
 import { POST } from "../slot-fit-check/route"
 
+vi.mock("@/lib/db", () => ({
+  db: {
+    booking: {
+      findUnique: vi.fn().mockResolvedValue({
+        id: "book-123",
+        providerId: "prov-1",
+      }),
+    },
+  },
+}))
+
 vi.mock("@/lib/auth", () => ({
   requireRole: vi.fn().mockResolvedValue({ userId: "prov-1", role: "PROVIDER" }),
 }))

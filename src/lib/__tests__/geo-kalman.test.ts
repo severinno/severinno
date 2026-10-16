@@ -53,4 +53,28 @@ describe("KalmanFilter2D (src/lib/geo-kalman.ts)", () => {
     expect(kalman.isInitialized()).toBe(false)
     expect(kalman.getState()).toBeNull()
   })
+
+  it("handles out-of-order timestamps without corrupting state", () => {
+    kalman.update(-23.55, -46.63, 5.0, 5000)
+
+    // Delayed old packet arrives with timestamp 3000 (< 5000)
+    const delayed = kalman.update(-23.54, -46.62, 5.0, 3000)
+
+    // Timestamp must remain the latest known (5000), not reverted
+    expect(delayed.timestampMs).toBe(5000)
+    expect(delayed.lat).toBeCloseTo(-23.55, 4)
+  })
+
+  it("dampens physical teleportation / multipath jumps exceeding maxVelocityMps", () => {
+    // Start at -23.55, -46.63
+    kalman.update(-23.55, -46.63, 5.0, 1000)
+
+    // Huge teleportation jump of ~2.2 km in 1 second (~8,000 km/h)
+    const jump = kalman.update(-23.53, -46.63, 5.0, 2000)
+
+    // Because speed exceeded maxVelocityMps, effective accuracy was inflated, damping the jump
+    const jumpDistanceRaw = Math.abs(-23.53 - -23.55) // 0.02 deg
+    const actualDelta = Math.abs(jump.lat - -23.55)
+    expect(actualDelta).toBeLessThan(jumpDistanceRaw * 0.3)
+  })
 })

@@ -51,4 +51,29 @@ describe("Map Matching & Snap-to-Road (src/lib/map-matching.ts)", () => {
     expect(result.distanceToRoadMeters).toBeGreaterThan(150)
     expect(result.snappedCoord).toEqual(farGps)
   })
+
+  it("handles empty or single-point polyline gracefully", () => {
+    const rawGps: Coordinate = [-41.945, -18.85]
+
+    // Empty polyline
+    const emptyResult = snapToRoad(rawGps, [])
+    expect(emptyResult.isMatched).toBe(false)
+    expect(emptyResult.distanceToRoadMeters).toBe(0)
+    expect(emptyResult.snappedCoord).toEqual(rawGps)
+
+    // Single-point polyline within threshold (10 meters away)
+    const singlePointPolyline: Coordinate[] = [[-41.945, -18.85009]]
+    const singleResult = snapToRoad(rawGps, singlePointPolyline, 20)
+    expect(singleResult.isMatched).toBe(true)
+    expect(singleResult.distanceToRoadMeters).toBeGreaterThan(5)
+    expect(singleResult.distanceToRoadMeters).toBeLessThan(15)
+    expect(singleResult.snappedCoord).toEqual(singlePointPolyline[0])
+
+    // Single-point polyline outside threshold (200m away)
+    const farSinglePoint: Coordinate[] = [[-41.945, -18.848]]
+    const farResult = snapToRoad(rawGps, farSinglePoint, 30)
+    expect(farResult.isMatched).toBe(false)
+    expect(farResult.snappedCoord).toEqual(rawGps)
+    expect(farResult.distanceToRoadMeters).toBeGreaterThan(150)
+  })
 })

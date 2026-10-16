@@ -58,7 +58,11 @@ function projectPointOnSegment(
   const [x1, y1] = p1
   const [x2, y2] = p2
 
-  const dx = x2 - x1
+  // Latitude projection factor in radians for metric space accuracy (Plate Carrée metric projection)
+  const meanLatRad = (((y1 + y2) / 2) * Math.PI) / 180
+  const cosLat = Math.cos(meanLatRad)
+
+  const dx = (x2 - x1) * cosLat
   const dy = y2 - y1
 
   if (dx === 0 && dy === 0) {
@@ -66,11 +70,14 @@ function projectPointOnSegment(
   }
 
   // Projection scalar parameter t = dot(p - p1, p2 - p1) / len^2
-  let t = ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)
+  const px = (x - x1) * cosLat
+  const py = y - y1
+
+  let t = (px * dx + py * dy) / (dx * dx + dy * dy)
   t = Math.max(0, Math.min(1, t)) // Clamp to segment endpoints
 
   return {
-    point: [x1 + t * dx, y1 + t * dy],
+    point: [x1 + t * (x2 - x1), y1 + t * (y2 - y1)],
     t,
   }
 }
@@ -89,14 +96,30 @@ export function snapToRoad(
 ): RoadSnapResult {
   const [gpsLng, gpsLat] = gpsCoord
 
-  // If no polyline is available or it has fewer than 2 points, return raw coordinate
-  if (!polyline || polyline.length < 2) {
+  // If no polyline is available, return raw coordinate
+  if (!polyline || polyline.length === 0) {
     return {
       snappedCoord: [gpsLng, gpsLat],
       distanceToRoadMeters: 0,
       bearing: 0,
       segmentIndex: 0,
       isMatched: false,
+    }
+  }
+
+  // Single-point polyline (e.g. destination waypoint or stationary stop)
+  if (polyline.length === 1) {
+    const p = polyline[0]
+    const distKm = haversineKm(gpsLat, gpsLng, p[1], p[0])
+    const distMeters = Math.round(distKm * 1000 * 10) / 10
+    const isMatched = distMeters <= maxDistanceThresholdMeters
+
+    return {
+      snappedCoord: isMatched ? [p[0], p[1]] : [gpsLng, gpsLat],
+      distanceToRoadMeters: distMeters,
+      bearing: 0,
+      segmentIndex: 0,
+      isMatched,
     }
   }
 

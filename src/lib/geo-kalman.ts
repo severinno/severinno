@@ -30,6 +30,11 @@ export interface KalmanFilterOptions {
    * Default: 1.0 meter.
    */
   minAccuracyMeters?: number
+  /**
+   * Maximum plausible velocity in meters per second (anti-teleportation damping).
+   * Default: 40.0 m/s (~144 km/h).
+   */
+  maxVelocityMps?: number
 }
 
 export interface FilteredPosition {
@@ -46,10 +51,12 @@ export class KalmanFilter2D {
   private timestampMs: number = 0
   private readonly qMetersPerSecond: number
   private readonly minAccuracyMeters: number
+  private readonly maxVelocityMps: number
 
   constructor(options: KalmanFilterOptions = {}) {
     this.qMetersPerSecond = options.processNoiseMps ?? 3.0
     this.minAccuracyMeters = Math.max(0.1, options.minAccuracyMeters ?? 1.0)
+    this.maxVelocityMps = Math.max(1.0, options.maxVelocityMps ?? 40.0)
   }
 
   /**
@@ -100,8 +107,33 @@ export class KalmanFilter2D {
       }
     }
 
+    // Protect against out-of-order timestamps
+    if (timestampMs < this.timestampMs) {
+      const estimatedAccuracy = Math.sqrt(Math.max(this.variance, this.minAccuracyMeters))
+      return {
+        lat: Math.round(this.lat * 1e7) / 1e7,
+        lng: Math.round(this.lng * 1e7) / 1e7,
+        accuracyMeters: Math.round(estimatedAccuracy * 10) / 10,
+        timestampMs: this.timestampMs,
+      }
+    }
+
     // Compute elapsed time in seconds
     const timeDeltaSec = Math.max(0.001, (timestampMs - this.timestampMs) / 1000.0)
+
+    // Kinematic validation against physical teleportation / multipath spikes
+    const meanLatRad = (((this.lat + lat) / 2) * Math.PI) / 180
+    const dLatMeters = (lat - this.lat) * 111139
+    const dLngMeters = (lng - this.lng) * 111139 * Math.cos(meanLatRad)
+    const jumpDistanceMeters = Math.hypot(dLatMeters, dLngMeters)
+    const speedMps = jumpDistanceMeters / timeDeltaSec
+
+    let effectiveAccuracy = safeAccuracy
+    if (speedMps > this.maxVelocityMps) {
+      // Teleportation / multipath jump detected: inflate noise to dampen the spike
+      effectiveAccuracy = safeAccuracy * Math.min(10, speedMps / this.maxVelocityMps)
+    }
+
     this.timestampMs = timestampMs
 
     // ── 1. Predict Step ───────────────────────────────────────────────────
@@ -109,7 +141,7 @@ export class KalmanFilter2D {
     this.variance += timeDeltaSec * (this.qMetersPerSecond * this.qMetersPerSecond)
 
     // ── 2. Update Step ────────────────────────────────────────────────────
-    const measurementVariance = safeAccuracy * safeAccuracy
+    const measurementVariance = effectiveAccuracy * effectiveAccuracy
     const kalmanGain = this.variance / (this.variance + measurementVariance)
 
     // Update coordinates toward measurement scaled by Kalman gain

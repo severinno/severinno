@@ -18,6 +18,7 @@ describe("OSRM Routing Engine (src/lib/geo-osrm.ts)", () => {
 
     expect(result).toBeDefined()
     expect(result.source).toBe("osrm-fallback-geodesic")
+    expect(result.isEstimate).toBe(true)
     expect(result.distanceMeters).toBeGreaterThan(1000)
     expect(result.distanceMeters).toBeLessThan(3500)
     expect(result.durationSeconds).toBeGreaterThan(60)
@@ -54,6 +55,7 @@ describe("OSRM Routing Engine (src/lib/geo-osrm.ts)", () => {
     const result = await calculateRoute(origin, dest)
 
     expect(result.source).toBe("osrm-local")
+    expect(result.isEstimate).toBe(false)
     expect(result.distanceMeters).toBe(2451)
     expect(result.durationSeconds).toBe(310)
     expect(result.polyline).toEqual([

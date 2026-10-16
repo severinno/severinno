@@ -13,6 +13,8 @@
  */
 
 import { haversineKm } from "./geo-shared"
+import { withCache } from "@/lib/redis"
+import { osrmBreaker } from "./geo-circuit-breakers"
 import logger from "./logger"
 
 const log = logger.child({ module: "geo-osrm" })
@@ -26,12 +28,14 @@ export interface OsrmRouteResult {
     coordinates: [number, number][] // [lng, lat] GeoJSON standard
   }
   source: "osrm-local" | "osrm-fallback-geodesic"
+  isEstimate: boolean
 }
 
 export interface OsrmRouteOptions {
   profile?: "driving" | "bike" | "foot"
   timeoutMs?: number
   osrmUrl?: string
+  useCache?: boolean
 }
 
 /**
@@ -44,28 +48,42 @@ export async function calculateRoute(
 ): Promise<OsrmRouteResult> {
   const profile = options.profile ?? "driving"
   const timeoutMs = options.timeoutMs ?? 1500
+  const useCache = options.useCache ?? true
   const baseUrl =
     options.osrmUrl ?? process.env.OSRM_URL ?? process.env.OSRM_BASE_URL ?? "http://127.0.0.1:5000"
 
   const [originLat, originLng] = origin
   const [destLat, destLng] = destination
 
-  // Formato OSRM: /route/v1/{profile}/{lng1},{lat1};{lng2},{lat2}
-  const endpoint = `${baseUrl}/route/v1/${profile}/${originLng},${originLat};${destLng},${destLat}?overview=full&geometries=geojson`
+  const computeRoute = async (): Promise<OsrmRouteResult> => {
+    // Formato OSRM: /route/v1/{profile}/{lng1},{lat1};{lng2},{lat2}
+    const endpoint = `${baseUrl}/route/v1/${profile}/${originLng},${originLat};${destLng},${destLat}?overview=full&geometries=geojson`
 
-  try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const data = await osrmBreaker.execute(async () => {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), timeoutMs)
 
-    const res = await fetch(endpoint, {
-      signal: controller.signal,
-      headers: { Accept: "application/json" },
-    })
+        const res = await fetch(endpoint, {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        })
 
-    clearTimeout(timer)
+        clearTimeout(timer)
 
-    if (res.ok) {
-      const data = await res.json()
+        if (!res.ok) {
+          throw new Error(`OSRM HTTP error: ${res.status}`)
+        }
+
+        return (await res.json()) as {
+          routes?: Array<{
+            distance: number
+            duration: number
+            geometry: { coordinates: [number, number][] }
+          }>
+        }
+      })
+
       if (data.routes && data.routes.length > 0) {
         const route = data.routes[0]
         const coords: [number, number][] = route.geometry.coordinates.map(
@@ -76,52 +94,65 @@ export async function calculateRoute(
           distanceMeters: Math.round(route.distance),
           durationSeconds: Math.round(route.duration),
           polyline: coords,
-          geometry: route.geometry,
+          geometry: route.geometry as { type: "LineString"; coordinates: [number, number][] },
           source: "osrm-local",
+          isEstimate: false,
         }
       }
+    } catch {
+      // Local OSRM instance unavailable or circuit breaker open — degrade gracefully to geodesic calculation
+      log.debug(
+        { origin, destination },
+        "OSRM local indisponível no momento — utilizando estimativa geodésica de rota",
+      )
     }
-  } catch {
-    // Local OSRM instance unavailable or timed out — degrade gracefully to geodesic calculation
-    log.debug(
-      { origin, destination },
-      "OSRM local indisponível no momento — utilizando estimativa geodésica de rota",
-    )
+
+    // ── Fallback Geodésico Inteligente ──────────────────────────────────────────
+    // Distância Haversine * 1.32 (fator de curvatura e sinuosidade de malha viária urbana)
+    const straightDistKm = haversineKm(originLat, originLng, destLat, destLng)
+    const urbanDistMeters = Math.round(straightDistKm * 1.32 * 1000)
+
+    // Velocidades médias urbanas:
+    // - Carro / Moto: ~30 km/h (8.33 m/s)
+    // - Bicicleta: ~14 km/h (3.88 m/s)
+    // - A pé: ~4.5 km/h (1.25 m/s)
+    const speedMps = profile === "bike" ? 3.88 : profile === "foot" ? 1.25 : 8.33
+    const durationSeconds = Math.max(30, Math.round(urbanDistMeters / speedMps))
+
+    // Interpolação de 5 pontos intermediários para gerar uma polilinha fluida
+    const steps = 5
+    const polyline: [number, number][] = []
+    const geojsonCoords: [number, number][] = []
+
+    for (let i = 0; i <= steps; i++) {
+      const factor = i / steps
+      const lat = originLat + factor * (destLat - originLat)
+      const lng = originLng + factor * (destLng - originLng)
+      polyline.push([Math.round(lat * 1e6) / 1e6, Math.round(lng * 1e6) / 1e6])
+      geojsonCoords.push([Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6])
+    }
+
+    return {
+      distanceMeters: urbanDistMeters,
+      durationSeconds,
+      polyline,
+      geometry: {
+        type: "LineString",
+        coordinates: geojsonCoords,
+      },
+      source: "osrm-fallback-geodesic",
+      isEstimate: true,
+    }
   }
 
-  // ── Fallback Geodésico Inteligente ──────────────────────────────────────────
-  // Distância Haversine * 1.32 (fator de curvatura e sinuosidade de malha viária urbana)
-  const straightDistKm = haversineKm(originLat, originLng, destLat, destLng)
-  const urbanDistMeters = Math.round(straightDistKm * 1.32 * 1000)
-
-  // Velocidades médias urbanas:
-  // - Carro / Moto: ~30 km/h (8.33 m/s)
-  // - Bicicleta: ~14 km/h (3.88 m/s)
-  // - A pé: ~4.5 km/h (1.25 m/s)
-  const speedMps = profile === "bike" ? 3.88 : profile === "foot" ? 1.25 : 8.33
-  const durationSeconds = Math.max(30, Math.round(urbanDistMeters / speedMps))
-
-  // Interpolação de 5 pontos intermediários para gerar uma polilinha fluida
-  const steps = 5
-  const polyline: [number, number][] = []
-  const geojsonCoords: [number, number][] = []
-
-  for (let i = 0; i <= steps; i++) {
-    const factor = i / steps
-    const lat = originLat + factor * (destLat - originLat)
-    const lng = originLng + factor * (destLng - originLng)
-    polyline.push([Math.round(lat * 1e6) / 1e6, Math.round(lng * 1e6) / 1e6])
-    geojsonCoords.push([Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6])
+  if (useCache) {
+    const cacheKey = `geo:osrm:${originLat.toFixed(4)},${originLng.toFixed(4)}:${destLat.toFixed(4)},${destLng.toFixed(4)}:${profile}`
+    try {
+      return await withCache(cacheKey, computeRoute, 3600)
+    } catch {
+      return computeRoute()
+    }
   }
 
-  return {
-    distanceMeters: urbanDistMeters,
-    durationSeconds,
-    polyline,
-    geometry: {
-      type: "LineString",
-      coordinates: geojsonCoords,
-    },
-    source: "osrm-fallback-geodesic",
-  }
+  return computeRoute()
 }
