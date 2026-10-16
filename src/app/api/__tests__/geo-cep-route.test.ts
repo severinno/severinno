@@ -91,7 +91,9 @@ describe("GET /api/geo/cep", () => {
     expect(response.status).toBe(200)
     // Same contract as routes that call cacheControlPublic directly —
     // asserted here to lock the alignment (see docs/CACHE_STRATEGY.md).
-    expect(response.headers.get("Cache-Control")).toBe("public, max-age=60, s-maxage=60")
+    expect(response.headers.get("Cache-Control")).toBe(
+      "public, max-age=60, s-maxage=60, stale-while-revalidate=60",
+    )
     expect(response.headers.get("Vary")).toBe("Accept-Encoding, Accept, Origin")
     expect(response.headers.get("Content-Type")).toBe("application/json")
   })

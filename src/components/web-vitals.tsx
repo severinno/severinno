@@ -1,16 +1,20 @@
 "use client"
 
 import { useEffect } from "react"
-import { onCLS, onINP, onLCP, type Metric } from "web-vitals"
+import { onCLS, onFCP, onINP, onLCP, onTTFB, type Metric } from "web-vitals"
 
 /**
  * Sends Web Vitals metrics to /api/web-vitals for monitoring.
  *
- * Tracks: LCP (Largest Contentful Paint), INP (Interaction to Next Paint),
- * CLS (Cumulative Layout Shift) — the three Core Web Vitals.
+ * Tracks the 5 pillars of web performance:
+ * - LCP (Largest Contentful Paint) — loading performance
+ * - INP (Interaction to Next Paint) — responsiveness
+ * - CLS (Cumulative Layout Shift) — visual stability
+ * - FCP (First Contentful Paint) — initial render
+ * - TTFB (Time to First Byte) — server response & CDN latency
  *
- * In production, these metrics are sent to the backend for dashboard display.
- * In development, they're logged to console.
+ * In production, these metrics are sent via navigator.sendBeacon.
+ * In development, they are logged to console.
  */
 function sendToAnalytics(metric: Metric) {
   const payload = {
@@ -41,6 +45,8 @@ export function WebVitals() {
     onLCP(sendToAnalytics)
     onINP(sendToAnalytics)
     onCLS(sendToAnalytics)
+    onFCP(sendToAnalytics)
+    onTTFB(sendToAnalytics)
   }, [])
 
   return null

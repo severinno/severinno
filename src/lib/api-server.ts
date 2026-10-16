@@ -440,7 +440,15 @@ export function cacheControlPublic(
   staleWhileRevalidate?: number,
 ): NextResponse {
   const swr = staleWhileRevalidate ?? maxAge
-  response.headers.set("Cache-Control", `public, max-age=${maxAge}, s-maxage=${swr}`)
+  response.headers.set(
+    "Cache-Control",
+    `public, max-age=${maxAge}, s-maxage=${swr}, stale-while-revalidate=${swr}`,
+  )
+  response.headers.set("CDN-Cache-Control", `max-age=${swr}, stale-while-revalidate=${swr}`)
+  response.headers.set(
+    "Cloudflare-CDN-Cache-Control",
+    `max-age=${swr}, stale-while-revalidate=${swr}`,
+  )
   // Set Vary to prevent CDN cache collisions for encoding, format, and origin variants
   response.headers.set("Vary", "Accept-Encoding, Accept, Origin")
   return response

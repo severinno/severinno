@@ -581,7 +581,7 @@ describe("GET /api/admin/cache-routes", () => {
       method: "GET",
       type: "public",
       maxAge: 60,
-      cacheControl: "public, max-age=60, s-maxage=60",
+      cacheControl: "public, max-age=60, s-maxage=60, stale-while-revalidate=60",
       vary: ["Accept-Encoding", "Accept", "Origin"],
     })
     expect(providers.notes.length).toBeGreaterThan(0)

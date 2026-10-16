@@ -36,7 +36,13 @@ export function expectCacheHeaders(
   const swr = sMaxage ?? maxAge
 
   expect(res.status).toBe(200)
-  expect(res.headers.get("Cache-Control")).toBe(`public, max-age=${maxAge}, s-maxage=${swr}`)
+  expect(res.headers.get("Cache-Control")).toBe(
+    `public, max-age=${maxAge}, s-maxage=${swr}, stale-while-revalidate=${swr}`,
+  )
+  expect(res.headers.get("CDN-Cache-Control")).toBe(`max-age=${swr}, stale-while-revalidate=${swr}`)
+  expect(res.headers.get("Cloudflare-CDN-Cache-Control")).toBe(
+    `max-age=${swr}, stale-while-revalidate=${swr}`,
+  )
   expect(res.headers.get("Vary")).toBe(VARY_VALUE)
 }
 

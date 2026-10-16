@@ -85,7 +85,9 @@ describe("GET /api/geo/reverse", () => {
       cep: "01310-100",
     })
     // Contrato da casa nos 200 (via cacheControlPublic)
-    expect(res.headers.get("cache-control")).toBe("public, max-age=60, s-maxage=60")
+    expect(res.headers.get("cache-control")).toBe(
+      "public, max-age=60, s-maxage=60, stale-while-revalidate=60",
+    )
   })
 
   it("returns 400 when lat is missing", async () => {

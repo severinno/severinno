@@ -3,89 +3,24 @@
 import * as React from "react"
 import { Smartphone, Download, X, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>
-}
-
-const STORAGE_KEY = "severinno_pwa_banner_dismissed_until"
-const DISMISS_DAYS = 7
+import { usePWAInstall } from "@/hooks/use-pwa-install"
 
 export function PwaInstallBanner({ className }: { className?: string }) {
-  const [deferredPrompt, setDeferredPrompt] = React.useState<BeforeInstallPromptEvent | null>(null)
-  const [visible, setVisible] = React.useState(false)
-  const [isIos, setIsIos] = React.useState(false)
+  const { canInstall, isInstalled, isIOS, isDismissed, promptInstall, dismiss } = usePWAInstall()
   const [showIosInstructions, setShowIosInstructions] = React.useState(false)
 
-  React.useEffect(() => {
-    // Check if dismissed recently
-    try {
-      const dismissedUntil = localStorage.getItem(STORAGE_KEY)
-      if (dismissedUntil && Number(dismissedUntil) > Date.now()) {
-        return
-      }
-    } catch {
-      // localStorage disabled / private mode
-    }
-
-    // Check if already running in standalone mode (PWA installed)
-    const isStandalone =
-      (typeof window !== "undefined" &&
-        typeof window.matchMedia === "function" &&
-        window.matchMedia("(display-mode: standalone)").matches) ||
-      (typeof window !== "undefined" &&
-        (window.navigator as unknown as { standalone?: boolean })?.standalone === true)
-    if (isStandalone) return
-
-    // iOS Safari detection (deferred to avoid synchronous state update in effect)
-    const userAgent = window.navigator.userAgent.toLowerCase()
-    const isAppleIos = /iphone|ipad|ipod/.test(userAgent) && !/crios|fxios/.test(userAgent)
-    if (isAppleIos) {
-      const timer = setTimeout(() => {
-        setIsIos(true)
-        setVisible(true)
-      }, 500)
-      return () => clearTimeout(timer)
-    }
-
-    // Android / Chromium beforeinstallprompt
-    const handler = (e: Event) => {
-      e.preventDefault()
-      setDeferredPrompt(e as BeforeInstallPromptEvent)
-      setVisible(true)
-    }
-
-    window.addEventListener("beforeinstallprompt", handler)
-    return () => window.removeEventListener("beforeinstallprompt", handler)
-  }, [])
+  if (isInstalled || isDismissed || (!canInstall && !isIOS)) {
+    return null
+  }
 
   const handleInstallClick = async () => {
-    if (isIos) {
+    if (isIOS) {
       setShowIosInstructions(true)
       return
     }
 
-    if (!deferredPrompt) return
-    await deferredPrompt.prompt()
-    const { outcome } = await deferredPrompt.userChoice
-    if (outcome === "accepted") {
-      setVisible(false)
-    }
-    setDeferredPrompt(null)
+    await promptInstall()
   }
-
-  const handleDismiss = () => {
-    setVisible(false)
-    try {
-      const dismissUntil = Date.now() + DISMISS_DAYS * 24 * 60 * 60 * 1000
-      localStorage.setItem(STORAGE_KEY, dismissUntil.toString())
-    } catch {
-      // Ignore
-    }
-  }
-
-  if (!visible) return null
 
   return (
     <div
@@ -111,7 +46,7 @@ export function PwaInstallBanner({ className }: { className?: string }) {
             </span>
             <button
               type="button"
-              onClick={handleDismiss}
+              onClick={dismiss}
               aria-label="Fechar aviso de instalação"
               className="text-muted-foreground hover:text-foreground -mr-1 p-1"
             >
@@ -145,7 +80,7 @@ export function PwaInstallBanner({ className }: { className?: string }) {
 
               <button
                 type="button"
-                onClick={handleDismiss}
+                onClick={dismiss}
                 className="text-muted-foreground hover:text-foreground px-2 py-1 text-[11px] font-semibold underline"
               >
                 Depois
