@@ -975,6 +975,14 @@ export default function Vitrine() {
           expandedRadius={pagedData?.expandedRadius}
         />
 
+        {/* 3b. RecentlyViewed & NearbyProviders — Histórico e Proximidade em 95% */}
+        <Suspense fallback={null}>
+          <RecentlyViewed />
+        </Suspense>
+        <Suspense fallback={null}>
+          <NearbyProviders />
+        </Suspense>
+
         {/* 4. TopProvidersShowcase — Prestadores Mais Requisitados e Bem Avaliados de GV */}
         <div className="mx-auto my-6 w-full max-w-[95%] px-2 sm:px-4">
           <Suspense fallback={null}>
@@ -984,6 +992,11 @@ export default function Vitrine() {
             />
           </Suspense>
         </div>
+
+        {/* 4b. ProviderSpotlight — Destaque da Semana Widescreen */}
+        <Suspense fallback={null}>
+          <ProviderSpotlight />
+        </Suspense>
 
         {/* 5. HUB 1: Cotação Inteligente & Preço Justo de GV (Orçamentômetro WhatsApp + Tabela FIPE + Prevenção) */}
         <Suspense fallback={null}>

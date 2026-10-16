@@ -76,6 +76,9 @@ export function FloatingRecentDock() {
               return (
                 <div
                   key={p.id}
+                  data-provider-id={p.id}
+                  data-compare-name={p.name}
+                  data-compare-avatar={p.avatarUrl ?? ""}
                   onClick={() => openProvider(p.id)}
                   className="group border-border/50 bg-card/60 hover:bg-muted/40 flex cursor-pointer items-center justify-between gap-2.5 rounded-xl border p-2 transition-all hover:border-emerald-500/40"
                 >

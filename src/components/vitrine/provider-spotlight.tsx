@@ -73,20 +73,6 @@ function getResponseTime(rating: number): string {
   return "~3h"
 }
 
-// ---------------------------------------------------------------------------
-// Fake avatar stack data for social proof (recent clients)
-// ---------------------------------------------------------------------------
-
-const FAKE_CLIENT_AVATARS = [
-  { name: "Maria S.", hue: 340 },
-  { name: "João P.", hue: 160 },
-  { name: "Ana L.", hue: 30 },
-]
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 export default function ProviderSpotlight() {
   const { ref, visible } = useScrollReveal<HTMLDivElement>()
   const openQuote = useUIStore((s) => s.openQuote)
@@ -107,30 +93,28 @@ export default function ProviderSpotlight() {
   const provider: ProviderCard | undefined = providerQuery.data?.items?.[0]
 
   return (
-    <section className="from-muted/30 to-background relative overflow-hidden bg-gradient-to-b py-16 sm:py-20">
-      {/* Decorative mesh blobs */}
-      <div aria-hidden className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-20 -right-20 size-80 rounded-full bg-emerald-100/40 blur-3xl dark:bg-emerald-900/20" />
-        <div className="absolute -bottom-20 -left-20 size-72 rounded-full bg-teal-100/40 blur-3xl dark:bg-teal-900/20" />
-      </div>
-
-      <div ref={ref} className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <section className="relative overflow-hidden py-10 sm:py-14">
+      <div ref={ref} className="relative mx-auto w-full max-w-[95%] px-4 sm:px-6 lg:px-8">
         {/* Section header */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={visible ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.5 }}
-          className="mb-8 text-center"
+          transition={{ duration: 0.45 }}
+          className="mb-6 flex flex-col justify-between gap-2 sm:flex-row sm:items-end"
         >
-          <span className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-800/50">
-            <Trophy className="size-3.5" />
-            Destaque da semana
-          </span>
-          <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">
-            Profissional em <span className="text-emerald-600 dark:text-emerald-400">destaque</span>
-          </h2>
-          <p className="text-muted-foreground mt-1.5 text-sm">
-            Conheça um dos nossos prestadores mais bem avaliados.
+          <div>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+              <Trophy className="size-3.5 text-amber-500" />
+              Destaque da semana
+            </span>
+            <h2 className="mt-2.5 text-xl font-bold tracking-tight sm:text-2xl">
+              Profissional em{" "}
+              <span className="text-emerald-600 dark:text-emerald-400">destaque</span>
+            </h2>
+          </div>
+          <p className="text-muted-foreground text-xs sm:text-sm">
+            Selecionado pela excelência no atendimento e índice máximo de satisfação em Governador
+            Valadares.
           </p>
         </motion.div>
 
@@ -166,7 +150,7 @@ export default function ProviderSpotlight() {
 }
 
 // ---------------------------------------------------------------------------
-// SpotlightCard — the main card with all enhancements
+// SpotlightCard — Clean Widescreen 2-Column Split Layout
 // ---------------------------------------------------------------------------
 
 function SpotlightCard({
@@ -184,250 +168,192 @@ function SpotlightCard({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 24, scale: 0.98 }}
-      animate={visible ? { opacity: 1, y: 0, scale: 1 } : {}}
-      transition={{ duration: 0.5, delay: 0.15 }}
-      className="mx-auto max-w-2xl"
+      initial={{ opacity: 0, y: 20 }}
+      animate={visible ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.45, delay: 0.1 }}
+      data-provider-id={provider.id}
+      data-compare-name={provider.name}
+      data-compare-avatar={provider.avatarUrl ?? ""}
+      className="group bg-card relative overflow-hidden rounded-2xl border border-slate-200/90 shadow-xs transition-all duration-200 hover:border-slate-300 hover:shadow-md dark:border-slate-800 dark:hover:border-slate-700"
     >
-      <motion.div
-        whileHover={{ y: -4 }}
-        transition={{ type: "spring", stiffness: 300, damping: 20 }}
-        className="group bg-card relative overflow-hidden rounded-2xl border shadow-lg transition-shadow duration-300 hover:shadow-2xl"
-      >
-        {/* Gradient accent bar — taller & more prominent */}
-        <div className="h-2 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600" />
-
-        {/* Subtle pattern overlay inside card */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 top-2 opacity-[0.03] dark:opacity-[0.05]"
-          style={{
-            backgroundImage: "radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)",
-            backgroundSize: "20px 20px",
-          }}
-        />
-
-        {/* Decorative gradient glow behind avatar area */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -top-8 left-1/2 size-64 -translate-x-1/2 rounded-full bg-emerald-500/10 blur-3xl dark:bg-emerald-500/5"
-        />
-
-        <div className="relative p-6 sm:p-8">
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate={visible ? "visible" : "hidden"}
-            className="flex flex-col gap-6 sm:flex-row sm:items-start"
-          >
-            {/* Avatar — larger with decorative ring */}
-            <motion.div
-              variants={itemVariants}
-              className="relative shrink-0 self-center sm:self-start"
-            >
-              {/* Decorative ring */}
-              <div className="absolute -inset-1.5 rounded-full bg-gradient-to-br from-emerald-400 via-teal-400 to-emerald-500 opacity-60 blur-[2px] transition-opacity group-hover:opacity-80" />
-              <div className="ring-background relative flex size-24 items-center justify-center rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-600 ring-4 sm:size-28 dark:from-emerald-950/40 dark:to-teal-950/40 dark:text-emerald-400">
-                {provider.avatarUrl ? (
-                  <Image
-                    src={provider.avatarUrl}
-                    alt={provider.name}
-                    width={112}
-                    height={112}
-                    className="size-full rounded-full object-cover"
-                  />
-                ) : (
-                  <User className="size-12" />
-                )}
+      <div className="grid grid-cols-1 gap-6 p-6 sm:p-8 lg:grid-cols-12 lg:items-center lg:gap-8">
+        {/* Left column (7 cols): Identity, Bio, Trust & Metrics */}
+        <motion.div
+          variants={containerVariants}
+          initial="hidden"
+          animate={visible ? "visible" : "hidden"}
+          className="flex flex-col gap-5 sm:flex-row sm:items-start lg:col-span-7"
+        >
+          {/* Circular Avatar */}
+          <motion.div variants={itemVariants} className="relative shrink-0 self-start">
+            <div className="relative flex size-20 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-slate-600 ring-1 ring-slate-200 sm:size-24 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700">
+              {provider.avatarUrl ? (
+                <Image
+                  src={provider.avatarUrl}
+                  alt={provider.name}
+                  width={96}
+                  height={96}
+                  className="size-full rounded-full object-cover"
+                />
+              ) : (
+                <User className="size-10" />
+              )}
+            </div>
+            {provider.verified && (
+              <div className="absolute -right-0.5 -bottom-0.5 flex size-7 items-center justify-center rounded-full bg-white shadow-xs ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+                <BadgeCheck className="size-4.5 fill-emerald-500 text-white" />
               </div>
-              {/* Verified badge — overlaid on avatar ring */}
-              {provider.verified && (
-                <div className="absolute -right-0.5 -bottom-0.5 flex size-8 items-center justify-center rounded-full bg-white shadow-md ring-3 ring-emerald-400 dark:bg-slate-900 dark:ring-emerald-500">
-                  <BadgeCheck className="size-5 text-emerald-600 dark:text-emerald-400" />
-                </div>
-              )}
-              {/* Top rated badge overlay */}
-              <div className="absolute -top-2 left-1/2 -translate-x-1/2">
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700 shadow-sm ring-1 ring-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:ring-amber-700/50">
-                  <Star className="size-2.5 fill-amber-500 text-amber-500" />
-                  Top
-                </span>
-              </div>
-            </motion.div>
-
-            {/* Info section */}
-            <motion.div variants={containerVariants} className="flex-1 space-y-3">
-              {/* Name & Location */}
-              <motion.div variants={itemVariants}>
-                <h3 className="text-xl font-bold">{provider.name}</h3>
-                <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                  {provider.city && (
-                    <span className="flex items-center gap-1">
-                      <MapPin className="size-3.5" />
-                      {provider.city}
-                    </span>
-                  )}
-                  {provider.distanceKm != null && (
-                    <span className="text-xs">
-                      {provider.distanceKm < 1 ? "< 1 km" : `${Math.round(provider.distanceKm)} km`}
-                    </span>
-                  )}
-                  {provider.memberSince && (
-                    <span className="flex items-center gap-1 text-xs">
-                      <Calendar className="size-3" />
-                      Membro desde {new Date(provider.memberSince).getFullYear()}
-                    </span>
-                  )}
-                </div>
-              </motion.div>
-
-              {/* Rating — prominent with numeric + stars */}
-              <motion.div variants={itemVariants} className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1 dark:bg-amber-950/30">
-                  <Star className="size-5 fill-amber-400 text-amber-400" />
-                  <span className="text-base font-bold text-amber-700 tabular-nums dark:text-amber-300">
-                    {provider.rating.toFixed(1)}
-                  </span>
-                </div>
-                <span className="text-muted-foreground text-xs">
-                  ({provider.reviewCount} {provider.reviewCount === 1 ? "avaliação" : "avaliações"})
-                </span>
-              </motion.div>
-
-              {/* Meta row: completed bookings + response time */}
-              <motion.div variants={itemVariants} className="flex flex-wrap items-center gap-2">
-                {provider.completedBookings != null && provider.completedBookings > 0 && (
-                  <Badge className="gap-1 border-0 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60">
-                    <Sparkles className="size-3" />
-                    {provider.completedBookings} serviços concluídos
-                  </Badge>
-                )}
-                <Badge variant="outline" className="gap-1 text-xs">
-                  <Clock className="size-3" />
-                  Responde em {getResponseTime(provider.rating)}
-                </Badge>
-              </motion.div>
-
-              {/* Services with prices */}
-              {provider.services.length > 0 && (
-                <motion.div variants={itemVariants} className="space-y-1.5">
-                  <p className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-                    Serviços
-                  </p>
-                  <div className="space-y-1">
-                    {provider.services.slice(0, 3).map((svc) => (
-                      <ServicePriceRow key={svc.id} service={svc} />
-                    ))}
-                    {provider.services.length > 3 && (
-                      <p className="text-muted-foreground pl-1 text-xs">
-                        +{provider.services.length - 3} outros serviços
-                      </p>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Bio with expandable "Ver mais" */}
-              {provider.bio && (
-                <motion.div variants={itemVariants}>
-                  <p
-                    className={cn(
-                      "text-muted-foreground text-sm transition-all duration-300",
-                      !bioExpanded && "line-clamp-2",
-                    )}
-                  >
-                    {provider.bio}
-                  </p>
-                  {provider.bio.length > 120 && (
-                    <button
-                      onClick={() => setBioExpanded((v) => !v)}
-                      className="mt-1 inline-flex items-center gap-0.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
-                    >
-                      {bioExpanded ? (
-                        <>
-                          Ver menos
-                          <ChevronUp className="size-3" />
-                        </>
-                      ) : (
-                        <>
-                          Ver mais
-                          <ChevronDown className="size-3" />
-                        </>
-                      )}
-                    </button>
-                  )}
-                </motion.div>
-              )}
-
-              {/* Social proof: recent client avatar stack */}
-              <motion.div variants={itemVariants} className="flex items-center gap-2">
-                <div className="flex -space-x-2">
-                  {FAKE_CLIENT_AVATARS.map((client, i) => (
-                    <div
-                      key={i}
-                      className="border-background flex size-7 items-center justify-center rounded-full border-2 text-[10px] font-bold text-white"
-                      style={{ backgroundColor: `hsl(${client.hue}, 60%, 45%)` }}
-                      title={client.name}
-                    >
-                      {client.name.charAt(0)}
-                    </div>
-                  ))}
-                </div>
-                <span className="text-muted-foreground text-xs">Clientes recentes</span>
-              </motion.div>
-            </motion.div>
+            )}
           </motion.div>
 
-          {/* CTA buttons */}
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate={visible ? "visible" : "hidden"}
-            className="mt-6 flex flex-col gap-2 border-t pt-5 sm:flex-row sm:items-center"
-          >
-            <motion.div
-              variants={itemVariants}
-              className="flex flex-col gap-2 sm:flex-1 sm:flex-row"
-            >
-              {/* Primary CTA — Pedir orçamento */}
-              <Button
-                className="gap-1.5 bg-emerald-600 transition-all duration-200 hover:scale-[1.02] hover:bg-emerald-700 active:scale-[0.98] dark:bg-emerald-700 dark:hover:bg-emerald-600"
-                onClick={() => openQuote({ providerId: provider.id })}
-              >
-                <MessageSquareQuote className="size-4" />
-                Pedir orçamento
-              </Button>
-              {/* Secondary CTA — Ver perfil completo */}
-              <Button
-                variant="outline"
-                className="gap-1.5 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
-                onClick={() => openProvider(provider.id)}
-              >
-                Ver perfil completo
-                <ArrowRight className="size-4" />
-              </Button>
-            </motion.div>
-
-            {/* WhatsApp-style CTA */}
+          {/* Identity + Bio + Badges */}
+          <motion.div variants={containerVariants} className="min-w-0 flex-1 space-y-3">
             <motion.div variants={itemVariants}>
-              <Button
-                variant="ghost"
-                className="gap-1.5 text-emerald-700 transition-all duration-200 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-300"
-                onClick={() => {
-                  const msg = encodeURIComponent(
-                    `Olá! Vi seu perfil no Severinno e gostaria de saber mais sobre seus serviços.`,
-                  )
-                  const whatsappUrl = `https://wa.me/?text=${msg}`
-                  window.open(whatsappUrl, "_blank", "noopener")
-                }}
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                  {provider.name}
+                </h3>
+                <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-800 ring-1 ring-amber-200/70 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-800/50">
+                  <Star className="size-3.5 fill-amber-400 text-amber-400" />
+                  {provider.rating.toFixed(1)}
+                  <span className="font-normal text-amber-700/80 dark:text-amber-300/80">
+                    ({provider.reviewCount})
+                  </span>
+                </span>
+              </div>
+
+              <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                <span className="flex items-center gap-1">
+                  <MapPin className="size-3.5" />
+                  {provider.city || "Governador Valadares, MG"}
+                </span>
+                {provider.distanceKm != null && (
+                  <span>
+                    · {provider.distanceKm < 1 ? "< 1 km" : `${provider.distanceKm.toFixed(1)} km`}
+                  </span>
+                )}
+                {provider.memberSince && (
+                  <span className="flex items-center gap-1">
+                    · <Calendar className="size-3" />
+                    Membro desde {new Date(provider.memberSince).getFullYear()}
+                  </span>
+                )}
+              </div>
+            </motion.div>
+
+            {/* Bio */}
+            {provider.bio && (
+              <motion.div variants={itemVariants}>
+                <p
+                  className={cn(
+                    "text-muted-foreground text-sm leading-relaxed",
+                    !bioExpanded && "line-clamp-2",
+                  )}
+                >
+                  {provider.bio}
+                </p>
+                {provider.bio.length > 140 && (
+                  <button
+                    type="button"
+                    onClick={() => setBioExpanded((v) => !v)}
+                    className="mt-1 inline-flex items-center gap-0.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                  >
+                    {bioExpanded ? (
+                      <>
+                        Ver menos <ChevronUp className="size-3" />
+                      </>
+                    ) : (
+                      <>
+                        Ver mais <ChevronDown className="size-3" />
+                      </>
+                    )}
+                  </button>
+                )}
+              </motion.div>
+            )}
+
+            {/* Minimalist Metrics & Real Guarantees */}
+            <motion.div
+              variants={itemVariants}
+              className="flex flex-wrap items-center gap-2 pt-0.5"
+            >
+              {provider.completedBookings != null && provider.completedBookings > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="gap-1 rounded-md border-0 bg-slate-100 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                >
+                  <Sparkles className="size-3 text-emerald-600" />
+                  {provider.completedBookings} serviços concluídos
+                </Badge>
+              )}
+              <Badge
+                variant="outline"
+                className="gap-1 rounded-md border-slate-200 text-xs font-normal text-slate-600 dark:border-slate-800 dark:text-slate-400"
               >
-                <MessageCircle className="size-4" />
-                Enviar mensagem
-              </Button>
+                <Clock className="size-3" />
+                Responde em {getResponseTime(provider.rating)}
+              </Badge>
+              <Badge
+                variant="outline"
+                className="gap-1 rounded-md border-emerald-200/70 bg-emerald-50/50 text-xs font-medium text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300"
+              >
+                <BadgeCheck className="size-3" />
+                Custódia PIX & Garantia 90 dias
+              </Badge>
             </motion.div>
           </motion.div>
+        </motion.div>
+
+        {/* Right column (5 cols): Services Table + Direct Actions */}
+        <div className="flex flex-col justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50/60 p-4 sm:p-5 lg:col-span-5 dark:border-slate-800/80 dark:bg-slate-900/50">
+          {provider.services.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
+                Principais serviços e valores base
+              </p>
+              <div className="divide-y divide-slate-200/60 dark:divide-slate-800">
+                {provider.services.slice(0, 3).map((svc) => (
+                  <ServicePriceRow key={svc.id} service={svc} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex flex-wrap items-center gap-2 pt-2">
+            <Button
+              className="h-9 flex-1 gap-1.5 rounded-lg bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-700"
+              onClick={() => openQuote({ providerId: provider.id })}
+            >
+              <MessageSquareQuote className="size-3.5" />
+              Pedir orçamento
+            </Button>
+            <Button
+              variant="outline"
+              className="h-9 flex-1 gap-1.5 rounded-lg border-slate-200 text-xs font-semibold dark:border-slate-700"
+              onClick={() => openProvider(provider.id)}
+            >
+              Ver perfil completo
+              <ArrowRight className="size-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 gap-1.5 text-xs text-slate-600 hover:text-emerald-700 dark:text-slate-400 dark:hover:text-emerald-300"
+              onClick={() => {
+                const msg = encodeURIComponent(
+                  `Olá! Vi seu perfil no Severinno e gostaria de saber mais sobre seus serviços.`,
+                )
+                const whatsappUrl = `https://wa.me/?text=${msg}`
+                window.open(whatsappUrl, "_blank", "noopener")
+              }}
+            >
+              <MessageCircle className="size-3.5" />
+              WhatsApp
+            </Button>
+          </div>
         </div>
-      </motion.div>
+      </div>
     </motion.div>
   )
 }
@@ -438,9 +364,11 @@ function SpotlightCard({
 
 function ServicePriceRow({ service }: { service: ProviderService }) {
   return (
-    <div className="hover:bg-muted/50 flex items-center justify-between gap-3 rounded-md px-2 py-1.5 transition-colors">
-      <span className="truncate text-sm">{service.title}</span>
-      <span className="shrink-0 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+    <div className="flex items-center justify-between gap-3 py-2">
+      <span className="truncate text-xs font-medium text-slate-700 dark:text-slate-300">
+        {service.title}
+      </span>
+      <span className="shrink-0 text-xs font-bold text-slate-900 dark:text-slate-100">
         {formatBRL(service.basePrice)}
       </span>
     </div>
@@ -453,43 +381,26 @@ function ServicePriceRow({ service }: { service: ProviderService }) {
 
 function SpotlightSkeleton() {
   return (
-    <div className="bg-card mx-auto max-w-2xl overflow-hidden rounded-2xl border shadow-lg">
-      <Skeleton className="h-2 w-full" />
-      <div className="relative p-6 sm:p-8">
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
-          {/* Avatar skeleton */}
-          <div className="relative shrink-0 self-center sm:self-start">
-            <Skeleton className="size-24 rounded-full sm:size-28" />
-          </div>
+    <div className="bg-card overflow-hidden rounded-2xl border border-slate-200/80 p-6 shadow-xs sm:p-8 dark:border-slate-800">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        <div className="flex gap-5 lg:col-span-7">
+          <Skeleton className="size-20 shrink-0 rounded-full sm:size-24" />
           <div className="flex-1 space-y-3">
             <Skeleton className="h-6 w-48" />
             <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-8 w-32 rounded-lg" />
-            <div className="flex gap-2">
-              <Skeleton className="h-5 w-28 rounded-full" />
-              <Skeleton className="h-5 w-24 rounded-full" />
-            </div>
-            <div className="space-y-1.5">
-              <Skeleton className="h-3 w-14" />
-              <Skeleton className="h-7 w-full rounded-md" />
-              <Skeleton className="h-7 w-3/4 rounded-md" />
-            </div>
             <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-2/3" />
-            <div className="flex items-center gap-2">
-              <div className="flex -space-x-2">
-                <Skeleton className="size-7 rounded-full" />
-                <Skeleton className="size-7 rounded-full" />
-                <Skeleton className="size-7 rounded-full" />
-              </div>
-              <Skeleton className="h-3 w-24" />
+            <div className="flex gap-2">
+              <Skeleton className="h-6 w-28 rounded-md" />
+              <Skeleton className="h-6 w-24 rounded-md" />
             </div>
           </div>
         </div>
-        <div className="mt-6 flex gap-2 border-t pt-5">
-          <Skeleton className="h-9 w-40 rounded-md" />
-          <Skeleton className="h-9 w-36 rounded-md" />
-          <Skeleton className="h-9 w-32 rounded-md" />
+        <div className="space-y-3 lg:col-span-5">
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <div className="flex gap-2">
+            <Skeleton className="h-9 flex-1 rounded-lg" />
+            <Skeleton className="h-9 flex-1 rounded-lg" />
+          </div>
         </div>
       </div>
     </div>

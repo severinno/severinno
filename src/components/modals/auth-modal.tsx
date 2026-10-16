@@ -84,26 +84,40 @@ export function AuthModal() {
 
   return (
     <Dialog open={open} onOpenChange={(o) => (o ? null : closeAuth())}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
-        {/* Header — emerald gradient + brand mark */}
-        <div className="to-background relative bg-gradient-to-b from-emerald-50 px-6 pt-6 pb-4 dark:from-emerald-950/40">
-          <DialogHeader className="space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="bg-primary text-primary-foreground inline-flex size-9 items-center justify-center rounded-xl shadow-sm">
+      <DialogContent className="w-[95vw] gap-0 overflow-hidden rounded-2xl border-slate-200/80 p-0 shadow-2xl sm:max-w-lg dark:border-slate-800">
+        {/* Header — clean minimalist brand bar + contextual value banner */}
+        <div className="border-b border-slate-100 bg-white px-6 pt-6 pb-4 dark:border-slate-800/80 dark:bg-slate-900">
+          <DialogHeader className="space-y-2.5 text-left">
+            <div className="flex items-center gap-3">
+              <div className="bg-primary text-primary-foreground inline-flex size-10 items-center justify-center rounded-xl shadow-xs">
                 <Wrench className="size-5" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-muted-foreground text-xs leading-tight font-medium">Severinno</p>
-                <DialogTitle className="text-xl leading-tight">
-                  {localMode === "login" ? "Entrar" : "Cadastrar"}
+                <p className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
+                  Severinno · Governador Valadares
+                </p>
+                <DialogTitle className="text-xl leading-tight font-bold tracking-tight">
+                  {localMode === "login" ? "Entrar na sua conta" : "Criar conta gratuita"}
                 </DialogTitle>
               </div>
             </div>
-            <DialogDescription>
+            <DialogDescription className="text-xs leading-relaxed">
               {localMode === "login"
-                ? "Acesse para pedir orçamentos, agendar e acompanhar serviços."
-                : "Leva menos de 1 minuto. Sem mensalidade."}
+                ? "Acesse em segundos para concluir seu agendamento ou orçamento com confirmação no WhatsApp."
+                : "Cadastro rápido em menos de 1 minuto. Sem mensalidade para clientes."}
             </DialogDescription>
+
+            {/* Contextual trust pill row */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800 ring-1 ring-emerald-200/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50">
+                <ShieldCheck className="size-3 text-emerald-600 dark:text-emerald-400" />
+                Custódia PIX Protegida
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                <BadgeCheck className="size-3 text-emerald-600 dark:text-emerald-400" />
+                Garantia de 90 dias
+              </span>
+            </div>
           </DialogHeader>
         </div>
 
@@ -112,18 +126,18 @@ export function AuthModal() {
           onValueChange={(v) => openAuth(v as AuthModalMode, localRole)}
           className="w-full"
         >
-          {/* Pill-style toggle */}
-          <div className="px-6 pt-1">
-            <TabsList className="bg-muted/60 grid h-auto w-full grid-cols-2 rounded-full p-1">
+          {/* Segmented toggle */}
+          <div className="px-6 pt-4">
+            <TabsList className="grid h-auto w-full grid-cols-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
               <TabsTrigger
                 value="login"
-                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground rounded-full py-1.5 data-[state=active]:font-medium data-[state=active]:shadow-sm"
+                className="text-muted-foreground rounded-lg py-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:text-slate-900 data-[state=active]:shadow-xs dark:data-[state=active]:bg-slate-900 dark:data-[state=active]:text-slate-100"
               >
                 Entrar
               </TabsTrigger>
               <TabsTrigger
                 value="register"
-                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground rounded-full py-1.5 data-[state=active]:font-medium data-[state=active]:shadow-sm"
+                className="text-muted-foreground rounded-lg py-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:text-slate-900 data-[state=active]:shadow-xs dark:data-[state=active]:bg-slate-900 dark:data-[state=active]:text-slate-100"
               >
                 Cadastrar
               </TabsTrigger>
@@ -583,7 +597,7 @@ function RegisterForm({
                   <FormItem className="space-y-1.5">
                     <FormLabel className="text-sm font-medium">WhatsApp</FormLabel>
                     <FormControl>
-                      <Input placeholder="(11) 90000-0000" className="h-10 text-sm" {...field} />
+                      <Input placeholder="(33) 99100-0000" className="h-10 text-sm" {...field} />
                     </FormControl>
                     <p className="text-muted-foreground text-xs">
                       Clientes usarão para contato direto.
@@ -599,7 +613,11 @@ function RegisterForm({
                   <FormItem className="space-y-1.5">
                     <FormLabel className="text-sm font-medium">Cidade</FormLabel>
                     <FormControl>
-                      <Input placeholder="São Paulo" className="h-10 text-sm" {...field} />
+                      <Input
+                        placeholder="Governador Valadares"
+                        className="h-10 text-sm"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage className="text-xs" />
                   </FormItem>
@@ -614,7 +632,7 @@ function RegisterForm({
                     <FormControl>
                       <Input
                         maxLength={2}
-                        placeholder="SP"
+                        placeholder="MG"
                         className="h-10 text-sm uppercase"
                         {...field}
                         onChange={(e) => field.onChange(e.target.value.toUpperCase())}

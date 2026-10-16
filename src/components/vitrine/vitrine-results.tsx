@@ -277,13 +277,41 @@ export default function VitrineResults({
                 </SheetContent>
               </Sheet>
 
-              {/* View toggle (segmented control) + sort indicator */}
-              <span className="bg-card text-muted-foreground hidden items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] sm:inline-flex">
-                Ordenado por:{" "}
-                <span className="text-foreground font-medium">
-                  {filters.sort === "distance" ? "Mais próximos" : "Melhor avaliação"}
-                </span>
-              </span>
+              {/* Interactive quick-sort pill (desktop) */}
+              <div className="bg-card hidden items-center gap-1 rounded-lg border border-slate-200/80 p-0.5 text-[11px] shadow-2xs sm:inline-flex dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => onFiltersChange({ ...filters, sort: "rating" })}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 font-medium transition-colors",
+                    filters.sort === "rating"
+                      ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Melhor avaliação
+                </button>
+                <button
+                  type="button"
+                  disabled={!hasGeo}
+                  title={
+                    hasGeo
+                      ? "Ordenar por menor distância"
+                      : "Ative sua localização para ordenar por distância"
+                  }
+                  onClick={() => {
+                    if (hasGeo) onFiltersChange({ ...filters, sort: "distance" })
+                  }}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 font-medium transition-colors",
+                    filters.sort === "distance"
+                      ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                      : "text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45",
+                  )}
+                >
+                  Mais próximos
+                </button>
+              </div>
               <div
                 role="tablist"
                 aria-label="Visualização"
@@ -299,34 +327,37 @@ export default function VitrineResults({
             </div>
           </div>
 
-          {/* Active chips */}
+          {/* Active filter chips bar */}
           {activeChips.length > 0 ? (
-            <ul className="flex flex-wrap items-center gap-1.5">
-              {activeChips.map((chip) => (
-                <li key={chip.key}>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 py-1 pr-1 pl-2.5 text-[11px] font-medium text-emerald-800">
-                    <span>{chip.label}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleChipRemove(chip.key)}
-                      className="flex size-4 items-center justify-center rounded-full text-emerald-700 transition-colors hover:bg-emerald-200/60"
-                      aria-label={`Remover filtro ${chip.label}`}
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </span>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-slate-50/70 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/50">
+              <ul className="flex flex-wrap items-center gap-1.5">
+                <li className="text-muted-foreground mr-1 text-[11px] font-medium">
+                  Filtros ativos ({activeChips.length}):
                 </li>
-              ))}
-              <li>
-                <button
-                  type="button"
-                  onClick={() => onFiltersChange({ ...DEFAULT_FILTERS, q: filters.q })}
-                  className="text-muted-foreground hover:text-foreground text-xs underline-offset-2 transition-colors hover:underline"
-                >
-                  Limpar tudo
-                </button>
-              </li>
-            </ul>
+                {activeChips.map((chip) => (
+                  <li key={chip.key}>
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white py-1 pr-1.5 pl-2.5 text-xs font-medium text-slate-700 shadow-2xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                      <span>{chip.label}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleChipRemove(chip.key)}
+                        className="flex size-4 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                        aria-label={`Remover filtro ${chip.label}`}
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() => onFiltersChange({ ...DEFAULT_FILTERS })}
+                className="text-xs font-medium text-emerald-700 underline-offset-2 transition-colors hover:underline dark:text-emerald-400"
+              >
+                Limpar tudo
+              </button>
+            </div>
           ) : null}
 
           <Separator className="mt-1" />
