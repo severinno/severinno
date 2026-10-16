@@ -27,8 +27,14 @@ export const POST = withRoute("api.provider.financial.mei-report.POST", async (r
     parsed.cnpj,
   )
 
+  const { generateDASNStepByStepGuide } = await import("@/lib/mei-fiscal")
+  const dasnGuide = generateDASNStepByStepGuide(report)
+
   return Response.json({
     success: true,
-    data: report,
+    data: {
+      ...report,
+      dasnGuide,
+    },
   })
 })
