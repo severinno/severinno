@@ -28,7 +28,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: {
-    default: "severinno",
+    default: "Severinno — Encontre os Melhores Prestadores em Governador Valadares",
     template: "%s · Severinno",
   },
   description:
@@ -63,9 +63,9 @@ export const metadata: Metadata = {
     "apple-mobile-web-app-title": "Severinno",
   },
   openGraph: {
-    title: "severinno",
+    title: "Severinno — Marketplace de Serviços em Governador Valadares",
     description:
-      "Encontre prestadores de serviço verificados, com base na sua localização — Governador Valadares, MG.",
+      "Encontre prestadores de serviço verificados com base na sua localização — encanador, eletricista, pintor, diarista e mais em Governador Valadares, MG.",
     url: process.env.NEXT_PUBLIC_APP_URL ?? "https://severinno.com",
     siteName: "Severinno",
     locale: "pt_BR",
@@ -81,7 +81,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "severinno",
+    title: "Severinno — Marketplace de Serviços em Governador Valadares",
     description: "Encontre prestadores de serviço verificados, com base na sua localização.",
   },
 }

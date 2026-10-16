@@ -53,6 +53,7 @@ interface ProviderRow {
   radiusKm: number | null
   slug: string | null
   gpsAccuracyM: number | null
+  whatsapp?: string | null
 }
 
 /** Shape of each completed-booking group-by row. */
@@ -198,6 +199,7 @@ export async function fetchProvidersData(
       radiusKm: true,
       slug: true,
       gpsAccuracyM: true,
+      whatsapp: true,
     },
   })
 
@@ -242,6 +244,7 @@ export async function fetchProvidersData(
       memberSince: p.createdAt.toISOString(),
       distanceKm,
       gpsAccuracyM: p.gpsAccuracyM,
+      whatsapp: p.whatsapp ?? null,
       services: (servicesByProvider.get(p.id) ?? []).map((s: ServiceRow) => ({
         id: s.id,
         title: s.title,

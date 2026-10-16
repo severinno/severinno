@@ -108,6 +108,7 @@ vi.mock("lucide-react", () => {
     Navigation: makeIcon("navigation"),
     Clock: makeIcon("clock"),
     Sparkles: makeIcon("sparkles"),
+    MessageCircle: makeIcon("message-circle"),
   }
 })
 

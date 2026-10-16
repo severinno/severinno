@@ -139,6 +139,7 @@ const FloatingSosButton = React.lazy(() =>
 )
 const AIChatWidget = React.lazy(() => import("../shared/ai-chat-widget"))
 const CookieConsent = React.lazy(() => import("../shared/cookie-consent"))
+const NetworkStatusIndicator = React.lazy(() => import("../shared/network-status-indicator"))
 import { DEFAULT_FILTERS, type FiltersState } from "./filters"
 import { parseVitrineSearchParams, serializeVitrineUrlState } from "./search-params"
 
@@ -1151,6 +1152,11 @@ export default function Vitrine() {
       {/* Cookie consent banner — LGPD compliance */}
       <Suspense fallback={null}>
         <CookieConsent />
+      </Suspense>
+
+      {/* Indicador de Status de Conexão Online/Offline */}
+      <Suspense fallback={null}>
+        <NetworkStatusIndicator />
       </Suspense>
     </div>
   )

@@ -45,6 +45,7 @@ export type ProviderCard = {
   memberSince?: string
   matchScore?: number | null
   matchReasons?: string[] | null
+  whatsapp?: string | null
 }
 
 export type ProviderAvailability = {

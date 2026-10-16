@@ -16,6 +16,7 @@ import dynamic from "next/dynamic"
 import { MapPin, SlidersHorizontal, SearchX, X, Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { triggerHaptic } from "@/lib/haptics"
 import type { Category, ProviderCard as ProviderCardType } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -382,6 +383,7 @@ export default function VitrineResults({
                 filters.verifiedOnly
               }
               onClear={() => onFiltersChange({ ...DEFAULT_FILTERS })}
+              onSuggestionSelect={(term) => onFiltersChange({ ...DEFAULT_FILTERS, q: term })}
             />
           ) : view === "list" ? (
             <div className="animate-in fade-in duration-200">
@@ -569,7 +571,24 @@ function MapView({
   )
 }
 
-function EmptyState({ hasFilters, onClear }: { hasFilters: boolean; onClear: () => void }) {
+const POPULAR_RECOVERY_SUGGESTIONS = [
+  "Eletricista",
+  "Encanador",
+  "Pintor",
+  "Diarista",
+  "Ar-condicionado",
+  "Montador de Móveis",
+]
+
+function EmptyState({
+  hasFilters,
+  onClear,
+  onSuggestionSelect,
+}: {
+  hasFilters: boolean
+  onClear: () => void
+  onSuggestionSelect?: (term: string) => void
+}) {
   return (
     <div className="bg-card flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 px-6 py-16 text-center shadow-xs dark:border-slate-800">
       <div className="flex size-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:ring-emerald-900/50">
@@ -588,11 +607,35 @@ function EmptyState({ hasFilters, onClear }: { hasFilters: boolean; onClear: () 
           variant="outline"
           size="sm"
           className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10 hover:text-primary mt-4 rounded-xl font-medium"
-          onClick={onClear}
+          onClick={() => {
+            triggerHaptic("selection")
+            onClear()
+          }}
         >
           Limpar todos os filtros
         </Button>
       ) : null}
+
+      <div className="mt-6 flex flex-col items-center">
+        <span className="text-muted-foreground mb-2.5 text-xs font-medium">
+          Ou busque por serviços populares em Governador Valadares:
+        </span>
+        <div className="flex max-w-md flex-wrap items-center justify-center gap-1.5">
+          {POPULAR_RECOVERY_SUGGESTIONS.map((term) => (
+            <button
+              key={term}
+              type="button"
+              onClick={() => {
+                triggerHaptic("selection")
+                onSuggestionSelect?.(term)
+              }}
+              className="border-border/60 bg-muted/50 hover:border-primary/40 hover:bg-primary/10 hover:text-primary cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition-colors"
+            >
+              {term}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

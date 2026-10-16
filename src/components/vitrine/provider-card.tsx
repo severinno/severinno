@@ -20,9 +20,11 @@ import {
   FileText,
   ShieldCheck,
   X,
+  MessageCircle,
 } from "lucide-react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 
+import { triggerHaptic } from "@/lib/haptics"
 import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
 import { formatDistance } from "@/lib/geo-client"
@@ -110,6 +112,7 @@ export default React.memo(function ProviderCard({
 
   const handleFavoriteClick = (e: React.MouseEvent) => {
     e.stopPropagation()
+    triggerHaptic(favorited ? "light" : "success")
     if (!user) {
       openAuth("login", "CLIENT")
       return
@@ -119,11 +122,27 @@ export default React.memo(function ProviderCard({
 
   const handleCompareClick = (e: React.MouseEvent) => {
     e.stopPropagation()
+    triggerHaptic("selection")
     if (!inCompare && compareIds.length >= MAX_COMPARE) {
       toast.info(`Você só pode comparar até ${MAX_COMPARE} prestadores ao mesmo tempo.`)
       return
     }
     toggleCompare(provider.id)
+  }
+
+  const handleWhatsApp = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    triggerHaptic("selection")
+    if (provider.whatsapp) {
+      const digits = provider.whatsapp.replace(/\D/g, "")
+      const num = digits.startsWith("55") ? digits : `55${digits}`
+      const text = encodeURIComponent(
+        `Olá ${provider.name}, vi seu perfil no Severinno e gostaria de solicitar um orçamento.`,
+      )
+      window.open(`https://wa.me/${num}?text=${text}`, "_blank", "noopener,noreferrer")
+    } else {
+      onView?.(provider.id)
+    }
   }
 
   // Geolocation check for "Perto de você" badge
@@ -498,11 +517,23 @@ export default React.memo(function ProviderCard({
 
         {/* Botões de Ação */}
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleWhatsApp}
+            className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-50 text-emerald-700 shadow-2xs transition-colors hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
+            title={`Chamar ${provider.name} no WhatsApp`}
+            aria-label={`Chamar ${provider.name} no WhatsApp`}
+          >
+            <MessageCircle className="size-4" />
+          </button>
           {onQuote && (
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onQuote(provider.id)}
+              onClick={() => {
+                triggerHaptic("selection")
+                onQuote(provider.id)
+              }}
               className="border-border/60 hover:bg-muted/60 h-9 flex-1 rounded-xl text-xs font-medium"
             >
               Orçamento
@@ -510,7 +541,10 @@ export default React.memo(function ProviderCard({
           )}
           <Button
             size="sm"
-            onClick={() => (onBook ? onBook(provider.id) : onView?.(provider.id))}
+            onClick={() => {
+              triggerHaptic("selection")
+              onBook ? onBook(provider.id) : onView?.(provider.id)
+            }}
             className="bg-primary text-primary-foreground hover:bg-primary/90 h-9 flex-1 rounded-xl text-xs font-semibold shadow-2xs"
           >
             Agendar
