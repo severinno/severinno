@@ -1,11 +1,33 @@
 "use client"
 
 import * as React from "react"
+import dynamic from "next/dynamic"
 import { ShieldCheck, FileCheck2, Scale, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { GvTransparencyBoard } from "./gv-transparency-board"
-import { DigitalContractGenerator } from "./digital-contract-generator"
-import { TrustComparisonTable } from "./trust-comparison-table"
+
+const GvTransparencyBoard = dynamic(
+  () => import("./gv-transparency-board").then((m) => m.GvTransparencyBoard),
+  {
+    ssr: false,
+    loading: () => <div className="bg-muted/60 h-64 w-full animate-pulse rounded-2xl" />,
+  },
+)
+
+const DigitalContractGenerator = dynamic(
+  () => import("./digital-contract-generator").then((m) => m.DigitalContractGenerator),
+  {
+    ssr: false,
+    loading: () => <div className="bg-muted/60 h-64 w-full animate-pulse rounded-2xl" />,
+  },
+)
+
+const TrustComparisonTable = dynamic(
+  () => import("./trust-comparison-table").then((m) => m.TrustComparisonTable),
+  {
+    ssr: false,
+    loading: () => <div className="bg-muted/60 h-64 w-full animate-pulse rounded-2xl" />,
+  },
+)
 
 export type TrustShieldHubTab = "transparency" | "contract" | "comparison"
 

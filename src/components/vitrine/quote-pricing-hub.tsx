@@ -1,11 +1,33 @@
 "use client"
 
 import * as React from "react"
+import dynamic from "next/dynamic"
 import { Calculator, TrendingUp, PiggyBank, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { InstantQuoteStepWizard } from "./instant-quote-step-wizard"
-import { FipeServicesIndex } from "./fipe-services-index"
-import { PreventiveRoiBar } from "./preventive-roi-bar"
+
+const InstantQuoteStepWizard = dynamic(
+  () => import("./instant-quote-step-wizard").then((m) => m.InstantQuoteStepWizard),
+  {
+    ssr: false,
+    loading: () => <div className="bg-muted/60 h-64 w-full animate-pulse rounded-2xl" />,
+  },
+)
+
+const FipeServicesIndex = dynamic(
+  () => import("./fipe-services-index").then((m) => m.FipeServicesIndex),
+  {
+    ssr: false,
+    loading: () => <div className="bg-muted/60 h-64 w-full animate-pulse rounded-2xl" />,
+  },
+)
+
+const PreventiveRoiBar = dynamic(
+  () => import("./preventive-roi-bar").then((m) => m.PreventiveRoiBar),
+  {
+    ssr: false,
+    loading: () => <div className="bg-muted/60 h-64 w-full animate-pulse rounded-2xl" />,
+  },
+)
 
 export type QuotePricingHubTab = "wizard" | "fipe" | "roi"
 

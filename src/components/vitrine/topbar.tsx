@@ -53,9 +53,15 @@ import {
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 
+import dynamic from "next/dynamic"
+
 import { cn } from "@/lib/utils"
 import { useAuthStore, useGeoStore, useUIStore, useViewStore, useCompareStore } from "@/store"
-import AddressAutocomplete from "@/components/vitrine/address-autocomplete"
+
+const AddressAutocomplete = dynamic(() => import("@/components/vitrine/address-autocomplete"), {
+  ssr: false,
+  loading: () => <div className="bg-muted h-10 w-full animate-pulse rounded-lg" />,
+})
 import { ROLE_LABELS, type UserRole } from "@/lib/constants"
 import type { Category } from "@/lib/api"
 import { apiGet } from "@/lib/api"

@@ -28,13 +28,16 @@ export type ChatCompletionResponse = {
   }>
 }
 
-export type AIEngineUsed = "cloud_groq" | "local_ollama" | "fallback"
+import { computeAICacheKey, getCachedAIResponse, setCachedAIResponse } from "./ai-cache"
+
+export type AIEngineUsed = "cloud_groq" | "local_ollama" | "cache" | "fallback"
 
 export interface HybridChatResult {
   content: string | null
   engine: AIEngineUsed
   model: string
   latencyMs: number
+  cached?: boolean
 }
 
 export interface HybridChatOptions {
@@ -44,6 +47,8 @@ export interface HybridChatOptions {
   temperature?: number
   maxTokens?: number
   timeoutMs?: number
+  useCache?: boolean
+  cacheTtlSeconds?: number
 }
 
 export function getLocalAiUrl(): string {
@@ -125,6 +130,24 @@ export async function chatCompletionHybrid(
   const start = Date.now()
   const cloudConfig = getCloudAiConfig()
 
+  // ── Etapa 0: Checagem de Cache Semântico (Redis) ─────────────────────────────
+  const useCache = options.useCache !== false
+  const activeModel = cloudModel || cloudConfig.defaultModel
+  const cacheKey = useCache ? computeAICacheKey(messages, activeModel, temperature) : null
+
+  if (useCache && cacheKey) {
+    const cached = await getCachedAIResponse(cacheKey)
+    if (cached) {
+      return {
+        content: cached.content,
+        engine: "cache",
+        model: cached.model,
+        latencyMs: Date.now() - start,
+        cached: true,
+      }
+    }
+  }
+
   // ── Etapa 1: Tentativa Cloud (Groq) ─────────────────────────────────────────
   if (preferredEngine !== "local" && cloudConfig.apiKey) {
     const modelToUse = cloudModel || cloudConfig.defaultModel
@@ -150,6 +173,9 @@ export async function chatCompletionHybrid(
         const data = (await res.json()) as ChatCompletionResponse
         const content = data.choices?.[0]?.message?.content ?? null
         if (content) {
+          if (useCache && cacheKey) {
+            await setCachedAIResponse(cacheKey, content, modelToUse, options.cacheTtlSeconds)
+          }
           return {
             content,
             engine: "cloud_groq",
@@ -193,6 +219,9 @@ export async function chatCompletionHybrid(
       const data = (await res.json()) as ChatCompletionResponse
       const content = data.choices?.[0]?.message?.content ?? null
       if (content) {
+        if (useCache && cacheKey) {
+          await setCachedAIResponse(cacheKey, content, localModel, options.cacheTtlSeconds)
+        }
         return {
           content,
           engine: "local_ollama",

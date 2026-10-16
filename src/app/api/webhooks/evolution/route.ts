@@ -142,6 +142,17 @@ export async function POST(request: Request) {
         const senderNumber = extractNumber(remoteJid)
         if (!senderNumber) break
 
+        // Ignora mídias sem legenda ou mensagens vazias antes de bater no banco de dados
+        const hasContent = Boolean(
+          message?.conversation ||
+          message?.extendedTextMessage?.text ||
+          message?.audioMessage ||
+          message?.voiceMessage ||
+          message?.locationMessage ||
+          message?.liveLocationMessage,
+        )
+        if (!hasContent) break
+
         // Buscar usuário pelo número
         const user = await findUserByPhone(senderNumber)
         if (user) {
@@ -197,6 +208,27 @@ export async function POST(request: Request) {
             message.audioMessage?.caption ||
             message.voiceMessage?.text ||
             ""
+
+          // Se o áudio já possui texto transcrito pela Evolution API, processa com Voice-to-Quote inteligente
+          if (text) {
+            try {
+              const { processVoiceQuote } = await import("@/lib/whatsapp-voice-quote")
+              const voiceResult = await processVoiceQuote(text)
+              const { enqueueWhatsApp } = await import("@/lib/whatsapp-queue")
+              await enqueueWhatsApp({
+                to: senderNumber,
+                text: voiceResult.formattedReply,
+                userId: user?.id,
+                context: "audio:smart-voice-quote",
+              })
+              break
+            } catch (err) {
+              evolutionLogger.warn(
+                { err: (err as Error).message },
+                "Webhook Evolution: falha no processamento smart voice quote",
+              )
+            }
+          }
         }
 
         // Se for áudio sem transcrição direta de texto:
