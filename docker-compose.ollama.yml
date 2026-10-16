@@ -1,0 +1,32 @@
+version: "3.8"
+
+services:
+  ollama:
+    image: ollama/ollama:0.5.12
+    container_name: severinno-ollama
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_NUM_PARALLEL=2
+      - OLLAMA_HOST=0.0.0.0:11434
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 3072M
+        reservations:
+          memory: 1024M
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - severinno_backend
+
+volumes:
+  ollama_models:
+    name: severinno_ollama_models
+
+networks:
+  severinno_backend:
+    external: true
