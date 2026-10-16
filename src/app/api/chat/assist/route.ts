@@ -3,10 +3,9 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import ZAI from "z-ai-web-dev-sdk"
 import { requireUser } from "@/lib/auth"
-
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-
 import { withRoute } from "@/lib/api-route"
+import { chatCompletionHybrid } from "@/lib/ai-client"
 
 /**
  * POST /api/chat/assist
@@ -84,16 +83,42 @@ Responda APENAS com o JSON válido, sem markdown ou texto adicional.`
   let urgency = "low"
 
   try {
-    const zai = await ZAI.create()
-    const completion = await zai.chat.completions.create({
-      messages: [
-        { role: "assistant" as const, content: systemPrompt },
-        { role: "user" as const, content: "Analise a conversa e gere as sugestões." },
-      ],
-      thinking: { type: "disabled" },
-    })
+    let raw = ""
 
-    const raw = completion.choices[0]?.message?.content ?? ""
+    // 1. Tenta cliente híbrido canônico (Groq Cloud -> Ollama -> Semantic Cache)
+    try {
+      const hybridResult = await chatCompletionHybrid(
+        [
+          { role: "assistant", content: systemPrompt },
+          { role: "user", content: "Analise a conversa e gere as sugestões." },
+        ],
+        {
+          preferredEngine: "auto",
+          temperature: 0.2,
+          maxTokens: 300,
+          timeoutMs: 4000,
+        },
+      )
+      if (hybridResult.content) {
+        raw = hybridResult.content
+      }
+    } catch {
+      // Falha silenciosa para tentar SDK ZAI
+    }
+
+    // 2. Fallback para SDK ZAI se a IA híbrida não retornou conteúdo
+    if (!raw) {
+      const zai = await ZAI.create()
+      const completion = await zai.chat.completions.create({
+        messages: [
+          { role: "assistant" as const, content: systemPrompt },
+          { role: "user" as const, content: "Analise a conversa e gere as sugestões." },
+        ],
+        thinking: { type: "disabled" },
+      })
+      raw = completion.choices[0]?.message?.content ?? ""
+    }
+
     const jsonStr = raw
       .replace(/```json\s*\n?/gi, "")
       .replace(/```\s*$/gi, "")
