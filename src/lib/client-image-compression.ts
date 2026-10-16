@@ -1,115 +1,266 @@
 /**
- * Client-Side Image Compression Utility
+ * client-image-compression.ts — Compressão Client-Side de Imagens (WebP/Canvas)
  *
- * Compresses images in the browser using HTML5 Canvas before uploading
- * to S3/MinIO. Reduces 5MB-15MB camera photos to ~400KB-800KB without
- * external heavy dependencies, dramatically speeding up uploads on mobile.
+ * Otimizador de fotos no dispositivo do prestador/cliente antes do upload:
+ * 1. Redimensiona fotos de câmeras de celular (10-15 MB) para resolução Full HD (1920x1080) ou maxDimension.
+ * 2. Converte para formato WebP ou JPEG com qualidade otimizada (default: 0.82), reduzindo peso em até 95%.
+ * 3. Economiza banda móvel 3G/4G no campo e custos de armazenamento no MinIO/S3.
+ * 4. Isomórfico e seguro para execução no browser ou SSR.
  */
 
-export type CompressionOptions = {
-  /** Maximum width or height in pixels. Default: 1600 */
-  maxDimension?: number
-  /** JPEG quality between 0.1 and 1.0. Default: 0.82 */
-  quality?: number
-  /** Output MIME type. Default: "image/jpeg" */
-  mimeType?: string
+export interface ImageCompressionOptions {
+  maxDimension?: number // Dimensão máxima proporcional (suporte retrocompatível)
+  maxWidth?: number // Largura máxima (default: 1920)
+  maxHeight?: number // Altura máxima (default: 1080)
+  quality?: number // Qualidade da compressão 0.0 a 1.0 (default: 0.82)
+  mimeType?: string // Formato alvo (default: image/jpeg)
+}
+
+export interface CompressedImageResult {
+  file: File | Blob
+  originalWidth: number
+  originalHeight: number
+  compressedWidth: number
+  compressedHeight: number
+  originalSizeBytes: number
+  compressedSizeBytes: number
+  savingsPercent: number
+  mimeType: string
 }
 
 /**
- * Compresses an image File or Blob using HTML5 Canvas.
- * Non-image files (e.g., PDFs) are returned untouched.
+ * Calcula dimensões preservando a proporção original (aspect ratio).
+ * Apenas reduz; nunca amplia imagens menores que o limite.
+ */
+export function calculateAspectDimensions(
+  srcWidth: number,
+  srcHeight: number,
+  maxWidth: number,
+  maxHeight: number,
+): { width: number; height: number } {
+  if (srcWidth <= 0 || srcHeight <= 0) {
+    return { width: Math.max(1, maxWidth), height: Math.max(1, maxHeight) }
+  }
+
+  let width = srcWidth
+  let height = srcHeight
+
+  if (width > maxWidth) {
+    height = Math.round((height * maxWidth) / width)
+    width = maxWidth
+  }
+
+  if (height > maxHeight) {
+    width = Math.round((width * maxHeight) / height)
+    maxHeight = maxHeight
+    height = Math.round((srcHeight * width) / srcWidth)
+  }
+
+  return {
+    width: Math.max(1, width),
+    height: Math.max(1, height),
+  }
+}
+
+/**
+ * Formata bytes em formato legível (KB, MB).
+ */
+export function formatByteSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
+/**
+ * Comprime um arquivo de imagem no cliente e retorna um File (retrocompatibilidade com formulários).
  */
 export async function compressImageFile(
   file: File,
-  options: CompressionOptions = {},
+  options: ImageCompressionOptions = {},
 ): Promise<File> {
-  // If not an image or if running on server side, return as-is
-  if (typeof window === "undefined" || !file.type.startsWith("image/")) {
-    return file
+  const result = await compressImageDetailed(file, options)
+  return result.file as File
+}
+
+/**
+ * Comprime um arquivo e retorna o resultado detalhado com estatísticas analíticas de economia.
+ */
+export async function compressImageDetailed(
+  file: File | Blob,
+  options: ImageCompressionOptions = {},
+): Promise<CompressedImageResult> {
+  const originalSizeBytes = file.size
+
+  // SVGs são vetores matemáticos; não rasterizar
+  if ("type" in file && file.type === "image/svg+xml") {
+    return {
+      file,
+      originalWidth: 0,
+      originalHeight: 0,
+      compressedWidth: 0,
+      compressedHeight: 0,
+      originalSizeBytes,
+      compressedSizeBytes: originalSizeBytes,
+      savingsPercent: 0,
+      mimeType: "image/svg+xml",
+    }
   }
 
-  // SVGs are vector; don't rasterize/compress
-  if (file.type === "image/svg+xml") {
-    return file
-  }
+  const maxDim = options.maxDimension
+  const maxWidth = options.maxWidth ?? (maxDim ? maxDim : 1920)
+  const maxHeight = options.maxHeight ?? (maxDim ? maxDim : 1080)
+  const quality = Math.min(1, Math.max(0.1, options.quality ?? 0.82))
+  const mimeType = (options.mimeType as "image/webp" | "image/jpeg") ?? "image/jpeg"
 
-  const { maxDimension = 1600, quality = 0.82, mimeType = "image/jpeg" } = options
+  // Fallback seguro para ambientes sem suporte a DOM / Canvas / toBlob (ex: SSR / JSDOM / Node)
+  if (
+    typeof window === "undefined" ||
+    typeof document === "undefined" ||
+    typeof HTMLCanvasElement === "undefined" ||
+    !HTMLCanvasElement.prototype.toBlob ||
+    typeof Image === "undefined"
+  ) {
+    return {
+      file,
+      originalWidth: maxWidth,
+      originalHeight: maxHeight,
+      compressedWidth: maxWidth,
+      compressedHeight: maxHeight,
+      originalSizeBytes,
+      compressedSizeBytes: originalSizeBytes,
+      savingsPercent: 0,
+      mimeType: file.type || mimeType,
+    }
+  }
 
   return new Promise((resolve) => {
-    const reader = new FileReader()
+    let resolved = false
+    const img = new Image()
+    let objectUrl = ""
 
-    reader.onload = (event) => {
-      const img = new Image()
+    const fallbackResolve = () => {
+      if (resolved) return
+      resolved = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      resolve({
+        file,
+        originalWidth: maxWidth,
+        originalHeight: maxHeight,
+        compressedWidth: maxWidth,
+        compressedHeight: maxHeight,
+        originalSizeBytes,
+        compressedSizeBytes: originalSizeBytes,
+        savingsPercent: 0,
+        mimeType: file.type || mimeType,
+      })
+    }
 
-      img.onload = () => {
-        let { width, height } = img
+    const timer = setTimeout(fallbackResolve, 1500)
 
-        // If image is already smaller than maxDimension and file is < 1MB, skip
-        if (width <= maxDimension && height <= maxDimension && file.size < 1024 * 1024) {
-          resolve(file)
-          return
-        }
+    try {
+      objectUrl = URL.createObjectURL(file)
+    } catch {
+      clearTimeout(timer)
+      fallbackResolve()
+      return
+    }
 
-        // Scale proportionally
-        if (width > height) {
-          if (width > maxDimension) {
-            height = Math.round((height * maxDimension) / width)
-            width = maxDimension
+    img.onload = () => {
+      clearTimeout(timer)
+      if (resolved) return
+      resolved = true
+      URL.revokeObjectURL(objectUrl)
+
+      const originalWidth = img.naturalWidth || img.width
+      const originalHeight = img.naturalHeight || img.height
+
+      const { width: targetWidth, height: targetHeight } = calculateAspectDimensions(
+        originalWidth,
+        originalHeight,
+        maxWidth,
+        maxHeight,
+      )
+
+      const canvas = document.createElement("canvas")
+      canvas.width = targetWidth
+      canvas.height = targetHeight
+
+      const ctx = canvas.getContext("2d")
+      if (!ctx) {
+        resolve({
+          file,
+          originalWidth,
+          originalHeight,
+          compressedWidth: originalWidth,
+          compressedHeight: originalHeight,
+          originalSizeBytes,
+          compressedSizeBytes: originalSizeBytes,
+          savingsPercent: 0,
+          mimeType: file.type || mimeType,
+        })
+        return
+      }
+
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = "high"
+      ctx.drawImage(img, 0, 0, targetWidth, targetHeight)
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve({
+              file,
+              originalWidth,
+              originalHeight,
+              compressedWidth: targetWidth,
+              compressedHeight: targetHeight,
+              originalSizeBytes,
+              compressedSizeBytes: originalSizeBytes,
+              savingsPercent: 0,
+              mimeType: file.type || mimeType,
+            })
+            return
           }
-        } else {
-          if (height > maxDimension) {
-            width = Math.round((width * maxDimension) / height)
-            height = maxDimension
-          }
-        }
 
-        const canvas = document.createElement("canvas")
-        canvas.width = width
-        canvas.height = height
+          const compressedSizeBytes = blob.size
+          const rawSavings =
+            originalSizeBytes > 0
+              ? ((originalSizeBytes - compressedSizeBytes) / originalSizeBytes) * 100
+              : 0
+          const savingsPercent = Number(Math.max(0, rawSavings).toFixed(1))
 
-        const ctx = canvas.getContext("2d")
-        if (!ctx) {
-          resolve(file)
-          return
-        }
-
-        // Optional smooth scaling
-        ctx.imageSmoothingEnabled = true
-        ctx.imageSmoothingQuality = "high"
-
-        ctx.drawImage(img, 0, 0, width, height)
-
-        canvas.toBlob(
-          (blob) => {
-            if (!blob) {
-              resolve(file)
-              return
-            }
-
-            // If compressed is somehow larger than original, keep original
-            if (blob.size >= file.size) {
-              resolve(file)
-              return
-            }
-
-            const newFileName = file.name.replace(/\.[^/.]+$/, ".jpg")
-            const compressedFile = new File([blob], newFileName, {
+          let resultFile: File | Blob = blob
+          if (file instanceof File) {
+            const baseName = file.name.replace(/\.[^/.]+$/, "")
+            const ext = mimeType === "image/webp" ? "webp" : "jpg"
+            resultFile = new File([blob], `${baseName}.${ext}`, {
               type: mimeType,
               lastModified: Date.now(),
             })
+          }
 
-            resolve(compressedFile)
-          },
-          mimeType,
-          quality,
-        )
-      }
-
-      img.onerror = () => resolve(file)
-      img.src = event.target?.result as string
+          resolve({
+            file: resultFile,
+            originalWidth,
+            originalHeight,
+            compressedWidth: targetWidth,
+            compressedHeight: targetHeight,
+            originalSizeBytes,
+            compressedSizeBytes,
+            savingsPercent,
+            mimeType,
+          })
+        },
+        mimeType,
+        quality,
+      )
     }
 
-    reader.onerror = () => resolve(file)
-    reader.readAsDataURL(file)
+    img.onerror = () => {
+      clearTimeout(timer)
+      fallbackResolve()
+    }
+
+    img.src = objectUrl
   })
 }
