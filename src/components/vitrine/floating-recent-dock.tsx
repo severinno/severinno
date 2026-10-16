@@ -1,7 +1,16 @@
 "use client"
 
 import * as React from "react"
-import { History, Star, X, ChevronRight, GitCompare, CalendarDays, Sparkles } from "lucide-react"
+import {
+  History,
+  Star,
+  X,
+  ChevronRight,
+  GitCompare,
+  CalendarDays,
+  Sparkles,
+  MessageCircle,
+} from "lucide-react"
 import Image from "next/image"
 import { useRecentlyViewedStore } from "@/store/recently-viewed"
 import { useUIStore } from "@/store/ui"
@@ -115,17 +124,44 @@ export function FloatingRecentDock() {
                     </div>
                   </div>
 
-                  <Button
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      openBooking({ providerId: p.id, serviceId: p.services?.[0]?.id })
-                    }}
-                    className="h-7 shrink-0 rounded-lg bg-emerald-600 px-2.5 text-[11px] font-semibold text-white hover:bg-emerald-700"
-                  >
-                    <CalendarDays className="mr-1 size-3" />
-                    Agendar
-                  </Button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (p.whatsapp) {
+                          const digits = p.whatsapp.replace(/\D/g, "")
+                          const num = digits.startsWith("55") ? digits : `55${digits}`
+                          const text = encodeURIComponent(
+                            `Olá ${p.name}, vi seu perfil no Severinno e gostaria de tirar uma dúvida sobre seus serviços.`,
+                          )
+                          window.open(
+                            `https://wa.me/${num}?text=${text}`,
+                            "_blank",
+                            "noopener,noreferrer",
+                          )
+                        } else {
+                          openProvider(p.id)
+                        }
+                      }}
+                      className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-50 text-emerald-700 shadow-2xs transition-colors hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300"
+                      title={`Conversar com ${p.name} no WhatsApp`}
+                      aria-label={`Conversar com ${p.name} no WhatsApp`}
+                    >
+                      <MessageCircle className="size-3.5" />
+                    </button>
+                    <Button
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openBooking({ providerId: p.id, serviceId: p.services?.[0]?.id })
+                      }}
+                      className="h-7 shrink-0 rounded-lg bg-emerald-600 px-2.5 text-[11px] font-semibold text-white hover:bg-emerald-700"
+                    >
+                      <CalendarDays className="mr-1 size-3" />
+                      Agendar
+                    </Button>
+                  </div>
                 </div>
               )
             })}

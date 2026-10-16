@@ -148,7 +148,7 @@ export function LiveSocialProofToast() {
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
       className={cn(
-        "border-primary/20 bg-background/95 fixed bottom-4 left-4 z-40 flex max-w-xs items-center gap-3 rounded-xl border p-3 shadow-lg backdrop-blur-md transition-all duration-300 sm:bottom-6 sm:left-6 sm:max-w-sm",
+        "border-primary/20 bg-background/95 fixed bottom-20 left-4 z-30 flex max-w-xs items-center gap-3 rounded-2xl border p-3 shadow-lg backdrop-blur-md transition-all duration-300 sm:bottom-6 sm:left-6 sm:max-w-sm",
         isVisible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0",
       )}
     >

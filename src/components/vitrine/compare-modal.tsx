@@ -41,6 +41,7 @@ import {
   Trophy,
   Sparkles,
   Navigation,
+  MessageCircle,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -530,8 +531,33 @@ export default function CompareModal() {
                                   </button>
                                 </div>
 
-                                {/* CTAs Rápidos no Topo da Coluna */}
-                                <div className="grid grid-cols-2 gap-1.5 pt-1">
+                                {/* CTAs Rápidos no Topo da Coluna com WhatsApp Direto */}
+                                <div className="flex items-center gap-1.5 pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (p.whatsapp) {
+                                        const digits = p.whatsapp.replace(/\D/g, "")
+                                        const num = digits.startsWith("55") ? digits : `55${digits}`
+                                        const text = encodeURIComponent(
+                                          `Olá ${p.name}, vi seu perfil no Comparador Severinno e gostaria de solicitar um orçamento.`,
+                                        )
+                                        window.open(
+                                          `https://wa.me/${num}?text=${text}`,
+                                          "_blank",
+                                          "noopener,noreferrer",
+                                        )
+                                      } else {
+                                        closeCompare()
+                                        openQuote({ providerId: p.id })
+                                      }
+                                    }}
+                                    className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-50 text-emerald-700 shadow-2xs transition-colors hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                    title={`Chamar ${p.name} no WhatsApp`}
+                                    aria-label={`Chamar ${p.name} no WhatsApp`}
+                                  >
+                                    <MessageCircle className="size-3.5" />
+                                  </button>
                                   <Button
                                     size="sm"
                                     variant="outline"
@@ -539,10 +565,10 @@ export default function CompareModal() {
                                       closeCompare()
                                       openQuote({ providerId: p.id })
                                     }}
-                                    className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10 h-8 w-full gap-1 text-xs font-semibold"
+                                    className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10 h-8 flex-1 gap-1 text-xs font-semibold"
                                   >
                                     <FileText className="size-3.5" />
-                                    Orçamento
+                                    Orçar
                                   </Button>
                                   <Button
                                     size="sm"
@@ -550,7 +576,7 @@ export default function CompareModal() {
                                       closeCompare()
                                       openBooking({ providerId: p.id })
                                     }}
-                                    className="h-8 w-full gap-1 text-xs font-bold shadow-2xs"
+                                    className="h-8 flex-1 gap-1 text-xs font-bold shadow-2xs"
                                   >
                                     <Calendar className="size-3.5" />
                                     Agendar

@@ -88,6 +88,141 @@ function cepToResult(cep: string, addr: CepResult, lat?: number, lng?: number): 
   }
 }
 
+const GV_PRELOADED_NEIGHBORHOODS: GeoSearchResult[] = [
+  {
+    displayName: "Centro, Governador Valadares, MG",
+    city: "Governador Valadares",
+    state: "MG",
+    district: "Centro",
+    lat: -18.8511,
+    lng: -41.9494,
+    type: "neighbourhood",
+    category: "place",
+    importance: 0.9,
+  },
+  {
+    displayName: "Ilha dos Araújos, Governador Valadares, MG",
+    city: "Governador Valadares",
+    state: "MG",
+    district: "Ilha dos Araújos",
+    lat: -18.8601,
+    lng: -41.9392,
+    type: "neighbourhood",
+    category: "place",
+    importance: 0.85,
+  },
+  {
+    displayName: "Grã-Duquesa, Governador Valadares, MG",
+    city: "Governador Valadares",
+    state: "MG",
+    district: "Grã-Duquesa",
+    lat: -18.8412,
+    lng: -41.9615,
+    type: "neighbourhood",
+    category: "place",
+    importance: 0.8,
+  },
+  {
+    displayName: "Vila Bretas, Governador Valadares, MG",
+    city: "Governador Valadares",
+    state: "MG",
+    district: "Vila Bretas",
+    lat: -18.8354,
+    lng: -41.9451,
+    type: "neighbourhood",
+    category: "place",
+    importance: 0.8,
+  },
+  {
+    displayName: "São Pedro, Governador Valadares, MG",
+    city: "Governador Valadares",
+    state: "MG",
+    district: "São Pedro",
+    lat: -18.8682,
+    lng: -41.9641,
+    type: "neighbourhood",
+    category: "place",
+    importance: 0.75,
+  },
+  {
+    displayName: "Vila Isa, Governador Valadares, MG",
+    city: "Governador Valadares",
+    state: "MG",
+    district: "Vila Isa",
+    lat: -18.8715,
+    lng: -41.9482,
+    type: "neighbourhood",
+    category: "place",
+    importance: 0.75,
+  },
+  {
+    displayName: "Esplanada, Governador Valadares, MG",
+    city: "Governador Valadares",
+    state: "MG",
+    district: "Esplanada",
+    lat: -18.8572,
+    lng: -41.9567,
+    type: "neighbourhood",
+    category: "place",
+    importance: 0.75,
+  },
+  {
+    displayName: "Morada do Vale, Governador Valadares, MG",
+    city: "Governador Valadares",
+    state: "MG",
+    district: "Morada do Vale",
+    lat: -18.8821,
+    lng: -41.9702,
+    type: "neighbourhood",
+    category: "place",
+    importance: 0.75,
+  },
+  {
+    displayName: "Lourdes, Governador Valadares, MG",
+    city: "Governador Valadares",
+    state: "MG",
+    district: "Lourdes",
+    lat: -18.8465,
+    lng: -41.9388,
+    type: "neighbourhood",
+    category: "place",
+    importance: 0.75,
+  },
+  {
+    displayName: "Santa Rita, Governador Valadares, MG",
+    city: "Governador Valadares",
+    state: "MG",
+    district: "Santa Rita",
+    lat: -18.8643,
+    lng: -41.9751,
+    type: "neighbourhood",
+    category: "place",
+    importance: 0.75,
+  },
+  {
+    displayName: "Esperança, Governador Valadares, MG",
+    city: "Governador Valadares",
+    state: "MG",
+    district: "Esperança",
+    lat: -18.8312,
+    lng: -41.9582,
+    type: "neighbourhood",
+    category: "place",
+    importance: 0.75,
+  },
+  {
+    displayName: "Sir, Governador Valadares, MG",
+    city: "Governador Valadares",
+    state: "MG",
+    district: "Sir",
+    lat: -18.8285,
+    lng: -41.9324,
+    type: "neighbourhood",
+    category: "place",
+    importance: 0.7,
+  },
+]
+
 type Props = {
   /** Placeholder text */
   placeholder?: string
@@ -225,6 +360,21 @@ export default function AddressAutocomplete({
         } finally {
           if (!cancelled) setLoading(false)
         }
+        return
+      }
+
+      // Instant in-memory lookup for GV neighborhoods (0ms latency)
+      const term = debouncedInput.trim().toLowerCase()
+      const localMatches = GV_PRELOADED_NEIGHBORHOODS.filter(
+        (n) =>
+          n.district?.toLowerCase().includes(term) || n.displayName.toLowerCase().includes(term),
+      )
+      if (localMatches.length > 0 && !cancelled) {
+        cacheSet(term, localMatches)
+        setResults(localMatches)
+        setOpen(true)
+        setSelectedIdx(-1)
+        setLoading(false)
         return
       }
 
