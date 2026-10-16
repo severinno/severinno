@@ -157,7 +157,51 @@ export function createCircuitBreaker(name: string, opts: CircuitBreakerOptions =
     openedAt = null
   }
 
-  return { execute, getStats, reset }
+  const instance: CircuitBreakerInstance = { name, execute, getStats, reset }
+  circuitBreakersRegistry.set(name, instance)
+  return instance
+}
+
+export type CircuitBreakerInstance = {
+  name: string
+  execute: <T>(fn: () => Promise<T>) => Promise<T>
+  getStats: () => CircuitBreakerStats
+  reset: () => void
+}
+
+const circuitBreakersRegistry = new Map<string, CircuitBreakerInstance>()
+
+/**
+ * Returns current stats of all registered circuit breakers in the system.
+ */
+export function getAllCircuitBreakersStats(): CircuitBreakerStats[] {
+  return Array.from(circuitBreakersRegistry.values()).map((cb) => cb.getStats())
+}
+
+/**
+ * Retrieves a specific registered circuit breaker instance by name.
+ */
+export function getCircuitBreaker(name: string): CircuitBreakerInstance | undefined {
+  return circuitBreakersRegistry.get(name)
+}
+
+/**
+ * Manually resets a specific circuit breaker back to CLOSED state.
+ */
+export function resetCircuitBreaker(name: string): boolean {
+  const cb = circuitBreakersRegistry.get(name)
+  if (!cb) return false
+  cb.reset()
+  return true
+}
+
+/**
+ * Resets all registered circuit breakers to CLOSED state.
+ */
+export function resetAllCircuitBreakers(): void {
+  for (const cb of circuitBreakersRegistry.values()) {
+    cb.reset()
+  }
 }
 
 // ---------------------------------------------------------------------------

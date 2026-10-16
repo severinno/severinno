@@ -98,3 +98,35 @@ groups:
         annotations:
           summary: "Nominatim circuit breaker is OPEN"
           description: "Nominatim geocoding is failing — circuit breaker tripped."
+
+  - name: severinno_sre_resilience
+    rules:
+      # ── Circuit Breaker Tripped ─────────────────────────────────────────
+      - alert: CircuitBreakerTripped
+        expr: severinno_circuit_breaker_state == 2
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Circuit breaker {{ $labels.circuit }} is OPEN"
+          description: "External dependency {{ $labels.circuit }} tripped circuit breaker after consecutive failures."
+
+      # ── Core Web Vitals SLA Degraded ────────────────────────────────────
+      - alert: CoreWebVitalsDegraded
+        expr: severinno_web_vitals_compliance_score < 70
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Core Web Vitals compliance dropped below 70%"
+          description: "Real-user frontend performance is degrading below target SLA."
+
+      # ── High Node Process Memory ────────────────────────────────────────
+      - alert: HighProcessMemoryRss
+        expr: severinno_process_memory_rss_bytes > 1073741824
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Severinno Node.js process RSS memory > 1GB"
+          description: "Application process memory is approaching 1GB limit."

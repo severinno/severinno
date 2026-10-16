@@ -154,7 +154,43 @@ export async function GET() {
     }
   }
 
-  // 7. Memory & Process Stats
+  // 7. Circuit Breakers Status
+  try {
+    const { getAllCircuitBreakersStats } = await import("@/lib/circuit-breaker")
+    const cbStats = getAllCircuitBreakersStats()
+    const openCircuits = cbStats.filter((c) => c.state === "open")
+    if (openCircuits.length > 0) {
+      hasDegradation = true
+      checks.circuitBreakers = {
+        status: "DEGRADED",
+        latencyMs: 0,
+        details: `${openCircuits.length} circuito(s) aberto(s): ${openCircuits.map((c) => c.name).join(", ")}`,
+      }
+    } else {
+      checks.circuitBreakers = {
+        status: "UP",
+        latencyMs: 0,
+        details: `${cbStats.length} circuitos saudáveis (CLOSED)`,
+      }
+    }
+  } catch {
+    // circuit breaker module load failed
+  }
+
+  // 8. Core Web Vitals SLA
+  try {
+    const { webVitalsRegistry } = await import("@/lib/web-vitals-registry")
+    const wv = webVitalsRegistry.getSummary()
+    checks.webVitals = {
+      status: wv.complianceScore >= 70 ? "UP" : "DEGRADED",
+      latencyMs: 0,
+      details: `Compliance SLA: ${wv.complianceScore}% (${wv.totalSamples} amostras)`,
+    }
+  } catch {
+    // web vitals module load failed
+  }
+
+  // 9. Memory & Process Stats
   const mem = process.memoryUsage()
   const memoryStats = {
     rssMb: Math.round(mem.rss / 1024 / 1024),

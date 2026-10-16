@@ -8,7 +8,14 @@
  */
 
 import { describe, it, expect, vi } from "vitest"
-import { createCircuitBreaker, CircuitOpenError } from "../circuit-breaker"
+import {
+  createCircuitBreaker,
+  CircuitOpenError,
+  getAllCircuitBreakersStats,
+  getCircuitBreaker,
+  resetCircuitBreaker,
+  resetAllCircuitBreakers,
+} from "../circuit-breaker"
 
 vi.mock("../logger", () => ({
   default: {
@@ -362,6 +369,56 @@ describe("circuit-breaker", () => {
       openedAt: null,
       transitions: { openCount: 0, halfOpenSuccessCount: 0, halfOpenFailCount: 0 },
       uptimePercent: 100,
+    })
+  })
+
+  // ── Registry Operations ────────────────────────────────────────────────
+  describe("Circuit Breaker Registry", () => {
+    it("registers new breakers and exposes them via getAllCircuitBreakersStats", () => {
+      createCircuitBreaker("reg-cb-1")
+      createCircuitBreaker("reg-cb-2")
+
+      const allStats = getAllCircuitBreakersStats()
+      const names = allStats.map((s) => s.name)
+
+      expect(names).toContain("reg-cb-1")
+      expect(names).toContain("reg-cb-2")
+    })
+
+    it("retrieves a specific breaker by name", () => {
+      createCircuitBreaker("find-me")
+      const found = getCircuitBreaker("find-me")
+      expect(found).toBeDefined()
+      expect(found?.name).toBe("find-me")
+
+      const notFound = getCircuitBreaker("does-not-exist")
+      expect(notFound).toBeUndefined()
+    })
+
+    it("resets a specific breaker by name", async () => {
+      const breaker = createCircuitBreaker("to-reset", { failureThreshold: 1 })
+      await executeSwallowError(breaker)
+      expect(breaker.getStats().state).toBe("open")
+
+      const success = resetCircuitBreaker("to-reset")
+      expect(success).toBe(true)
+      expect(breaker.getStats().state).toBe("closed")
+
+      const failed = resetCircuitBreaker("does-not-exist")
+      expect(failed).toBe(false)
+    })
+
+    it("resets all breakers", async () => {
+      const b1 = createCircuitBreaker("bulk-1", { failureThreshold: 1 })
+      const b2 = createCircuitBreaker("bulk-2", { failureThreshold: 1 })
+      await executeSwallowError(b1)
+      await executeSwallowError(b2)
+      expect(b1.getStats().state).toBe("open")
+      expect(b2.getStats().state).toBe("open")
+
+      resetAllCircuitBreakers()
+      expect(b1.getStats().state).toBe("closed")
+      expect(b2.getStats().state).toBe("closed")
     })
   })
 })

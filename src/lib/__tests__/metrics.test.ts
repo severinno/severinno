@@ -31,7 +31,14 @@ vi.mock("../db", () => ({ default: mockDb, db: mockDb }))
 
 vi.mock("server-only", () => ({}))
 
-import { getBusinessMetrics } from "../metrics"
+import {
+  getBusinessMetrics,
+  exportMetrics,
+  recordRequestDuration,
+  incrementActiveConnections,
+  decrementActiveConnections,
+  resetMetrics,
+} from "../metrics"
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -156,5 +163,36 @@ describe("getBusinessMetrics", () => {
     mockDb.user.groupBy.mockRejectedValue(new Error("connection failed"))
 
     await expect(getBusinessMetrics(30)).rejects.toThrow("connection failed")
+  })
+})
+
+describe("exportMetrics (Prometheus)", () => {
+  beforeEach(() => {
+    resetMetrics()
+  })
+
+  it("exports request duration histogram and active connections", () => {
+    recordRequestDuration("/api/providers", 200, 45)
+    incrementActiveConnections()
+    incrementActiveConnections()
+    decrementActiveConnections()
+
+    const output = exportMetrics()
+
+    expect(output).toContain("# TYPE http_request_duration_ms histogram")
+    expect(output).toContain('http_request_duration_ms_count{path="/api/providers",status="200"} 1')
+    expect(output).toContain("http_active_connections 1")
+    expect(output).toContain("# TYPE severinno_process_memory_rss_bytes gauge")
+    expect(output).toContain("# TYPE severinno_process_uptime_seconds counter")
+  })
+
+  it("resets metrics correctly", () => {
+    recordRequestDuration("/api/test", 200, 10)
+    incrementActiveConnections()
+    resetMetrics()
+
+    const output = exportMetrics()
+    expect(output).not.toContain('path="/api/test"')
+    expect(output).toContain("http_active_connections 0")
   })
 })

@@ -17,6 +17,8 @@ import "server-only"
 import { db } from "./db"
 import { toMoneyNumber } from "./money"
 import logger from "./logger"
+import { getAllCircuitBreakersStats } from "./circuit-breaker"
+import { webVitalsRegistry } from "./web-vitals-registry"
 
 // ── Request Duration Histogram ────────────────────────────────────────────
 
@@ -88,6 +90,76 @@ export function exportMetrics(): string {
   lines.push("# HELP http_active_connections Number of active HTTP connections")
   lines.push("# TYPE http_active_connections gauge")
   lines.push(`http_active_connections ${activeConnections}`)
+  lines.push("")
+
+  // Circuit Breakers SRE metrics
+  const circuitStats = getAllCircuitBreakersStats()
+  if (circuitStats.length > 0) {
+    lines.push(
+      "# HELP severinno_circuit_breaker_state Circuit breaker state (0=closed, 1=half-open, 2=open)",
+    )
+    lines.push("# TYPE severinno_circuit_breaker_state gauge")
+    for (const cb of circuitStats) {
+      const code = cb.state === "closed" ? 0 : cb.state === "half-open" ? 1 : 2
+      lines.push(`severinno_circuit_breaker_state{circuit="${cb.name}"} ${code}`)
+    }
+    lines.push("")
+
+    lines.push("# HELP severinno_circuit_breaker_failures Consecutive failure count")
+    lines.push("# TYPE severinno_circuit_breaker_failures gauge")
+    for (const cb of circuitStats) {
+      lines.push(`severinno_circuit_breaker_failures{circuit="${cb.name}"} ${cb.failures}`)
+    }
+    lines.push("")
+
+    lines.push("# HELP severinno_circuit_breaker_uptime_ratio Availability ratio (0.0 to 1.0)")
+    lines.push("# TYPE severinno_circuit_breaker_uptime_ratio gauge")
+    for (const cb of circuitStats) {
+      lines.push(
+        `severinno_circuit_breaker_uptime_ratio{circuit="${cb.name}"} ${(cb.uptimePercent / 100).toFixed(3)}`,
+      )
+    }
+    lines.push("")
+  }
+
+  // Core Web Vitals telemetry metrics
+  try {
+    const webVitalsSummary = webVitalsRegistry.getSummary()
+    lines.push(
+      "# HELP severinno_web_vitals_compliance_score Core Web Vitals overall compliance percentage (0-100)",
+    )
+    lines.push("# TYPE severinno_web_vitals_compliance_score gauge")
+    lines.push(`severinno_web_vitals_compliance_score ${webVitalsSummary.complianceScore}`)
+    lines.push("")
+
+    lines.push(
+      "# HELP severinno_web_vitals_p75 75th percentile of Web Vitals metrics in milliseconds or unit",
+    )
+    lines.push("# TYPE severinno_web_vitals_p75 gauge")
+    for (const [metric, stats] of Object.entries(webVitalsSummary.metrics)) {
+      if (stats.count > 0) {
+        lines.push(`severinno_web_vitals_p75{metric="${metric}"} ${stats.p75}`)
+      }
+    }
+    lines.push("")
+  } catch {
+    // Registry not initialized
+  }
+
+  // Node.js process metrics
+  const mem = process.memoryUsage()
+  lines.push("# HELP severinno_process_memory_rss_bytes Resident Set Size in bytes")
+  lines.push("# TYPE severinno_process_memory_rss_bytes gauge")
+  lines.push(`severinno_process_memory_rss_bytes ${mem.rss}`)
+
+  lines.push("# HELP severinno_process_memory_heap_used_bytes Heap used in bytes")
+  lines.push("# TYPE severinno_process_memory_heap_used_bytes gauge")
+  lines.push(`severinno_process_memory_heap_used_bytes ${mem.heapUsed}`)
+
+  lines.push("# HELP severinno_process_uptime_seconds Process uptime in seconds")
+  lines.push("# TYPE severinno_process_uptime_seconds counter")
+  lines.push(`severinno_process_uptime_seconds ${Math.floor(process.uptime())}`)
+  lines.push("")
 
   return lines.join("\n") + "\n"
 }
