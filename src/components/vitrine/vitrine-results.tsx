@@ -13,7 +13,7 @@
 
 import * as React from "react"
 import dynamic from "next/dynamic"
-import { List, MapIcon, MapPin, SlidersHorizontal, SearchX, X, Loader2 } from "lucide-react"
+import { MapPin, SlidersHorizontal, SearchX, X, Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import type { Category, ProviderCard as ProviderCardType } from "@/lib/api"
@@ -54,6 +54,7 @@ export type VitrineResultsProps = {
   userLng?: number | null
   /** Whether the user has shared their location — used to disable distance sort. */
   hasGeo?: boolean
+  onRequestGeo?: () => void
   onQuote?: (id: string) => void
   onBook?: (id: string, serviceId?: string) => void
   onView?: (id: string) => void
@@ -97,6 +98,7 @@ export default function VitrineResults({
   userLat,
   userLng,
   hasGeo,
+  onRequestGeo,
   onQuote,
   onBook,
   onView,
@@ -208,10 +210,12 @@ export default function VitrineResults({
         onChange={onFiltersChange}
         categories={categories}
         hasGeo={hasGeo}
+        onRequestGeo={onRequestGeo}
         onOpenAdvancedFilters={() => setMobileFiltersOpen(true)}
         activeFiltersCount={activeChips.length}
         view={view}
         onViewChange={setView}
+        showCategorySelector={false}
       />
 
       {/* Main content */}
@@ -267,6 +271,7 @@ export default function VitrineResults({
                       }}
                       categories={categories}
                       hasGeo={hasGeo}
+                      onRequestGeo={onRequestGeo}
                     />
                   </div>
                   <div className="border-t p-3">
@@ -276,54 +281,6 @@ export default function VitrineResults({
                   </div>
                 </SheetContent>
               </Sheet>
-
-              {/* Interactive quick-sort pill (desktop) */}
-              <div className="bg-card hidden items-center gap-1 rounded-lg border border-slate-200/80 p-0.5 text-[11px] shadow-2xs sm:inline-flex dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => onFiltersChange({ ...filters, sort: "rating" })}
-                  className={cn(
-                    "rounded-md px-2.5 py-1 font-medium transition-colors",
-                    filters.sort === "rating"
-                      ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  Melhor avaliação
-                </button>
-                <button
-                  type="button"
-                  disabled={!hasGeo}
-                  title={
-                    hasGeo
-                      ? "Ordenar por menor distância"
-                      : "Ative sua localização para ordenar por distância"
-                  }
-                  onClick={() => {
-                    if (hasGeo) onFiltersChange({ ...filters, sort: "distance" })
-                  }}
-                  className={cn(
-                    "rounded-md px-2.5 py-1 font-medium transition-colors",
-                    filters.sort === "distance"
-                      ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                      : "text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45",
-                  )}
-                >
-                  Mais próximos
-                </button>
-              </div>
-              <div
-                role="tablist"
-                aria-label="Visualização"
-                className="bg-card inline-flex items-center rounded-lg border p-0.5 shadow-sm"
-              >
-                <ViewToggle active={view === "list"} onClick={() => setView("list")} label="Lista">
-                  <List className="size-4" />
-                </ViewToggle>
-                <ViewToggle active={view === "map"} onClick={() => setView("map")} label="Mapa">
-                  <MapIcon className="size-4" />
-                </ViewToggle>
-              </div>
             </div>
           </div>
 
@@ -517,37 +474,6 @@ function ResultsGrid({ children }: { children: React.ReactNode }) {
     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4">
       {children}
     </div>
-  )
-}
-
-function ViewToggle({
-  active,
-  onClick,
-  label,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  label: string
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      title={label}
-      className={cn(
-        "focus-visible:ring-ring flex h-9 items-center gap-1.5 rounded-md px-3.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2",
-        active
-          ? "bg-primary text-primary-foreground shadow-sm"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-      )}
-    >
-      {children}
-      <span className="inline">{label}</span>
-    </button>
   )
 }
 

@@ -41,6 +41,7 @@ export type HorizontalFilterBarProps = {
   view: "list" | "map"
   onViewChange: (view: "list" | "map") => void
   className?: string
+  showCategorySelector?: boolean
 }
 
 const RADIUS_PRESETS = [5, 15, 30, 50, 100]
@@ -56,6 +57,7 @@ export function HorizontalFilterBar({
   view,
   onViewChange,
   className,
+  showCategorySelector = true,
 }: HorizontalFilterBarProps) {
   // Popover open states
   const [categoryOpen, setCategoryOpen] = React.useState(false)
@@ -88,79 +90,81 @@ export function HorizontalFilterBar({
   return (
     <div
       className={cn(
-        "sticky top-16 z-30 mb-6 flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-sm backdrop-blur-md transition-all dark:border-slate-800 dark:bg-slate-900/95",
+        "relative z-20 mb-6 flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-sm backdrop-blur-md transition-all lg:sticky lg:top-[7.8rem] dark:border-slate-800 dark:bg-slate-900/95",
         className,
       )}
     >
       {/* ── Left/Center: Horizontal Filter Pills ── */}
       <div className="flex flex-1 flex-wrap items-center gap-2">
-        {/* 1. Category Pill Dropdown */}
-        <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              className={cn(
-                "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
-                selectedCategory
-                  ? "border-emerald-500 bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
-                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
-              )}
-            >
-              <span>{selectedCategory ? selectedCategory.name : "Todas as categorias"}</span>
-              <ChevronDown className="size-3.5 opacity-60" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-72 p-3">
-            <p className="mb-2 text-xs font-semibold text-slate-900 dark:text-slate-100">
-              Categorias de Serviços
-            </p>
-            <div className="mb-2">
-              <Input
-                value={categorySearch}
-                onChange={(e) => setCategorySearch(e.target.value)}
-                placeholder="Buscar categoria…"
-                className="h-8 text-xs"
-              />
-            </div>
-            <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
+        {/* 1. Category Pill Dropdown (optional when CategoryShowcase macro-bar is active) */}
+        {showCategorySelector && (
+          <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
+            <PopoverTrigger asChild>
               <button
                 type="button"
-                onClick={() => {
-                  onChange({ ...value, categoryId: null })
-                  setCategoryOpen(false)
-                }}
                 className={cn(
-                  "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors",
-                  value.categoryId === null
-                    ? "bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
-                    : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+                  "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
+                  selectedCategory
+                    ? "border-emerald-500 bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
                 )}
               >
-                <span>Todas as categorias</span>
-                {value.categoryId === null && <Check className="size-3.5 text-emerald-600" />}
+                <span>{selectedCategory ? selectedCategory.name : "Todas as categorias"}</span>
+                <ChevronDown className="size-3.5 opacity-60" />
               </button>
-              {filteredCategories.map((cat) => (
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-72 p-3">
+              <p className="mb-2 text-xs font-semibold text-slate-900 dark:text-slate-100">
+                Categorias de Serviços
+              </p>
+              <div className="mb-2">
+                <Input
+                  value={categorySearch}
+                  onChange={(e) => setCategorySearch(e.target.value)}
+                  placeholder="Buscar categoria…"
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
                 <button
-                  key={cat.id}
                   type="button"
                   onClick={() => {
-                    onChange({ ...value, categoryId: cat.id })
+                    onChange({ ...value, categoryId: null })
                     setCategoryOpen(false)
                   }}
                   className={cn(
                     "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors",
-                    value.categoryId === cat.id
+                    value.categoryId === null
                       ? "bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
                       : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
                   )}
                 >
-                  <span className="truncate">{cat.name}</span>
-                  {value.categoryId === cat.id && <Check className="size-3.5 text-emerald-600" />}
+                  <span>Todas as categorias</span>
+                  {value.categoryId === null && <Check className="size-3.5 text-emerald-600" />}
                 </button>
-              ))}
-            </div>
-          </PopoverContent>
-        </Popover>
+                {filteredCategories.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      onChange({ ...value, categoryId: cat.id })
+                      setCategoryOpen(false)
+                    }}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors",
+                      value.categoryId === cat.id
+                        ? "bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                        : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
+                    )}
+                  >
+                    <span className="truncate">{cat.name}</span>
+                    {value.categoryId === cat.id && <Check className="size-3.5 text-emerald-600" />}
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
 
         {/* 2. Radius Pill Popover */}
         <Popover open={radiusOpen} onOpenChange={setRadiusOpen}>

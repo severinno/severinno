@@ -107,4 +107,23 @@ describe("HorizontalFilterBar", () => {
 
     expect(onViewChange).toHaveBeenCalledWith("map")
   })
+
+  it("hides category dropdown when showCategorySelector is false", () => {
+    render(
+      <HorizontalFilterBar
+        value={DEFAULT_FILTERS}
+        onChange={vi.fn()}
+        categories={mockCategories}
+        hasGeo={true}
+        onOpenAdvancedFilters={vi.fn()}
+        activeFiltersCount={0}
+        view="list"
+        onViewChange={vi.fn()}
+        showCategorySelector={false}
+      />,
+    )
+
+    expect(screen.queryByText("Todas as categorias")).not.toBeInTheDocument()
+    expect(screen.getByText("Melhor avaliação")).toBeInTheDocument()
+  })
 })
