@@ -17,9 +17,11 @@ import {
   Info,
   Radio,
   ClipboardCheck,
+  Navigation,
 } from "lucide-react"
 
 import { ServiceDeliveryReportModal } from "@/components/shared/service-delivery-report-modal"
+import { ProviderTransitHud } from "@/components/provider/provider-transit-hud"
 import { useLocationBroadcaster } from "@/hooks/use-location-broadcaster"
 import { apiGet, apiPatch } from "@/lib/api"
 import {
@@ -307,11 +309,16 @@ export function ProviderBookings() {
   const [detailOpen, setDetailOpen] = React.useState(false)
   const [reportBooking, setReportBooking] = React.useState<Booking | null>(null)
   const [reportOpen, setReportOpen] = React.useState(false)
+  const [transitBooking, setTransitBooking] = React.useState<Booking | null>(null)
   const [actioningId, setActioningId] = React.useState<string | null>(null)
 
   const openReport = (b: Booking) => {
     setReportBooking(b)
     setReportOpen(true)
+  }
+
+  const openTransitHud = (b: Booking) => {
+    setTransitBooking(b)
   }
 
   // Fetch all bookings once for tab counts + table data
@@ -504,6 +511,7 @@ export function ProviderBookings() {
                         onStart={() => updateStatus(b, "IN_PROGRESS", "Iniciado")}
                         onCancel={() => updateStatus(b, "CANCELLED", "Cancelado")}
                         onReport={() => openReport(b)}
+                        onTransitHud={() => openTransitHud(b)}
                       />
                     </TableCell>
                   </TableRow>
@@ -525,6 +533,7 @@ export function ProviderBookings() {
                 onStart={() => updateStatus(b, "IN_PROGRESS", "Iniciado")}
                 onCancel={() => updateStatus(b, "CANCELLED", "Cancelado")}
                 onReport={() => openReport(b)}
+                onTransitHud={() => openTransitHud(b)}
               />
             ))}
           </div>
@@ -580,6 +589,21 @@ export function ProviderBookings() {
           }}
         />
       )}
+
+      {transitBooking && (
+        <ProviderTransitHud
+          bookingId={transitBooking.id}
+          clientName={transitBooking.client.name}
+          clientAddress={transitBooking.address}
+          destinationLat={transitBooking.lat}
+          destinationLng={transitBooking.lng}
+          serviceTitle={transitBooking.service.title}
+          onClose={() => setTransitBooking(null)}
+          onCheckinSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["provider", "bookings"] })
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -597,6 +621,7 @@ function BookingActions({
   onStart,
   onCancel,
   onReport,
+  onTransitHud,
 }: {
   booking: Booking
   actioning: boolean
@@ -606,6 +631,7 @@ function BookingActions({
   onStart: () => void
   onCancel: () => void
   onReport?: () => void
+  onTransitHud?: () => void
 }) {
   return (
     <div className="flex items-center justify-end gap-1.5">
@@ -631,7 +657,21 @@ function BookingActions({
           <Play className="size-3.5" /> Iniciar
         </Button>
       )}
-      {booking.status === "IN_PROGRESS" && <LocationBroadcastButton bookingId={booking.id} />}
+      {booking.status === "IN_PROGRESS" && (
+        <>
+          <LocationBroadcastButton bookingId={booking.id} />
+          {onTransitHud && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onTransitHud}
+              className="h-8 gap-1.5 border-sky-500/40 px-2.5 text-xs text-sky-700 hover:bg-sky-50 dark:border-sky-700 dark:text-sky-300 dark:hover:bg-sky-950/30"
+            >
+              <Navigation className="size-3.5 text-sky-500" /> Modo Trânsito
+            </Button>
+          )}
+        </>
+      )}
       {onReport &&
         (booking.status === "IN_PROGRESS" ||
           booking.status === "CONFIRMED" ||
@@ -655,6 +695,11 @@ function BookingActions({
           <DropdownMenuItem onClick={onDetail}>
             <Info className="mr-2 size-4" /> Ver detalhes
           </DropdownMenuItem>
+          {booking.status === "IN_PROGRESS" && onTransitHud && (
+            <DropdownMenuItem onClick={onTransitHud}>
+              <Navigation className="mr-2 size-4 text-sky-500" /> Modo Trânsito (HUD)
+            </DropdownMenuItem>
+          )}
           {onReport && (
             <DropdownMenuItem onClick={onReport}>
               <ClipboardCheck className="mr-2 size-4 text-emerald-600" /> Laudo & Checklist
@@ -727,6 +772,7 @@ function BookingCard({
   onStart,
   onCancel,
   onReport,
+  onTransitHud,
 }: {
   booking: Booking
   actioning: boolean
@@ -736,6 +782,7 @@ function BookingCard({
   onStart: () => void
   onCancel: () => void
   onReport?: () => void
+  onTransitHud?: () => void
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border p-4">
@@ -795,6 +842,7 @@ function BookingCard({
           onStart={onStart}
           onCancel={onCancel}
           onReport={onReport}
+          onTransitHud={onTransitHud}
         />
       </div>
     </div>
