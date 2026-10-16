@@ -62,7 +62,7 @@ export function LiveAvailabilityTicker({ onActionClick, className }: LiveAvailab
   return (
     <div
       className={cn(
-        "relative overflow-hidden border-y border-emerald-500/20 bg-gradient-to-r from-emerald-950 via-zinc-950 to-teal-950 px-4 py-2.5 text-white shadow-inner",
+        "relative min-h-[42px] overflow-hidden border-y border-emerald-500/20 bg-gradient-to-r from-emerald-950 via-zinc-950 to-teal-950 px-4 py-2.5 text-white shadow-inner",
         className,
       )}
     >

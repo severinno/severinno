@@ -160,7 +160,6 @@ export default function Hero({
   onCameraSearchClick,
 }: HeroProps) {
   const { city } = useGeoStore()
-  const openAuth = useUIStore((s) => s.openAuth)
 
   // Motor de Inteligência e Contexto Regional da Vitrine (Brasil Continental)
   const { context: regionalContext } = useRegionalContext()
@@ -300,14 +299,14 @@ export default function Hero({
               {regionalContext.heroSubtext}
             </p>
 
-            {/* Search bar */}
+            {/* Search bar — Formato cápsula elegante e minimalista */}
             <form
               onSubmit={handleSearch}
-              className="text-foreground mt-7 w-full max-w-2xl rounded-2xl bg-white p-2 shadow-2xl ring-1 ring-black/5 xl:max-w-3xl"
+              className="text-foreground dark:bg-card/95 mt-7 w-full max-w-2xl rounded-full bg-white p-1.5 shadow-2xl ring-1 ring-black/10 xl:max-w-3xl"
             >
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
                 <div className="relative flex flex-1 items-center">
-                  <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2" />
+                  <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2" />
                   <Input
                     value={query}
                     onFocus={() => setSearchDropdownOpen(true)}
@@ -316,7 +315,7 @@ export default function Hero({
                       setSearchDropdownOpen(true)
                     }}
                     placeholder="O que você precisa? Ex.: encanador, pintura…"
-                    className="h-12 border-0 bg-transparent pr-10 pl-10 text-left shadow-none focus-visible:ring-0"
+                    className="h-11 border-0 bg-transparent pr-10 pl-11 text-left text-xs shadow-none focus-visible:ring-0 sm:text-sm"
                     aria-label="Serviço buscado"
                   />
                   {onCameraSearchClick && (
@@ -325,7 +324,7 @@ export default function Hero({
                       onClick={onCameraSearchClick}
                       title="Diagnóstico visual por foto com IA"
                       aria-label="Buscar serviço por foto com IA"
-                      className="text-muted-foreground hover:text-primary hover:bg-muted/60 mr-2 flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors"
+                      className="text-muted-foreground hover:text-primary hover:bg-muted/60 mr-2 flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors"
                     >
                       <Camera className="size-4" />
                     </button>
@@ -344,7 +343,7 @@ export default function Hero({
                 </div>
                 <div className="relative flex items-center sm:w-56">
                   <AddressAutocomplete
-                    placeholder={city || "CEP, cidade ou endereço…"}
+                    placeholder={city || "CEP, bairro ou cidade…"}
                     onSelect={() => {
                       scrollToResults()
                       onSearchSubmit?.()
@@ -354,9 +353,9 @@ export default function Hero({
                 <Button
                   type="submit"
                   size="lg"
-                  className="h-12 shrink-0 rounded-xl px-6 text-base shadow-sm"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 h-11 shrink-0 rounded-full px-6 text-sm font-semibold shadow-xs"
                 >
-                  <Search className="size-4" />
+                  <Search className="mr-1.5 size-4" />
                   Buscar
                 </Button>
               </div>
@@ -373,7 +372,7 @@ export default function Hero({
                   type="button"
                   onClick={() => handlePopularClick(s.label)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium text-white ring-1 transition-colors focus-visible:outline-none",
+                    "inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium text-white ring-1 transition-colors focus-visible:outline-none",
                     isNight
                       ? "bg-rose-500/20 ring-rose-400/30 hover:bg-rose-500/30"
                       : "bg-white/10 ring-white/15 hover:bg-white/20",
@@ -385,33 +384,18 @@ export default function Hero({
               ))}
             </div>
 
+            {/* CTAs Clean & Minimalistas (Foco em conversão e zero poluição) */}
             <div className="mt-6 flex flex-wrap items-center gap-3">
               {isNight && onEmergencyClick && (
                 <Button
                   size="lg"
                   onClick={onEmergencyClick}
-                  className="h-11 rounded-xl bg-rose-600 px-5 text-base font-extrabold text-white shadow-xl ring-2 ring-rose-400/50 transition-all hover:scale-[1.02] hover:bg-rose-500"
+                  className="h-11 rounded-full bg-rose-600 px-5 text-sm font-bold text-white shadow-lg ring-2 ring-rose-400/50 transition-all hover:scale-[1.02] hover:bg-rose-500"
                 >
-                  <Siren className="size-4" />
+                  <Siren className="mr-1.5 size-4" />
                   Chamar Plantão Noturno
                 </Button>
               )}
-              <Button
-                size="lg"
-                onClick={() => setAiWizardOpen(true)}
-                className="h-11 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 px-5 text-base font-bold text-zinc-950 shadow-xl transition-all hover:scale-[1.02] hover:from-amber-300 hover:to-amber-400"
-              >
-                <Sparkles className="size-4" />
-                Orçar com IA Local
-              </Button>
-              <Button
-                size="lg"
-                onClick={() => openAuth("register", "CLIENT")}
-                className="h-11 rounded-xl bg-white px-5 text-base font-semibold text-emerald-700 shadow-lg hover:bg-emerald-50"
-              >
-                Cadastrar grátis
-                <ArrowRight className="size-4" />
-              </Button>
               <button
                 type="button"
                 onClick={() => {
@@ -423,23 +407,33 @@ export default function Hero({
                     "noopener,noreferrer",
                   )
                 }}
-                className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-xl bg-emerald-500/30 px-4 text-sm font-bold text-white shadow-md ring-1 ring-emerald-300/40 backdrop-blur transition-all hover:scale-[1.02] hover:bg-emerald-500/40"
+                className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-emerald-900 shadow-lg transition-all hover:scale-[1.02] hover:bg-emerald-50 active:scale-[0.98]"
               >
-                <MessageCircle className="size-4 text-emerald-300" />
-                <span>Orçar pelo WhatsApp</span>
+                <MessageCircle className="size-4 text-emerald-600" />
+                <span>Pedir Orçamento no WhatsApp</span>
+                <ArrowRight className="size-3.5 text-emerald-700/70" />
               </button>
+              <Button
+                size="lg"
+                variant="outline"
+                onClick={() => setAiWizardOpen(true)}
+                className="h-11 rounded-full border-white/30 bg-white/10 px-4 text-sm font-semibold text-white shadow-xs backdrop-blur transition-all hover:bg-white/20 hover:text-white"
+              >
+                <Sparkles className="mr-1.5 size-4 text-amber-300" />
+                <span>Orçar com IA</span>
+              </Button>
               <button
                 type="button"
                 onClick={() => setHowItWorksOpen(true)}
-                className="inline-flex h-11 items-center gap-1.5 rounded-xl px-4 text-sm font-semibold text-emerald-50 underline-offset-4 transition-colors hover:text-white hover:underline"
+                className="inline-flex h-11 cursor-pointer items-center gap-1.5 rounded-full px-3 text-xs font-medium text-emerald-100 underline-offset-4 transition-colors hover:text-white hover:underline"
               >
-                <Play className="size-3.5 fill-emerald-200 text-emerald-200" />
+                <Play className="size-3 fill-emerald-200 text-emerald-200" />
                 <span>Como funciona em 40s</span>
               </button>
             </div>
 
             <p className="mt-3 text-xs text-emerald-100/70">
-              Cadastro grátis · Orçamento sem compromisso · Você escolhe o profissional
+              Orçamento sem compromisso · Profissionais avaliados · Pagamento protegido
             </p>
 
             {/* Trust badges */}

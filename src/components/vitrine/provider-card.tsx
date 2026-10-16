@@ -197,11 +197,12 @@ export default React.memo(function ProviderCard({
       data-compare-distance-km={
         typeof provider.distanceKm === "number" ? String(provider.distanceKm) : ""
       }
+      onClick={() => onView?.(provider.id)}
       onMouseEnter={handlePrefetch}
       onFocus={handlePrefetch}
       onTouchStart={handlePrefetch}
       className={cn(
-        "group border-border/50 bg-card hover:border-border relative flex h-full flex-col justify-between rounded-2xl border p-5 shadow-2xs transition-all duration-200 hover:shadow-md",
+        "group border-border/50 bg-card hover:border-primary/40 relative flex h-full cursor-pointer flex-col justify-between rounded-2xl border p-5 shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
         className,
       )}
     >
@@ -530,7 +531,8 @@ export default React.memo(function ProviderCard({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation()
                 triggerHaptic("selection")
                 onQuote(provider.id)
               }}
@@ -541,7 +543,8 @@ export default React.memo(function ProviderCard({
           )}
           <Button
             size="sm"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation()
               triggerHaptic("selection")
               onBook ? onBook(provider.id) : onView?.(provider.id)
             }}

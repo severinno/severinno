@@ -195,7 +195,7 @@ export default function CategoryShowcase({
   return (
     <section
       className={cn(
-        "border-border/40 bg-background/85 sticky top-16 z-20 border-b shadow-xs backdrop-blur-md transition-all",
+        "border-border/40 bg-background/85 sticky top-14 z-20 border-b shadow-xs backdrop-blur-md transition-all",
         className,
       )}
       aria-label="Filtrar por categoria"
