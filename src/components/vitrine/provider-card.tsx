@@ -26,11 +26,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
 import { formatDistance } from "@/lib/geo-client"
-import { toggleFavorite, type ProviderCard as ProviderCardType } from "@/lib/api"
+import {
+  toggleFavorite,
+  fetchProviderDetail,
+  type ProviderCard as ProviderCardType,
+} from "@/lib/api"
 import { VerifiedBadge } from "@/components/shared/verified-badge"
 import { useAuthStore } from "@/store/auth"
 import { useUIStore } from "@/store/ui"
 import { useCompareStore, MAX_COMPARE } from "@/store/compare"
+import { useGeoStore } from "@/store/geo"
 import { toast } from "sonner"
 
 import { Card } from "@/components/ui/card"
@@ -147,6 +152,20 @@ export default React.memo(function ProviderCard({
 
   const quickSlots = cardMeta.quickSlots
 
+  const handlePrefetch = React.useCallback(() => {
+    if (!provider.id) return
+    const { lat, lng } = useGeoStore.getState()
+    qc.prefetchQuery({
+      queryKey: ["provider", provider.id, lat, lng],
+      queryFn: () =>
+        fetchProviderDetail(provider.id, {
+          lat: lat ?? undefined,
+          lng: lng ?? undefined,
+        }),
+      staleTime: 60_000,
+    })
+  }, [provider.id, qc])
+
   return (
     <Card
       data-testid="card"
@@ -159,6 +178,9 @@ export default React.memo(function ProviderCard({
       data-compare-distance-km={
         typeof provider.distanceKm === "number" ? String(provider.distanceKm) : ""
       }
+      onMouseEnter={handlePrefetch}
+      onFocus={handlePrefetch}
+      onTouchStart={handlePrefetch}
       className={cn(
         "group border-border/50 bg-card hover:border-border relative flex h-full flex-col justify-between rounded-2xl border p-5 shadow-2xs transition-all duration-200 hover:shadow-md",
         className,

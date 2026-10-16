@@ -261,7 +261,10 @@ export default function AIChatWidget() {
     if (!text || isTyping) return
 
     if (targetAnchor) {
-      const el = document.getElementById(targetAnchor)
+      const el =
+        document.getElementById(targetAnchor) ||
+        document.getElementById("vitrine-resultados") ||
+        document.getElementById("vitrine-results")
       if (el) {
         el.scrollIntoView({ behavior: "smooth" })
       }

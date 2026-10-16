@@ -47,6 +47,7 @@ import {
   Bell,
   Sparkles,
   ShieldCheck,
+  History,
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 
@@ -295,6 +296,66 @@ export default function Topbar({
   const [locating, setLocating] = React.useState(false)
   const [scrolled, setScrolled] = React.useState(false)
   const [pastHero, setPastHero] = React.useState(false)
+  const searchInputRef = React.useRef<HTMLInputElement>(null)
+  const [recentSearches, setRecentSearches] = React.useState<string[]>([])
+
+  // Load recent searches on mount
+  React.useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const raw = localStorage.getItem("severinno_recent_searches")
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration of recent searches from localStorage on mount
+          setRecentSearches(parsed.slice(0, 5))
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const saveRecentSearch = React.useCallback((term: string) => {
+    const trimmed = term.trim()
+    if (!trimmed || trimmed.length < 2) return
+    setRecentSearches((prev) => {
+      const filtered = prev.filter((item) => item.toLowerCase() !== trimmed.toLowerCase())
+      const next = [trimmed, ...filtered].slice(0, 5)
+      try {
+        localStorage.setItem("severinno_recent_searches", JSON.stringify(next))
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }, [])
+
+  const clearRecentSearches = React.useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    setRecentSearches([])
+    try {
+      localStorage.removeItem("severinno_recent_searches")
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  // ── Global Ctrl+K / ⌘K keyboard shortcut ──────────────────────────────
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault()
+        setPastHero(false)
+        setSearchOpen(true)
+        window.setTimeout(() => {
+          searchInputRef.current?.focus()
+        }, 50)
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [])
 
   // ── Welcome toast state (H1: system status) ────────────────────────────
   const [showWelcome, setShowWelcome] = React.useState(false)
@@ -360,11 +421,18 @@ export default function Topbar({
     }
   }, [setFromGPS])
 
-  const triggerSearch = React.useCallback(() => {
-    setSearchOpen(false)
-    setMobileOpen(false)
-    onSearchSubmit?.()
-  }, [onSearchSubmit])
+  const triggerSearch = React.useCallback(
+    (customQuery?: string) => {
+      const term = customQuery !== undefined ? customQuery : query
+      if (term) {
+        saveRecentSearch(term)
+      }
+      setSearchOpen(false)
+      setMobileOpen(false)
+      onSearchSubmit?.()
+    },
+    [onSearchSubmit, query, saveRecentSearch],
+  )
 
   const onSelectCategory = React.useCallback(
     (id: string | null) => {
@@ -439,11 +507,13 @@ export default function Topbar({
                       <div className="relative mx-auto w-full max-w-xl xl:max-w-2xl">
                         <Search className="text-muted-foreground group-focus-within:text-primary pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 transition-colors duration-200" />
                         <Input
+                          ref={searchInputRef}
                           value={query}
                           onChange={(e) => onQueryChange(e.target.value)}
                           onFocus={() => {
                             setSearchFocused(true)
-                            if (categories.length > 0) setSearchOpen(true)
+                            if (categories.length > 0 || recentSearches.length > 0)
+                              setSearchOpen(true)
                           }}
                           onBlur={() => setSearchFocused(false)}
                           onKeyDown={(e) => {
@@ -485,7 +555,7 @@ export default function Topbar({
                         {/* Search shortcut hint */}
                         {!query && !searchOpen && (
                           <kbd className="bg-muted text-muted-foreground pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 rounded-md border px-1.5 py-0.5 text-[10px] font-medium lg:inline-block">
-                            ⌘K
+                            ⌘K / Ctrl+K
                           </kbd>
                         )}
                       </div>
@@ -516,6 +586,39 @@ export default function Topbar({
                               </p>
                             </div>
                           </CommandEmpty>
+                          {recentSearches.length > 0 && (
+                            <CommandGroup
+                              heading={
+                                <div className="flex items-center justify-between">
+                                  <span>Pesquisas recentes</span>
+                                  <button
+                                    type="button"
+                                    onClick={clearRecentSearches}
+                                    className="text-muted-foreground hover:text-foreground text-[10px] font-normal transition-colors"
+                                  >
+                                    Limpar histórico
+                                  </button>
+                                </div>
+                              }
+                            >
+                              {recentSearches.map((term) => (
+                                <CommandItem
+                                  key={term}
+                                  value={`recent-${term}`}
+                                  onSelect={() => {
+                                    onQueryChange(term)
+                                    triggerSearch(term)
+                                  }}
+                                  className="gap-3 rounded-lg"
+                                >
+                                  <span className="bg-muted text-muted-foreground flex size-7 items-center justify-center rounded-lg">
+                                    <History className="size-3.5" />
+                                  </span>
+                                  <span className="flex-1 font-medium">{term}</span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          )}
                           <CommandGroup heading="Categorias populares">
                             {categories.slice(0, 6).map((c) => (
                               <CommandItem
