@@ -58,6 +58,9 @@ export type ProviderReview = {
   id: string
   rating: number
   comment?: string | null
+  photos?: string[] | null
+  providerReply?: string | null
+  providerReplyAt?: string | null
   createdAt: string
   author?: { id: string; name: string; avatarUrl?: string | null } | null
 }

@@ -151,6 +151,8 @@ export default React.memo(function ProviderCard({
     <Card
       data-testid="card"
       data-provider-id={provider.id}
+      data-compare-name={provider.name}
+      data-compare-avatar={avatarUrl}
       data-compare-distance={
         typeof provider.distanceKm === "number" ? formatDistance(provider.distanceKm) : "—"
       }

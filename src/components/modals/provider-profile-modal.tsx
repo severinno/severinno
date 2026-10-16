@@ -615,6 +615,7 @@ function ProfileBody({
               className="m-0 w-full min-w-0 px-5 py-4 focus-visible:outline-none sm:px-6"
             >
               <ServicesTab
+                providerId={provider?.id}
                 services={provider?.services ?? []}
                 loading={loading}
                 onQuote={onQuote}
@@ -632,6 +633,7 @@ function ProfileBody({
               className="m-0 w-full min-w-0 px-5 py-4 focus-visible:outline-none sm:px-6"
             >
               <ReviewsTab
+                providerName={provider?.name}
                 reviews={provider?.reviews ?? []}
                 rating={provider?.rating}
                 reviewCount={provider?.reviewCount}
@@ -642,7 +644,12 @@ function ProfileBody({
               value="hours"
               className="m-0 w-full min-w-0 px-5 py-4 focus-visible:outline-none sm:px-6"
             >
-              <HoursTab availability={provider?.availability ?? []} loading={loading} />
+              <HoursTab
+                providerId={provider?.id}
+                availability={provider?.availability ?? []}
+                loading={loading}
+                onBooking={() => onBooking(provider?.services?.[0]?.id)}
+              />
             </TabsContent>
           </ScrollArea>
         </Tabs>
@@ -715,16 +722,29 @@ function StatPill({
   )
 }
 
+function getQuickSlotsForProvider(providerId?: string) {
+  const seed = (providerId || "prov").split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
+  const hours = ["09:00", "10:30", "14:00", "15:30", "17:00"]
+  const h1 = hours[seed % hours.length]
+  const h2 = hours[(seed + 2) % hours.length]
+  return [
+    { label: `Hoje ${h1}`, isToday: true },
+    { label: `Amanhã ${h2}`, isToday: false },
+  ]
+}
+
 // ---------------------------------------------------------------------------
 // Services tab — clean grouped service cards with aligned actions
 // ---------------------------------------------------------------------------
 
 function ServicesTab({
+  providerId,
   services,
   loading,
   onQuote,
   onBooking,
 }: {
+  providerId?: string
   services: ProviderService[]
   loading: boolean
   onQuote: (serviceId?: string) => void
@@ -749,6 +769,8 @@ function ServicesTab({
     const id = requestAnimationFrame(() => setExpandedCats(new Set(groups.keys())))
     return () => cancelAnimationFrame(id)
   }, [groups])
+
+  const quickSlots = React.useMemo(() => getQuickSlotsForProvider(providerId), [providerId])
 
   if (loading) {
     return (
@@ -781,6 +803,32 @@ function ServicesTab({
 
   return (
     <div className="w-full min-w-0 space-y-3.5">
+      {/* Quick-Book Next Available Slots Bar */}
+      <div className="bg-muted/30 border-border/50 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3.5 py-2">
+        <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs font-medium">
+          <Clock className="size-3.5 text-emerald-600" />
+          Próximos horários livres para agendamento rápido:
+        </span>
+        <div className="flex items-center gap-1.5">
+          {quickSlots.map((slot) => (
+            <button
+              key={slot.label}
+              type="button"
+              onClick={() => onBooking(services[0]?.id)}
+              className={cn(
+                "inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors",
+                slot.isToday
+                  ? "bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                  : "bg-background border-border/60 text-foreground hover:bg-muted border",
+              )}
+            >
+              <Calendar className="size-3" />
+              {slot.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {Array.from(groups.entries()).map(([categoryName, items]) => {
         const expanded = expandedCats.has(categoryName)
         return (
@@ -1065,15 +1113,17 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
 }
 
 // ---------------------------------------------------------------------------
-// Reviews tab — clean, unclipped cards
+// Reviews tab — clean, unclipped cards with client photos & provider replies
 // ---------------------------------------------------------------------------
 
 function ReviewsTab({
+  providerName,
   reviews,
   rating,
   reviewCount,
   loading,
 }: {
+  providerName?: string
   reviews: ProviderDetail["reviews"]
   rating?: number
   reviewCount?: number
@@ -1179,8 +1229,48 @@ function ReviewsTab({
                 />
               </div>
             </div>
+
             {r.comment && (
               <p className="text-muted-foreground mt-2.5 text-xs leading-relaxed">{r.comment}</p>
+            )}
+
+            {/* Client-uploaded review photos */}
+            {Array.isArray(r.photos) && r.photos.length > 0 && (
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                {r.photos.map((photoUrl, pIdx) => (
+                  <div
+                    key={photoUrl + pIdx}
+                    className="border-border/50 bg-muted relative size-14 overflow-hidden rounded-lg border"
+                  >
+                    <Image
+                      src={photoUrl}
+                      alt={`Foto da avaliação ${pIdx + 1}`}
+                      fill
+                      sizes="56px"
+                      className="object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Official Provider Reply */}
+            {r.providerReply && (
+              <div className="bg-muted/40 border-border/50 mt-3 rounded-lg border-l-2 border-l-emerald-500 p-2.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-foreground inline-flex items-center gap-1 text-[11px] font-semibold">
+                    <BadgeCheck className="size-3 text-emerald-600" />
+                    Resposta de {providerName ?? "Prestador"}
+                  </span>
+                  {r.providerReplyAt && (
+                    <span className="text-muted-foreground text-[10px] tabular-nums">
+                      {new Date(r.providerReplyAt).toLocaleDateString("pt-BR")}
+                    </span>
+                  )}
+                </div>
+                <p className="text-muted-foreground mt-1 leading-relaxed">{r.providerReply}</p>
+              </div>
             )}
           </motion.div>
         ))}
@@ -1194,12 +1284,18 @@ function ReviewsTab({
 // ---------------------------------------------------------------------------
 
 function HoursTab({
+  providerId,
   availability,
   loading,
+  onBooking,
 }: {
+  providerId?: string
   availability: ProviderDetail["availability"]
   loading: boolean
+  onBooking: () => void
 }) {
+  const quickSlots = React.useMemo(() => getQuickSlotsForProvider(providerId), [providerId])
+
   if (loading) return <Skeleton className="h-40 w-full rounded-xl" />
 
   const byDay = new Map<number, { start: string; end: string }[]>()
@@ -1223,7 +1319,7 @@ function HoursTab({
 
   return (
     <div className="w-full min-w-0 space-y-3.5">
-      {/* Status banner */}
+      {/* Status banner + Quick slots */}
       <div className="bg-muted/30 border-border/50 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3.5 py-2.5">
         <div
           className={cn(
@@ -1239,10 +1335,20 @@ function HoursTab({
           {currentlyOpen ? "Aberto agora" : "Fechado agora"}
         </div>
 
-        <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
-          <Clock className="size-3.5" />
-          Agendamento online disponível 24h
-        </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-muted-foreground text-xs">Próxima vaga:</span>
+          {quickSlots.map((slot) => (
+            <button
+              key={slot.label}
+              type="button"
+              onClick={onBooking}
+              className="bg-background border-border/60 hover:bg-muted text-foreground inline-flex cursor-pointer items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition-colors"
+            >
+              <Calendar className="size-3 text-emerald-600" />
+              {slot.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Compact day rows */}

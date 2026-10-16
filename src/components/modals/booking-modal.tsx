@@ -366,11 +366,7 @@ export function BookingModal() {
     ? "Custódia Garantida: seu pagamento fica protegido até a conclusão do serviço."
     : "Escolha data, detalhes e pagamento"
 
-  const dialogSizeClass = createdBooking
-    ? "sm:max-w-md"
-    : step === 1
-      ? "sm:max-w-2xl"
-      : "sm:max-w-lg"
+  const dialogSizeClass = "w-[95vw] sm:max-w-3xl"
 
   const checkoutContent = createdBooking ? (
     <div className="flex flex-col gap-4 py-2">
@@ -664,12 +660,12 @@ export function BookingModal() {
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent
         className={cn(
-          "flex max-h-[90vh] flex-col gap-0 p-0 transition-[max-width] duration-300",
+          "flex h-[660px] max-h-[88vh] min-w-0 flex-col gap-0 overflow-hidden rounded-2xl p-0",
           dialogSizeClass,
         )}
         onInteractOutside={(e) => e.preventDefault()}
       >
-        <DialogHeader className="shrink-0 border-b px-5 pt-4 pb-2">
+        <DialogHeader className="shrink-0 border-b px-5 pt-4 pb-2.5 sm:px-6">
           <DialogTitle className="flex items-center gap-2 text-base">
             {headerIcon}
             {headerTitle}
@@ -678,11 +674,13 @@ export function BookingModal() {
         </DialogHeader>
 
         {createdBooking ? (
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{checkoutContent}</div>
+          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-5 py-4 sm:px-6">
+            {checkoutContent}
+          </div>
         ) : (
           <>
             {stepIndicator}
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={step}
