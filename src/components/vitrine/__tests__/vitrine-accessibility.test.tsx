@@ -312,6 +312,7 @@ vi.mock("@/components/ui/sheet", () => ({
 
 vi.mock("@/components/ui/popover", () => ({
   Popover: ({ children }: any) => <>{children}</>,
+  PopoverTrigger: ({ children }: any) => <>{children}</>,
   PopoverAnchor: ({ children }: any) => <>{children}</>,
   PopoverContent: ({ children }: any) => <>{children}</>,
 }))

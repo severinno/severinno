@@ -41,6 +41,7 @@ import Hero from "./hero"
 import CategoryShowcase from "./category-showcase"
 import VitrineResults from "./vitrine-results"
 import Footer from "../shared/footer"
+import { playPopSound } from "@/lib/sounds"
 
 // Lazy-loaded below-the-fold components (code-split)
 const RecentlyViewed = React.lazy(() =>
@@ -251,7 +252,7 @@ function vitrineReducer(state: VitrineState, action: VitrineAction): VitrineStat
 
 export default function Vitrine() {
   const { status: authStatus } = useAuthStore()
-  const { lat, lng } = useGeoStore()
+  const { lat, lng, district: userDistrict } = useGeoStore()
   const openQuote = useUIStore((s) => s.openQuote)
   const openBooking = useUIStore((s) => s.openBooking)
   const openProvider = useUIStore((s) => s.openProvider)
@@ -938,6 +939,29 @@ export default function Vitrine() {
           onSelect={handleCategorySelect}
           isLoading={categoriesQuery.isLoading}
         />
+
+        {/* 2.1 NeighborhoodSelectorBar — Seletor Rápido de Bairros de Governador Valadares */}
+        <Suspense fallback={null}>
+          <div className="mx-auto mt-4 w-full max-w-[95%] px-4 sm:px-6 lg:px-8">
+            <NeighborhoodSelectorBar
+              selectedNeighborhood={userDistrict || undefined}
+              onSelectNeighborhood={(bairro) => {
+                useGeoStore.getState().setDistrict(bairro)
+                playPopSound()
+                const el = document.getElementById(RESULTS_ANCHOR_ID)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }}
+              onSearchService={(serviceName, bairro) => {
+                useGeoStore.getState().setDistrict(bairro)
+                resetToFirstPage()
+                dispatch({ type: "SET_FILTERS", filters: { ...filters, q: serviceName } })
+                playPopSound()
+                const el = document.getElementById(RESULTS_ANCHOR_ID)
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+              }}
+            />
+          </div>
+        </Suspense>
 
         {/* 3. VitrineResults — A GRADE DE RESULTADOS NA 2ª DOBRA IMEDIATA (95% Desktop, 4 Colunas, Barra Horizontal de Filtros) */}
         <VitrineResults

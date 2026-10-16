@@ -17,6 +17,9 @@ import {
   Sparkles,
   MessageCircle,
   ChevronRight,
+  ShieldCheck,
+  FileText,
+  X,
 } from "lucide-react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 
@@ -35,6 +38,8 @@ import { useUIStore } from "@/store/ui"
 import { useCompareStore, MAX_COMPARE } from "@/store/compare"
 import { useGeoStore } from "@/store/geo"
 import { toast } from "sonner"
+import { EscrowPopover } from "./escrow-popover"
+import { playPopSound } from "@/lib/sounds"
 
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -62,6 +67,7 @@ export default React.memo(function ProviderCompactRow({
   const userDistrict = useGeoStore((s) => s.district)
 
   const [favorited, setFavorited] = React.useState<boolean>(!!favoritedProp)
+  const [quickViewOpen, setQuickViewOpen] = React.useState<boolean>(false)
   const prevFavoritedProp = React.useRef<boolean>(!!favoritedProp)
 
   React.useEffect(() => {
@@ -242,6 +248,14 @@ export default React.memo(function ProviderCompactRow({
             ) : provider.district ? (
               <span className="truncate">· {provider.district}</span>
             ) : null}
+
+            <EscrowPopover>
+              <span className="inline-flex cursor-pointer items-center gap-1 font-medium text-emerald-700 transition-colors hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300">
+                <span>·</span>
+                <ShieldCheck className="size-3 text-emerald-600" />
+                <span>Escrow PIX</span>
+              </span>
+            </EscrowPopover>
           </div>
         </div>
       </div>
@@ -277,6 +291,26 @@ export default React.memo(function ProviderCompactRow({
         </div>
 
         <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            data-testid="provider-quick-view-btn"
+            onClick={(e) => {
+              e.stopPropagation()
+              playPopSound()
+              setQuickViewOpen((v) => !v)
+            }}
+            aria-label="Espiar tabela de preços e credenciais"
+            title="Ver tabela de preços"
+            className={cn(
+              "flex size-8.5 cursor-pointer items-center justify-center rounded-xl border transition-colors",
+              quickViewOpen
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <FileText className="size-4" />
+          </button>
+
           <button
             type="button"
             onClick={handleCompareClick}
@@ -346,6 +380,97 @@ export default React.memo(function ProviderCompactRow({
           </button>
         </div>
       </div>
+
+      {/* Gaveta Rápida de Espiar Perfil (Quick-View Drawer in-card overlay) */}
+      {quickViewOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Resumo rápido de ${provider.name}`}
+          data-testid="provider-quick-view-drawer"
+          className="bg-card/98 border-border animate-in fade-in zoom-in-95 absolute inset-0 z-20 flex flex-col justify-between rounded-2xl border p-4 shadow-xl backdrop-blur-md duration-150"
+        >
+          <div>
+            <div className="border-border/50 flex items-center justify-between border-b pb-2">
+              <div className="min-w-0">
+                <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+                  Resumo Rápido & Tabela
+                </p>
+                <h4 className="truncate text-sm font-bold">{provider.name}</h4>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  playPopSound()
+                  setQuickViewOpen(false)
+                }}
+                aria-label="Fechar resumo rápido"
+                className="text-muted-foreground hover:bg-muted flex size-7 cursor-pointer items-center justify-center rounded-full"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <span className="bg-muted text-foreground inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium">
+                <CheckCircle2 className="size-3 text-emerald-600" />
+                CPF/CNPJ Verificado
+              </span>
+              <span className="bg-muted text-foreground inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium">
+                <ShieldCheck className="size-3 text-emerald-600" />
+                Custódia PIX + 90d
+              </span>
+            </div>
+
+            <div className="mt-2.5 space-y-1">
+              {provider.services && provider.services.length > 0 ? (
+                <div className="max-h-24 space-y-1 overflow-y-auto pr-1">
+                  {provider.services.map((s) => (
+                    <div
+                      key={s.id}
+                      className="border-border/40 flex items-center justify-between border-b py-1 text-xs last:border-0"
+                    >
+                      <span className="truncate pr-2">{s.title}</span>
+                      <span className="text-foreground shrink-0 font-semibold">
+                        {s.basePrice != null && Number.isFinite(Number(s.basePrice))
+                          ? formatBRL(Number(s.basePrice))
+                          : "Sob consulta"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-xs">Orçamento sob medida.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="border-border/40 mt-2 flex items-center gap-2 border-t pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setQuickViewOpen(false)
+                onView?.(provider.id)
+              }}
+              className="h-7.5 flex-1 text-xs font-medium"
+            >
+              Ver perfil
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                setQuickViewOpen(false)
+                onBook ? onBook(provider.id) : onView?.(provider.id)
+              }}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 h-7.5 flex-1 text-xs font-semibold"
+            >
+              Agendar
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 })

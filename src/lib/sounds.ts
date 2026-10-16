@@ -240,3 +240,52 @@ export function playErrorSound(options?: { vibrate?: boolean }): void {
     // Audio is a progressive enhancement — silence failures gracefully.
   }
 }
+
+/**
+ * Play a very soft, minimal "pop/tap" sound.
+ * Ideal for toggles (grid/list), filter chips, and card selections.
+ */
+export function playPopSound(options?: { vibrate?: boolean }): void {
+  if (options?.vibrate !== false) tryVibrate(15)
+  try {
+    const ctx = getCtx()
+    const now = ctx.currentTime
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = "sine"
+    osc.frequency.setValueAtTime(440, now)
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.03)
+    gain.gain.setValueAtTime(0.04, now)
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035)
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start(now)
+    osc.stop(now + 0.04)
+  } catch {
+    // Audio is a progressive enhancement — silence failures gracefully.
+  }
+}
+
+/**
+ * Play a delicate success chime for actions like copying a link or adding to compare.
+ */
+export function playCopySuccessSound(options?: { vibrate?: boolean }): void {
+  if (options?.vibrate !== false) tryVibrate([20, 40, 20])
+  try {
+    const ctx = getCtx()
+    const now = ctx.currentTime
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = "sine"
+    osc.frequency.setValueAtTime(587.33, now) // D5
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.08) // A5
+    gain.gain.setValueAtTime(0.05, now)
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12)
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start(now)
+    osc.stop(now + 0.13)
+  } catch {
+    // Audio is a progressive enhancement — silence failures gracefully.
+  }
+}

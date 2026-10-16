@@ -13,10 +13,23 @@
 
 import * as React from "react"
 import dynamic from "next/dynamic"
-import { MapPin, SlidersHorizontal, SearchX, X, Loader2, LayoutGrid, Rows, Zap } from "lucide-react"
+import {
+  MapPin,
+  SlidersHorizontal,
+  SearchX,
+  X,
+  Loader2,
+  LayoutGrid,
+  Rows,
+  Zap,
+  MessageCircle,
+} from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { triggerHaptic } from "@/lib/haptics"
+import { playPopSound, playCopySuccessSound } from "@/lib/sounds"
+import { useGeoStore } from "@/store/geo"
+import { toast } from "sonner"
 import type { Category, ProviderCard as ProviderCardType } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -122,6 +135,8 @@ export default function VitrineResults({
   const [availableToday, setAvailableToday] = React.useState(false)
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false)
+  const userDistrict = useGeoStore((s) => s.district)
+  const [focusedIndex, setFocusedIndex] = React.useState<number>(-1)
 
   // Filter providers if availableToday filter is active
   const displayedProviders = React.useMemo(() => {
@@ -134,6 +149,51 @@ export default function VitrineResults({
       return p.availability.some((a) => a.dayOfWeek === currentDay)
     })
   }, [providers, availableToday])
+
+  // Keyboard navigation through results list (ArrowDown / J, ArrowUp / K, Enter)
+  React.useEffect(() => {
+    if (typeof window === "undefined" || view !== "list" || displayedProviders.length === 0) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.ctrlKey ||
+        e.metaKey ||
+        e.altKey
+      ) {
+        return
+      }
+
+      if (e.key === "ArrowDown" || e.key === "j" || e.key === "J") {
+        e.preventDefault()
+        setFocusedIndex((prev) => {
+          const next = Math.min(displayedProviders.length - 1, prev + 1)
+          playPopSound()
+          return next
+        })
+      } else if (e.key === "ArrowUp" || e.key === "k" || e.key === "K") {
+        e.preventDefault()
+        setFocusedIndex((prev) => {
+          const next = Math.max(0, prev - 1)
+          playPopSound()
+          return next
+        })
+      } else if (
+        e.key === "Enter" &&
+        focusedIndex >= 0 &&
+        focusedIndex < displayedProviders.length
+      ) {
+        e.preventDefault()
+        const targetProvider = displayedProviders[focusedIndex]
+        if (targetProvider) onView?.(targetProvider.id)
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [view, displayedProviders, focusedIndex, onView])
+
   // Derive valid selection — automatically clears if the selected provider
   // is no longer in the current results (e.g. after pagination or filter change).
   const activeSelectedId = React.useMemo(() => {
@@ -144,6 +204,7 @@ export default function VitrineResults({
   const activeChips = buildChips(filters)
 
   const handleChipRemove = (key: keyof FiltersState) => {
+    playPopSound()
     const next = { ...filters }
     if (key === "q") next.q = ""
     else if (key === "categoryId") next.categoryId = null
@@ -275,6 +336,7 @@ export default function VitrineResults({
                     type="button"
                     onClick={() => {
                       triggerHaptic("selection")
+                      playPopSound()
                       setLayoutMode("grid")
                     }}
                     className={cn(
@@ -294,6 +356,7 @@ export default function VitrineResults({
                     type="button"
                     onClick={() => {
                       triggerHaptic("selection")
+                      playPopSound()
                       setLayoutMode("compact")
                     }}
                     className={cn(
@@ -318,6 +381,7 @@ export default function VitrineResults({
                   type="button"
                   onClick={() => {
                     triggerHaptic("selection")
+                    playPopSound()
                     setAvailableToday((v) => !v)
                   }}
                   className={cn(
@@ -497,6 +561,14 @@ export default function VitrineResults({
               }
               onClear={() => onFiltersChange({ ...DEFAULT_FILTERS })}
               onSuggestionSelect={(term) => onFiltersChange({ ...DEFAULT_FILTERS, q: term })}
+              onExpandRadius={() =>
+                onFiltersChange({
+                  ...filters,
+                  radius: Math.min(50, (filters.radius || 15) + 15),
+                })
+              }
+              currentRadius={filters.radius}
+              userDistrict={userDistrict}
             />
           ) : view === "list" ? (
             <div className="animate-in fade-in duration-200">
@@ -513,7 +585,10 @@ export default function VitrineResults({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setAvailableToday(false)}
+                    onClick={() => {
+                      playPopSound()
+                      setAvailableToday(false)
+                    }}
                     className="mt-4 text-xs font-semibold"
                   >
                     Exibir todos os {providers.length} prestadores
@@ -521,28 +596,44 @@ export default function VitrineResults({
                 </div>
               ) : layoutMode === "grid" ? (
                 <ResultsGrid>
-                  {displayedProviders.map((p) => (
-                    <ProviderCard
+                  {displayedProviders.map((p, idx) => (
+                    <div
                       key={p.id}
-                      provider={p}
-                      favorited={favorites.has(p.id)}
-                      onQuote={onQuote}
-                      onBook={onBook}
-                      onView={onView}
-                    />
+                      className={cn(
+                        "rounded-2xl transition-all duration-150",
+                        focusedIndex === idx &&
+                          "ring-offset-background ring-2 ring-emerald-500 ring-offset-2",
+                      )}
+                    >
+                      <ProviderCard
+                        provider={p}
+                        favorited={favorites.has(p.id)}
+                        onQuote={onQuote}
+                        onBook={onBook}
+                        onView={onView}
+                      />
+                    </div>
                   ))}
                 </ResultsGrid>
               ) : (
                 <div className="flex flex-col gap-3">
-                  {displayedProviders.map((p) => (
-                    <ProviderCompactRow
+                  {displayedProviders.map((p, idx) => (
+                    <div
                       key={p.id}
-                      provider={p}
-                      favorited={favorites.has(p.id)}
-                      onQuote={onQuote}
-                      onBook={onBook}
-                      onView={onView}
-                    />
+                      className={cn(
+                        "rounded-2xl transition-all duration-150",
+                        focusedIndex === idx &&
+                          "ring-offset-background ring-2 ring-emerald-500 ring-offset-2",
+                      )}
+                    >
+                      <ProviderCompactRow
+                        provider={p}
+                        favorited={favorites.has(p.id)}
+                        onQuote={onQuote}
+                        onBook={onBook}
+                        onView={onView}
+                      />
+                    </div>
                   ))}
                 </div>
               )}
@@ -731,13 +822,21 @@ function EmptyState({
   hasFilters,
   onClear,
   onSuggestionSelect,
+  onExpandRadius,
+  currentRadius,
+  userDistrict,
 }: {
   hasFilters: boolean
   onClear: () => void
   onSuggestionSelect?: (term: string) => void
+  onExpandRadius?: () => void
+  currentRadius?: number
+  userDistrict?: string | null
 }) {
+  const [quickQuoteText, setQuickQuoteText] = React.useState("")
+
   return (
-    <div className="bg-card flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 px-6 py-16 text-center shadow-xs dark:border-slate-800">
+    <div className="bg-card flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 px-6 py-14 text-center shadow-xs dark:border-slate-800">
       <div className="flex size-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:ring-emerald-900/50">
         <SearchX className="size-8" />
       </div>
@@ -749,19 +848,88 @@ function EmptyState({
           ? "Tente ajustar os filtros ou aumentar o raio de busca para ver profissionais disponíveis."
           : "Compartilhe sua localização ou busque por uma categoria para começar."}
       </p>
-      {hasFilters ? (
-        <Button
-          variant="outline"
-          size="sm"
-          className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10 hover:text-primary mt-4 rounded-xl font-medium"
-          onClick={() => {
-            triggerHaptic("selection")
-            onClear()
+
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        {hasFilters ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10 hover:text-primary rounded-xl font-medium"
+            onClick={() => {
+              playPopSound()
+              triggerHaptic("selection")
+              onClear()
+            }}
+          >
+            Limpar todos os filtros
+          </Button>
+        ) : null}
+
+        {onExpandRadius && (currentRadius == null || currentRadius < 50) ? (
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            onClick={() => {
+              playPopSound()
+              triggerHaptic("selection")
+              onExpandRadius()
+            }}
+            className="flex items-center gap-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white shadow-2xs hover:bg-emerald-700"
+          >
+            <MapPin className="size-3.5" />
+            <span>Expandir busca para toda GV (+15 km)</span>
+          </Button>
+        ) : null}
+      </div>
+
+      {/* Orçamento Relâmpago em Valadares */}
+      <div className="mt-6 w-full max-w-md rounded-2xl border border-emerald-500/20 bg-emerald-50/50 p-4 text-left shadow-2xs dark:border-emerald-800/40 dark:bg-emerald-950/20">
+        <div className="mb-2 flex items-center gap-2">
+          <span className="flex size-6 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-2xs">
+            <Zap className="size-3.5" />
+          </span>
+          <div>
+            <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
+              Pedir Orçamento Relâmpago para GV
+            </h4>
+            <p className="text-muted-foreground text-[11px]">
+              Avisamos os profissionais mais próximos no WhatsApp.
+            </p>
+          </div>
+        </div>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (!quickQuoteText.trim()) return
+            const text = encodeURIComponent(
+              `Olá! Preciso de um orçamento no Severinno (Governador Valadares):\n\n📝 Serviço solicitado: ${quickQuoteText.trim()}\n📍 Região/Bairro: ${userDistrict || "Governador Valadares"}`,
+            )
+            playCopySuccessSound()
+            toast.success("Redirecionando para o WhatsApp do atendimento...")
+            window.open(`https://wa.me/5533991113030?text=${text}`, "_blank", "noopener,noreferrer")
           }}
+          className="mt-2.5 flex flex-col gap-2"
         >
-          Limpar todos os filtros
-        </Button>
-      ) : null}
+          <input
+            type="text"
+            value={quickQuoteText}
+            onChange={(e) => setQuickQuoteText(e.target.value)}
+            placeholder="Ex.: Trocar disjuntor ou consertar vazamento..."
+            className="bg-background text-foreground placeholder:text-muted-foreground/70 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none dark:border-slate-800"
+          />
+          <Button
+            type="submit"
+            size="sm"
+            disabled={!quickQuoteText.trim()}
+            className="h-8.5 gap-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-700"
+          >
+            <MessageCircle className="size-3.5" />
+            <span>Enviar Pedido de Orçamento</span>
+          </Button>
+        </form>
+      </div>
 
       <div className="mt-6 flex flex-col items-center">
         <span className="text-muted-foreground mb-2.5 text-xs font-medium">

@@ -44,6 +44,8 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Skeleton } from "@/components/ui/skeleton"
+import { EscrowPopover } from "./escrow-popover"
+import { playPopSound } from "@/lib/sounds"
 
 export type ProviderCardProps = {
   provider: ProviderCardType
@@ -303,6 +305,7 @@ export default React.memo(function ProviderCard({
               data-testid="provider-quick-view-btn"
               onClick={(e) => {
                 e.stopPropagation()
+                playPopSound()
                 setQuickViewOpen((v) => !v)
               }}
               aria-label="Espiar tabela de preços e credenciais"
@@ -387,12 +390,14 @@ export default React.memo(function ProviderCard({
 
         {/* 4. Linha Sutil de Confiança & Tempo de Resposta (Sem caixas coloridas) */}
         <div className="text-muted-foreground mt-3 flex items-center justify-between text-[11px]">
-          <span className="inline-flex items-center gap-1">
-            <ShieldCheck className="size-3.5 text-emerald-600/80" />
-            <span>Escrow PIX</span>
-            <span>·</span>
-            <span>Garantia 90d</span>
-          </span>
+          <EscrowPopover>
+            <span className="inline-flex cursor-pointer items-center gap-1 transition-colors hover:text-emerald-700 dark:hover:text-emerald-300">
+              <ShieldCheck className="size-3.5 text-emerald-600/80" />
+              <span>Escrow PIX</span>
+              <span>·</span>
+              <span>Garantia 90d</span>
+            </span>
+          </EscrowPopover>
           <span
             data-testid="provider-response-time"
             className="text-muted-foreground"

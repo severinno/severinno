@@ -22,6 +22,7 @@ export type GeoState = {
   setFromGPS: () => Promise<void>
   setFromCoords: (lat: number, lng: number, address?: string, accuracy?: number | null) => void
   setFromCEP: (cep: string) => Promise<void>
+  setDistrict: (district: string | null) => void
   clear: () => void
 }
 
@@ -161,6 +162,13 @@ export const useGeoStore = create<GeoState>()(
             error: "Erro de rede ao buscar CEP.",
           })
         }
+      },
+
+      setDistrict: (district: string | null) => {
+        set({
+          district,
+          updatedAt: new Date().toISOString(),
+        })
       },
 
       clear: () =>
