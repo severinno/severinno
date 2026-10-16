@@ -184,7 +184,7 @@ describe("POST /api/chat", () => {
     expect(messages[11]).toEqual({ role: "user", content: "final" })
   })
 
-  it("retorna 500 quando o assistente não devolve conteúdo", async () => {
+  it("usa fallback conversacional inteligente quando o assistente não devolve conteúdo", async () => {
     vi.mocked(mockSdk.completionsCreate).mockResolvedValueOnce({
       choices: [{ message: { content: "" } }],
     })
@@ -192,19 +192,19 @@ describe("POST /api/chat", () => {
     const res = await POST(chatRequest({ message: "oi" }), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
-    expect(parsed.status).toBe(500)
-    expect((parsed.body as any).error).toBe("Sem resposta do assistente.")
+    expect(parsed.status).toBe(200)
+    expect((parsed.body as any).response).toContain("Severinno")
   })
 
-  it("retorna 500 com mensagem neutra quando o provider falha", async () => {
+  it("usa fallback conversacional inteligente quando o provider falha", async () => {
     vi.mocked(mockSdk.completionsCreate).mockRejectedValueOnce(new Error("ECONNREFUSED upstream"))
 
-    const res = await POST(chatRequest({ message: "oi" }), { params: Promise.resolve({}) })
+    const res = await POST(chatRequest({ message: "preciso de um encanador" }), {
+      params: Promise.resolve({}),
+    })
     const parsed = await parseResponse(res)
 
-    // handleError mapeia erro genérico (não-HttpError) para 500 — não vaza a
-    // mensagem interna do provider upstream.
-    expect(parsed.status).toBe(500)
-    expect((parsed.body as any).error).toBe("Erro interno do servidor")
+    expect(parsed.status).toBe(200)
+    expect((parsed.body as any).response).toContain("Encanador")
   })
 })

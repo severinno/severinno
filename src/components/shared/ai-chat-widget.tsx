@@ -244,7 +244,7 @@ export default function AIChatWidget() {
                   )}
                   <div
                     className={cn(
-                      "max-w-[80%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed",
+                      "max-w-[80%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap",
                       msg.role === "user"
                         ? "rounded-br-md bg-emerald-600 text-white"
                         : "bg-muted text-foreground rounded-bl-md",

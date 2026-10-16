@@ -7,13 +7,17 @@ import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { chatMessageSchema } from "@/lib/validators"
 
 import { withRoute } from "@/lib/api-route"
+import logger from "@/lib/logger"
+import { generateVirtualAssistantResponse } from "@/lib/virtual-assistant"
+
+const chatLogger = logger.child({ module: "api.chat" })
 
 /**
  * POST /api/chat
  *
  * AI assistant for the Severinno Marketplace.
- * Uses z-ai-web-dev-sdk LLM to help users find services, answer questions,
- * and guide them through the platform.
+ * Uses z-ai-web-dev-sdk LLM or intelligent domain fallback to help users
+ * find services, answer questions, and navigate the platform safely.
  *
  * Body: { message: string, history?: Array<{role: string, content: string}> }
  */
@@ -42,26 +46,39 @@ Regras:
 Categorias disponíveis: Alvenaria, Elétrica, Hidráulica, Pintura, Pisos, Pós-Obra, Residencial
 Serviços populares: Encanador, Eletricista, Pintor, Diarista, Pedreiro, Jardineiro`
 
-  const zai = await ZAI.create()
+  let response: string | null = null
 
-  const messages = [
-    { role: "assistant" as const, content: systemPrompt },
-    ...history.map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.content,
-    })),
-    { role: "user" as const, content: message },
-  ]
+  try {
+    const zai = await ZAI.create()
 
-  const completion = await zai.chat.completions.create({
-    messages,
-    thinking: { type: "disabled" },
-  })
+    const messages = [
+      { role: "assistant" as const, content: systemPrompt },
+      ...history.map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      })),
+      { role: "user" as const, content: message },
+    ]
 
-  const response = completion.choices[0]?.message?.content
+    const completion = await zai.chat.completions.create({
+      messages,
+      thinking: { type: "disabled" },
+    })
 
+    const raw = completion?.choices?.[0]?.message?.content
+    if (raw && raw.trim()) {
+      response = raw.trim()
+    }
+  } catch (err) {
+    chatLogger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "Chat AI provider unavailable or failed, utilizing local knowledge engine",
+    )
+  }
+
+  // Graceful fallback when provider is unconfigured, rate-limited, offline, or returns empty
   if (!response) {
-    return NextResponse.json({ error: "Sem resposta do assistente." }, { status: 500 })
+    response = generateVirtualAssistantResponse(message, history)
   }
 
   return NextResponse.json({ response })
