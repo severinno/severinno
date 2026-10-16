@@ -415,7 +415,7 @@ export async function consume(opts: ConsumeOptions): Promise<void> {
     }
   })
 
-  // DLQ consumer (logs dead-lettered messages)
+  // DLQ consumer (logs dead-lettered messages and dispatches proactive alert)
   await ch.consume(dlqName, (raw: ConsumeMessage | null) => {
     if (!raw) return
     try {
@@ -424,6 +424,22 @@ export async function consume(opts: ConsumeOptions): Promise<void> {
         { queue: dlqName, body: body.slice(0, 500) },
         "dead-lettered message received — requires manual review",
       )
+      // Disparo proativo de alerta para canais externos (Telegram / Discord / Slack)
+      import("./alert-webhook")
+        .then(({ sendAlertWebhook }) => {
+          sendAlertWebhook({
+            severity: "critical",
+            title: `DLQ Alert: Mensagem Morta em ${dlqName}`,
+            message: `Uma mensagem excedeu o teto de retentativas na fila ${opts.queue} e foi transferida para a Dead-Letter Queue. Payload: ${body.slice(0, 200)}`,
+            metric: "rabbitmq_dead_letter_message",
+            metadata: {
+              queue: dlqName,
+              sourceQueue: opts.queue,
+              routingKey: opts.routingKey,
+            },
+          }).catch(() => {})
+        })
+        .catch(() => {})
     } finally {
       ch.ack(raw)
     }
