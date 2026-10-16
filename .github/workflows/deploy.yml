@@ -48,13 +48,13 @@ jobs:
     runs-on: self-hosted
     if: "!(github.event_name == 'workflow_dispatch' && inputs.census_only)"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # O guard lê os workflows com `js-yaml` (dependência do repositório, via
       # `scripts/forge-workflows.mjs`): sem `node_modules` ele cai no fail-closed e
       # reprova todos os arquivos, barrando o deploy por um defeito do PRÓPRIO job.
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -64,7 +64,7 @@ jobs:
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -89,10 +89,10 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore Bun cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun
           key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -102,7 +102,7 @@ jobs:
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
