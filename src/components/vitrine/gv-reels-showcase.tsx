@@ -3,17 +3,13 @@
 import * as React from "react"
 import {
   Play,
-  Pause,
   Volume2,
   VolumeX,
   X,
   CheckCircle2,
-  Sparkles,
   MapPin,
   Star,
   Eye,
-  Clock,
-  ArrowRight,
   MessageCircle,
   BadgeCheck,
   Flame,
@@ -158,7 +154,7 @@ export function GvReelsShowcase({ onQuoteProvider, className }: GvReelsShowcaseP
   return (
     <section
       aria-label="Reels de Serviços Reais em Governador Valadares"
-      className={cn("relative mx-auto my-10 w-full max-w-7xl px-4 sm:px-6 lg:px-8", className)}
+      className={cn("relative mx-auto my-10 w-full max-w-full px-4 sm:px-6 lg:px-8", className)}
     >
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">

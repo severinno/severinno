@@ -1,20 +1,7 @@
 "use client"
 
 import * as React from "react"
-import {
-  ShieldCheck,
-  Clock,
-  Lock,
-  CheckCircle2,
-  FileCheck2,
-  AlertCircle,
-  Sparkles,
-  ArrowRight,
-  Award,
-  Scale,
-  BadgeCheck,
-  Building2,
-} from "lucide-react"
+import { ShieldCheck, CheckCircle2, ArrowRight, Scale, BadgeCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -122,7 +109,7 @@ export function GvTransparencyBoard({ onLearnMore, className }: GvTransparencyBo
     <section
       aria-label="Central de Integridade e Transparência em Governador Valadares"
       className={cn(
-        "border-border/80 from-card/90 via-background to-background relative mx-auto my-10 w-full max-w-7xl overflow-hidden rounded-3xl border bg-gradient-to-b p-6 shadow-xl sm:p-8 md:p-10",
+        "border-border/80 from-card/90 via-background to-background relative mx-auto my-10 w-full max-w-full overflow-hidden rounded-3xl border bg-gradient-to-b p-6 shadow-xl sm:p-8 md:p-10",
         className,
       )}
     >

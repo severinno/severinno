@@ -32,7 +32,7 @@ export type TrendingServicesProps = {
 const SUPPORT_WHATSAPP = "5533999999999"
 
 export function TrendingServices({
-  onQuote,
+  onQuote: _onQuote,
   onBook,
   onViewProvider,
   className,
@@ -54,7 +54,7 @@ export function TrendingServices({
   if (isLoading) {
     return (
       <section className={cn("bg-background py-12", className)}>
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-[95%] px-2 sm:px-4">
           <Skeleton className="mb-3 h-8 w-64" />
           <Skeleton className="mb-8 h-4 w-96" />
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -73,7 +73,7 @@ export function TrendingServices({
 
   return (
     <section className={cn("bg-background border-border/40 border-b py-12", className)}>
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-[95%] px-2 sm:px-4">
         {/* Header */}
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>

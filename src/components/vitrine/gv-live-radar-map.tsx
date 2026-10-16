@@ -1,19 +1,7 @@
 "use client"
 
 import * as React from "react"
-import {
-  Navigation,
-  MapPin,
-  Clock,
-  Zap,
-  ShieldCheck,
-  Users,
-  Sparkles,
-  ArrowRight,
-  MessageCircle,
-  LocateFixed,
-  Radio,
-} from "lucide-react"
+import { MapPin, Clock, ArrowRight, MessageCircle, LocateFixed, Radio } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -148,7 +136,7 @@ export function GvLiveRadarMap({ onSelectDistrict, className }: GvLiveRadarMapPr
     <section
       aria-label="Radar Ao Vivo de Técnicos em Governador Valadares"
       className={cn(
-        "relative mx-auto my-10 w-full max-w-7xl overflow-hidden rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6 text-white shadow-2xl sm:p-8 md:p-10",
+        "relative mx-auto my-10 w-full max-w-full overflow-hidden rounded-3xl border border-emerald-500/30 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6 text-white shadow-2xl sm:p-8 md:p-10",
         className,
       )}
     >

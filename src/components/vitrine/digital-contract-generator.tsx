@@ -1,21 +1,7 @@
 "use client"
 
 import * as React from "react"
-import {
-  FileText,
-  ShieldCheck,
-  CheckCircle2,
-  Copy,
-  Printer,
-  Sparkles,
-  Lock,
-  QrCode,
-  Scale,
-  Download,
-  Check,
-  MessageCircle,
-  ArrowRight,
-} from "lucide-react"
+import { ShieldCheck, Copy, Printer, Lock, QrCode, Scale, Check, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -77,7 +63,7 @@ CLÁUSULAS DE BLINDAGEM SEVERINNO:
     <section
       aria-label="Gerador de Pré-Contrato Digital e Recibo Oficial"
       className={cn(
-        "via-background to-background relative mx-auto my-10 w-full max-w-7xl overflow-hidden rounded-3xl border border-blue-500/20 bg-gradient-to-b from-blue-500/5 p-6 shadow-xl sm:p-8 md:p-10",
+        "via-background to-background relative mx-auto my-10 w-full max-w-full overflow-hidden rounded-3xl border border-blue-500/20 bg-gradient-to-b from-blue-500/5 p-6 shadow-xl sm:p-8 md:p-10",
         className,
       )}
     >

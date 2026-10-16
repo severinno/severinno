@@ -153,7 +153,7 @@ export default function PartnersSection() {
 
   return (
     <section className="border-border/40 bg-background relative border-t py-12 sm:py-16">
-      <div ref={ref} className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div ref={ref} className="mx-auto w-full max-w-[95%] px-2 sm:px-4">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}

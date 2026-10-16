@@ -419,7 +419,7 @@ export default function CompareModal() {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && closeCompare()}>
-      <DialogContent className="border-border/70 flex max-h-[92vh] w-[96vw] max-w-[96vw] flex-col gap-0 overflow-hidden p-0 shadow-2xl sm:max-w-[94vw] sm:rounded-2xl lg:max-w-6xl xl:max-w-7xl">
+      <DialogContent className="border-border/70 flex max-h-[92vh] w-[96vw] max-w-[96vw] flex-col gap-0 overflow-hidden p-0 shadow-2xl sm:max-w-[94vw] sm:rounded-2xl lg:max-w-6xl xl:max-w-[94vw]">
         {/* Header Fixo */}
         <DialogHeader className="to-background border-b bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 px-6 py-4 pr-12">
           <div className="flex flex-wrap items-center justify-between gap-3">

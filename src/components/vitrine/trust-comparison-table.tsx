@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Check, X, ShieldCheck, AlertTriangle, ArrowRight, Sparkles, Lock } from "lucide-react"
+import { Check, X, ShieldCheck, ArrowRight, Sparkles, Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface TrustComparisonTableProps {
@@ -69,7 +69,7 @@ export function TrustComparisonTable({ onCtaClick, className }: TrustComparisonT
   return (
     <section
       aria-label="Comparativo de Segurança"
-      className={cn("mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8", className)}
+      className={cn("mx-auto w-full max-w-full px-4 py-8 sm:px-6 lg:px-8", className)}
     >
       {/* Header */}
       <div className="space-y-3 text-center">

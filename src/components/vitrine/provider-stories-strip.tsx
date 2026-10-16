@@ -160,7 +160,7 @@ export function ProviderStoriesStrip({ onQuoteProvider, className }: ProviderSto
 
   return (
     <section className={cn("bg-background border-border/40 border-b py-6", className)}>
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-[95%] px-2 sm:px-4">
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="relative flex size-2.5">

@@ -113,7 +113,7 @@ export default function FAQ() {
     activeCategory === "all" ? FAQS : FAQS.filter((f) => f.category === activeCategory)
 
   return (
-    <section className="border-border/40 bg-muted/20 border-t py-14 sm:py-16">
+    <section id="faq" className="border-border/40 bg-muted/20 border-t py-14 sm:py-16">
       <div className="mx-auto w-full max-w-[95%] px-2 sm:px-4">
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-start">
           {/* Coluna Esquerda: Título + Filtros de Categoria + Card de Suporte */}

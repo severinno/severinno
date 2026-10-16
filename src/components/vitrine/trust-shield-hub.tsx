@@ -118,7 +118,10 @@ export function TrustShieldHub({
 
         {activeTab === "comparison" && (
           <div className="animate-in fade-in duration-300">
-            <TrustComparisonTable onCtaClick={onExploreProtectedProviders} />
+            <TrustComparisonTable
+              onCtaClick={onExploreProtectedProviders}
+              className="my-0 max-w-full px-0"
+            />
           </div>
         )}
       </div>

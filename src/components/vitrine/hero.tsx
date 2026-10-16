@@ -26,7 +26,6 @@
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
 import { motion, AnimatePresence } from "framer-motion"
-import Image from "next/image"
 import {
   Search,
   BadgeCheck,
@@ -39,8 +38,6 @@ import {
   Eye,
   Zap,
   TrendingUp,
-  CalendarCheck,
-  UserPlus,
   FileText,
   Sparkles,
   MessageCircle,
@@ -124,14 +121,6 @@ const NIGHT_SERVICES = [
   { label: "Ar-Condicionado", emoji: "❄️" },
 ]
 
-// Map activity types to icons and colors
-const ACTIVITY_META: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
-  booking: { icon: CalendarCheck, color: "text-emerald-600", bg: "bg-emerald-50" },
-  review: { icon: Star, color: "text-amber-600", bg: "bg-amber-50" },
-  signup: { icon: UserPlus, color: "text-blue-600", bg: "bg-blue-50" },
-  quote: { icon: FileText, color: "text-violet-600", bg: "bg-violet-50" },
-}
-
 function getInitials(name: string): string {
   const clean = name.trim().replace(/^Dra?\.\s*/i, "")
   const parts = clean.split(/\s+/).filter(Boolean)
@@ -192,8 +181,8 @@ export default function Hero({
     refetchInterval: 45 * 1000, // Auto-refresh for live feel
   })
 
-  const userLat = useGeoStore((s) => s.lat) ?? -23.5505
-  const userLng = useGeoStore((s) => s.lng) ?? -46.6333
+  const userLat = useGeoStore((s) => s.lat) ?? -18.8511
+  const userLng = useGeoStore((s) => s.lng) ?? -41.9494
   const [aiWizardOpen, setAiWizardOpen] = React.useState(false)
   const [howItWorksOpen, setHowItWorksOpen] = React.useState(false)
   const [searchDropdownOpen, setSearchDropdownOpen] = React.useState(false)
@@ -429,7 +418,7 @@ export default function Hero({
                   const text =
                     "Olá! Gostaria de pedir um orçamento rápido com garantia de custódia em Governador Valadares."
                   window.open(
-                    `https://wa.me/5533999999999?text=${encodeURIComponent(text)}`,
+                    `https://wa.me/5533991113030?text=${encodeURIComponent(text)}`,
                     "_blank",
                     "noopener,noreferrer",
                   )

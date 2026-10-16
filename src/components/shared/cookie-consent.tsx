@@ -63,7 +63,7 @@ export default function CookieConsent() {
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
           className="border-border bg-background/95 fixed right-0 bottom-0 left-0 z-[60] border-t shadow-2xl backdrop-blur-lg"
         >
-          <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+          <div className="mx-auto w-full max-w-[95%] px-4 py-4 sm:px-6 lg:px-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               {/* Left: icon + text */}
               <div className="flex items-start gap-3">

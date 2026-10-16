@@ -127,7 +127,7 @@ export function NeighborhoodFeedShowcase({
   return (
     <section
       aria-label="Serviços Concluídos no Seu Bairro"
-      className={cn("mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8", className)}
+      className={cn("mx-auto w-full max-w-[95%] px-2 py-8 sm:px-4", className)}
     >
       {/* Section Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">

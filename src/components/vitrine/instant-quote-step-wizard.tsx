@@ -2,9 +2,7 @@
 
 import * as React from "react"
 import {
-  Calculator,
   MapPin,
-  Clock,
   Sparkles,
   ArrowRight,
   ArrowLeft,
@@ -181,7 +179,7 @@ export function InstantQuoteStepWizard({
     <section
       aria-label="Orçamentômetro Instantâneo em 3 Passos"
       className={cn(
-        "border-primary/20 from-primary/5 via-background to-background relative mx-auto my-8 w-full max-w-7xl overflow-hidden rounded-3xl border bg-gradient-to-b p-6 shadow-xl sm:p-8 md:p-10",
+        "border-primary/20 from-primary/5 via-background to-background relative mx-auto my-8 w-full max-w-full overflow-hidden rounded-3xl border bg-gradient-to-b p-6 shadow-xl sm:p-8 md:p-10",
         className,
       )}
     >

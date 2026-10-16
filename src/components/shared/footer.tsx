@@ -27,7 +27,6 @@ import {
   Linkedin,
   Mail,
   Heart,
-  ArrowUp,
   Send,
   CheckCircle2,
   HelpCircle,
@@ -165,7 +164,7 @@ export default function Footer({ className }: { className?: string }) {
     >
       {/* ─── Newsletter bar ─── */}
       <div className="border-b border-slate-800 bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-700 dark:from-emerald-700 dark:via-emerald-800 dark:to-teal-800">
-        <div className="mx-auto flex max-w-7xl flex-col items-center gap-4 px-4 py-6 sm:flex-row sm:justify-between sm:px-6 lg:px-8">
+        <div className="mx-auto flex w-full max-w-[95%] flex-col items-center gap-4 px-4 py-6 sm:flex-row sm:justify-between sm:px-6 lg:px-8">
           <div className="text-center sm:text-left">
             <p className="text-sm font-semibold text-white">Receba novidades e dicas de serviços</p>
             <p className="mt-0.5 text-xs text-emerald-100">
@@ -215,7 +214,7 @@ export default function Footer({ className }: { className?: string }) {
       </div>
 
       {/* ─── Main footer content ─── 4-column grid */}
-      <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-[95%] px-4 py-10 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {/* Column 1: Brand + Social */}
           <div className="space-y-4">
@@ -301,7 +300,7 @@ export default function Footer({ className }: { className?: string }) {
               </li>
               <li className="flex items-center gap-2">
                 <MapPin className="size-3.5 shrink-0 text-slate-500" />
-                São Paulo, Brasil
+                Governador Valadares, MG — Brasil
               </li>
             </ul>
             <Button
@@ -348,9 +347,6 @@ export default function Footer({ className }: { className?: string }) {
           </p>
         </div>
       </div>
-
-      {/* ─── Back-to-top button ─── H3: user control */}
-      <BackToTopButton />
     </footer>
   )
 }
@@ -381,36 +377,5 @@ function SocialIcon({
         <Icon className="size-4" />
       </a>
     </li>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// BackToTopButton — H3: user control and freedom
-// ---------------------------------------------------------------------------
-
-function BackToTopButton() {
-  const [show, setShow] = React.useState(false)
-
-  React.useEffect(() => {
-    const onScroll = () => setShow(window.scrollY > 600)
-    window.addEventListener("scroll", onScroll, { passive: true })
-    return () => window.removeEventListener("scroll", onScroll)
-  }, [])
-
-  const handleClick = () => {
-    window.scrollTo({ top: 0, behavior: "smooth" })
-  }
-
-  if (!show) return null
-
-  return (
-    <button
-      type="button"
-      onClick={handleClick}
-      className="focus-visible:ring-ring fixed right-6 bottom-6 z-40 flex size-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-300 shadow-lg transition-all hover:border-emerald-500 hover:text-emerald-400 hover:shadow-xl focus-visible:ring-2 focus-visible:outline-none sm:right-8 sm:bottom-8 dark:border-slate-700 dark:bg-slate-950"
-      aria-label="Voltar ao topo"
-    >
-      <ArrowUp className="size-4" />
-    </button>
   )
 }

@@ -199,7 +199,7 @@ export function TopProvidersShowcase({
                     onClick={() => onViewProvider(provider.id)}
                     className="bg-primary text-primary-foreground hover:bg-primary/90 h-9 flex-1 rounded-xl text-xs font-semibold shadow-2xs"
                   >
-                    <span>Ver Perfil</span>
+                    <span>Ver Perfil & Avaliações</span>
                     <ArrowRight className="ml-1 size-3.5" />
                   </Button>
                 </div>

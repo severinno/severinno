@@ -18,6 +18,11 @@ import { EscrowGuaranteeBadge } from "@/components/shared/escrow-guarantee-badge
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useUIStore } from "@/store/ui"
+import { cn } from "@/lib/utils"
+
+export type BeforeAfterShowcaseProps = {
+  className?: string
+}
 
 type ShowcaseItem = {
   id: string
@@ -106,14 +111,16 @@ const SHOWCASE_ITEMS: ShowcaseItem[] = [
   },
 ]
 
-export default function BeforeAfterShowcase() {
+export default function BeforeAfterShowcase({ className }: BeforeAfterShowcaseProps = {}) {
   const [activeId, setActiveId] = React.useState<string>(SHOWCASE_ITEMS[0].id)
   const openQuote = useUIStore((s) => s.openQuote)
 
   const activeItem = SHOWCASE_ITEMS.find((it) => it.id === activeId) ?? SHOWCASE_ITEMS[0]
 
   return (
-    <section className="bg-muted/30 border-border/60 relative border-y py-12 sm:py-16">
+    <section
+      className={cn("bg-muted/30 border-border/60 relative border-y py-12 sm:py-16", className)}
+    >
       <div className="mx-auto w-full max-w-[95%] px-2 sm:px-4">
         {/* Cabeçalho da Seção */}
         <div className="mx-auto max-w-3xl text-center">

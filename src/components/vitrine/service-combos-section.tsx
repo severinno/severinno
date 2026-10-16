@@ -99,7 +99,7 @@ export function ServiceCombosSection({ onSelectCombo, className }: ServiceCombos
   return (
     <section
       aria-label="Combos e Pacotes Residenciais com Desconto"
-      className={cn("mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8", className)}
+      className={cn("mx-auto w-full max-w-[95%] px-2 py-8 sm:px-4", className)}
     >
       {/* Header */}
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">

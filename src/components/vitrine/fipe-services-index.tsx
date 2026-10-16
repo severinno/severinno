@@ -3,11 +3,8 @@
 import * as React from "react"
 import {
   TrendingUp,
-  AlertTriangle,
   CheckCircle2,
   ShieldCheck,
-  Search,
-  Sparkles,
   ArrowRight,
   Info,
   BadgeAlert,
@@ -135,7 +132,7 @@ export function FipeServicesIndex({ onFilterService, className }: FipeServicesIn
     <section
       aria-label="Tabela FIPE dos Serviços de Governador Valadares"
       className={cn(
-        "border-border/80 bg-card/60 relative mx-auto my-10 w-full max-w-7xl overflow-hidden rounded-3xl border p-6 shadow-xl backdrop-blur-xs sm:p-8 md:p-10",
+        "border-border/80 bg-card/60 relative mx-auto my-10 w-full max-w-full overflow-hidden rounded-3xl border p-6 shadow-xl backdrop-blur-xs sm:p-8 md:p-10",
         className,
       )}
     >

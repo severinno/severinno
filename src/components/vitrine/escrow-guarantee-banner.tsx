@@ -25,7 +25,7 @@ export function EscrowGuaranteeBanner({ className, onLearnMore }: EscrowGuarante
         className,
       )}
     >
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-[95%] px-2 sm:px-4">
         <div className="border-primary/20 via-background relative overflow-hidden rounded-3xl border bg-gradient-to-br from-emerald-950/20 to-teal-950/20 p-6 shadow-sm sm:p-10">
           {/* Subtle background glow */}
           <div

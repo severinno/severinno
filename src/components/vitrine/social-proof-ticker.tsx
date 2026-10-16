@@ -29,21 +29,21 @@ type Activity = {
 }
 
 const ACTIVITIES_ROW_1: Activity[] = [
-  { text: "Maria contratou um eletricista em São Paulo", emoji: "⚡" },
-  { text: "João avaliou ★★★★★ o prestador Ricardo", emoji: "⭐" },
-  { text: "Nova avaliação: 4.9 para Serviços de Pintura", emoji: "🎨" },
-  { text: "Ana pediu orçamento para encanador", emoji: "🔧" },
+  { text: "Maria contratou um eletricista na Ilha dos Araújos", emoji: "⚡" },
+  { text: "João avaliou ★★★★★ o prestador Ricardo no Centro", emoji: "⭐" },
+  { text: "Nova avaliação: 4.9 para Serviços de Pintura em GV", emoji: "🎨" },
+  { text: "Ana pediu orçamento para encanador no Vila Isa", emoji: "🔧" },
   { text: "Pedro se cadastrou como prestador verificado", emoji: "✅" },
-  { text: "12 orçamentos enviados hoje", emoji: "📋" },
+  { text: "12 orçamentos com custódia protegida hoje", emoji: "📋" },
 ]
 
 const ACTIVITIES_ROW_2: Activity[] = [
-  { text: "Carlos agendou limpeza de quintal em Belo Horizonte", emoji: "🧹" },
-  { text: "Fernanda avaliou ★★★★★ o prestador José", emoji: "⭐" },
-  { text: "8 novos prestadores verificados esta semana", emoji: "🛡️" },
-  { text: "Luciana contratou um pintor no Rio de Janeiro", emoji: "🎨" },
-  { text: "Orçamento aceito: reforma de banheiro em Curitiba", emoji: "🚿" },
-  { text: "5.200 serviços concluídos este mês", emoji: "🏆" },
+  { text: "Carlos agendou climatização na Grã-Duquesa", emoji: "❄️" },
+  { text: "Fernanda avaliou ★★★★★ o prestador José na Morada do Vale", emoji: "⭐" },
+  { text: "8 novos prestadores verificados com biometria", emoji: "🛡️" },
+  { text: "Luciana contratou um pintor no Bairro de Lourdes", emoji: "🎨" },
+  { text: "Orçamento aceito: reforma com garantia de 90 dias", emoji: "🚿" },
+  { text: "Mais de 1.840 chamados realizados em GV", emoji: "🏆" },
 ]
 
 // ---------------------------------------------------------------------------
@@ -129,7 +129,7 @@ export default function SocialProofTicker() {
       {/* Keyframes `marquee-scroll` migrados para globals.css (remoção do
           <style> inline exigido pela CSP estrita — ver src/lib/csp.ts). */}
 
-      <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 sm:py-4">
+      <div className="mx-auto w-full max-w-[95%] px-2 py-3 sm:px-4 sm:py-4">
         {/* Badge: "● Atividade recente" (H1: system status) */}
         <div className="mb-2 flex items-center gap-2 sm:mb-3">
           <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300 dark:ring-emerald-700/50">

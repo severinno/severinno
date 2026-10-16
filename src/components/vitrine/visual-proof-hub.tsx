@@ -116,7 +116,7 @@ export function VisualProofHub({
 
         {activeTab === "before_after" && (
           <div className="animate-in fade-in duration-300">
-            <BeforeAfterShowcase />
+            <BeforeAfterShowcase className="my-0 border-none bg-transparent py-4 sm:py-6" />
           </div>
         )}
 
