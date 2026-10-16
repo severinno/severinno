@@ -91,7 +91,6 @@ function safeCompare(a: string, b: string): boolean {
  * Sempre retorna 200 para evitar reenvios quando autenticado.
  */
 export async function POST(request: Request) {
-  await assertRateLimit(request, RATE_LIMITS.webhookSentry)
   try {
     // ── Autenticação Mandatória Fail-Closed da Evolution API ───────────────
     const evolutionSecret = process.env.EVOLUTION_WEBHOOK_SECRET || process.env.EVOLUTION_API_KEY
@@ -114,6 +113,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
       }
     }
+
+    // 🛡️ Rate limit dedicado para chamadas autenticadas da Evolution API (evita DoS de terceiros)
+    await assertRateLimit(request, RATE_LIMITS.webhookEvolution)
 
     const body = await request.json()
 

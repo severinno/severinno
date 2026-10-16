@@ -238,12 +238,20 @@ export async function broadcastEmergencyDispatchToWhatsApp(
   const errors: string[] = []
   let sentCount = 0
 
+  const candidateIds = dispatchResult.candidates.map((c) => c.providerId)
+  if (candidateIds.length === 0) {
+    return { sentCount: 0, errors: [] }
+  }
+
+  const providers = await db.user.findMany({
+    where: { id: { in: candidateIds } },
+    select: { id: true, whatsapp: true, phone: true },
+  })
+  const providerMap = new Map(providers.map((p) => [p.id, p]))
+
   for (const candidate of dispatchResult.candidates) {
     try {
-      const providerUser = await db.user.findUnique({
-        where: { id: candidate.providerId },
-        select: { whatsapp: true, phone: true },
-      })
+      const providerUser = providerMap.get(candidate.providerId)
 
       const rawPhone = providerUser?.whatsapp || providerUser?.phone
       if (!rawPhone) continue

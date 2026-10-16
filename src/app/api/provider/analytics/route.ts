@@ -93,19 +93,28 @@ export const GET = withRoute("api.provider.analytics.GET", async (_request) => {
     avgTicket: number
   }> = []
 
+  const startOf6MonthsAgo = startOfMonth(subMonths(now, 5))
+  const endOfCurrentMonth = endOfMonth(now)
+
+  const sixMonthsBookings = await db.booking.findMany({
+    where: {
+      providerId: userId,
+      status: "COMPLETED",
+      paymentStatus: "PAID",
+      scheduledAt: { gte: startOf6MonthsAgo, lte: endOfCurrentMonth },
+    },
+    select: { amount: true, scheduledAt: true },
+  })
+
   for (let i = 5; i >= 0; i--) {
     const targetDate = subMonths(now, i)
     const start = startOfMonth(targetDate)
     const end = endOfMonth(targetDate)
 
-    const monthBookings = await db.booking.findMany({
-      where: {
-        providerId: userId,
-        status: "COMPLETED",
-        paymentStatus: "PAID",
-        scheduledAt: { gte: start, lte: end },
-      },
-      select: { amount: true },
+    const monthBookings = sixMonthsBookings.filter((b) => {
+      if (!b.scheduledAt) return false
+      const d = new Date(b.scheduledAt)
+      return d >= start && d <= end
     })
 
     const monthRevenue = monthBookings.reduce((sum, b) => sum + toMoneyNumber(b.amount), 0)

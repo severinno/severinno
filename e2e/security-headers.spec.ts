@@ -59,8 +59,9 @@ const EXPECTED_HEADERS: Record<string, HeaderCheck> = {
     severity: "HIGH",
   },
   "permissions-policy": {
-    pattern: /camera=\(\).*microphone=\(\)/i,
-    description: "Permissions-Policy desabilita câmera e microfone",
+    pattern: /camera=\(self\).*microphone=\(self\)/i,
+    description:
+      "Permissions-Policy restringe câmera e microfone a self (KYC biométrico e mensagens de voz)",
     severity: "HIGH",
   },
 }

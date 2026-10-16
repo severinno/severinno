@@ -192,6 +192,8 @@ model User {
   @@index([city])
   @@index([city, active, verified])
   @@index([lat, lng])
+  @@index([whatsapp])
+  @@index([phone])
 }
 
 // ============================================================================
@@ -500,6 +502,7 @@ model Message {
   @@index([toId])
   @@index([fromId, toId, createdAt])
   @@index([bookingId])
+  @@index([bookingId, createdAt])
   @@index([read])
 }
 
@@ -553,6 +556,7 @@ model Payment {
 
   @@index([status])
   @@index([status, createdAt])
+  @@index([createdAt])
   @@index([lytexId])
   @@index([lytexStatus])
 }

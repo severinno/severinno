@@ -228,15 +228,15 @@ test_security_headers() {
   # Permissions-Policy
   local pp
   pp=$(get_header "Permissions-Policy")
-  if grep -qi "camera=()" <<< "$pp"; then
-    assert "Permissions-Policy: camera desabilitada ✓" "true"
+  if grep -qi "camera=(self)" <<< "$pp"; then
+    assert "Permissions-Policy: camera restrita a self ✓" "true"
   else
-    assert "Permissions-Policy: camera desabilitada" "false"
+    assert "Permissions-Policy: camera restrita a self" "false"
   fi
-  if grep -qi "microphone=()" <<< "$pp"; then
-    assert "Permissions-Policy: microfone desabilitado ✓" "true"
+  if grep -qi "microphone=(self)" <<< "$pp"; then
+    assert "Permissions-Policy: microfone restrito a self ✓" "true"
   else
-    assert "Permissions-Policy: microfone desabilitado" "false"
+    assert "Permissions-Policy: microfone restrito a self" "false"
   fi
   if grep -qi "geolocation=(self)" <<< "$pp"; then
     assert "Permissions-Policy: geolocation restrita a self ✓" "true"

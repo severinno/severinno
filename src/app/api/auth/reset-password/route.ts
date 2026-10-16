@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { hashPassword } from "@/lib/crypto"
+import { hashPassword, hashToken } from "@/lib/crypto"
 import { withRoute } from "@/lib/api-route"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { authFingerprintGuard } from "@/lib/auth-rate-limit"
@@ -36,9 +36,10 @@ export const POST = withRoute("api.auth.reset-password.POST", async (request) =>
     )
   }
 
-  // Find the token
+  // Find the token by hashing the user input token
+  const hashedToken = hashToken(token)
   const resetToken = await db.resetToken.findUnique({
-    where: { token },
+    where: { token: hashedToken },
     include: { user: { select: { id: true, active: true, email: true } } },
   })
 

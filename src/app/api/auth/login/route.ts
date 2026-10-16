@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { verifyPassword } from "@/lib/crypto"
+import { verifyPassword, dummyPasswordVerification } from "@/lib/crypto"
 import { createSession } from "@/lib/auth"
 import { loginSchema } from "@/lib/validators"
 import { SESSION_USER_SELECT, toSessionUser, unauthorized } from "@/lib/api-server"
@@ -88,7 +88,11 @@ export const POST = withRoute("api.auth.login.POST", async (request) => {
     },
   })
   if (!user) {
-    // Use generic message to prevent email enumeration
+    // 🛡️ Mitigação contra Timing Attack de Enumeração de E-mails:
+    // Executa verificação computacional equivalente e registra tentativa
+    dummyPasswordVerification(data.password)
+    await recordFailedAttempt(email)
+    await fp.recordFailure()
     throw unauthorized("E-mail ou senha inválidos")
   }
   // 🛡️ Contas demo (dev/staging only): mesmo que o usuário exista no banco

@@ -379,7 +379,7 @@ export async function proxy(request: NextRequest) {
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
   response.headers.set(
     "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=(self), payment=(), interest-cohort=()",
+    "camera=(self), microphone=(self), geolocation=(self), payment=(self), interest-cohort=()",
   )
   response.headers.set("Vary", "Accept-Encoding")
 

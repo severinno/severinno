@@ -1,85 +1,114 @@
-import { NextRequest, NextResponse } from "next/server"
-import { triggerEmergencySOS, getSOSIncident, updateSOSStatus } from "@/lib/emergency-sos"
+import { NextResponse } from "next/server"
+import { withRoute } from "@/lib/api-route"
+import { requireUser } from "@/lib/auth"
+import { assertRateLimit } from "@/lib/rate-limit"
+import {
+  triggerEmergencySOS,
+  getSOSIncident,
+  updateSOSStatus,
+  type SOSStatus,
+  type SOSTriggerType,
+} from "@/lib/emergency-sos"
+import { forbidden, badRequest, notFound } from "@/lib/api-server"
 
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json()
-    const {
-      userId,
-      userName,
-      userRole,
-      bookingId,
-      latitude,
-      longitude,
-      accuracy,
-      triggerType,
-      emergencyContacts,
-      notes,
-    } = body
+export const dynamic = "force-dynamic"
 
-    if (!userId || !userName || !userRole || latitude === undefined || longitude === undefined) {
-      return NextResponse.json(
-        { error: "Dados incompletos para acionamento do SOS" },
-        { status: 400 },
-      )
-    }
+export const POST = withRoute("api.safety.sos.POST", async (req) => {
+  await assertRateLimit(req, { prefix: "sos-trigger", max: 5, windowMs: 60_000 })
+  const session = await requireUser()
 
-    const incident = triggerEmergencySOS({
-      userId,
-      userName,
-      userRole,
-      bookingId,
-      latitude: Number(latitude),
-      longitude: Number(longitude),
-      accuracy: accuracy ? Number(accuracy) : undefined,
-      triggerType,
-      emergencyContacts,
-      notes,
-    })
+  const body = await req.json()
+  const {
+    userName,
+    bookingId,
+    latitude,
+    longitude,
+    accuracy,
+    triggerType,
+    emergencyContacts,
+    notes,
+  } = body
 
-    return NextResponse.json({
-      success: true,
-      message: "Protocolo SOS de Emergência acionado com sucesso",
-      incident,
-    })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Erro ao acionar protocolo SOS"
-    return NextResponse.json({ error: message }, { status: 500 })
+  if (latitude === undefined || longitude === undefined) {
+    throw badRequest("Coordenadas de latitude e longitude são obrigatórias para acionamento do SOS")
   }
-}
 
-export async function GET(req: NextRequest) {
+  const incident = triggerEmergencySOS({
+    userId: session.userId,
+    userName:
+      typeof userName === "string" && userName.trim()
+        ? userName.trim()
+        : session.role === "PROVIDER"
+          ? "Prestador"
+          : "Cliente",
+    userRole: session.role === "PROVIDER" ? "PROVIDER" : "CLIENT",
+    bookingId: typeof bookingId === "string" ? bookingId : undefined,
+    latitude: Number(latitude),
+    longitude: Number(longitude),
+    accuracy: accuracy ? Number(accuracy) : undefined,
+    triggerType: triggerType as SOSTriggerType,
+    emergencyContacts: Array.isArray(emergencyContacts) ? emergencyContacts : undefined,
+    notes: typeof notes === "string" ? notes : undefined,
+  })
+
+  return NextResponse.json({
+    success: true,
+    message: "Protocolo SOS de Emergência acionado com sucesso",
+    incident,
+  })
+})
+
+export const GET = withRoute("api.safety.sos.GET", async (req) => {
+  await assertRateLimit(req, { prefix: "sos-get", max: 30, windowMs: 60_000 })
+  const session = await requireUser()
+
   const { searchParams } = new URL(req.url)
   const id = searchParams.get("id")
 
   if (!id) {
-    return NextResponse.json({ error: "ID do incidente é obrigatório" }, { status: 400 })
+    throw badRequest("ID do incidente é obrigatório")
   }
 
   const incident = getSOSIncident(id)
   if (!incident) {
-    return NextResponse.json({ error: "Incidente não encontrado" }, { status: 404 })
+    throw notFound("Incidente não encontrado")
+  }
+
+  // Apenas o usuário que acionou ou administradores podem consultar o incidente
+  if (incident.userId !== session.userId && session.role !== "ADMIN") {
+    throw forbidden("Acesso não autorizado ao incidente")
   }
 
   return NextResponse.json({ success: true, incident })
-}
+})
 
-export async function PATCH(req: NextRequest) {
-  try {
-    const body = await req.json()
-    const { sosId, status, operatorId, resolutionNotes } = body
+export const PATCH = withRoute("api.safety.sos.PATCH", async (req) => {
+  await assertRateLimit(req, { prefix: "sos-update", max: 20, windowMs: 60_000 })
+  const session = await requireUser()
 
-    if (!sosId || !status || !operatorId) {
-      return NextResponse.json(
-        { error: "sosId, status e operatorId são obrigatórios" },
-        { status: 400 },
-      )
-    }
+  const body = await req.json()
+  const { sosId, status, resolutionNotes } = body
 
-    const updated = updateSOSStatus(sosId, status, operatorId, resolutionNotes)
-    return NextResponse.json({ success: true, incident: updated })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Erro ao atualizar status do SOS"
-    return NextResponse.json({ error: message }, { status: 500 })
+  if (!sosId || !status) {
+    throw badRequest("sosId e status são obrigatórios")
   }
-}
+
+  const incident = getSOSIncident(sosId)
+  if (!incident) {
+    throw notFound("Incidente não encontrado")
+  }
+
+  // Regra de autorização:
+  // - Administrador pode atualizar qualquer status
+  // - O próprio usuário pode marcar como RESOLVED ou FALSE_ALARM
+  const isOwner = incident.userId === session.userId
+  const isAdmin = session.role === "ADMIN"
+
+  if (!isAdmin && !isOwner) {
+    throw forbidden("Apenas o autor do chamado ou administradores podem atualizar o incidente")
+  }
+
+  const operatorId = isAdmin ? session.userId : "owner-self-resolve"
+  const updated = updateSOSStatus(sosId, status as SOSStatus, operatorId, resolutionNotes)
+  return NextResponse.json({ success: true, incident: updated })
+})

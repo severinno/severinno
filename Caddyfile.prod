@@ -56,7 +56,7 @@
     # Previne XSS em navegadores antigos (IE/Edge legacy)
     X-XSS-Protection "1; mode=block"
     # Permissions policy — desabilita recursos não utilizados
-    Permissions-Policy "camera=(), microphone=(), geolocation=(self), interest-cohort=()"
+    Permissions-Policy "camera=(self), microphone=(self), geolocation=(self), payment=(self), interest-cohort=()"
     # Remove headers que revelam tecnologia do servidor
     -Server
     -X-Powered-By

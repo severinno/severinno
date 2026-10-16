@@ -87,14 +87,14 @@ quando aplicável
 
 ### Headers de Segurança Adicionais (Middleware + Caddy)
 
-| Header                   | Valor                                          |    Onde    |
-| ------------------------ | ---------------------------------------------- | :--------: |
-| `X-Content-Type-Options` | `nosniff`                                      |   Ambos    |
-| `X-Frame-Options`        | `DENY`                                         |   Ambos    |
-| `X-XSS-Protection`       | `1; mode=block`                                |   Caddy    |
-| `Referrer-Policy`        | `strict-origin-when-cross-origin`              |   Ambos    |
-| `Permissions-Policy`     | `camera=(), microphone=(), geolocation=(self)` |   Ambos    |
-| `X-DNS-Prefetch-Control` | `on`                                           | Middleware |
+| Header                   | Valor                                                                  |    Onde    |
+| ------------------------ | ---------------------------------------------------------------------- | :--------: |
+| `X-Content-Type-Options` | `nosniff`                                                              |   Ambos    |
+| `X-Frame-Options`        | `DENY`                                                                 |   Ambos    |
+| `X-XSS-Protection`       | `1; mode=block`                                                        |   Caddy    |
+| `Referrer-Policy`        | `strict-origin-when-cross-origin`                                      |   Ambos    |
+| `Permissions-Policy`     | `camera=(self), microphone=(self), geolocation=(self), payment=(self)` |   Ambos    |
+| `X-DNS-Prefetch-Control` | `on`                                                                   | Middleware |
 
 ---
 

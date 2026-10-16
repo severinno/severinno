@@ -65,6 +65,7 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/crypto", () => ({
   hashPassword: vi.fn().mockReturnValue("mocked-salt:mocked-hash"),
   verifyPassword: vi.fn().mockReturnValue(true),
+  dummyPasswordVerification: vi.fn(),
 }))
 
 vi.mock("@/lib/notification-queue", () => ({

@@ -55,9 +55,14 @@ export const GET = withParams<{ bookingId: string }>(
     const { bookingId } = await params
     const booking = await verifyBookingParticipant(bookingId, session.userId, session.role)
 
+    const { searchParams } = new URL(request.url)
+    const limitParam = parseInt(searchParams.get("limit") || "100", 10)
+    const limit = isNaN(limitParam) || limitParam <= 0 ? 100 : Math.min(limitParam, 200)
+
     const messages = await db.message.findMany({
       where: { bookingId },
       orderBy: { createdAt: "asc" },
+      take: limit,
       select: {
         id: true,
         fromId: true,

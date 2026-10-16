@@ -37,7 +37,17 @@ async function scanKeys(c: Redis | Cluster, pattern: string): Promise<string[]> 
     })
   }
 
-  return c.keys(pattern)
+  // Non-blocking iterative SCAN for standalone Redis/Valkey (avoids blocking single-threaded event loop)
+  const keys: string[] = []
+  let cursor = "0"
+  do {
+    const [nextCursor, batch] = await (c as Redis).scan(cursor, "MATCH", pattern, "COUNT", 200)
+    cursor = nextCursor
+    for (const k of batch) {
+      if (!keys.includes(k)) keys.push(k)
+    }
+  } while (cursor !== "0")
+  return keys
 }
 
 // ── Hit/miss counters ───────────────────────────────────────────────────

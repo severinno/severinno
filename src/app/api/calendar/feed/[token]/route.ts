@@ -15,30 +15,28 @@ import { withParams } from "@/lib/api-route"
  * Serves live RFC 5545 iCalendar feed to external calendar clients (Google Calendar, Apple, Outlook).
  */
 
-function verifyCalendarToken(token: string): string | null {
-  if (!token || token.length < 8) return null
+export function generateCalendarToken(providerId: string): string {
+  const secret =
+    process.env.AUTH_SECRET || process.env.SESSION_SECRET || "severinno-calendar-secret"
+  const sig = createHmac("sha256", secret).update(`cal:${providerId}`).digest("hex").slice(0, 24)
+  return `${providerId}_${sig}`
+}
 
-  // Token assinado: providerId_signature
-  if (token.includes("_")) {
-    const [providerId, sig] = token.split("_")
-    const secret = process.env.AUTH_SECRET || "severinno-calendar-secret"
-    const expected = createHmac("sha256", secret)
-      .update(`cal:${providerId}`)
-      .digest("hex")
-      .slice(0, 24)
+export function verifyCalendarToken(token: string): string | null {
+  if (!token || typeof token !== "string" || !token.includes("_")) return null
 
-    if (
-      sig &&
-      sig.length === expected.length &&
-      timingSafeEqual(Buffer.from(sig), Buffer.from(expected))
-    ) {
-      return providerId
-    }
-  }
+  const [providerId, sig] = token.split("_")
+  if (!providerId || !sig) return null
 
-  // Fallback seguro: se for apenas o ID, aceita apenas se for cuid válido
-  if (/^[a-z0-9]{20,32}$/i.test(token)) {
-    return token
+  const secret =
+    process.env.AUTH_SECRET || process.env.SESSION_SECRET || "severinno-calendar-secret"
+  const expected = createHmac("sha256", secret)
+    .update(`cal:${providerId}`)
+    .digest("hex")
+    .slice(0, 24)
+
+  if (sig.length === expected.length && timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+    return providerId
   }
 
   return null
@@ -97,17 +95,10 @@ export const GET = withParams<{ token: string }>(
       take: 100,
     })
 
-    const isSignedToken = token.includes("_")
-
     const events: CalendarEvent[] = bookings.map((b) => {
       const start = new Date(b.scheduledAt)
       const end = addHours(start, 2)
-      // Se não for token assinado HMAC, ofusca o telefone
-      const clientPhoneDisplay = isSignedToken
-        ? b.client.phone || "Não informado"
-        : b.client.phone
-          ? b.client.phone.replace(/(\d{2})(\d{4,5})(\d{4})/, "($1) *****-$3")
-          : "Não informado"
+      const clientPhoneDisplay = b.client.phone || "Não informado"
 
       return {
         id: b.id,

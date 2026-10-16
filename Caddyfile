@@ -44,7 +44,7 @@ severinno.local {
 		X-Frame-Options "DENY"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=(self)"
+		Permissions-Policy "camera=(self), microphone=(self), geolocation=(self), payment=(self)"
 		-Server
 		# CSP removida (09/2026): definida no proxy.ts do Next.js com nonce por-request.
 		# Um header estático aqui sobrescreveria os nonces e quebraria os scripts.
@@ -85,7 +85,7 @@ severinno.com {
 		X-Frame-Options "DENY"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=(self)"
+		Permissions-Policy "camera=(self), microphone=(self), geolocation=(self), payment=(self)"
 		-Server
 		# CSP removida (09/2026): definida no proxy.ts do Next.js com nonce por-request.
 		# Um header estático aqui sobrescreveria os nonces e quebraria os scripts.

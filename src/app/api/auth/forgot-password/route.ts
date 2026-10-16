@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { randomBytes } from "crypto"
 import { db } from "@/lib/db"
 import { withRoute } from "@/lib/api-route"
+import { hashToken } from "@/lib/crypto"
 import { sendMail, passwordResetHtml } from "@/lib/mail"
 import { saveAndQueueNotification } from "@/lib/notification-queue"
 import { captureError } from "@/lib/sentry"
@@ -61,14 +62,15 @@ export const POST = withRoute("api.auth.forgot-password.POST", async (request) =
     data: { used: true },
   })
 
-  const token = randomBytes(32).toString("hex")
+  const rawToken = randomBytes(32).toString("hex")
+  const hashedToken = hashToken(rawToken)
   const expiresAt = new Date(Date.now() + 60 * 60 * 1000)
 
   await db.resetToken.create({
-    data: { userId: user.id, token, expiresAt },
+    data: { userId: user.id, token: hashedToken, expiresAt },
   })
 
-  const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://severinno.com.br"}/auth/reset-password/${token}`
+  const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://severinno.com.br"}/auth/reset-password/${rawToken}`
 
   await sendMail({
     to: email,

@@ -14,7 +14,18 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getSession } from "@/lib/auth"
 import { uploadBuffer } from "@/lib/s3"
+import { assertRateLimit } from "@/lib/rate-limit"
+import { validateFileSignature } from "@/lib/file-signature"
 import logger from "@/lib/logger"
+
+const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"])
+
+const MIME_TO_EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "application/pdf": "pdf",
+}
 
 const log = logger.child({ module: "identity-verification" })
 
@@ -164,6 +175,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    await assertRateLimit(request, { prefix: "identity-upload", max: 5, windowMs: 60_000 })
+
     const formData = await request.formData()
     const docFile = formData.get("document") as File | null
     const selfieFile = formData.get("selfie") as File | null
@@ -172,17 +185,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Documento e selfie são obrigatórios." }, { status: 400 })
     }
 
+    // Validate MIME types
+    if (!ALLOWED_MIME_TYPES.has(docFile.type) || !ALLOWED_MIME_TYPES.has(selfieFile.type)) {
+      return NextResponse.json(
+        { error: "Formato de arquivo não suportado. Utilize JPG, PNG, WEBP ou PDF." },
+        { status: 400 },
+      )
+    }
+
     // Validate file sizes (10MB max each)
     if (docFile.size > 10 * 1024 * 1024 || selfieFile.size > 10 * 1024 * 1024) {
       return NextResponse.json({ error: "Arquivo muito grande. Máximo 10MB." }, { status: 400 })
     }
 
-    // Upload to MinIO/S3
     const docBuffer = Buffer.from(await docFile.arrayBuffer())
     const selfieBuffer = Buffer.from(await selfieFile.arrayBuffer())
 
-    const docKey = `identity/${session.userId}/document-${Date.now()}.${docFile.name.split(".").pop()}`
-    const selfieKey = `identity/${session.userId}/selfie-${Date.now()}.${selfieFile.name.split(".").pop()}`
+    // Validate magic bytes binary signature
+    const docSig = validateFileSignature(new Uint8Array(docBuffer), docFile.type)
+    if (!docSig.ok) {
+      return NextResponse.json(
+        { error: `Documento corrompido ou inválido: ${docSig.reason}` },
+        { status: 400 },
+      )
+    }
+
+    const selfieSig = validateFileSignature(new Uint8Array(selfieBuffer), selfieFile.type)
+    if (!selfieSig.ok) {
+      return NextResponse.json(
+        { error: `Selfie corrompida ou inválida: ${selfieSig.reason}` },
+        { status: 400 },
+      )
+    }
+
+    const docExt = MIME_TO_EXT[docFile.type] ?? "jpg"
+    const selfieExt = MIME_TO_EXT[selfieFile.type] ?? "jpg"
+    const docKey = `identity/${session.userId}/document-${Date.now()}.${docExt}`
+    const selfieKey = `identity/${session.userId}/selfie-${Date.now()}.${selfieExt}`
 
     const [docUrl, selfieUrl] = await Promise.all([
       uploadBuffer(docBuffer, docKey, docFile.type),

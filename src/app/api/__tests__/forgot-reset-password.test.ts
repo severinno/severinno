@@ -50,10 +50,15 @@ vi.mock("@/lib/notification-queue", () => ({
   }),
 }))
 
-vi.mock("@/lib/crypto", () => ({
-  hashPassword: vi.fn().mockReturnValue("mocked-salt:mocked-hash"),
-  verifyPassword: vi.fn().mockReturnValue(true),
-}))
+vi.mock("@/lib/crypto", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/crypto")>()
+  return {
+    ...actual,
+    hashPassword: vi.fn().mockReturnValue("mocked-salt:mocked-hash"),
+    verifyPassword: vi.fn().mockReturnValue(true),
+    hashToken: vi.fn(actual.hashToken),
+  }
+})
 
 import { makeAuthError } from "@/lib/__tests__/helpers/auth-mock"
 
@@ -319,7 +324,11 @@ describe("POST /api/auth/forgot-password", () => {
       { params: Promise.resolve({}) },
     )
 
-    expect(sentEmails[0].html).toContain(`/auth/reset-password/${savedToken}`)
+    expect(sentEmails[0].html).toContain(`/auth/reset-password/`)
+    const rawTokenMatch = sentEmails[0].html.match(/\/auth\/reset-password\/([a-f0-9]+)/)?.[1]
+    expect(rawTokenMatch).toBeDefined()
+    const { createHash } = await import("crypto")
+    expect(savedToken).toBe(createHash("sha256").update(rawTokenMatch!).digest("hex"))
     expect(sentEmails[0].html).not.toContain("?token=")
   })
 

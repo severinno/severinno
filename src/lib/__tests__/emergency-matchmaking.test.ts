@@ -13,6 +13,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     user: {
       findUnique: vi.fn(),
+      findMany: vi.fn(),
     },
   },
 }))
@@ -116,10 +117,13 @@ describe("emergency-matchmaking & smart dispatch", () => {
 
   describe("broadcastEmergencyDispatchToWhatsApp", () => {
     it("envia alerta WhatsApp com link de 1-clique para os candidatos com telefone", async () => {
-      vi.mocked(db.user.findUnique).mockResolvedValue({
-        whatsapp: "33999998888",
-        phone: null,
-      } as any)
+      vi.mocked(db.user.findMany).mockResolvedValue([
+        {
+          id: mockProviders[0].id,
+          whatsapp: "33999998888",
+          phone: null,
+        },
+      ] as any)
       vi.mocked(sendText).mockResolvedValue({ key: { id: "msg-1" } } as any)
 
       const dispatchResult = await createEmergencyDispatch(mockRequest, [mockProviders[0]])
