@@ -97,7 +97,30 @@ export async function GET() {
     }
   }
 
-  // 4. External Integrations Readiness Check
+  // 4. WhatsApp Session Heartbeat Check (Evolution API)
+  try {
+    const { checkWhatsAppSessionHeartbeat } = await import("@/lib/evolution")
+    const waHeartbeat = await checkWhatsAppSessionHeartbeat()
+    checks.whatsappSession = {
+      status: waHeartbeat.connected
+        ? "UP"
+        : waHeartbeat.status === "unconfigured"
+          ? "DEGRADED"
+          : "DOWN",
+      latencyMs: waHeartbeat.latencyMs,
+      details: waHeartbeat.connected
+        ? `Conectado (Instância: ${waHeartbeat.instanceName})`
+        : `Desconectado (Status: ${waHeartbeat.status})${waHeartbeat.error ? ` - ${waHeartbeat.error}` : ""}`,
+    }
+  } catch (err) {
+    checks.whatsappSession = {
+      status: "DEGRADED",
+      latencyMs: 0,
+      details: err instanceof Error ? err.message : "Falha ao consultar Evolution API",
+    }
+  }
+
+  // 5. External Integrations Readiness Check
   const hasLytex = !!(
     process.env.LYTEX_CLIENT_ID &&
     (process.env.LYTEX_SECRET || process.env.LYTEX_CLIENT_SECRET)
@@ -114,7 +137,7 @@ export async function GET() {
     ].join(" | "),
   }
 
-  // 5. Memory & Process Stats
+  // 6. Memory & Process Stats
   const mem = process.memoryUsage()
   const memoryStats = {
     rssMb: Math.round(mem.rss / 1024 / 1024),

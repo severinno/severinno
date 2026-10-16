@@ -615,6 +615,90 @@ export async function logoutInstance(
   )
 }
 
+export interface WhatsAppHeartbeatResult {
+  connected: boolean
+  status: "connected" | "connecting" | "disconnected" | "error" | "unconfigured"
+  instanceName: string
+  profileName?: string | null
+  number?: string | null
+  checkedAt: string
+  latencyMs: number
+  error?: string
+}
+
+/**
+ * Monitora a saúde e integridade da sessão do WhatsApp na Evolution API.
+ * Detecta se a sessão do WhatsApp Web foi desconectada pela Meta e emite alerta.
+ */
+export async function checkWhatsAppSessionHeartbeat(
+  instanceName?: string,
+): Promise<WhatsAppHeartbeatResult> {
+  const start = performance.now()
+  let instance = instanceName ?? "severinno"
+
+  try {
+    const config = getConfig()
+    instance = instanceName ?? config.instance
+  } catch {
+    return {
+      connected: false,
+      status: "unconfigured",
+      instanceName: instance || "unknown",
+      checkedAt: new Date().toISOString(),
+      latencyMs: 0,
+      error: "Credenciais da Evolution API incompletas (.env)",
+    }
+  }
+
+  try {
+    const rawStatus = await getConnectionStatus(instance)
+    const latencyMs = Math.round(performance.now() - start)
+    const rawInstance = rawStatus?.instance as { state?: string; status?: string } | undefined
+    const state =
+      rawInstance?.state?.toLowerCase() ?? rawInstance?.status?.toLowerCase() ?? "unknown"
+
+    const isConnected = state === "open" || state === "connected"
+
+    if (!isConnected) {
+      logger.warn(
+        { instance, state, latencyMs },
+        "[evolution-heartbeat] Sessão WhatsApp não conectada",
+      )
+      try {
+        const { AlertingService } = await import("./alerting-service")
+        void AlertingService.reportOutage(
+          "WhatsApp/Evolution",
+          `Instância WhatsApp '${instance}' desconectada (Estado: ${state}). Necessário reconectar QR Code.`,
+        )
+      } catch {}
+    }
+
+    return {
+      connected: isConnected,
+      status: isConnected ? "connected" : state === "connecting" ? "connecting" : "disconnected",
+      instanceName: instance,
+      checkedAt: new Date().toISOString(),
+      latencyMs,
+    }
+  } catch (err) {
+    const latencyMs = Math.round(performance.now() - start)
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    logger.error(
+      { err, instance, latencyMs },
+      "[evolution-heartbeat] Falha ao verificar status WhatsApp",
+    )
+
+    return {
+      connected: false,
+      status: "error",
+      instanceName: instance,
+      checkedAt: new Date().toISOString(),
+      latencyMs,
+      error: errorMessage,
+    }
+  }
+}
+
 /**
  * Obter configuração de webhook ativa.
  */

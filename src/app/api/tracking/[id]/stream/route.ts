@@ -23,6 +23,7 @@ import { indexProviderLocation } from "@/lib/redis-geo"
 
 import { withParams } from "@/lib/api-route"
 import { sendTrackingPosition } from "@/lib/realtime-client"
+import { publishTrackingEvent, subscribeTrackingEvents } from "@/lib/tracking-pubsub"
 
 // ── SSE connection registry ───────────────────────────────────────────────
 
@@ -101,13 +102,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         }
       }
 
-      // Send heartbeat every 30s to keep connection alive
-      const heartbeatInterval = setInterval(() => {
-        sendEvent("heartbeat", { ts: new Date().toISOString() })
-      }, 30_000)
-
       // Register client
-      // Client registered
       const client: SSEClient = {
         controller,
         bookingId,
@@ -140,64 +135,56 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       // Inicializa status no Redis para propagação rápida
       await cacheSet(`tracking:status:${bookingId}`, booking.status, 3600).catch(() => {})
 
-      let tickCount = 0
-
-      // Cross-instance polling via Redis: allows any replica to broadcast to any SSE client
-      const pollInterval = setInterval(async () => {
+      // ── Event-Driven Reactive Dispatch (Redis Pub/Sub + In-Memory Bus) ───────
+      const unsubscribePubSub = subscribeTrackingEvents(bookingId, (event) => {
         try {
-          const pos = await cacheGet<typeof currentPos>(`tracking:position:${bookingId}`)
-          if (pos && pos.timestamp !== lastDispatchedTimestamp) {
-            lastDispatchedTimestamp = pos.timestamp
-            sendEvent("position", pos)
+          sendEvent(event.type, event.data)
 
-            // Check geofence via engine
-            const geofence = await checkGeofences(booking.providerId, pos.lat, pos.lng)
-            if (geofence) {
-              sendEvent("geofence", geofence)
+          if (
+            event.type === "status" &&
+            event.data &&
+            typeof event.data === "object" &&
+            "status" in event.data
+          ) {
+            const nextStatus = String((event.data as Record<string, unknown>).status)
+            booking.status = nextStatus
+            if (["COMPLETED", "CANCELLED", "DISPUTED"].includes(nextStatus)) {
+              sendEvent("end", { reason: nextStatus })
+              cleanupAndClose()
             }
+          } else if (event.type === "end") {
+            cleanupAndClose()
           }
+        } catch {
+          // Client disconnected
+        }
+      })
 
-          // Check booking status via Redis cache to eliminate 2s SQL DB bottleneck
-          let updatedStatus = await cacheGet<string>(`tracking:status:${bookingId}`).catch(
+      // Suave heartbeat a cada 20s (mantém conexão ativa e verifica status em fallback)
+      const heartbeatInterval = setInterval(async () => {
+        try {
+          sendEvent("heartbeat", { ts: new Date().toISOString() })
+
+          const cachedStatus = await cacheGet<string>(`tracking:status:${bookingId}`).catch(
             () => null,
           )
-          tickCount++
+          if (cachedStatus && cachedStatus !== booking.status) {
+            booking.status = cachedStatus
+            sendEvent("status", { status: cachedStatus })
 
-          // Fallback periódico ao banco (a cada 15 ciclos = 30s) ou se o cache estiver vazio
-          if (!updatedStatus || tickCount % 15 === 0) {
-            const updatedBooking = await db.booking
-              .findUnique({
-                where: { id: bookingId },
-                select: { status: true },
-              })
-              .catch(() => null)
-            if (updatedBooking) {
-              updatedStatus = updatedBooking.status
-              cacheSet(`tracking:status:${bookingId}`, updatedStatus, 3600).catch(() => {})
-            }
-          }
-
-          if (updatedStatus && updatedStatus !== booking.status) {
-            sendEvent("status", { status: updatedStatus })
-            booking.status = updatedStatus
-
-            // Stop tracking if booking is completed/cancelled
-            if (["COMPLETED", "CANCELLED", "DISPUTED"].includes(updatedStatus)) {
-              sendEvent("end", { reason: updatedStatus })
-              clearInterval(pollInterval)
-              clearInterval(heartbeatInterval)
-              controller.close()
+            if (["COMPLETED", "CANCELLED", "DISPUTED"].includes(cachedStatus)) {
+              sendEvent("end", { reason: cachedStatus })
+              cleanupAndClose()
             }
           }
         } catch {
           // Best-effort
         }
-      }, 2000) // Poll every 2s (vs client polling at same rate — but server-side is faster)
+      }, 20_000)
 
-      // Cleanup on disconnect
-      request.signal.addEventListener("abort", () => {
+      const cleanupAndClose = () => {
         clearInterval(heartbeatInterval)
-        clearInterval(pollInterval)
+        unsubscribePubSub()
         const clients = sseClients.get(bookingId) ?? []
         sseClients.set(
           bookingId,
@@ -211,13 +198,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         } catch {
           /* already closed */
         }
-      })
+      }
+
+      // Cleanup on disconnect
+      request.signal.addEventListener("abort", cleanupAndClose)
 
       // Send connection established
       sendEvent("connected", {
         bookingId,
-        message: "Conectado ao tracking em tempo real",
-        pollIntervalMs: 2000,
+        message: "Conectado ao tracking reativo em tempo real",
+        mode: "pubsub-reactive",
       })
     },
   })
@@ -311,7 +301,10 @@ export const POST = withParams<{ id: string }>(
       }).catch(() => {})
     }
 
-    // Broadcast to all SSE clients for this booking
+    // ── Dispatch via Reactive Pub/Sub (cross-replica broadcast) ────────────
+    publishTrackingEvent(bookingId, { type: "position", data: position }).catch(() => {})
+
+    // Local in-memory dispatch to direct clients
     const clients = sseClients.get(bookingId) ?? []
     for (const client of clients) {
       try {
@@ -327,6 +320,8 @@ export const POST = withParams<{ id: string }>(
     // Geofence check — uses geofencing engine with distributed lock, debounce, and audit trail
     const geofenceEvent = await checkGeofences(session.userId, lat, lng)
     if (geofenceEvent) {
+      publishTrackingEvent(bookingId, { type: "geofence", data: geofenceEvent }).catch(() => {})
+
       for (const client of clients) {
         try {
           const encoder = new TextEncoder()
@@ -346,13 +341,14 @@ export const POST = withParams<{ id: string }>(
 // ── Broadcast helper (exported for other modules) ─────────────────────────
 
 /**
- * Broadcast a geofence event to all SSE clients for a booking.
- * Called by the geofencing engine.
+ * Broadcast a geofence event to all SSE clients for a booking across all replicas.
  */
 export function broadcastGeofenceEvent(
   bookingId: string,
   event: { type: string; distanceMeters: number },
 ): void {
+  publishTrackingEvent(bookingId, { type: "geofence", data: event }).catch(() => {})
+
   const clients = sseClients.get(bookingId) ?? []
   for (const client of clients) {
     try {
@@ -368,11 +364,12 @@ export function broadcastGeofenceEvent(
 
 /**
  * Notifica o stream de tracking sobre uma alteração no status do agendamento
- * atualizando o cache compartilhado no Redis para propagação imediata.
+ * atualizando o cache compartilhado no Redis e publicando via Pub/Sub reativo.
  */
 export async function setTrackingStatus(bookingId: string, status: string): Promise<void> {
   try {
     await cacheSet(`tracking:status:${bookingId}`, status, 3600)
+    await publishTrackingEvent(bookingId, { type: "status", data: { status } })
   } catch {
     // Best-effort
   }
