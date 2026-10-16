@@ -137,7 +137,24 @@ export async function GET() {
     ].join(" | "),
   }
 
-  // 6. Memory & Process Stats
+  // 6. Local AI Contingency Health Probe (Ollama / LocalAI)
+  try {
+    const { checkLocalAiHealth } = await import("@/lib/ai-client")
+    const aiProbe = await checkLocalAiHealth()
+    checks.localAi = {
+      status: aiProbe.status,
+      latencyMs: aiProbe.latencyMs,
+      details: aiProbe.details,
+    }
+  } catch (err) {
+    checks.localAi = {
+      status: "DEGRADED",
+      latencyMs: 0,
+      details: err instanceof Error ? err.message : "Falha ao consultar Ollama local",
+    }
+  }
+
+  // 7. Memory & Process Stats
   const mem = process.memoryUsage()
   const memoryStats = {
     rssMb: Math.round(mem.rss / 1024 / 1024),

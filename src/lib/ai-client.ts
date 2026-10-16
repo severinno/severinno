@@ -109,6 +109,74 @@ export async function isLocalAiOnline(): Promise<boolean> {
   }
 }
 
+export interface LocalAiHealthResult {
+  status: "UP" | "DOWN" | "DEGRADED"
+  latencyMs: number
+  details: string
+  models: string[]
+  engine: "ollama" | "localai" | "none"
+}
+
+/**
+ * Health probe detalhado da IA local (Ollama / LocalAI) para métricas de SRE e observabilidade.
+ */
+export async function checkLocalAiHealth(): Promise<LocalAiHealthResult> {
+  const start = performance.now()
+  const rawUrl = getLocalAiUrl()
+  const baseHost = rawUrl.replace(/\/v1\/?$/, "")
+
+  // 1. Tenta endpoint nativo do Ollama (/api/tags)
+  try {
+    const res = await fetch(`${baseHost}/api/tags`, {
+      method: "GET",
+      signal: AbortSignal.timeout(2500),
+    })
+    const latencyMs = Math.round(performance.now() - start)
+    if (res.ok) {
+      const data = (await res.json()) as { models?: Array<{ name: string }> }
+      const models = (data.models || []).map((m) => m.name)
+      return {
+        status: "UP",
+        latencyMs,
+        details: `Ollama ativo com ${models.length} modelo(s)${models.length > 0 ? `: ${models.join(", ")}` : ""}`,
+        models,
+        engine: "ollama",
+      }
+    }
+  } catch {
+    // Tenta fallback para LocalAI
+  }
+
+  // 2. Tenta healthcheck do LocalAI (/readyz)
+  try {
+    const res = await fetch(`${baseHost}/readyz`, {
+      method: "GET",
+      signal: AbortSignal.timeout(2500),
+    })
+    const latencyMs = Math.round(performance.now() - start)
+    if (res.ok) {
+      return {
+        status: "UP",
+        latencyMs,
+        details: "LocalAI ativo e pronto para inferência",
+        models: [],
+        engine: "localai",
+      }
+    }
+  } catch {
+    // Falha em ambas
+  }
+
+  const latencyMs = Math.round(performance.now() - start)
+  return {
+    status: "DEGRADED",
+    latencyMs,
+    details: "IA local offline (contingência inativa — Nuvem Groq opera como primária)",
+    models: [],
+    engine: "none",
+  }
+}
+
 /**
  * Chamada de inferência híbrida inteligente:
  * 1. Tenta Groq Cloud (se houver chave e engine != 'local')

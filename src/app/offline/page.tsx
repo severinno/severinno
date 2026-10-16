@@ -20,6 +20,10 @@ import {
   MapPin,
   CheckCircle2,
   Sparkles,
+  Calendar,
+  KeyRound,
+  ShieldCheck,
+  UserCheck,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -33,9 +37,11 @@ import {
 } from "@/components/shared/emergency-sos-modal"
 import { useGeoStore } from "@/store/geo"
 import { queueMutation } from "@/lib/offline-sync"
+import { useOfflineBookings } from "@/hooks/use-offline-bookings"
 import { cn } from "@/lib/utils"
 
 export default function OfflinePage() {
+  const { bookings } = useOfflineBookings()
   const [selectedType, setSelectedType] = React.useState<EmergencyType>("hidraulica")
   const [dispatchedChannel, setDispatchedChannel] = React.useState<
     "sms" | "whatsapp" | "call" | null
@@ -135,6 +141,96 @@ export default function OfflinePage() {
             </Button>
           </div>
         </div>
+
+        {/* Módulo de Agendamentos Ativos em Cache Offline */}
+        {bookings.length > 0 && (
+          <div className="bg-card border-border/80 overflow-hidden rounded-3xl border shadow-lg">
+            <div className="border-b border-emerald-500/20 bg-emerald-600/10 px-5 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Calendar className="size-4.5 text-emerald-600 dark:text-emerald-400" />
+                  <h2 className="text-foreground text-sm font-bold">
+                    Agendamentos Ativos em Cache ({bookings.length})
+                  </h2>
+                </div>
+                <Badge
+                  variant="outline"
+                  className="border-emerald-500/40 bg-emerald-500/10 text-[10px] font-bold text-emerald-700 dark:text-emerald-300"
+                >
+                  OFFLINE DISPONÍVEL
+                </Badge>
+              </div>
+            </div>
+
+            <div className="divide-border/60 divide-y p-2 sm:p-3">
+              {bookings.map((booking) => (
+                <div key={booking.id} className="space-y-3 p-3 text-xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="text-muted-foreground font-mono text-[10px] font-bold uppercase">
+                        #{booking.code}
+                      </span>
+                      <h3 className="text-foreground text-sm font-bold">{booking.serviceTitle}</h3>
+                    </div>
+                    <Badge variant="secondary" className="text-[10px] font-semibold">
+                      {booking.status === "IN_PROGRESS"
+                        ? "Em Execução"
+                        : booking.status === "CONFIRMED"
+                          ? "Confirmado"
+                          : booking.status}
+                    </Badge>
+                  </div>
+
+                  <div className="text-muted-foreground space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="size-3.5 shrink-0 text-emerald-600" />
+                      <span>
+                        {booking.address}, {booking.neighborhood} - {booking.city}
+                      </span>
+                    </div>
+                    {booking.contactName && (
+                      <div className="flex items-center gap-1.5">
+                        <UserCheck className="size-3.5 shrink-0" />
+                        <span>
+                          {booking.contactRole === "PROVIDER" ? "Prestador: " : "Cliente: "}
+                          <strong className="text-foreground">{booking.contactName}</strong>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* PIN de Conclusão / Escrow Safe Handshake */}
+                  {booking.completionPin && (
+                    <div className="bg-muted/60 flex items-center justify-between rounded-xl p-2.5">
+                      <div className="flex items-center gap-2">
+                        <KeyRound className="size-4 text-amber-600 dark:text-amber-400" />
+                        <span className="text-[11px] font-semibold">PIN de Liberação:</span>
+                      </div>
+                      <span className="text-foreground font-mono text-sm font-black tracking-widest">
+                        {booking.completionPin}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Ação de Ligação Direta Sem Internet */}
+                  {booking.contactPhone && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      asChild
+                      className="w-full gap-2 border-emerald-500/30 font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                    >
+                      <a href={`tel:${booking.contactPhone}`}>
+                        <PhoneCall className="size-3.5" />
+                        Ligar Diretamente ({booking.contactPhone})
+                      </a>
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Módulo de SOS Emergência 24h Offline */}
         <div className="bg-card overflow-hidden rounded-3xl border border-rose-500/30 shadow-xl">
