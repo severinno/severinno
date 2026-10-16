@@ -418,6 +418,40 @@ export async function proxy(request: NextRequest) {
   if (pathname.startsWith("/api/")) {
     addCorsHeaders(response, request)
 
+    // --- Edge Anti-CSRF Guard for API Mutations ---
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
+      const isExternalWebhook =
+        pathname.startsWith("/api/webhooks/") ||
+        pathname.startsWith("/api/cron/") ||
+        pathname === "/api/csp-report"
+
+      if (!isExternalWebhook) {
+        const secFetchSite = request.headers.get("sec-fetch-site")
+        if (secFetchSite === "cross-site") {
+          return NextResponse.json(
+            { error: "Requisição cross-site bloqueada por política de segurança (CSRF)" },
+            { status: 403 },
+          )
+        }
+
+        const origin = request.headers.get("origin")
+        if (origin) {
+          const allowedOrigins = getAllowedOrigins()
+          const requestOriginHost = request.nextUrl.origin
+          if (
+            origin !== requestOriginHost &&
+            !allowedOrigins.has(origin) &&
+            !allowedOrigins.has("*")
+          ) {
+            return NextResponse.json(
+              { error: "Origem não autorizada para mutações de dados (CSRF)" },
+              { status: 403 },
+            )
+          }
+        }
+      }
+    }
+
     // --- Request body size limits ---
     const contentLength = request.headers.get("content-length")
     if (contentLength && ["POST", "PUT", "PATCH"].includes(request.method)) {

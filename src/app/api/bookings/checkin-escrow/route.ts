@@ -76,9 +76,12 @@ export const POST = withRoute("api.bookings.checkin-escrow.POST", async (req) =>
           })
 
           if (booking) {
-            await db.$transaction([
-              db.booking.update({
-                where: { id: parsed.bookingId },
+            const [bookingUpdateResult] = await db.$transaction([
+              db.booking.updateMany({
+                where: {
+                  id: parsed.bookingId,
+                  escrowReleasedAt: null,
+                },
                 data: {
                   status: "COMPLETED",
                   paymentStatus: "PAID",
@@ -86,7 +89,7 @@ export const POST = withRoute("api.bookings.checkin-escrow.POST", async (req) =>
                 },
               }),
               db.payment.updateMany({
-                where: { bookingId: parsed.bookingId },
+                where: { bookingId: parsed.bookingId, status: { not: "PAID" } },
                 data: {
                   status: "PAID",
                   paidAt: now,
@@ -94,14 +97,16 @@ export const POST = withRoute("api.bookings.checkin-escrow.POST", async (req) =>
               }),
             ])
 
-            // Notifica o prestador via WhatsApp (assíncrono)
-            const { notifyPaymentConfirmed } = await import("@/lib/notifications")
-            const { toMoneyNumber } = await import("@/lib/money")
-            notifyPaymentConfirmed(
-              booking.providerId,
-              booking.id,
-              toMoneyNumber(booking.amount),
-            ).catch(() => {})
+            if (bookingUpdateResult.count > 0) {
+              // Notifica o prestador via WhatsApp (assíncrono)
+              const { notifyPaymentConfirmed } = await import("@/lib/notifications")
+              const { toMoneyNumber } = await import("@/lib/money")
+              notifyPaymentConfirmed(
+                booking.providerId,
+                booking.id,
+                toMoneyNumber(booking.amount),
+              ).catch(() => {})
+            }
           }
         } catch {
           // Se falhar a persistência, o resultado do PIN ainda é retornado,

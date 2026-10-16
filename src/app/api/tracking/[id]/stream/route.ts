@@ -126,9 +126,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         providerId: string
       }>(`tracking:position:${bookingId}`)
       const currentPos = positionBuffer.get(bookingId) ?? cachedInitialPos
-      let lastDispatchedTimestamp = ""
       if (currentPos) {
-        lastDispatchedTimestamp = currentPos.timestamp
         sendEvent("position", currentPos)
       }
 
@@ -160,27 +158,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         }
       })
 
-      // Suave heartbeat a cada 20s (mantém conexão ativa e verifica status em fallback)
-      const heartbeatInterval = setInterval(async () => {
+      // Heartbeat periódico (mantém conexões SSE vivas em proxies reversos sem polling de banco/Redis)
+      const heartbeatInterval = setInterval(() => {
         try {
           sendEvent("heartbeat", { ts: new Date().toISOString() })
-
-          const cachedStatus = await cacheGet<string>(`tracking:status:${bookingId}`).catch(
-            () => null,
-          )
-          if (cachedStatus && cachedStatus !== booking.status) {
-            booking.status = cachedStatus
-            sendEvent("status", { status: cachedStatus })
-
-            if (["COMPLETED", "CANCELLED", "DISPUTED"].includes(cachedStatus)) {
-              sendEvent("end", { reason: cachedStatus })
-              cleanupAndClose()
-            }
-          }
         } catch {
           // Best-effort
         }
-      }, 20_000)
+      }, 25_000)
 
       const cleanupAndClose = () => {
         clearInterval(heartbeatInterval)
@@ -301,40 +286,17 @@ export const POST = withParams<{ id: string }>(
       }).catch(() => {})
     }
 
-    // ── Dispatch via Reactive Pub/Sub (cross-replica broadcast) ────────────
+    // ── Dispatch via Reactive Pub/Sub (cross-replica broadcast + local multiplex) ──
     publishTrackingEvent(bookingId, { type: "position", data: position }).catch(() => {})
-
-    // Local in-memory dispatch to direct clients
-    const clients = sseClients.get(bookingId) ?? []
-    for (const client of clients) {
-      try {
-        const encoder = new TextEncoder()
-        client.controller.enqueue(
-          encoder.encode(`event: position\ndata: ${JSON.stringify(position)}\n\n`),
-        )
-      } catch {
-        // Client disconnected
-      }
-    }
 
     // Geofence check — uses geofencing engine with distributed lock, debounce, and audit trail
     const geofenceEvent = await checkGeofences(session.userId, lat, lng)
     if (geofenceEvent) {
       publishTrackingEvent(bookingId, { type: "geofence", data: geofenceEvent }).catch(() => {})
-
-      for (const client of clients) {
-        try {
-          const encoder = new TextEncoder()
-          client.controller.enqueue(
-            encoder.encode(`event: geofence\ndata: ${JSON.stringify(geofenceEvent)}\n\n`),
-          )
-        } catch {
-          // Client disconnected
-        }
-      }
     }
 
-    return NextResponse.json({ ok: true, clients: clients.length })
+    const clientCount = sseClients.get(bookingId)?.length ?? 0
+    return NextResponse.json({ ok: true, clients: clientCount })
   },
 )
 

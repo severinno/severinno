@@ -45,29 +45,39 @@ export const POST = withParams<{ id: string }>(
 
     const now = new Date()
 
-    // Atomic: booking + payment must both update or neither
-    const [updated] = await db.$transaction([
-      db.booking.update({
-        where: { id },
+    // Atualização atômica condicional: só atualiza se escrowReleasedAt ainda for null
+    const [bookingUpdateResult] = await db.$transaction([
+      db.booking.updateMany({
+        where: { id, escrowReleasedAt: null },
         data: {
           status: "COMPLETED",
           paymentStatus: "PAID",
           escrowReleasedAt: now,
         },
-        include: {
-          service: true,
-          provider: { select: { id: true, name: true } },
-          client: { select: { id: true, name: true } },
-        },
       }),
       db.payment.updateMany({
-        where: { bookingId: id },
+        where: { bookingId: id, status: { not: "PAID" } },
         data: {
           status: "PAID",
           paidAt: now,
         },
       }),
     ])
+
+    if (bookingUpdateResult.count === 0) {
+      throw badRequest(
+        "A custódia deste agendamento já foi liberada por outra operação concorrente",
+      )
+    }
+
+    const updated = await db.booking.findUnique({
+      where: { id },
+      include: {
+        service: true,
+        provider: { select: { id: true, name: true } },
+        client: { select: { id: true, name: true } },
+      },
+    })
 
     // Notify provider that escrow was released
     notifyPaymentConfirmed(booking.providerId, booking.id, toMoneyNumber(booking.amount)).catch(

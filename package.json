@@ -22,7 +22,7 @@
     "search:reindex": "node scripts/search-reindex.mjs",
     "start": "NODE_ENV=production node .next/standalone/server.js",
     "typecheck": "NODE_OPTIONS=--max-old-space-size=4096 tsc --noEmit",
-    "lint": "prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' 'e2e/**' 'prisma/**' 'ci/**' 'deploy/**' 'monitoring/**' 'loadtest/**' 'agent-ctx/**' 'types/**' 'config/**' 'examples/**' 'k6/**' 'mini-services/**' 'public/**' 'secrets/**' '.github/**' '.gitea/**' '*.json' '*.ts' '*.mjs' '*.cjs' '*.js' '*.md' '*.yml' '.prettierrc' && eslint . --max-warnings 0",
+    "lint": "prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' 'e2e/**' 'prisma/**' 'ci/**' 'deploy/**' 'monitoring/**' 'loadtest/**' 'agent-ctx/**' 'types/**' 'config/**' 'examples/**' 'k6/**' 'mini-services/**' 'public/**' 'secrets/**' 'osrm-data/**' '.github/**' '.gitea/**' '*.json' '*.ts' '*.mjs' '*.cjs' '*.js' '*.md' '*.yml' '.prettierrc' && eslint . --max-warnings 0",
     "qa": "node scripts/qa.mjs",
     "qa:parallel": "node scripts/qa.mjs --parallel",
     "qa:sequential": "node scripts/qa.mjs --sequential",
