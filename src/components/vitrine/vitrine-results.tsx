@@ -374,36 +374,46 @@ export default function VitrineResults({
             </ResultsGrid>
           ) : providers.length === 0 ? (
             <EmptyState
-              hasFilters={activeChips.length > 0}
-              onClear={() => onFiltersChange({ ...DEFAULT_FILTERS, q: filters.q })}
+              hasFilters={
+                activeChips.length > 0 ||
+                !!filters.categoryId ||
+                filters.radius !== DEFAULT_FILTERS.radius ||
+                filters.minRating > 0 ||
+                filters.verifiedOnly
+              }
+              onClear={() => onFiltersChange({ ...DEFAULT_FILTERS })}
             />
           ) : view === "list" ? (
-            <ResultsGrid>
-              {providers.map((p) => (
-                <ProviderCard
-                  key={p.id}
-                  provider={p}
-                  favorited={favorites.has(p.id)}
-                  onQuote={onQuote}
-                  onBook={onBook}
-                  onView={onView}
-                />
-              ))}
-            </ResultsGrid>
+            <div className="animate-in fade-in duration-200">
+              <ResultsGrid>
+                {providers.map((p) => (
+                  <ProviderCard
+                    key={p.id}
+                    provider={p}
+                    favorited={favorites.has(p.id)}
+                    onQuote={onQuote}
+                    onBook={onBook}
+                    onView={onView}
+                  />
+                ))}
+              </ResultsGrid>
+            </div>
           ) : (
-            <MapView
-              providers={providers}
-              favorites={favorites}
-              userLat={userLat}
-              userLng={userLng}
-              selectedId={activeSelectedId}
-              onSelect={setSelectedId}
-              onQuote={onQuote}
-              onBook={onBook}
-              onView={onView}
-              radius={filters.radius}
-              onRadiusChange={(r) => onFiltersChange({ ...filters, radius: r })}
-            />
+            <div className="animate-in fade-in duration-200">
+              <MapView
+                providers={providers}
+                favorites={favorites}
+                userLat={userLat}
+                userLng={userLng}
+                selectedId={activeSelectedId}
+                onSelect={setSelectedId}
+                onQuote={onQuote}
+                onBook={onBook}
+                onView={onView}
+                radius={filters.radius}
+                onRadiusChange={(r) => onFiltersChange({ ...filters, radius: r })}
+              />
+            </div>
           )}
 
           {/* Subtle refetching indicator */}
@@ -561,24 +571,26 @@ function MapView({
 
 function EmptyState({ hasFilters, onClear }: { hasFilters: boolean; onClear: () => void }) {
   return (
-    <div className="bg-card flex flex-col items-center justify-center rounded-xl border border-dashed px-6 py-16 text-center shadow-sm">
-      <div className="flex size-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
+    <div className="bg-card flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 px-6 py-16 text-center shadow-xs dark:border-slate-800">
+      <div className="flex size-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:ring-emerald-900/50">
         <SearchX className="size-8" />
       </div>
-      <h3 className="mt-4 text-base font-semibold tracking-tight">Nenhum prestador encontrado</h3>
-      <p className="text-muted-foreground mt-1 max-w-sm text-sm">
+      <h3 className="mt-4 text-base font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+        Nenhum prestador encontrado
+      </h3>
+      <p className="text-muted-foreground mt-1.5 max-w-sm text-sm">
         {hasFilters
-          ? "Tente ajustar os filtros ou aumentar o raio de busca para ver mais resultados."
+          ? "Tente ajustar os filtros ou aumentar o raio de busca para ver profissionais disponíveis."
           : "Compartilhe sua localização ou busque por uma categoria para começar."}
       </p>
       {hasFilters ? (
         <Button
           variant="outline"
           size="sm"
-          className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10 hover:text-primary mt-4"
+          className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10 hover:text-primary mt-4 rounded-xl font-medium"
           onClick={onClear}
         >
-          Limpar filtros
+          Limpar todos os filtros
         </Button>
       ) : null}
     </div>

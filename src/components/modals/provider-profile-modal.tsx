@@ -1093,19 +1093,33 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
         </div>
 
         {/* Contact */}
-        <div className="border-border/50 bg-card flex items-start gap-2.5 rounded-xl border p-3">
-          <div className="bg-muted text-muted-foreground flex size-8 shrink-0 items-center justify-center rounded-lg">
-            <Phone className="size-4" />
+        <div className="border-border/50 bg-card flex items-center justify-between gap-2.5 rounded-xl border p-3">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+              <Phone className="size-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+                WhatsApp
+              </p>
+              <p className="mt-0.5 truncate text-xs font-medium">
+                {provider?.whatsapp ? formatPhoneBR(provider.whatsapp) : "Via Plataforma"}
+              </p>
+              <span className="text-muted-foreground text-[11px]">Contato verificado</span>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
-              WhatsApp
-            </p>
-            <p className="mt-0.5 truncate text-xs font-medium">
-              {provider?.whatsapp ? formatPhoneBR(provider.whatsapp) : "Via Plataforma"}
-            </p>
-            <span className="text-muted-foreground text-[11px]">Contato verificado</span>
-          </div>
+          {provider?.whatsapp && (
+            <a
+              href={`https://wa.me/${provider.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(
+                `Olá ${provider.name || ""}, vi seu perfil no Severinno e gostaria de solicitar um orçamento.`,
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs transition-colors hover:bg-emerald-700 active:scale-95"
+            >
+              <span>Conversar</span>
+            </a>
+          )}
         </div>
       </div>
     </div>
