@@ -395,7 +395,11 @@ jobs:
               HTTP_CODE=$($COMPOSE exec -T app node -e "fetch('http://localhost:3000/api/health').then(r=>{console.log(r.status);process.exit(r.ok?0:1)}).catch(()=>{console.log(0);process.exit(1)})" || echo 000)
               if [ "$HTTP_CODE" = "200" ]; then
                 echo "Health check passed (HTTP $HTTP_CODE)"
-                docker image prune -f
+                echo "Executando Auto-Purge pós-deploy..."
+                docker builder prune -a -f --filter "until=24h" >/dev/null 2>&1 || true
+                docker image prune -a -f --filter "until=24h" >/dev/null 2>&1 || true
+                docker volume ls -q -f dangling=true | grep -E '^[a-f0-9]{64}$' | xargs -r docker volume rm >/dev/null 2>&1 || true
+                fstrim -v / >/dev/null 2>&1 || true
                 exit 0
               fi
               echo "Attempt $i/12 — HTTP $HTTP_CODE, retrying..."
