@@ -9,8 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getSession } from "@/lib/auth"
 import logger from "@/lib/logger"
-import { toMoneyNumber } from "@/lib/money"
-import { FEE_RATE } from "@/lib/constants"
+import { toMoneyNumber, MoneySettlement, feeOf, netOf } from "@/lib/money"
 
 const log = logger.child({ module: "provider-reports-api" })
 
@@ -164,9 +163,14 @@ export async function GET(request: NextRequest) {
       take: limit,
     })
 
-    const totalGross = bookingsPaid.reduce((acc, b) => acc + toMoneyNumber(b.amount), 0)
-    const platformFee = totalGross * FEE_RATE
-    const netReceived = totalGross - platformFee
+    const settlement = new MoneySettlement()
+    for (const b of bookingsPaid) {
+      settlement.add(b.amount)
+    }
+
+    const totalGross = toMoneyNumber(settlement.gross)
+    const platformFee = toMoneyNumber(settlement.fee)
+    const netReceived = toMoneyNumber(settlement.net)
 
     if (format === "json") {
       return NextResponse.json({
@@ -187,8 +191,8 @@ export async function GET(request: NextRequest) {
     ]
     const rows = bookingsPaid.map((b) => {
       const amount = toMoneyNumber(b.amount)
-      const fee = amount * FEE_RATE
-      const net = amount - fee
+      const fee = toMoneyNumber(feeOf(b.amount))
+      const net = toMoneyNumber(netOf(b.amount))
       return [
         b.id,
         new Date(b.updatedAt).toISOString().split("T")[0],

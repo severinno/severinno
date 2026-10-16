@@ -385,6 +385,7 @@ model Booking {
   @@index([providerId])
   @@index([serviceId])
   @@index([status])
+  @@index([status, scheduledAt])
   @@index([paymentStatus])
   @@index([paymentStatus, createdAt])
   @@index([scheduledAt])
@@ -432,6 +433,8 @@ model Dispute {
 
   @@index([bookingId])
   @@index([status])
+  @@index([status, createdAt])
+  @@index([createdAt])
 }
 
 // ============================================================================
@@ -863,7 +866,9 @@ model PushAnalytics {
   booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+  @@index([userId, createdAt])
   @@index([status])
+  @@index([status, createdAt])
   @@index([createdAt])
   @@index([type])
   @@index([source])
@@ -939,7 +944,9 @@ model PushSendLog {
   admin User @relation(fields: [adminId], references: [id], onDelete: Cascade)
 
   @@index([adminId])
+  @@index([adminId, createdAt])
   @@index([action])
+  @@index([action, createdAt])
   @@index([createdAt])
   @@index([notificationType])
 }
@@ -978,6 +985,7 @@ model WebhookExecutionLog {
   updatedAt    DateTime     @updatedAt
 
   @@index([webhookId])
+  @@index([webhookId, createdAt])
   @@index([event])
   @@index([createdAt])
   @@index([status])
@@ -1030,8 +1038,29 @@ model WhatsAppMessageLog {
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([phone])
+  @@index([phone, createdAt])
   @@index([userId])
+  @@index([userId, createdAt])
   @@index([status])
+  @@index([status, createdAt])
   @@index([context])
   @@index([createdAt])
+}
+
+// ============================================================================
+// CNEFE GV — National Address Directory for Governador Valadares (IBGE Rooftop)
+// ============================================================================
+model CnefeGv {
+  id        String                               @id
+  street    String
+  number    String
+  district  String
+  city      String                               @default("Governador Valadares")
+  state     String                               @default("MG")
+  cep       String
+  geom      Unsupported("geometry(Point, 4326)")
+  createdAt DateTime                             @default(now())
+
+  @@index([cep, number])
+  @@map("cnefe_gv")
 }
