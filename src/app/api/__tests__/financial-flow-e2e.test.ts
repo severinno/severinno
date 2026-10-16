@@ -77,9 +77,16 @@ vi.mock("@/lib/auth", () => ({
   createSession: vi.fn(),
 }))
 
-vi.mock("@/lib/logger", () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}))
+vi.mock("@/lib/logger", () => {
+  const mockLogger = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    child: vi.fn(() => mockLogger),
+  }
+  return { default: mockLogger }
+})
 
 vi.mock("@/lib/rate-limit", () => ({
   assertRateLimit: vi.fn().mockResolvedValue(undefined),
@@ -264,14 +271,19 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
       payment: mockBooking.payment,
     })
 
+    const nowIso = new Date().toISOString()
     const { POST } = await import("@/app/api/webhooks/lytex/route")
     const req = new Request("http://localhost/api/webhooks/lytex", {
       method: "POST",
+      headers: {
+        "x-lytex-signature": "valid-sig",
+        "x-lytex-timestamp": nowIso,
+      },
       body: JSON.stringify({
         id: "lytex-001",
         status: "paid",
         externalReference: `booking:${BOOKING_ID}`,
-        paidAt: new Date().toISOString(),
+        paidAt: nowIso,
         qrCode: "pix-qr-code",
       }),
     })

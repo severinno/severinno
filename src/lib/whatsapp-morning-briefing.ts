@@ -11,6 +11,7 @@ import { db } from "@/lib/db"
 import logger from "@/lib/logger"
 import { sendWhatsApp } from "@/lib/whatsapp"
 import { toMoneyNumber } from "@/lib/money"
+import { FEE_RATE } from "@/lib/constants"
 
 export interface BriefingBookingItem {
   id: string
@@ -45,8 +46,6 @@ export interface MorningBriefingRunResult {
   totalBookings: number
   errors: Array<{ providerId: string; error: string }>
 }
-
-const PLATFORM_FEE_RATE = 0.15
 
 /**
  * Retorna os limites de início e fim do dia para a data informada (fuso de Brasília).
@@ -120,7 +119,7 @@ export async function buildMorningBriefing(
 
   const bookings: BriefingBookingItem[] = rawBookings.map((b) => {
     const price = toMoneyNumber(b.amount ?? b.service?.basePrice ?? 0)
-    const netAmount = Math.round(price * (1 - PLATFORM_FEE_RATE) * 100) / 100
+    const netAmount = Math.round(price * (1 - FEE_RATE) * 100) / 100
     totalGross += price
     totalNet += netAmount
 

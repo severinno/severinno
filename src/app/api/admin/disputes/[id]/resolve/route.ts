@@ -131,6 +131,7 @@ export const POST = withParams<{ id: string }>(
           where: { id: booking.id },
           data: {
             ...(decision === "SPLIT" ? { amount: providerPayout } : {}),
+            status: "COMPLETED",
             paymentStatus: "PAID",
             escrowReleasedAt: now,
           },

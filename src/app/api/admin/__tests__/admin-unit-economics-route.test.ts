@@ -70,8 +70,8 @@ describe("GET /api/admin/metrics/unit-economics", () => {
     const json = await res.json()
 
     expect(json.gmv.total).toBe(25000)
-    expect(json.takeRate.percentage).toBe(12)
-    expect(json.takeRate.totalRevenue).toBe(3000)
+    expect(json.takeRate.percentage).toBe(15)
+    expect(json.takeRate.totalRevenue).toBe(3750)
     expect(json.unitEconomics.ticketMedio).toBeGreaterThan(0)
     expect(json.pilotoGV.cidade).toBe("Governador Valadares")
     expect(Array.isArray(json.expansionCities)).toBe(true)

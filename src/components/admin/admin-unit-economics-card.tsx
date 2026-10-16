@@ -15,6 +15,7 @@ import { Sparkles, Printer, Compass, ShieldCheck, Clock, Award } from "lucide-re
 
 import { apiGet } from "@/lib/api"
 import { formatBRL } from "@/lib/format"
+import { FEE_RATE } from "@/lib/constants"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -79,7 +80,7 @@ export function AdminUnitEconomicsCard() {
   const totalActiveProvidersSimulated = selectedCitiesCount * providersPerCity
   const totalMonthlyBookingsSimulated = totalActiveProvidersSimulated * bookingsPerProvider
   const projectedMonthlyGmv = totalMonthlyBookingsSimulated * ticketMedioSimulado
-  const projectedMonthlyRevenue = projectedMonthlyGmv * 0.12 // 12% take-rate
+  const projectedMonthlyRevenue = projectedMonthlyGmv * FEE_RATE
   const projectedAnnualRunRate = projectedMonthlyRevenue * 12
 
   const handlePrintDeck = () => {
@@ -336,7 +337,7 @@ export function AdminUnitEconomicsCard() {
 
                 <div className="border-t pt-2">
                   <span className="text-muted-foreground block text-[11px]">
-                    Receita Líquida Mensal (Take-rate 12%)
+                    Receita Líquida Mensal (Take-rate {Math.round(FEE_RATE * 100)}%)
                   </span>
                   <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
                     {formatBRL(projectedMonthlyRevenue)}

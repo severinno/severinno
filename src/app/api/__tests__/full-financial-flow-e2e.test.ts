@@ -41,9 +41,16 @@ vi.mock("@/lib/auth", () => ({
   requireRole: vi.fn(),
   createSession: vi.fn(),
 }))
-vi.mock("@/lib/logger", () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}))
+vi.mock("@/lib/logger", () => {
+  const mockLogger = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    child: vi.fn(() => mockLogger),
+  }
+  return { default: mockLogger }
+})
 vi.mock("@/lib/rate-limit", () => ({
   assertRateLimit: vi.fn().mockResolvedValue(undefined),
   RATE_LIMITS: new Proxy({}, { get: () => ({ prefix: "t", max: 10000, windowMs: 60000 }) }),

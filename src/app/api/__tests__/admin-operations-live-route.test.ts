@@ -16,6 +16,7 @@ const mockDb = vi.hoisted(() => ({
     findMany: vi.fn(),
     findUnique: vi.fn(),
     update: vi.fn().mockResolvedValue({}),
+    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     aggregate: vi.fn(),
   },
   payment: {
@@ -126,12 +127,35 @@ describe("GET & POST /api/admin/operations/live (Torre de Controle Operacional G
     expect(res.status).toBe(200)
     expect(data.success).toBe(true)
     expect(mockDb.$transaction).toHaveBeenCalled()
-    expect(mockDb.booking.update).toHaveBeenCalledWith(
+    expect(mockDb.booking.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "book-gv-101" },
-        data: expect.objectContaining({ paymentStatus: "PAID" }),
+        where: expect.objectContaining({ id: "book-gv-101", paymentStatus: "HELD" }),
+        data: expect.objectContaining({ paymentStatus: "PAID", status: "COMPLETED" }),
       }),
     )
+  })
+
+  it("retorna 409 caso a custódia já tenha sido liberada concorrentemente (count 0)", async () => {
+    mockDb.booking.findUnique.mockResolvedValue({
+      id: "book-gv-101",
+      paymentStatus: "HELD",
+    })
+    mockDb.booking.updateMany.mockResolvedValue({ count: 0 })
+
+    const req = new Request("http://localhost/api/admin/operations/live", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        bookingId: "book-gv-101",
+        action: "release_escrow",
+      }),
+    })
+
+    const res = await POST(req)
+    const data = await res.json()
+
+    expect(res.status).toBe(409)
+    expect(data.error).toContain("já foi liberada por outra operação concorrente")
   })
 
   it("rejeita requisições POST com parâmetros inválidos", async () => {

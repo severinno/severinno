@@ -16,8 +16,7 @@ import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { withRoute } from "@/lib/api-route"
 import { toMoneyNumber } from "@/lib/money"
-
-const PLATFORM_FEE_RATE = 0.12 // 12% take-rate canônico da plataforma Severinno
+import { FEE_RATE } from "@/lib/constants"
 
 export const GET = withRoute("api.admin.metrics.unit-economics.GET", async () => {
   await requireRole("ADMIN")
@@ -78,13 +77,13 @@ export const GET = withRoute("api.admin.metrics.unit-economics.GET", async () =>
   const effectivePaidCount = Math.max(paidBookingsCount, 82)
 
   const ticketMedio = Math.round((effectiveGmvTotal / effectivePaidCount) * 100) / 100
-  const receitaPlataformaTotal = Math.round(effectiveGmvTotal * PLATFORM_FEE_RATE * 100) / 100
-  const receitaProjetadaAnual = Math.round(effectiveGmv30d * 12 * PLATFORM_FEE_RATE * 100) / 100
+  const receitaPlataformaTotal = Math.round(effectiveGmvTotal * FEE_RATE * 100) / 100
+  const receitaProjetadaAnual = Math.round(effectiveGmv30d * 12 * FEE_RATE * 100) / 100
 
   // Unit Economics
   const cacProjetado = 38.5 // CAC orgânico + GTM de campo em GV
   const frequenciaAnual = 3.6 // Média de 3.6 chamados/ano por residência
-  const ltvProjetado = Math.round(ticketMedio * frequenciaAnual * PLATFORM_FEE_RATE * 100) / 100
+  const ltvProjetado = Math.round(ticketMedio * frequenciaAnual * FEE_RATE * 100) / 100
   const ltvCacRatio = Math.round((ltvProjetado / cacProjetado) * 10) / 10
 
   return NextResponse.json(
@@ -97,8 +96,8 @@ export const GET = withRoute("api.admin.metrics.unit-economics.GET", async () =>
         totalBookingsCount: Math.max(totalBookingsCount, effectivePaidCount + 14),
       },
       takeRate: {
-        rate: PLATFORM_FEE_RATE,
-        percentage: 12,
+        rate: FEE_RATE,
+        percentage: Math.round(FEE_RATE * 100),
         totalRevenue: receitaPlataformaTotal,
         projectedAnnualRevenue: receitaProjetadaAnual,
       },

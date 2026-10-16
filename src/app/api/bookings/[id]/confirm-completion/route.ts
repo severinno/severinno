@@ -39,6 +39,10 @@ export const POST = withParams<{ id: string }>(
       throw badRequest("O serviço precisa ter sido executado para ser confirmado")
     }
 
+    if (booking.paymentStatus === "PAID" && booking.escrowReleasedAt != null) {
+      throw badRequest("A custódia deste agendamento já foi liberada anteriormente")
+    }
+
     const now = new Date()
 
     // Atomic: booking + payment must both update or neither

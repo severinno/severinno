@@ -218,22 +218,38 @@ export const POST = withRoute("api.admin.operations.live.POST", async (request: 
   }
 
   const now = new Date()
-  await db.$transaction([
-    db.booking.update({
-      where: { id: booking.id },
+  const [bookingUpdateResult] = await db.$transaction([
+    db.booking.updateMany({
+      where: {
+        id: booking.id,
+        paymentStatus: "HELD",
+      },
       data: {
         paymentStatus: "PAID",
+        status: "COMPLETED",
         escrowReleasedAt: now,
       },
     }),
     db.payment.updateMany({
-      where: { bookingId: booking.id },
+      where: {
+        bookingId: booking.id,
+        status: { in: ["HELD", "PENDING"] },
+      },
       data: {
         status: "PAID",
         paidAt: now,
       },
     }),
   ])
+
+  if (bookingUpdateResult.count === 0) {
+    return NextResponse.json(
+      {
+        error: "A custódia deste agendamento já foi liberada por outra operação concorrente.",
+      },
+      { status: 409 },
+    )
+  }
 
   return NextResponse.json({ success: true, releasedAt: now.toISOString() })
 })

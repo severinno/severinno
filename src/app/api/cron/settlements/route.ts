@@ -55,6 +55,11 @@ export async function GET(request: Request) {
           status: "COMPLETED",
           paymentStatus: "HELD",
           updatedAt: { lte: disputeDeadline },
+          disputes: {
+            none: {
+              status: "OPEN",
+            },
+          },
         },
         select: {
           id: true,
@@ -64,23 +69,25 @@ export async function GET(request: Request) {
       })
 
       for (const b of heldBookings) {
-        await db.$transaction([
-          db.booking.update({
-            where: { id: b.id },
+        const [updateRes] = await db.$transaction([
+          db.booking.updateMany({
+            where: { id: b.id, paymentStatus: "HELD" },
             data: {
               paymentStatus: "PAID",
               escrowReleasedAt: now,
             },
           }),
           db.payment.updateMany({
-            where: { bookingId: b.id },
+            where: { bookingId: b.id, status: { in: ["HELD", "PENDING"] } },
             data: {
               status: "PAID",
               paidAt: now,
             },
           }),
         ])
-        autoReleasedEscrows++
+        if (updateRes.count > 0) {
+          autoReleasedEscrows++
+        }
       }
 
       if (autoReleasedEscrows > 0) {
