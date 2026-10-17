@@ -88,7 +88,10 @@ export function AuthModal() {
 
   return (
     <Dialog open={open} onOpenChange={(o) => (o ? null : closeAuth())}>
-      <DialogContent className="w-[95vw] gap-0 overflow-hidden rounded-2xl border-slate-200/80 p-0 shadow-2xl sm:max-w-lg md:max-w-3xl lg:max-w-4xl dark:border-slate-800">
+      <DialogContent
+        overlayClassName="bg-black/80 backdrop-blur-md md:bg-black/85"
+        className="w-[95vw] gap-0 overflow-hidden rounded-2xl border-slate-200/80 p-0 shadow-2xl sm:max-w-lg md:max-w-3xl lg:max-w-4xl dark:border-slate-800"
+      >
         <div className="flex flex-col md:flex-row">
           {/* Painel de Marca e Confiança — Visível em Desktop (Split Layout) */}
           <div className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-emerald-800 via-emerald-900 to-slate-950 p-7 text-white md:flex md:w-5/12">
