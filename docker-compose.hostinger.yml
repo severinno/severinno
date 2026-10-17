@@ -140,8 +140,6 @@ services:
   rabbitmq:
     mem_limit: 512m
     cpus: 0.5
-    environment:
-      RABBITMQ_VM_MEMORY_HIGH_WATERMARK: "384MB"
 
   realtime:
     mem_limit: 384m
