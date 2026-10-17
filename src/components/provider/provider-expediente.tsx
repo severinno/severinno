@@ -329,7 +329,7 @@ export function ProviderExpediente() {
         </div>
 
         {/* Mini-pills visuais da semana (Dom a Sáb) */}
-        <div className="flex items-center gap-1.5 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto">
           {WEEKDAYS_SHORT.map((shortName, idx) => {
             const isDayActive = slots.some(
               (s) => s.dayOfWeek === idx && s.active && s.startTime < s.endTime,
@@ -341,18 +341,19 @@ export function ProviderExpediente() {
                 type="button"
                 onClick={() => toggleDay(idx, !isDayActive)}
                 className={cn(
-                  "flex size-8 flex-col items-center justify-center rounded-lg text-[10px] font-semibold transition-all",
+                  "flex h-8 w-11 flex-col items-center justify-center rounded-lg text-[10px] font-bold tracking-tight transition-all",
                   isDayActive
-                    ? "bg-emerald-600 text-white shadow-xs hover:bg-emerald-700 dark:bg-emerald-700"
+                    ? "bg-emerald-600 text-white shadow-2xs hover:bg-emerald-700 dark:bg-emerald-700"
                     : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
                   isToday && "ring-primary ring-2 ring-offset-1",
                 )}
                 title={`${WEEKDAYS[idx]}: clique para ${isDayActive ? "fechar" : "abrir"}`}
+                aria-label={`${WEEKDAYS[idx]}: ${isDayActive ? "Ativo" : "Inativo"}`}
               >
-                {shortName[0]}
+                <span>{shortName.toUpperCase()}</span>
                 <span
                   className={cn(
-                    "size-1 rounded-full",
+                    "mt-0.5 size-1 rounded-full",
                     isDayActive ? "bg-white" : "bg-zinc-400 dark:bg-zinc-600",
                   )}
                 />
