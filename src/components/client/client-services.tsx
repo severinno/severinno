@@ -199,7 +199,11 @@ export function ClientServices() {
         title="Serviços contratados"
         subtitle="Histórico dos serviços que você contratou."
         action={
-          <Button variant="outline" onClick={() => navigate("vitrine")} className="h-10 gap-2">
+          <Button
+            variant="outline"
+            onClick={() => navigate("client.providers")}
+            className="h-10 gap-2"
+          >
             <MapPin className="size-4" />
             Buscar prestadores
           </Button>
@@ -261,7 +265,7 @@ export function ClientServices() {
                 : "Explore prestadores verificados e contrate seu primeiro serviço."
           }
           action={
-            <Button onClick={() => navigate("vitrine")} className="mt-2 gap-2">
+            <Button onClick={() => navigate("client.providers")} className="mt-2 gap-2">
               <MapPin className="size-4" />
               Buscar prestadores
             </Button>

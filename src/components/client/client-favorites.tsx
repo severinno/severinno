@@ -82,7 +82,11 @@ export function ClientFavorites() {
         title="Favoritos"
         subtitle="Prestadores que você salvou para contratar depois."
         action={
-          <Button variant="outline" onClick={() => navigate("vitrine")} className="h-10 gap-2">
+          <Button
+            variant="outline"
+            onClick={() => navigate("client.providers")}
+            className="h-10 gap-2"
+          >
             <MapPin className="size-4" />
             Buscar prestadores
           </Button>
@@ -100,7 +104,7 @@ export function ClientFavorites() {
           title="Você ainda não tem favoritos"
           description="Toque no coração nos prestadores para salvá-los aqui e contratá-los depois com facilidade."
           action={
-            <Button onClick={() => navigate("vitrine")} className="mt-2 gap-2">
+            <Button onClick={() => navigate("client.providers")} className="mt-2 gap-2">
               <MapPin className="size-4" />
               Buscar prestadores
             </Button>

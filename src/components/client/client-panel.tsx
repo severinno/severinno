@@ -25,6 +25,7 @@ import {
   type LucideIcon,
   MapPin,
   MessageSquare,
+  Search,
   Shield,
   Star,
   User as UserIcon,
@@ -43,6 +44,13 @@ import { DashboardShell, type NavItem } from "@/components/shared/dashboard-shel
 const ClientDashboard = dynamic(
   () =>
     import("@/components/client/client-dashboard").then((m) => ({ default: m.ClientDashboard })),
+  { ssr: false },
+)
+const ClientProviderSearch = dynamic(
+  () =>
+    import("@/components/client/client-provider-search").then((m) => ({
+      default: m.ClientProviderSearch,
+    })),
   { ssr: false },
 )
 const ClientBookings = dynamic(
@@ -100,6 +108,7 @@ const ReferralLeaderboard = dynamic(
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Visão geral", icon: LayoutDashboard, view: "client.dashboard" },
+  { label: "Buscar prestadores", icon: Search, view: "client.providers" },
   { label: "Agendamentos", icon: Calendar, view: "client.bookings" },
   { label: "Orçamentos", icon: FileText, view: "client.quotes" },
   { label: "Serviços", icon: Wrench, view: "client.services" },
@@ -125,6 +134,10 @@ const VIEW_META: Record<string, ViewMeta> = {
   "client.dashboard": {
     title: "Painel do Cliente",
     subtitle: "Visão geral da sua conta",
+  },
+  "client.providers": {
+    title: "Buscar Prestadores",
+    subtitle: "Encontre profissionais avaliados e verificados próximos a você",
   },
   "client.bookings": {
     title: "Agendamentos",
@@ -235,6 +248,8 @@ function renderView(view: string): React.ReactNode {
   switch (view) {
     case "client.dashboard":
       return <ClientDashboard />
+    case "client.providers":
+      return <ClientProviderSearch />
     case "client.bookings":
       return <ClientBookings />
     case "client.quotes":

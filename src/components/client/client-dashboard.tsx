@@ -283,7 +283,7 @@ export function ClientDashboard() {
               variant="outline"
               onClick={() => {
                 triggerHaptic("selection")
-                navigate("vitrine")
+                navigate("client.providers")
               }}
               className="border-border/60 hover:bg-muted/60 h-10 gap-2 rounded-xl text-xs font-medium shadow-2xs"
             >
@@ -303,6 +303,90 @@ export function ClientDashboard() {
           </>
         }
       />
+
+      {/* Quick Search Dock — in-panel provider discovery */}
+      <Card className="border-border/60 from-card via-card to-primary/5 relative overflow-hidden rounded-2xl border bg-gradient-to-br p-4 shadow-2xs sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <span className="bg-primary/10 text-primary flex size-7 items-center justify-center rounded-lg">
+                <Search className="size-4" />
+              </span>
+              <h2 className="text-foreground text-sm font-semibold tracking-tight">
+                Encontre prestadores perto de você
+              </h2>
+            </div>
+            <p className="text-muted-foreground text-xs">
+              Profissionais avaliados com garantia de pagamento seguro em Governador Valadares.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => {
+              triggerHaptic("selection")
+              navigate("client.providers")
+            }}
+            className="bg-primary text-primary-foreground hover:bg-primary/90 h-8 gap-1 self-start rounded-xl px-3 text-xs font-semibold shadow-2xs sm:self-auto"
+          >
+            Abrir busca completa
+            <ChevronRight className="size-3.5" />
+          </Button>
+        </div>
+
+        {/* Quick Search Input with Enter handler */}
+        <div className="mt-3.5 flex gap-2">
+          <div className="relative flex-1">
+            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="O que você precisa? Ex: eletricista, encanador, ar-condicionado..."
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && e.currentTarget.value.trim()) {
+                  triggerHaptic("selection")
+                  navigate("client.providers", { q: e.currentTarget.value.trim() })
+                }
+              }}
+              className="border-border/70 bg-background text-foreground placeholder:text-muted-foreground/70 focus:ring-primary h-10 w-full rounded-xl border pr-3 pl-9 text-xs shadow-2xs focus:ring-1 focus:outline-none"
+            />
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              triggerHaptic("selection")
+              navigate("client.providers")
+            }}
+            className="border-border/70 hover:bg-muted/60 h-10 rounded-xl px-4 text-xs font-medium"
+          >
+            Buscar
+          </Button>
+        </div>
+
+        {/* Quick category shortcut pills */}
+        <div className="border-border/40 mt-3 flex flex-wrap items-center gap-1.5 border-t pt-2">
+          <span className="text-muted-foreground mr-1 text-[11px] font-medium">Populares:</span>
+          {[
+            { label: "Eletricista", q: "Eletricista" },
+            { label: "Pintor", q: "Pintor" },
+            { label: "Ar-Condicionado", q: "Ar-Condicionado" },
+            { label: "Encanador", q: "Encanador" },
+            { label: "Limpeza", q: "Limpeza" },
+            { label: "Chaveiro", q: "Chaveiro" },
+          ].map((cat) => (
+            <button
+              key={cat.label}
+              type="button"
+              onClick={() => {
+                triggerHaptic("selection")
+                navigate("client.providers", { q: cat.q })
+              }}
+              className="border-border/50 bg-background/60 hover:bg-muted/60 text-muted-foreground hover:text-foreground rounded-lg border px-2.5 py-1 text-[11px] font-medium shadow-2xs transition-colors"
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+      </Card>
 
       {/* Geo-awareness badge — shows provider count near user */}
       <GeoAwarenessBadge />
@@ -584,7 +668,7 @@ export function ClientDashboard() {
               <Button
                 onClick={() => {
                   triggerHaptic("selection")
-                  navigate("vitrine")
+                  navigate("client.providers")
                 }}
                 className="mt-2 gap-2 rounded-xl text-xs font-semibold shadow-2xs"
               >
@@ -697,7 +781,7 @@ export function ClientDashboard() {
                 <Button
                   onClick={() => {
                     triggerHaptic("selection")
-                    navigate("vitrine")
+                    navigate("client.providers")
                   }}
                   className="mt-2 gap-2 rounded-xl text-xs font-semibold shadow-2xs"
                 >
