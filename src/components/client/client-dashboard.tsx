@@ -34,9 +34,12 @@ import {
   MapPin,
   Plus,
   Search,
+  ShieldCheck,
   TrendingUp,
   Wallet,
 } from "lucide-react"
+
+import { triggerHaptic } from "@/lib/haptics"
 
 import { apiGet } from "@/lib/api"
 import {
@@ -264,6 +267,8 @@ export function ClientDashboard() {
     .filter((q) => ["PENDING", "RESPONDED"].includes(q.status))
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
+  const inProgressBooking = bookings.find((b) => b.status === "IN_PROGRESS")
+
   const isLoading = bookingsQuery.isLoading || quotesQuery.isLoading
 
   return (
@@ -274,11 +279,24 @@ export function ClientDashboard() {
         subtitle="Acompanhe seus agendamentos, orçamentos e gastos em um só lugar."
         action={
           <>
-            <Button variant="outline" onClick={() => navigate("vitrine")} className="h-10 gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                triggerHaptic("selection")
+                navigate("vitrine")
+              }}
+              className="border-border/60 hover:bg-muted/60 h-10 gap-2 rounded-xl text-xs font-medium shadow-2xs"
+            >
               <Search className="size-4" />
               Buscar prestadores
             </Button>
-            <Button onClick={() => openQuote()} className="h-10 gap-2">
+            <Button
+              onClick={() => {
+                triggerHaptic("selection")
+                openQuote()
+              }}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 gap-2 rounded-xl text-xs font-semibold shadow-2xs"
+            >
               <Plus className="size-4" />
               Pedir orçamento
             </Button>
@@ -288,6 +306,72 @@ export function ClientDashboard() {
 
       {/* Geo-awareness badge — shows provider count near user */}
       <GeoAwarenessBadge />
+
+      {/* In-progress active service alert if any */}
+      {inProgressBooking && (
+        <div className="border-primary/30 bg-primary/5 flex flex-col justify-between gap-3 rounded-2xl border p-4 shadow-2xs sm:flex-row sm:items-center">
+          <div className="flex items-center gap-3">
+            <span className="relative flex size-3 shrink-0">
+              <span className="bg-primary absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" />
+              <span className="bg-primary relative inline-flex size-3 rounded-full" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-primary text-[11px] font-bold tracking-wider uppercase">
+                  Serviço em Andamento
+                </span>
+                <span className="text-muted-foreground text-[10px]">·</span>
+                <span className="text-muted-foreground text-xs">
+                  {formatDateTime(inProgressBooking.scheduledAt)}
+                </span>
+              </div>
+              <p className="truncate text-sm font-semibold">
+                {inProgressBooking.service.title} com {inProgressBooking.provider.name}
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => {
+              triggerHaptic("selection")
+              navigate("client.bookings")
+            }}
+            className="h-8.5 shrink-0 rounded-xl text-xs font-semibold shadow-2xs"
+          >
+            Acompanhar
+            <ChevronRight className="ml-1 size-3.5" />
+          </Button>
+        </div>
+      )}
+
+      {/* Escrow & Protection Ribbon */}
+      <div className="border-border/50 bg-card flex flex-col gap-3 rounded-2xl border p-4 shadow-2xs sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+            <ShieldCheck className="size-5" />
+          </div>
+          <div className="text-xs">
+            <p className="text-foreground font-semibold">
+              Garantia Severinno Escrow & Proteção 90 Dias
+            </p>
+            <p className="text-muted-foreground">
+              Seu pagamento fica seguro na custódia e só é liberado ao profissional após a sua
+              aprovação final do serviço.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic("selection")
+            navigate("client.bookings")
+          }}
+          className="text-primary hover:text-primary/80 inline-flex cursor-pointer items-center gap-1 self-start text-xs font-semibold sm:self-center"
+        >
+          <span>Gerenciar liberação</span>
+          <ChevronRight className="size-3.5" />
+        </button>
+      </div>
 
       {/* Onboarding checklist — only shows if profile is incomplete */}
       <OnboardingChecklist />
@@ -316,7 +400,7 @@ export function ClientDashboard() {
           label="Serviços concluídos"
           value={completedCount}
           tone="sky"
-          hint="Histórico de serviços"
+          hint="Histórico de serviços realizados"
         />
         <StatCard
           index={3}
@@ -337,19 +421,22 @@ export function ClientDashboard() {
       {/* Charts */}
       <div className="grid gap-4 lg:grid-cols-5">
         {/* Monthly bookings */}
-        <Card className="rounded-xl shadow-sm lg:col-span-3">
+        <Card className="border-border/50 bg-card rounded-2xl border shadow-2xs lg:col-span-3">
           <CardContent className="p-5">
             <div className="mb-4 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="bg-primary/10 text-primary flex size-7 items-center justify-center rounded-md">
+                <span className="bg-primary/10 text-primary flex size-7 items-center justify-center rounded-lg">
                   <TrendingUp className="size-4" />
                 </span>
-                <p className="text-muted-foreground text-sm font-semibold tracking-wide uppercase">
-                  Agendamentos por mês
-                </p>
+                <div>
+                  <p className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
+                    Evolução de Agendamentos
+                  </p>
+                  <p className="text-sm font-semibold">Histórico mensal (últimos 6 meses)</p>
+                </div>
               </div>
             </div>
-            <div className="h-56 w-full">
+            <div className="h-56 w-full min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={monthlyData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
                   <defs>
@@ -392,16 +479,19 @@ export function ClientDashboard() {
         </Card>
 
         {/* Spending per category pie */}
-        <Card className="rounded-xl shadow-sm lg:col-span-2">
+        <Card className="border-border/50 bg-card rounded-2xl border shadow-2xs lg:col-span-2">
           <CardContent className="p-5">
             <div className="mb-4 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="bg-primary/10 text-primary flex size-7 items-center justify-center rounded-md">
+                <span className="bg-primary/10 text-primary flex size-7 items-center justify-center rounded-lg">
                   <Wallet className="size-4" />
                 </span>
-                <p className="text-muted-foreground text-sm font-semibold tracking-wide uppercase">
-                  Gastos por categoria
-                </p>
+                <div>
+                  <p className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
+                    Distribuição de Gastos
+                  </p>
+                  <p className="text-sm font-semibold">Por categoria de serviço</p>
+                </div>
               </div>
             </div>
             {spendingByCategory.length === 0 ? (
@@ -412,7 +502,7 @@ export function ClientDashboard() {
                 <p className="text-muted-foreground text-sm">Sem gastos confirmados ainda.</p>
               </div>
             ) : (
-              <div className="h-48 w-full">
+              <div className="h-48 w-full min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -468,8 +558,11 @@ export function ClientDashboard() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => navigate("client.bookings")}
-              className="text-primary hover:text-primary h-9 gap-1.5"
+              onClick={() => {
+                triggerHaptic("selection")
+                navigate("client.bookings")
+              }}
+              className="text-primary hover:text-primary h-9 gap-1.5 text-xs font-semibold"
             >
               Ver tudo
               <ChevronRight className="size-4" />
@@ -488,14 +581,20 @@ export function ClientDashboard() {
             title="Nenhuma atividade ainda"
             description="Quando você começar a agendar ou solicitar orçamentos, suas atividades recentes aparecerão aqui."
             action={
-              <Button onClick={() => navigate("vitrine")} className="mt-2 gap-2">
+              <Button
+                onClick={() => {
+                  triggerHaptic("selection")
+                  navigate("vitrine")
+                }}
+                className="mt-2 gap-2 rounded-xl text-xs font-semibold shadow-2xs"
+              >
                 <MapPin className="size-4" />
                 Buscar prestadores
               </Button>
             }
           />
         ) : (
-          <Card className="overflow-hidden rounded-xl shadow-sm">
+          <Card className="border-border/50 bg-card overflow-hidden rounded-2xl border shadow-2xs">
             <CardContent className="divide-y p-0">
               {recentActivity.map((a) => {
                 const provider = a.provider
@@ -521,26 +620,33 @@ export function ClientDashboard() {
                   <button
                     key={`${a.type}-${a.id}`}
                     type="button"
-                    onClick={() => navigate(isBooking ? "client.bookings" : "client.quotes")}
-                    className="hover:bg-accent/40 focus-visible:bg-accent/40 flex w-full items-center gap-3 px-4 py-3 text-left transition-colors outline-none"
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      navigate(isBooking ? "client.bookings" : "client.quotes")
+                    }}
+                    className="hover:bg-muted/40 focus-visible:bg-muted/40 flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 text-left transition-colors outline-none"
                   >
-                    <Avatar className="size-9 shrink-0">
+                    <Avatar className="border-border/40 size-9 shrink-0 border">
                       {provider.avatarUrl ? (
-                        <AvatarImage src={provider.avatarUrl} alt={provider.name} />
+                        <AvatarImage
+                          src={provider.avatarUrl}
+                          alt={provider.name}
+                          className="object-cover"
+                        />
                       ) : null}
-                      <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-semibold">
+                      <AvatarFallback className="bg-muted text-foreground text-[10px] font-semibold">
                         {initials || "P"}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{a.title}</p>
+                      <p className="text-foreground truncate text-sm font-medium">{a.title}</p>
                       <p className="text-muted-foreground truncate text-xs tabular-nums">
                         {isBooking ? "Agendamento" : "Orçamento"} · {provider.name} ·{" "}
                         {formatRelative(a.at)}
                       </p>
                     </div>
                     {isBooking && a.type === "booking" ? (
-                      <span className="hidden text-sm font-semibold tabular-nums sm:block">
+                      <span className="text-foreground hidden text-sm font-semibold tabular-nums sm:block">
                         {formatBRL(a.amount)}
                       </span>
                     ) : null}
@@ -566,8 +672,11 @@ export function ClientDashboard() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate("client.bookings")}
-                className="text-primary hover:text-primary h-9 gap-1.5"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  navigate("client.bookings")
+                }}
+                className="text-primary hover:text-primary h-9 gap-1.5 text-xs font-semibold"
               >
                 Ver tudo
                 <ChevronRight className="size-4" />
@@ -585,7 +694,13 @@ export function ClientDashboard() {
               title="Nenhum agendamento próximo"
               description="Que tal agendar seu primeiro serviço? Explore prestadores verificados perto de você."
               action={
-                <Button onClick={() => navigate("vitrine")} className="mt-2 gap-2">
+                <Button
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    navigate("vitrine")
+                  }}
+                  className="mt-2 gap-2 rounded-xl text-xs font-semibold shadow-2xs"
+                >
                   <MapPin className="size-4" />
                   Buscar prestadores
                 </Button>
@@ -605,23 +720,37 @@ export function ClientDashboard() {
                   <button
                     key={b.id}
                     type="button"
-                    onClick={() => navigate("client.bookings")}
-                    className="bg-card hover:border-primary/30 focus-visible:ring-ring flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-all outline-none hover:shadow-sm focus-visible:ring-2"
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      navigate("client.bookings")
+                    }}
+                    className="border-border/50 bg-card hover:border-primary/40 focus-visible:ring-ring flex w-full cursor-pointer items-center gap-3.5 rounded-2xl border p-3.5 text-left transition-all outline-none hover:shadow-xs focus-visible:ring-2"
                   >
-                    <Avatar className="size-10 shrink-0">
+                    <Avatar className="border-border/40 size-10 shrink-0 border">
                       {b.provider.avatarUrl ? (
-                        <AvatarImage src={b.provider.avatarUrl} alt={b.provider.name} />
+                        <AvatarImage
+                          src={b.provider.avatarUrl}
+                          alt={b.provider.name}
+                          className="object-cover"
+                        />
                       ) : null}
-                      <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-semibold">
+                      <AvatarFallback className="bg-muted text-foreground text-[10px] font-semibold">
                         {initials || "P"}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{b.service.title}</p>
-                      <p className="text-muted-foreground truncate text-xs tabular-nums">
+                      <p className="text-foreground truncate text-sm font-semibold">
+                        {b.service.title}
+                      </p>
+                      <p className="text-muted-foreground mt-0.5 truncate text-xs tabular-nums">
                         {formatDateTime(b.scheduledAt)} · {b.provider.name}
                       </p>
                     </div>
+                    {b.amount > 0 && (
+                      <span className="text-foreground hidden text-xs font-bold tabular-nums sm:inline-block">
+                        {formatBRL(b.amount)}
+                      </span>
+                    )}
                     <StatusBadge
                       tone={bookingTone(b.status as BookingStatus)}
                       icon={bookingIcon(b.status as BookingStatus)}
@@ -644,8 +773,11 @@ export function ClientDashboard() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate("client.quotes")}
-                className="text-primary hover:text-primary h-9 gap-1.5"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  navigate("client.quotes")
+                }}
+                className="text-primary hover:text-primary h-9 gap-1.5 text-xs font-semibold"
               >
                 Ver tudo
                 <ChevronRight className="size-4" />
@@ -663,7 +795,13 @@ export function ClientDashboard() {
               title="Nenhum orçamento ativo"
               description="Solicite um orçamento e acompanhe a resposta dos prestadores aqui."
               action={
-                <Button onClick={() => openQuote()} className="mt-2 gap-2">
+                <Button
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    openQuote()
+                  }}
+                  className="mt-2 gap-2 rounded-xl text-xs font-semibold shadow-2xs"
+                >
                   <Plus className="size-4" />
                   Pedir orçamento
                 </Button>
@@ -683,22 +821,29 @@ export function ClientDashboard() {
                   <button
                     key={q.id}
                     type="button"
-                    onClick={() => navigate("client.quotes")}
-                    className="bg-card hover:border-primary/30 focus-visible:ring-ring flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-all outline-none hover:shadow-sm focus-visible:ring-2"
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      navigate("client.quotes")
+                    }}
+                    className="border-border/50 bg-card hover:border-primary/40 focus-visible:ring-ring flex w-full cursor-pointer items-center gap-3.5 rounded-2xl border p-3.5 text-left transition-all outline-none hover:shadow-xs focus-visible:ring-2"
                   >
-                    <Avatar className="size-10 shrink-0">
+                    <Avatar className="border-border/40 size-10 shrink-0 border">
                       {q.provider.avatarUrl ? (
-                        <AvatarImage src={q.provider.avatarUrl} alt={q.provider.name} />
+                        <AvatarImage
+                          src={q.provider.avatarUrl}
+                          alt={q.provider.name}
+                          className="object-cover"
+                        />
                       ) : null}
-                      <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-semibold">
+                      <AvatarFallback className="bg-muted text-foreground text-[10px] font-semibold">
                         {initials || "P"}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
-                        {q.items[0]?.service?.title ?? "Orçamento"}
+                      <p className="text-foreground truncate text-sm font-semibold">
+                        {q.items[0]?.service?.title ?? "Orçamento sob medida"}
                       </p>
-                      <p className="text-muted-foreground truncate text-xs tabular-nums">
+                      <p className="text-muted-foreground mt-0.5 truncate text-xs tabular-nums">
                         {q.provider.name} · {formatRelative(q.createdAt)}
                       </p>
                     </div>
