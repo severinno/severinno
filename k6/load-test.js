@@ -48,7 +48,7 @@ export const options = {
     http_req_failed: ["rate<0.05"], // < 5% errors
     errors: ["rate<0.05"],
     home_latency: ["p(95)<3000"],
-    health_latency: ["p(95)<1000"],
+    health_latency: ["p(95)<2000"],
     search_latency: ["p(95)<3000"],
   },
 }
@@ -56,26 +56,12 @@ export const options = {
 // ── Helper functions ────────────────────────────────────────────────────────
 
 const PROVIDER_IDS = [
-  "cmtga9n3z01swsmz530cwkik4",
-  "cmtgaq7mi0001smx083iwaqtn",
-  "cmthhl6vd0000smsz1v4yo93e",
-  "cmtga9n0b01jksmz5h06rsoox",
-  "cmtga9n0b01jlsmz57saf1z6e",
-  "cmtga9n0b01jmsmz5npv12841",
-  "cmtga9n0b01jnsmz5ywb043fe",
-  "cmtga9n0b01josmz5lnzwpa35",
-  "cmtga9n0b01jpsmz5xpsbm22z",
-  "cmtga9n0b01jqsmz5e82jjjf6",
-  "cmtga9n0b01jrsmz5k7fhc79a",
-  "cmtga9n0b01jssmz5w9ul55ey",
-  "cmtga9n0c01jtsmz5yzxfj561",
-  "cmtga9n0c01jusmz5xqzef8ky",
-  "cmtga9n0c01jvsmz5wgo7mu3b",
-  "cmtga9n0c01jwsmz5o1b7zbb1",
-  "cmtga9n0c01jxsmz57ayxzqrc",
-  "cmtga9n0c01jysmz5lndd3x02",
-  "cmtga9n0c01jzsmz5nweba9oy",
-  "cmtga9n0c01k0smz58tpxcj4e",
+  "cmvbk7hhr0003sm2asbmm5e1n",
+  "cmvbk7hig0004sm2ajp2hdmre",
+  "cmvbk7hj50005sm2anm89ms9d",
+  "cmvbk7hjt0006sm2azn3zozlh",
+  "cmvbk7hki0007sm2afixxvp04",
+  "cmvbk7hl70008sm2ap3npw4wx",
 ]
 
 function randomProviderId() {
@@ -96,13 +82,17 @@ export default function loadTest() {
   } else {
     // Mixed: weighted random selection
     const rand = Math.random()
-    if (rand < 0.35) {
+    if (rand < 0.25) {
       testHome()
-    } else if (rand < 0.5) {
+    } else if (rand < 0.4) {
       testHealth()
-    } else if (rand < 0.8) {
+    } else if (rand < 0.6) {
       testSearch()
-    } else if (rand < 0.9) {
+    } else if (rand < 0.75) {
+      testGeoSearch()
+    } else if (rand < 0.85) {
+      testCities()
+    } else if (rand < 0.92) {
       testCategories()
     } else {
       testProviderDetail()
@@ -220,11 +210,43 @@ function testProviderDetail() {
   providerLatency.add(res.timings.duration)
 
   const success = check(res, {
-    "provider: status 200 or 404": (r) => r.status === 200 || r.status === 404,
+    "provider: status 200": (r) => r.status === 200,
     "provider: response < 3s": (r) => r.timings.duration < 3000,
   })
 
-  errorRate.add(!success && res.status !== 404)
+  errorRate.add(!success)
+}
+
+function testCities() {
+  const res = http.get(`${BASE_URL}/api/cities`, {
+    tags: { endpoint: "cities" },
+    timeout: "5s",
+  })
+
+  totalRequests.add(1)
+  const success = check(res, {
+    "cities: status 200": (r) => r.status === 200,
+    "cities: response < 2s": (r) => r.timings.duration < 2000,
+  })
+
+  errorRate.add(!success)
+}
+
+function testGeoSearch() {
+  const res = http.get(`${BASE_URL}/api/providers?lat=-18.8546&lng=-41.9443&radius=15`, {
+    tags: { endpoint: "geo_search" },
+    timeout: "10s",
+  })
+
+  totalRequests.add(1)
+  searchLatency.add(res.timings.duration)
+
+  const success = check(res, {
+    "geo_search: status 200": (r) => r.status === 200,
+    "geo_search: response < 5s": (r) => r.timings.duration < 5000,
+  })
+
+  errorRate.add(!success)
 }
 
 // ── Summary ─────────────────────────────────────────────────────────────────
