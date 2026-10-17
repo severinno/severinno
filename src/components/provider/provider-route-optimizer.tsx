@@ -6,7 +6,8 @@ import { Navigation, MapPin, Compass, ExternalLink, Loader2 } from "lucide-react
 import { apiGet } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import type { OptimizedRoutePlan, TransportMode } from "@/lib/tsp-route-optimizer"
+import type { OptimizedRoutePlan, RouteStop, TransportMode } from "@/lib/tsp-route-optimizer"
+import { ProviderTransitHud } from "@/components/provider/provider-transit-hud"
 
 type DailyRouteResponse = {
   ok: boolean
@@ -22,6 +23,7 @@ export function ProviderRouteOptimizer({ initialDate }: { initialDate?: string }
 
   const [date, setDate] = React.useState<string>(todayStr)
   const [mode, setMode] = React.useState<TransportMode>("CAR")
+  const [selectedTransitStop, setSelectedTransitStop] = React.useState<RouteStop | null>(null)
 
   // Load saved preference on mount
   React.useEffect(() => {
@@ -199,6 +201,17 @@ export function ProviderRouteOptimizer({ initialDate }: { initialDate?: string }
                         {stop.clientName && <span>· Cliente: {stop.clientName}</span>}
                       </div>
                     </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSelectedTransitStop(stop)}
+                      className="h-7 shrink-0 gap-1 border-sky-500/40 px-2 text-[11px] font-semibold text-sky-700 hover:bg-sky-50 dark:border-sky-700 dark:text-sky-300"
+                      title={`Iniciar Modo Trânsito HUD para ${stop.title}`}
+                      aria-label={`Iniciar Modo Trânsito HUD para ${stop.title}`}
+                    >
+                      <Navigation className="size-3 text-sky-500" />
+                      <span>HUD</span>
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -229,6 +242,18 @@ export function ProviderRouteOptimizer({ initialDate }: { initialDate?: string }
           </>
         ) : null}
       </CardContent>
+
+      {selectedTransitStop && (
+        <ProviderTransitHud
+          bookingId={selectedTransitStop.id}
+          clientName={selectedTransitStop.clientName || "Cliente"}
+          clientAddress={selectedTransitStop.address}
+          destinationLat={selectedTransitStop.lat}
+          destinationLng={selectedTransitStop.lng}
+          serviceTitle={selectedTransitStop.title}
+          onClose={() => setSelectedTransitStop(null)}
+        />
+      )}
     </Card>
   )
 }

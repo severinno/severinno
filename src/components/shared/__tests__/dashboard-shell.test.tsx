@@ -69,6 +69,7 @@ vi.mock("lucide-react", () => {
   return {
     // dashboard-shell
     Bell: MockIcon,
+    BellRing: MockIcon,
     Check: MockIcon,
     CheckCheck: MockIcon,
     ChevronRight: MockIcon,
@@ -220,6 +221,29 @@ vi.mock("@/components/ui/tooltip", () => ({
 
 vi.mock("@/components/ui/scroll-area", () => ({
   ScrollArea: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}))
+
+vi.mock("@/components/shared/pwa-install-banner", () => ({
+  PwaInstallBanner: () => <div data-testid="pwa-install-banner" />,
+}))
+
+vi.mock("@/hooks/use-service-worker", () => ({
+  usePushSubscription: () => ({
+    isSubscribed: false,
+    isSupported: true,
+    permission: "default",
+    loading: false,
+    testing: false,
+    subscribe: vi.fn(),
+    unsubscribe: vi.fn(),
+    sendTestNotification: vi.fn(),
+  }),
+  useServiceWorker: () => ({
+    isRegistered: false,
+    updateAvailable: false,
+    error: null,
+    applyUpdate: vi.fn(),
+  }),
 }))
 
 // ---------------------------------------------------------------------------

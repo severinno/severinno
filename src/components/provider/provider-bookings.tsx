@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import {
   CalendarCheck,
+  Camera,
   CheckCircle2,
   Clock,
   ExternalLink,
@@ -298,6 +299,53 @@ function BookingDetailsDialog({
               <p className="text-foreground text-xs leading-relaxed">{booking.notes}</p>
             </div>
           )}
+
+          {/* Laudo Técnico Digital & Fotos Antes/Depois */}
+          <div className="space-y-2.5 rounded-xl border border-emerald-500/20 bg-emerald-50/50 p-3.5 dark:bg-emerald-950/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                <ClipboardCheck className="size-4 text-emerald-600" />
+                <span>Laudo Técnico & Fotos Antes/Depois</span>
+              </div>
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300">
+                Garantia de 90 Dias
+              </span>
+            </div>
+
+            <p className="text-muted-foreground text-xs leading-relaxed">
+              Registre a comprovação fotográfica do serviço para garantir a liberação dos fundos em
+              custódia e proteger seu trabalho contra contestações.
+            </p>
+
+            {((booking.beforePhotos && booking.beforePhotos.length > 0) ||
+              (booking.afterPhotos && booking.afterPhotos.length > 0)) && (
+              <div className="flex items-center gap-3 pt-1 text-xs">
+                <span className="font-medium text-emerald-700 dark:text-emerald-300">
+                  📷 {booking.beforePhotos?.length ?? 0} fotos antes ·{" "}
+                  {booking.afterPhotos?.length ?? 0} fotos depois
+                </span>
+              </div>
+            )}
+
+            {onReport && (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  onOpenChange(false)
+                  onReport()
+                }}
+                className="mt-1 w-full gap-2 bg-emerald-600 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700"
+              >
+                <Camera className="size-3.5" />
+                <span>
+                  {booking.beforePhotos?.length || booking.afterPhotos?.length
+                    ? "Editar Laudo & Fotos"
+                    : "Preencher Laudo & Tirar Fotos"}
+                </span>
+              </Button>
+            )}
+          </div>
         </div>
 
         <DialogFooter className="flex-wrap gap-2 border-t pt-3">
@@ -888,15 +936,28 @@ function BookingActions({
       )}
 
       {booking.status === "CONFIRMED" && (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onStart}
-          disabled={actioning}
-          className="border-primary/30 text-primary hover:bg-primary/5 h-8 gap-1.5 px-3 text-xs font-semibold shadow-xs"
-        >
-          <Play className="fill-primary/20 size-3.5" /> Iniciar
-        </Button>
+        <>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onStart}
+            disabled={actioning}
+            className="border-primary/30 text-primary hover:bg-primary/5 h-8 gap-1.5 px-3 text-xs font-semibold shadow-xs"
+          >
+            <Play className="fill-primary/20 size-3.5" /> Iniciar
+          </Button>
+          {onTransitHud && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onTransitHud}
+              className="h-8 gap-1.5 border-sky-500/40 px-2.5 text-xs font-medium text-sky-700 hover:bg-sky-50 dark:border-sky-700 dark:text-sky-300 dark:hover:bg-sky-950/30"
+              title="Abrir Modo Trânsito HUD com GPS e Waze"
+            >
+              <Navigation className="size-3.5 text-sky-500" /> Trânsito HUD
+            </Button>
+          )}
+        </>
       )}
 
       {booking.status === "IN_PROGRESS" && (

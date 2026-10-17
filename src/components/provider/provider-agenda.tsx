@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Compass,
   ExternalLink,
   MapPin,
   Navigation,
@@ -33,6 +34,8 @@ import { apiGet } from "@/lib/api"
 import { type BookingStatus } from "@/lib/constants"
 import { formatBRL, formatTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { useViewStore } from "@/store/view"
+import { ProviderTransitHud } from "@/components/provider/provider-transit-hud"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -51,6 +54,9 @@ type Booking = {
   status: BookingStatus
   address: string
   amount: number
+  lat?: number | null
+  lng?: number | null
+  clientPhone?: string | null
   service: { id: string; title: string }
   client: {
     id: string
@@ -210,7 +216,13 @@ function CalendarGrid({
 // Day list
 // ---------------------------------------------------------------------------
 
-function DayList({ bookings }: { bookings: Booking[] }) {
+function DayList({
+  bookings,
+  onTransitHud,
+}: {
+  bookings: Booking[]
+  onTransitHud?: (b: Booking) => void
+}) {
   if (bookings.length === 0) {
     return (
       <div className="bg-muted/10 flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed p-8 text-center">
@@ -283,9 +295,23 @@ function DayList({ bookings }: { bookings: Booking[] }) {
             </div>
 
             {/* Ações e Valor */}
-            <div className="flex items-center justify-between gap-3 border-t pt-2 sm:justify-end sm:border-t-0 sm:pt-0">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 sm:justify-end sm:border-t-0 sm:pt-0">
               {/* Ações de rota rápidas */}
-              <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1">
+                {(b.status === "CONFIRMED" || b.status === "IN_PROGRESS") && onTransitHud && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onTransitHud(b)}
+                    className="h-8 gap-1 border-sky-500/40 text-xs font-semibold text-sky-700 hover:bg-sky-50 dark:border-sky-700 dark:text-sky-300 dark:hover:bg-sky-950/30"
+                    title="Iniciar Modo Trânsito HUD com GPS e Check-in"
+                    aria-label={`Iniciar Modo Trânsito para ${b.client.name}`}
+                  >
+                    <Navigation className="size-3 text-sky-500" />
+                    <span>Trânsito HUD</span>
+                  </Button>
+                )}
+
                 <Button
                   variant="ghost"
                   size="sm"
@@ -345,6 +371,7 @@ export function ProviderAgenda() {
   const [range, setRange] = React.useState<Range>("month")
   const [cursor, setCursor] = React.useState<Date>(new Date())
   const [selectedDay, setSelectedDay] = React.useState<Date>(new Date())
+  const [transitBooking, setTransitBooking] = React.useState<Booking | null>(null)
 
   const query = useQuery<{ items: Booking[]; total: number }>({
     queryKey: ["provider", "agenda", "all"],
@@ -440,19 +467,32 @@ export function ProviderAgenda() {
 
       {/* Barra de Controles e Navegação */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Tabs value={range} onValueChange={(v) => setRange(v as Range)}>
-          <TabsList className="bg-muted/60 p-1">
-            <TabsTrigger value="today" className="text-xs">
-              Hoje
-            </TabsTrigger>
-            <TabsTrigger value="week" className="text-xs">
-              Semana
-            </TabsTrigger>
-            <TabsTrigger value="month" className="text-xs">
-              Mês
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="flex flex-wrap items-center gap-2">
+          <Tabs value={range} onValueChange={(v) => setRange(v as Range)}>
+            <TabsList className="bg-muted/60 p-1">
+              <TabsTrigger value="today" className="text-xs">
+                Hoje
+              </TabsTrigger>
+              <TabsTrigger value="week" className="text-xs">
+                Semana
+              </TabsTrigger>
+              <TabsTrigger value="month" className="text-xs">
+                Mês
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => useViewStore.getState().navigate("provider.routes")}
+            className="h-8 gap-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+            title="Otimizar sequência e rotas do dia com inteligência artificial"
+          >
+            <Compass className="size-3.5 text-emerald-600" />
+            <span>Otimizar Rotas do Dia</span>
+          </Button>
+        </div>
 
         {range === "month" && (
           <div className="flex items-center gap-2">
@@ -544,7 +584,7 @@ export function ProviderAgenda() {
             </div>
           </CardHeader>
           <CardContent className="p-4">
-            <DayList bookings={dayBookings} />
+            <DayList bookings={dayBookings} onTransitHud={setTransitBooking} />
           </CardContent>
         </Card>
       </div>
@@ -569,9 +609,25 @@ export function ProviderAgenda() {
             </div>
           </CardHeader>
           <CardContent className="p-4">
-            <DayList bookings={visibleBookings} />
+            <DayList bookings={visibleBookings} onTransitHud={setTransitBooking} />
           </CardContent>
         </Card>
+      )}
+
+      {transitBooking && (
+        <ProviderTransitHud
+          bookingId={transitBooking.id}
+          clientName={transitBooking.client.name}
+          clientPhone={transitBooking.clientPhone}
+          clientAddress={transitBooking.address}
+          destinationLat={transitBooking.lat ?? -18.8548}
+          destinationLng={transitBooking.lng ?? -41.954}
+          serviceTitle={transitBooking.service.title}
+          onClose={() => setTransitBooking(null)}
+          onCheckinSuccess={() => {
+            query.refetch()
+          }}
+        />
       )}
     </div>
   )
