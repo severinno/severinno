@@ -55,7 +55,10 @@ async function runLoadTest() {
       const reqStart = performance.now()
       try {
         const res = await fetch(`${TARGET_URL}${endpoint}`, {
-          headers: { "User-Agent": "Severinno-LoadTest/1.0" },
+          headers: {
+            "User-Agent": `Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) UserAgent-${i}`,
+            Accept: `application/json, text/plain, */*; q=0.${(i % 9) + 1}`,
+          },
         })
         const reqEnd = performance.now()
         results.push({
@@ -130,6 +133,11 @@ async function runLoadTest() {
     `   • Requisições com Sucesso: ${successCount}/${TOTAL_REQUESTS} (${successRate.toFixed(1)}%)`,
   )
   console.log(`   • Requisições Falhas: ${failureCount}`)
+  const statusSummary = results.reduce<Record<number, number>>((acc, r) => {
+    acc[r.status] = (acc[r.status] || 0) + 1
+    return acc
+  }, {})
+  console.log(`   • Distribuição de Status HTTP: ${JSON.stringify(statusSummary)}`)
   console.log("────────────────────────────────────────────────────────────────────────────────")
   console.log("⏱️  LATÊNCIAS DE RESPOSTA:")
   console.log(`   • Mínima:  ${min.toFixed(1)} ms`)
