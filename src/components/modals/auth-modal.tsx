@@ -360,7 +360,6 @@ function ForgotPasswordForm({ onBackToLogin }: { onBackToLogin: () => void }) {
               <Input
                 id="recovery-input"
                 type="text"
-                autoFocus
                 placeholder="voce@exemplo.com ou (33) 99999-9999"
                 value={emailOrPhone}
                 onChange={(e) => setEmailOrPhone(e.target.value)}
@@ -433,7 +432,11 @@ function LoginForm({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 p-6 pt-4">
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        autoComplete="off"
+        className="grid gap-4 p-6 pt-4"
+      >
         <FormField
           control={form.control}
           name="email"
@@ -445,8 +448,8 @@ function LoginForm({
                   <Mail className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                   <Input
                     type="email"
-                    autoComplete="email"
-                    autoFocus
+                    autoComplete="off"
+                    data-lpignore="true"
                     placeholder="voce@exemplo.com"
                     className="h-10 pl-9 text-sm"
                     {...field}
