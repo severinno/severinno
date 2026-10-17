@@ -647,7 +647,7 @@ function RegisterForm({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 p-6 pt-4">
-        {/* Role toggle — large selectable cards */}
+        {/* Role toggle — compact horizontal selector */}
         <FormField
           control={form.control}
           name="role"
@@ -682,29 +682,39 @@ function RegisterForm({
                         }}
                         aria-pressed={active}
                         className={cn(
-                          "relative flex cursor-pointer flex-col items-start gap-1 rounded-lg border p-3 text-left transition-all",
+                          "relative flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-all",
                           active
-                            ? "border-primary bg-primary/5 ring-primary scale-[1.02] border-solid shadow-sm ring-1"
-                            : "border-input hover:border-primary/40 hover:bg-accent/40 border-dashed",
+                            ? "border-emerald-600 bg-emerald-50/70 text-emerald-950 shadow-xs ring-1 ring-emerald-600 dark:border-emerald-500 dark:bg-emerald-950/30 dark:text-emerald-100 dark:ring-emerald-500"
+                            : "border-input hover:bg-accent/40 border-dashed hover:border-emerald-600/40",
                         )}
                       >
-                        <Icon
+                        <div
                           className={cn(
-                            "size-6",
-                            active ? "text-primary" : "text-muted-foreground",
+                            "flex size-8 shrink-0 items-center justify-center rounded-md transition-colors",
+                            active
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300"
+                              : "bg-muted/70 text-muted-foreground",
                           )}
-                        />
+                        >
+                          <Icon className="size-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="text-foreground block text-xs leading-tight font-semibold sm:text-sm">
+                            {opt.label}
+                          </span>
+                          <span className="text-muted-foreground block truncate text-[11px] leading-tight sm:text-xs">
+                            {opt.desc}
+                          </span>
+                        </div>
                         <span
                           className={cn(
-                            "bg-primary text-primary-foreground absolute top-2 right-2 inline-flex size-5 items-center justify-center rounded-full transition-opacity",
+                            "ml-auto inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-xs transition-opacity",
                             active ? "opacity-100" : "opacity-0",
                           )}
                           aria-hidden={!active}
                         >
-                          <Check className="size-3" />
+                          <Check className="size-2.5 stroke-[2.5]" />
                         </span>
-                        <span className="text-sm font-medium">{opt.label}</span>
-                        <span className="text-muted-foreground text-xs">{opt.desc}</span>
                       </button>
                     )
                   })}
