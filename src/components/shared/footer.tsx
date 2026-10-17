@@ -33,6 +33,7 @@ import {
   Users,
   Briefcase,
   MessageCircle,
+  Smartphone,
   type LucideIcon,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -213,9 +214,9 @@ export default function Footer({ className }: { className?: string }) {
         </div>
       </div>
 
-      {/* ─── Main footer content ─── 4-column grid */}
+      {/* ─── Main footer content ─── 6-column grid on desktop */}
       <div className="mx-auto w-full max-w-[95%] px-4 py-10 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
           {/* Column 1: Brand + Social */}
           <div className="space-y-4">
             <div className="flex items-center">
@@ -231,7 +232,7 @@ export default function Footer({ className }: { className?: string }) {
               Marketplace de serviços com geolocalização. Encontre prestadores verificados, próximos
               e bem avaliados.
             </p>
-            <ul className="flex items-center gap-2" aria-label="Redes sociais">
+            <ul className="flex flex-wrap items-center gap-2" aria-label="Redes sociais">
               <SocialIcon icon={Github} label="GitHub" href="https://github.com" />
               <SocialIcon icon={Twitter} label="Twitter" href="https://twitter.com" />
               <SocialIcon icon={Instagram} label="Instagram" href="https://instagram.com" />
@@ -282,7 +283,7 @@ export default function Footer({ className }: { className?: string }) {
             </nav>
           ))}
 
-          {/* Column 4: Contact — H10 */}
+          {/* Column 5: Contact — H10 */}
           <div className="space-y-3">
             <h3 className="flex items-center gap-2 text-xs font-semibold tracking-wider text-slate-500 uppercase">
               <Users className="size-4" />
@@ -315,6 +316,49 @@ export default function Footer({ className }: { className?: string }) {
               <MessageCircle className="size-3.5" />
               Fale conosco
             </Button>
+          </div>
+
+          {/* Column 6: App download — Chame o Severinno */}
+          <div className="space-y-3">
+            <h3 className="flex items-center gap-2 text-xs font-semibold tracking-wider text-slate-500 uppercase">
+              <Smartphone className="size-4" />
+              Chame o Severinno
+            </h3>
+            <p className="text-xs text-slate-400">
+              Disponível para Android e iOS. Baixe o app agora!
+            </p>
+            <div className="flex flex-col gap-2.5 pt-1">
+              <a
+                href="https://play.google.com"
+                target="_blank"
+                rel="noreferrer noopener"
+                aria-label="Disponível no Google Play"
+                className="inline-block rounded-lg transition-transform duration-200 hover:scale-105 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
+              >
+                <Image
+                  src="/images/google-play-badge.svg"
+                  alt="Disponível no Google Play"
+                  width={135}
+                  height={40}
+                  className="h-10 w-auto object-contain"
+                />
+              </a>
+              <a
+                href="https://www.apple.com/app-store/"
+                target="_blank"
+                rel="noreferrer noopener"
+                aria-label="Baixar na App Store"
+                className="inline-block rounded-lg transition-transform duration-200 hover:scale-105 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
+              >
+                <Image
+                  src="/images/app-store-badge.svg"
+                  alt="Baixar na App Store"
+                  width={135}
+                  height={40}
+                  className="h-10 w-auto object-contain"
+                />
+              </a>
+            </div>
           </div>
         </div>
 
