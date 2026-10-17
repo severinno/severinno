@@ -14,14 +14,27 @@
  *   1 — Falha em alguma etapa ou validação
  */
 
-import { classifyIntentHeuristic } from "../src/lib/whatsapp-ai-triage"
-import { extractGvNeighborhood } from "../src/lib/whatsapp-autoresponder"
-import { generateWhatsAppPixCheckoutBundle } from "../src/lib/whatsapp-pix-checkout"
-import { lookupCnefeGV } from "../src/lib/geo-cnefe"
-import { calculateRoute } from "../src/lib/geo-osrm"
-import { validateEscrowGeofence } from "../src/lib/escrow-geofence"
-import { generateEscrowPIN, validateEscrowRelease } from "../src/lib/geo-checkin-escrow"
-import { FEE_RATE } from "../src/lib/constants"
+export {}
+
+// Mock server-only when running as standalone script in Bun
+if (typeof (globalThis as Record<string, unknown>).Bun !== "undefined") {
+  try {
+    const bunTestModule = "bun:test"
+    const { mock } = (await import(bunTestModule)) as {
+      mock: { module: (name: string, fn: () => Record<string, unknown>) => void }
+    }
+    mock.module("server-only", () => ({}))
+  } catch {}
+}
+
+const { classifyIntentHeuristic } = await import("../src/lib/whatsapp-ai-triage")
+const { extractGvNeighborhood } = await import("../src/lib/whatsapp-autoresponder")
+const { generateWhatsAppPixCheckoutBundle } = await import("../src/lib/whatsapp-pix-checkout")
+const { lookupCnefeGV } = await import("../src/lib/geo-cnefe")
+const { calculateRoute } = await import("../src/lib/geo-osrm")
+const { validateEscrowGeofence } = await import("../src/lib/escrow-geofence")
+const { generateEscrowPIN, validateEscrowRelease } = await import("../src/lib/geo-checkin-escrow")
+const { FEE_RATE } = await import("../src/lib/constants")
 
 interface SimulationOrder {
   id: string
