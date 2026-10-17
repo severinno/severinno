@@ -124,11 +124,13 @@ const SERVICE_PATTERNS: Array<{ category: string; regex: RegExp }> = [
   },
   {
     category: "Pintor",
-    regex: /\b(pintor|pintura|tinta|emassar|massa corrida|grafiato|textura|verniz|parede|teto)\b/i,
+    regex:
+      /\b(pintor|pintura|pintar|tinta|emassar|massa corrida|grafiato|textura|verniz|parede|teto)\b/i,
   },
   {
     category: "Climatização",
-    regex: /\b(ar condicionado|split|climatiz|refrigerac|gas do ar|higienizacao ar|filtro ar)\b/i,
+    regex:
+      /\b(ar[- ]?condicionado|split|climatiz|refrigerac|gas do ar|higienizacao ar|filtro ar)\b/i,
   },
   {
     category: "Diarista & Faxina",
@@ -136,7 +138,8 @@ const SERVICE_PATTERNS: Array<{ category: string; regex: RegExp }> = [
   },
   {
     category: "Marido de Aluguel",
-    regex: /\b(marido de aluguel|pequenos reparos|instalar suporte|furar parede|montar cortina)\b/i,
+    regex:
+      /\b(marido de aluguel|pequenos reparos|instalar.*suporte|suporte.*tv|furar parede|montar cortina|prateleira)\b/i,
   },
   {
     category: "Montador de Móveis",
@@ -165,7 +168,7 @@ export function classifyIntentHeuristic(text: string): {
 
   // 1. Emergência e Urgência
   const isEmergency =
-    /\b(urgente|emergencia|socorro|estourou|alagando|fogo|fumaca|curto-circuito|trancado para fora)\b/i.test(
+    /\b(urgente|emergencia|socorro|estourou|alagando|inundando|fogo|fumaca|curto-circuito|trancado para fora)\b/i.test(
       norm,
     )
   const urgency = isEmergency ? "EMERGENCY" : "NORMAL"
