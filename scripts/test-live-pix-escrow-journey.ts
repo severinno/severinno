@@ -34,12 +34,12 @@ if (typeof (globalThis as Record<string, unknown>).Bun !== "undefined") {
   } catch {}
 }
 
-import { PrismaClient } from "@prisma/client"
-import { calculateRoute } from "../src/lib/geo-osrm"
-import { validateEscrowGeofence } from "../src/lib/escrow-geofence"
-import { generateEscrowPIN, validateEscrowRelease } from "../src/lib/geo-checkin-escrow"
-import { generateWhatsAppPixCheckoutBundle } from "../src/lib/whatsapp-pix-checkout"
-import { FEE_RATE } from "../src/lib/constants"
+const { PrismaClient } = await import("@prisma/client")
+const { calculateRoute } = await import("../src/lib/geo-osrm")
+const { validateEscrowGeofence } = await import("../src/lib/escrow-geofence")
+const { generateEscrowPIN, validateEscrowRelease } = await import("../src/lib/geo-checkin-escrow")
+const { generateWhatsAppPixCheckoutBundle } = await import("../src/lib/whatsapp-pix-checkout")
+const { FEE_RATE } = await import("../src/lib/constants")
 
 const db = new PrismaClient()
 
