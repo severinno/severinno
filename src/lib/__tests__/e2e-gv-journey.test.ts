@@ -12,6 +12,7 @@ import {
 } from "../offline-geo-queue"
 import { FEE_RATE } from "../constants"
 import { sendProviderArrivedNotification } from "../evolution"
+import { generateEscrowPIN, validateEscrowRelease } from "../geo-checkin-escrow"
 
 describe("E2E Simulation: Jornada Completa do Prestador em Governador Valadares (MG)", () => {
   it("executa com sucesso o ciclo de vida completo: Geocodificação CNEFE -> Roteamento -> Kalman -> Snap-to-Road -> Geofence -> Notificação -> Split Financeiro", async () => {
@@ -142,7 +143,23 @@ describe("E2E Simulation: Jornada Completa do Prestador em Governador Valadares 
     const remaining = await getPendingOfflinePings("book-gv-001")
     expect(remaining.length).toBe(0)
 
-    // ── 9. Liquidação e Split Financeiro da Taxa Severinno (15%) ─────────────
+    // ── 9. Geração de PIN Criptográfico e Liberação de Escrow ───────────────
+    const escrowPin = await generateEscrowPIN("book-gv-001")
+    expect(escrowPin.pin).toMatch(/^\d{4}$/)
+    expect(escrowPin.bookingId).toBe("book-gv-001")
+
+    // Tentativa com PIN inválido (Anti-Fraude) deve ser rejeitada
+    const fraudulentRelease = await validateEscrowRelease("book-gv-001", "0000", 200.0)
+    expect(fraudulentRelease.success).toBe(false)
+    expect(fraudulentRelease.reason).toContain("PIN incorreto")
+
+    // Liberação com PIN correto via timingSafeEqual
+    const validRelease = await validateEscrowRelease("book-gv-001", escrowPin.pin, 200.0)
+    expect(validRelease.success).toBe(true)
+    expect(validRelease.releasedAmount).toBe(200.0)
+    expect(validRelease.releasedAt).toBeDefined()
+
+    // ── 10. Liquidação e Split Financeiro da Taxa Severinno (15%) ─────────────
     const serviceGrossAmount = 200.0 // R$ 200,00
     const platformFee = serviceGrossAmount * FEE_RATE
     const providerPayout = serviceGrossAmount - platformFee

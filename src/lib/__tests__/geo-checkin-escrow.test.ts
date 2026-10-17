@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { generateEscrowPIN, validateGeoCheckin, type CheckinAttempt } from "../geo-checkin-escrow"
+import {
+  generateEscrowPIN,
+  validateGeoCheckin,
+  validateEscrowRelease,
+  type CheckinAttempt,
+} from "../geo-checkin-escrow"
 
 describe("geo-checkin-escrow.ts — PIN Generation & Anti-Spoofing", () => {
   // A asserção expiresAt > Date.now() compara dois instantes do relógio real:
@@ -94,5 +99,36 @@ describe("geo-checkin-escrow.ts — PIN Generation & Anti-Spoofing", () => {
     const result = validateGeoCheckin(attempt)
     expect(result.success).toBe(false)
     expect(result.reason).toContain("Inconsistência de deslocamento")
+  })
+})
+
+describe("validateEscrowRelease — PIN Verification & Fund Release", () => {
+  it("rejects release when no PIN exists for the booking", async () => {
+    const result = await validateEscrowRelease("non-existent-booking", "1234", 150)
+    expect(result.success).toBe(false)
+    expect(result.reason).toContain("Nenhum PIN ativo")
+  })
+
+  it("rejects release with incorrect PIN (constant-time verification)", async () => {
+    const escrow = await generateEscrowPIN("booking-release-test")
+    const wrongPin = escrow.pin === "0000" ? "1111" : "0000"
+
+    const result = await validateEscrowRelease("booking-release-test", wrongPin, 250)
+    expect(result.success).toBe(false)
+    expect(result.reason).toContain("PIN incorreto")
+  })
+
+  it("successfully releases escrow when PIN is valid and single-use", async () => {
+    const escrow = await generateEscrowPIN("booking-valid-release")
+    const result = await validateEscrowRelease("booking-valid-release", escrow.pin, 350.5)
+
+    expect(result.success).toBe(true)
+    expect(result.bookingId).toBe("booking-valid-release")
+    expect(result.releasedAmount).toBe(350.5)
+    expect(result.releasedAt).toBeDefined()
+
+    // Second attempt should fail (single-use PIN consumed)
+    const replayAttempt = await validateEscrowRelease("booking-valid-release", escrow.pin, 350.5)
+    expect(replayAttempt.success).toBe(false)
   })
 })

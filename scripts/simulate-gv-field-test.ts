@@ -39,6 +39,7 @@ const { calculateRoute } = await import("../src/lib/geo-osrm")
 const { KalmanFilter2D } = await import("../src/lib/geo-kalman")
 const { snapToRoad } = await import("../src/lib/map-matching")
 const { validateEscrowGeofence, GEOFENCE_TIERS } = await import("../src/lib/escrow-geofence")
+const { generateEscrowPIN, validateEscrowRelease } = await import("../src/lib/geo-checkin-escrow")
 const { HAPTIC_PATTERNS } = await import("../src/lib/haptics")
 const { FEE_RATE } = await import("../src/lib/constants")
 
@@ -149,7 +150,7 @@ async function runFieldSimulation() {
 
   // ── ETAPA 5: Chegada ao Local & Geofence de Alta Precisão (50m STRICT) ──────
   console.log("🎯 [ETAPA 5] Chegada ao Local & Auditoria de Presença (50m STRICT)")
-  // Prestador estaciona na frente do portão do cliente (a ~14 metros)
+  // Caso A: Prestador estaciona na frente do portão do cliente (a ~14 metros)
   const arrivalLat = customerAddress.lat + 0.0001
   const arrivalLng = customerAddress.lng + 0.00008
 
@@ -173,7 +174,47 @@ async function runFieldSimulation() {
   )
   console.log(`      • Limite do Tier STRICT: ${GEOFENCE_TIERS.STRICT * 1000} metros`)
   console.log(`      • Status da presença física: ${geofenceResult.status}`)
-  console.log(`   ✅ Verificação de presença: ${geofenceResult.valid ? "APROVADA" : "REJEITADA"}\n`)
+  console.log(
+    `   ✅ Verificação de presença (14m): ${geofenceResult.valid ? "APROVADA" : "REJEITADA"}`,
+  )
+
+  // Caso B: Anti-Fraude — Prestador tentando check-in a 500m de distância
+  const outsideResult = validateEscrowGeofence({
+    providerLocation: {
+      lat: customerAddress.lat + 0.005,
+      lng: customerAddress.lng + 0.004,
+      accuracyM: 8,
+    },
+    serviceLocation: {
+      lat: customerAddress.lat,
+      lng: customerAddress.lng,
+    },
+    precisionTier: "STRICT",
+    maxAllowedAccuracyMeters: 35,
+  })
+  if (outsideResult.valid) throw new Error("Falha anti-fraude: check-in a 500m foi aceito!")
+  console.log(
+    `   ✅ Teste Anti-Fraude (fora dos 50m): REJEITADO com sucesso (${outsideResult.status})`,
+  )
+
+  // Caso C: Anti-Fraude — Sensor GPS com acurácia degradada (>35m)
+  const degradedGpsResult = validateEscrowGeofence({
+    providerLocation: {
+      lat: arrivalLat,
+      lng: arrivalLng,
+      accuracyM: 45, // Excede o limite máximo de confiança de 35m
+    },
+    serviceLocation: {
+      lat: customerAddress.lat,
+      lng: customerAddress.lng,
+    },
+    precisionTier: "STRICT",
+    maxAllowedAccuracyMeters: 35,
+  })
+  if (degradedGpsResult.valid) throw new Error("Falha anti-fraude: GPS degradado foi aceito!")
+  console.log(
+    `   ✅ Teste Anti-Fraude (GPS impreciso ±45m): REJEITADO com sucesso (${degradedGpsResult.status})\n`,
+  )
 
   // ── ETAPA 6: Padrão Háptico PWA Mobile ──────────────────────────────────────
   console.log("📳 [ETAPA 6] Padrão Háptico de Urgência no Smartphone do Cliente (PWA)")
@@ -181,26 +222,37 @@ async function runFieldSimulation() {
   console.log(`   ✅ Padrão vibratório configurado: [${urgentPattern.join(", ")}] ms`)
   console.log(`   ✅ Flag de persistência: requireInteraction = true (aviso imediato no bolso)\n`)
 
-  // ── ETAPA 7: Check-in Nativo via WhatsApp & Liberação de Custódia ───────────
-  console.log("💬 [ETAPA 7] Interação Conversacional via WhatsApp (Evolution API)")
-  console.log("   Simulando prestador compartilhando localização nativa no WhatsApp...")
-  console.log("   -> Evento: locationMessage recebido no webhook")
-  console.log("   -> Status do atendimento avançado: CONFIRMED -> IN_PROGRESS")
-  console.log("   -> Notificação de chegada enviada ao cliente com sucesso.")
+  // ── ETAPA 7: Check-in & Liberação Criptográfica de Custódia (Escrow) ────────
+  console.log("🔐 [ETAPA 7] Protocolo Criptográfico de Liberação de Escrow (Duplo Fator)")
+  const grossAmount = 250.0 // R$ 250,00
+  const bookingId = "book-gv-sim-001"
 
-  console.log("\n   Simulando cliente respondendo via WhatsApp ao término do serviço:")
-  const incomingUserMsg = "APROVAR"
-  const normalizedCommand = normalizeCommand(incomingUserMsg)
-  console.log(`   -> Mensagem recebida: "${incomingUserMsg}" (normalizada: "${normalizedCommand}")`)
-  console.log(`   -> Comando identificado: LIBERAÇÃO DE CUSTÓDIA (ESCROW)`)
-  console.log(`   -> Executando transação atômica no banco de dados...`)
-  console.log(
-    `   ✅ Custódia liberada: paymentStatus = "PAID", escrowReleasedAt = ${new Date().toISOString()}\n`,
-  )
+  console.log("   1. Servidor gera PIN criptográfico de 4 dígitos via crypto.randomInt:")
+  const escrowPin = await generateEscrowPIN(bookingId)
+  console.log(`      • PIN gerado: [ ${escrowPin.pin} ] (Expiração: ${escrowPin.expiresAt})`)
+  console.log(`      • QR Payload: ${escrowPin.qrPayload}`)
+
+  console.log("   2. Tentativa de liberação com PIN fraudulento ('0000'):")
+  const wrongPin = escrowPin.pin === "0000" ? "9999" : "0000"
+  const fraudAttempt = await validateEscrowRelease(bookingId, wrongPin, grossAmount)
+  if (fraudAttempt.success) throw new Error("Falha anti-fraude: PIN incorreto liberou custódia!")
+  console.log(`      ✅ Bloqueado: "${fraudAttempt.reason}"`)
+
+  console.log("   3. Cliente confirma atendimento e fornece o PIN correto:")
+  const validRelease = await validateEscrowRelease(bookingId, escrowPin.pin, grossAmount)
+  if (!validRelease.success)
+    throw new Error(`Falha na liberação de custódia: ${validRelease.reason}`)
+  console.log(`      ✅ Custódia liberada com sucesso via timingSafeEqual!`)
+  console.log(`      • Valor liberado: R$ ${validRelease.releasedAmount?.toFixed(2)}`)
+  console.log(`      • Data/Hora da liberação: ${validRelease.releasedAt}`)
+
+  console.log("   4. Proteção contra duplo resgate (replay attack):")
+  const replayAttempt = await validateEscrowRelease(bookingId, escrowPin.pin, grossAmount)
+  if (replayAttempt.success) throw new Error("Falha anti-replay: PIN reutilizado após consumo!")
+  console.log(`      ✅ Replay bloqueado: "${replayAttempt.reason}"\n`)
 
   // ── ETAPA 8: Split Financeiro da Taxa de Plataforma Severinno ───────────────
   console.log("💰 [ETAPA 8] Split Financeiro e Taxa da Plataforma")
-  const grossAmount = 250.0 // R$ 250,00
   const platformFee = grossAmount * FEE_RATE
   const netProviderPayout = grossAmount - platformFee
 
