@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, type Resolver } from "react-hook-form"
 import {
@@ -95,8 +96,27 @@ export function AuthModal() {
         <div className="flex flex-col md:flex-row">
           {/* Painel de Marca e Confiança — Visível em Desktop (Split Layout) */}
           <div className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-emerald-800 via-emerald-900 to-slate-950 p-7 text-white md:flex md:w-5/12">
-            <div className="pointer-events-none absolute -top-16 -left-16 size-48 rounded-full bg-emerald-500/20 blur-3xl" />
-            <div className="pointer-events-none absolute -right-16 -bottom-16 size-48 rounded-full bg-teal-500/20 blur-3xl" />
+            {/* Imagem de Fundo Sutil — Casal com Ferramentas (No espaço sem informação) */}
+            <div
+              className="pointer-events-none absolute inset-x-0 top-[45%] bottom-14 overflow-hidden select-none"
+              aria-hidden="true"
+            >
+              <Image
+                src="/auth-couple-tools.jpg"
+                alt=""
+                fill
+                priority
+                sizes="(max-width: 768px) 0vw, 400px"
+                className="object-cover object-[center_18%] opacity-30 mix-blend-luminosity brightness-110 contrast-125 filter"
+              />
+              {/* Gradientes de Fusão Suave: Integra com o fundo esmeralda sem competir com os textos */}
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-emerald-950" />
+              <div className="absolute inset-0 bg-gradient-to-b from-emerald-950/90 via-transparent to-slate-950/80" />
+              <div className="absolute inset-0 bg-gradient-to-r from-emerald-950/50 via-transparent to-emerald-950/50" />
+            </div>
+
+            <div className="pointer-events-none absolute -top-16 -left-16 size-48 rounded-full bg-emerald-500/15 blur-3xl" />
+            <div className="pointer-events-none absolute -right-16 -bottom-16 size-48 rounded-full bg-teal-500/15 blur-3xl" />
 
             <div className="relative z-10 space-y-6">
               <div className="flex items-center gap-2.5">
