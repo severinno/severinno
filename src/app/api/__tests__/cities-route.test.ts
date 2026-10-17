@@ -42,6 +42,8 @@ describe("GET /api/cities", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
+    expect(res.headers.get("Cache-Control")).toContain("public")
+    expect(res.headers.get("Cache-Control")).toContain("s-maxage=3600")
     const cities = (parsed.body as any).cities
     expect(cities).toHaveLength(2)
     expect(cities[0].name).toBe("São Paulo")

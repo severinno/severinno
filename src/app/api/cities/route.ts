@@ -5,6 +5,7 @@ import { db } from "@/lib/db"
 
 import { withRoute } from "@/lib/api-route"
 import { getCityConfig } from "@/lib/cities"
+import { cacheControlPublic } from "@/lib/api-server"
 
 // =============================================================================
 // GET /api/cities — List active cities with provider counts and config
@@ -26,20 +27,24 @@ export const GET = withRoute("api.cities.GET", async (_request) => {
     orderBy: { name: "asc" },
   })
 
-  return NextResponse.json({
-    cities: cities.map((c) => {
-      const cfg = getCityConfig(c.slug)
-      return {
-        id: c.id,
-        name: c.name,
-        slug: c.slug,
-        state: c.state,
-        lat: c.lat,
-        lng: c.lng,
-        providerCount: c._count.providers,
-        defaultRadiusKm: cfg?.defaultRadiusKm ?? 15,
-        minBookingAmount: cfg?.minBookingAmount ?? 50,
-      }
+  return cacheControlPublic(
+    NextResponse.json({
+      cities: cities.map((c) => {
+        const cfg = getCityConfig(c.slug)
+        return {
+          id: c.id,
+          name: c.name,
+          slug: c.slug,
+          state: c.state,
+          lat: c.lat,
+          lng: c.lng,
+          providerCount: c._count.providers,
+          defaultRadiusKm: cfg?.defaultRadiusKm ?? 15,
+          minBookingAmount: cfg?.minBookingAmount ?? 50,
+        }
+      }),
     }),
-  })
+    300,
+    3600,
+  )
 })
