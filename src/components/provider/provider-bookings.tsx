@@ -7,17 +7,20 @@ import {
   CalendarCheck,
   CheckCircle2,
   Clock,
-  CreditCard,
+  ExternalLink,
+  Hourglass,
+  Info,
   Loader2,
   MapPin,
   MessageSquare,
   MoreVertical,
-  Play,
-  X,
-  Info,
-  Radio,
-  ClipboardCheck,
   Navigation,
+  Play,
+  Radio,
+  Search,
+  Sparkles,
+  X,
+  ClipboardCheck,
 } from "lucide-react"
 
 import { ServiceDeliveryReportModal } from "@/components/shared/service-delivery-report-modal"
@@ -53,6 +56,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
 import {
   Pagination,
   PaginationContent,
@@ -133,9 +137,10 @@ const STATUS_TABS: Array<{ value: Tab; label: string }> = [
 // ---------------------------------------------------------------------------
 
 const PAY_BADGE_STYLES: Record<PaymentStatus, string> = {
-  PENDING: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
-  PAID: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  REFUNDED: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
+  PENDING:
+    "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 border-amber-200/50",
+  PAID: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200 border-emerald-200/50",
+  REFUNDED: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200 border-rose-200/50",
 }
 
 function initials(name?: string) {
@@ -165,115 +170,134 @@ function BookingDetailsDialog({
   onReport?: () => void
 }) {
   if (!booking) return null
-  const mapsUrl = `https://www.openstreetmap.org/?mlat=${booking.lat}&mlon=${booking.lng}#map=16/${booking.lat}/${booking.lng}`
+  const encodedAddress = encodeURIComponent(booking.address)
+  const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`
+  const wazeUrl = `https://waze.com/ul?q=${encodedAddress}&navigate=yes`
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Detalhes do agendamento</DialogTitle>
-          <DialogDescription className="tabular-nums">
+          <div className="flex items-center justify-between gap-2 pr-6">
+            <DialogTitle className="text-base font-semibold">Detalhes do Agendamento</DialogTitle>
+            <BookingStatusBadge status={booking.status} />
+          </div>
+          <DialogDescription className="text-xs tabular-nums">
             {formatDateTime(booking.scheduledAt)}
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-2">
-          <div className="flex items-center gap-3">
-            <Avatar className="size-10 border">
+
+        <div className="grid gap-4 py-2 text-sm">
+          {/* Card do Cliente */}
+          <div className="bg-muted/20 flex items-center gap-3.5 rounded-xl border p-3.5">
+            <Avatar className="size-11 border shadow-xs">
               {booking.client.avatarUrl ? (
                 <AvatarImage src={booking.client.avatarUrl} alt={booking.client.name} />
               ) : null}
-              <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+              <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
                 {initials(booking.client.name)}
               </AvatarFallback>
             </Avatar>
-            <div>
-              <p className="text-sm font-semibold">{booking.client.name}</p>
-              <p className="text-muted-foreground text-xs">Cliente</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-foreground font-semibold">{booking.client.name}</p>
+              <p className="text-muted-foreground text-xs">Cliente cadastrado no Severinno</p>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onMessage(booking.clientId)}
+              className="h-8 gap-1.5 text-xs"
+            >
+              <MessageSquare className="size-3.5" /> Mensagem
+            </Button>
           </div>
 
-          <div className="grid gap-2 rounded-lg border p-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Serviço</span>
-              <span className="font-medium">{booking.service.title}</span>
+          {/* Dados do Serviço & Pagamento */}
+          <div className="bg-card grid gap-2.5 rounded-xl border p-4 text-xs">
+            <div className="flex items-center justify-between py-0.5">
+              <span className="text-muted-foreground font-medium">Serviço</span>
+              <span className="text-foreground text-right font-semibold">
+                {booking.service.title}
+              </span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Status</span>
-              <BookingStatusBadge status={booking.status} />
+            <div className="flex items-center justify-between py-0.5">
+              <span className="text-muted-foreground font-medium">Data e Hora</span>
+              <span className="text-foreground font-medium tabular-nums">
+                {formatDate(booking.scheduledAt)} às {formatTime(booking.scheduledAt)}
+              </span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Pagamento</span>
+            <div className="flex items-center justify-between py-0.5">
+              <span className="text-muted-foreground font-medium">Forma de Pagamento</span>
               <div className="flex items-center gap-1.5">
                 <Badge
+                  variant="outline"
                   className={cn(
-                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                    "px-2 py-0.5 text-[10px] font-semibold",
                     PAY_BADGE_STYLES[booking.paymentStatus],
                   )}
                 >
                   {PAYMENT_STATUS_LABELS[booking.paymentStatus]}
                 </Badge>
-                <span className="text-muted-foreground flex items-center gap-1 text-xs">
-                  <CreditCard className="size-3" />
-                  {PAYMENT_METHOD_LABELS[booking.paymentMethod]}
+                <span className="text-muted-foreground text-xs font-medium">
+                  • {PAYMENT_METHOD_LABELS[booking.paymentMethod]}
                 </span>
               </div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Valor</span>
-              <span className="text-primary font-semibold tabular-nums">
+            <div className="mt-1 flex items-center justify-between border-t pt-2">
+              <span className="text-muted-foreground font-medium">Valor Total</span>
+              <span className="text-primary text-base font-bold tabular-nums">
                 {formatBRL(booking.amount)}
               </span>
             </div>
             {booking.quantity > 1 && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Quantidade</span>
-                <span className="text-sm tabular-nums">
+              <div className="text-muted-foreground flex justify-between">
+                <span>Detalhamento</span>
+                <span className="tabular-nums">
                   {booking.quantity} ×{" "}
                   {SERVICE_UNIT_SHORT[booking.unit as keyof typeof SERVICE_UNIT_SHORT] ??
                     booking.unit}
                 </span>
               </div>
             )}
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Data</span>
-              <span className="font-medium tabular-nums">
-                {formatDate(booking.scheduledAt)} às {formatTime(booking.scheduledAt)}
-              </span>
-            </div>
           </div>
 
-          <div className="grid gap-2 rounded-lg border p-3 text-sm">
-            <div className="flex items-start gap-2">
+          {/* Endereço & Rotas */}
+          <div className="bg-card space-y-2.5 rounded-xl border p-4">
+            <div className="flex items-start gap-2.5">
               <MapPin className="text-primary mt-0.5 size-4 shrink-0" />
-              <div>
-                <p className="text-muted-foreground text-xs">Endereço</p>
-                <p className="font-medium">{booking.address}</p>
-                <p className="text-muted-foreground text-xs">CEP: {booking.cep}</p>
-                <a
-                  href={mapsUrl}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="text-primary mt-1 inline-flex items-center gap-1 text-xs font-medium hover:underline"
-                >
-                  <MapPin className="size-3" /> Abrir no mapa
-                </a>
+              <div className="min-w-0 flex-1">
+                <p className="text-muted-foreground text-xs font-medium">Endereço do Local</p>
+                <p className="text-foreground text-xs leading-snug font-semibold">
+                  {booking.address}
+                </p>
+                <p className="text-muted-foreground mt-0.5 text-[11px]">CEP: {booking.cep}</p>
               </div>
+            </div>
+            <div className="flex items-center gap-2 border-t pt-1">
+              <Button variant="outline" size="sm" asChild className="h-7 flex-1 text-xs">
+                <a href={googleMapsUrl} target="_blank" rel="noreferrer">
+                  <Navigation className="mr-1 size-3 text-blue-500" /> Google Maps
+                </a>
+              </Button>
+              <Button variant="outline" size="sm" asChild className="h-7 flex-1 text-xs">
+                <a href={wazeUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink className="mr-1 size-3 text-cyan-500" /> Waze
+                </a>
+              </Button>
             </div>
           </div>
 
           {booking.notes && (
-            <div className="grid gap-1 rounded-lg border p-3 text-sm">
-              <p className="text-muted-foreground text-xs">Observações do cliente</p>
-              <p className="text-foreground">{booking.notes}</p>
+            <div className="bg-muted/10 space-y-1 rounded-xl border p-3.5">
+              <p className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">
+                Observações do Cliente
+              </p>
+              <p className="text-foreground text-xs leading-relaxed">{booking.notes}</p>
             </div>
           )}
-
-          {booking.status === "CONFIRMED" && (
-            <p className="text-muted-foreground text-xs">
-              Apenas o cliente pode concluir o agendamento após a execução do serviço.
-            </p>
-          )}
         </div>
-        <DialogFooter className="flex-wrap gap-2">
+
+        <DialogFooter className="flex-wrap gap-2 border-t pt-3">
           {onReport && (
             <Button
               variant="outline"
@@ -286,9 +310,6 @@ function BookingDetailsDialog({
               <ClipboardCheck className="size-4" /> Laudo & Checklist
             </Button>
           )}
-          <Button variant="outline" onClick={() => onMessage(booking.clientId)} className="gap-1.5">
-            <MessageSquare className="size-4" /> Enviar mensagem
-          </Button>
           <Button onClick={() => onOpenChange(false)}>Fechar</Button>
         </DialogFooter>
       </DialogContent>
@@ -304,6 +325,7 @@ export function ProviderBookings() {
   const qc = useQueryClient()
   const navigate = useViewStore((s) => s.navigate)
   const [tab, setTab] = React.useState<string>("PENDING")
+  const [search, setSearch] = React.useState("")
   const [page, setPage] = React.useState(1)
   const [detail, setDetail] = React.useState<Booking | null>(null)
   const [detailOpen, setDetailOpen] = React.useState(false)
@@ -344,19 +366,29 @@ export function ProviderBookings() {
     return c
   }, [allBookings])
 
+  // Filtragem combinada de tab e busca textual (Nielsen #7: Busca acelerada)
   const filtered = React.useMemo(() => {
-    const list = tab === "all" ? allBookings : allBookings.filter((b) => b.status === tab)
+    let list = tab === "all" ? allBookings : allBookings.filter((b) => b.status === tab)
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter(
+        (b) =>
+          b.client.name.toLowerCase().includes(q) ||
+          b.service.title.toLowerCase().includes(q) ||
+          b.address.toLowerCase().includes(q),
+      )
+    }
     return [...list].sort(
       (a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime(),
     )
-  }, [allBookings, tab])
+  }, [allBookings, tab, search])
 
   const pageSize = 10
   const total = filtered.length
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const pageItems = filtered.slice((page - 1) * pageSize, page * pageSize)
 
-  // Reset to page 1 on tab change (adjust state during render)
+  // Reset to page 1 on tab or search change
   const [prevTab, setPrevTab] = React.useState(tab)
   if (prevTab !== tab) {
     setPrevTab(tab)
@@ -389,27 +421,117 @@ export function ProviderBookings() {
   }
 
   return (
-    <div className="grid gap-6">
-      {/* Top Header - Nielsen #1 (Visibility of system status) & #8 (Aesthetic & minimalist design) */}
+    <div className="space-y-6">
+      {/* Top Header */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold tracking-tight">Agendamentos</h2>
+          <h2 className="text-foreground text-xl font-bold tracking-tight">
+            Gestão de Agendamentos
+          </h2>
           <p className="text-muted-foreground text-xs">
-            Gerencie seus compromissos, visualize rotas e acompanhe o status de cada serviço.
+            Acompanhe a esteira de atendimento em Governador Valadares com navegação GPS e check-in.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="px-2.5 py-1 text-xs font-semibold">
             {counts.all} {counts.all === 1 ? "agendamento" : "agendamentos"} no total
           </Badge>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="w-full overflow-x-auto sm:w-auto">
+      {/* Pipeline Strip / Cartões de Status (Nielsen #1: Visibilidade do estado do sistema) */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <button
+          type="button"
+          onClick={() => setTab("PENDING")}
+          className={cn(
+            "hover:border-primary/40 focus-visible:ring-primary/40 flex flex-col gap-1 rounded-xl border p-3.5 text-left transition-all focus-visible:ring-2 focus-visible:outline-none",
+            tab === "PENDING"
+              ? "border-amber-500/60 bg-amber-500/5 shadow-xs ring-1 ring-amber-500/20"
+              : "bg-card",
+          )}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground text-xs font-medium">Pendentes</span>
+            <Hourglass className="size-4 text-amber-500" />
+          </div>
+          <span className="text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400">
+            {counts.PENDING}
+          </span>
+          <span className="text-muted-foreground text-[10px]">Aguardando seu aceite</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setTab("CONFIRMED")}
+          className={cn(
+            "hover:border-primary/40 focus-visible:ring-primary/40 flex flex-col gap-1 rounded-xl border p-3.5 text-left transition-all focus-visible:ring-2 focus-visible:outline-none",
+            tab === "CONFIRMED"
+              ? "border-emerald-500/60 bg-emerald-500/5 shadow-xs ring-1 ring-emerald-500/20"
+              : "bg-card",
+          )}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground text-xs font-medium">Confirmados</span>
+            <CalendarCheck className="size-4 text-emerald-500" />
+          </div>
+          <span className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
+            {counts.CONFIRMED}
+          </span>
+          <span className="text-muted-foreground text-[10px]">Prontos para execução</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setTab("IN_PROGRESS")}
+          className={cn(
+            "hover:border-primary/40 focus-visible:ring-primary/40 flex flex-col gap-1 rounded-xl border p-3.5 text-left transition-all focus-visible:ring-2 focus-visible:outline-none",
+            tab === "IN_PROGRESS"
+              ? "border-sky-500/60 bg-sky-500/5 shadow-xs ring-1 ring-sky-500/20"
+              : "bg-card",
+          )}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground text-xs font-medium">Em Andamento</span>
+            <Radio className="size-4 animate-pulse text-sky-500" />
+          </div>
+          <span className="text-2xl font-bold tracking-tight text-sky-600 dark:text-sky-400">
+            {counts.IN_PROGRESS}
+          </span>
+          <span className="text-muted-foreground text-[10px]">Em trânsito ou no local</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setTab("COMPLETED")}
+          className={cn(
+            "hover:border-primary/40 focus-visible:ring-primary/40 flex flex-col gap-1 rounded-xl border p-3.5 text-left transition-all focus-visible:ring-2 focus-visible:outline-none",
+            tab === "COMPLETED"
+              ? "border-teal-500/60 bg-teal-500/5 shadow-xs ring-1 ring-teal-500/20"
+              : "bg-card",
+          )}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground text-xs font-medium">Concluídos</span>
+            <CheckCircle2 className="size-4 text-teal-500" />
+          </div>
+          <span className="text-2xl font-bold tracking-tight text-teal-600 dark:text-teal-400">
+            {counts.COMPLETED}
+          </span>
+          <span className="text-muted-foreground text-[10px]">Serviços finalizados</span>
+        </button>
+      </div>
+
+      {/* Toolbar: Tabs + Search Bar */}
+      <div className="flex flex-col items-stretch justify-between gap-3 border-b pb-4 sm:flex-row sm:items-center">
+        <Tabs value={tab} onValueChange={setTab} className="w-full sm:w-auto">
+          <TabsList className="bg-muted/60 w-full justify-start overflow-x-auto p-1 sm:w-auto">
             {STATUS_TABS.map((t) => (
-              <TabsTrigger key={t.value} value={t.value} className="flex-1 gap-1.5 sm:flex-none">
+              <TabsTrigger
+                key={t.value}
+                value={t.value}
+                className="flex-1 gap-1.5 text-xs sm:flex-none"
+              >
                 {t.label}
                 {counts[t.value] > 0 && (
                   <span className="bg-primary/15 text-primary ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums">
@@ -420,53 +542,48 @@ export function ProviderBookings() {
             ))}
           </TabsList>
         </Tabs>
-        <p className="text-muted-foreground text-xs tabular-nums">
-          Total: <strong className="text-foreground">{counts.all}</strong> agendamento
-          {counts.all === 1 ? "" : "s"}
-        </p>
+
+        {/* Campo de Busca Rápida */}
+        <div className="relative w-full sm:w-64">
+          <Search className="text-muted-foreground/70 absolute top-2.5 left-2.5 size-4" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por cliente, serviço..."
+            className="h-9 rounded-xl pl-9 text-xs"
+          />
+        </div>
       </div>
 
       {allQuery.isLoading ? (
         <div className="grid gap-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-muted/30 h-14 animate-pulse rounded-xl border" />
+            <div key={i} className="bg-muted/20 h-16 animate-pulse rounded-2xl border" />
           ))}
         </div>
       ) : pageItems.length === 0 ? (
         counts.all > 0 ? (
-          <div className="mx-auto flex max-w-md flex-col items-center gap-3 rounded-xl border border-dashed p-8 text-center">
-            <div className="flex size-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
-              <CalendarCheck className="size-6" />
+          <div className="bg-muted/10 mx-auto flex max-w-md flex-col items-center gap-3 rounded-2xl border border-dashed p-8 text-center">
+            <div className="bg-muted text-muted-foreground flex size-12 items-center justify-center rounded-2xl shadow-xs">
+              <CalendarCheck className="size-6 opacity-75" />
             </div>
             <div>
-              <p className="text-foreground text-sm font-semibold">
-                Nenhum agendamento com status &ldquo;
-                {STATUS_TABS.find((t) => t.value === tab)?.label}&rdquo;
-              </p>
+              <p className="text-foreground text-sm font-semibold">Nenhum agendamento encontrado</p>
               <p className="text-muted-foreground mt-1 text-xs">
-                Você possui {counts.all} agendamento{counts.all === 1 ? "" : "s"} registrado
-                {counts.all === 1 ? "" : "s"} em outras etapas.
+                {search.trim()
+                  ? `Nenhum resultado corresponde à busca "${search}".`
+                  : `Nenhum agendamento com status "${STATUS_TABS.find((t) => t.value === tab)?.label}".`}
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-              {counts.COMPLETED > 0 && tab !== "COMPLETED" && (
+              {search.trim() && (
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setTab("COMPLETED")}
+                  onClick={() => setSearch("")}
                   className="h-8 text-xs"
                 >
-                  Ver concluídos ({counts.COMPLETED})
-                </Button>
-              )}
-              {counts.CONFIRMED > 0 && tab !== "CONFIRMED" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setTab("CONFIRMED")}
-                  className="h-8 text-xs"
-                >
-                  Ver confirmados ({counts.CONFIRMED})
+                  Limpar busca
                 </Button>
               )}
               <Button
@@ -480,18 +597,20 @@ export function ProviderBookings() {
             </div>
           </div>
         ) : (
-          <div className="mx-auto flex max-w-lg flex-col items-center gap-4 rounded-xl border border-dashed p-10 text-center">
-            <div className="bg-muted text-muted-foreground flex size-12 items-center justify-center rounded-full">
-              <CalendarCheck className="size-6" />
+          <div className="bg-muted/10 mx-auto flex max-w-lg flex-col items-center gap-4 rounded-2xl border border-dashed p-10 text-center">
+            <div className="bg-primary/10 text-primary flex size-14 items-center justify-center rounded-2xl">
+              <Sparkles className="size-7" />
             </div>
-            <div className="space-y-1">
-              <p className="text-foreground text-base font-semibold">Nenhum agendamento ainda</p>
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                Quando um cliente solicitar um serviço pela vitrine de Governador Valadares, ele
-                aparecerá aqui com notificações imediatas e confirmação no WhatsApp.
+            <div className="space-y-1.5">
+              <p className="text-foreground text-base font-semibold">
+                Seus agendamentos aparecerão aqui
+              </p>
+              <p className="text-muted-foreground max-w-sm text-xs leading-relaxed">
+                Quando clientes em Governador Valadares contratarem seus serviços pela vitrine, você
+                receberá notificações em tempo real para confirmar e atender.
               </p>
             </div>
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -507,90 +626,117 @@ export function ProviderBookings() {
                 onClick={() => navigate("provider.services")}
                 className="h-8 gap-1.5 text-xs"
               >
-                Gerenciar serviços
+                Gerenciar catálogo de serviços
               </Button>
             </div>
           </div>
         )
       ) : (
         <>
-          {/* Desktop: table */}
-          <div className="hidden overflow-hidden rounded-xl border md:block">
+          {/* Desktop Table View */}
+          <div className="bg-card hidden overflow-hidden rounded-2xl border shadow-xs md:block">
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50 h-11">
-                  <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                    Cliente
+                <TableRow className="bg-muted/40 hover:bg-muted/40 h-11 border-b">
+                  <TableHead className="text-muted-foreground pl-4 text-[11px] font-semibold tracking-wider uppercase">
+                    Cliente & Local
                   </TableHead>
-                  <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                    Serviço
+                  <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
+                    Serviço Solicitado
                   </TableHead>
-                  <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                    Agendado para
+                  <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
+                    Data Agendada
                   </TableHead>
-                  <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                  <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
                     Status
                   </TableHead>
-                  <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                  <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
                     Pagamento
                   </TableHead>
-                  <TableHead className="text-muted-foreground text-right text-xs font-semibold tracking-wide uppercase">
-                    Valor
+                  <TableHead className="text-muted-foreground pr-4 text-right text-[11px] font-semibold tracking-wider uppercase">
+                    Valor Líquido
                   </TableHead>
-                  <TableHead className="w-12" />
+                  <TableHead className="w-12 pr-4" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {pageItems.map((b) => (
-                  <TableRow key={b.id} className="hover:bg-muted/30 h-14 transition-colors">
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Avatar className="size-8 border">
+                  <TableRow
+                    key={b.id}
+                    className="hover:bg-muted/30 h-16 border-b transition-colors last:border-b-0"
+                  >
+                    <TableCell className="pl-4">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="size-9 shrink-0 border shadow-xs">
                           {b.client.avatarUrl ? (
                             <AvatarImage src={b.client.avatarUrl} alt={b.client.name} />
                           ) : null}
-                          <AvatarFallback className="bg-primary text-primary-foreground text-[10px]">
+                          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
                             {initials(b.client.name)}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="truncate text-sm font-medium">{b.client.name}</span>
+                        <div className="min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => openDetail(b)}
+                            className="text-foreground block truncate text-left text-sm font-semibold hover:underline"
+                          >
+                            {b.client.name}
+                          </button>
+                          <span className="text-muted-foreground flex max-w-[220px] items-center gap-1 truncate text-[11px]">
+                            <MapPin className="text-muted-foreground/70 size-3 shrink-0" />
+                            <span className="truncate">{b.address}</span>
+                          </span>
+                        </div>
                       </div>
                     </TableCell>
-                    <TableCell className="max-w-[200px] truncate text-sm">
-                      {b.service.title}
+
+                    <TableCell className="max-w-[200px]">
+                      <p className="text-foreground truncate text-sm font-medium">
+                        {b.service.title}
+                      </p>
+                      {b.quantity > 1 && (
+                        <p className="text-muted-foreground text-[11px]">{b.quantity} un.</p>
+                      )}
                     </TableCell>
+
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="text-sm font-medium tabular-nums">
+                        <span className="text-foreground text-xs font-semibold tabular-nums">
                           {formatDate(b.scheduledAt)}
                         </span>
-                        <span className="text-muted-foreground text-xs tabular-nums">
+                        <span className="text-muted-foreground text-[11px] tabular-nums">
                           às {formatTime(b.scheduledAt)}
                         </span>
                       </div>
                     </TableCell>
+
                     <TableCell>
                       <BookingStatusBadge status={b.status} />
                     </TableCell>
+
                     <TableCell>
                       <div className="flex flex-col gap-0.5">
                         <Badge
+                          variant="outline"
                           className={cn(
-                            "inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                            "inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
                             PAY_BADGE_STYLES[b.paymentStatus],
                           )}
                         >
                           {PAYMENT_STATUS_LABELS[b.paymentStatus]}
                         </Badge>
-                        <span className="text-muted-foreground text-[10px]">
+                        <span className="text-muted-foreground pl-0.5 text-[10px]">
                           {PAYMENT_METHOD_LABELS[b.paymentMethod]}
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-right text-sm font-semibold tabular-nums">
+
+                    <TableCell className="text-foreground pr-4 text-right text-sm font-bold tabular-nums">
                       {formatBRL(b.amount)}
                     </TableCell>
-                    <TableCell>
+
+                    <TableCell className="pr-4">
                       <BookingActions
                         booking={b}
                         actioning={actioningId === b.id}
@@ -609,7 +755,7 @@ export function ProviderBookings() {
             </Table>
           </div>
 
-          {/* Mobile: cards */}
+          {/* Mobile Cards View */}
           <div className="grid gap-3 md:hidden">
             {pageItems.map((b) => (
               <BookingCard
@@ -629,6 +775,7 @@ export function ProviderBookings() {
         </>
       )}
 
+      {/* Paginação */}
       {pageCount > 1 && (
         <Pagination>
           <PaginationContent>
@@ -639,8 +786,8 @@ export function ProviderBookings() {
                 className={cn(page === 1 && "pointer-events-none opacity-50")}
               />
             </PaginationItem>
-            <PaginationItem className="px-3 text-sm tabular-nums">
-              {page} / {pageCount}
+            <PaginationItem className="text-muted-foreground px-3 text-xs font-semibold tabular-nums">
+              Página {page} de {pageCount}
             </PaginationItem>
             <PaginationItem>
               <PaginationNext
@@ -698,7 +845,7 @@ export function ProviderBookings() {
 }
 
 // ---------------------------------------------------------------------------
-// Booking actions dropdown
+// Booking actions dropdown / buttons
 // ---------------------------------------------------------------------------
 
 function BookingActions({
@@ -724,28 +871,31 @@ function BookingActions({
 }) {
   return (
     <div className="flex items-center justify-end gap-1.5">
-      {actioning && <Loader2 className="size-4 animate-spin" />}
+      {actioning && <Loader2 className="text-muted-foreground size-4 animate-spin" />}
+
       {booking.status === "PENDING" && (
         <Button
           size="sm"
           onClick={onConfirm}
           disabled={actioning}
-          className="h-8 gap-1.5 px-2.5 text-xs"
+          className="h-8 gap-1.5 px-3 text-xs font-semibold shadow-xs"
         >
           <CheckCircle2 className="size-3.5" /> Confirmar
         </Button>
       )}
+
       {booking.status === "CONFIRMED" && (
         <Button
           size="sm"
           variant="outline"
           onClick={onStart}
           disabled={actioning}
-          className="h-8 gap-1.5 px-2.5 text-xs"
+          className="border-primary/30 text-primary hover:bg-primary/5 h-8 gap-1.5 px-3 text-xs font-semibold shadow-xs"
         >
-          <Play className="size-3.5" /> Iniciar
+          <Play className="fill-primary/20 size-3.5" /> Iniciar
         </Button>
       )}
+
       {booking.status === "IN_PROGRESS" && (
         <>
           <LocationBroadcastButton bookingId={booking.id} />
@@ -754,13 +904,14 @@ function BookingActions({
               size="sm"
               variant="outline"
               onClick={onTransitHud}
-              className="h-8 gap-1.5 border-sky-500/40 px-2.5 text-xs text-sky-700 hover:bg-sky-50 dark:border-sky-700 dark:text-sky-300 dark:hover:bg-sky-950/30"
+              className="h-8 gap-1.5 border-sky-500/40 px-2.5 text-xs font-medium text-sky-700 hover:bg-sky-50 dark:border-sky-700 dark:text-sky-300 dark:hover:bg-sky-950/30"
             >
-              <Navigation className="size-3.5 text-sky-500" /> Modo Trânsito
+              <Navigation className="size-3.5 text-sky-500" /> Trânsito HUD
             </Button>
           )}
         </>
       )}
+
       {onReport &&
         (booking.status === "IN_PROGRESS" ||
           booking.status === "CONFIRMED" ||
@@ -769,20 +920,21 @@ function BookingActions({
             size="sm"
             variant="outline"
             onClick={onReport}
-            className="h-8 gap-1.5 border-emerald-500/40 px-2.5 text-xs text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+            className="h-8 gap-1.5 border-emerald-500/40 px-2.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
           >
             <ClipboardCheck className="size-3.5" /> Laudo
           </Button>
         )}
+
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="size-8" aria-label="Mais ações">
-            <MoreVertical className="size-4" />
+          <Button variant="ghost" size="icon" className="size-8 rounded-lg" aria-label="Mais ações">
+            <MoreVertical className="text-muted-foreground size-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align="end" className="w-48 rounded-xl">
           <DropdownMenuItem onClick={onDetail}>
-            <Info className="mr-2 size-4" /> Ver detalhes
+            <Info className="text-muted-foreground mr-2 size-4" /> Ver detalhes
           </DropdownMenuItem>
           {booking.status === "IN_PROGRESS" && onTransitHud && (
             <DropdownMenuItem onClick={onTransitHud}>
@@ -795,16 +947,16 @@ function BookingActions({
             </DropdownMenuItem>
           )}
           <DropdownMenuItem onClick={onMessage}>
-            <MessageSquare className="mr-2 size-4" /> Enviar mensagem
+            <MessageSquare className="mr-2 size-4 text-blue-500" /> Enviar mensagem
           </DropdownMenuItem>
           {booking.status === "PENDING" && (
             <DropdownMenuItem onClick={onConfirm}>
-              <CheckCircle2 className="mr-2 size-4" /> Confirmar
+              <CheckCircle2 className="mr-2 size-4 text-emerald-600" /> Confirmar
             </DropdownMenuItem>
           )}
           {booking.status === "CONFIRMED" && (
             <DropdownMenuItem onClick={onStart}>
-              <Play className="mr-2 size-4" /> Iniciar atendimento
+              <Play className="text-primary mr-2 size-4" /> Iniciar atendimento
             </DropdownMenuItem>
           )}
           {(booking.status === "PENDING" ||
@@ -838,7 +990,7 @@ function LocationBroadcastButton({ bookingId }: { bookingId: string }) {
       variant={isBroadcasting ? "default" : "outline"}
       onClick={toggle}
       className={cn(
-        "h-8 gap-1.5 px-2.5 text-xs transition-colors",
+        "h-8 gap-1.5 px-2.5 text-xs font-medium transition-colors",
         isBroadcasting && "animate-pulse bg-emerald-600 text-white hover:bg-emerald-700",
       )}
     >
@@ -874,48 +1026,45 @@ function BookingCard({
   onTransitHud?: () => void
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border p-4">
+    <div className="bg-card flex flex-col gap-3 rounded-2xl border p-4 shadow-xs">
       <div className="flex items-center gap-3">
-        <Avatar className="size-10 border">
+        <Avatar className="size-10 border shadow-xs">
           {booking.client.avatarUrl ? (
             <AvatarImage src={booking.client.avatarUrl} alt={booking.client.name} />
           ) : null}
-          <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
             {initials(booking.client.name)}
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <p className="leading-tight font-medium">{booking.client.name}</p>
+          <p className="text-foreground text-sm leading-tight font-semibold">
+            {booking.client.name}
+          </p>
           <p className="text-muted-foreground mt-0.5 truncate text-xs">{booking.service.title}</p>
         </div>
         <BookingStatusBadge status={booking.status} />
       </div>
 
-      <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-        <span className="flex items-center gap-1 tabular-nums">
-          <Clock className="size-3" />
+      <div className="text-muted-foreground my-1 flex flex-wrap items-center gap-x-3 gap-y-1 border-y py-2 text-xs">
+        <span className="text-foreground flex items-center gap-1 font-medium tabular-nums">
+          <Clock className="text-muted-foreground size-3" />
           {formatDate(booking.scheduledAt)} às {formatTime(booking.scheduledAt)}
         </span>
-        <span className="flex items-center gap-1">
-          <MapPin className="size-3" />
+        <span className="flex max-w-[240px] items-center gap-1 truncate">
+          <MapPin className="text-muted-foreground size-3" />
           <span className="truncate">{booking.address}</span>
         </span>
       </div>
 
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 pt-1">
         <div className="flex items-center gap-2">
-          <span className="text-primary text-sm font-semibold tabular-nums">
+          <span className="text-primary text-sm font-bold tabular-nums">
             {formatBRL(booking.amount)}
           </span>
-          {booking.quantity > 1 && (
-            <span className="text-muted-foreground text-[11px] tabular-nums">
-              {booking.quantity} ×{" "}
-              {SERVICE_UNIT_SHORT[booking.unit as keyof typeof SERVICE_UNIT_SHORT] ?? booking.unit}
-            </span>
-          )}
           <Badge
+            variant="outline"
             className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
               PAY_BADGE_STYLES[booking.paymentStatus],
             )}
           >
