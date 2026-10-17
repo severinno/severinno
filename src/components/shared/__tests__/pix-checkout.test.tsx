@@ -58,6 +58,7 @@ vi.mock("lucide-react", () => ({
   AlertTriangle: () => <svg />,
   RefreshCw: () => <svg />,
   Smartphone: () => <svg />,
+  ShieldCheck: () => <svg />,
 }))
 
 // ── Imports ────────────────────────────────────────────────────────────────

@@ -296,6 +296,8 @@ vi.mock("lucide-react", () => {
     ShieldCheck: LucideIcon,
     Sun: LucideIcon,
     Wallet: LucideIcon,
+    Copy: LucideIcon,
+    Sparkles: LucideIcon,
   }
 })
 

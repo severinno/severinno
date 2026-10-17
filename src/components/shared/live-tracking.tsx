@@ -26,6 +26,7 @@ import {
   ArrowRight,
   Loader2,
   WifiOff,
+  ShieldCheck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ensureMaplibreWorker } from "@/lib/maplibre-worker"
@@ -503,6 +504,29 @@ export function LiveTracking({
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Escrow Geofencing Protection Banner ── */}
+      <div className="dark:border-emerald-850 rounded-xl border border-emerald-500/30 bg-emerald-50/70 p-3.5 dark:bg-emerald-950/40">
+        <div className="flex items-start gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300">
+            <ShieldCheck className="size-5" />
+          </div>
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-bold text-emerald-950 dark:text-emerald-100">
+                Custódia Protegida com Geofencing
+              </span>
+              <span className="rounded-full bg-emerald-600/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                Governador Valadares
+              </span>
+            </div>
+            <p className="text-[11px] leading-relaxed text-emerald-800/90 dark:text-emerald-300/80">
+              O pagamento só é repassado ao prestador após ele estar presente no local e você
+              confirmar a conclusão do serviço com satisfação.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* ── Journey Timeline ── */}

@@ -25,6 +25,7 @@ import {
   AlertTriangle,
   RefreshCw,
   Smartphone,
+  ShieldCheck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
@@ -402,6 +403,23 @@ export function PixCheckout({
             </p>
             <p className="text-2xl font-bold text-emerald-700 tabular-nums dark:text-emerald-400">
               {formatBRL(amount)}
+            </p>
+          </div>
+
+          {/* Escrow Guarantee Trust Banner */}
+          <div className="w-full rounded-xl border border-emerald-300/60 bg-emerald-100/40 p-3 text-left dark:border-emerald-800/50 dark:bg-emerald-950/50">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <span className="text-xs font-semibold text-emerald-950 dark:text-emerald-100">
+                Custódia Protegida com Escrow
+              </span>
+              <span className="ml-auto rounded-full bg-emerald-600/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                Garantia 90 dias
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-emerald-800/90 dark:text-emerald-300/90">
+              O valor fica retido com segurança e só é transferido ao prestador após a conclusão do
+              serviço aprovada por você.
             </p>
           </div>
 
