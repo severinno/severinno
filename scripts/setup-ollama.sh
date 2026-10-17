@@ -25,6 +25,14 @@ OLLAMA_HOST="${OLLAMA_HOST:-127.0.0.1}"
 OLLAMA_PORT="${OLLAMA_PORT:-11434}"
 BASE_URL="http://${OLLAMA_HOST}:${OLLAMA_PORT}"
 
+if [ -z "${SEVERINNO_NETWORK:-}" ]; then
+  if docker network inspect severinno_backend >/dev/null 2>&1; then
+    export SEVERINNO_NETWORK="severinno_backend"
+  elif docker network inspect severinno_default >/dev/null 2>&1; then
+    export SEVERINNO_NETWORK="severinno_default"
+  fi
+fi
+
 echo "🧠 === [1/4] Verificando disponibilidade do Runtime Ollama em ${BASE_URL} ==="
 if curl -s "${BASE_URL}/api/tags" >/dev/null 2>&1; then
   echo "✅ Serviço Ollama já está em execução e respondendo no host (${BASE_URL})!"
