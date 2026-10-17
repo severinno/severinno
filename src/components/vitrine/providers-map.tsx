@@ -45,7 +45,7 @@ const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
 
-const SP_DEFAULT: [number, number] = [-46.6333, -23.5505]
+const GV_DEFAULT: [number, number] = [-41.9469, -18.8517] // Governador Valadares - MG
 
 const CLUSTER_MAX_ZOOM = 14
 const CLUSTER_RADIUS = 50
@@ -161,7 +161,7 @@ export default function ProvidersMap({
             },
           ],
         },
-        center: SP_DEFAULT,
+        center: hasUserLocation ? [userLngRef.current!, userLatRef.current!] : GV_DEFAULT,
         zoom: 12,
         attributionControl: { compact: true },
       })

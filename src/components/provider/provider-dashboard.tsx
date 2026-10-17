@@ -19,6 +19,7 @@ import {
   CalendarCheck,
   CalendarDays,
   CheckCircle2,
+  Compass,
   FileText,
   Loader2,
   MapPin,
@@ -282,6 +283,14 @@ export function ProviderDashboard() {
             className="h-9 gap-1.5"
           >
             <CalendarDays className="size-3.5" /> Ver agenda
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("provider.routes")}
+            className="h-9 gap-1.5"
+          >
+            <Compass className="size-3.5" /> Rotas do dia
           </Button>
           <Button size="sm" onClick={() => navigate("provider.services")} className="h-9 gap-1.5">
             <Plus className="size-3.5" /> Novo serviço

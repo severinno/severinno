@@ -268,50 +268,52 @@ export function OnboardingChecklist() {
           Um perfil completo ajuda os prestadores a enviarem orçamentos precisos e aumenta sua
           confiança.
         </p>
-        {steps.map((step, i) => (
-          <motion.div
-            key={step.key}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.06, duration: 0.25, ease: "easeOut" }}
-          >
-            <button
-              type="button"
-              onClick={() => openStep(step)}
-              className={cn(
-                "flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-all hover:shadow-sm",
-                step.done
-                  ? "border-emerald-200 bg-white/60 dark:border-emerald-900 dark:bg-emerald-950/20"
-                  : visitedSteps.has(step.key)
-                    ? "border-amber-300 bg-white hover:border-amber-400 dark:border-amber-800 dark:bg-slate-900"
-                    : "border-slate-200 bg-white hover:border-emerald-300 dark:border-slate-800 dark:bg-slate-900",
-              )}
+        <div className="grid gap-2 sm:grid-cols-2">
+          {steps.map((step, i) => (
+            <motion.div
+              key={step.key}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.06, duration: 0.25, ease: "easeOut" }}
             >
-              <span
+              <button
+                type="button"
+                onClick={() => openStep(step)}
                 className={cn(
-                  "flex size-8 shrink-0 items-center justify-center rounded-full",
+                  "flex h-full w-full items-center gap-3 rounded-lg border p-3 text-left transition-all hover:shadow-sm",
                   step.done
-                    ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400"
-                    : "bg-slate-100 text-slate-400 dark:bg-slate-800",
+                    ? "border-emerald-200 bg-white/60 dark:border-emerald-900 dark:bg-emerald-950/20"
+                    : visitedSteps.has(step.key)
+                      ? "border-amber-300 bg-white hover:border-amber-400 dark:border-amber-800 dark:bg-slate-900"
+                      : "border-slate-200 bg-white hover:border-emerald-300 dark:border-slate-800 dark:bg-slate-900",
                 )}
               >
-                {step.done ? <CheckCircle2 className="size-4" /> : step.icon}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p
+                <span
                   className={cn(
-                    "text-sm font-medium",
-                    step.done && "text-muted-foreground line-through",
+                    "flex size-8 shrink-0 items-center justify-center rounded-full",
+                    step.done
+                      ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400"
+                      : "bg-slate-100 text-slate-400 dark:bg-slate-800",
                   )}
                 >
-                  {step.label}
-                </p>
-                <p className="text-muted-foreground text-xs">{step.description}</p>
-              </div>
-              {!step.done && <ArrowRight className="text-muted-foreground size-4 shrink-0" />}
-            </button>
-          </motion.div>
-        ))}
+                  {step.done ? <CheckCircle2 className="size-4" /> : step.icon}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={cn(
+                      "text-sm font-medium",
+                      step.done && "text-muted-foreground line-through",
+                    )}
+                  >
+                    {step.label}
+                  </p>
+                  <p className="text-muted-foreground text-xs">{step.description}</p>
+                </div>
+                {!step.done && <ArrowRight className="text-muted-foreground size-4 shrink-0" />}
+              </button>
+            </motion.div>
+          ))}
+        </div>
 
         {/* Sound & vibration preferences */}
         <div className="mt-4 space-y-2 border-t pt-4">
