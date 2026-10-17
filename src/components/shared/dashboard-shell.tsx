@@ -38,12 +38,19 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
 import { APP_NAME, ROLE_LABELS, NOTIFICATION_TYPE_LABELS } from "@/lib/constants"
 import { formatRelative } from "@/lib/format"
 import { apiGet, apiPatch } from "@/lib/api"
-import { useTransactionNotificationSound, useWelcomeSound } from "@/lib/use-coin-sound"
+import { triggerHaptic } from "@/lib/haptics"
+import { useRealtime } from "@/hooks/use-realtime"
+import {
+  useCoinSound,
+  useTransactionNotificationSound,
+  useWelcomeSound,
+} from "@/lib/use-coin-sound"
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 import { MuteIndicator } from "@/components/shared/mute-indicator"
@@ -312,6 +319,115 @@ export function DashboardShell({
 
   // ---- Welcome sound on first panel entry (once per browser) ---------------
   useWelcomeSound()
+
+  // ---- Realtime notifications, bookings, quotes & messages -----------------
+  const { on: onRealtime } = useRealtime()
+  const { playCoin } = useCoinSound()
+
+  React.useEffect(() => {
+    // 1. In-app new notification received
+    const unbindNotif = onRealtime<{
+      id: string
+      type?: string
+      title?: string
+      content?: string
+      body?: string
+    }>("notification:new", (notif) => {
+      qc.invalidateQueries({ queryKey: ["notifications"] })
+      qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+      qc.invalidateQueries({ queryKey: ["provider", "dashboard"] })
+      triggerHaptic("medium")
+      try {
+        playCoin()
+      } catch {}
+
+      const routeKey = notif.type?.toUpperCase() ?? ""
+      const targetView = NOTIFICATION_ROUTES[routeKey] || "client.dashboard"
+      const label = notif.type ? NOTIFICATION_TYPE_LABELS[notif.type] : undefined
+
+      toast(notif.title || label || "Nova notificação", {
+        description: notif.content || notif.body || "Você tem uma nova notificação.",
+        action: {
+          label: "Ver",
+          onClick: () => navigate(targetView),
+        },
+      })
+    })
+
+    // 2. Booking status updated
+    const unbindBooking = onRealtime<{
+      bookingId: string
+      status: string
+      clientId: string
+      providerId: string
+    }>("booking:updated", (evt) => {
+      qc.invalidateQueries({ queryKey: ["bookings"] })
+      qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+      qc.invalidateQueries({ queryKey: ["provider", "agenda"] })
+      triggerHaptic("success")
+      const targetView = user?.role === "PROVIDER" ? "provider.agenda" : "client.bookings"
+
+      toast.info("Atualização no agendamento", {
+        description: `Status alterado para: ${evt.status}`,
+        action: {
+          label: "Ver Reserva",
+          onClick: () => navigate(targetView),
+        },
+      })
+    })
+
+    // 3. Quote updated
+    const unbindQuote = onRealtime<{
+      quoteId: string
+      status: string
+      clientId: string
+      providerId: string
+    }>("quote:updated", (evt) => {
+      qc.invalidateQueries({ queryKey: ["quotes"] })
+      qc.invalidateQueries({ queryKey: ["client", "quotes"] })
+      qc.invalidateQueries({ queryKey: ["provider", "quotes"] })
+      triggerHaptic("medium")
+      const targetView = user?.role === "PROVIDER" ? "provider.quotes" : "client.quotes"
+
+      toast.info("Atualização no orçamento", {
+        description: `Status atualizado para: ${evt.status}`,
+        action: {
+          label: "Ver Orçamento",
+          onClick: () => navigate(targetView),
+        },
+      })
+    })
+
+    // 4. Message received
+    const unbindMessage = onRealtime<{
+      id: string
+      fromId: string
+      toId: string
+      content: string
+      bookingId?: string | null
+    }>("message:new", (msg) => {
+      if (user?.id && msg.fromId === user.id) return
+      qc.invalidateQueries({ queryKey: ["messages"] })
+      qc.invalidateQueries({ queryKey: ["conversations"] })
+      triggerHaptic("selection")
+      const targetView = user?.role === "PROVIDER" ? "provider.messages" : "client.messages"
+
+      toast("Nova mensagem", {
+        description: msg.content.length > 50 ? `${msg.content.slice(0, 50)}...` : msg.content,
+        action: {
+          label: "Responder",
+          onClick: () => navigate(targetView),
+        },
+      })
+    })
+
+    return () => {
+      unbindNotif()
+      unbindBooking()
+      unbindQuote()
+      unbindMessage()
+    }
+  }, [onRealtime, qc, navigate, user?.id, user?.role, playCoin])
 
   const handleNav = (view: string) => {
     setMobileOpen(false)

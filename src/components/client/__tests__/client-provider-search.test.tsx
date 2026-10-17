@@ -149,7 +149,15 @@ vi.mock("@/lib/api", () => ({
 }))
 
 vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+}))
+
+vi.mock("@/components/vitrine/providers-map", () => ({
+  default: () => <div data-testid="mock-providers-map">Providers Map</div>,
+}))
+
+vi.mock("@/components/vitrine/compare-bar", () => ({
+  default: () => <div data-testid="mock-compare-bar">Compare Bar</div>,
 }))
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
@@ -275,6 +283,48 @@ describe("ClientProviderSearch — provider cards & actions", () => {
     fireEvent.click(messageButtons[0])
 
     expect(mockNavigate).toHaveBeenCalledWith("client.messages", { providerId: "prov-1" })
+  })
+
+  it("switches between list and interactive map views when clicking view mode toggle", async () => {
+    renderWithClient(<ClientProviderSearch />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Carlos Eletricista")).toBeDefined()
+    })
+
+    const mapToggle = screen.getByRole("button", { name: "Visualização em Mapa" })
+    fireEvent.click(mapToggle)
+
+    await waitFor(() => {
+      expect(screen.getByTestId("mock-providers-map")).toBeDefined()
+    })
+
+    const listToggle = screen.getByRole("button", { name: "Visualização em Lista" })
+    fireEvent.click(listToggle)
+
+    await waitFor(() => {
+      expect(screen.getByText("Carlos Eletricista")).toBeDefined()
+    })
+  })
+
+  it("toggles provider in comparison when clicking 'Comparar'", async () => {
+    renderWithClient(<ClientProviderSearch />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Carlos Eletricista")).toBeDefined()
+    })
+
+    const compareButtons = screen.getAllByRole("button", {
+      name: /Adicionar .* ao comparativo|Comparar/i,
+    })
+    expect(compareButtons.length).toBeGreaterThan(0)
+    fireEvent.click(compareButtons[0])
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Remover .* do comparativo|Comparando/i }),
+      ).toBeDefined()
+    })
   })
 })
 

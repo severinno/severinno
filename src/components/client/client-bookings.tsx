@@ -34,6 +34,7 @@ import {
   MoreHorizontal,
   Navigation,
   QrCode,
+  ShieldCheck,
   Sparkles,
   Star,
   XCircle,
@@ -83,6 +84,7 @@ import { LiveTracking } from "@/components/shared/live-tracking"
 import { ReceiptModal } from "@/components/shared/receipt-modal"
 import { ServiceDeliveryReportModal } from "@/components/shared/service-delivery-report-modal"
 import { CarePlanModal } from "@/components/shared/care-plan-modal"
+import { SafeImage } from "@/components/shared/safe-image"
 import {
   PageHeader,
   StatusBadge,
@@ -190,6 +192,7 @@ export function ClientBookings() {
   const [receiptBookingId, setReceiptBookingId] = React.useState<string | null>(null)
   const [reportBooking, setReportBooking] = React.useState<Booking | null>(null)
   const [carePlanBooking, setCarePlanBooking] = React.useState<Booking | null>(null)
+  const [escrowReleaseBooking, setEscrowReleaseBooking] = React.useState<Booking | null>(null)
 
   // Reset page when tab changes
   React.useEffect(() => {
@@ -274,10 +277,16 @@ export function ClientBookings() {
 
   const completeMutation = useMutation({
     mutationFn: (id: string) => apiPatch(`/api/bookings/${id}`, { status: "COMPLETED" }),
-    onSuccess: () => {
-      toast.success("Serviço marcado como concluído. Já pode avaliar!")
+    onSuccess: (_, id) => {
+      toast.success("Pagamento liberado e serviço concluído com sucesso!")
       qc.invalidateQueries({ queryKey: ["bookings"] })
       qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+
+      const target = allBookings.find((b) => b.id === id) || escrowReleaseBooking
+      setEscrowReleaseBooking(null)
+      if (target) {
+        setReviewBooking(target)
+      }
     },
     onError: (e: { message?: string }) => {
       toast.error(e?.message || "Não foi possível concluir o agendamento.")
@@ -363,7 +372,7 @@ export function ClientBookings() {
               booking={b}
               onViewDetails={() => setDetailsId(b.id)}
               onCancel={() => setCancelBooking(b)}
-              onComplete={() => completeMutation.mutate(b.id)}
+              onComplete={() => setEscrowReleaseBooking(b)}
               onReview={() => setReviewBooking(b)}
               onMessage={() => navigate("client.messages", { with: b.provider.id })}
               onViewProvider={() => openProvider(b.provider.id)}
@@ -563,6 +572,137 @@ export function ClientBookings() {
           }}
         />
       )}
+
+      {/* Escrow Release Dialog (One-Click Custody Release with Before/After Photos) */}
+      <Dialog
+        open={!!escrowReleaseBooking}
+        onOpenChange={(o) => !o && setEscrowReleaseBooking(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <span className="flex size-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                <ShieldCheck className="size-5" />
+              </span>
+              <DialogTitle className="text-base font-semibold">
+                Liberar Pagamento em Custódia
+              </DialogTitle>
+            </div>
+            <DialogDescription className="text-xs">
+              Garantia Severinno: Confirme que o serviço foi entregue com qualidade para liberar o
+              pagamento da custódia.
+            </DialogDescription>
+          </DialogHeader>
+
+          {escrowReleaseBooking && (
+            <div className="space-y-4 pt-1">
+              {/* Service & Provider Summary */}
+              <div className="border-border/60 bg-muted/20 flex items-center gap-3 rounded-xl border p-3">
+                <Avatar className="size-11 border">
+                  {escrowReleaseBooking.provider.avatarUrl ? (
+                    <AvatarImage
+                      src={escrowReleaseBooking.provider.avatarUrl}
+                      alt={escrowReleaseBooking.provider.name}
+                    />
+                  ) : null}
+                  <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
+                    {providerInitials(escrowReleaseBooking.provider.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="text-foreground truncate text-sm font-semibold">
+                    {escrowReleaseBooking.provider.name}
+                  </p>
+                  <p className="text-muted-foreground truncate text-xs">
+                    {escrowReleaseBooking.service.title}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                    {formatBRL(escrowReleaseBooking.amount)}
+                  </span>
+                  <p className="text-muted-foreground text-[10px]">Em custódia</p>
+                </div>
+              </div>
+
+              {/* Before/After Photos (if present) */}
+              {escrowReleaseBooking.beforePhotos?.length ||
+              escrowReleaseBooking.afterPhotos?.length ? (
+                <div className="border-border/60 bg-card space-y-2 rounded-xl border p-3">
+                  <p className="text-foreground text-xs font-semibold">
+                    Fotos do Serviço Realizado
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {escrowReleaseBooking.beforePhotos?.[0] && (
+                      <div className="border-border/40 bg-muted/40 relative aspect-video overflow-hidden rounded-lg border">
+                        <SafeImage
+                          src={escrowReleaseBooking.beforePhotos[0]}
+                          alt="Foto antes"
+                          className="h-full w-full object-cover"
+                        />
+                        <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-medium text-white">
+                          Antes
+                        </span>
+                      </div>
+                    )}
+                    {escrowReleaseBooking.afterPhotos?.[0] && (
+                      <div className="border-border/40 bg-muted/40 relative aspect-video overflow-hidden rounded-lg border">
+                        <SafeImage
+                          src={escrowReleaseBooking.afterPhotos[0]}
+                          alt="Foto depois"
+                          className="h-full w-full object-cover"
+                        />
+                        <span className="absolute bottom-1 left-1 rounded bg-emerald-600/90 px-1.5 py-0.5 text-[9px] font-medium text-white">
+                          Depois
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Completion note if provided */}
+              {escrowReleaseBooking.completionNote && (
+                <div className="border-border/50 bg-muted/20 text-muted-foreground rounded-xl border p-2.5 text-xs">
+                  <strong className="text-foreground">Nota do prestador: </strong>
+                  {escrowReleaseBooking.completionNote}
+                </div>
+              )}
+
+              {/* Security reassurance banner */}
+              <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-xs text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-200">
+                <ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <span>
+                  Ao confirmar, os <strong>{formatBRL(escrowReleaseBooking.amount)}</strong>{" "}
+                  mantidos sob custódia protegida serão liberados na hora para o prestador.
+                </span>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 pt-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setEscrowReleaseBooking(null)} className="h-9">
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (escrowReleaseBooking) {
+                  completeMutation.mutate(escrowReleaseBooking.id)
+                }
+              }}
+              disabled={completeMutation.isPending}
+              className="h-9 gap-1.5 bg-emerald-600 font-medium text-white hover:bg-emerald-700"
+            >
+              {completeMutation.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="size-4" />
+              )}
+              Confirmar e Liberar Pagamento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -605,7 +745,8 @@ function BookingCard({
 
   const status = booking.status as BookingStatus
   const canCancel = status === "PENDING" || status === "CONFIRMED" || status === "IN_PROGRESS"
-  const canComplete = status === "CONFIRMED" || status === "IN_PROGRESS"
+  const canComplete =
+    status === "CONFIRMED" || status === "IN_PROGRESS" || booking.paymentStatus === "HELD"
   const canTrack = status === "IN_PROGRESS"
   const canPay = !!onPay
   const hasReview = (booking.reviews?.length ?? 0) > 0
@@ -716,8 +857,8 @@ function BookingCard({
               <DropdownMenuSeparator />
               {canComplete ? (
                 <DropdownMenuItem onSelect={onComplete} disabled={isCompleting}>
-                  <CheckCircle2 className="size-4 text-emerald-600" />
-                  Marcar como concluído
+                  <ShieldCheck className="size-4 text-emerald-600" />
+                  {booking.paymentStatus === "HELD" ? "Liberar custódia" : "Concluir e liberar"}
                 </DropdownMenuItem>
               ) : null}
               {canReview ? (
@@ -816,13 +957,18 @@ function BookingCard({
             </Button>
           ) : null}
           {canComplete ? (
-            <Button size="sm" onClick={onComplete} disabled={isCompleting} className="h-9 gap-1.5">
+            <Button
+              size="sm"
+              onClick={onComplete}
+              disabled={isCompleting}
+              className="h-9 gap-1.5 bg-emerald-600 font-medium text-white shadow-2xs hover:bg-emerald-700"
+            >
               {isCompleting ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
-                <CheckCircle2 className="size-4" />
+                <ShieldCheck className="size-4" />
               )}
-              Concluir
+              {booking.paymentStatus === "HELD" ? "Liberar Custódia" : "Liberar Pagamento"}
             </Button>
           ) : null}
           {canReview ? (

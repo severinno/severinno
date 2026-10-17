@@ -18,6 +18,7 @@ import {
   Clock,
   CreditCard,
   RotateCcw,
+  ShieldCheck,
   Wallet,
   XCircle,
   SlidersHorizontal,
@@ -91,13 +92,25 @@ function initials(name?: string) {
 const PAY_BADGE_STYLES: Record<PaymentStatus, string> = {
   PENDING:
     "border-amber-200 bg-amber-50/60 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+  AUTHORIZED:
+    "border-blue-200 bg-blue-50/60 text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300",
+  HELD: "border-indigo-200 bg-indigo-50/60 text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300",
   PAID: "border-emerald-200 bg-emerald-50/60 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
   REFUNDED:
+    "border-rose-200 bg-rose-50/60 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300",
+  FAILED:
     "border-rose-200 bg-rose-50/60 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300",
 }
 
 function PayStatusBadge({ status }: { status: PaymentStatus }) {
-  const Icon = status === "PAID" ? CheckCircle2 : status === "PENDING" ? Clock : RotateCcw
+  const Icon =
+    status === "PAID"
+      ? CheckCircle2
+      : status === "HELD" || status === "AUTHORIZED"
+        ? ShieldCheck
+        : status === "PENDING"
+          ? Clock
+          : RotateCcw
   return (
     <Badge
       variant="outline"

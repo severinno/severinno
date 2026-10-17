@@ -10,13 +10,15 @@ const BookingModal = dynamic(
   { ssr: false },
 )
 
+const CompareModal = dynamic(() => import("@/components/vitrine/compare-modal"), { ssr: false })
+
 /**
  * Single host that mounts every flow modal in the app.
  *
- * Each modal reads its own open-state from `useUIStore`, so this component
- * has no props — mount it once at the app shell (next to the main view).
+ * Each modal reads its own open-state from `useUIStore` or `useCompareStore`,
+ * so this component has no props — mount it once at the app shell (next to the main view).
  *
- * BookingModal is lazy-loaded via next/dynamic to reduce initial bundle size.
+ * BookingModal and CompareModal are lazy-loaded via next/dynamic to reduce initial bundle size.
  */
 export function ModalsHost() {
   return (
@@ -25,6 +27,7 @@ export function ModalsHost() {
       <ProviderProfileModal />
       <QuoteModal />
       <BookingModal />
+      <CompareModal />
     </>
   )
 }

@@ -104,7 +104,14 @@ const BOOKING_STATUS_ORDER: BookingStatus[] = [
   "CANCELLED",
 ]
 
-const PAYMENT_STATUS_ORDER: PaymentStatus[] = ["PAID", "PENDING", "REFUNDED"]
+const PAYMENT_STATUS_ORDER: PaymentStatus[] = [
+  "PAID",
+  "PENDING",
+  "HELD",
+  "AUTHORIZED",
+  "REFUNDED",
+  "FAILED",
+]
 
 // ---------------------------------------------------------------------------
 // Chart colors — cohesive palette
@@ -113,7 +120,10 @@ const PAYMENT_STATUS_ORDER: PaymentStatus[] = ["PAID", "PENDING", "REFUNDED"]
 const PIE_COLORS: Record<PaymentStatus, string> = {
   PAID: "hsl(160, 84%, 39%)", // emerald-500
   PENDING: "hsl(38, 92%, 50%)", // amber-500
+  HELD: "hsl(238, 84%, 60%)", // indigo-500
+  AUTHORIZED: "hsl(199, 89%, 48%)", // sky-500
   REFUNDED: "hsl(240, 6%, 50%)", // zinc-500
+  FAILED: "hsl(0, 84%, 60%)", // red-500
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +169,10 @@ export function AdminDashboard({ onNavigate }: { onNavigate: (view: string) => v
   const revenueByPayment: Record<PaymentStatus, number> = {
     PAID: 0,
     PENDING: 0,
+    HELD: 0,
+    AUTHORIZED: 0,
     REFUNDED: 0,
+    FAILED: 0,
   }
   for (const b of data.recentBookings) {
     const ps = b.paymentStatus as PaymentStatus

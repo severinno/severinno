@@ -17,10 +17,13 @@
  */
 
 import * as React from "react"
+import dynamic from "next/dynamic"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   ChevronRight,
+  GitCompare,
   Heart,
+  LayoutGrid,
   Loader2,
   MapPin,
   MessageSquare,
@@ -48,6 +51,7 @@ import { formatDistance } from "@/lib/geo-client"
 import { triggerHaptic } from "@/lib/haptics"
 import { cn } from "@/lib/utils"
 import { useAuthStore } from "@/store/auth"
+import { useCompareStore, MAX_COMPARE } from "@/store/compare"
 import { useGeoStore } from "@/store/geo"
 import { useUIStore } from "@/store/ui"
 import { useViewStore } from "@/store/view"
@@ -65,6 +69,19 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+
+const ProvidersMap = dynamic(() => import("@/components/vitrine/providers-map"), {
+  ssr: false,
+  loading: () => (
+    <div className="border-border/60 bg-muted/20 flex h-[540px] w-full items-center justify-center rounded-2xl border">
+      <Loader2 className="text-primary size-8 animate-spin" />
+    </div>
+  ),
+})
+
+const CompareBar = dynamic(() => import("@/components/vitrine/compare-bar"), {
+  ssr: false,
+})
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -143,6 +160,14 @@ export function ClientProviderSearch() {
   )
   const [onlyVerified, setOnlyVerified] = React.useState<boolean>(false)
   const [minRating, setMinRating] = React.useState<number | null>(null)
+
+  // View mode (grid vs interactive map)
+  const [viewMode, setViewMode] = React.useState<"grid" | "map">("grid")
+  const [selectedMapProviderId, setSelectedMapProviderId] = React.useState<string | null>(null)
+
+  // Compare store integration
+  const compareIds = useCompareStore((s) => s.ids)
+  const toggleCompare = useCompareStore((s) => s.toggle)
 
   // Debounce search input
   React.useEffect(() => {
@@ -236,6 +261,12 @@ export function ClientProviderSearch() {
       return dist.includes(target)
     })
   }, [providersQuery.data?.items, selectedNeighborhood])
+
+  // Selected provider in map view preview
+  const selectedMapProvider = React.useMemo(() => {
+    if (!selectedMapProviderId) return null
+    return providers.find((p) => p.id === selectedMapProviderId) ?? null
+  }, [providers, selectedMapProviderId])
 
   // Active filters count
   const hasActiveFilters = Boolean(
@@ -508,9 +539,49 @@ export function ClientProviderSearch() {
           </button>
         </div>
 
-        {/* Right side: Sort By & Reset */}
-        <div className="border-border/40 flex items-center justify-between gap-2 border-t pt-2 sm:justify-end md:border-t-0 md:pt-0">
-          <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
+        {/* Right side: View Mode, Sort By & Reset */}
+        <div className="border-border/40 flex flex-wrap items-center justify-between gap-2 border-t pt-2 sm:justify-end md:border-t-0 md:pt-0">
+          {/* View mode toggle */}
+          <div className="border-border/60 bg-muted/30 flex items-center gap-1 rounded-xl border p-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic("selection")
+                setViewMode("grid")
+              }}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all",
+                viewMode === "grid"
+                  ? "bg-background text-foreground font-semibold shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              title="Visualização em Lista / Grade"
+              aria-label="Visualização em Lista"
+            >
+              <LayoutGrid className="size-3.5" />
+              <span>Lista</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic("selection")
+                setViewMode("map")
+              }}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all",
+                viewMode === "map"
+                  ? "bg-background text-foreground font-semibold shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              title="Visualização em Mapa Interativo"
+              aria-label="Visualização em Mapa"
+            >
+              <MapPin className="size-3.5" />
+              <span>Mapa</span>
+            </button>
+          </div>
+
+          <div className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex">
             <SlidersHorizontal className="size-3.5" />
             <span>Ordenar:</span>
           </div>
@@ -627,6 +698,106 @@ export function ClientProviderSearch() {
             )}
           </CardContent>
         </Card>
+      ) : viewMode === "map" ? (
+        <div className="border-border/60 relative h-[560px] w-full overflow-hidden rounded-2xl border shadow-2xs">
+          <ProvidersMap
+            providers={providers}
+            userLat={geoLat}
+            userLng={geoLng}
+            radius={radiusKm ?? undefined}
+            onRadiusChange={(r) => setRadiusKm(r)}
+            selectedId={selectedMapProviderId}
+            onSelectProvider={(id) => setSelectedMapProviderId(id)}
+            className="h-full w-full"
+          />
+
+          {/* Floating Selected Provider Mini-Card */}
+          {selectedMapProvider && (
+            <div className="absolute right-4 bottom-4 left-4 z-20 sm:right-auto sm:max-w-md">
+              <Card className="border-border/80 bg-background/95 supports-[backdrop-filter]:bg-background/85 relative rounded-2xl border p-4 shadow-xl backdrop-blur-md">
+                <button
+                  type="button"
+                  onClick={() => setSelectedMapProviderId(null)}
+                  className="text-muted-foreground hover:text-foreground absolute top-3 right-3 rounded-full p-1 transition-colors"
+                  aria-label="Fechar prévia"
+                >
+                  <X className="size-4" />
+                </button>
+                <div className="flex items-center gap-3">
+                  <Avatar className="border-border/40 size-12 border shadow-2xs">
+                    <AvatarImage
+                      src={selectedMapProvider.avatarUrl || undefined}
+                      alt={selectedMapProvider.name}
+                    />
+                    <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                      {getInitials(selectedMapProvider.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1 pr-6">
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="text-foreground truncate text-sm font-semibold">
+                        {selectedMapProvider.name}
+                      </h4>
+                      {selectedMapProvider.verified && (
+                        <ShieldCheck className="size-4 shrink-0 text-emerald-600" />
+                      )}
+                    </div>
+                    <div className="text-muted-foreground flex items-center gap-2 text-xs">
+                      <span className="text-foreground flex items-center gap-1 font-semibold">
+                        <Star className="size-3.5 fill-amber-400 text-amber-400" />
+                        {selectedMapProvider.rating > 0
+                          ? selectedMapProvider.rating.toFixed(1)
+                          : "Novo"}
+                      </span>
+                      <span>•</span>
+                      <span>
+                        {typeof selectedMapProvider.distanceKm === "number" &&
+                        selectedMapProvider.distanceKm >= 0
+                          ? formatDistance(selectedMapProvider.distanceKm)
+                          : selectedMapProvider.district || "Governador Valadares"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      openQuote({ providerId: selectedMapProvider.id })
+                    }}
+                    className="bg-primary text-primary-foreground hover:bg-primary/90 h-8 flex-1 rounded-xl text-xs font-semibold shadow-2xs"
+                  >
+                    Orçamento
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      openBooking({ providerId: selectedMapProvider.id })
+                    }}
+                    className="border-border/60 hover:bg-muted/60 h-8 flex-1 rounded-xl text-xs font-medium"
+                  >
+                    Agendar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      openProvider(selectedMapProvider.id)
+                    }}
+                    className="border-border/60 hover:bg-muted/60 h-8 rounded-xl px-2.5 text-xs font-medium"
+                  >
+                    Ver perfil
+                  </Button>
+                </div>
+              </Card>
+            </div>
+          )}
+        </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {providers.map((p) => {
@@ -637,14 +808,27 @@ export function ClientProviderSearch() {
               p.district &&
               p.district.trim().toLowerCase() === geoDistrict.trim().toLowerCase(),
             )
+            const isCompared = compareIds.includes(p.id)
+            const formattedDist =
+              typeof p.distanceKm === "number" && p.distanceKm >= 0
+                ? formatDistance(p.distanceKm)
+                : p.district || p.city || "Governador Valadares"
 
             return (
               <Card
                 key={p.id}
-                className="group border-border/60 bg-card hover:border-primary/40 relative flex flex-col justify-between overflow-hidden rounded-2xl p-4 transition-all hover:shadow-md sm:p-5"
+                data-provider-id={p.id}
+                data-compare-name={p.name}
+                data-compare-avatar={p.avatarUrl || ""}
+                data-compare-distance={formattedDist}
+                data-compare-distance-km={typeof p.distanceKm === "number" ? p.distanceKm : ""}
+                className={cn(
+                  "group border-border/60 bg-card hover:border-primary/40 relative flex flex-col justify-between overflow-hidden rounded-2xl p-4 transition-all hover:shadow-md sm:p-5",
+                  isCompared && "border-primary/50 ring-primary/20 ring-1",
+                )}
               >
                 <div className="space-y-3">
-                  {/* Top Header: Avatar + Info + Favorite */}
+                  {/* Top Header: Avatar + Info + Favorite & Compare */}
                   <div className="flex items-start justify-between gap-3">
                     <div
                       className="flex min-w-0 cursor-pointer items-center gap-3"
@@ -693,33 +877,66 @@ export function ClientProviderSearch() {
 
                           <span className="flex items-center gap-1 truncate">
                             <MapPin className="text-muted-foreground size-3 shrink-0" />
-                            {typeof p.distanceKm === "number" && p.distanceKm >= 0
-                              ? formatDistance(p.distanceKm)
-                              : p.district || p.city || "Governador Valadares"}
+                            {formattedDist}
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Favorite Heart Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        triggerHaptic("selection")
-                        favMutation.mutate(p.id)
-                      }}
-                      className="text-muted-foreground hover:bg-muted/50 rounded-lg p-1.5 transition-colors hover:text-rose-500"
-                      title={isFav ? "Remover dos favoritos" : "Salvar nos favoritos"}
-                      aria-label={isFav ? "Remover dos favoritos" : "Salvar nos favoritos"}
-                    >
-                      <Heart
+                    <div className="flex items-center gap-1">
+                      {/* Compare Toggle Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          triggerHaptic("selection")
+                          if (!isCompared && compareIds.length >= MAX_COMPARE) {
+                            toast.warning(
+                              `Você pode comparar até ${MAX_COMPARE} prestadores simultaneamente.`,
+                            )
+                            return
+                          }
+                          toggleCompare(p.id)
+                        }}
                         className={cn(
-                          "size-4 transition-transform active:scale-125",
-                          isFav ? "fill-rose-500 text-rose-500" : "text-muted-foreground",
+                          "flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-all",
+                          isCompared
+                            ? "bg-primary text-primary-foreground font-semibold shadow-2xs"
+                            : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                         )}
-                      />
-                    </button>
+                        title={isCompared ? "Remover do comparativo" : "Adicionar ao comparativo"}
+                        aria-label={
+                          isCompared
+                            ? `Remover ${p.name} do comparativo`
+                            : `Adicionar ${p.name} ao comparativo`
+                        }
+                      >
+                        <GitCompare className="size-3.5" />
+                        <span className="hidden sm:inline">
+                          {isCompared ? "Comparando" : "Comparar"}
+                        </span>
+                      </button>
+
+                      {/* Favorite Heart Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          triggerHaptic("selection")
+                          favMutation.mutate(p.id)
+                        }}
+                        className="text-muted-foreground hover:bg-muted/50 rounded-lg p-1.5 transition-colors hover:text-rose-500"
+                        title={isFav ? "Remover dos favoritos" : "Salvar nos favoritos"}
+                        aria-label={isFav ? "Remover dos favoritos" : "Salvar nos favoritos"}
+                      >
+                        <Heart
+                          className={cn(
+                            "size-4 transition-transform active:scale-125",
+                            isFav ? "fill-rose-500 text-rose-500" : "text-muted-foreground",
+                          )}
+                        />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Neighborhood badge if matched */}
@@ -829,6 +1046,9 @@ export function ClientProviderSearch() {
           })}
         </div>
       )}
+
+      {/* Floating Compare Dock (mounted anywhere ≥1 provider selected) */}
+      <CompareBar />
     </div>
   )
 }

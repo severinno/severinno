@@ -102,7 +102,7 @@ export const BOOKING_STATUS_COLORS: Record<BookingStatus, string> = {
 // PAYMENT
 // ---------------------------------------------------------------------------
 export type PaymentMethod = "CARD" | "PIX"
-export type PaymentStatus = "PENDING" | "PAID" | "REFUNDED"
+export type PaymentStatus = "PENDING" | "AUTHORIZED" | "HELD" | "PAID" | "REFUNDED" | "FAILED"
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CARD: "Cartão",
@@ -111,14 +111,20 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 
 export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   PENDING: "Pagamento pendente",
+  AUTHORIZED: "Autorizado",
+  HELD: "Em custódia protegida",
   PAID: "Pago",
   REFUNDED: "Estornado",
+  FAILED: "Falhou",
 }
 
 export const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
   PENDING: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
+  AUTHORIZED: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200",
+  HELD: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200",
   PAID: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
   REFUNDED: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200",
+  FAILED: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200",
 }
 
 // ---------------------------------------------------------------------------
