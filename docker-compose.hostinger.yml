@@ -103,6 +103,8 @@ services:
     mem_limit: 1536m
     cpus: 1.5
     environment:
+      UV_THREADPOOL_SIZE: "64"
+      NODE_OPTIONS: "--max-old-space-size=1536"
       NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-wss://severinno.com}
       SMTP_FROM: ${SMTP_FROM:-noreply@severinno.com}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@severinno.com}
@@ -138,6 +140,8 @@ services:
   rabbitmq:
     mem_limit: 512m
     cpus: 0.5
+    environment:
+      RABBITMQ_VM_MEMORY_HIGH_WATERMARK: "384MB"
 
   realtime:
     mem_limit: 384m

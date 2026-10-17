@@ -123,6 +123,11 @@
       header_up X-Forwarded-For {remote_host}
       header_up X-Forwarded-Proto {scheme}
 
+      transport http {
+        keepalive 90s
+        keepalive_idle_conns 256
+      }
+
       # Health check pass-through (Caddy monitora saúde do backend)
       health_uri /api/health
       health_interval 30s
