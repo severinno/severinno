@@ -96,25 +96,6 @@ export function AuthModal() {
         <div className="flex flex-col md:flex-row">
           {/* Painel de Marca e Confiança — Visível em Desktop (Split Layout) */}
           <div className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-emerald-800 via-emerald-900 to-slate-950 p-7 text-white md:flex md:w-5/12">
-            {/* Imagem de Fundo Sutil — Casal com Ferramentas (No espaço sem informação) */}
-            <div
-              className="pointer-events-none absolute inset-x-0 top-[45%] bottom-14 overflow-hidden select-none"
-              aria-hidden="true"
-            >
-              <Image
-                src="/auth-couple-tools.jpg"
-                alt=""
-                fill
-                priority
-                sizes="(max-width: 768px) 0vw, 400px"
-                className="object-cover object-[center_18%] opacity-30 mix-blend-luminosity brightness-110 contrast-125 filter"
-              />
-              {/* Gradientes de Fusão Suave: Integra com o fundo esmeralda sem competir com os textos */}
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-emerald-950" />
-              <div className="absolute inset-0 bg-gradient-to-b from-emerald-950/90 via-transparent to-slate-950/80" />
-              <div className="absolute inset-0 bg-gradient-to-r from-emerald-950/50 via-transparent to-emerald-950/50" />
-            </div>
-
             <div className="pointer-events-none absolute -top-16 -left-16 size-48 rounded-full bg-emerald-500/15 blur-3xl" />
             <div className="pointer-events-none absolute -right-16 -bottom-16 size-48 rounded-full bg-teal-500/15 blur-3xl" />
 
@@ -168,6 +149,30 @@ export function AuthModal() {
                   </span>
                 </li>
               </ul>
+
+              {/* Destaque Visual Clean & Minimalista — Casal com Ferramentas em GV */}
+              <div className="relative mt-4 overflow-hidden rounded-2xl border border-emerald-500/30 bg-emerald-950/60 shadow-xl">
+                <div className="relative h-40 w-full sm:h-44">
+                  <Image
+                    src="/auth-couple-tools.jpg"
+                    alt="Casal de profissionais parceiros com ferramentas em Governador Valadares"
+                    fill
+                    priority
+                    sizes="(max-width: 768px) 0vw, 380px"
+                    className="object-cover object-[center_20%]"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/20 to-transparent" />
+                  <div className="absolute right-3 bottom-2.5 left-3 flex items-center justify-between text-[11px]">
+                    <span className="inline-flex items-center gap-1 font-semibold text-white drop-shadow-sm">
+                      <Sparkles className="size-3 text-amber-300" />
+                      Profissionais em GV
+                    </span>
+                    <span className="rounded-full bg-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-100 backdrop-blur-md">
+                      Verificados
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="relative z-10 mt-6 border-t border-emerald-800/60 pt-5">
