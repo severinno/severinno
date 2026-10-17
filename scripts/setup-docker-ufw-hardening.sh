@@ -49,10 +49,11 @@ iptables -A DOCKER-USER -s 172.16.0.0/12 -j ACCEPT
 iptables -A DOCKER-USER -s 10.0.0.0/8 -j ACCEPT
 iptables -A DOCKER-USER -s 192.168.0.0/16 -j ACCEPT
 
-# Permite portas de entrada públicas (Caddy Reverse Proxy)
+# Permite portas de entrada públicas (Caddy Reverse Proxy e Grafana Monitoring)
 iptables -A DOCKER-USER -p tcp -m tcp --dport 80 -j ACCEPT
 iptables -A DOCKER-USER -p tcp -m tcp --dport 443 -j ACCEPT
 iptables -A DOCKER-USER -p udp -m udp --dport 443 -j ACCEPT
+iptables -A DOCKER-USER -p tcp -m tcp --dport 3000 -j ACCEPT
 
 # Bloqueia qualquer tráfego vindo da interface externa para outras portas de contêineres
 iptables -A DOCKER-USER -i "$EXT_IFACE" -j DROP
@@ -85,6 +86,7 @@ if [ -f "$UFW_AFTER" ]; then
 -A DOCKER-USER -p tcp -m tcp --dport 80 -j ACCEPT
 -A DOCKER-USER -p tcp -m tcp --dport 443 -j ACCEPT
 -A DOCKER-USER -p udp -m udp --dport 443 -j ACCEPT
+-A DOCKER-USER -p tcp -m tcp --dport 3000 -j ACCEPT
 -A DOCKER-USER -i ${EXT_IFACE} -j DROP
 -A DOCKER-USER -j RETURN
 
