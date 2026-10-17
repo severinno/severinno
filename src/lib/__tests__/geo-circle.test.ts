@@ -493,7 +493,10 @@ describe("startAccuracyPulse (loop rAF + setPaintProperty)", () => {
     const cafSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {})
 
     const setPaintProperty = vi.fn()
-    const map = { ...makeFakeMap(), setPaintProperty } as unknown as PulseMapLike
+    const fakeMap = makeFakeMap()
+    fakeMap.layers.add(ACCURACY_PULSE_LAYER_ID)
+    fakeMap.layers.add("accuracy-circle-fill")
+    const map = { ...fakeMap, setPaintProperty } as unknown as PulseMapLike
 
     const stop = startAccuracyPulse(map, 2400)
     expect(rafSpy).toHaveBeenCalledTimes(1)
