@@ -27,11 +27,13 @@ import {
   Loader2,
   LocateFixed,
   MapPin,
+  Sparkles,
+  User,
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useUpload } from "@/lib/use-upload"
-import { fetchCep, fetchReverseGeo } from "@/lib/api"
+import { fetchCep, fetchReverseGeo, fetchGeoSearch } from "@/lib/api"
 import { getCachedCep, setCachedCep } from "@/lib/client-cep-cache"
 import { AnimatePresence, motion } from "framer-motion"
 import { PreferenceToggles } from "@/components/shared/preference-toggles"
@@ -397,20 +399,20 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
     return null
   }
 
-  /** Aplica o resultado do ViaCEP ao form (só preenche o que veio vazio do usuário). */
+  /** Aplica o resultado do ViaCEP ao form (atualiza rua/cidade/estado com prioridade aos dados do CEP). */
   const applyCepResult = React.useCallback(
     (addr: { street?: string; city?: string; state?: string }) => {
       setForm((prev) => ({
         ...prev,
-        street: prev.street.trim() || (addr.street ?? ""),
-        city: prev.city.trim() || (addr.city ?? ""),
-        state: prev.state.trim() || (addr.state ?? ""),
+        street: addr.street || prev.street,
+        city: addr.city || prev.city,
+        state: addr.state || prev.state,
       }))
     },
     [],
   )
 
-  /** CEP completo (8 dígitos) → ViaCEP → preenche rua/cidade/estado. */
+  /** CEP completo (8 dígitos) → ViaCEP → preenche rua/cidade/estado e recentraliza mapa. */
   const handleCepChange = async (raw: string) => {
     const digits = raw.replace(/\D/g, "").slice(0, 8)
     const masked = digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits
@@ -421,13 +423,22 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
     setCepLoading(true)
     try {
       const cached = getCachedCep(digits)
-      if (cached) {
-        applyCepResult(cached)
-        return
-      }
-      const addr = await fetchCep(digits)
-      setCachedCep(digits, addr)
+      const addr = cached || (await fetchCep(digits))
+      if (!cached) setCachedCep(digits, addr)
       applyCepResult(addr)
+
+      // Recentraliza o mapa para a localização do CEP digitado (se disponível)
+      try {
+        const query =
+          [addr.street, addr.city, addr.state, "Brasil"].filter(Boolean).join(", ") || digits
+        const results = await fetchGeoSearch(query, 1)
+        if (results && results.length > 0 && results[0]) {
+          setProviderLat(results[0].lat)
+          setProviderLng(results[0].lng)
+        }
+      } catch {
+        // Geocodificação complementar não bloqueia preenchimento
+      }
     } catch {
       setCepError("CEP não encontrado — verifique o número ou preencha manualmente.")
     } finally {
@@ -457,10 +468,10 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
           const addr = await fetchReverseGeo(latitude, longitude)
           setForm((prev) => ({
             ...prev,
-            street: prev.street.trim() || (addr.street ?? ""),
-            city: prev.city.trim() || (addr.city ?? ""),
-            state: prev.state.trim() || (addr.state ?? ""),
-            cep: prev.cep.replace(/\D/g, "").length === 8 ? prev.cep : (addr.cep ?? ""),
+            street: addr.street || prev.street,
+            city: addr.city || prev.city,
+            state: addr.state || prev.state,
+            cep: addr.cep || prev.cep,
           }))
           setGeoHint(
             addr.cep
@@ -631,8 +642,8 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
   const pending = updateProfile.isPending || finishing
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-lg items-center justify-center p-6">
-      <Card className="w-full">
+    <div className="mx-auto flex min-h-screen w-full max-w-xl items-center justify-center p-4 sm:p-6 lg:max-w-5xl lg:p-8 xl:max-w-6xl">
+      <Card className="border-border/80 w-full shadow-lg">
         <CardHeader className="gap-3">
           {/* Progresso: segmento por etapa — concluída preenche (e é um
               botão para voltar direto à etapa), atual pulsa. A semântica
@@ -647,6 +658,40 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
               aria-valuenow={step + 1}
               aria-label={`Etapa ${step + 1} de ${STEPS.length}: ${STEPS[step]}`}
             />
+            {/* Stepper horizontal rotulado para desktop */}
+            <div className="mb-3 hidden gap-2 sm:grid sm:grid-cols-4">
+              {STEPS.map((label, i) => {
+                const isDone = i < step
+                const isCurrent = i === step
+                return (
+                  <div
+                    key={label}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg border p-2 text-xs font-medium transition-colors",
+                      isDone
+                        ? "border-emerald-500/30 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                        : isCurrent
+                          ? "bg-card border-emerald-600 text-emerald-700 shadow-xs dark:text-emerald-400"
+                          : "bg-muted/20 text-muted-foreground border-transparent opacity-60",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold",
+                        isDone
+                          ? "bg-emerald-600 text-white"
+                          : isCurrent
+                            ? "animate-pulse bg-emerald-600 text-white"
+                            : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {isDone ? <Check className="size-3" /> : i + 1}
+                    </span>
+                    <span className="truncate">{label}</span>
+                  </div>
+                )
+              })}
+            </div>
             <div className="flex gap-1.5">
               {STEPS.map((label, i) => {
                 const isDone = i < step
@@ -704,14 +749,14 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
             <p className="text-muted-foreground mt-2 text-xs">
               Passo {step + 1} de {STEPS.length} · {STEPS[step]}
             </p>
-            {user?.city ? (
+            {step < 3 && (form.city || user?.city) ? (
               <p className="text-muted-foreground mt-1 flex items-center gap-1.5 text-xs">
                 <MapPin className="size-3.5 text-emerald-600" aria-hidden />
                 <span>
                   Você está em{" "}
                   <span className="text-foreground font-medium">
-                    {user.city}
-                    {user.state ? ` — ${user.state}` : ""}
+                    {form.city || user?.city}
+                    {form.state || user?.state ? ` — ${form.state || user?.state}` : ""}
                   </span>
                 </span>
               </p>
@@ -741,232 +786,244 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
               transition={{ duration: 0.18, ease: "easeOut" }}
             >
               {step === 0 && (
-                <div className="grid gap-4">
-                  {/* Foto de perfil — anexar arquivo ou tirar na hora (webcam/selfie) */}
-                  <div className="grid gap-2">
-                    <Label>Foto de perfil</Label>
-                    <div className="flex items-center gap-4">
-                      <div className="bg-muted relative size-20 shrink-0 overflow-hidden rounded-full border">
-                        {previewSrc ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={previewSrc}
-                            alt="Prévia da foto de perfil"
-                            className="size-full object-cover"
-                          />
-                        ) : (
-                          <div className="text-muted-foreground flex size-full items-center justify-center">
-                            <ImagePlus className="size-6" aria-hidden />
-                          </div>
-                        )}
-                        {uploading && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
-                            <Loader2 className="size-5 animate-spin" aria-hidden />
-                          </div>
-                        )}
-                      </div>
-                      <div className="grid gap-1.5">
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={uploading}
-                            onClick={() => fileInputRef.current?.click()}
-                          >
-                            <ImagePlus className="mr-1 size-4" aria-hidden /> Anexar foto
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={uploading}
-                            onClick={() => setCameraOpen(true)}
-                          >
-                            <Camera className="mr-1 size-4" aria-hidden /> Tirar foto
-                          </Button>
-                          {previewSrc && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              disabled={uploading}
-                              onClick={removeAvatar}
-                            >
-                              <X className="mr-1 size-4" aria-hidden /> Remover
-                            </Button>
+                <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
+                  <div className="space-y-6 lg:col-span-5">
+                    {/* Foto de perfil — anexar arquivo ou tirar na hora (webcam/selfie) */}
+                    <div className="grid gap-2">
+                      <Label>Foto de perfil</Label>
+                      <div className="flex items-center gap-4">
+                        <div className="bg-muted relative size-20 shrink-0 overflow-hidden rounded-full border">
+                          {previewSrc ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={previewSrc}
+                              alt="Prévia da foto de perfil"
+                              className="size-full object-cover"
+                            />
+                          ) : (
+                            <div className="text-muted-foreground flex size-full items-center justify-center">
+                              <ImagePlus className="size-6" aria-hidden />
+                            </div>
+                          )}
+                          {uploading && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
+                              <Loader2 className="size-5 animate-spin" aria-hidden />
+                            </div>
                           )}
                         </div>
-                        <p className="text-muted-foreground text-xs">
-                          JPG, PNG ou WebP · até 10 MB
-                        </p>
+                        <div className="grid gap-1.5">
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={uploading}
+                              onClick={() => fileInputRef.current?.click()}
+                            >
+                              <ImagePlus className="mr-1 size-4" aria-hidden /> Anexar foto
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={uploading}
+                              onClick={() => setCameraOpen(true)}
+                            >
+                              <Camera className="mr-1 size-4" aria-hidden /> Tirar foto
+                            </Button>
+                            {previewSrc && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={uploading}
+                                onClick={removeAvatar}
+                              >
+                                <X className="mr-1 size-4" aria-hidden /> Remover
+                              </Button>
+                            )}
+                          </div>
+                          <p className="text-muted-foreground text-xs">
+                            JPG, PNG ou WebP · até 10 MB
+                          </p>
+                        </div>
                       </div>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/gif,image/webp"
+                        className="hidden"
+                        aria-label="Anexar foto de perfil"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0]
+                          if (f) handleFileSelected(f)
+                          e.target.value = ""
+                        }}
+                      />
                     </div>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/gif,image/webp"
-                      className="hidden"
-                      aria-label="Anexar foto de perfil"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0]
-                        if (f) handleFileSelected(f)
-                        e.target.value = ""
-                      }}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="ob-name">Nome</Label>
-                    <Input
-                      id="ob-name"
-                      value={form.name}
-                      onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      placeholder="Seu nome como aparecerá para clientes"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="ob-bio">Bio</Label>
-                    <Textarea
-                      id="ob-bio"
-                      value={form.bio}
-                      onChange={(e) => setForm({ ...form, bio: e.target.value })}
-                      placeholder="Conte um pouco sobre você..."
-                      rows={3}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="ob-whatsapp">WhatsApp</Label>
-                    <Input
-                      id="ob-whatsapp"
-                      value={form.whatsapp}
-                      onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
-                      placeholder="(11) 99999-9999"
+
+                    {/* Sound & vibration preferences */}
+                    <PreferenceToggles
+                      variant="compact"
+                      onSoundChange={setSoundEnabled}
+                      onVibrateChange={setVibrateEnabled}
                     />
                   </div>
 
-                  {/* Sound & vibration preferences */}
-                  <PreferenceToggles
-                    variant="compact"
-                    onSoundChange={setSoundEnabled}
-                    onVibrateChange={setVibrateEnabled}
-                  />
+                  <div className="space-y-4 lg:col-span-7">
+                    <div className="grid gap-2">
+                      <Label htmlFor="ob-name">Nome</Label>
+                      <Input
+                        id="ob-name"
+                        value={form.name}
+                        onChange={(e) => setForm({ ...form, name: e.target.value })}
+                        placeholder="Seu nome como aparecerá para clientes"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="ob-bio">Bio</Label>
+                      <Textarea
+                        id="ob-bio"
+                        value={form.bio}
+                        onChange={(e) => setForm({ ...form, bio: e.target.value })}
+                        placeholder="Conte um pouco sobre você..."
+                        rows={3}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="ob-whatsapp">WhatsApp</Label>
+                      <Input
+                        id="ob-whatsapp"
+                        value={form.whatsapp}
+                        onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
+                        placeholder="(11) 99999-9999"
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
               {step === 1 && (
-                <div className="grid gap-4">
-                  {/* Atalho GPS — preenche tudo com a localização real do dispositivo */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleUseMyLocation}
-                      disabled={geoLoading}
-                      className="border-emerald-600/40 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950"
-                    >
-                      {geoLoading ? (
-                        <Loader2 className="size-4 animate-spin" aria-hidden />
-                      ) : (
-                        <LocateFixed className="size-4" aria-hidden />
-                      )}
-                      {geoLoading ? "Localizando…" : "Usar GPS do celular"}
-                    </Button>
-                    <p className="text-muted-foreground text-xs">
-                      ou digite o CEP — preenchemos o resto
-                    </p>
-                  </div>
-                  {geoHint && (
-                    <p
-                      role="status"
-                      className={cn(
-                        "text-xs",
-                        geoHint.includes("negada") ||
-                          geoHint.includes("não") ||
-                          geoHint.includes("Não")
-                          ? "text-amber-600 dark:text-amber-400"
-                          : "text-emerald-700 dark:text-emerald-400",
-                      )}
-                    >
-                      {geoHint}
-                    </p>
-                  )}
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="col-span-2 grid gap-2">
-                      <Label htmlFor="ob-city">Cidade</Label>
-                      <Input
-                        id="ob-city"
-                        value={form.city}
-                        onChange={(e) => setForm({ ...form, city: e.target.value })}
-                        placeholder="Governador Valadares"
-                      />
+                <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
+                  <div className="space-y-4 lg:col-span-6">
+                    {/* Atalho GPS — preenche tudo com a localização real do dispositivo */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleUseMyLocation}
+                        disabled={geoLoading}
+                        className="border-emerald-600/40 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                      >
+                        {geoLoading ? (
+                          <Loader2 className="size-4 animate-spin" aria-hidden />
+                        ) : (
+                          <LocateFixed className="size-4" aria-hidden />
+                        )}
+                        {geoLoading ? "Localizando…" : "Usar GPS do celular"}
+                      </Button>
+                      <p className="text-muted-foreground text-xs">
+                        ou digite o CEP — preenchemos o resto
+                      </p>
                     </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="ob-state">Estado</Label>
-                      <Input
-                        id="ob-state"
-                        value={form.state}
-                        onChange={(e) => setForm({ ...form, state: e.target.value })}
-                        placeholder="MG"
-                        maxLength={2}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="col-span-2 grid gap-2">
-                      <Label htmlFor="ob-street">Rua</Label>
-                      <Input
-                        id="ob-street"
-                        value={form.street}
-                        onChange={(e) => setForm({ ...form, street: e.target.value })}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="ob-number">Número</Label>
-                      <Input
-                        id="ob-number"
-                        value={form.number}
-                        onChange={(e) => setForm({ ...form, number: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="ob-cep">CEP</Label>
-                    <div className="relative">
-                      <Input
-                        id="ob-cep"
-                        value={form.cep}
-                        onChange={(e) => void handleCepChange(e.target.value)}
-                        placeholder="00000-000"
-                        inputMode="numeric"
-                        autoComplete="postal-code"
-                        aria-describedby="ob-cep-feedback"
-                        className="pr-9"
-                      />
-                      {cepLoading && (
-                        <Loader2
-                          className="text-muted-foreground absolute top-1/2 right-3 size-4 -translate-y-1/2 animate-spin"
-                          aria-hidden
+                    {geoHint && (
+                      <p
+                        role="status"
+                        className={cn(
+                          "text-xs",
+                          geoHint.includes("negada") ||
+                            geoHint.includes("não") ||
+                            geoHint.includes("Não")
+                            ? "text-amber-600 dark:text-amber-400"
+                            : "text-emerald-700 dark:text-emerald-400",
+                        )}
+                      >
+                        {geoHint}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="col-span-2 grid gap-2">
+                        <Label htmlFor="ob-city">Cidade</Label>
+                        <Input
+                          id="ob-city"
+                          value={form.city}
+                          onChange={(e) => setForm({ ...form, city: e.target.value })}
+                          placeholder="Governador Valadares"
                         />
-                      )}
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="ob-state">Estado</Label>
+                        <Input
+                          id="ob-state"
+                          value={form.state}
+                          onChange={(e) => setForm({ ...form, state: e.target.value })}
+                          placeholder="MG"
+                          maxLength={2}
+                        />
+                      </div>
                     </div>
-                    <div id="ob-cep-feedback" aria-live="polite">
-                      {cepError ? (
-                        <p role="alert" className="text-xs text-red-600 dark:text-red-400">
-                          {cepError}
-                        </p>
-                      ) : (
-                        cepLoading && (
-                          <p className="text-muted-foreground text-xs">Buscando endereço…</p>
-                        )
-                      )}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="col-span-2 grid gap-2">
+                        <Label htmlFor="ob-street">Rua</Label>
+                        <Input
+                          id="ob-street"
+                          value={form.street}
+                          onChange={(e) => setForm({ ...form, street: e.target.value })}
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="ob-number">Número</Label>
+                        <Input
+                          id="ob-number"
+                          value={form.number}
+                          onChange={(e) => setForm({ ...form, number: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="ob-cep">CEP</Label>
+                      <div className="relative">
+                        <Input
+                          id="ob-cep"
+                          value={form.cep}
+                          onChange={(e) => void handleCepChange(e.target.value)}
+                          placeholder="00000-000"
+                          inputMode="numeric"
+                          autoComplete="postal-code"
+                          aria-describedby="ob-cep-feedback"
+                          className="pr-9"
+                        />
+                        {cepLoading && (
+                          <Loader2
+                            className="text-muted-foreground absolute top-1/2 right-3 size-4 -translate-y-1/2 animate-spin"
+                            aria-hidden
+                          />
+                        )}
+                      </div>
+                      <div id="ob-cep-feedback" aria-live="polite">
+                        {cepError ? (
+                          <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+                            {cepError}
+                          </p>
+                        ) : (
+                          cepLoading && (
+                            <p className="text-muted-foreground text-xs">Buscando endereço…</p>
+                          )
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {/* Radius preview map */}
-                  <div className="bg-card rounded-lg border p-3">
-                    <div className="mb-2 flex items-center gap-2">
-                      <MapPin className="size-4 text-emerald-600" />
-                      <p className="text-sm font-medium">Raio de atendimento</p>
+                  {/* Radius preview map no desktop ocupando a coluna da direita com conforto */}
+                  <div className="bg-card rounded-lg border p-3 lg:col-span-6">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="size-4 text-emerald-600" />
+                        <p className="text-sm font-medium">Raio de atendimento</p>
+                      </div>
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        {providerRadius} km
+                      </span>
                     </div>
                     <RadiusPreviewMap
                       lat={providerLat}
@@ -974,7 +1031,7 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
                       accuracyM={providerAccuracy}
                       initialRadius={providerRadius}
                       showLocationControls={true}
-                      height={250}
+                      height={320}
                       onLocationChange={(lat, lng) => {
                         setProviderLat(lat)
                         setProviderLng(lng)
@@ -987,163 +1044,239 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
                 </div>
               )}
               {step === 2 && (
-                <div className="space-y-3">
-                  <p className="text-muted-foreground text-sm">
-                    Defina seus horários de atendimento padrão:
-                  </p>
-                  {WEEKDAYS.map((day, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <label className="flex w-24 items-center gap-2 text-sm font-medium">
-                        <input
-                          type="checkbox"
-                          checked={slots[i].active}
-                          onChange={(e) => updateSlot(i, "active", e.target.checked)}
-                          className="size-4 accent-emerald-600"
-                        />
-                        {day}
-                      </label>
-                      {slots[i].active && (
-                        <>
+                <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
+                  <div className="space-y-3 lg:col-span-8">
+                    <p className="text-muted-foreground text-sm">
+                      Defina seus horários de atendimento padrão:
+                    </p>
+                    {WEEKDAYS.map((day, i) => (
+                      <div key={i} className="flex items-center gap-3">
+                        <label className="flex w-24 items-center gap-2 text-sm font-medium">
                           <input
-                            type="time"
-                            aria-label={`${day} — início`}
-                            value={slots[i].start}
-                            onChange={(e) => updateSlot(i, "start", e.target.value)}
-                            className="bg-background h-9 rounded-md border px-2 text-sm"
+                            type="checkbox"
+                            checked={slots[i].active}
+                            onChange={(e) => updateSlot(i, "active", e.target.checked)}
+                            className="size-4 accent-emerald-600"
                           />
-                          <span className="text-muted-foreground text-xs">às</span>
-                          <input
-                            type="time"
-                            aria-label={`${day} — fim`}
-                            value={slots[i].end}
-                            onChange={(e) => updateSlot(i, "end", e.target.value)}
-                            className="bg-background h-9 rounded-md border px-2 text-sm"
-                          />
-                        </>
-                      )}
+                          {day}
+                        </label>
+                        {slots[i].active && (
+                          <>
+                            <input
+                              type="time"
+                              aria-label={`${day} — início`}
+                              value={slots[i].start}
+                              onChange={(e) => updateSlot(i, "start", e.target.value)}
+                              className="bg-background h-9 rounded-md border px-2 text-sm"
+                            />
+                            <span className="text-muted-foreground text-xs">às</span>
+                            <input
+                              type="time"
+                              aria-label={`${day} — fim`}
+                              value={slots[i].end}
+                              onChange={(e) => updateSlot(i, "end", e.target.value)}
+                              className="bg-background h-9 rounded-md border px-2 text-sm"
+                            />
+                          </>
+                        )}
+                      </div>
+                    ))}
+                    <Button type="button" variant="outline" size="sm" onClick={copyWeekdays}>
+                      Copiar Seg-Sex
+                    </Button>
+                  </div>
+                  <div className="bg-muted/20 space-y-3 rounded-xl border p-4 lg:col-span-4">
+                    <h4 className="text-foreground flex items-center gap-2 text-sm font-semibold">
+                      <Sparkles className="size-4 text-emerald-600" />
+                      Dica de Atendimento
+                    </h4>
+                    <p className="text-muted-foreground text-xs leading-relaxed">
+                      Defina seus dias e horários reais. Você poderá pausar a agenda ou bloquear
+                      feriados quando quiser diretamente no Painel.
+                    </p>
+                    <div className="text-muted-foreground flex justify-between border-t pt-2 text-xs">
+                      <span>Dias ativos:</span>
+                      <span className="font-semibold text-emerald-600">
+                        {slots.filter((s) => s.active).length} de 7 dias
+                      </span>
                     </div>
-                  ))}
-                  <Button type="button" variant="outline" size="sm" onClick={copyWeekdays}>
-                    Copiar Seg-Sex
-                  </Button>
+                  </div>
                 </div>
               )}
               {step === 3 && (
-                <div className="grid gap-4">
-                  {/* Resumo do perfil — revisão rápida antes de publicar */}
-                  <div className="bg-muted/30 flex items-center gap-3 rounded-lg border p-3">
-                    {avatarUrl || localPreview ? (
-                      // <img> de propósito: o localPreview é blob: URL de
-                      // URL.createObjectURL(file) — o <Image> do next não
-                      // parseia blob:, e a prévia de 40px não usa otimizador.
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={avatarUrl ?? localPreview ?? undefined}
-                        alt="Foto do prestador"
-                        className="size-12 shrink-0 rounded-full object-cover ring-2 ring-emerald-600/20"
-                      />
-                    ) : (
-                      <div
-                        aria-hidden
-                        className="flex size-12 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                      >
-                        {initials || "?"}
+                <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
+                  <div className="space-y-4 lg:col-span-7">
+                    {/* Resumo do perfil — revisão rápida antes de publicar */}
+                    <div className="bg-muted/30 flex items-center gap-3 rounded-lg border p-3">
+                      {avatarUrl || localPreview ? (
+                        // <img> de propósito: o localPreview é blob: URL de
+                        // URL.createObjectURL(file) — o <Image> do next não
+                        // parseia blob:, e a prévia de 40px não usa otimizador.
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={avatarUrl ?? localPreview ?? undefined}
+                          alt="Foto do prestador"
+                          className="size-12 shrink-0 rounded-full object-cover ring-2 ring-emerald-600/20"
+                        />
+                      ) : (
+                        <div
+                          aria-hidden
+                          className="flex size-12 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                        >
+                          {initials || "?"}
+                        </div>
+                      )}
+                      <div className="min-w-0 text-xs">
+                        <p className="truncate text-sm font-semibold">{form.name || "Seu nome"}</p>
+                        <p className="text-muted-foreground truncate">
+                          {[form.city, form.state].filter(Boolean).join(" — ")}
+                          {form.whatsapp ? ` · ${form.whatsapp}` : ""}
+                        </p>
+                        <p className="text-emerald-700 dark:text-emerald-400">
+                          Confira tudo antes de publicar ✨
+                        </p>
                       </div>
-                    )}
-                    <div className="min-w-0 text-xs">
-                      <p className="truncate text-sm font-semibold">{form.name || "Seu nome"}</p>
-                      <p className="text-muted-foreground truncate">
-                        {[form.city, form.state].filter(Boolean).join(" — ")}
-                        {form.whatsapp ? ` · ${form.whatsapp}` : ""}
-                      </p>
-                      <p className="text-emerald-700 dark:text-emerald-400">
-                        Confira tudo antes de publicar ✨
-                      </p>
                     </div>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="ob-svc-title">Nome do serviço</Label>
-                    <Input
-                      id="ob-svc-title"
-                      value={form.serviceTitle}
-                      onChange={(e) => setForm({ ...form, serviceTitle: e.target.value })}
-                      placeholder="Ex: Troca de tomada e interruptores"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="ob-svc-desc">Descrição</Label>
-                    <Textarea
-                      id="ob-svc-desc"
-                      value={form.serviceDescription}
-                      onChange={(e) => setForm({ ...form, serviceDescription: e.target.value })}
-                      placeholder="O que está incluído, materiais, garantia..."
-                      rows={3}
-                    />
-                    <p className="text-muted-foreground text-xs">
-                      {form.serviceDescription.trim().length}/10 caracteres mínimos
-                    </p>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="ob-svc-cat">Subcategoria</Label>
-                    <select
-                      id="ob-svc-cat"
-                      value={form.serviceCategory}
-                      onChange={(e) => setForm({ ...form, serviceCategory: e.target.value })}
-                      className={selectClass}
-                    >
-                      <option value="">
-                        {subcategories.length > 0
-                          ? "Selecione a subcategoria"
-                          : "Carregando categorias..."}
-                      </option>
-                      {subcategories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
                     <div className="grid gap-2">
-                      <Label htmlFor="ob-svc-price">Preço (R$)</Label>
+                      <Label htmlFor="ob-svc-title">Nome do serviço</Label>
                       <Input
-                        id="ob-svc-price"
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={form.servicePrice}
-                        onChange={(e) => setForm({ ...form, servicePrice: e.target.value })}
-                        placeholder="99.90"
+                        id="ob-svc-title"
+                        value={form.serviceTitle}
+                        onChange={(e) => setForm({ ...form, serviceTitle: e.target.value })}
+                        placeholder="Ex: Troca de tomada e interruptores"
                       />
                     </div>
-                    <div className="col-span-2 grid gap-2">
-                      <Label htmlFor="ob-svc-unit">Cobrança</Label>
+                    <div className="grid gap-2">
+                      <Label htmlFor="ob-svc-desc">Descrição</Label>
+                      <Textarea
+                        id="ob-svc-desc"
+                        value={form.serviceDescription}
+                        onChange={(e) => setForm({ ...form, serviceDescription: e.target.value })}
+                        placeholder="O que está incluído, materiais, garantia..."
+                        rows={3}
+                      />
+                      <p className="text-muted-foreground text-xs">
+                        {form.serviceDescription.trim().length}/10 caracteres mínimos
+                      </p>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="ob-svc-cat">Subcategoria</Label>
                       <select
-                        id="ob-svc-unit"
-                        value={form.serviceUnit}
-                        onChange={(e) => setForm({ ...form, serviceUnit: e.target.value })}
+                        id="ob-svc-cat"
+                        value={form.serviceCategory}
+                        onChange={(e) => setForm({ ...form, serviceCategory: e.target.value })}
                         className={selectClass}
                       >
-                        {SERVICE_UNITS.map((unit) => (
-                          <option key={unit.value} value={unit.value}>
-                            {unit.label}
+                        <option value="">
+                          {subcategories.length > 0
+                            ? "Selecione a subcategoria"
+                            : "Carregando categorias..."}
+                        </option>
+                        {subcategories.map((cat) => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.label}
                           </option>
                         ))}
                       </select>
                     </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="grid gap-2">
+                        <Label htmlFor="ob-svc-price">Preço (R$)</Label>
+                        <Input
+                          id="ob-svc-price"
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={form.servicePrice}
+                          onChange={(e) => setForm({ ...form, servicePrice: e.target.value })}
+                          placeholder="99.90"
+                        />
+                      </div>
+                      <div className="col-span-2 grid gap-2">
+                        <Label htmlFor="ob-svc-unit">Cobrança</Label>
+                        <select
+                          id="ob-svc-unit"
+                          value={form.serviceUnit}
+                          onChange={(e) => setForm({ ...form, serviceUnit: e.target.value })}
+                          className={selectClass}
+                        >
+                          {SERVICE_UNITS.map((unit) => (
+                            <option key={unit.value} value={unit.value}>
+                              {unit.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="ob-svc-duration">Duração (min)</Label>
+                      <Input
+                        id="ob-svc-duration"
+                        type="number"
+                        min={15}
+                        max={480}
+                        step={5}
+                        value={form.serviceDuration}
+                        onChange={(e) => setForm({ ...form, serviceDuration: e.target.value })}
+                        placeholder="60"
+                      />
+                    </div>
                   </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="ob-svc-duration">Duração (min)</Label>
-                    <Input
-                      id="ob-svc-duration"
-                      type="number"
-                      min={15}
-                      max={480}
-                      step={5}
-                      value={form.serviceDuration}
-                      onChange={(e) => setForm({ ...form, serviceDuration: e.target.value })}
-                      placeholder="60"
-                    />
+
+                  {/* Coluna 2: Prévia na Vitrine */}
+                  <div className="bg-card space-y-3 rounded-xl border p-4 shadow-xs lg:col-span-5">
+                    <p className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase">
+                      <Sparkles className="size-3.5 text-emerald-600" />
+                      Prévia na Vitrine
+                    </p>
+                    <div className="bg-muted/10 space-y-3 rounded-xl border p-4">
+                      <div className="flex items-center gap-3">
+                        {avatarUrl || localPreview ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={avatarUrl ?? localPreview ?? undefined}
+                            alt="Foto do prestador"
+                            className="size-10 shrink-0 rounded-full object-cover ring-2 ring-emerald-600/30"
+                          />
+                        ) : (
+                          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                            <User className="size-5" aria-hidden="true" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-foreground truncate text-sm font-semibold">
+                            Prestador Verificado
+                          </p>
+                          <p className="text-muted-foreground truncate text-xs">
+                            Atendimento num raio de {providerRadius} km
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-1 border-t pt-2">
+                        <p className="text-foreground line-clamp-1 text-sm font-medium">
+                          {form.serviceTitle || "Título do serviço"}
+                        </p>
+                        <p className="text-muted-foreground line-clamp-2 text-xs">
+                          {form.serviceDescription || "Descrição do seu serviço..."}
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between pt-2">
+                        <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
+                          {form.servicePrice
+                            ? `R$ ${Number(form.servicePrice).toFixed(2)}`
+                            : "R$ 0,00"}
+                          <span className="text-muted-foreground ml-1 text-[10px] font-normal">
+                            /
+                            {SERVICE_UNITS.find((u) => u.value === form.serviceUnit)
+                              ?.label.toLowerCase()
+                              .replace("por ", "") ?? "unidade"}
+                          </span>
+                        </span>
+                        <span className="rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                          {form.serviceDuration ? `${form.serviceDuration} min` : "Sob agendamento"}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

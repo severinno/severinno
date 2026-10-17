@@ -351,8 +351,17 @@ export function startAccuracyPulse(
     const phase = ((now - t0) % periodMs) / periodMs
     const { pulse, fill } = accuracyPulseOpacities(phase)
     try {
-      map.setPaintProperty!(ACCURACY_PULSE_LAYER_ID, "fill-opacity", pulse)
-      map.setPaintProperty!("accuracy-circle-fill", "fill-opacity", fill)
+      if (typeof map.getLayer === "function") {
+        if (map.getLayer(ACCURACY_PULSE_LAYER_ID)) {
+          map.setPaintProperty?.(ACCURACY_PULSE_LAYER_ID, "fill-opacity", pulse)
+        }
+        if (map.getLayer("accuracy-circle-fill")) {
+          map.setPaintProperty?.("accuracy-circle-fill", "fill-opacity", fill)
+        }
+      } else {
+        map.setPaintProperty?.(ACCURACY_PULSE_LAYER_ID, "fill-opacity", pulse)
+        map.setPaintProperty?.("accuracy-circle-fill", "fill-opacity", fill)
+      }
     } catch {
       // camadas podem ter sido removidas — segue animando (inofensivo)
     }
@@ -365,8 +374,17 @@ export function startAccuracyPulse(
     stopped = true
     cancelAnimationFrame(raf)
     try {
-      map.setPaintProperty?.(ACCURACY_PULSE_LAYER_ID, "fill-opacity", 0)
-      map.setPaintProperty?.("accuracy-circle-fill", "fill-opacity", 0.1)
+      if (typeof map.getLayer === "function") {
+        if (map.getLayer(ACCURACY_PULSE_LAYER_ID)) {
+          map.setPaintProperty?.(ACCURACY_PULSE_LAYER_ID, "fill-opacity", 0)
+        }
+        if (map.getLayer("accuracy-circle-fill")) {
+          map.setPaintProperty?.("accuracy-circle-fill", "fill-opacity", 0.1)
+        }
+      } else {
+        map.setPaintProperty?.(ACCURACY_PULSE_LAYER_ID, "fill-opacity", 0)
+        map.setPaintProperty?.("accuracy-circle-fill", "fill-opacity", 0.1)
+      }
     } catch {
       // mapa já destruído
     }

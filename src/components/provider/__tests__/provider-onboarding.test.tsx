@@ -77,6 +77,8 @@ vi.mock("lucide-react", () => ({
   Navigation: () => <svg />,
   Play: () => <svg />,
   Smartphone: () => <svg />,
+  Sparkles: () => <svg />,
+  User: () => <svg />,
   Volume2: () => <svg />,
   X: () => <svg />,
 }))
