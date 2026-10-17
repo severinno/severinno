@@ -10,7 +10,7 @@
 
 import * as React from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Loader2, Star, ShieldCheck, Camera } from "lucide-react"
+import { Loader2, Star, ShieldCheck, Camera, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiPost } from "@/lib/api"
@@ -28,6 +28,16 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { StarRatingInput } from "@/components/modals/star-rating"
+import { cn } from "@/lib/utils"
+
+const QUICK_COMPLIMENTS = [
+  "Pontual no horário",
+  "Caprichoso no acabamento",
+  "Preço justo",
+  "Deixou tudo limpo",
+  "Muito educado",
+  "Recomendo em GV",
+]
 
 export type ReviewDialogProps = {
   open: boolean
@@ -91,6 +101,19 @@ export function ReviewDialog({ open, onOpenChange, booking, onSubmitted }: Revie
     .join("")
     .toUpperCase()
 
+  const toggleCompliment = (item: string) => {
+    setComment((prev) => {
+      if (prev.includes(item)) {
+        return prev
+          .replace(new RegExp(`(^|,\\s*)${item}`, "g"), "")
+          .replace(/^,\s*/, "")
+          .trim()
+      }
+      const clean = prev.trim()
+      return clean ? `${clean}, ${item}` : item
+    })
+  }
+
   const canSubmit = rating >= 1 && !submit.isPending
 
   return (
@@ -139,6 +162,36 @@ export function ReviewDialog({ open, onOpenChange, booking, onSubmitted }: Revie
               )}
             </div>
           </div>
+
+          {/* Quick compliment pills */}
+          {rating >= 3 && (
+            <div className="space-y-1.5">
+              <span className="text-muted-foreground flex items-center gap-1 text-[11px] font-semibold">
+                <Sparkles className="size-3 text-amber-500" />
+                Destaques da experiência (clique para adicionar):
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {QUICK_COMPLIMENTS.map((item) => {
+                  const selected = comment.includes(item)
+                  return (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => toggleCompliment(item)}
+                      className={cn(
+                        "rounded-full px-2.5 py-1 text-[11px] font-medium transition-all active:scale-97",
+                        selected
+                          ? "bg-emerald-600 text-white shadow-xs"
+                          : "border-border/70 bg-muted/40 text-muted-foreground border hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300",
+                      )}
+                    >
+                      {item}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Comment */}
           <div className="space-y-2">

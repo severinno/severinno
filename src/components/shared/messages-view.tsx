@@ -601,9 +601,12 @@ export function MessagesView({
                     <span>Modo Offline</span>
                   </div>
                 )}
-                <div className="hidden items-center gap-1 rounded-full border border-emerald-200/60 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 sm:flex dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+                <div
+                  title="Garantia de 90 Dias e Custódia PIX ativas para esta conversa"
+                  className="hidden items-center gap-1.5 rounded-full border border-emerald-200/80 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 shadow-2xs sm:flex dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                >
                   <ShieldCheck className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <span>Garantia Severinno</span>
+                  <span>Garantia Severinno (90 Dias)</span>
                 </div>
               </div>
             </header>
@@ -765,12 +768,18 @@ export function MessagesView({
                 </div>
               )}
               {fraudResult.hasRisk && (
-                <div className="mb-2.5 flex items-start gap-2.5 rounded-xl border border-amber-300/80 bg-amber-50/95 p-2.5 text-xs text-amber-950 shadow-xs dark:border-amber-700/50 dark:bg-amber-950/50 dark:text-amber-200">
+                <div className="mb-2.5 flex items-start gap-2.5 rounded-xl border border-amber-300/80 bg-amber-50/95 p-3 text-xs text-amber-950 shadow-xs dark:border-amber-700/50 dark:bg-amber-950/50 dark:text-amber-200">
                   <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                  <div className="flex-1">
-                    <p className="font-semibold">{fraudResult.warningTitle}</p>
-                    <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+                  <div className="flex-1 space-y-0.5">
+                    <p className="font-bold text-amber-900 dark:text-amber-100">
+                      {fraudResult.warningTitle}
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
                       {fraudResult.warningMessage}
+                    </p>
+                    <p className="pt-0.5 text-[10px] font-medium text-amber-700/90 dark:text-amber-400/90">
+                      💡 Dica de Segurança: Pagamentos e negociações fora da plataforma anulam o
+                      reembolso automático da Custódia PIX e a Garantia de 90 Dias.
                     </p>
                   </div>
                 </div>

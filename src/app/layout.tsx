@@ -65,12 +65,18 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Severinno — Marketplace de Serviços em Governador Valadares",
     description:
-      "Encontre prestadores de serviço verificados com base na sua localização — encanador, eletricista, pintor, diarista e mais em Governador Valadares, MG.",
+      "Encontre prestadores de serviço verificados no seu bairro em Governador Valadares, MG. Pagamento protegido por Custódia PIX e Garantia de 90 Dias.",
     url: process.env.NEXT_PUBLIC_APP_URL ?? "https://severinno.com",
     siteName: "Severinno",
     locale: "pt_BR",
     type: "website",
     images: [
+      {
+        url: "/auth-couple-tools.jpg",
+        width: 1200,
+        height: 630,
+        alt: "Profissionais Verificados Severinno em Governador Valadares",
+      },
       {
         url: "/logo-severinno.png",
         width: 1200,
@@ -82,7 +88,9 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Severinno — Marketplace de Serviços em Governador Valadares",
-    description: "Encontre prestadores de serviço verificados, com base na sua localização.",
+    description:
+      "Encontre prestadores de serviço verificados no seu bairro em Governador Valadares, MG. Pagamento protegido por Custódia PIX e Garantia de 90 Dias.",
+    images: ["/auth-couple-tools.jpg"],
   },
 }
 
