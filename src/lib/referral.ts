@@ -42,15 +42,15 @@ export async function getOrCreateReferralCode(userId: string): Promise<string> {
   const existingCode = await cacheGet<string>(`referral:code:${userId}`)
   if (existingCode) return existingCode
 
-  // Generate 8-char uppercase code: e.g. SEV + 5 hex chars
-  const baseHash = crypto.createHash("md5").update(userId).digest("hex").toUpperCase()
-  let code = `SEV${baseHash.slice(0, 5)}`
+  // Generate deterministic 9-char uppercase code: e.g. SEV + 6 hex chars (24-bit entropy = ~16.7M combinations)
+  const baseHash = crypto.createHash("sha256").update(userId).digest("hex").toUpperCase()
+  let code = `SEV${baseHash.slice(0, 6)}`
 
   // Collision guard: verify if the code already belongs to another user
   const existingOwner = await cacheGet<string>(`referral:user:${code}`)
   if (existingOwner && existingOwner !== userId) {
     // Collision occurred: take alternative slice
-    code = `SEV${baseHash.slice(5, 10)}`
+    code = `SEV${baseHash.slice(6, 12)}`
   }
 
   await cacheSet(`referral:code:${userId}`, code, 365 * 24 * 60 * 60)
@@ -79,6 +79,18 @@ export async function registerReferralInvite(
   // Check if invited user is already bound to a referrer (first referral wins)
   const existingReferrer = await cacheGet<string>(`referral:invited_by:${invitedUserId}`)
   if (existingReferrer) return true
+
+  // Anti-fraud check: users who already have completed services cannot claim a referral invite
+  const existingBookingsCount = await db.booking.count({
+    where: { clientId: invitedUserId, status: "COMPLETED" },
+  })
+  if (existingBookingsCount > 0) {
+    log.warn(
+      { invitedUserId, referralCode, existingBookingsCount },
+      "referral: anti-fraud check failed: user with previous completed bookings cannot be referred",
+    )
+    return false
+  }
 
   // Store referrer for this user
   await cacheSet(`referral:invited_by:${invitedUserId}`, referrerId, 365 * 24 * 60 * 60)
@@ -206,9 +218,12 @@ export async function getReferralLeaderboard(limit = 10): Promise<ReferralLeader
     else if (entry.count >= 5) badge = "Embaixador Ouro"
     else if (entry.count >= 3) badge = "Embaixador Severinno"
 
+    // LGPD PII Guard: Anonymize raw database userId for public consumption
+    const anonymizedUserId = `ref_${crypto.createHash("sha256").update(entry.userId).digest("hex").slice(0, 10)}`
+
     return {
       rank: index + 1,
-      userId: entry.userId,
+      userId: anonymizedUserId,
       name: safeName,
       avatarUrl: user?.avatarUrl || null,
       convertedCount: entry.count,

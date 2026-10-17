@@ -17,6 +17,9 @@ vi.mock("@/lib/db", () => ({
         .fn()
         .mockResolvedValue([{ id: "referrer-1", name: "Carlos Eduardo Silva", avatarUrl: null }]),
     },
+    booking: {
+      count: vi.fn().mockResolvedValue(0),
+    },
   },
 }))
 
@@ -40,7 +43,7 @@ describe("Referral Engine (Indique e Ganhe)", () => {
 
   it("gera código de indicação determinístico e consistente", async () => {
     const code1 = await getOrCreateReferralCode("user-123")
-    expect(code1).toMatch(/^SEV[A-Z0-9]{5}$/)
+    expect(code1).toMatch(/^SEV[A-Z0-9]{6}$/)
 
     // Deve retornar o mesmo código armazenado
     const code2 = await getOrCreateReferralCode("user-123")
@@ -92,7 +95,7 @@ describe("Referral Engine (Indique e Ganhe)", () => {
     const leaderboard = await getReferralLeaderboard(10)
     expect(leaderboard.length).toBe(1)
     expect(leaderboard[0].rank).toBe(1)
-    expect(leaderboard[0].userId).toBe("referrer-1")
+    expect(leaderboard[0].userId).toMatch(/^ref_[a-f0-9]{10}$/)
     // PII Guard check: "Carlos Eduardo Silva" -> "Carlos S."
     expect(leaderboard[0].name).toBe("Carlos S.")
     expect(leaderboard[0].convertedCount).toBe(1)
@@ -101,5 +104,15 @@ describe("Referral Engine (Indique e Ganhe)", () => {
     expect(await isAmbassador("referrer-1")).toBe(false)
     mockCache.set("referral:converted_count:referrer-1", 4)
     expect(await isAmbassador("referrer-1")).toBe(true)
+  })
+
+  it("bloqueia vinculação de indicação para usuário que já concluiu agendamentos no passado (anti-fraude)", async () => {
+    const { db } = await import("@/lib/db")
+    ;(db.booking.count as any).mockResolvedValueOnce(2) // Simula usuário com 2 serviços já concluídos
+
+    const code = await getOrCreateReferralCode("referrer-1")
+    const success = await registerReferralInvite("existing-client-99", code)
+
+    expect(success).toBe(false)
   })
 })
