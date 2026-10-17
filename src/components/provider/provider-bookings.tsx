@@ -390,20 +390,41 @@ export function ProviderBookings() {
 
   return (
     <div className="grid gap-6">
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="w-full overflow-x-auto sm:w-auto">
-          {STATUS_TABS.map((t) => (
-            <TabsTrigger key={t.value} value={t.value} className="flex-1 gap-1.5 sm:flex-none">
-              {t.label}
-              {counts[t.value] > 0 && (
-                <span className="bg-primary/15 text-primary ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums">
-                  {counts[t.value]}
-                </span>
-              )}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      {/* Top Header - Nielsen #1 (Visibility of system status) & #8 (Aesthetic & minimalist design) */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight">Agendamentos</h2>
+          <p className="text-muted-foreground text-xs">
+            Gerencie seus compromissos, visualize rotas e acompanhe o status de cada serviço.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-xs">
+            {counts.all} {counts.all === 1 ? "agendamento" : "agendamentos"} no total
+          </Badge>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList className="w-full overflow-x-auto sm:w-auto">
+            {STATUS_TABS.map((t) => (
+              <TabsTrigger key={t.value} value={t.value} className="flex-1 gap-1.5 sm:flex-none">
+                {t.label}
+                {counts[t.value] > 0 && (
+                  <span className="bg-primary/15 text-primary ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums">
+                    {counts[t.value]}
+                  </span>
+                )}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <p className="text-muted-foreground text-xs tabular-nums">
+          Total: <strong className="text-foreground">{counts.all}</strong> agendamento
+          {counts.all === 1 ? "" : "s"}
+        </p>
+      </div>
 
       {allQuery.isLoading ? (
         <div className="grid gap-3">
@@ -412,17 +433,85 @@ export function ProviderBookings() {
           ))}
         </div>
       ) : pageItems.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center">
-          <div className="bg-primary/10 text-primary flex size-12 items-center justify-center rounded-full">
-            <CalendarCheck className="size-6" />
+        counts.all > 0 ? (
+          <div className="mx-auto flex max-w-md flex-col items-center gap-3 rounded-xl border border-dashed p-8 text-center">
+            <div className="flex size-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
+              <CalendarCheck className="size-6" />
+            </div>
+            <div>
+              <p className="text-foreground text-sm font-semibold">
+                Nenhum agendamento com status &ldquo;
+                {STATUS_TABS.find((t) => t.value === tab)?.label}&rdquo;
+              </p>
+              <p className="text-muted-foreground mt-1 text-xs">
+                Você possui {counts.all} agendamento{counts.all === 1 ? "" : "s"} registrado
+                {counts.all === 1 ? "" : "s"} em outras etapas.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+              {counts.COMPLETED > 0 && tab !== "COMPLETED" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTab("COMPLETED")}
+                  className="h-8 text-xs"
+                >
+                  Ver concluídos ({counts.COMPLETED})
+                </Button>
+              )}
+              {counts.CONFIRMED > 0 && tab !== "CONFIRMED" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTab("CONFIRMED")}
+                  className="h-8 text-xs"
+                >
+                  Ver confirmados ({counts.CONFIRMED})
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setTab("all")}
+                className="text-muted-foreground h-8 text-xs"
+              >
+                Ver todos ({counts.all})
+              </Button>
+            </div>
           </div>
-          <div>
-            <p className="text-sm font-semibold">Nenhum agendamento aqui</p>
-            <p className="text-muted-foreground mt-1 text-xs">
-              Quando um cliente agendar, ele aparecerá nesta lista.
-            </p>
+        ) : (
+          <div className="mx-auto flex max-w-lg flex-col items-center gap-4 rounded-xl border border-dashed p-10 text-center">
+            <div className="bg-muted text-muted-foreground flex size-12 items-center justify-center rounded-full">
+              <CalendarCheck className="size-6" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-foreground text-base font-semibold">Nenhum agendamento ainda</p>
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                Quando um cliente solicitar um serviço pela vitrine de Governador Valadares, ele
+                aparecerá aqui com notificações imediatas e confirmação no WhatsApp.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate("provider.expediente")}
+                className="h-8 gap-1.5 text-xs"
+              >
+                <Clock className="size-3.5" />
+                Configurar expediente
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate("provider.services")}
+                className="h-8 gap-1.5 text-xs"
+              >
+                Gerenciar serviços
+              </Button>
+            </div>
           </div>
-        </div>
+        )
       ) : (
         <>
           {/* Desktop: table */}

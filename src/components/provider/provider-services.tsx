@@ -14,6 +14,8 @@ import {
   Trash2,
   Wrench,
   AlertTriangle,
+  Camera,
+  X,
 } from "lucide-react"
 
 import { apiDelete, apiGet, apiPatch, apiPost, type Category } from "@/lib/api"
@@ -558,7 +560,7 @@ function ServiceCard({
   const photo = service.photos?.[0]
   const chips = categoryPathChips(service.category, categories)
   return (
-    <div className="bg-card flex flex-col overflow-hidden rounded-xl border shadow-sm transition-shadow hover:shadow-md">
+    <div className="bg-card group hover:border-primary/30 flex flex-col overflow-hidden rounded-xl border shadow-xs transition-all hover:shadow-md">
       <div className="bg-muted relative aspect-video w-full overflow-hidden">
         {photo ? (
           <Image
@@ -566,26 +568,48 @@ function ServiceCard({
             alt={service.title}
             fill
             sizes="(max-width: 768px) 100vw, 33vw"
-            className="object-cover"
+            className="object-cover transition-transform duration-300 group-hover:scale-105"
             loading="lazy"
           />
         ) : (
-          <div className="bg-muted text-muted-foreground flex size-full items-center justify-center">
-            <Wrench className="size-8" />
+          /* Nielsen #6 (Recognition) & #10 (Help & documentation) - Polished placeholder with direct action */
+          <div className="from-muted/50 via-muted/20 to-background flex size-full flex-col items-center justify-center bg-gradient-to-br p-4 text-center">
+            <div className="bg-primary/10 text-primary mb-1.5 flex size-10 items-center justify-center rounded-full">
+              <Wrench className="size-5" />
+            </div>
+            <span className="text-muted-foreground text-xs font-medium">Sem fotos</span>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="text-primary hover:text-primary/80 mt-1 inline-flex items-center gap-1 text-[11px] font-semibold hover:underline"
+            >
+              <Camera className="size-3" /> Adicionar fotos
+            </button>
           </div>
         )}
         <div className="absolute top-2 right-2">
           <Badge
             className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium backdrop-blur-sm",
               service.active
-                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
-                : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300",
+                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200"
+                : "bg-zinc-100/90 text-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-300",
             )}
           >
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                service.active ? "bg-emerald-600 dark:bg-emerald-400" : "bg-zinc-400",
+              )}
+            />
             {service.active ? "Ativo" : "Inativo"}
           </Badge>
         </div>
+        {service.photos && service.photos.length > 1 && (
+          <div className="absolute bottom-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-xs">
+            {service.photos.length} fotos
+          </div>
+        )}
       </div>
 
       <div className="flex flex-1 flex-col gap-2 p-4">
@@ -657,6 +681,7 @@ export function ProviderServices() {
   const user = useAuthStore((s) => s.user)
   const qc = useQueryClient()
   const [search, setSearch] = React.useState("")
+  const [statusFilter, setStatusFilter] = React.useState<"ALL" | "ACTIVE" | "INACTIVE">("ALL")
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<ProviderService | null>(null)
   const [deleting, setDeleting] = React.useState<ProviderService | null>(null)
@@ -681,16 +706,23 @@ export function ProviderServices() {
   })
 
   const services = React.useMemo(() => servicesQuery.data ?? [], [servicesQuery.data])
+
+  const totalActive = React.useMemo(() => services.filter((s) => s.active).length, [services])
+  const totalInactive = React.useMemo(() => services.length - totalActive, [services, totalActive])
+
   const filtered = React.useMemo(() => {
-    if (!search.trim()) return services
-    const q = search.toLowerCase()
-    return services.filter(
-      (s) =>
+    return services.filter((s) => {
+      if (statusFilter === "ACTIVE" && !s.active) return false
+      if (statusFilter === "INACTIVE" && s.active) return false
+      if (!search.trim()) return true
+      const q = search.toLowerCase()
+      return (
         s.title.toLowerCase().includes(q) ||
         s.description?.toLowerCase().includes(q) ||
-        s.category?.name?.toLowerCase().includes(q),
-    )
-  }, [services, search])
+        s.category?.name?.toLowerCase().includes(q)
+      )
+    })
+  }, [services, search, statusFilter])
 
   const openNew = () => {
     setEditing(null)
@@ -721,35 +753,113 @@ export function ProviderServices() {
     }
   }
 
-  const totalActive = services.filter((s) => s.active).length
-  const totalInactive = services.length - totalActive
-
   return (
     <div className="grid gap-6">
-      {/* Summary */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <SummaryCard label="Total" value={services.length} />
-        <SummaryCard label="Ativos" value={totalActive} accent="emerald" />
-        <SummaryCard label="Inativos" value={totalInactive} />
+      {/* Top Header - Nielsen #1 (Visibility of system status) & #8 (Aesthetic & minimalist design) */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight">Catálogo de Serviços</h2>
+          <p className="text-muted-foreground text-xs">
+            Gerencie preços, unidades de cobrança e visibilidade dos seus serviços na vitrine de
+            Governador Valadares.
+          </p>
+        </div>
+        <Button onClick={openNew} className="gap-1.5 self-start shadow-xs sm:self-auto">
+          <Plus className="size-4" /> Novo serviço
+        </Button>
       </div>
 
-      {/* Toolbar / filters bar */}
-      <div className="bg-card flex flex-wrap items-center gap-3 rounded-xl border p-3">
-        <div className="relative w-full sm:max-w-xs">
+      {/* Toolbar & Filter Bar - Nielsen #7 (Flexibility & efficiency) & #3 (User control and freedom) */}
+      <div className="bg-card flex flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setStatusFilter("ALL")}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors",
+              statusFilter === "ALL"
+                ? "bg-primary text-primary-foreground shadow-xs"
+                : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            Todos
+            <span
+              className={cn(
+                "rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+                statusFilter === "ALL"
+                  ? "bg-primary-foreground/20 text-primary-foreground"
+                  : "bg-muted text-muted-foreground",
+              )}
+            >
+              {services.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter("ACTIVE")}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors",
+              statusFilter === "ACTIVE"
+                ? "bg-emerald-600 text-white shadow-xs dark:bg-emerald-700"
+                : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <span className="size-1.5 rounded-full bg-emerald-400" />
+            Ativos
+            <span
+              className={cn(
+                "rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+                statusFilter === "ACTIVE"
+                  ? "bg-white/20 text-white"
+                  : "bg-muted text-muted-foreground",
+              )}
+            >
+              {totalActive}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter("INACTIVE")}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors",
+              statusFilter === "INACTIVE"
+                ? "bg-zinc-700 text-white shadow-xs dark:bg-zinc-600"
+                : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            Inativos
+            <span
+              className={cn(
+                "rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+                statusFilter === "INACTIVE"
+                  ? "bg-white/20 text-white"
+                  : "bg-muted text-muted-foreground",
+              )}
+            >
+              {totalInactive}
+            </span>
+          </button>
+        </div>
+
+        <div className="relative w-full sm:w-72">
           <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar serviço…"
-            className="pl-8"
+            placeholder="Buscar por título, categoria..."
+            className="pr-8 pl-8 text-xs"
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2"
+              aria-label="Limpar busca"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
         </div>
-        <p className="text-muted-foreground text-xs tabular-nums">
-          {filtered.length} serviço{filtered.length === 1 ? "" : "s"}
-        </p>
-        <Button onClick={openNew} className="ml-auto gap-1.5">
-          <Plus className="size-4" /> Novo serviço
-        </Button>
       </div>
 
       {/* Grid */}
@@ -760,21 +870,38 @@ export function ProviderServices() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
+        /* Empty State - Nielsen #9 (Help recover) & #10 (Help and documentation) */
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center">
           <div className="bg-primary/10 text-primary flex size-12 items-center justify-center rounded-full">
             <Wrench className="size-6" />
           </div>
           <div>
             <p className="text-sm font-semibold">
-              {search ? "Nenhum serviço encontrado" : "Você ainda não tem serviços cadastrados"}
-            </p>
-            <p className="text-muted-foreground mt-1 text-xs">
               {search
-                ? "Tente outro termo de busca."
-                : "Cadastre seu primeiro serviço para aparecer na vitrine."}
+                ? `Nenhum serviço encontrado para "${search}"`
+                : statusFilter !== "ALL"
+                  ? `Nenhum serviço ${statusFilter === "ACTIVE" ? "ativo" : "inativo"}`
+                  : "Você ainda não tem serviços cadastrados"}
+            </p>
+            <p className="text-muted-foreground mt-1 max-w-sm text-xs">
+              {search || statusFilter !== "ALL"
+                ? "Tente alterar os filtros de busca para encontrar o serviço desejado."
+                : "Cadastre seus serviços com preços transparentes e fotos de qualidade para receber mais agendamentos e orçamentos."}
             </p>
           </div>
-          {!search && (
+          {search || statusFilter !== "ALL" ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSearch("")
+                setStatusFilter("ALL")
+              }}
+              className="gap-1.5"
+            >
+              <X className="size-3.5" /> Limpar filtros
+            </Button>
+          ) : (
             <Button onClick={openNew} className="gap-1.5">
               <Plus className="size-4" /> Cadastrar serviço
             </Button>
@@ -804,30 +931,6 @@ export function ProviderServices() {
       />
 
       <DeleteServiceDialog service={deleting} open={deleteOpen} onOpenChange={setDeleteOpen} />
-    </div>
-  )
-}
-
-function SummaryCard({
-  label,
-  value,
-  accent,
-}: {
-  label: string
-  value: number
-  accent?: "emerald"
-}) {
-  return (
-    <div className="bg-card rounded-xl border p-4">
-      <p className="text-muted-foreground text-xs tracking-wider uppercase">{label}</p>
-      <p
-        className={cn(
-          "mt-1 text-2xl font-bold tabular-nums",
-          accent === "emerald" && "text-emerald-600 dark:text-emerald-400",
-        )}
-      >
-        {value}
-      </p>
     </div>
   )
 }

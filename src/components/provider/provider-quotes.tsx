@@ -468,6 +468,7 @@ function QuoteRequestCard({ request }: { request: QuoteRequest }) {
 
 export function ProviderQuotes() {
   const [tab, setTab] = React.useState<Tab>("PENDING")
+  const navigate = useViewStore((s) => s.navigate)
 
   const query = useQuery<{ items: QuoteRequest[]; total: number }>({
     queryKey: ["provider", "quotes", "all"],
@@ -502,6 +503,27 @@ export function ProviderQuotes() {
 
   return (
     <div className="grid gap-6">
+      {/* Top Header - Nielsen #1 (Visibility of system status) & #8 (Minimalist design) */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight">Orçamentos & Propostas</h2>
+          <p className="text-muted-foreground text-xs">
+            Responda solicitações de clientes e envie estimativas com discriminação clara de
+            materiais e mão de obra.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className="text-xs font-normal">
+            {requests.length} {requests.length === 1 ? "orçamento" : "orçamentos"} no total
+          </Badge>
+          {counts.PENDING > 0 && (
+            <Badge className="bg-amber-100 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+              {counts.PENDING} pendente{counts.PENDING === 1 ? "" : "s"}
+            </Badge>
+          )}
+        </div>
+      </div>
+
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
         <TabsList className="w-full overflow-x-auto sm:w-auto">
           {TABS.map((t) => (
@@ -524,16 +546,66 @@ export function ProviderQuotes() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
+        /* Intelligent Empty State - Nielsen #6 (Recognition), #9 (Recover from errors), #10 (Help) */
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center">
           <div className="bg-primary/10 text-primary flex size-12 items-center justify-center rounded-full">
             <FileText className="size-6" />
           </div>
           <div>
-            <p className="text-sm font-semibold">Nenhum orçamento aqui</p>
-            <p className="text-muted-foreground mt-1 text-xs">
-              Quando um cliente solicitar um orçamento, ele aparecerá aqui.
+            <p className="text-sm font-semibold">
+              {tab === "all"
+                ? "Nenhum orçamento recebido"
+                : `Nenhum orçamento em "${TABS.find((t) => t.value === tab)?.label}"`}
+            </p>
+            <p className="text-muted-foreground mt-1 max-w-sm text-xs">
+              {requests.length > 0
+                ? `Você possui ${requests.length} solicitação(ões) em outras etapas do painel.`
+                : "Quando clientes em Governador Valadares solicitarem propostas para seus serviços, elas aparecerão aqui."}
             </p>
           </div>
+          {requests.length > 0 && tab !== "all" ? (
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setTab("all")}>
+                Ver todos ({requests.length})
+              </Button>
+              {counts.PENDING > 0 && tab !== "PENDING" && (
+                <Button variant="default" size="sm" onClick={() => setTab("PENDING")}>
+                  Ver pendentes ({counts.PENDING})
+                </Button>
+              )}
+              {counts.RESPONDED > 0 && tab !== "RESPONDED" && (
+                <Button variant="outline" size="sm" onClick={() => setTab("RESPONDED")}>
+                  Ver respondidos ({counts.RESPONDED})
+                </Button>
+              )}
+              {counts.APPROVED > 0 && tab !== "APPROVED" && (
+                <Button variant="outline" size="sm" onClick={() => setTab("APPROVED")}>
+                  Ver aprovados ({counts.APPROVED})
+                </Button>
+              )}
+            </div>
+          ) : requests.length === 0 ? (
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate("provider.services")}
+                className="gap-1.5"
+              >
+                <Wrench className="size-3.5" />
+                Gerenciar serviços
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate("provider.expediente")}
+                className="gap-1.5"
+              >
+                <Clock className="size-3.5" />
+                Configurar expediente
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="grid gap-3">

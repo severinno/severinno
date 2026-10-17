@@ -298,87 +298,84 @@ export function ProviderDashboard() {
         </div>
       </div>
 
-      {/* Wallet balance card */}
-      <div className="rounded-xl border bg-gradient-to-br from-emerald-50 to-emerald-100/60 p-5 dark:from-emerald-950/40 dark:to-emerald-900/20">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="flex size-14 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/25">
-              <Banknote className="size-7" />
+      {/* Status Operacional — Saldo da Carteira + 4 KPIs Integrados */}
+      <div className="grid gap-4 md:grid-cols-12">
+        {/* Wallet balance card */}
+        <div className="rounded-xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/80 via-emerald-100/30 to-white p-5 shadow-xs md:col-span-5 lg:col-span-4 dark:border-emerald-800/50 dark:from-emerald-950/40 dark:via-emerald-900/20 dark:to-slate-900">
+          <div className="flex h-full flex-col justify-between gap-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold tracking-wider text-emerald-800 uppercase dark:text-emerald-300">
+                  Saldo da Carteira
+                </p>
+                <p className="mt-1 text-3xl font-bold tracking-tight text-emerald-950 tabular-nums dark:text-emerald-100">
+                  {walletQuery.isLoading ? (
+                    <span className="inline-block h-9 w-36 animate-pulse rounded bg-emerald-200 dark:bg-emerald-800" />
+                  ) : (
+                    formatBRL(walletQuery.data?.balance ?? 0)
+                  )}
+                </p>
+                <p className="mt-1 text-xs text-emerald-700/90 dark:text-emerald-400">
+                  {walletQuery.data?.totalBookings ?? 0} serviço
+                  {(walletQuery.data?.totalBookings ?? 0) === 1 ? "" : "s"} realizado
+                  {(walletQuery.data?.totalBookings ?? 0) === 1 ? "" : "s"}
+                  {walletQuery.data && walletQuery.data.totalBookings > 0 && (
+                    <> &middot; Ticket médio {formatBRL(walletQuery.data.avgTicket)}</>
+                  )}
+                </p>
+              </div>
+              <div className="flex size-11 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-md shadow-emerald-600/20">
+                <Banknote className="size-5.5" />
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-semibold tracking-wider text-emerald-700 uppercase dark:text-emerald-300">
-                Saldo da Carteira
-              </p>
-              <p className="text-3xl font-bold tracking-tight text-emerald-900 tabular-nums dark:text-emerald-100">
-                {walletQuery.isLoading ? (
-                  <span className="inline-block h-9 w-36 animate-pulse rounded bg-emerald-200 dark:bg-emerald-800" />
-                ) : (
-                  formatBRL(walletQuery.data?.balance ?? 0)
-                )}
-              </p>
-              <p className="mt-0.5 text-xs text-emerald-600 dark:text-emerald-400">
-                {walletQuery.data?.totalBookings ?? 0} serviço
-                {(walletQuery.data?.totalBookings ?? 0) === 1 ? "" : "s"} realizado
-                {(walletQuery.data?.totalBookings ?? 0) === 1 ? "" : "s"}
-                {walletQuery.data && walletQuery.data.totalBookings > 0 && (
-                  <> &middot; Ticket médio {formatBRL(walletQuery.data.avgTicket)}</>
-                )}
-              </p>
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full gap-1.5 border-emerald-300/80 bg-white/90 text-xs font-semibold text-emerald-800 shadow-xs hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-200 dark:hover:bg-emerald-950/60"
+              onClick={() => navigate("provider.finance")}
+            >
+              <Wallet className="size-3.5" /> Ver financeiro
+            </Button>
           </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-9 gap-1.5 bg-white/80 shadow-sm hover:bg-white dark:bg-emerald-900/40 dark:hover:bg-emerald-900/60"
-            onClick={() => navigate("provider.finance")}
-          >
-            <Wallet className="size-3.5" /> Ver financeiro
-          </Button>
+        </div>
+
+        {/* KPIs */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:col-span-7 lg:col-span-8">
+          <StatCard
+            index={0}
+            label="Agendamentos hoje"
+            value={bookingsToday.length}
+            hint={`${bookingsThisWeek.length} na semana`}
+            icon={CalendarCheck}
+            tone="primary"
+          />
+          <StatCard
+            index={1}
+            label="Orçamentos pendentes"
+            value={pendingQuoteItems}
+            icon={FileText}
+            tone="amber"
+          />
+          <StatCard
+            index={2}
+            label="Avaliação média"
+            value={avgRating.toFixed(1)}
+            hint={`${reviews.length} avaliaç${reviews.length === 1 ? "ão" : "ões"}`}
+            icon={Star}
+            tone="primary"
+          />
+          <StatCard
+            index={3}
+            label="Receita recebida"
+            value={formatBRL(revenuePaid)}
+            icon={Wallet}
+            tone="primary"
+          />
         </div>
       </div>
 
       {/* Geo-awareness badge — mostra demanda ativa na região */}
       <ProviderGeoAwarenessBadge />
-
-      {/* Sound & vibration preferences */}
-      <PreferenceToggles
-        soundEnabled={user?.soundEnabled ?? true}
-        vibrateEnabled={user?.vibrateEnabled ?? true}
-      />
-
-      {/* KPIs */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard
-          index={0}
-          label="Agendamentos hoje"
-          value={bookingsToday.length}
-          hint={`${bookingsThisWeek.length} na semana`}
-          icon={CalendarCheck}
-          tone="primary"
-        />
-        <StatCard
-          index={1}
-          label="Orçamentos pendentes"
-          value={pendingQuoteItems}
-          icon={FileText}
-          tone="amber"
-        />
-        <StatCard
-          index={2}
-          label="Avaliação média"
-          value={avgRating.toFixed(1)}
-          hint={`${reviews.length} avaliaç${reviews.length === 1 ? "ão" : "ões"}`}
-          icon={Star}
-          tone="primary"
-        />
-        <StatCard
-          index={3}
-          label="Receita recebida"
-          value={formatBRL(revenuePaid)}
-          icon={Wallet}
-          tone="primary"
-        />
-      </div>
 
       {loading ? (
         <div className="text-muted-foreground flex items-center justify-center py-12 text-sm">
@@ -707,6 +704,16 @@ export function ProviderDashboard() {
                 )}
               </CardContent>
             </Card>
+          </div>
+          {/* Preferências do dispositivo — Alertas e sons em segundo plano */}
+          <div className="space-y-2 pt-2">
+            <h3 className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
+              Preferências de notificações & dispositivo
+            </h3>
+            <PreferenceToggles
+              soundEnabled={user?.soundEnabled ?? true}
+              vibrateEnabled={user?.vibrateEnabled ?? true}
+            />
           </div>
         </>
       )}

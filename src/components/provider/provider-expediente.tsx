@@ -120,6 +120,57 @@ export function ProviderExpediente() {
     setSlots((prev) => prev.filter((s) => s.localId !== localId))
   }
 
+  const activeDaysCount = React.useMemo(() => {
+    const daysWithActiveSlots = new Set(
+      slots.filter((s) => s.active && s.startTime < s.endTime).map((s) => s.dayOfWeek),
+    )
+    return daysWithActiveSlots.size
+  }, [slots])
+
+  const applyPresetCommercial = () => {
+    const weekdays = [1, 2, 3, 4, 5]
+    const next: Slot[] = slots.filter((s) => !weekdays.includes(s.dayOfWeek))
+    for (const d of weekdays) {
+      next.push({
+        localId: makeLocalId(),
+        dayOfWeek: d,
+        startTime: "08:00",
+        endTime: "18:00",
+        active: true,
+      })
+    }
+    setSlots(next)
+    toast.success("Horário comercial (Seg-Sex, 08h-18h) aplicado. Clique em Salvar.")
+  }
+
+  const applyPresetHalfSaturday = () => {
+    const days = [1, 2, 3, 4, 5, 6]
+    const next: Slot[] = slots.filter((s) => !days.includes(s.dayOfWeek))
+    for (const d of [1, 2, 3, 4, 5]) {
+      next.push({
+        localId: makeLocalId(),
+        dayOfWeek: d,
+        startTime: "08:00",
+        endTime: "18:00",
+        active: true,
+      })
+    }
+    next.push({
+      localId: makeLocalId(),
+      dayOfWeek: 6,
+      startTime: "08:00",
+      endTime: "12:00",
+      active: true,
+    })
+    setSlots(next)
+    toast.success("Horário Seg a Sáb aplicado. Clique em Salvar.")
+  }
+
+  const clearAllSlots = () => {
+    setSlots([])
+    toast.info("Todos os horários foram removidos. Clique em Salvar para atualizar.")
+  }
+
   const copyToWeekdays = () => {
     const segSex = [1, 2, 3, 4, 5]
     const existingByDay = new Map<number, Slot[]>()
@@ -191,17 +242,79 @@ export function ProviderExpediente() {
     <div className="grid gap-6">
       {/* Header / quick actions */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-muted-foreground text-sm">
-          Configure os horários que você atende. Os clientes verão essa disponibilidade ao agendar.
-        </p>
+        <div>
+          <p className="text-foreground text-sm font-medium">Definição de Grade Semanal</p>
+          <p className="text-muted-foreground text-xs">
+            Configure os horários em que você atende. Os clientes verão essa disponibilidade ao
+            agendar na vitrine.
+          </p>
+        </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={copyToWeekdays} className="gap-1.5">
+          <Button variant="outline" size="sm" onClick={copyToWeekdays} className="gap-1.5 text-xs">
             <Copy className="size-3.5" />
             Copiar para dias úteis
           </Button>
-          <Button onClick={save} disabled={saving || !hydrated} className="gap-1.5">
+          <Button onClick={save} disabled={saving || !hydrated} className="gap-1.5 text-xs">
             {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
             Salvar expediente
+          </Button>
+        </div>
+      </div>
+
+      {/* Resumo Semanal & Presets Rápidos (Nielsen Heuristics #1, #7, #8) */}
+      <div className="bg-muted/20 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3">
+        <div className="flex items-center gap-2.5">
+          <span
+            className={cn(
+              "size-2.5 rounded-full",
+              activeDaysCount > 0 ? "bg-emerald-500 shadow-xs" : "bg-amber-400",
+            )}
+          />
+          <div>
+            <p className="text-foreground text-xs font-semibold">
+              {activeDaysCount === 0
+                ? "Agenda Fechada (Nenhum dia ativo)"
+                : `${activeDaysCount} de 7 dias com atendimento ativo`}
+            </p>
+            <p className="text-muted-foreground text-[11px]">
+              {activeDaysCount === 0
+                ? "Clientes não conseguirão agendar horários com você na vitrine de GV."
+                : "Os clientes verão apenas os dias e janelas ativos ao agendar."}
+            </p>
+          </div>
+        </div>
+
+        {/* Presets de 1 clique */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-muted-foreground mr-1 text-[11px] font-medium">
+            Atalhos rápidos:
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={applyPresetCommercial}
+            className="h-7 border-slate-200 bg-white text-xs dark:border-slate-800 dark:bg-slate-900"
+          >
+            Seg a Sex (08h-18h)
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={applyPresetHalfSaturday}
+            className="h-7 border-slate-200 bg-white text-xs dark:border-slate-800 dark:bg-slate-900"
+          >
+            Seg a Sáb
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={clearAllSlots}
+            className="text-muted-foreground hover:text-destructive h-7 text-xs"
+          >
+            Limpar
           </Button>
         </div>
       </div>
@@ -370,16 +483,11 @@ export function ProviderExpediente() {
         </div>
       )}
 
-      <p className="text-muted-foreground text-xs">
-        Dica: o servidor valida que cada janela tenha início anterior ao fim. Sobreposições no mesmo
-        dia são permitidas mas geram aviso visual.
-      </p>
-
-      <div className="flex justify-end">
-        <Button onClick={save} disabled={saving || !hydrated} className="gap-1.5">
-          {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-          Salvar expediente
-        </Button>
+      <div className="text-muted-foreground flex items-center justify-between rounded-lg border border-dashed p-3 text-xs">
+        <p>
+          💡 <strong>Dica:</strong> O sistema valida que cada janela tenha horário de início
+          anterior ao fim. Janelas sobrepostas no mesmo dia geram aviso de atenção.
+        </p>
       </div>
     </div>
   )
