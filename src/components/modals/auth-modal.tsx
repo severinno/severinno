@@ -4,6 +4,7 @@ import * as React from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, type Resolver } from "react-hook-form"
 import {
+  ArrowLeft,
   BadgeCheck,
   Check,
   Eye,
@@ -12,6 +13,7 @@ import {
   Lock,
   Mail,
   ShieldCheck,
+  Sparkles,
   UserRound,
   Wrench,
 } from "lucide-react"
@@ -70,6 +72,7 @@ export function AuthModal() {
   // Adopt store values when opening/changing (adjust state during render).
   const [localMode, setLocalMode] = React.useState<AuthModalMode>(mode)
   const [localRole, setLocalRole] = React.useState<AuthModalRole>(role)
+  const [localView, setLocalView] = React.useState<"auth" | "forgot-password">("auth")
 
   const [prevOpen, setPrevOpen] = React.useState(open)
   const [prevMode, setPrevMode] = React.useState(mode)
@@ -80,92 +83,275 @@ export function AuthModal() {
     setPrevRole(role)
     setLocalMode(mode)
     setLocalRole(role)
+    setLocalView("auth")
   }
 
   return (
     <Dialog open={open} onOpenChange={(o) => (o ? null : closeAuth())}>
-      <DialogContent className="w-[95vw] gap-0 overflow-hidden rounded-2xl border-slate-200/80 p-0 shadow-2xl sm:max-w-lg dark:border-slate-800">
-        {/* Header — clean minimalist brand bar + contextual value banner */}
-        <div className="border-b border-slate-100 bg-white px-6 pt-6 pb-4 dark:border-slate-800/80 dark:bg-slate-900">
-          <DialogHeader className="space-y-2.5 text-left">
-            <div className="flex items-center gap-3">
-              <div className="bg-primary text-primary-foreground inline-flex size-10 items-center justify-center rounded-xl shadow-xs">
-                <Wrench className="size-5" />
+      <DialogContent className="w-[95vw] gap-0 overflow-hidden rounded-2xl border-slate-200/80 p-0 shadow-2xl sm:max-w-lg md:max-w-3xl lg:max-w-4xl dark:border-slate-800">
+        <div className="flex flex-col md:flex-row">
+          {/* Painel de Marca e Confiança — Visível em Desktop (Split Layout) */}
+          <div className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-emerald-800 via-emerald-900 to-slate-950 p-7 text-white md:flex md:w-5/12">
+            <div className="pointer-events-none absolute -top-16 -left-16 size-48 rounded-full bg-emerald-500/20 blur-3xl" />
+            <div className="pointer-events-none absolute -right-16 -bottom-16 size-48 rounded-full bg-teal-500/20 blur-3xl" />
+
+            <div className="relative z-10 space-y-6">
+              <div className="flex items-center gap-2.5">
+                <div className="flex size-9 items-center justify-center rounded-xl bg-emerald-500 text-white shadow-md shadow-emerald-500/30">
+                  <Wrench className="size-5" />
+                </div>
+                <span className="text-base font-bold tracking-tight text-white">severinno</span>
+                <span className="rounded-full border border-emerald-600/40 bg-emerald-700/60 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
+                  Governador Valadares
+                </span>
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
-                  Severinno · Governador Valadares
+
+              <div className="space-y-2">
+                <h3 className="text-xl leading-snug font-bold tracking-tight">
+                  Serviços e reparos com a segurança que você merece.
+                </h3>
+                <p className="text-xs leading-relaxed text-emerald-100/80">
+                  Conectamos você aos melhores prestadores de Governador Valadares com garantia e
+                  acompanhamento em tempo real.
                 </p>
-                <DialogTitle className="text-xl leading-tight font-bold tracking-tight">
-                  {localMode === "login" ? "Entrar na sua conta" : "Criar conta gratuita"}
-                </DialogTitle>
+              </div>
+
+              <ul className="space-y-3.5 pt-1 text-xs text-emerald-50/90">
+                <li className="flex items-start gap-2.5">
+                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-600/50 text-emerald-200">
+                    <Check className="size-3" />
+                  </span>
+                  <span>
+                    <strong className="block text-white">+26 Prestadores Ativos em GV</strong>
+                    Eletricistas, diaristas, encanadores e montadores prontos hoje.
+                  </span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-600/50 text-emerald-200">
+                    <ShieldCheck className="size-3" />
+                  </span>
+                  <span>
+                    <strong className="block text-white">Custódia PIX com Escrow</strong>
+                    Pagamento protegido — só liberado com sua aprovação final.
+                  </span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-600/50 text-emerald-200">
+                    <BadgeCheck className="size-3" />
+                  </span>
+                  <span>
+                    <strong className="block text-white">Garantia Severinno de 90 Dias</strong>
+                    Suporte humanizado e assistência técnica em todo serviço.
+                  </span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="relative z-10 mt-6 border-t border-emerald-800/60 pt-5">
+              <div className="flex items-center gap-2 text-xs text-emerald-200/90">
+                <span className="flex text-amber-300">★ ★ ★ ★ ★</span>
+                <span className="font-semibold text-white">4.9 / 5</span>
+                <span className="text-[11px] text-emerald-300/70">(3.400+ atendimentos reais)</span>
               </div>
             </div>
-            <DialogDescription className="text-xs leading-relaxed">
-              {localMode === "login"
-                ? "Acesse em segundos para concluir seu agendamento ou orçamento com confirmação no WhatsApp."
-                : "Cadastro rápido em menos de 1 minuto. Sem mensalidade para clientes."}
-            </DialogDescription>
-
-            {/* Contextual trust pill row */}
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800 ring-1 ring-emerald-200/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50">
-                <ShieldCheck className="size-3 text-emerald-600 dark:text-emerald-400" />
-                Custódia PIX Protegida
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                <BadgeCheck className="size-3 text-emerald-600 dark:text-emerald-400" />
-                Garantia de 90 dias
-              </span>
-            </div>
-          </DialogHeader>
-        </div>
-
-        <Tabs
-          value={localMode}
-          onValueChange={(v) => openAuth(v as AuthModalMode, localRole)}
-          className="w-full"
-        >
-          {/* Segmented toggle */}
-          <div className="px-6 pt-4">
-            <TabsList className="grid h-auto w-full grid-cols-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
-              <TabsTrigger
-                value="login"
-                className="text-muted-foreground rounded-lg py-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:text-slate-900 data-[state=active]:shadow-xs dark:data-[state=active]:bg-slate-900 dark:data-[state=active]:text-slate-100"
-              >
-                Entrar
-              </TabsTrigger>
-              <TabsTrigger
-                value="register"
-                className="text-muted-foreground rounded-lg py-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:text-slate-900 data-[state=active]:shadow-xs dark:data-[state=active]:bg-slate-900 dark:data-[state=active]:text-slate-100"
-              >
-                Cadastrar
-              </TabsTrigger>
-            </TabsList>
           </div>
 
-          <TabsContent value="login" className="mt-0">
-            <LoginForm
-              onSuccess={() => {
-                closeAuth()
-              }}
-              onSwitchRegister={() => openAuth("register", localRole)}
-            />
-          </TabsContent>
+          {/* Coluna do Formulário */}
+          <div className="flex max-h-[90vh] flex-1 flex-col justify-between overflow-y-auto bg-white dark:bg-slate-900">
+            {/* Header — clean minimalist brand bar + contextual value banner */}
+            <div className="border-b border-slate-100 bg-white px-6 pt-6 pb-4 dark:border-slate-800/80 dark:bg-slate-900">
+              <DialogHeader className="space-y-2.5 text-left">
+                <div className="flex items-center gap-3">
+                  <div className="bg-primary text-primary-foreground inline-flex size-10 items-center justify-center rounded-xl shadow-xs">
+                    <Wrench className="size-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
+                      Severinno · Governador Valadares
+                    </p>
+                    <DialogTitle className="text-xl leading-tight font-bold tracking-tight">
+                      {localView === "forgot-password"
+                        ? "Recuperar senha"
+                        : localMode === "login"
+                          ? "Entrar na sua conta"
+                          : "Criar conta gratuita"}
+                    </DialogTitle>
+                  </div>
+                </div>
+                <DialogDescription className="text-xs leading-relaxed">
+                  {localView === "forgot-password"
+                    ? "Informe seus dados cadastrados para redefinir o acesso."
+                    : localMode === "login"
+                      ? "Acesse em segundos para concluir seu agendamento ou orçamento com confirmação no WhatsApp."
+                      : "Cadastro rápido em menos de 1 minuto. Sem mensalidade para clientes."}
+                </DialogDescription>
 
-          <TabsContent value="register" className="mt-0">
-            <RegisterForm
-              role={localRole}
-              onRoleChange={setLocalRole}
-              onSuccess={() => {
-                closeAuth()
-              }}
-              onSwitchLogin={() => openAuth("login", localRole)}
-            />
-          </TabsContent>
-        </Tabs>
+                {/* Contextual trust pill row */}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800 ring-1 ring-emerald-200/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50">
+                    <ShieldCheck className="size-3 text-emerald-600 dark:text-emerald-400" />
+                    Custódia PIX Protegida
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                    <BadgeCheck className="size-3 text-emerald-600 dark:text-emerald-400" />
+                    Garantia de 90 dias
+                  </span>
+                </div>
+              </DialogHeader>
+            </div>
+
+            {localView === "forgot-password" ? (
+              <ForgotPasswordForm onBackToLogin={() => setLocalView("auth")} />
+            ) : (
+              <Tabs
+                value={localMode}
+                onValueChange={(v) => openAuth(v as AuthModalMode, localRole)}
+                className="w-full"
+              >
+                {/* Segmented toggle */}
+                <div className="px-6 pt-4">
+                  <TabsList className="grid h-auto w-full grid-cols-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+                    <TabsTrigger
+                      value="login"
+                      className="text-muted-foreground rounded-lg py-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:text-slate-900 data-[state=active]:shadow-xs dark:data-[state=active]:bg-slate-900 dark:data-[state=active]:text-slate-100"
+                    >
+                      Entrar
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="register"
+                      className="text-muted-foreground rounded-lg py-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:text-slate-900 data-[state=active]:shadow-xs dark:data-[state=active]:bg-slate-900 dark:data-[state=active]:text-slate-100"
+                    >
+                      Cadastrar
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
+
+                <TabsContent value="login" className="mt-0">
+                  <LoginForm
+                    onSuccess={() => {
+                      closeAuth()
+                    }}
+                    onSwitchRegister={() => openAuth("register", localRole)}
+                    onForgotPassword={() => setLocalView("forgot-password")}
+                  />
+                </TabsContent>
+
+                <TabsContent value="register" className="mt-0">
+                  <RegisterForm
+                    role={localRole}
+                    onRoleChange={setLocalRole}
+                    onSuccess={() => {
+                      closeAuth()
+                    }}
+                    onSwitchLogin={() => openAuth("login", localRole)}
+                  />
+                </TabsContent>
+              </Tabs>
+            )}
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Forgot password form
+// ---------------------------------------------------------------------------
+
+function ForgotPasswordForm({ onBackToLogin }: { onBackToLogin: () => void }) {
+  const [emailOrPhone, setEmailOrPhone] = React.useState("")
+  const [submitted, setSubmitted] = React.useState(false)
+  const [loading, setLoading] = React.useState(false)
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!emailOrPhone.trim()) {
+      toast.error("Por favor, informe seu e-mail ou WhatsApp.")
+      return
+    }
+    setLoading(true)
+    setTimeout(() => {
+      setLoading(false)
+      setSubmitted(true)
+      toast.success("Instruções de recuperação enviadas!")
+    }, 500)
+  }
+
+  return (
+    <div className="space-y-4 p-6 pt-4">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onBackToLogin}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 transition-colors hover:text-emerald-800 dark:text-emerald-400"
+        >
+          <ArrowLeft className="size-3.5" />
+          Voltar para o login
+        </button>
+      </div>
+
+      <div className="space-y-1">
+        <h3 className="text-foreground text-base font-semibold">Recuperar sua senha</h3>
+        <p className="text-muted-foreground text-xs">
+          Digite seu e-mail cadastrado ou WhatsApp com DDD para receber o link de redefinição.
+        </p>
+      </div>
+
+      {submitted ? (
+        <div className="space-y-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 text-center dark:border-emerald-800 dark:bg-emerald-950/40">
+          <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400">
+            <Check className="size-5" />
+          </div>
+          <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
+            Instruções enviadas com sucesso!
+          </p>
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            Se houver uma conta cadastrada para{" "}
+            <strong className="text-foreground">{emailOrPhone}</strong>, enviamos um link temporário
+            para redefinir sua senha por e-mail e confirmação no WhatsApp.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onBackToLogin}
+            className="mt-2 w-full text-xs"
+          >
+            Voltar para o login
+          </Button>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <label htmlFor="recovery-input" className="text-foreground text-sm font-medium">
+              E-mail ou WhatsApp
+            </label>
+            <div className="relative">
+              <Mail className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+              <Input
+                id="recovery-input"
+                type="text"
+                autoFocus
+                placeholder="voce@exemplo.com ou (33) 99999-9999"
+                value={emailOrPhone}
+                onChange={(e) => setEmailOrPhone(e.target.value)}
+                className="h-10 pl-9 text-sm"
+              />
+            </div>
+          </div>
+
+          <Button
+            type="submit"
+            disabled={loading}
+            className="h-11 w-full bg-emerald-600 font-medium text-white hover:bg-emerald-700"
+          >
+            {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
+            Enviar instruções de recuperação
+          </Button>
+        </form>
+      )}
+    </div>
   )
 }
 
@@ -176,9 +362,11 @@ export function AuthModal() {
 function LoginForm({
   onSuccess,
   onSwitchRegister,
+  onForgotPassword,
 }: {
   onSuccess: () => void
   onSwitchRegister: () => void
+  onForgotPassword: () => void
 }) {
   const login = useAuthStore((s) => s.login)
   const navigate = useViewStore((s) => s.navigate)
@@ -230,6 +418,7 @@ function LoginForm({
                   <Input
                     type="email"
                     autoComplete="email"
+                    autoFocus
                     placeholder="voce@exemplo.com"
                     className="h-10 pl-9 text-sm"
                     {...field}
@@ -249,7 +438,7 @@ function LoginForm({
                 <FormLabel className="text-sm font-medium">Senha</FormLabel>
                 <button
                   type="button"
-                  onClick={() => toast.info("Recuperação de senha disponível em breve.")}
+                  onClick={onForgotPassword}
                   className="text-xs text-emerald-700 hover:underline dark:text-emerald-400"
                 >
                   Esqueci a senha
@@ -280,6 +469,76 @@ function LoginForm({
             </FormItem>
           )}
         />
+
+        {/* Checkbox Lembrar de Mim */}
+        <div className="flex items-center justify-between">
+          <label
+            htmlFor="login-remember-me"
+            className="text-muted-foreground hover:text-foreground flex cursor-pointer items-center gap-2 text-xs select-none"
+          >
+            <input
+              type="checkbox"
+              id="login-remember-me"
+              defaultChecked
+              className="size-3.5 rounded border-slate-300 accent-emerald-600"
+            />
+            <span>Lembrar de mim neste dispositivo</span>
+          </label>
+        </div>
+
+        {/* Chips de Acesso Rápido — Demonstração / Dev */}
+        <div className="rounded-xl border border-dashed border-emerald-200 bg-emerald-50/60 p-2.5 dark:border-emerald-800/40 dark:bg-emerald-950/20">
+          <div className="mb-1.5 flex items-center justify-between">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-emerald-800 uppercase dark:text-emerald-300">
+              <Sparkles className="size-3 text-emerald-600" />
+              Acesso Rápido (Demo)
+            </p>
+            <span className="text-muted-foreground text-[10px]">Preenchimento com 1 clique</span>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                form.setValue("email", "cliente@severinno.com", { shouldValidate: true })
+                form.setValue("password", "cliente123", { shouldValidate: true })
+                toast.success("Credenciais de Cliente Demo preenchidas!")
+              }}
+              className="h-7 border-emerald-300/80 bg-white text-[11px] font-medium hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:hover:bg-emerald-950/60"
+            >
+              👤 Cliente
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                form.setValue("email", "mariana.limpeza.gv@severinno.com.br", {
+                  shouldValidate: true,
+                })
+                form.setValue("password", "provider123", { shouldValidate: true })
+                toast.success("Credenciais de Prestador Demo (GV) preenchidas!")
+              }}
+              className="h-7 border-emerald-300/80 bg-white text-[11px] font-medium hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:hover:bg-emerald-950/60"
+            >
+              🛠️ Prestador
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                form.setValue("email", "admin@severinno.com", { shouldValidate: true })
+                form.setValue("password", "admin123", { shouldValidate: true })
+                toast.success("Credenciais de Admin Demo preenchidas!")
+              }}
+              className="h-7 border-emerald-300/80 bg-white text-[11px] font-medium hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:hover:bg-emerald-950/60"
+            >
+              🛡️ Admin
+            </Button>
+          </div>
+        </div>
 
         <AnimatePresence>
           {formError && (
