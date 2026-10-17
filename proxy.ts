@@ -572,6 +572,7 @@ export async function proxy(request: NextRequest) {
       const isHotEndpoint =
         pathname.startsWith("/api/providers") ||
         pathname.startsWith("/api/categories") ||
+        pathname === "/api/cities" ||
         pathname === "/api/health" ||
         pathname === "/api/stats/public"
 
