@@ -189,7 +189,7 @@ export async function chatCompletionHybrid(
   const {
     preferredEngine = "auto",
     cloudModel,
-    localModel = "llama3.2:3b",
+    localModel = process.env.LOCAL_AI_MODEL || process.env.OLLAMA_MODEL || "llama3.2:3b",
     temperature = 0.2,
     maxTokens = 600,
     timeoutMs = 6000,

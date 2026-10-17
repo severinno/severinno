@@ -48,6 +48,7 @@ Comandos Disponíveis:
                         - all      (bateria completa com comparação de baseline)
   docs               Gera a especificação OpenAPI 3.1 do catálogo em public/openapi.json
   qa                 Executa esteira completa de validação de PR (lint, types, testes)
+  ai [modelo]        Inicializa e valida o runtime local de IA / SLM (Ollama)
 
 Exemplos:
   bun run cli precommit
@@ -207,6 +208,11 @@ switch (command) {
         runCommand("node", ["scripts/run-benchmark.mjs", ...extraArgs])
         break
     }
+    break
+
+  case "ai":
+  case "ollama":
+    runCommand("bash", ["scripts/setup-ollama.sh", subcommand || "qwen2.5:0.5b", ...extraArgs])
     break
 
   case "-h":
