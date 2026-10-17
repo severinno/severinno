@@ -293,7 +293,30 @@ export async function POST(request: Request) {
           break
         }
 
-        // Se o usuário não está cadastrado e a mensagem não foi tratada por comando ou demanda:
+        // ── 1c. Triagem Inteligente de WhatsApp com IA Híbrida (Ollama Local / Groq / Fallback) ──
+        const { processAiTriage } = await import("@/lib/whatsapp-ai-triage")
+        const aiTriageResult = await processAiTriage({
+          phone: senderNumber,
+          text,
+          user: user ?? null,
+          remoteJid,
+        })
+
+        if (aiTriageResult.handled) {
+          evolutionLogger.info(
+            {
+              userId: user?.id,
+              phone: senderNumber.slice(0, 4) + "****",
+              intent: aiTriageResult.intent,
+              category: aiTriageResult.category,
+              engine: aiTriageResult.engineUsed,
+            },
+            "Webhook Evolution: mensagem triada e respondida com IA híbrida",
+          )
+          break
+        }
+
+        // Se o usuário não está cadastrado e a mensagem não foi tratada por comando, demanda ou IA:
         if (!user) {
           evolutionLogger.info(
             { number: senderNumber.slice(0, 6) + "****" },

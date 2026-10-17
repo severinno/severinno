@@ -281,4 +281,29 @@ describe("POST /api/webhooks/evolution", () => {
       }),
     )
   })
+
+  it("processes conversational question via AI triage and returns 200", async () => {
+    ;(vi.mocked(db.user.findFirst) as any).mockResolvedValue(null)
+
+    const payload = {
+      event: "messages.upsert",
+      instance: "severinno-instance",
+      data: {
+        key: {
+          remoteJid: "5533991234567@s.whatsapp.net",
+          fromMe: false,
+        },
+        message: {
+          conversation: "Vocês atendem no bairro Vila Bretas conserto de ar condicionado?",
+        },
+      },
+    }
+
+    const req = createMockRequest({ method: "POST", body: payload })
+    const res = await evolutionWebhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect(parsed.body!.received).toBe(true)
+  })
 })
