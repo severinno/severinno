@@ -16,8 +16,11 @@ export {}
 
 const TARGET_URL =
   process.argv.find((a) => a.startsWith("--target="))?.split("=")[1] || "http://localhost:3000"
-const TOTAL_REQUESTS = 1000
-const CONCURRENCY = 100 // 100 requisições em voo simultâneo
+const TOTAL_REQUESTS =
+  Number(process.argv.find((a) => a.startsWith("--requests="))?.split("=")[1]) || 1000
+const CONCURRENCY =
+  Number(process.argv.find((a) => a.startsWith("--concurrency="))?.split("=")[1]) || 50
+const MAX_P95 = Number(process.argv.find((a) => a.startsWith("--max-p95="))?.split("=")[1]) || 1000
 
 const ENDPOINTS = [
   "/api/health",
@@ -146,9 +149,10 @@ async function runLoadTest() {
   console.log(`   • p95:     ${p95.toFixed(1)} ms (95% das requisições responderam abaixo disso)`)
   console.log(`   • p99:     ${p99.toFixed(1)} ms (99% das requisições responderam abaixo disso)`)
   console.log(`   • Máxima:  ${max.toFixed(1)} ms`)
+  console.log(`   • Limite SLA p95: ${MAX_P95} ms`)
   console.log("================================================================================\n")
 
-  if (successRate >= 99 && p95 < 500) {
+  if (successRate >= 99 && p95 <= MAX_P95) {
     console.log("🎉 VEREDITO: SERVIDOR APROVADO COM EXCELÊNCIA EM ALTA CONCORRÊNCIA! ✅\n")
     process.exit(0)
   } else {
