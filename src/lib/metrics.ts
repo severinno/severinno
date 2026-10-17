@@ -24,14 +24,24 @@ import { webVitalsRegistry } from "./web-vitals-registry"
 
 const DURATION_BUCKETS = [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, Infinity]
 
-const requestDuration = new Map<string, { count: number; sum: number; buckets: number[] }>()
+const requestDuration = new Map<
+  string,
+  { path: string; status: number; count: number; sum: number; buckets: number[] }
+>()
 
 export function recordRequestDuration(path: string, status: number, durationMs: number): void {
-  const key = `${normalizePath(path)}:${status}`
+  const normalized = normalizePath(path)
+  const key = `${normalized}:${status}`
   let entry = requestDuration.get(key)
 
   if (!entry) {
-    entry = { count: 0, sum: 0, buckets: new Array(DURATION_BUCKETS.length).fill(0) }
+    entry = {
+      path: normalized,
+      status,
+      count: 0,
+      sum: 0,
+      buckets: new Array(DURATION_BUCKETS.length).fill(0),
+    }
     requestDuration.set(key, entry)
   }
 
@@ -50,7 +60,7 @@ function normalizePath(path: string): string {
   return clean
     .replace(/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "/:id")
     .replace(/\/\d+/g, "/:id")
-    .replace(/\/c[a-z0-9]+/g, "/:id")
+    .replace(/\/c[a-z0-9]{20,32}/gi, "/:id")
 }
 
 // ── Active Connections Counter ────────────────────────────────────────────
@@ -73,8 +83,8 @@ export function exportMetrics(): string {
   lines.push("# HELP http_request_duration_ms Request duration in milliseconds")
   lines.push("# TYPE http_request_duration_ms histogram")
 
-  for (const [key, entry] of requestDuration.entries()) {
-    const [path, status] = key.split(":")
+  for (const entry of requestDuration.values()) {
+    const { path, status } = entry
     for (let i = 0; i < DURATION_BUCKETS.length; i++) {
       lines.push(
         `http_request_duration_ms_bucket{path="${path}",status="${status}",le="${DURATION_BUCKETS[i] === Infinity ? "+Inf" : DURATION_BUCKETS[i]}"} ${entry.buckets[i]}`,

@@ -195,4 +195,21 @@ describe("exportMetrics (Prometheus)", () => {
     expect(output).not.toContain('path="/api/test"')
     expect(output).toContain("http_active_connections 0")
   })
+
+  it("normaliza CUIDs e IDs numéricos sem corromper rotas como categories ou cities", () => {
+    recordRequestDuration("/api/categories", 200, 15)
+    recordRequestDuration("/api/cities", 503, 20)
+    recordRequestDuration("/api/bookings/12345", 200, 50)
+    recordRequestDuration("/api/users/clh728x00000008l0h728x000", 200, 30)
+
+    const output = exportMetrics()
+    expect(output).toContain(
+      'http_request_duration_ms_count{path="/api/categories",status="200"} 1',
+    )
+    expect(output).toContain('http_request_duration_ms_count{path="/api/cities",status="503"} 1')
+    expect(output).toContain(
+      'http_request_duration_ms_count{path="/api/bookings/:id",status="200"} 1',
+    )
+    expect(output).toContain('http_request_duration_ms_count{path="/api/users/:id",status="200"} 1')
+  })
 })
