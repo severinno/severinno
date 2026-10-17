@@ -45,6 +45,11 @@ import { handleError } from "./api-server"
 import { traceSpan } from "./tracing"
 import { establishRequestContext } from "./request-context"
 import { requireMaintenanceAccessible } from "./maintenance-mode"
+import {
+  recordRequestDuration,
+  incrementActiveConnections,
+  decrementActiveConnections,
+} from "./metrics"
 import type { Span } from "@opentelemetry/api"
 
 /** Contexto entregue ao handler. `params` só existe em rotas dinâmicas. */
@@ -112,9 +117,18 @@ export function withRoute<P = Record<string, never>>(
       //   http.duration_ms       — duração total em ms (coerente com o nome
       //                            http_request_duration_ms do Prometheus)
       const startedAt = Date.now()
+      const pathname = requestPathname(request)
+      incrementActiveConnections()
       const finish = (response: Response): Response => {
+        decrementActiveConnections()
+        const durationMs = Math.max(0, Date.now() - startedAt)
         span.setAttribute("http.response.status_code", response.status)
-        span.setAttribute("http.duration_ms", Math.max(0, Date.now() - startedAt))
+        span.setAttribute("http.duration_ms", durationMs)
+        try {
+          recordRequestDuration(pathname || spanName, response.status, durationMs)
+        } catch {
+          // best-effort metrics recording
+        }
         return response
       }
       try {
@@ -124,7 +138,6 @@ export function withRoute<P = Record<string, never>>(
         span.setAttribute("http.request_id", requestId)
         span.setAttribute("http.request.method", request.method)
         span.setAttribute("http.route", spanName)
-        const pathname = requestPathname(request)
         span.setAttribute("url.path", pathname)
 
         // ── Chave de manutenção (um clique no painel admin) ────────────────

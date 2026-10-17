@@ -18,7 +18,15 @@ import type { HandlerArgs } from "@/lib/api-route"
 
 // Mocks declarados com vi.hoisted — vi.mock é hoistado para o topo do
 // arquivo e não pode referenciar variáveis comuns.
-const { mockTraceSpan, mockEstablish, mockGetRequestId, lastSpan } = vi.hoisted(() => ({
+const {
+  mockTraceSpan,
+  mockEstablish,
+  mockGetRequestId,
+  lastSpan,
+  mockRecordRequestDuration,
+  mockIncrementActiveConnections,
+  mockDecrementActiveConnections,
+} = vi.hoisted(() => ({
   mockTraceSpan: vi.fn(async (_name: string, fn: (span: unknown) => Promise<Response>) =>
     fn({ setAttribute: vi.fn() }),
   ),
@@ -27,6 +35,15 @@ const { mockTraceSpan, mockEstablish, mockGetRequestId, lastSpan } = vi.hoisted(
   // Span capturado pelo teste: o setAttribute REAL do wrapper registra cada
   // chamada para as asserções de observabilidade.
   lastSpan: { setAttribute: vi.fn() },
+  mockRecordRequestDuration: vi.fn(),
+  mockIncrementActiveConnections: vi.fn(),
+  mockDecrementActiveConnections: vi.fn(),
+}))
+
+vi.mock("@/lib/metrics", () => ({
+  recordRequestDuration: (...args: unknown[]) => mockRecordRequestDuration(...args),
+  incrementActiveConnections: () => mockIncrementActiveConnections(),
+  decrementActiveConnections: () => mockDecrementActiveConnections(),
 }))
 
 vi.mock("@/lib/tracing", () => ({
@@ -90,6 +107,9 @@ describe("withRoute", () => {
     expect(attrs["http.response.status_code"]).toBe(200)
     expect(attrs["http.duration_ms"]).toBeTypeOf("number")
     expect(attrs["http.duration_ms"]).toBeGreaterThanOrEqual(0)
+    expect(mockIncrementActiveConnections).toHaveBeenCalledTimes(1)
+    expect(mockDecrementActiveConnections).toHaveBeenCalledTimes(1)
+    expect(mockRecordRequestDuration).toHaveBeenCalledWith("/api/bookings", 200, expect.any(Number))
   })
 
   it("estampa os atributos também no caminho de ERRO (status do handleError)", async () => {
@@ -106,6 +126,9 @@ describe("withRoute", () => {
     expect(attrs["http.response.status_code"]).toBe(400)
     expect(attrs["http.duration_ms"]).toBeTypeOf("number")
     expect(attrs["http.request.method"]).toBe("POST")
+    expect(mockIncrementActiveConnections).toHaveBeenCalledTimes(1)
+    expect(mockDecrementActiveConnections).toHaveBeenCalledTimes(1)
+    expect(mockRecordRequestDuration).toHaveBeenCalledWith("/api/test", 400, expect.any(Number))
   })
 
   it("entrega span e requestId no contexto do handler", async () => {

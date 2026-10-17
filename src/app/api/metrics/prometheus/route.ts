@@ -24,7 +24,12 @@ import { NextResponse } from "next/server"
 
 export async function GET(request: Request): Promise<NextResponse> {
   const url = new URL(request.url)
-  const redirectUrl = `${url.origin}/api/health/detailed?format=prometheus`
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host")
+  const proto =
+    request.headers.get("x-forwarded-proto") ||
+    (url.protocol ? url.protocol.replace(":", "") : "http")
+  const origin = host ? `${proto}://${host}` : url.origin
+  const redirectUrl = `${origin}/api/health/detailed?format=prometheus`
 
   return NextResponse.redirect(redirectUrl, 302)
 }

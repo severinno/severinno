@@ -14,6 +14,9 @@ networks:
   monitoring:
     name: severinno_monitoring
     driver: bridge
+  backend:
+    name: ${SEVERINNO_NETWORK:-severinno_backend}
+    external: true
 
 volumes:
   prometheus_data:
@@ -43,6 +46,7 @@ services:
       - "--web.enable-admin-api"
     networks:
       - monitoring
+      - backend
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9090/-/healthy"]
       interval: 10s
@@ -142,13 +146,16 @@ services:
       GF_SERVER_ROOT_URL: http://localhost:3001
     networks:
       - monitoring
+      - backend
     depends_on:
       prometheus:
         condition: service_healthy
       tempo:
-        condition: service_healthy
+        condition: service_started
+        required: false
       loki:
-        condition: service_healthy
+        condition: service_started
+        required: false
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/api/health"]
       interval: 10s
