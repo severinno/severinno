@@ -69,9 +69,12 @@ type Props = {
   interactive?: boolean
   /** Height in px. Default 200. */
   height?: number
-  className?: string
   /** Optional active booking ID for live GPS broadcasting to client. */
   activeBookingId?: string | null
+  /** Optional container class name */
+  className?: string
+  /** Whether to render the radius slider controls (default true). Set false for read-only view. */
+  showSlider?: boolean
 }
 
 // Static map fallback URL (OpenStreetMap static image via staticmap.openstreetmap.de)
@@ -92,6 +95,7 @@ export default function ProviderMiniMap({
   height = 200,
   className,
   activeBookingId,
+  showSlider = true,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<unknown>(null)
@@ -420,33 +424,35 @@ export default function ProviderMiniMap({
       </div>
 
       {/* Radius slider */}
-      <div className="mt-2 grid gap-1.5">
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground text-[11px] font-medium">Raio de busca</span>
-          <span className="flex items-center gap-2">
-            {saving && (
-              <span className="text-muted-foreground animate-pulse text-[9px]">Salvando…</span>
-            )}
-            <span className="text-xs font-semibold text-emerald-700 tabular-nums dark:text-emerald-400">
-              {radius} km
+      {showSlider && (
+        <div className="mt-2 grid gap-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground text-[11px] font-medium">Raio de busca</span>
+            <span className="flex items-center gap-2">
+              {saving && (
+                <span className="text-muted-foreground animate-pulse text-[9px]">Salvando…</span>
+              )}
+              <span className="text-xs font-semibold text-emerald-700 tabular-nums dark:text-emerald-400">
+                {radius} km
+              </span>
             </span>
-          </span>
+          </div>
+          <Slider
+            value={[radius]}
+            onValueChange={handleRadiusChange}
+            min={1}
+            max={100}
+            step={1}
+            className="[&>span:first-child]:h-1.5 [&>span:first-child]:bg-emerald-100 [&>span:first-child_span]:bg-emerald-600 [&>span:last-child]:size-3.5 [&>span:last-child]:border-emerald-600"
+            aria-label="Raio de busca em quilômetros"
+          />
+          <div className="text-muted-foreground flex justify-between text-[9px]">
+            <span>1 km</span>
+            <span>50 km</span>
+            <span>100 km</span>
+          </div>
         </div>
-        <Slider
-          value={[radius]}
-          onValueChange={handleRadiusChange}
-          min={1}
-          max={100}
-          step={1}
-          className="[&>span:first-child]:h-1.5 [&>span:first-child]:bg-emerald-100 [&>span:first-child_span]:bg-emerald-600 [&>span:last-child]:size-3.5 [&>span:last-child]:border-emerald-600"
-          aria-label="Raio de busca em quilômetros"
-        />
-        <div className="text-muted-foreground flex justify-between text-[9px]">
-          <span>1 km</span>
-          <span>50 km</span>
-          <span>100 km</span>
-        </div>
-      </div>
+      )}
 
       {activeBookingId ? (
         <div className="border-border/80 bg-muted/40 mt-2.5 flex items-center justify-between rounded-lg border p-2.5 text-xs">

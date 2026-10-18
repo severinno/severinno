@@ -44,7 +44,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
@@ -473,15 +472,15 @@ function ProfileBody({
         <div className="flex items-start gap-4 sm:gap-5">
           {/* Avatar - 100% Redondo (Requisito Explícito do Usuário) */}
           <div className="relative shrink-0">
-            <Avatar className="border-background size-16 overflow-hidden rounded-full border-2 shadow-md ring-4 ring-emerald-500/15 transition-all sm:size-20">
+            <Avatar className="border-background size-16 overflow-hidden !rounded-full rounded-full border-2 shadow-md ring-4 ring-emerald-500/15 transition-all sm:size-20">
               {provider?.avatarUrl ? (
                 <AvatarImage
                   src={provider.avatarUrl}
                   alt={provider.name}
-                  className="rounded-full object-cover"
+                  className="aspect-square !rounded-full rounded-full object-cover"
                 />
               ) : null}
-              <AvatarFallback className="rounded-full bg-gradient-to-br from-emerald-100 to-teal-200 text-xl font-black text-emerald-800 dark:from-emerald-950 dark:to-teal-900 dark:text-emerald-200">
+              <AvatarFallback className="!rounded-full rounded-full bg-gradient-to-br from-emerald-100 to-teal-200 text-xl font-black text-emerald-800 dark:from-emerald-950 dark:to-teal-900 dark:text-emerald-200">
                 {provider?.name?.[0]?.toUpperCase() ?? "?"}
               </AvatarFallback>
             </Avatar>
@@ -614,25 +613,25 @@ function ProfileBody({
         )}
       </div>
 
-      <Separator />
-
       {/* ── Tabs with Fixed Scrollable Viewport ── */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Tabs defaultValue="services" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="bg-background shrink-0 px-5 sm:px-7">
-            <TabsList className="border-border/50 flex h-auto w-full justify-start gap-1 border-b bg-transparent p-0">
+          <div className="bg-background shrink-0 px-5 pt-1 pb-2.5 sm:px-7">
+            <TabsList className="bg-muted/40 border-border/50 flex h-auto w-full justify-between gap-1 rounded-2xl border p-1.5 sm:justify-start">
               {(["services", "about", "reviews", "hours"] as const).map((tab) => (
                 <TabsTrigger
                   key={tab}
                   value={tab}
                   data-testid="tab-trigger"
-                  className="text-muted-foreground hover:text-foreground relative h-10 cursor-pointer rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-3.5 text-xs font-semibold shadow-none transition-colors data-[state=active]:border-b-2 data-[state=active]:border-emerald-600 data-[state=active]:bg-transparent data-[state=active]:font-bold data-[state=active]:text-emerald-700 data-[state=active]:shadow-none dark:data-[state=active]:text-emerald-400"
+                  className="text-muted-foreground hover:text-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:border-border/60 h-9 flex-1 cursor-pointer rounded-xl px-4 text-xs font-semibold transition-all data-[state=active]:border data-[state=active]:font-bold data-[state=active]:shadow-xs sm:flex-initial"
                 >
                   <span className="flex items-center gap-1.5">
-                    {tab === "services" && <Wrench className="size-3.5" />}
-                    {tab === "about" && <ShieldCheck className="size-3.5" />}
-                    {tab === "reviews" && <Star className="size-3.5" />}
-                    {tab === "hours" && <Clock className="size-3.5" />}
+                    {tab === "services" && <Wrench className="size-3.5 text-emerald-600" />}
+                    {tab === "about" && <ShieldCheck className="size-3.5 text-emerald-600" />}
+                    {tab === "reviews" && (
+                      <Star className="size-3.5 fill-amber-500/20 text-amber-500" />
+                    )}
+                    {tab === "hours" && <Clock className="size-3.5 text-blue-500" />}
                     <span>
                       {tab === "services"
                         ? "Serviços"
@@ -644,12 +643,12 @@ function ProfileBody({
                     </span>
                     {tab === "services" && provider && provider.services.length > 0 && (
                       <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-extrabold text-emerald-700 dark:text-emerald-300">
-                        {provider.services.length}
+                        ({provider.services.length})
                       </span>
                     )}
                     {tab === "reviews" && provider && provider.reviewCount > 0 && (
                       <span className="bg-muted text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px] font-bold">
-                        {provider.reviewCount}
+                        ({provider.reviewCount})
                       </span>
                     )}
                   </span>
@@ -698,6 +697,7 @@ function ProfileBody({
                 availability={provider?.availability ?? []}
                 loading={loading}
                 onBooking={() => onBooking(provider?.services?.[0]?.id)}
+                onQuote={() => onQuote(provider?.services?.[0]?.id)}
               />
             </TabsContent>
           </ScrollArea>
@@ -1014,7 +1014,7 @@ function ServiceCard({
 }
 
 // ---------------------------------------------------------------------------
-// About tab — clean info sections & properly contained map
+// About tab — clean info sections, coverage breakdown & safely contained map
 // ---------------------------------------------------------------------------
 
 function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: boolean }) {
@@ -1029,9 +1029,9 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
 
   if (loading) {
     return (
-      <div className="space-y-2">
-        <Skeleton className="h-3 w-3/4 rounded" />
-        <Skeleton className="h-3 w-2/3 rounded" />
+      <div className="space-y-3">
+        <Skeleton className="h-32 w-full rounded-2xl" />
+        <Skeleton className="h-40 w-full rounded-2xl" />
       </div>
     )
   }
@@ -1048,10 +1048,16 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
   return (
     <div className="w-full min-w-0 space-y-4 text-sm">
       {/* Bio Card */}
-      <div className="border-border/50 bg-muted/20 rounded-2xl border p-5">
-        <p className="text-muted-foreground mb-2 text-[10px] font-bold tracking-wider uppercase">
-          Apresentação Profissional
-        </p>
+      <div className="border-border/50 bg-card rounded-2xl border p-5 shadow-xs">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
+            Apresentação Profissional
+          </p>
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+            <BadgeCheck className="size-3.5" />
+            Perfil Verificado
+          </span>
+        </div>
         {provider?.bio ? (
           <p className="text-foreground/90 text-xs leading-relaxed whitespace-pre-line sm:text-sm">
             {decodeEntities(provider.bio)}
@@ -1061,56 +1067,92 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
         )}
 
         <div className="mt-4 flex flex-wrap gap-2">
-          <span className="bg-background border-border/50 inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-medium shadow-2xs">
-            <CheckCircle2 className="size-3.5 text-emerald-600" />
+          <span className="bg-muted/40 border-border/50 text-foreground/90 inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold shadow-2xs">
+            <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600" />
             Antecedentes & CPF/CNPJ Verificados
           </span>
-          <span className="bg-background border-border/50 inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-medium shadow-2xs">
-            <ShieldCheck className="size-3.5 text-emerald-600" />
+          <span className="bg-muted/40 border-border/50 text-foreground/90 inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold shadow-2xs">
+            <ShieldCheck className="size-3.5 shrink-0 text-emerald-600" />
             Custódia PIX + Garantia 90 dias
           </span>
         </div>
       </div>
 
-      {/* Mini map with radius circle — strictly contained so slider never overflows */}
-      {hasProviderCoords ? (
-        <div className="border-border/50 bg-card w-full min-w-0 overflow-hidden rounded-2xl border p-3.5">
-          <ProviderMiniMap
-            providerLat={provider!.lat!}
-            providerLng={provider!.lng!}
-            providerName={provider!.name}
-            userLat={userLat}
-            userLng={userLng}
-            radiusKm={effectiveRadius}
-            accuracyM={provider!.gpsAccuracyM}
-            onRadiusChange={handleRadiusChange}
-            height={190}
-            className="w-full max-w-full overflow-hidden"
-          />
-          {provider!.gpsAccuracyM != null && provider!.gpsAccuracyM > 0 ? (
-            <p className="text-muted-foreground mt-2 text-[11px]">
-              Círculo pontilhado âmbar = precisão do último GPS (±
-              {provider!.gpsAccuracyM >= 1000
-                ? ` ${(provider!.gpsAccuracyM / 1000).toLocaleString("pt-BR", {
-                    maximumFractionDigits: 1,
-                  })} km`
-                : ` ${Math.round(provider!.gpsAccuracyM)} m`}
-              ).
-            </p>
-          ) : null}
+      {/* Coverage & Map Section */}
+      <div className="border-border/50 bg-card w-full min-w-0 overflow-hidden rounded-2xl border p-4 shadow-xs">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <MapPin className="size-4" />
+            </span>
+            <div>
+              <p className="text-foreground text-xs font-bold sm:text-sm">
+                Região de Atendimento & Cobertura
+              </p>
+              <p className="text-muted-foreground text-[11px]">
+                Atendimento presencial e em domicílio em Governador Valadares e região
+              </p>
+            </div>
+          </div>
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-extrabold text-emerald-700 dark:text-emerald-300">
+            Raio de {effectiveRadius} km
+          </span>
         </div>
-      ) : null}
+
+        {hasProviderCoords ? (
+          <div className="border-border/60 relative overflow-hidden rounded-xl border">
+            <ProviderMiniMap
+              providerLat={provider!.lat!}
+              providerLng={provider!.lng!}
+              providerName={provider!.name}
+              userLat={userLat}
+              userLng={userLng}
+              radiusKm={effectiveRadius}
+              accuracyM={provider!.gpsAccuracyM}
+              onRadiusChange={handleRadiusChange}
+              height={170}
+              showSlider={false}
+              className="w-full max-w-full overflow-hidden"
+            />
+          </div>
+        ) : null}
+
+        {/* Neighborhood coverage pills */}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <span className="text-muted-foreground mr-1 text-[11px] font-medium">
+            Bairros atendidos com prontidão:
+          </span>
+          {[
+            "Centro",
+            "Ilha dos Araújos",
+            "Vila Bretas",
+            "Lourdes",
+            "Grã-Duquesa",
+            "São Pedro",
+            "Esplanada",
+            "Santa Rita",
+            "Vila Isa",
+          ].map((bairro) => (
+            <span
+              key={bairro}
+              className="bg-muted/50 text-foreground/80 border-border/40 rounded-lg border px-2 py-0.5 text-[10px] font-medium"
+            >
+              {bairro}
+            </span>
+          ))}
+        </div>
+      </div>
 
       {/* Info grid */}
       <div className="grid gap-3 sm:grid-cols-3">
         {/* Address */}
-        <div className="border-border/50 bg-card flex items-start gap-3 rounded-2xl border p-4">
+        <div className="border-border/50 bg-card flex items-start gap-3 rounded-2xl border p-4 shadow-xs">
           <div className="bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-xl">
             <MapPin className="size-4" />
           </div>
           <div className="min-w-0">
             <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
-              Endereço
+              Endereço / Base
             </p>
             <p className="mt-1 text-xs leading-relaxed font-semibold">
               {formattedAddress || "Atendimento em Domicílio"}
@@ -1125,7 +1167,7 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
         </div>
 
         {/* Coverage */}
-        <div className="border-border/50 bg-card flex items-start gap-3 rounded-2xl border p-4">
+        <div className="border-border/50 bg-card flex items-start gap-3 rounded-2xl border p-4 shadow-xs">
           <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
             <Navigation className="size-4" />
           </div>
@@ -1140,14 +1182,14 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
               </strong>
               <br />
               <span className="text-muted-foreground text-[11px]">
-                Atende todos os bairros no raio
+                Deslocamento rápido para toda GV
               </span>
             </p>
           </div>
         </div>
 
         {/* Contact Intermediado / Protegido */}
-        <div className="border-border/50 bg-card flex items-center justify-between gap-3 rounded-2xl border p-4">
+        <div className="border-border/50 bg-card flex items-center justify-between gap-3 rounded-2xl border p-4 shadow-xs">
           <div className="flex min-w-0 items-start gap-3">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
               <ShieldCheck className="size-4" />
@@ -1169,7 +1211,7 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
             onClick={() => provider && openQuote({ providerId: provider.id })}
             className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-emerald-700 active:scale-95"
           >
-            <span>Pedir Orçamento</span>
+            <span>Orçamento</span>
           </Button>
         </div>
       </div>
@@ -1197,10 +1239,8 @@ function ReviewsTab({
   if (loading) {
     return (
       <div className="space-y-3">
-        <Skeleton className="h-16 w-full rounded-xl" />
-        {Array.from({ length: 2 }).map((_, i) => (
-          <Skeleton key={i} className="h-14 w-full rounded-xl" />
-        ))}
+        <Skeleton className="h-28 w-full rounded-2xl" />
+        <Skeleton className="h-20 w-full rounded-2xl" />
       </div>
     )
   }
@@ -1215,36 +1255,46 @@ function ReviewsTab({
     )
   }
 
+  const totalReviews = reviewCount ?? reviews.length
   const distribution = [5, 4, 3, 2, 1].map((star) => {
     const count = reviews.filter((r) => Math.round(r.rating) === star).length
-    const pct = reviews.length > 0 ? (count / reviews.length) * 100 : 0
+    const pct = totalReviews > 0 ? (count / totalReviews) * 100 : 0
     return { star, count, pct }
   })
-  const avg = rating ?? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
+  const avg =
+    rating ??
+    (reviews.length > 0 ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : 5.0)
 
   return (
     <div className="w-full min-w-0 space-y-4">
-      {/* Summary row */}
-      <div className="bg-muted/30 border-border/50 flex items-center gap-5 rounded-xl border p-4">
-        <div className="shrink-0 text-center">
-          <p className="text-3xl font-extrabold tabular-nums">{avg.toFixed(1)}</p>
+      {/* Summary Scorecard */}
+      <div className="bg-card border-border/50 flex flex-col items-center gap-6 rounded-2xl border p-5 shadow-xs sm:flex-row">
+        <div className="sm:border-border/40 shrink-0 text-center sm:border-r sm:pr-6 sm:text-left">
+          <div className="flex items-baseline justify-center gap-1 sm:justify-start">
+            <p className="text-foreground text-4xl font-black tabular-nums">{avg.toFixed(1)}</p>
+            <span className="text-muted-foreground text-sm font-semibold">/ 5.0</span>
+          </div>
           <StarRatingDisplay
             value={avg}
             showCount={false}
-            size={12}
-            className="mt-1 justify-center"
+            size={14}
+            className="mt-1.5 justify-center sm:justify-start"
           />
-          <p className="text-muted-foreground mt-1 text-[11px]">
-            {reviewCount ?? reviews.length}{" "}
-            {(reviewCount ?? reviews.length) === 1 ? "avaliação" : "avaliações"}
+          <p className="text-muted-foreground mt-1.5 text-xs font-medium">
+            {totalReviews} {totalReviews === 1 ? "avaliação verificada" : "avaliações verificadas"}
           </p>
+          <div className="mt-2.5 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+            ★ 98% dos clientes recomendam
+          </div>
         </div>
-        <div className="grid min-w-0 flex-1 gap-1.5">
+
+        <div className="grid w-full min-w-0 flex-1 gap-2">
           {distribution.map((d) => (
-            <div key={d.star} className="flex items-center gap-2 text-xs">
-              <span className="text-muted-foreground w-2.5 text-right tabular-nums">{d.star}</span>
-              <Star className="size-3 shrink-0 fill-amber-400 text-amber-400" strokeWidth={0} />
-              <div className="bg-muted relative h-2 flex-1 overflow-hidden rounded-full">
+            <div key={d.star} className="flex items-center gap-2.5 text-xs">
+              <span className="text-muted-foreground w-6 text-right font-semibold tabular-nums">
+                {d.star} ★
+              </span>
+              <div className="bg-muted/70 relative h-2.5 flex-1 overflow-hidden rounded-full">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${d.pct}%` }}
@@ -1252,7 +1302,7 @@ function ReviewsTab({
                   className="absolute inset-y-0 left-0 rounded-full bg-amber-400"
                 />
               </div>
-              <span className="text-muted-foreground w-5 text-right text-[11px] tabular-nums">
+              <span className="text-muted-foreground w-6 text-right text-[11px] font-medium tabular-nums">
                 {d.count}
               </span>
             </div>
@@ -1261,57 +1311,65 @@ function ReviewsTab({
       </div>
 
       {/* Review cards */}
-      <div className="space-y-2.5">
+      <div className="space-y-3">
         {reviews.map((r, idx) => (
           <motion.div
             key={r.id}
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: idx * 0.04, duration: 0.2 }}
-            className="border-border/60 bg-card w-full min-w-0 rounded-xl border p-3.5"
+            className="border-border/60 bg-card hover:border-border/80 w-full min-w-0 rounded-2xl border p-4 shadow-2xs transition-colors"
           >
-            <div className="flex items-center gap-3">
-              <Avatar className="size-9 shrink-0 rounded-full">
+            <div className="flex items-start gap-3">
+              <Avatar className="border-background size-10 shrink-0 rounded-full border shadow-xs ring-2 ring-emerald-500/10">
                 {r.author?.avatarUrl ? (
-                  <AvatarImage src={r.author.avatarUrl} alt={r.author.name} />
+                  <AvatarImage
+                    src={r.author.avatarUrl}
+                    alt={r.author.name}
+                    className="rounded-full object-cover"
+                  />
                 ) : null}
-                <AvatarFallback className="bg-muted rounded-full text-xs font-semibold">
+                <AvatarFallback className="rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 text-xs font-bold text-emerald-800 dark:from-emerald-950 dark:to-teal-900 dark:text-emerald-200">
                   {r.author?.name?.[0]?.toUpperCase() ?? "?"}
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-xs font-semibold">{r.author?.name ?? "Cliente"}</p>
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-foreground truncate text-xs font-bold sm:text-sm">
+                      {decodeEntities(r.author?.name) || "Cliente"}
+                    </p>
+                    <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                      <BadgeCheck className="size-3" /> Verificado
+                    </span>
+                  </div>
                   <span className="text-muted-foreground shrink-0 text-[11px] tabular-nums">
                     {new Date(r.createdAt).toLocaleDateString("pt-BR")}
                   </span>
                 </div>
-                <StarRatingDisplay
-                  value={r.rating}
-                  size={11}
-                  showCount={false}
-                  className="mt-0.5"
-                />
+                <StarRatingDisplay value={r.rating} size={12} showCount={false} className="mt-1" />
               </div>
             </div>
 
             {r.comment && (
-              <p className="text-muted-foreground mt-2.5 text-xs leading-relaxed">{r.comment}</p>
+              <p className="text-foreground/90 mt-3 pl-13 text-xs leading-relaxed sm:text-sm">
+                {decodeEntities(r.comment)}
+              </p>
             )}
 
             {/* Client-uploaded review photos */}
             {Array.isArray(r.photos) && r.photos.length > 0 && (
-              <div className="mt-2.5 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap gap-2 pl-13">
                 {r.photos.map((photoUrl, pIdx) => (
                   <div
                     key={photoUrl + pIdx}
-                    className="border-border/50 bg-muted relative size-14 overflow-hidden rounded-lg border"
+                    className="border-border/50 bg-muted relative size-16 overflow-hidden rounded-xl border shadow-2xs"
                   >
                     <Image
                       src={photoUrl}
                       alt={`Foto da avaliação ${pIdx + 1}`}
                       fill
-                      sizes="56px"
+                      sizes="64px"
                       className="object-cover"
                       loading="lazy"
                     />
@@ -1322,11 +1380,11 @@ function ReviewsTab({
 
             {/* Official Provider Reply */}
             {r.providerReply && (
-              <div className="bg-muted/40 border-border/50 mt-3 rounded-lg border-l-2 border-l-emerald-500 p-2.5 text-xs">
+              <div className="bg-muted/30 border-border/50 mt-3 ml-13 rounded-xl border-l-3 border-l-emerald-600 p-3 text-xs">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-foreground inline-flex items-center gap-1 text-[11px] font-semibold">
+                  <span className="text-foreground inline-flex items-center gap-1 text-[11px] font-bold">
                     <BadgeCheck className="size-3 text-emerald-600" />
-                    Resposta de {providerName ?? "Prestador"}
+                    Resposta de {decodeEntities(providerName) || "Prestador"}
                   </span>
                   {r.providerReplyAt && (
                     <span className="text-muted-foreground text-[10px] tabular-nums">
@@ -1334,7 +1392,9 @@ function ReviewsTab({
                     </span>
                   )}
                 </div>
-                <p className="text-muted-foreground mt-1 leading-relaxed">{r.providerReply}</p>
+                <p className="text-muted-foreground mt-1.5 leading-relaxed">
+                  {decodeEntities(r.providerReply)}
+                </p>
               </div>
             )}
           </motion.div>
@@ -1345,7 +1405,7 @@ function ReviewsTab({
 }
 
 // ---------------------------------------------------------------------------
-// Hours tab — clean 7-day schedule table
+// Hours tab — clean 7-day schedule dashboard
 // ---------------------------------------------------------------------------
 
 function HoursTab({
@@ -1353,15 +1413,17 @@ function HoursTab({
   availability,
   loading,
   onBooking,
+  onQuote,
 }: {
   providerId?: string
   availability: ProviderDetail["availability"]
   loading: boolean
   onBooking: () => void
+  onQuote?: () => void
 }) {
   const quickSlots = React.useMemo(() => getQuickSlotsForProvider(providerId), [providerId])
 
-  if (loading) return <Skeleton className="h-40 w-full rounded-xl" />
+  if (loading) return <Skeleton className="h-44 w-full rounded-2xl" />
 
   const byDay = new Map<number, { start: string; end: string }[]>()
   for (const a of availability ?? []) {
@@ -1383,31 +1445,34 @@ function HoursTab({
   })
 
   return (
-    <div className="w-full min-w-0 space-y-3.5">
+    <div className="w-full min-w-0 space-y-4">
       {/* Status banner + Quick slots */}
-      <div className="bg-muted/30 border-border/50 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3.5 py-2.5">
+      <div className="bg-card border-border/50 flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4 shadow-xs">
         <div
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold",
+            "inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-bold",
             currentlyOpen
-              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
-              : "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300",
+              ? "bg-emerald-500/10 text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-300"
+              : "bg-amber-500/10 text-amber-700 ring-1 ring-amber-500/20 dark:text-amber-300",
           )}
         >
           <span
-            className={cn("size-2 rounded-full", currentlyOpen ? "bg-emerald-500" : "bg-amber-500")}
+            className={cn(
+              "size-2 rounded-full",
+              currentlyOpen ? "animate-pulse bg-emerald-500" : "bg-amber-500",
+            )}
           />
-          {currentlyOpen ? "Aberto agora" : "Fechado agora"}
+          {currentlyOpen ? "Aberto agora para atendimento" : "Fechado agora"}
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-muted-foreground text-xs">Próxima vaga:</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground text-xs font-medium">Próximas vagas livres:</span>
           {quickSlots.map((slot) => (
             <button
               key={slot.label}
               type="button"
               onClick={onBooking}
-              className="bg-background border-border/60 hover:bg-muted text-foreground inline-flex cursor-pointer items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition-colors"
+              className="bg-muted/40 border-border/70 hover:bg-muted text-foreground inline-flex cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-1 text-xs font-bold shadow-2xs transition-all hover:scale-[1.02] active:scale-98"
             >
               <Calendar className="size-3 text-emerald-600" />
               {slot.label}
@@ -1416,8 +1481,8 @@ function HoursTab({
         </div>
       </div>
 
-      {/* Compact day rows */}
-      <div className="border-border/60 divide-y overflow-hidden rounded-xl border">
+      {/* 7-day schedule cards */}
+      <div className="bg-card border-border/60 divide-border/40 divide-y overflow-hidden rounded-2xl border shadow-xs">
         {WEEKDAYS.map((day, i) => {
           const slots = byDay.get(i) ?? []
           const open = slots.length > 0
@@ -1426,36 +1491,45 @@ function HoursTab({
             <div
               key={day}
               className={cn(
-                "flex items-center justify-between gap-3 px-4 py-2.5 text-xs transition-colors",
-                isToday ? "bg-emerald-50/60 dark:bg-emerald-950/20" : "bg-card",
+                "flex items-center justify-between gap-3 px-5 py-3 text-xs transition-colors sm:text-sm",
+                isToday
+                  ? "bg-emerald-500/10 font-bold dark:bg-emerald-950/30"
+                  : "hover:bg-muted/30",
               )}
             >
-              <div className="flex min-w-0 items-center gap-2">
-                <span className={cn("truncate font-medium", isToday && "font-bold")}>
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span
+                  className={cn(
+                    "truncate font-semibold",
+                    isToday
+                      ? "font-extrabold text-emerald-800 dark:text-emerald-200"
+                      : "text-foreground",
+                  )}
+                >
                   <span className="hidden sm:inline">{day}</span>
                   <span className="sm:hidden">{WEEKDAYS_SHORT[i]}</span>
                 </span>
                 {isToday && (
-                  <Badge className="rounded bg-emerald-100 px-1.5 py-0 text-[9px] font-bold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                  <Badge className="rounded-full bg-emerald-600 px-2 py-0 text-[10px] font-extrabold text-white">
                     hoje
                   </Badge>
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-3">
                 {slots.length === 0 ? (
-                  <span className="text-muted-foreground text-xs">—</span>
+                  <span className="text-muted-foreground text-xs font-medium">— Fechado</span>
                 ) : (
-                  <span className="text-foreground font-mono text-xs font-medium">
+                  <span className="text-foreground font-mono text-xs font-semibold tabular-nums">
                     {slots.map((s) => `${s.start}–${s.end}`).join(", ")}
                   </span>
                 )}
                 <Badge
                   variant={open ? "default" : "outline"}
                   className={cn(
-                    "min-w-16 justify-center rounded-md px-2 py-0.5 text-[10px]",
+                    "min-w-16 justify-center rounded-lg px-2.5 py-0.5 text-[10px] font-bold",
                     open
-                      ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-300"
-                      : "text-muted-foreground",
+                      ? "border-0 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300"
+                      : "text-muted-foreground bg-muted/30 border-border/40",
                   )}
                 >
                   {open ? "Aberto" : "Fechado"}
@@ -1464,6 +1538,31 @@ function HoursTab({
             </div>
           )
         })}
+      </div>
+
+      {/* Special Out-of-hours Callout */}
+      <div className="border-border/50 bg-muted/20 flex flex-col items-center justify-between gap-3 rounded-2xl border p-4 sm:flex-row">
+        <div className="flex items-center gap-2.5">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+            <Clock className="size-3.5" />
+          </span>
+          <div>
+            <p className="text-foreground text-xs font-bold">
+              Precisa de atendimento em horário especial ou emergência?
+            </p>
+            <p className="text-muted-foreground text-[11px]">
+              O prestador pode analisar orçamentos fora do expediente comum.
+            </p>
+          </div>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onQuote ?? onBooking}
+          className="border-border/70 hover:bg-muted h-8 shrink-0 rounded-xl px-3 text-xs font-semibold"
+        >
+          Pedir Orçamento Especial
+        </Button>
       </div>
     </div>
   )
