@@ -10,10 +10,12 @@
  *  - Debounced search by provider name, specialty, bio or service
  *  - Proximity filtering by radius (5km, 10km, 25km, 50km, todos)
  *  - Neighborhood selector for Governador Valadares (Centro, Ilha, etc.)
- *  - Category pills with horizontal scroll
+ *  - Category pills with horizontal scroll & custom icons
  *  - Verified-only and minimum rating toggles
  *  - Sort by proximity (distance) or reputation (rating)
  *  - In-panel actions: Request Quote, Book, View Full Profile, Message
+ *  - Interactive map view toggle with selected provider card
+ *  - Integrated Compare Dock
  */
 
 import * as React from "react"
@@ -84,7 +86,7 @@ const CompareBar = dynamic(() => import("@/components/vitrine/compare-bar"), {
 })
 
 // ---------------------------------------------------------------------------
-// Constants
+// Constants & Helpers
 // ---------------------------------------------------------------------------
 
 export const GV_NEIGHBORHOODS = [
@@ -119,6 +121,25 @@ function getInitials(name?: string | null): string {
     .slice(0, 2)
     .join("")
     .toUpperCase()
+}
+
+function getCategoryIcon(name: string): string {
+  const lower = name.toLowerCase()
+  if (lower.includes("eletric")) return "⚡"
+  if (lower.includes("pint")) return "🎨"
+  if (lower.includes("ar-cond") || lower.includes("clima") || lower.includes("refrig")) return "❄️"
+  if (lower.includes("encan") || lower.includes("hidr")) return "🔧"
+  if (lower.includes("limp") || lower.includes("diar") || lower.includes("faxin")) return "🧹"
+  if (lower.includes("chave")) return "🔑"
+  if (lower.includes("marc") || lower.includes("move")) return "🪚"
+  if (lower.includes("pedr") || lower.includes("refor") || lower.includes("alven")) return "🧱"
+  if (lower.includes("jard")) return "🌿"
+  if (lower.includes("mecan") || lower.includes("auto")) return "🚗"
+  if (lower.includes("fret") || lower.includes("mudan")) return "🚚"
+  if (lower.includes("gess")) return "📐"
+  if (lower.includes("camer") || lower.includes("segur")) return "📹"
+  if (lower.includes("vidr")) return "🪟"
+  return "✨"
 }
 
 // ---------------------------------------------------------------------------
@@ -304,18 +325,19 @@ export function ClientProviderSearch() {
 
   return (
     <div className="space-y-6">
-      {/* Search Header Banner */}
-      <div className="border-border/60 from-card via-card to-primary/5 relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 shadow-2xs sm:p-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="bg-primary/10 text-primary flex size-7 items-center justify-center rounded-lg">
-                <Search className="size-4" />
-              </span>
-              <h1 className="text-foreground text-xl font-bold tracking-tight sm:text-2xl">
-                Buscar Prestadores
-              </h1>
+      {/* Search Header Hero Banner */}
+      <div className="border-border/60 from-card via-card/95 to-primary/5 relative overflow-hidden rounded-3xl border bg-gradient-to-br p-5 shadow-xs sm:p-7">
+        <div className="bg-primary/10 pointer-events-none absolute -top-24 -right-24 size-80 rounded-full blur-3xl" />
+
+        <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1.5">
+            <div className="bg-primary/10 text-primary inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold">
+              <Sparkles className="size-3.5" />
+              <span>Rede Verificada · Governador Valadares</span>
             </div>
+            <h1 className="text-foreground text-2xl font-bold tracking-tight sm:text-3xl">
+              Buscar Prestadores
+            </h1>
             <p className="text-muted-foreground text-xs sm:text-sm">
               Encontre profissionais avaliados e verificados próximos a você em Governador
               Valadares.
@@ -324,12 +346,17 @@ export function ClientProviderSearch() {
 
           {/* Quick GPS Location Badge */}
           <div className="flex items-center gap-2 self-start md:self-auto">
-            <div className="border-border/60 bg-background/80 text-foreground flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs shadow-2xs">
-              <MapPin className="text-primary size-3.5 shrink-0" />
-              <span className="max-w-[170px] truncate font-medium sm:max-w-[220px]">
-                {geoDistrict ? `${geoDistrict}, ` : ""}
-                {geoCity || "Governador Valadares - MG"}
-              </span>
+            <div className="border-border/60 bg-background/90 text-foreground flex items-center gap-2.5 rounded-2xl border px-3.5 py-2 text-xs shadow-xs backdrop-blur-xs">
+              <MapPin className="text-primary size-4 shrink-0" />
+              <div className="flex flex-col">
+                <span className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
+                  Sua Região
+                </span>
+                <span className="max-w-[170px] truncate font-semibold sm:max-w-[220px]">
+                  {geoDistrict ? `${geoDistrict}, ` : ""}
+                  {geoCity || "Governador Valadares"}
+                </span>
+              </div>
             </div>
             <Button
               variant="outline"
@@ -338,12 +365,12 @@ export function ClientProviderSearch() {
               disabled={geoStatus === "locating"}
               title="Atualizar localização via GPS"
               aria-label="Atualizar localização via GPS"
-              className="border-border/60 hover:bg-muted/60 h-8 gap-1.5 rounded-xl px-2.5 text-xs font-medium"
+              className="border-border/60 hover:bg-muted/60 h-10 gap-1.5 rounded-2xl px-3 text-xs font-semibold shadow-xs transition-all active:scale-95"
             >
               {geoStatus === "locating" ? (
-                <Loader2 className="text-primary size-3.5 animate-spin" />
+                <Loader2 className="text-primary size-4 animate-spin" />
               ) : (
-                <Navigation className="text-primary size-3.5" />
+                <Navigation className="text-primary size-4" />
               )}
               <span className="hidden sm:inline">Meu GPS</span>
             </Button>
@@ -351,15 +378,15 @@ export function ClientProviderSearch() {
         </div>
 
         {/* Search Input Bar */}
-        <div className="relative mt-5">
+        <div className="relative mt-6">
           <div className="relative flex items-center">
-            <Search className="text-muted-foreground pointer-events-none absolute left-3.5 size-4" />
+            <Search className="text-muted-foreground/70 pointer-events-none absolute left-4 size-5" />
             <Input
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Buscar por eletricista, pintor, encanador, ar-condicionado ou nome..."
-              className="border-border/70 bg-background placeholder:text-muted-foreground/70 focus-visible:ring-primary h-11 rounded-xl pr-20 pl-10 text-sm shadow-2xs focus-visible:ring-1"
+              className="border-border/70 bg-background/95 placeholder:text-muted-foreground/60 focus-visible:ring-primary h-12 rounded-2xl pr-24 pl-12 text-sm shadow-xs transition-shadow focus-visible:ring-2 focus-visible:ring-offset-0"
             />
             {searchInput && (
               <button
@@ -368,41 +395,50 @@ export function ClientProviderSearch() {
                   triggerHaptic("selection")
                   setSearchInput("")
                 }}
-                className="text-muted-foreground hover:text-foreground absolute right-10 p-1 transition-colors"
+                className="text-muted-foreground hover:text-foreground hover:bg-muted absolute right-12 rounded-full p-1.5 transition-colors"
                 title="Limpar texto"
                 aria-label="Limpar texto"
               >
                 <X className="size-4" />
               </button>
             )}
-            <div className="text-muted-foreground/60 pointer-events-none absolute right-3 text-xs select-none">
+            <div className="text-muted-foreground/60 pointer-events-none absolute right-4 text-xs select-none">
               {providersQuery.isFetching ? (
                 <Loader2 className="text-primary size-4 animate-spin" />
-              ) : null}
+              ) : (
+                <span className="border-border/50 text-muted-foreground/50 hidden rounded-md border px-1.5 py-0.5 font-mono text-[11px] sm:inline-block">
+                  ESC
+                </span>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       {/* Category Pills Strip */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
-            Categorias populares
-          </span>
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground text-xs font-bold tracking-wider uppercase">
+              Categorias Populares
+            </span>
+            <span className="text-muted-foreground/70 text-[11px]">(em Governador Valadares)</span>
+          </div>
           {selectedCategoryId && (
             <button
+              type="button"
               onClick={() => {
                 triggerHaptic("selection")
                 setSelectedCategoryId(null)
               }}
-              className="text-primary text-xs font-medium hover:underline"
+              className="text-primary hover:text-primary/80 text-xs font-semibold transition-colors hover:underline"
             >
-              Ver todas
+              Ver todas as categorias
             </button>
           )}
         </div>
-        <div className="flex scrollbar-none gap-2 overflow-x-auto pb-1">
+
+        <div className="-mx-1 flex scrollbar-none gap-2 overflow-x-auto px-1 pb-1">
           <Button
             size="sm"
             variant={selectedCategoryId === null ? "default" : "outline"}
@@ -411,15 +447,15 @@ export function ClientProviderSearch() {
               setSelectedCategoryId(null)
             }}
             className={cn(
-              "h-8 shrink-0 rounded-full px-3.5 text-xs font-medium transition-all",
+              "h-9 shrink-0 rounded-full px-4 text-xs font-semibold transition-all active:scale-95",
               selectedCategoryId === null
-                ? "bg-primary text-primary-foreground shadow-2xs"
-                : "border-border/60 hover:bg-muted/60 text-muted-foreground hover:text-foreground",
+                ? "bg-primary text-primary-foreground ring-primary/20 shadow-xs ring-2"
+                : "border-border/60 bg-card hover:bg-muted/70 text-muted-foreground hover:text-foreground",
             )}
           >
-            Todas as categorias
+            ✨ Todas as categorias
           </Button>
-          {categories.slice(0, 14).map((cat) => {
+          {categories.map((cat) => {
             const isSelected = selectedCategoryId === cat.id
             return (
               <Button
@@ -431,266 +467,296 @@ export function ClientProviderSearch() {
                   setSelectedCategoryId(isSelected ? null : cat.id)
                 }}
                 className={cn(
-                  "h-8 shrink-0 rounded-full px-3.5 text-xs font-medium transition-all",
+                  "h-9 shrink-0 rounded-full px-4 text-xs font-semibold transition-all active:scale-95",
                   isSelected
-                    ? "bg-primary text-primary-foreground shadow-2xs"
-                    : "border-border/60 hover:bg-muted/60 text-muted-foreground hover:text-foreground",
+                    ? "bg-primary text-primary-foreground ring-primary/20 shadow-xs ring-2"
+                    : "border-border/60 bg-card hover:bg-muted/70 text-muted-foreground hover:text-foreground",
                 )}
               >
-                {cat.name}
+                <span className="mr-1.5">{getCategoryIcon(cat.name)}</span>
+                <span>{cat.name}</span>
               </Button>
             )
           })}
         </div>
       </div>
 
-      {/* Controls & Filter Toolbar */}
-      <div className="border-border/60 bg-card flex flex-col gap-3 rounded-2xl border p-3 shadow-2xs sm:p-4 md:flex-row md:items-center md:justify-between">
-        {/* Left side filters: Neighborhood + Radius */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Neighborhood Select */}
-          <div className="w-full min-w-[160px] sm:w-auto">
-            <Select
-              value={selectedNeighborhood ?? "all"}
-              onValueChange={(val) => {
-                triggerHaptic("selection")
-                setSelectedNeighborhood(val === "all" ? null : val)
-              }}
-            >
-              <SelectTrigger
-                aria-label="Filtrar por bairro em Governador Valadares"
-                className="border-border/60 bg-background h-9 rounded-xl text-xs font-medium"
+      {/* Unified Command & Filter Toolbar */}
+      <div className="border-border/60 bg-card/95 rounded-2xl border p-3.5 shadow-xs sm:p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          {/* Left Side: Geo & Trust Filters */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Neighborhood select */}
+            <div className="w-full min-w-[170px] sm:w-auto">
+              <Select
+                value={selectedNeighborhood ?? "all"}
+                onValueChange={(val) => {
+                  triggerHaptic("selection")
+                  setSelectedNeighborhood(val === "all" ? null : val)
+                }}
               >
-                <MapPin className="text-primary mr-1.5 size-3.5 shrink-0" />
-                <SelectValue placeholder="Bairro em GV" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-xs">
-                  Todos os bairros (GV)
-                </SelectItem>
-                {GV_NEIGHBORHOODS.map((nh) => (
-                  <SelectItem key={nh} value={nh} className="text-xs">
-                    {nh}
+                <SelectTrigger
+                  aria-label="Filtrar por bairro em Governador Valadares"
+                  className="border-border/60 bg-background h-9 rounded-xl text-xs font-medium"
+                >
+                  <MapPin className="text-primary mr-1.5 size-3.5 shrink-0" />
+                  <SelectValue placeholder="Bairro em GV" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs font-medium">
+                    Todos os bairros (GV)
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                  {GV_NEIGHBORHOODS.map((nh) => (
+                    <SelectItem key={nh} value={nh} className="text-xs">
+                      {nh}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Radius Segmented Bar */}
+            <div className="border-border/60 bg-muted/40 flex items-center gap-0.5 rounded-xl border p-1">
+              <span className="text-muted-foreground/70 hidden px-1.5 text-[10px] font-bold tracking-wider uppercase xl:inline">
+                Raio:
+              </span>
+              {RADIUS_OPTIONS.map((opt) => {
+                const active = radiusKm === opt.value
+                return (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      setRadiusKm(opt.value)
+                    }}
+                    className={cn(
+                      "rounded-lg px-2.5 py-1 text-xs font-medium transition-all",
+                      active
+                        ? "bg-background text-foreground font-semibold shadow-xs"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Trust Filter: Verificados */}
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic("selection")
+                setOnlyVerified((prev) => !prev)
+              }}
+              className={cn(
+                "flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium shadow-xs transition-all",
+                onlyVerified
+                  ? "border-emerald-500/50 bg-emerald-50 font-semibold text-emerald-700 ring-2 ring-emerald-500/20 dark:bg-emerald-950/50 dark:text-emerald-300"
+                  : "border-border/60 bg-background text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <ShieldCheck
+                className={cn(
+                  "size-3.5",
+                  onlyVerified ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground",
+                )}
+              />
+              <span>Verificados</span>
+            </button>
+
+            {/* Rating Filter: 4.5+ */}
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic("selection")
+                setMinRating((prev) => (prev === 4.5 ? null : 4.5))
+              }}
+              className={cn(
+                "flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium shadow-xs transition-all",
+                minRating === 4.5
+                  ? "border-amber-500/50 bg-amber-50 font-semibold text-amber-700 ring-2 ring-amber-500/20 dark:bg-amber-950/50 dark:text-amber-300"
+                  : "border-border/60 bg-background text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Star
+                className={cn(
+                  "size-3.5",
+                  minRating === 4.5 ? "fill-amber-500 text-amber-500" : "text-muted-foreground",
+                )}
+              />
+              <span>4.5+</span>
+            </button>
           </div>
 
-          {/* Radius pills */}
-          <div className="border-border/60 bg-muted/30 flex items-center gap-1 rounded-xl border p-0.5">
-            {RADIUS_OPTIONS.map((opt) => {
-              const active = radiusKm === opt.value
-              return (
+          {/* Right Side: View Mode, Sorting & Reset */}
+          <div className="border-border/40 flex flex-wrap items-center justify-between gap-2 border-t pt-2 sm:justify-end lg:border-t-0 lg:pt-0">
+            {/* View Mode Switch */}
+            <div className="border-border/60 bg-muted/40 flex items-center gap-0.5 rounded-xl border p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  setViewMode("grid")
+                }}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all",
+                  viewMode === "grid"
+                    ? "bg-background text-foreground font-semibold shadow-xs"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                title="Visualização em Lista / Grade"
+                aria-label="Visualização em Lista"
+              >
+                <LayoutGrid className="size-3.5" />
+                <span>Lista</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  setViewMode("map")
+                }}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all",
+                  viewMode === "map"
+                    ? "bg-background text-foreground font-semibold shadow-xs"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                title="Visualização em Mapa Interativo"
+                aria-label="Visualização em Mapa"
+              >
+                <MapPin className="size-3.5" />
+                <span>Mapa</span>
+              </button>
+            </div>
+
+            {/* Sorting Segmented */}
+            <div className="flex items-center gap-1.5">
+              <div className="text-muted-foreground hidden items-center gap-1 text-xs font-medium sm:flex">
+                <SlidersHorizontal className="size-3.5" />
+                <span>Ordenar:</span>
+              </div>
+              <div className="border-border/60 bg-muted/40 flex items-center gap-0.5 rounded-xl border p-1">
                 <button
-                  key={opt.label}
                   type="button"
                   onClick={() => {
                     triggerHaptic("selection")
-                    setRadiusKm(opt.value)
+                    setSortBy("distance")
                   }}
                   className={cn(
                     "rounded-lg px-2.5 py-1 text-xs font-medium transition-all",
-                    active
-                      ? "bg-background text-foreground font-semibold shadow-2xs"
+                    sortBy === "distance"
+                      ? "bg-background text-foreground font-semibold shadow-xs"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  {opt.label}
+                  Distância
                 </button>
-              )
-            })}
-          </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    setSortBy("rating")
+                  }}
+                  className={cn(
+                    "rounded-lg px-2.5 py-1 text-xs font-medium transition-all",
+                    sortBy === "rating"
+                      ? "bg-background text-foreground font-semibold shadow-xs"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Avaliação
+                </button>
+              </div>
+            </div>
 
-          {/* Verified toggle pill */}
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic("selection")
-              setOnlyVerified((prev) => !prev)
-            }}
-            className={cn(
-              "flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-medium shadow-2xs transition-all",
-              onlyVerified
-                ? "border-emerald-500/40 bg-emerald-50 font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-                : "border-border/60 bg-background text-muted-foreground hover:text-foreground",
+            {/* Reset Filters */}
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleResetFilters}
+                className="text-muted-foreground hover:text-foreground hover:bg-muted/60 h-9 gap-1.5 rounded-xl px-2.5 text-xs font-medium"
+                title="Limpar todos os filtros"
+              >
+                <RotateCcw className="size-3.5" />
+                <span>Limpar</span>
+              </Button>
             )}
-          >
-            <ShieldCheck className="size-3.5" />
-            <span>Verificados</span>
-          </button>
-
-          {/* Min Rating 4.5+ pill */}
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic("selection")
-              setMinRating((prev) => (prev === 4.5 ? null : 4.5))
-            }}
-            className={cn(
-              "flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-medium shadow-2xs transition-all",
-              minRating === 4.5
-                ? "border-amber-500/40 bg-amber-50 font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
-                : "border-border/60 bg-background text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <Star className="size-3.5 fill-amber-400 text-amber-400" />
-            <span>4.5+</span>
-          </button>
-        </div>
-
-        {/* Right side: View Mode, Sort By & Reset */}
-        <div className="border-border/40 flex flex-wrap items-center justify-between gap-2 border-t pt-2 sm:justify-end md:border-t-0 md:pt-0">
-          {/* View mode toggle */}
-          <div className="border-border/60 bg-muted/30 flex items-center gap-1 rounded-xl border p-0.5">
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic("selection")
-                setViewMode("grid")
-              }}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all",
-                viewMode === "grid"
-                  ? "bg-background text-foreground font-semibold shadow-2xs"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              title="Visualização em Lista / Grade"
-              aria-label="Visualização em Lista"
-            >
-              <LayoutGrid className="size-3.5" />
-              <span>Lista</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic("selection")
-                setViewMode("map")
-              }}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all",
-                viewMode === "map"
-                  ? "bg-background text-foreground font-semibold shadow-2xs"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              title="Visualização em Mapa Interativo"
-              aria-label="Visualização em Mapa"
-            >
-              <MapPin className="size-3.5" />
-              <span>Mapa</span>
-            </button>
           </div>
-
-          <div className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex">
-            <SlidersHorizontal className="size-3.5" />
-            <span>Ordenar:</span>
-          </div>
-
-          <div className="border-border/60 bg-muted/30 flex items-center gap-1 rounded-xl border p-0.5">
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic("selection")
-                setSortBy("distance")
-              }}
-              className={cn(
-                "rounded-lg px-2.5 py-1 text-xs font-medium transition-all",
-                sortBy === "distance"
-                  ? "bg-background text-foreground font-semibold shadow-2xs"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              Distância
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic("selection")
-                setSortBy("rating")
-              }}
-              className={cn(
-                "rounded-lg px-2.5 py-1 text-xs font-medium transition-all",
-                sortBy === "rating"
-                  ? "bg-background text-foreground font-semibold shadow-2xs"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              Avaliação
-            </button>
-          </div>
-
-          {hasActiveFilters && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleResetFilters}
-              className="text-muted-foreground hover:text-foreground h-8 gap-1 px-2 text-xs"
-              title="Limpar todos os filtros"
-            >
-              <RotateCcw className="size-3.5" />
-              <span className="hidden sm:inline">Limpar</span>
-            </Button>
-          )}
         </div>
       </div>
 
-      {/* Results Counter & Active Criteria */}
-      <div className="text-muted-foreground flex items-center justify-between px-1 text-xs">
-        <div>
+      {/* Results Counter & Reassurance Badge */}
+      <div className="text-muted-foreground flex flex-col justify-between gap-2 px-1 text-xs sm:flex-row sm:items-center">
+        <div className="flex flex-wrap items-center gap-2">
           {providersQuery.isLoading ? (
-            <span>Buscando prestadores...</span>
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="text-primary size-3.5 animate-spin" />
+              Buscando prestadores...
+            </span>
           ) : (
             <span>
-              Mostrando <strong className="text-foreground">{providers.length}</strong>{" "}
+              Mostrando{" "}
+              <strong className="text-foreground font-semibold">{providers.length}</strong>{" "}
               {providers.length === 1 ? "prestador encontrado" : "prestadores encontrados"}
               {selectedNeighborhood ? ` em ${selectedNeighborhood}` : ""}
             </span>
           )}
+
+          {providersQuery.data?.expandedRadius && providersQuery.data.expandedRadius > 0 && (
+            <span className="text-primary bg-primary/10 rounded-full px-2.5 py-0.5 text-[11px] font-semibold">
+              Raio expandido para {providersQuery.data.expandedRadius} km
+            </span>
+          )}
         </div>
-        {providersQuery.data?.expandedRadius && providersQuery.data.expandedRadius > 0 && (
-          <span className="text-primary bg-primary/10 rounded-full px-2 py-0.5 text-[11px] font-medium">
-            Raio expandido para {providersQuery.data.expandedRadius} km
-          </span>
-        )}
+
+        {/* Escrow Guarantee Pill */}
+        <div className="hidden items-center gap-1.5 font-medium text-emerald-700 sm:flex dark:text-emerald-400">
+          <ShieldCheck className="size-3.5 text-emerald-600" />
+          <span>🛡️ Pagamento Seguro Escrow · Garantia 90D</span>
+        </div>
       </div>
 
-      {/* Grid of Provider Cards */}
+      {/* Main Content: Grid vs Map */}
       {providersQuery.isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i} className="border-border/60 space-y-4 rounded-2xl p-5 shadow-2xs">
+            <Card key={i} className="border-border/60 space-y-4 rounded-2xl p-5 shadow-xs">
               <div className="flex items-center gap-3">
-                <Skeleton className="size-12 rounded-full" />
+                <Skeleton className="size-13 rounded-full" />
                 <div className="flex-1 space-y-1.5">
                   <Skeleton className="h-4 w-32" />
                   <Skeleton className="h-3 w-24" />
                 </div>
               </div>
-              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full rounded-xl" />
               <div className="flex gap-2">
-                <Skeleton className="h-8 flex-1 rounded-xl" />
-                <Skeleton className="h-8 flex-1 rounded-xl" />
+                <Skeleton className="h-9 flex-1 rounded-xl" />
+                <Skeleton className="h-9 flex-1 rounded-xl" />
               </div>
             </Card>
           ))}
         </div>
       ) : providers.length === 0 ? (
-        <Card className="border-border/70 rounded-2xl border-dashed p-8 text-center sm:p-12">
-          <CardContent className="flex flex-col items-center justify-center space-y-3 p-0">
-            <div className="bg-muted/80 text-muted-foreground flex size-14 items-center justify-center rounded-full">
-              <Search className="size-6" />
+        <Card className="border-border/70 rounded-3xl border-dashed p-8 text-center sm:p-14">
+          <CardContent className="flex flex-col items-center justify-center space-y-3.5 p-0">
+            <div className="bg-muted/80 text-muted-foreground flex size-16 items-center justify-center rounded-2xl">
+              <Search className="size-7" />
             </div>
-            <h3 className="text-foreground text-base font-semibold">Nenhum prestador encontrado</h3>
+            <h3 className="text-foreground text-lg font-bold">Nenhum prestador encontrado</h3>
             <p className="text-muted-foreground max-w-md text-xs sm:text-sm">
               Não encontramos nenhum profissional correspondente aos filtros selecionados. Tente
-              expandir o raio de distância ou pesquisar por outra categoria.
+              expandir o raio de distância ou selecionar outro bairro.
             </p>
             {hasActiveFilters && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleResetFilters}
-                className="border-border/60 mt-2 h-9 gap-1.5 rounded-xl text-xs font-semibold"
+                className="border-border/60 mt-2 h-10 gap-2 rounded-xl text-xs font-semibold shadow-xs"
               >
                 <RotateCcw className="size-3.5" />
                 Limpar todos os filtros
@@ -699,7 +765,7 @@ export function ClientProviderSearch() {
           </CardContent>
         </Card>
       ) : viewMode === "map" ? (
-        <div className="border-border/60 relative h-[560px] w-full overflow-hidden rounded-2xl border shadow-2xs">
+        <div className="border-border/60 relative h-[560px] w-full overflow-hidden rounded-3xl border shadow-xs">
           <ProvidersMap
             providers={providers}
             userLat={geoLat}
@@ -724,12 +790,13 @@ export function ClientProviderSearch() {
                   <X className="size-4" />
                 </button>
                 <div className="flex items-center gap-3">
-                  <Avatar className="border-border/40 size-12 border shadow-2xs">
+                  <Avatar className="border-border/40 size-12 rounded-full border shadow-xs">
                     <AvatarImage
                       src={selectedMapProvider.avatarUrl || undefined}
                       alt={selectedMapProvider.name}
+                      className="rounded-full object-cover"
                     />
-                    <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                    <AvatarFallback className="bg-primary/10 text-primary rounded-full font-semibold">
                       {getInitials(selectedMapProvider.name)}
                     </AvatarFallback>
                   </Avatar>
@@ -767,7 +834,7 @@ export function ClientProviderSearch() {
                       triggerHaptic("selection")
                       openQuote({ providerId: selectedMapProvider.id })
                     }}
-                    className="bg-primary text-primary-foreground hover:bg-primary/90 h-8 flex-1 rounded-xl text-xs font-semibold shadow-2xs"
+                    className="bg-primary text-primary-foreground hover:bg-primary/90 h-8 flex-1 rounded-xl text-xs font-semibold shadow-xs"
                   >
                     Orçamento
                   </Button>
@@ -823,30 +890,34 @@ export function ClientProviderSearch() {
                 data-compare-distance={formattedDist}
                 data-compare-distance-km={typeof p.distanceKm === "number" ? p.distanceKm : ""}
                 className={cn(
-                  "group border-border/60 bg-card hover:border-primary/40 relative flex flex-col justify-between overflow-hidden rounded-2xl p-4 transition-all hover:shadow-md sm:p-5",
-                  isCompared && "border-primary/50 ring-primary/20 ring-1",
+                  "group border-border/60 bg-card hover:border-primary/50 relative flex flex-col justify-between overflow-hidden rounded-2xl p-4 transition-all duration-200 hover:shadow-lg sm:p-5",
+                  isCompared && "border-primary ring-primary/20 ring-2",
                 )}
               >
                 <div className="space-y-3">
                   {/* Top Header: Avatar + Info + Favorite & Compare */}
                   <div className="flex items-start justify-between gap-3">
                     <div
-                      className="flex min-w-0 cursor-pointer items-center gap-3"
+                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-3"
                       onClick={() => {
                         triggerHaptic("selection")
                         openProvider(p.id)
                       }}
                     >
-                      <div className="relative">
-                        <Avatar className="border-border/40 size-12 rounded-full border shadow-2xs">
-                          <AvatarImage src={p.avatarUrl || undefined} alt={p.name} />
-                          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                      <div className="relative shrink-0">
+                        <Avatar className="border-border/40 ring-background size-13 rounded-full border shadow-xs ring-2 transition-transform duration-200 group-hover:scale-105">
+                          <AvatarImage
+                            src={p.avatarUrl || undefined}
+                            alt={p.name}
+                            className="rounded-full object-cover"
+                          />
+                          <AvatarFallback className="bg-primary/10 text-primary rounded-full text-xs font-bold">
                             {getInitials(p.name)}
                           </AvatarFallback>
                         </Avatar>
                         {p.verified && (
                           <span
-                            className="ring-background absolute -right-1 -bottom-1 flex size-5 items-center justify-center rounded-full bg-emerald-600 text-white shadow-2xs ring-2"
+                            className="ring-background absolute -right-1 -bottom-0.5 flex size-5 items-center justify-center rounded-full bg-emerald-600 text-white shadow-xs ring-2"
                             title="Profissional Verificado"
                           >
                             <ShieldCheck className="size-3" />
@@ -856,9 +927,9 @@ export function ClientProviderSearch() {
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
-                          <h4 className="text-foreground group-hover:text-primary truncate text-sm font-semibold transition-colors">
+                          <h3 className="text-foreground group-hover:text-primary truncate text-base font-bold tracking-tight transition-colors">
                             {p.name}
-                          </h4>
+                          </h3>
                         </div>
 
                         {/* Rating + Location */}
@@ -873,17 +944,17 @@ export function ClientProviderSearch() {
                             )}
                           </span>
 
-                          <span>•</span>
+                          <span className="text-border">•</span>
 
-                          <span className="flex items-center gap-1 truncate">
-                            <MapPin className="text-muted-foreground size-3 shrink-0" />
+                          <span className="text-muted-foreground flex items-center gap-1 truncate">
+                            <MapPin className="text-primary/70 size-3 shrink-0" />
                             {formattedDist}
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1">
+                    <div className="flex shrink-0 items-center gap-1">
                       {/* Compare Toggle Button */}
                       <button
                         type="button"
@@ -899,10 +970,10 @@ export function ClientProviderSearch() {
                           toggleCompare(p.id)
                         }}
                         className={cn(
-                          "flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-all",
+                          "flex items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-medium transition-all active:scale-95",
                           isCompared
-                            ? "bg-primary text-primary-foreground font-semibold shadow-2xs"
-                            : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                            ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                            : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
                         )}
                         title={isCompared ? "Remover do comparativo" : "Adicionar ao comparativo"}
                         aria-label={
@@ -912,7 +983,7 @@ export function ClientProviderSearch() {
                         }
                       >
                         <GitCompare className="size-3.5" />
-                        <span className="hidden sm:inline">
+                        <span className="hidden xl:inline">
                           {isCompared ? "Comparando" : "Comparar"}
                         </span>
                       </button>
@@ -925,7 +996,7 @@ export function ClientProviderSearch() {
                           triggerHaptic("selection")
                           favMutation.mutate(p.id)
                         }}
-                        className="text-muted-foreground hover:bg-muted/50 rounded-lg p-1.5 transition-colors hover:text-rose-500"
+                        className="text-muted-foreground rounded-xl p-1.5 transition-colors hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/30"
                         title={isFav ? "Remover dos favoritos" : "Salvar nos favoritos"}
                         aria-label={isFav ? "Remover dos favoritos" : "Salvar nos favoritos"}
                       >
@@ -941,8 +1012,8 @@ export function ClientProviderSearch() {
 
                   {/* Neighborhood badge if matched */}
                   {isLocalNeighborhood && (
-                    <div className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                      <Sparkles className="size-3 shrink-0" />
+                    <div className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200/60 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-800/40 dark:bg-emerald-950/50 dark:text-emerald-300">
+                      <Sparkles className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
                       <span>Atende no seu bairro ({p.district})</span>
                     </div>
                   )}
@@ -954,47 +1025,53 @@ export function ClientProviderSearch() {
                     </p>
                   )}
 
-                  {/* Services tags */}
+                  {/* Services tags & starting price */}
                   {p.services && p.services.length > 0 && (
-                    <div className="border-border/40 space-y-1.5 border-t pt-1">
-                      <div className="flex flex-wrap gap-1">
+                    <div className="border-border/40 bg-muted/20 space-y-2 rounded-xl border p-2.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         {p.services.slice(0, 2).map((srv) => (
                           <Badge
                             key={srv.id}
                             variant="secondary"
-                            className="bg-muted/60 text-muted-foreground rounded-md px-2 py-0.5 text-[10px] font-normal"
+                            className="border-border/60 bg-background text-foreground rounded-md border px-2 py-0.5 text-[10px] font-medium"
                           >
                             {srv.title}
                           </Badge>
                         ))}
                         {p.services.length > 2 && (
-                          <span className="text-muted-foreground self-center text-[10px]">
+                          <span className="text-muted-foreground px-1 text-[10px] font-medium">
                             +{p.services.length - 2}
                           </span>
                         )}
                       </div>
 
                       {typeof minPrice === "number" && minPrice > 0 && (
-                        <div className="text-muted-foreground text-xs">
-                          A partir de{" "}
-                          <strong className="text-foreground font-semibold">
+                        <div className="border-border/30 flex items-baseline justify-between border-t pt-1.5 text-xs">
+                          <span className="text-muted-foreground">A partir de</span>
+                          <strong className="text-foreground text-sm font-bold tracking-tight">
                             {formatBRL(minPrice)}
                           </strong>
                         </div>
                       )}
                     </div>
                   )}
+
+                  {/* Escrow Guarantee Assurance Micro-Badge */}
+                  <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/10 bg-emerald-500/5 px-2 py-1 text-[10.5px] font-medium text-emerald-700 dark:text-emerald-400">
+                    <ShieldCheck className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <span>Pagamento Seguro Escrow · Garantia 90D</span>
+                  </div>
                 </div>
 
                 {/* Card Actions: In-Panel Direct CTAs */}
-                <div className="border-border/40 mt-4 flex items-center gap-2 border-t pt-3">
+                <div className="border-border/50 mt-4 flex items-center gap-2 border-t pt-3.5">
                   <Button
                     size="sm"
                     onClick={() => {
                       triggerHaptic("selection")
                       openQuote({ providerId: p.id })
                     }}
-                    className="bg-primary text-primary-foreground hover:bg-primary/90 h-8 flex-1 rounded-xl text-xs font-semibold shadow-2xs"
+                    className="bg-primary text-primary-foreground hover:bg-primary/90 h-9 flex-1 rounded-xl text-xs font-semibold shadow-xs transition-all active:scale-[0.98]"
                   >
                     Orçamento
                   </Button>
@@ -1006,7 +1083,7 @@ export function ClientProviderSearch() {
                       triggerHaptic("selection")
                       openBooking({ providerId: p.id })
                     }}
-                    className="border-border/60 hover:bg-muted/60 h-8 flex-1 rounded-xl text-xs font-medium"
+                    className="border-border/70 hover:bg-muted/70 hover:text-foreground h-9 flex-1 rounded-xl text-xs font-semibold transition-all active:scale-[0.98]"
                   >
                     Agendar
                   </Button>
@@ -1019,7 +1096,7 @@ export function ClientProviderSearch() {
                       triggerHaptic("selection")
                       navigate("client.messages", { providerId: p.id })
                     }}
-                    className="text-muted-foreground hover:text-foreground hover:bg-muted/60 h-8 w-8 shrink-0 rounded-xl p-0"
+                    className="text-muted-foreground hover:text-foreground hover:bg-muted/70 h-9 w-9 shrink-0 rounded-xl p-0 transition-colors"
                     title="Enviar mensagem"
                     aria-label="Enviar mensagem"
                   >
@@ -1034,7 +1111,7 @@ export function ClientProviderSearch() {
                       triggerHaptic("selection")
                       openProvider(p.id)
                     }}
-                    className="text-muted-foreground hover:text-foreground hover:bg-muted/60 h-8 w-8 shrink-0 rounded-xl p-0"
+                    className="text-muted-foreground hover:text-foreground hover:bg-muted/70 h-9 w-9 shrink-0 rounded-xl p-0 transition-colors"
                     title="Ver detalhes do perfil"
                     aria-label="Ver detalhes do perfil"
                   >
