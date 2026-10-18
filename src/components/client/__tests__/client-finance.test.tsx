@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen } from "@/__tests__/test-utils"
+import { cleanup, render, screen, fireEvent } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---- Builder --------------------------------------------------------------
@@ -34,8 +34,26 @@ function buildBooking(
 
 // ---- Mocks ----------------------------------------------------------------
 
+const mockNavigate = vi.fn()
+const mockOpenProvider = vi.fn()
+const mockOpenBooking = vi.fn()
+
 vi.mock("@tanstack/react-query", () => ({
   useQueries: vi.fn(),
+}))
+
+vi.mock("@/store/view", () => ({
+  useViewStore: vi.fn((selector?: (s: any) => unknown) =>
+    selector ? selector({ navigate: mockNavigate }) : { navigate: mockNavigate },
+  ),
+}))
+
+vi.mock("@/store/ui", () => ({
+  useUIStore: vi.fn((selector?: (s: any) => unknown) =>
+    selector
+      ? selector({ openProvider: mockOpenProvider, openBooking: mockOpenBooking })
+      : { openProvider: mockOpenProvider, openBooking: mockOpenBooking },
+  ),
 }))
 
 vi.mock("@/hooks/use-realtime-finance", () => ({
@@ -75,8 +93,11 @@ vi.mock("@/components/ui/card", () => ({
 }))
 
 vi.mock("@/components/ui/avatar", () => ({
-  Avatar: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
+  Avatar: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+    <span className={className}>{children}</span>
+  ),
   AvatarFallback: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
+  AvatarImage: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} />,
 }))
 
 vi.mock("@/components/ui/table", () => ({
@@ -134,6 +155,10 @@ vi.mock("@/components/ui/select", () => ({
   ),
 }))
 
+vi.mock("@/components/ui/input", () => ({
+  Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
+}))
+
 vi.mock("@/components/ui/button", () => ({
   Button: ({
     children,
@@ -151,11 +176,17 @@ vi.mock("@/components/ui/button", () => ({
 }))
 
 vi.mock("lucide-react", () => ({
+  Calendar: () => <svg />,
   CreditCard: () => <svg />,
+  FileText: () => <svg />,
   Loader2: () => <svg />,
+  Lock: () => <svg />,
+  MessageSquare: () => <svg />,
   PiggyBank: () => <svg />,
   Receipt: () => <svg />,
   RotateCcw: () => <svg />,
+  Search: () => <svg />,
+  ShieldCheck: () => <svg />,
   Wallet: () => <svg />,
 }))
 
@@ -184,6 +215,11 @@ vi.mock("@/components/shared/dashboard-shell", () => ({
   ),
 }))
 
+vi.mock("@/components/shared/receipt-modal", () => ({
+  ReceiptModal: ({ bookingId, open }: { bookingId: string; open: boolean }) =>
+    open ? <div data-testid="receipt-modal">Receipt for {bookingId}</div> : null,
+}))
+
 vi.mock("@/components/client/client-shared", () => ({
   PageHeader: ({ title, subtitle }: { title: string; subtitle?: string }) => (
     <div data-testid="page-header">
@@ -206,7 +242,6 @@ vi.mock("@/components/client/client-shared", () => ({
 
 vi.stubGlobal(
   "ResizeObserver",
-  // Vitest 4: constructor mocks must use function/class implementations.
   vi.fn(function () {
     return {
       observe: vi.fn(),
@@ -245,10 +280,6 @@ function mockUseQueries() {
 
 afterEach(cleanup)
 
-// O ClientFinance filtra por ano corrente (getFullYear) derivado do relógio
-// real — o fixture usa o ANO atual, então se o teste rodasse na virada do ano
-// (31/12 23:59:59.999 → 01/01 00:00:00) a asserção "Paulo" flakaria. Congela
-// SÓ Date num horário neutro: componente e fixture veem o mesmo ano.
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] })
   vi.setSystemTime(new Date("2026-01-05T15:00:00.000Z")) // 12:00 BRT
@@ -256,6 +287,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.clearAllMocks()
 })
 
 describe("ClientFinance — loading", () => {
@@ -264,8 +296,6 @@ describe("ClientFinance — loading", () => {
       [1, 2, 3, 4].map(() => ({ data: undefined, isLoading: true })) as any,
     )
   })
-
-  afterEach(() => vi.clearAllMocks())
 
   it("mostra loader durante carregamento", () => {
     render(<ClientFinance />)
@@ -289,12 +319,19 @@ describe("ClientFinance — data rendering", () => {
     )
   })
 
-  afterEach(() => vi.clearAllMocks())
-
-  it("renderiza PageHeader com título e subtítulo", () => {
+  it("renderiza Hero Banner com título, subtítulo e ações rápidas", () => {
     render(<ClientFinance />)
     expect(screen.getByText("Financeiro")).toBeDefined()
     expect(screen.getByText("Acompanhe seus pagamentos e gastos com serviços.")).toBeDefined()
+    expect(screen.getByText("Pagamento Seguro & Custódia Escrow")).toBeDefined()
+    expect(screen.getByText("Ver agendamentos")).toBeDefined()
+    expect(screen.getByText("Buscar prestadores")).toBeDefined()
+  })
+
+  it("renderiza o banner educativo de Custódia Digital Escrow", () => {
+    render(<ClientFinance />)
+    expect(screen.getByText("Custódia Digital Severinno Escrow")).toBeDefined()
+    expect(screen.getByText("100% Protegido")).toBeDefined()
   })
 
   it("renderiza os 3 cards de resumo financeiro", () => {
@@ -306,11 +343,8 @@ describe("ClientFinance — data rendering", () => {
   it("renderiza os tabs de status com contagens", () => {
     render(<ClientFinance />)
     expect(screen.getByText("Todos")).toBeDefined()
-    // "Pago" appears in both tab label and status badges, use getAllByText
     expect(screen.getAllByText("Pago").length).toBeGreaterThanOrEqual(1)
-    // "Pendente" appears in multiple elements (tab + badge), use getAllByText
     expect(screen.getAllByText(/Pendente/).length).toBeGreaterThanOrEqual(1)
-    // "Reembolsado" appears in both tab label and stat card, use getAllByText
     expect(screen.getAllByText("Reembolsado").length).toBeGreaterThanOrEqual(1)
   })
 
@@ -319,9 +353,8 @@ describe("ClientFinance — data rendering", () => {
     expect(screen.getByText("Gastos por mês")).toBeDefined()
   })
 
-  it("renderiza a tabela de transações com dados dos bookings", () => {
+  it("renderiza a tabela e cards com dados dos bookings", () => {
     render(<ClientFinance />)
-    // provider name may be inside a filtered subset; check total rendering
     const providerNames = screen.getAllByText(/Paulo/)
     expect(providerNames.length).toBeGreaterThanOrEqual(1)
   })
@@ -329,6 +362,39 @@ describe("ClientFinance — data rendering", () => {
   it("renderiza o badge de status da conexão real-time", () => {
     render(<ClientFinance />)
     expect(screen.getByText("Ao vivo")).toBeDefined()
+  })
+
+  it("abre o ReceiptModal ao clicar em Recibo no booking liquidado", () => {
+    render(<ClientFinance />)
+    const receiptButtons = screen.getAllByText("Recibo")
+    expect(receiptButtons.length).toBeGreaterThanOrEqual(1)
+    fireEvent.click(receiptButtons[0]!)
+    expect(screen.getByTestId("receipt-modal")).toBeDefined()
+    expect(screen.getByText("Receipt for b-1")).toBeDefined()
+  })
+
+  it("abre o perfil do prestador ao clicar no nome", () => {
+    render(<ClientFinance />)
+    const providerButtons = screen.getAllByText("Paulo Prestador")
+    fireEvent.click(providerButtons[0]!)
+    expect(mockOpenProvider).toHaveBeenCalledWith("p-1")
+  })
+
+  it("dispara navegação para mensagens internas sem WhatsApp externo", () => {
+    render(<ClientFinance />)
+    const messageButtons = screen.getAllByTitle("Enviar mensagem na plataforma")
+    fireEvent.click(messageButtons[0]!)
+    expect(mockNavigate).toHaveBeenCalledWith("client.messages", {
+      providerId: "p-1",
+      bookingId: "b-1",
+    })
+  })
+
+  it("filtra itens ao digitar no campo de busca", () => {
+    render(<ClientFinance />)
+    const input = screen.getByPlaceholderText("Filtrar por prestador ou serviço...")
+    fireEvent.change(input, { target: { value: "inexistente" } })
+    expect(screen.getByText("Sem resultados")).toBeDefined()
   })
 })
 
@@ -341,8 +407,6 @@ describe("ClientFinance — empty state", () => {
       })) as any,
     )
   })
-
-  afterEach(() => vi.clearAllMocks())
 
   it("mostra mensagem de vazio quando não há bookings", () => {
     render(<ClientFinance />)
@@ -365,8 +429,6 @@ describe("ClientFinance — accessibility", () => {
       })) as any,
     )
   })
-
-  afterEach(() => vi.clearAllMocks())
 
   it("não possui violações de acessibilidade axe", async () => {
     const { container } = render(<ClientFinance />)
