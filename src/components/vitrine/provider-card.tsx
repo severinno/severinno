@@ -83,8 +83,12 @@ export default React.memo(function ProviderCard({
 
   const avatarUrl = provider.avatarUrl || `https://i.pravatar.cc/150?u=${provider.id}`
 
-  const initials = provider.name
-    ? provider.name
+  const cleanName = React.useMemo(() => {
+    return provider.name ? provider.name.replace(/&amp;/g, "&") : ""
+  }, [provider.name])
+
+  const initials = cleanName
+    ? cleanName
         .split(" ")
         .map((p) => p[0])
         .slice(0, 2)
@@ -238,14 +242,16 @@ export default React.memo(function ProviderCard({
               <div className="flex items-center gap-1.5">
                 <h3
                   onClick={() => onView?.(provider.id)}
-                  className="text-foreground hover:text-primary cursor-pointer truncate text-[15px] font-semibold tracking-tight transition-colors"
+                  className="text-foreground hover:text-primary min-w-0 flex-1 cursor-pointer truncate text-[15px] font-semibold tracking-tight transition-colors"
                 >
-                  {provider.name}
+                  {cleanName}
                 </h3>
-                {provider.verified && <VerifiedBadge size="sm" />}
+                {provider.verified && (
+                  <VerifiedBadge size="sm" showLabel={false} className="shrink-0" />
+                )}
                 {typeof provider.matchScore === "number" && provider.matchScore > 0 && (
                   <span
-                    className="text-primary bg-primary/8 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
+                    className="text-primary bg-primary/8 inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
                     title={
                       provider.matchReasons?.join(" • ") ||
                       `Compatibilidade: ${Math.round(provider.matchScore)}%`
@@ -473,6 +479,15 @@ export default React.memo(function ProviderCard({
           </div>
 
           <div className="border-border/40 mt-3 flex items-center gap-2 border-t pt-3">
+            <button
+              type="button"
+              onClick={handleWhatsApp}
+              className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-50 text-emerald-700 shadow-2xs transition-colors hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300"
+              title={`Chamar ${provider.name} no WhatsApp`}
+              aria-label={`Chamar ${provider.name} no WhatsApp`}
+            >
+              <MessageCircle className="size-4" />
+            </button>
             <Button
               variant="outline"
               size="sm"
@@ -488,7 +503,11 @@ export default React.memo(function ProviderCard({
               size="sm"
               onClick={() => {
                 setQuickViewOpen(false)
-                onBook ? onBook(provider.id) : onView?.(provider.id)
+                if (onBook) {
+                  onBook(provider.id)
+                } else {
+                  onView?.(provider.id)
+                }
               }}
               className="bg-primary text-primary-foreground hover:bg-primary/90 h-8 flex-1 text-xs font-semibold"
             >
@@ -517,7 +536,11 @@ export default React.memo(function ProviderCard({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
-                    onBook ? onBook(provider.id, provider.services?.[0]?.id) : onView?.(provider.id)
+                    if (onBook) {
+                      onBook(provider.id, provider.services?.[0]?.id)
+                    } else {
+                      onView?.(provider.id)
+                    }
                   }}
                   className={cn(
                     "inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium transition-colors",
@@ -575,7 +598,11 @@ export default React.memo(function ProviderCard({
             onClick={(e) => {
               e.stopPropagation()
               triggerHaptic("selection")
-              onBook ? onBook(provider.id) : onView?.(provider.id)
+              if (onBook) {
+                onBook(provider.id)
+              } else {
+                onView?.(provider.id)
+              }
             }}
             className="bg-primary text-primary-foreground hover:bg-primary/90 h-9 flex-1 rounded-xl text-xs font-semibold shadow-2xs"
           >

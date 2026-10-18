@@ -760,10 +760,23 @@ function MapView({
   radius?: number
   onRadiusChange?: (radius: number) => void
 }) {
+  const listContainerRef = React.useRef<HTMLDivElement>(null)
+
+  // Auto-scroll list to selected provider card when marker on map is clicked
+  React.useEffect(() => {
+    if (!selectedId || !listContainerRef.current) return
+    const cardEl = listContainerRef.current.querySelector<HTMLElement>(
+      `[data-provider-id="${selectedId}"]`,
+    )
+    if (cardEl) {
+      cardEl.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    }
+  }, [selectedId])
+
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       {/* Map */}
-      <div className="order-1 h-[480px] min-h-[400px] w-full overflow-hidden rounded-xl lg:sticky lg:top-32 lg:order-2 lg:h-[calc(100vh-12rem)]">
+      <div className="order-1 h-[480px] min-h-[400px] w-full overflow-hidden rounded-2xl border border-slate-200/80 shadow-md lg:sticky lg:top-32 lg:order-2 lg:h-[calc(100vh-12rem)] dark:border-slate-800">
         <ProvidersMap
           className="h-full w-full"
           providers={providers}
@@ -778,20 +791,27 @@ function MapView({
 
       {/* List */}
       <div className="order-2 lg:order-1">
-        <p className="text-muted-foreground mb-2 text-xs">
-          Toque em um marcador para destacar o prestador.
-        </p>
-        <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1 lg:max-h-[calc(100vh-12rem)]">
+        <div className="text-muted-foreground mb-2.5 flex items-center justify-between text-xs">
+          <span>Toque em um marcador para localizar o prestador.</span>
+          <span className="text-foreground font-semibold">
+            {providers.length} profissionais mapeados
+          </span>
+        </div>
+        <div
+          ref={listContainerRef}
+          className="max-h-[70vh] space-y-4 overflow-y-auto pr-1 lg:max-h-[calc(100vh-12rem)]"
+        >
           {providers.map((p) => (
             <div
               key={p.id}
+              data-provider-id={p.id}
               data-selected={selectedId === p.id}
               onClick={() => onSelect(p.id)}
               className={cn(
-                "cursor-pointer rounded-xl transition-all",
+                "cursor-pointer rounded-2xl transition-all",
                 selectedId === p.id
-                  ? "ring-primary ring-offset-background ring-2 ring-offset-2"
-                  : "hover:ring-border ring-1 ring-transparent",
+                  ? "ring-offset-background shadow-md ring-2 ring-emerald-500 ring-offset-2"
+                  : "hover:ring-border hover:ring-1",
               )}
             >
               <ProviderCard

@@ -150,7 +150,7 @@ export function NeighborhoodSelectorBar({
     <section
       data-testid="neighborhood-selector-bar"
       className={cn(
-        "via-background rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.04] to-teal-500/[0.03] p-4 shadow-xs transition-all sm:p-5",
+        "via-background rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.04] to-teal-500/[0.03] p-3.5 shadow-xs transition-all sm:p-4",
         className,
       )}
     >

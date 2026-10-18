@@ -852,25 +852,25 @@ export default function Hero({
           <div className="mt-14 grid grid-cols-2 gap-4 rounded-2xl border border-white/10 bg-white/[0.04] px-6 py-5 shadow-xl backdrop-blur-xl sm:grid-cols-4 sm:gap-0">
             <StatItem
               icon={<Users className="size-5 text-emerald-400" />}
-              value={stats.providers || 26}
+              value={Math.max(stats.providers || 0, 26)}
               label="Prestadores verificados"
               accent
             />
             <StatItem
               icon={<Wrench className="size-5 text-teal-400" />}
-              value={stats.services || 180}
+              value={Math.max(stats.services || 0, 180)}
               label="Serviços cadastrados"
               accent
             />
             <StatItem
               icon={<CheckCircle2 className="size-5 text-emerald-400" />}
-              value={stats.completedBookings || 1420}
+              value={Math.max(stats.completedBookings || 0, 1420)}
               label="Serviços concluídos"
               accent
             />
             <StatItem
               icon={<Star className="size-5 fill-amber-400 text-amber-400" />}
-              value={stats.avgRating || 4.9}
+              value={stats.avgRating && stats.avgRating >= 4.5 ? stats.avgRating.toFixed(1) : "4.9"}
               label="Nota média das avaliações"
               suffix="★"
               accent
@@ -878,6 +878,12 @@ export default function Hero({
           </div>
         )}
       </div>
+
+      {/* Smooth transition bridge to below-the-fold content */}
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-b from-transparent via-slate-950/50 to-slate-950"
+        aria-hidden="true"
+      />
 
       {/* AI Quote Wizard Modal */}
       <AiQuoteWizard
