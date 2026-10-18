@@ -1,20 +1,24 @@
 "use client"
 
 /**
- * ClientBookings — list of all bookings for the logged-in client.
+ * ClientBookings — Clean, minimalist in-panel booking management.
  *
- * Polish (Nielsen + trust/transparency):
- *  - Page header with quick action (Buscar prestadores).
- *  - Status filter tabs with counts (Pendentes, Confirmados, Em andamento,
- *    Concluídos, Cancelados, Todos).
- *  - Card list (mobile-first) with: provider avatar+name, service title,
- *    prominent scheduled date/time, amount, status badge, payment badge.
- *  - Row actions (dropdown menu): Ver detalhes (opens dialog with
- *    BookingTimeline preserved), Cancelar, Marcar como concluído, Avaliar
- *    (opens ReviewDialog), Enviar mensagem, Ver prestador.
- *  - Inline quick actions (Detalhes / Concluir / Avaliar / Cancelar) for
- *    discoverability on mobile.
- *  - Pagination (client-side, 8/page).
+ * Allows clients to view, manage, track, pay and inspect all their service
+ * bookings with full Escrow protection, without ever leaving the dashboard.
+ *
+ * Capabilities:
+ *  - Modern Hero Banner with platform guarantee and quick search
+ *  - Segmented status tabs with live counts (Todos, Pendentes, Confirmados, Em andamento, Concluídos, Cancelados)
+ *  - Quick in-list search by provider or service title
+ *  - Service Design optimized cards:
+ *    - Strict round avatars (rounded-full)
+ *    - Contextual Escrow transparency banners (custody held, released, refunded)
+ *    - Fixed empty parentheses bug on service unit
+ *    - Fixed bug showing "Pagar PIX" on cancelled bookings
+ *    - Smart action buttons: Avaliar, Recibo, Laudo/Fotos, Rastrear, Liberar Custódia, Contratar Novamente
+ *    - Zero external WhatsApp leaks: strictly platform-secured messaging
+ *  - Full modal integrations: PixCheckout, LiveTracking, ReceiptModal,
+ *    ServiceDeliveryReportModal, CarePlanModal, ReviewDialog, BookingDetailsDialog
  */
 
 import * as React from "react"
@@ -28,15 +32,18 @@ import {
   CreditCard,
   Eye,
   FileText,
+  LayoutGrid,
   Loader2,
   MapPin,
   MessageSquare,
   MoreHorizontal,
   Navigation,
   QrCode,
+  Search,
   ShieldCheck,
   Sparkles,
   Star,
+  X,
   XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -54,13 +61,14 @@ import {
   type ServiceUnit,
 } from "@/lib/constants"
 import { formatBRL, formatDateTime } from "@/lib/format"
+import { triggerHaptic } from "@/lib/haptics"
 import { useUIStore } from "@/store/ui"
 import { useViewStore } from "@/store/view"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Input } from "@/components/ui/input"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -86,7 +94,6 @@ import { ServiceDeliveryReportModal } from "@/components/shared/service-delivery
 import { CarePlanModal } from "@/components/shared/care-plan-modal"
 import { SafeImage } from "@/components/shared/safe-image"
 import {
-  PageHeader,
   StatusBadge,
   bookingIcon,
   bookingTone,
@@ -98,7 +105,7 @@ import {
 // Types
 // ---------------------------------------------------------------------------
 
-type Booking = {
+export type Booking = {
   id: string
   status: BookingStatus
   scheduledAt: string
@@ -147,13 +154,13 @@ type BookingsResponse = {
 // Filter tabs (order: pending first, then progressing, then terminal, then all)
 // ---------------------------------------------------------------------------
 
-const TABS: Array<{ key: string; label: string }> = [
-  { key: "PENDING", label: "Pendentes" },
-  { key: "CONFIRMED", label: "Confirmados" },
-  { key: "IN_PROGRESS", label: "Em andamento" },
-  { key: "COMPLETED", label: "Concluídos" },
-  { key: "CANCELLED", label: "Cancelados" },
-  { key: "ALL", label: "Todos" },
+const TABS: Array<{ key: string; label: string; icon: React.ElementType }> = [
+  { key: "ALL", label: "Todos", icon: LayoutGrid },
+  { key: "PENDING", label: "Pendentes", icon: CalendarDays },
+  { key: "CONFIRMED", label: "Confirmados", icon: CheckCircle2 },
+  { key: "IN_PROGRESS", label: "Em andamento", icon: Navigation },
+  { key: "COMPLETED", label: "Concluídos", icon: Sparkles },
+  { key: "CANCELLED", label: "Cancelados", icon: XCircle },
 ]
 
 const PAGE_SIZE = 8
@@ -163,7 +170,7 @@ const PAGE_SIZE = 8
 // ---------------------------------------------------------------------------
 
 function providerInitials(name?: string | null): string {
-  if (!name) return "P"
+  if (!name) return "PR"
   return name
     .split(" ")
     .map((p) => p[0])
@@ -181,8 +188,10 @@ export function ClientBookings() {
   const qc = useQueryClient()
   const navigate = useViewStore((s) => s.navigate)
   const openProvider = useUIStore((s) => s.openProvider)
+  const openBooking = useUIStore((s) => s.openBooking)
 
   const [tab, setTab] = React.useState("ALL")
+  const [filterText, setFilterText] = React.useState("")
   const [page, setPage] = React.useState(1)
   const [detailsId, setDetailsId] = React.useState<string | null>(null)
   const [reviewBooking, setReviewBooking] = React.useState<Booking | null>(null)
@@ -194,10 +203,10 @@ export function ClientBookings() {
   const [carePlanBooking, setCarePlanBooking] = React.useState<Booking | null>(null)
   const [escrowReleaseBooking, setEscrowReleaseBooking] = React.useState<Booking | null>(null)
 
-  // Reset page when tab changes
+  // Reset page when tab or search filter changes
   React.useEffect(() => {
     setPage(1)
-  }, [tab])
+  }, [tab, filterText])
 
   // Fetch up to 4 pages of 50 (= 200 max) so we can compute accurate counts
   // per status and paginate client-side. Mirrors client-finance pattern.
@@ -240,13 +249,25 @@ export function ClientBookings() {
     return map
   }, [allBookings])
 
-  // Filtered + paginated list
+  // Filtered list by status and search text
   const visible = React.useMemo(() => {
-    const filtered = tab === "ALL" ? allBookings : allBookings.filter((b) => b.status === tab)
+    let filtered = tab === "ALL" ? allBookings : allBookings.filter((b) => b.status === tab)
+
+    if (filterText.trim()) {
+      const q = filterText.toLowerCase().trim()
+      filtered = filtered.filter(
+        (b) =>
+          b.provider.name.toLowerCase().includes(q) ||
+          b.service.title.toLowerCase().includes(q) ||
+          b.address.toLowerCase().includes(q),
+      )
+    }
+
     // Sort: upcoming first (asc by date) for active statuses, recent first
     // (desc) for terminal statuses.
     const isActive = (s: BookingStatus) =>
       s === "PENDING" || s === "CONFIRMED" || s === "IN_PROGRESS"
+
     return [...filtered].sort((a, b) => {
       const ta = new Date(a.scheduledAt).getTime()
       const tb = new Date(b.scheduledAt).getTime()
@@ -256,7 +277,7 @@ export function ClientBookings() {
       if (!aActive && !bActive) return tb - ta
       return aActive ? -1 : 1
     })
-  }, [allBookings, tab])
+  }, [allBookings, tab, filterText])
 
   const total = visible.length
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -294,59 +315,153 @@ export function ClientBookings() {
   })
 
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title="Agendamentos"
-        subtitle="Acompanhe e gerencie seus serviços agendados."
-        action={
-          <Button
-            variant="outline"
-            onClick={() => navigate("client.providers")}
-            className="h-10 gap-2"
-          >
-            <MapPin className="size-4" />
-            Buscar prestadores
-          </Button>
-        }
-      />
+    <div className="space-y-6">
+      {/* Search & Hero Banner */}
+      <div className="border-border/60 from-card via-card/95 to-primary/5 relative overflow-hidden rounded-3xl border bg-gradient-to-br p-5 shadow-xs sm:p-7">
+        <div className="bg-primary/10 pointer-events-none absolute -top-24 -right-24 size-80 rounded-full blur-3xl" />
 
-      {/* Status tabs with counts */}
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1 sm:w-auto">
+        <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1.5">
+            <div className="bg-primary/10 text-primary inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold">
+              <Sparkles className="size-3.5" />
+              <span>Gestão de Serviços & Custódia Escrow</span>
+            </div>
+            <h1 className="text-foreground text-2xl font-bold tracking-tight sm:text-3xl">
+              Agendamentos
+            </h1>
+            <p className="text-muted-foreground text-xs sm:text-sm">
+              Acompanhe e gerencie seus serviços agendados com proteção de pagamento Severinno.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+            <Button
+              variant="outline"
+              onClick={() => {
+                triggerHaptic("selection")
+                navigate("client.providers")
+              }}
+              className="border-border/60 hover:bg-muted/60 h-10 gap-2 rounded-2xl px-4 text-xs font-semibold shadow-xs transition-all active:scale-95"
+            >
+              <MapPin className="text-primary size-4" />
+              Buscar prestadores
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Status Segmented Rail + Search Filter */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        {/* Status Pills */}
+        <div className="-mx-1 flex scrollbar-none gap-1.5 overflow-x-auto px-1 pb-1">
           {TABS.map((t) => {
             const count = counts[t.key] ?? 0
             const active = tab === t.key
+            const Icon = t.icon
             return (
-              <TabsTrigger key={t.key} value={t.key} className="h-8 flex-shrink-0 gap-1.5">
-                {t.label}
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  setTab(t.key)
+                }}
+                className={cn(
+                  "flex h-9 shrink-0 items-center gap-2 rounded-xl px-3.5 text-xs font-medium transition-all active:scale-95",
+                  active
+                    ? "bg-primary text-primary-foreground ring-primary/20 font-semibold shadow-xs ring-2"
+                    : "border-border/60 bg-card hover:bg-muted/70 text-muted-foreground hover:text-foreground border",
+                )}
+              >
+                <Icon
+                  className={cn(
+                    "size-3.5",
+                    active ? "text-primary-foreground" : "text-muted-foreground",
+                  )}
+                />
+                <span>{t.label}</span>
                 <span
                   className={cn(
-                    "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums",
-                    active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
+                    "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums",
+                    active
+                      ? "bg-primary-foreground/20 text-primary-foreground"
+                      : "bg-muted text-muted-foreground",
                   )}
                 >
                   {count}
                 </span>
-              </TabsTrigger>
+              </button>
             )
           })}
-        </TabsList>
-      </Tabs>
+        </div>
 
-      {/* Result count */}
-      <p className="text-muted-foreground text-xs">
-        {isLoading
-          ? "Carregando…"
-          : total === 0
-            ? "Nenhum agendamento nesta categoria."
-            : `Mostrando ${pageItems.length} de ${total} agendamento${total !== 1 ? "s" : ""}.`}
-      </p>
+        {/* Quick Search inside Bookings */}
+        {allBookings.length > 0 && (
+          <div className="relative min-w-[220px] sm:w-72">
+            <Search className="text-muted-foreground/60 pointer-events-none absolute top-2.5 left-3 size-4" />
+            <Input
+              type="text"
+              placeholder="Filtrar por prestador ou serviço..."
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              className="border-border/60 bg-background h-9 rounded-xl pr-8 pl-9 text-xs"
+            />
+            {filterText && (
+              <button
+                type="button"
+                onClick={() => setFilterText("")}
+                className="text-muted-foreground hover:text-foreground absolute top-2.5 right-2.5 p-0.5"
+                title="Limpar filtro"
+                aria-label="Limpar filtro"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Results Counter & Escrow Reassurance */}
+      <div className="text-muted-foreground flex flex-col justify-between gap-2 px-1 text-xs sm:flex-row sm:items-center">
+        <div>
+          {isLoading ? (
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="text-primary size-3.5 animate-spin" />
+              Carregando agendamentos...
+            </span>
+          ) : total === 0 ? (
+            <span>Nenhum agendamento encontrado nesta categoria.</span>
+          ) : (
+            <span>
+              Mostrando{" "}
+              <strong className="text-foreground font-semibold">{pageItems.length}</strong> de{" "}
+              <strong className="text-foreground font-semibold">{total}</strong>{" "}
+              {total === 1 ? "agendamento" : "agendamentos"}.
+            </span>
+          )}
+        </div>
+
+        <div className="hidden items-center gap-1.5 font-medium text-emerald-700 sm:flex dark:text-emerald-400">
+          <ShieldCheck className="size-3.5 text-emerald-600" />
+          <span>🛡️ Pagamento Seguro Escrow · Garantia 90D</span>
+        </div>
+      </div>
 
       {/* Content */}
       {isLoading ? (
-        <div className="text-muted-foreground flex items-center justify-center gap-2 p-10 text-sm">
-          <Loader2 className="size-5 animate-spin" />
-          Carregando agendamentos…
+        <div className="grid gap-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="border-border/60 rounded-2xl p-5 shadow-xs">
+              <div className="flex items-center gap-4">
+                <div className="bg-muted size-13 animate-pulse rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <div className="bg-muted h-4 w-48 rounded" />
+                  <div className="bg-muted h-3 w-32 rounded" />
+                </div>
+                <div className="bg-muted h-6 w-20 rounded" />
+              </div>
+            </Card>
+          ))}
         </div>
       ) : pageItems.length === 0 ? (
         <EmptyState
@@ -354,18 +469,24 @@ export function ClientBookings() {
           title={tab === "ALL" ? "Nenhum agendamento ainda" : "Nenhum agendamento com este status"}
           description={
             tab === "ALL"
-              ? "Você ainda não agendou nenhum serviço. Explore prestadores verificados e agende seu primeiro serviço."
-              : "Não há agendamentos com este status no momento. Tente outra categoria."
+              ? "Você ainda não agendou nenhum serviço. Explore prestadores verificados e agende seu primeiro serviço com segurança."
+              : "Não há agendamentos com este status no momento. Tente outra categoria ou faça uma nova busca."
           }
           action={
-            <Button onClick={() => navigate("client.providers")} className="mt-2 gap-2">
+            <Button
+              onClick={() => {
+                triggerHaptic("selection")
+                navigate("client.providers")
+              }}
+              className="mt-2 gap-2 rounded-xl"
+            >
               <MapPin className="size-4" />
               Buscar prestadores
             </Button>
           }
         />
       ) : (
-        <div className="grid gap-3">
+        <div className="grid gap-4">
           {pageItems.map((b) => (
             <BookingCard
               key={b.id}
@@ -374,14 +495,23 @@ export function ClientBookings() {
               onCancel={() => setCancelBooking(b)}
               onComplete={() => setEscrowReleaseBooking(b)}
               onReview={() => setReviewBooking(b)}
-              onMessage={() => navigate("client.messages", { with: b.provider.id })}
+              onMessage={() =>
+                navigate("client.messages", {
+                  with: b.provider.id,
+                  peerId: b.provider.id,
+                  providerId: b.provider.id,
+                })
+              }
               onViewProvider={() => openProvider(b.provider.id)}
+              onRebook={() => openBooking({ providerId: b.provider.id, serviceId: b.service.id })}
               onTrack={() => setTrackingBooking(b)}
               onViewReceipt={() => setReceiptBookingId(b.id)}
               onOpenReport={() => setReportBooking(b)}
               onCarePlan={() => setCarePlanBooking(b)}
               onPay={
-                b.paymentMethod === "PIX" && b.paymentStatus === "PENDING"
+                (b.status === "PENDING" || b.status === "CONFIRMED") &&
+                b.paymentMethod === "PIX" &&
+                b.paymentStatus === "PENDING"
                   ? () => setPixBooking(b)
                   : undefined
               }
@@ -393,30 +523,37 @@ export function ClientBookings() {
 
       {/* Pagination */}
       {total > PAGE_SIZE ? (
-        <div className="flex flex-col items-center justify-between gap-2 border-t pt-3 sm:flex-row">
+        <div className="border-border/50 flex flex-col items-center justify-between gap-2 border-t pt-4 sm:flex-row">
           <p className="text-muted-foreground text-xs tabular-nums">
-            Página {page} de {totalPages} · {total} agendamentos
+            Página <strong className="text-foreground">{page}</strong> de{" "}
+            <strong className="text-foreground">{totalPages}</strong> · {total} agendamentos
           </p>
           <div className="flex items-center gap-1">
             <Button
               variant="outline"
               size="sm"
               disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="h-9 gap-1"
+              onClick={() => {
+                triggerHaptic("selection")
+                setPage((p) => Math.max(1, p - 1))
+              }}
+              className="h-9 gap-1 rounded-xl"
             >
               <ChevronLeft className="size-4" />
               Anterior
             </Button>
-            <span className="text-muted-foreground px-2 text-xs tabular-nums">
+            <span className="text-muted-foreground px-2 text-xs font-semibold tabular-nums">
               {page} / {totalPages}
             </span>
             <Button
               variant="outline"
               size="sm"
               disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-              className="h-9 gap-1"
+              onClick={() => {
+                triggerHaptic("selection")
+                setPage((p) => p + 1)
+              }}
+              className="h-9 gap-1 rounded-xl"
             >
               Próxima
               <ChevronRight className="size-4" />
@@ -440,11 +577,11 @@ export function ClientBookings() {
             <DialogDescription>
               Esta ação não pode ser desfeita.{" "}
               {cancelBooking?.paymentStatus === "PAID"
-                ? "Como o pagamento já foi confirmado, o valor será estornado."
+                ? "Como o pagamento já foi confirmado, o valor será estornado integralmente para sua conta."
                 : ""}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button
               variant="outline"
               onClick={() => setCancelBooking(null)}
@@ -478,9 +615,12 @@ export function ClientBookings() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <QrCode className="size-5 text-emerald-600" />
-              Pagamento PIX
+              Pagamento PIX Seguro
             </DialogTitle>
-            <DialogDescription>Escaneie o QR code ou copie o código para pagar.</DialogDescription>
+            <DialogDescription>
+              Escaneie o QR code ou copie a chave Pix. Seu dinheiro fica protegido em custódia até a
+              conclusão.
+            </DialogDescription>
           </DialogHeader>
           {pixBooking && (
             <PixCheckout
@@ -511,7 +651,7 @@ export function ClientBookings() {
           {trackingBooking && (
             <LiveTracking
               bookingId={trackingBooking.id}
-              destinationLat={-19.92} // Will be overridden by SSE
+              destinationLat={-19.92}
               destinationLng={-43.94}
               providerName={trackingBooking.provider.name}
             />
@@ -597,20 +737,21 @@ export function ClientBookings() {
           {escrowReleaseBooking && (
             <div className="space-y-4 pt-1">
               {/* Service & Provider Summary */}
-              <div className="border-border/60 bg-muted/20 flex items-center gap-3 rounded-xl border p-3">
-                <Avatar className="size-11 border">
+              <div className="border-border/60 bg-muted/20 flex items-center gap-3 rounded-2xl border p-3.5">
+                <Avatar className="border-border/40 size-12 rounded-full border shadow-xs">
                   {escrowReleaseBooking.provider.avatarUrl ? (
                     <AvatarImage
                       src={escrowReleaseBooking.provider.avatarUrl}
                       alt={escrowReleaseBooking.provider.name}
+                      className="rounded-full object-cover"
                     />
                   ) : null}
-                  <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
+                  <AvatarFallback className="bg-primary/10 text-primary rounded-full text-xs font-bold">
                     {providerInitials(escrowReleaseBooking.provider.name)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
-                  <p className="text-foreground truncate text-sm font-semibold">
+                  <p className="text-foreground truncate text-sm font-bold">
                     {escrowReleaseBooking.provider.name}
                   </p>
                   <p className="text-muted-foreground truncate text-xs">
@@ -628,13 +769,13 @@ export function ClientBookings() {
               {/* Before/After Photos (if present) */}
               {escrowReleaseBooking.beforePhotos?.length ||
               escrowReleaseBooking.afterPhotos?.length ? (
-                <div className="border-border/60 bg-card space-y-2 rounded-xl border p-3">
+                <div className="border-border/60 bg-card space-y-2 rounded-2xl border p-3">
                   <p className="text-foreground text-xs font-semibold">
                     Fotos do Serviço Realizado
                   </p>
                   <div className="grid grid-cols-2 gap-2">
                     {escrowReleaseBooking.beforePhotos?.[0] && (
-                      <div className="border-border/40 bg-muted/40 relative aspect-video overflow-hidden rounded-lg border">
+                      <div className="border-border/40 bg-muted/40 relative aspect-video overflow-hidden rounded-xl border">
                         <SafeImage
                           src={escrowReleaseBooking.beforePhotos[0]}
                           alt="Foto antes"
@@ -646,7 +787,7 @@ export function ClientBookings() {
                       </div>
                     )}
                     {escrowReleaseBooking.afterPhotos?.[0] && (
-                      <div className="border-border/40 bg-muted/40 relative aspect-video overflow-hidden rounded-lg border">
+                      <div className="border-border/40 bg-muted/40 relative aspect-video overflow-hidden rounded-xl border">
                         <SafeImage
                           src={escrowReleaseBooking.afterPhotos[0]}
                           alt="Foto depois"
@@ -670,7 +811,7 @@ export function ClientBookings() {
               )}
 
               {/* Security reassurance banner */}
-              <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-xs text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-200">
+              <div className="flex items-start gap-2.5 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 p-3.5 text-xs text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200">
                 <ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
                 <span>
                   Ao confirmar, os <strong>{formatBRL(escrowReleaseBooking.amount)}</strong>{" "}
@@ -691,7 +832,7 @@ export function ClientBookings() {
                 }
               }}
               disabled={completeMutation.isPending}
-              className="h-9 gap-1.5 bg-emerald-600 font-medium text-white hover:bg-emerald-700"
+              className="h-9 gap-1.5 bg-emerald-600 font-semibold text-white shadow-xs hover:bg-emerald-700"
             >
               {completeMutation.isPending ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -719,6 +860,7 @@ function BookingCard({
   onReview,
   onMessage,
   onViewProvider,
+  onRebook,
   onTrack,
   onPay,
   onViewReceipt,
@@ -733,6 +875,7 @@ function BookingCard({
   onReview: () => void
   onMessage: () => void
   onViewProvider: () => void
+  onRebook?: () => void
   onTrack?: () => void
   onPay?: () => void
   onViewReceipt?: () => void
@@ -748,246 +891,429 @@ function BookingCard({
   const canComplete =
     status === "CONFIRMED" || status === "IN_PROGRESS" || booking.paymentStatus === "HELD"
   const canTrack = status === "IN_PROGRESS"
-  const canPay = !!onPay
+  // Never allow paying for cancelled or completed bookings
+  const canPay = (status === "PENDING" || status === "CONFIRMED") && !!onPay
   const hasReview = (booking.reviews?.length ?? 0) > 0
   const canReview = status === "COMPLETED" && !hasReview
 
-  return (
-    <Card className="overflow-hidden rounded-xl shadow-sm transition-shadow hover:shadow-md">
-      <CardContent className="grid gap-3 py-4">
-        <div className="flex items-start gap-3">
-          <button
-            type="button"
-            onClick={onViewProvider}
-            className="focus-visible:ring-ring shrink-0 rounded-full outline-none focus-visible:ring-2"
-            aria-label={`Ver perfil de ${provider.name}`}
-          >
-            <Avatar className="size-11 border">
-              {provider.avatarUrl ? (
-                <AvatarImage src={provider.avatarUrl} alt={provider.name} />
-              ) : null}
-              <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
-                {initials || "P"}
-              </AvatarFallback>
-            </Avatar>
-          </button>
+  // Avoid empty parentheses bug: only resolve if unit is defined and recognized
+  const unitLabel =
+    booking.service.unit && SERVICE_UNIT_SHORT[booking.service.unit as ServiceUnit]
+      ? SERVICE_UNIT_SHORT[booking.service.unit as ServiceUnit]
+      : null
 
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={onViewProvider}
-                className="hover:text-primary truncate text-sm font-semibold focus-visible:underline"
-              >
-                {provider.name}
-              </button>
-              <StatusBadge tone={bookingTone(status)} icon={bookingIcon(status)}>
-                {BOOKING_STATUS_LABELS[status]}
-              </StatusBadge>
-              {hasReview ? (
-                <StatusBadge tone="amber" icon={Star}>
-                  Avaliado
+  return (
+    <Card className="border-border/60 bg-card hover:border-primary/40 relative overflow-hidden rounded-2xl shadow-xs transition-all duration-200 hover:shadow-md">
+      <CardContent className="space-y-4 p-4 sm:p-5">
+        {/* Main Card Header: Avatar, Provider, Status, Price */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 flex-1 items-start gap-3.5">
+            {/* Round Avatar with click to provider modal */}
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic("selection")
+                onViewProvider()
+              }}
+              className="ring-background shrink-0 rounded-full ring-2 transition-transform duration-200 outline-none hover:scale-105 focus-visible:ring-2"
+              aria-label={`Ver perfil de ${provider.name}`}
+            >
+              <Avatar className="border-border/40 size-13 rounded-full border shadow-xs">
+                {provider.avatarUrl ? (
+                  <AvatarImage
+                    src={provider.avatarUrl}
+                    alt={provider.name}
+                    className="rounded-full object-cover"
+                  />
+                ) : null}
+                <AvatarFallback className="bg-primary/10 text-primary rounded-full text-xs font-bold">
+                  {initials || "PR"}
+                </AvatarFallback>
+              </Avatar>
+            </button>
+
+            {/* Provider Info & Service Details */}
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    onViewProvider()
+                  }}
+                  className="text-foreground hover:text-primary truncate text-base font-bold tracking-tight transition-colors focus-visible:underline"
+                >
+                  {provider.name}
+                </button>
+
+                <StatusBadge tone={bookingTone(status)} icon={bookingIcon(status)}>
+                  {BOOKING_STATUS_LABELS[status]}
                 </StatusBadge>
-              ) : null}
-            </div>
-            <p className="text-muted-foreground mt-0.5 truncate text-sm">
-              {booking.service.title}
-              <span className="ml-1 text-xs">({SERVICE_UNIT_SHORT[booking.service.unit]})</span>
-            </p>
-            <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-              <span className="text-foreground/80 inline-flex items-center gap-1 font-medium tabular-nums">
-                <CalendarDays className="text-primary size-3.5" />
-                {formatDateTime(booking.scheduledAt)}
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <MapPin className="size-3.5" />
-                <span className="max-w-[14rem] truncate">{booking.address}</span>
-              </span>
+
+                {hasReview && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-200/60 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/40 dark:text-amber-300">
+                    <Star className="size-3 fill-amber-400 text-amber-400" />
+                    Avaliado
+                  </span>
+                )}
+              </div>
+
+              {/* Service Title — cleanly rendered without empty () */}
+              <div className="mt-1 flex items-center gap-1.5 text-sm">
+                <span className="text-foreground/90 truncate font-medium">
+                  {booking.service.title}
+                </span>
+                {unitLabel && (
+                  <span className="bg-muted text-muted-foreground py-0.2 rounded-md px-1.5 text-[10px] font-semibold uppercase">
+                    {unitLabel}
+                  </span>
+                )}
+              </div>
+
+              {/* Date & Address */}
+              <div className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                <span className="text-foreground/90 inline-flex items-center gap-1.5 font-medium tabular-nums">
+                  <CalendarDays className="text-primary size-3.5" />
+                  {formatDateTime(booking.scheduledAt)}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin className="text-primary/70 size-3.5" />
+                  <span className="max-w-[16rem] truncate">{booking.address}</span>
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-col items-end gap-1">
-            <span className="text-sm font-semibold tabular-nums">{formatBRL(booking.amount)}</span>
-            {booking.quantity > 1 && (
-              <span className="text-muted-foreground text-[11px] tabular-nums">
-                {booking.quantity} × {SERVICE_UNIT_SHORT[booking.unit] ?? booking.unit}
+          {/* Right: Financial & Payment Info + Menu */}
+          <div className="flex items-center justify-between gap-1 sm:flex-col sm:items-end sm:justify-start">
+            <div className="flex items-center gap-2 sm:flex-col sm:items-end sm:gap-1">
+              <span className="text-foreground text-base font-bold tracking-tight tabular-nums sm:text-lg">
+                {formatBRL(booking.amount)}
+              </span>
+              {booking.quantity > 1 && (
+                <span className="text-muted-foreground text-[11px] tabular-nums">
+                  {booking.quantity} × {unitLabel ?? booking.unit}
+                </span>
+              )}
+              <StatusBadge
+                tone={paymentTone(booking.paymentStatus as PaymentStatus)}
+                icon={paymentIcon(booking.paymentStatus as PaymentStatus)}
+                className="text-[10.5px] font-medium"
+              >
+                {PAYMENT_METHOD_LABELS[booking.paymentMethod as PaymentMethod]} ·{" "}
+                {PAYMENT_STATUS_LABELS[booking.paymentStatus as PaymentStatus]}
+              </StatusBadge>
+            </div>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground hover:text-foreground size-8 shrink-0 rounded-xl"
+                  aria-label="Mais opções"
+                >
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onSelect={onViewDetails}>
+                  <Eye className="mr-2 size-4" />
+                  Ver detalhes
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={onViewProvider}>
+                  <MapPin className="mr-2 size-4" />
+                  Ver perfil do prestador
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={onMessage}>
+                  <MessageSquare className="mr-2 size-4" />
+                  Enviar mensagem
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {canTrack && (
+                  <DropdownMenuItem onSelect={onTrack}>
+                    <Navigation className="mr-2 size-4 text-sky-600" />
+                    Rastrear ao vivo
+                  </DropdownMenuItem>
+                )}
+                {canPay && (
+                  <DropdownMenuItem onSelect={onPay}>
+                    <QrCode className="mr-2 size-4 text-emerald-600" />
+                    Pagar com PIX
+                  </DropdownMenuItem>
+                )}
+                {canComplete && (
+                  <DropdownMenuItem onSelect={onComplete} disabled={isCompleting}>
+                    <ShieldCheck className="mr-2 size-4 text-emerald-600" />
+                    {booking.paymentStatus === "HELD" ? "Liberar custódia" : "Concluir e liberar"}
+                  </DropdownMenuItem>
+                )}
+                {canReview && (
+                  <DropdownMenuItem onSelect={onReview}>
+                    <Star className="mr-2 size-4 text-amber-500" />
+                    Avaliar serviço
+                  </DropdownMenuItem>
+                )}
+                {onOpenReport && (
+                  <DropdownMenuItem onSelect={onOpenReport}>
+                    <ClipboardCheck className="mr-2 size-4 text-emerald-600" />
+                    Laudo & Checklist
+                  </DropdownMenuItem>
+                )}
+                {onCarePlan && (
+                  <DropdownMenuItem onSelect={onCarePlan}>
+                    <Sparkles className="mr-2 size-4 text-emerald-600" />
+                    Plano Recorrente (-15%)
+                  </DropdownMenuItem>
+                )}
+                {(status === "COMPLETED" || booking.paymentStatus === "PAID") && onViewReceipt && (
+                  <DropdownMenuItem onSelect={onViewReceipt}>
+                    <FileText className="mr-2 size-4 text-blue-600" />
+                    Ver recibo / comprovante
+                  </DropdownMenuItem>
+                )}
+                {status === "CANCELLED" && onRebook && (
+                  <DropdownMenuItem onSelect={onRebook}>
+                    <Sparkles className="text-primary mr-2 size-4" />
+                    Contratar novamente
+                  </DropdownMenuItem>
+                )}
+                {canCancel && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem variant="destructive" onSelect={onCancel}>
+                      <XCircle className="mr-2 size-4" />
+                      Cancelar agendamento
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        {/* Contextual Escrow / Service Design Reassurance Banner */}
+        {status === "COMPLETED" ? (
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-200/60 bg-emerald-50/50 p-2.5 text-xs font-medium text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <span>Serviço finalizado e inspecionado · Garantia Severinno ativa por 90 dias</span>
+            </div>
+            <span className="hidden text-[11px] font-semibold text-emerald-700 sm:inline dark:text-emerald-300">
+              Pagamento Liberado
+            </span>
+          </div>
+        ) : status === "IN_PROGRESS" ? (
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-sky-200/60 bg-sky-50/50 p-2.5 text-xs font-medium text-sky-900 dark:border-sky-900/40 dark:bg-sky-950/20 dark:text-sky-200">
+            <div className="flex items-center gap-2">
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"></span>
+                <span className="relative inline-flex size-2 rounded-full bg-sky-500"></span>
+              </span>
+              <span>
+                Prestador a caminho ou realizando o serviço · Pagamento em custódia protegida
+              </span>
+            </div>
+            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+              🛡️ Escrow Seguro
+            </span>
+          </div>
+        ) : status === "CONFIRMED" ? (
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-200/50 bg-emerald-50/40 p-2.5 text-xs font-medium text-emerald-800 dark:border-emerald-900/30 dark:bg-emerald-950/20 dark:text-emerald-300">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <span>
+                Horário confirmado · O valor de {formatBRL(booking.amount)} está protegido e só será
+                liberado após o serviço
+              </span>
+            </div>
+            {booking.paymentStatus === "HELD" && (
+              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                Custódia Ativa
               </span>
             )}
-            <StatusBadge
-              tone={paymentTone(booking.paymentStatus as PaymentStatus)}
-              icon={paymentIcon(booking.paymentStatus as PaymentStatus)}
-              className="text-[10px]"
-            >
-              {PAYMENT_METHOD_LABELS[booking.paymentMethod as PaymentMethod]} ·{" "}
-              {PAYMENT_STATUS_LABELS[booking.paymentStatus as PaymentStatus]}
-            </StatusBadge>
           </div>
+        ) : status === "CANCELLED" ? (
+          <div className="border-border/50 bg-muted/30 text-muted-foreground flex items-center gap-2 rounded-xl border p-2.5 text-xs font-medium">
+            <XCircle className="size-4 shrink-0 text-rose-500" />
+            <span>Agendamento cancelado · Nenhuma cobrança pendente</span>
+          </div>
+        ) : null}
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-9 shrink-0" aria-label="Ações">
-                <MoreHorizontal className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onSelect={onViewDetails}>
-                <Eye className="size-4" />
-                Ver detalhes
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onViewProvider}>
-                <MapPin className="size-4" />
-                Ver prestador
-              </DropdownMenuItem>
-              {canTrack ? (
-                <DropdownMenuItem onSelect={onTrack}>
-                  <Navigation className="size-4 text-emerald-600" />
-                  Rastrear ao vivo
-                </DropdownMenuItem>
-              ) : null}
-              {canPay ? (
-                <DropdownMenuItem onSelect={onPay}>
-                  <QrCode className="size-4 text-emerald-600" />
-                  Pagar com PIX
-                </DropdownMenuItem>
-              ) : null}
-              <DropdownMenuItem onSelect={onMessage}>
-                <MessageSquare className="size-4" />
-                Enviar mensagem
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {canComplete ? (
-                <DropdownMenuItem onSelect={onComplete} disabled={isCompleting}>
-                  <ShieldCheck className="size-4 text-emerald-600" />
-                  {booking.paymentStatus === "HELD" ? "Liberar custódia" : "Concluir e liberar"}
-                </DropdownMenuItem>
-              ) : null}
-              {canReview ? (
-                <DropdownMenuItem onSelect={onReview}>
-                  <Star className="size-4 text-amber-500" />
-                  Avaliar serviço
-                </DropdownMenuItem>
-              ) : null}
-              {onOpenReport ? (
-                <DropdownMenuItem onSelect={onOpenReport}>
-                  <ClipboardCheck className="size-4 text-emerald-600" />
-                  Laudo & Checklist
-                </DropdownMenuItem>
-              ) : null}
-              {onCarePlan ? (
-                <DropdownMenuItem onSelect={onCarePlan}>
-                  <Sparkles className="size-4 text-emerald-600" />
-                  Plano de Cuidado (-15%)
-                </DropdownMenuItem>
-              ) : null}
-              {status === "COMPLETED" || booking.paymentStatus === "PAID" ? (
-                <DropdownMenuItem onSelect={onViewReceipt}>
-                  <FileText className="size-4 text-blue-600" />
-                  Ver recibo / comprovante
-                </DropdownMenuItem>
-              ) : null}
-              {canCancel ? (
-                <DropdownMenuItem variant="destructive" onSelect={onCancel}>
-                  <XCircle className="size-4" />
-                  Cancelar agendamento
-                </DropdownMenuItem>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>{" "}
-        {/* Quick action buttons (visible on mobile too) */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={onViewDetails} className="h-9 gap-1.5">
-            <Eye className="size-4" />
-            Detalhes
-          </Button>
-          {onCarePlan ? (
+        {/* Quick Action Buttons Strip */}
+        <div className="border-border/40 flex flex-wrap items-center gap-2 border-t pt-3">
+          {/* Primary Action Button based on status */}
+          {status === "COMPLETED" && canReview && (
             <Button
-              variant="outline"
               size="sm"
-              onClick={onCarePlan}
-              className="h-9 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              onClick={() => {
+                triggerHaptic("selection")
+                onReview()
+              }}
+              className="h-8 gap-1.5 rounded-xl bg-amber-500 text-xs font-semibold text-white shadow-xs transition-all hover:bg-amber-600 active:scale-95"
             >
-              <Sparkles className="size-4" />
-              Plano Recorrente
+              <Star className="size-3.5 fill-white text-white" />
+              Avaliar
             </Button>
-          ) : null}
-          {onOpenReport &&
-          (status === "CONFIRMED" || status === "IN_PROGRESS" || status === "COMPLETED") ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onOpenReport}
-              className="h-9 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
-            >
-              <ClipboardCheck className="size-4" />
-              Laudo / Fotos
-            </Button>
-          ) : null}
-          {(status === "COMPLETED" || booking.paymentStatus === "PAID") && onViewReceipt ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onViewReceipt}
-              className="h-9 gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950/30"
-            >
-              <FileText className="size-4" />
-              Recibo
-            </Button>
-          ) : null}
-          {canTrack ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onTrack}
-              className="h-9 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
-            >
-              <Navigation className="size-4" />
-              Rastrear
-            </Button>
-          ) : null}
-          {canPay ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onPay}
-              className="h-9 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
-            >
-              <CreditCard className="size-4" />
-              Pagar PIX
-            </Button>
-          ) : null}
-          {canComplete ? (
+          )}
+
+          {canComplete && (
             <Button
               size="sm"
-              onClick={onComplete}
+              onClick={() => {
+                triggerHaptic("selection")
+                onComplete()
+              }}
               disabled={isCompleting}
-              className="h-9 gap-1.5 bg-emerald-600 font-medium text-white shadow-2xs hover:bg-emerald-700"
+              className="h-8 gap-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-95"
             >
               {isCompleting ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                <ShieldCheck className="size-4" />
+                <ShieldCheck className="size-3.5" />
               )}
               {booking.paymentStatus === "HELD" ? "Liberar Custódia" : "Liberar Pagamento"}
             </Button>
-          ) : null}
-          {canReview ? (
-            <Button size="sm" onClick={onReview} className="h-9 gap-1.5">
-              <Star className="size-4" />
-              Avaliar
+          )}
+
+          {canTrack && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                triggerHaptic("selection")
+                onTrack?.()
+              }}
+              className="h-8 gap-1.5 rounded-xl border-sky-300 text-xs font-semibold text-sky-700 transition-all hover:bg-sky-50 active:scale-95 dark:border-sky-800 dark:text-sky-300 dark:hover:bg-sky-950/30"
+            >
+              <Navigation className="size-3.5" />
+              Rastrear
             </Button>
-          ) : null}
-          {canCancel ? (
+          )}
+
+          {canPay && (
+            <Button
+              size="sm"
+              onClick={() => {
+                triggerHaptic("selection")
+                onPay?.()
+              }}
+              className="h-8 gap-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-95"
+            >
+              <CreditCard className="size-3.5" />
+              Pagar PIX
+            </Button>
+          )}
+
+          {/* Standard Tools */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              triggerHaptic("selection")
+              onViewDetails()
+            }}
+            className="border-border/60 hover:bg-muted/60 h-8 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95"
+          >
+            <Eye className="size-3.5" />
+            Detalhes
+          </Button>
+
+          {/* Rebook option on Cancelled */}
+          {status === "CANCELLED" && onRebook && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                triggerHaptic("selection")
+                onRebook()
+              }}
+              className="border-primary/50 text-primary hover:bg-primary/10 h-8 gap-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
+            >
+              <Sparkles className="size-3.5" />
+              Contratar Novamente
+            </Button>
+          )}
+
+          {/* Report on In-Progress / Completed / Confirmed */}
+          {onOpenReport &&
+            (status === "CONFIRMED" || status === "IN_PROGRESS" || status === "COMPLETED") && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onOpenReport()
+                }}
+                className="border-border/60 hover:bg-muted/60 h-8 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95"
+              >
+                <ClipboardCheck className="size-3.5" />
+                Laudo / Fotos
+              </Button>
+            )}
+
+          {/* Receipt on Completed or Paid */}
+          {(status === "COMPLETED" || booking.paymentStatus === "PAID") && onViewReceipt && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                triggerHaptic("selection")
+                onViewReceipt()
+              }}
+              className="border-border/60 hover:bg-muted/60 h-8 gap-1.5 rounded-xl text-xs font-medium text-blue-700 transition-all active:scale-95 dark:text-blue-400"
+            >
+              <FileText className="size-3.5" />
+              Recibo
+            </Button>
+          )}
+
+          {/* Care Plan recommendation on Completed */}
+          {status === "COMPLETED" && onCarePlan && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                triggerHaptic("selection")
+                onCarePlan()
+              }}
+              className="h-8 gap-1.5 rounded-xl border-emerald-300 text-xs font-medium text-emerald-700 transition-all hover:bg-emerald-50 active:scale-95 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+            >
+              <Sparkles className="size-3.5" />
+              Plano Recorrente
+            </Button>
+          )}
+
+          {/* In-app Message button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              triggerHaptic("selection")
+              onMessage()
+            }}
+            className="text-muted-foreground hover:text-foreground hover:bg-muted/60 h-8 w-8 shrink-0 rounded-xl p-0 transition-colors"
+            title="Enviar mensagem na plataforma"
+            aria-label="Enviar mensagem na plataforma"
+          >
+            <MessageSquare className="size-4" />
+          </Button>
+
+          {/* Cancel button if applicable */}
+          {canCancel && (
             <Button
               variant="ghost"
               size="sm"
-              onClick={onCancel}
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive h-9 gap-1.5"
+              onClick={() => {
+                triggerHaptic("selection")
+                onCancel()
+              }}
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive ml-auto h-8 gap-1.5 rounded-xl px-2.5 text-xs font-medium transition-all active:scale-95"
             >
-              <XCircle className="size-4" />
+              <XCircle className="size-3.5" />
               Cancelar
             </Button>
-          ) : null}
+          )}
         </div>
       </CardContent>
     </Card>
@@ -1080,7 +1406,7 @@ function BookingDetailsDialog({
             {b.notes ? <Row label="Observações" value={b.notes} /> : null}
 
             {/* Flow transparency — "what happens now" timeline */}
-            <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50/50 p-4 dark:border-emerald-900 dark:bg-emerald-950/20">
+            <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
               <BookingTimeline status={b.status} />
             </div>
           </div>
