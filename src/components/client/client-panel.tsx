@@ -90,15 +90,8 @@ const ClientSecurity = dynamic(
   () => import("@/components/client/client-security").then((m) => ({ default: m.ClientSecurity })),
   { ssr: false },
 )
-const ReferralCard = dynamic(
-  () => import("@/components/shared/referral-card").then((m) => ({ default: m.ReferralCard })),
-  { ssr: false },
-)
-const ReferralLeaderboard = dynamic(
-  () =>
-    import("@/components/shared/referral-leaderboard").then((m) => ({
-      default: m.ReferralLeaderboard,
-    })),
+const ClientReferral = dynamic(
+  () => import("@/components/client/client-referral").then((m) => ({ default: m.ClientReferral })),
   { ssr: false },
 )
 
@@ -259,12 +252,7 @@ function renderView(view: string): React.ReactNode {
     case "client.finance":
       return <ClientFinance />
     case "client.referral":
-      return (
-        <div className="space-y-6">
-          <ReferralCard />
-          <ReferralLeaderboard />
-        </div>
-      )
+      return <ClientReferral />
     case "client.messages":
       return <ClientMessages />
     case "client.reviews":
