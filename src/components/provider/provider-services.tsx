@@ -2,8 +2,6 @@
 import * as React from "react"
 import Image from "next/image"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { useForm, useWatch, type Resolver } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
 import {
   ChevronRight,
@@ -13,7 +11,6 @@ import {
   Loader2,
   Trash2,
   Wrench,
-  AlertTriangle,
   Camera,
   X,
   LayoutGrid,
@@ -22,14 +19,8 @@ import {
   Tag,
 } from "lucide-react"
 
-import { apiDelete, apiGet, apiPatch, apiPost, type Category } from "@/lib/api"
-import {
-  SERVICE_UNITS,
-  SERVICE_UNIT_LABELS,
-  SERVICE_UNIT_SHORT,
-  type ServiceUnit,
-} from "@/lib/constants"
-import { serviceSchema, type ServiceInput } from "@/lib/validators"
+import { apiDelete, apiGet, apiPatch, type Category } from "@/lib/api"
+import { SERVICE_UNIT_LABELS, SERVICE_UNIT_SHORT } from "@/lib/constants"
 import { formatBRL } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -54,23 +45,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -80,30 +54,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
-import { FilePhotos } from "@/components/modals/file-photos"
 import { useAuthStore } from "@/store/auth"
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type ServiceCategory = Category & { parentId?: string | null }
-
-type ProviderService = {
-  id: string
-  providerId: string
-  categoryId: string
-  title: string
-  description: string
-  basePrice: number
-  unit: ServiceUnit
-  photos: string[]
-  active: boolean
-  createdAt: string
-  updatedAt: string
-  category?: ServiceCategory | null
-}
+import {
+  ServiceFormDialog,
+  type ProviderService,
+  type ServiceCategory,
+} from "./service-form-dialog"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -126,372 +82,7 @@ function categoryPathChips(cat: ServiceCategory | null | undefined, all: Categor
 // Service form (create/edit)
 // ---------------------------------------------------------------------------
 
-function ServiceFormDialog({
-  open,
-  onOpenChange,
-  service,
-  categories,
-}: {
-  open: boolean
-  onOpenChange: (v: boolean) => void
-  service: ProviderService | null
-  categories: Category[]
-}) {
-  const isEdit = !!service
-  const qc = useQueryClient()
-
-  // 3-level cascade selection
-  const [parentCatId, setParentCatId] = React.useState<string>("")
-  const [childCatId, setChildCatId] = React.useState<string>("")
-  const [subCatId, setSubCatId] = React.useState<string>("")
-  const [photos, setPhotos] = React.useState<string[]>([])
-
-  // Level-0 categories (pais)
-  const level0 = React.useMemo(() => categories.filter((c) => c.level === 0), [categories])
-  // Level-1 (filhas) given selected pai
-  const level1 = React.useMemo(
-    () => categories.filter((c) => c.level === 1 && c.parentId === parentCatId),
-    [categories, parentCatId],
-  )
-  // Level-2 (subcategorias) given selected filha
-  const level2 = React.useMemo(
-    () => categories.filter((c) => c.level === 2 && c.parentId === childCatId),
-    [categories, childCatId],
-  )
-
-  const form = useForm<ServiceInput>({
-    resolver: zodResolver(serviceSchema) as unknown as Resolver<ServiceInput>,
-    defaultValues: {
-      title: "",
-      description: "",
-      categoryId: "",
-      basePrice: 0,
-      unit: "UNIDADE",
-      photos: [],
-      active: true,
-    },
-  })
-
-  // Hydrate form when editing (adjust state during render)
-  const [prevOpen, setPrevOpen] = React.useState(open)
-  const [prevService, setPrevService] = React.useState(service)
-  if (open && (prevOpen !== open || prevService !== service)) {
-    setPrevOpen(open)
-    setPrevService(service)
-    if (service) {
-      // Find category and walk up to determine pai → filha → sub
-      const sub = categories.find((c) => c.id === service.categoryId)
-      const filha = sub?.parentId ? categories.find((c) => c.id === sub?.parentId) : null
-      const pai = filha?.parentId ? categories.find((c) => c.id === filha?.parentId) : null
-
-      setParentCatId(pai?.id ?? "")
-      setChildCatId(filha?.id ?? "")
-      setSubCatId(sub?.id ?? service.categoryId)
-      setPhotos(service.photos ?? [])
-    } else {
-      setParentCatId("")
-      setChildCatId("")
-      setSubCatId("")
-      setPhotos([])
-    }
-  }
-
-  // form.reset stays in an effect: react-hook-form is an external store and
-  // its reset() must not run during the render phase.
-  React.useEffect(() => {
-    if (!open) return
-    form.reset(
-      service
-        ? {
-            title: service.title,
-            description: service.description,
-            categoryId: service.categoryId,
-            basePrice: service.basePrice,
-            unit: service.unit as ServiceUnit,
-            photos: service.photos ?? [],
-            active: service.active,
-          }
-        : {
-            title: "",
-            description: "",
-            categoryId: "",
-            basePrice: 0,
-            unit: "UNIDADE",
-            photos: [],
-            active: true,
-          },
-    )
-  }, [open, service, form])
-
-  // Keep form's categoryId in sync with subCatId
-  React.useEffect(() => {
-    form.setValue("categoryId", subCatId)
-  }, [subCatId, form])
-
-  // Keep form's photos in sync
-  React.useEffect(() => {
-    form.setValue("photos", photos)
-  }, [photos, form])
-
-  const submit = form.handleSubmit(async (values) => {
-    if (!subCatId) {
-      toast.error("Selecione a subcategoria do serviço.")
-      return
-    }
-    try {
-      const payload = {
-        ...values,
-        categoryId: subCatId,
-        photos,
-      }
-      if (isEdit && service) {
-        await apiPatch(`/api/services/${service.id}`, payload)
-        toast.success("Serviço atualizado com sucesso.")
-      } else {
-        await apiPost("/api/services", payload)
-        toast.success("Serviço criado com sucesso.")
-      }
-      qc.invalidateQueries({ queryKey: ["provider", "services"] })
-      onOpenChange(false)
-    } catch (e) {
-      const err = e as { message?: string }
-      toast.error(err?.message ?? "Erro ao salvar serviço.")
-    }
-  })
-
-  const watchedPrice = useWatch({ control: form.control, name: "basePrice" })
-  const currentPrice = service?.basePrice ?? 0
-  const priceLowerThanCurrent = isEdit && Number(watchedPrice) < currentPrice
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? "Editar serviço" : "Novo serviço"}</DialogTitle>
-          <DialogDescription>
-            {isEdit
-              ? "Atualize as informações do seu serviço."
-              : "Cadastre um novo serviço que você oferece aos clientes."}
-          </DialogDescription>
-        </DialogHeader>
-
-        <Form {...form}>
-          <form onSubmit={submit} className="grid gap-4 py-2">
-            {/* Category cascade */}
-            <div className="grid gap-3">
-              <div className="text-sm font-medium">Categoria</div>
-              <p className="text-muted-foreground text-xs">
-                Escolha pai → filha → subcategoria. A subcategoria é obrigatória.
-              </p>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <CategorySelect
-                  label="Categoria pai"
-                  placeholder="Selecione…"
-                  value={parentCatId}
-                  onChange={(v) => {
-                    setParentCatId(v)
-                    setChildCatId("")
-                    setSubCatId("")
-                  }}
-                  options={level0}
-                />
-                <CategorySelect
-                  label="Filha"
-                  placeholder={parentCatId ? "Selecione…" : "—"}
-                  value={childCatId}
-                  onChange={(v) => {
-                    setChildCatId(v)
-                    setSubCatId("")
-                  }}
-                  options={level1}
-                  disabled={!parentCatId}
-                />
-                <CategorySelect
-                  label="Subcategoria"
-                  placeholder={childCatId ? "Selecione…" : "—"}
-                  value={subCatId}
-                  onChange={setSubCatId}
-                  options={level2}
-                  disabled={!childCatId}
-                />
-              </div>
-            </div>
-
-            <FormField
-              control={form.control}
-              name="title"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Título</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Ex.: Instalação de tomadas" maxLength={80} {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Descrição</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Descreva o serviço, o que está incluso, condições…"
-                      rows={4}
-                      maxLength={1200}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormDescription>Mínimo 10 caracteres. Máximo 1200.</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="basePrice"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Preço base (R$)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min={0}
-                        {...field}
-                        value={field.value ?? 0}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    {isEdit ? (
-                      <FormDescription>
-                        Preço atual: {formatBRL(currentPrice)}. Só é permitido reajustar para cima.
-                      </FormDescription>
-                    ) : (
-                      <FormDescription>Preço mínimo sugerido para seus clientes.</FormDescription>
-                    )}
-                    {priceLowerThanCurrent && (
-                      <p className="text-destructive flex items-center gap-1 text-xs">
-                        <AlertTriangle className="size-3" />O novo preço é menor que o atual e será
-                        recusado pelo servidor.
-                      </p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="unit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unidade</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione…" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {SERVICE_UNITS.map((u) => (
-                          <SelectItem key={u} value={u}>
-                            {SERVICE_UNIT_LABELS[u]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <FormField
-              control={form.control}
-              name="active"
-              render={({ field }) => (
-                <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                  <div>
-                    <FormLabel className="m-0">Serviço ativo</FormLabel>
-                    <FormDescription className="mt-1">
-                      Serviços inativos não aparecem na vitrine.
-                    </FormDescription>
-                  </div>
-                  <FormControl>
-                    <Switch checked={field.value} onCheckedChange={field.onChange} />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-
-            <FilePhotos
-              value={photos}
-              onChange={setPhotos}
-              max={4}
-              label="Fotos do serviço"
-              hint="Até 4 fotos. JPG, PNG ou WEBP até 5MB cada."
-            />
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                disabled={!subCatId || priceLowerThanCurrent || form.formState.isSubmitting}
-              >
-                {form.formState.isSubmitting ? (
-                  <Loader2 className="mr-2 size-4 animate-spin" />
-                ) : null}
-                {isEdit ? "Salvar alterações" : "Criar serviço"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function CategorySelect({
-  label,
-  placeholder,
-  value,
-  onChange,
-  options,
-  disabled,
-}: {
-  label: string
-  placeholder: string
-  value: string
-  onChange: (v: string) => void
-  options: Category[]
-  disabled?: boolean
-}) {
-  return (
-    <div className="grid gap-1.5">
-      <label className="text-muted-foreground text-xs font-medium">{label}</label>
-      <Select value={value} onValueChange={onChange} disabled={disabled || options.length === 0}>
-        <SelectTrigger className="w-full">
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((c) => (
-            <SelectItem key={c.id} value={c.id}>
-              {c.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  )
-}
+// Service form (create/edit) is imported from ./service-form-dialog
 
 // ---------------------------------------------------------------------------
 // Delete confirm
