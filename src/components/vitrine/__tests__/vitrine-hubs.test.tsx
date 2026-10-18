@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
 import * as React from "react"
-import { render, screen, fireEvent, cleanup } from "@/__tests__/test-utils"
+import { render, screen, fireEvent, cleanup, waitFor } from "@/__tests__/test-utils"
 import { QuotePricingHub } from "../quote-pricing-hub"
 import { VisualProofHub } from "../visual-proof-hub"
 import { TrustShieldHub } from "../trust-shield-hub"
@@ -10,7 +10,7 @@ afterEach(() => {
 })
 
 describe("QuotePricingHub", () => {
-  it("renders with default tab and navigates between wizard, fipe, and roi tabs", () => {
+  it("renders with default tab and navigates between wizard, fipe, and roi tabs", async () => {
     const onSearchMock = vi.fn()
     render(<QuotePricingHub onSearchService={onSearchMock} />)
 
@@ -21,19 +21,25 @@ describe("QuotePricingHub", () => {
       }),
     ).toBeDefined()
     expect(screen.getByText("Orçamentômetro WhatsApp")).toBeDefined()
-    expect(screen.getByText("Eletricista")).toBeDefined()
+    await waitFor(() => {
+      expect(screen.getByText("Eletricista")).toBeDefined()
+    })
 
     // Switch to FIPE tab
     const fipeTab = screen.getByRole("tab", { name: /Tabela FIPE dos Serviços GV/i })
     fireEvent.click(fipeTab)
-    expect(
-      screen.getByRole("region", { name: "Tabela FIPE dos Serviços de Governador Valadares" }),
-    ).toBeDefined()
+    await waitFor(() => {
+      expect(
+        screen.getByRole("region", { name: "Tabela FIPE dos Serviços de Governador Valadares" }),
+      ).toBeDefined()
+    })
 
     // Switch to ROI tab
     const roiTab = screen.getByRole("tab", { name: /Prevenção vs Prejuízo/i })
     fireEvent.click(roiTab)
-    expect(screen.getByText(/Manutenção Preventiva vs Prejuízo em GV/i)).toBeDefined()
+    await waitFor(() => {
+      expect(screen.getByText(/Manutenção Preventiva vs Prejuízo em GV/i)).toBeDefined()
+    })
   })
 })
 
@@ -71,7 +77,7 @@ describe("VisualProofHub", () => {
 })
 
 describe("TrustShieldHub", () => {
-  it("renders with default transparency tab and navigates between contract and comparison tabs", () => {
+  it("renders with default transparency tab and navigates between contract and comparison tabs", async () => {
     render(<TrustShieldHub />)
 
     expect(
@@ -80,27 +86,33 @@ describe("TrustShieldHub", () => {
       }),
     ).toBeDefined()
     expect(screen.getByRole("tab", { name: /Central de Integridade GV/i })).toBeDefined()
-    expect(
-      screen.getByRole("region", {
-        name: "Central de Integridade e Transparência em Governador Valadares",
-      }),
-    ).toBeDefined()
+    await waitFor(() => {
+      expect(
+        screen.getByRole("region", {
+          name: "Central de Integridade e Transparência em Governador Valadares",
+        }),
+      ).toBeDefined()
+    })
 
     // Switch to Contract tab
     const contractTab = screen.getByRole("tab", { name: /Contrato Digital & Recibo/i })
     fireEvent.click(contractTab)
-    expect(
-      screen.getByRole("region", { name: "Gerador de Pré-Contrato Digital e Recibo Oficial" }),
-    ).toBeDefined()
+    await waitFor(() => {
+      expect(
+        screen.getByRole("region", { name: "Gerador de Pré-Contrato Digital e Recibo Oficial" }),
+      ).toBeDefined()
+    })
 
     // Switch to Comparison tab
     const comparisonTab = screen.getByRole("tab", { name: /Boca a Boca vs Severinno/i })
     fireEvent.click(comparisonTab)
-    expect(
-      screen.getByRole("region", {
-        name: "Comparativo de Segurança",
-      }),
-    ).toBeDefined()
+    await waitFor(() => {
+      expect(
+        screen.getByRole("region", {
+          name: "Comparativo de Segurança",
+        }),
+      ).toBeDefined()
+    })
   })
 })
 

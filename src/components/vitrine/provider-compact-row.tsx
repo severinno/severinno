@@ -15,7 +15,6 @@ import {
   GitCompare,
   CheckCircle2,
   Sparkles,
-  MessageCircle,
   ChevronRight,
   ShieldCheck,
   FileText,
@@ -131,21 +130,6 @@ export default React.memo(function ProviderCompactRow({
       return
     }
     toggleCompare(provider.id)
-  }
-
-  const handleWhatsApp = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    triggerHaptic("selection")
-    if (provider.whatsapp) {
-      const digits = provider.whatsapp.replace(/\D/g, "")
-      const num = digits.startsWith("55") ? digits : `55${digits}`
-      const text = encodeURIComponent(
-        `Olá ${provider.name}, vi seu perfil no Severinno e gostaria de solicitar um orçamento.`,
-      )
-      window.open(`https://wa.me/${num}?text=${text}`, "_blank", "noopener,noreferrer")
-    } else {
-      onView?.(provider.id)
-    }
   }
 
   const isNearby =
@@ -326,16 +310,6 @@ export default React.memo(function ProviderCompactRow({
             {inCompare ? <CheckCircle2 className="size-4" /> : <GitCompare className="size-4" />}
           </button>
 
-          <button
-            type="button"
-            onClick={handleWhatsApp}
-            className="flex size-8.5 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-50 text-emerald-700 shadow-2xs transition-colors hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300"
-            title={`Chamar ${provider.name} no WhatsApp`}
-            aria-label={`Chamar ${provider.name} no WhatsApp`}
-          >
-            <MessageCircle className="size-4" />
-          </button>
-
           {onQuote && (
             <Button
               variant="outline"
@@ -356,7 +330,11 @@ export default React.memo(function ProviderCompactRow({
             onClick={(e) => {
               e.stopPropagation()
               triggerHaptic("selection")
-              onBook ? onBook(provider.id) : onView?.(provider.id)
+              if (onBook) {
+                onBook(provider.id)
+              } else {
+                onView?.(provider.id)
+              }
             }}
             className="bg-primary text-primary-foreground hover:bg-primary/90 h-8.5 rounded-xl px-3 text-xs font-bold shadow-2xs"
           >
@@ -462,7 +440,11 @@ export default React.memo(function ProviderCompactRow({
               size="sm"
               onClick={() => {
                 setQuickViewOpen(false)
-                onBook ? onBook(provider.id) : onView?.(provider.id)
+                if (onBook) {
+                  onBook(provider.id)
+                } else {
+                  onView?.(provider.id)
+                }
               }}
               className="bg-primary text-primary-foreground hover:bg-primary/90 h-7.5 flex-1 text-xs font-semibold"
             >

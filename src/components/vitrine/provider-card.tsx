@@ -20,7 +20,6 @@ import {
   FileText,
   ShieldCheck,
   X,
-  MessageCircle,
 } from "lucide-react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 
@@ -135,21 +134,6 @@ export default React.memo(function ProviderCard({
       return
     }
     toggleCompare(provider.id)
-  }
-
-  const handleWhatsApp = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    triggerHaptic("selection")
-    if (provider.whatsapp) {
-      const digits = provider.whatsapp.replace(/\D/g, "")
-      const num = digits.startsWith("55") ? digits : `55${digits}`
-      const text = encodeURIComponent(
-        `Olá ${provider.name}, vi seu perfil no Severinno e gostaria de solicitar um orçamento.`,
-      )
-      window.open(`https://wa.me/${num}?text=${text}`, "_blank", "noopener,noreferrer")
-    } else {
-      onView?.(provider.id)
-    }
   }
 
   // Geolocation check for "Perto de você" badge
@@ -479,15 +463,6 @@ export default React.memo(function ProviderCard({
           </div>
 
           <div className="border-border/40 mt-3 flex items-center gap-2 border-t pt-3">
-            <button
-              type="button"
-              onClick={handleWhatsApp}
-              className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-50 text-emerald-700 shadow-2xs transition-colors hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300"
-              title={`Chamar ${provider.name} no WhatsApp`}
-              aria-label={`Chamar ${provider.name} no WhatsApp`}
-            >
-              <MessageCircle className="size-4" />
-            </button>
             <Button
               variant="outline"
               size="sm"
@@ -568,17 +543,8 @@ export default React.memo(function ProviderCard({
           </div>
         </div>
 
-        {/* Botões de Ação */}
+        {/* Botões de Ação 100% na Plataforma (Sem vazamento de WhatsApp) */}
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleWhatsApp}
-            className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-50 text-emerald-700 shadow-2xs transition-colors hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
-            title={`Chamar ${provider.name} no WhatsApp`}
-            aria-label={`Chamar ${provider.name} no WhatsApp`}
-          >
-            <MessageCircle className="size-4" />
-          </button>
           {onQuote && (
             <Button
               variant="outline"

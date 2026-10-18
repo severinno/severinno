@@ -42,6 +42,22 @@ vi.mock("@/hooks/use-regional-context", () => ({
   }),
 }))
 
+vi.mock("framer-motion", () => ({
+  motion: new Proxy(
+    {},
+    {
+      get: (_, tag: string) => {
+        const Comp = ({ children, ...props }: any) => {
+          const Tag = tag as any
+          return <Tag {...props}>{children}</Tag>
+        }
+        return Comp
+      },
+    },
+  ),
+  AnimatePresence: ({ children }: any) => <>{children}</>,
+}))
+
 describe("Vitrine CRO Batch 2 (#1, #2, #3, #5)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -123,11 +139,11 @@ describe("Vitrine CRO Batch 2 (#1, #2, #3, #5)", () => {
         window.dispatchEvent(promptEvent)
       })
 
-      expect(screen.getByText(/Instalar o Severinno na sua Tela de Início/i)).toBeDefined()
+      expect(screen.getByText(/Instalar Severinno no Celular/i)).toBeDefined()
       expect(screen.getByText(/Instalar Agora/i)).toBeDefined()
 
-      // Click "Depois" to dismiss
-      const dismissBtn = screen.getByText("Depois")
+      // Click "Agora não" to dismiss
+      const dismissBtn = screen.getByText("Agora não")
       fireEvent.click(dismissBtn)
 
       expect(screen.queryByText(/Instalar Agora/i)).toBeNull()

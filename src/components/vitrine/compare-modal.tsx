@@ -44,7 +44,6 @@ import {
   MessageCircle,
   Columns3,
   Rows,
-  Share2,
   Copy,
 } from "lucide-react"
 
@@ -146,22 +145,6 @@ export default function CompareModal() {
   // Layout mode: "columns" (side-by-side table) or "vertical" (stacked cards)
   const [layoutMode, setLayoutMode] = React.useState<"columns" | "vertical">("columns")
 
-  const handleWhatsAppContact = React.useCallback(
-    (p: ProviderDetail) => {
-      if (p.whatsapp) {
-        const digits = p.whatsapp.replace(/\D/g, "")
-        const num = digits.startsWith("55") ? digits : `55${digits}`
-        const text = encodeURIComponent(
-          `Olá ${p.name}, vi seu perfil no Comparador Severinno e gostaria de solicitar um orçamento.`,
-        )
-        window.open(`https://wa.me/${num}?text=${text}`, "_blank", "noopener,noreferrer")
-      } else {
-        closeCompare()
-        openQuote({ providerId: p.id })
-      }
-    },
-    [closeCompare, openQuote],
-  )
   // Deep-link check for ?comparar=id1,id2,id3 or ?compare=...
   React.useEffect(() => {
     if (typeof window === "undefined") return
@@ -714,18 +697,8 @@ export default function CompareModal() {
                             </div>
                           </div>
 
-                          {/* CTAs Diretos (WhatsApp, Orçamento, Agendar) + Remover */}
+                          {/* CTAs Diretos (Orçamento, Agendar) + Remover */}
                           <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
-                            <button
-                              type="button"
-                              onClick={() => handleWhatsAppContact(p)}
-                              className="flex h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-50 px-3 text-xs font-bold text-emerald-700 shadow-2xs transition-colors hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300"
-                              title={`Chamar ${p.name} no WhatsApp`}
-                              aria-label={`Chamar ${p.name} no WhatsApp`}
-                            >
-                              <MessageCircle className="size-3.5" />
-                              <span className="hidden md:inline">WhatsApp</span>
-                            </button>
                             <Button
                               size="sm"
                               variant="outline"
@@ -1013,17 +986,8 @@ export default function CompareModal() {
                                   </button>
                                 </div>
 
-                                {/* CTAs Rápidos no Topo da Coluna com WhatsApp Direto */}
+                                {/* CTAs Rápidos no Topo da Coluna (100% Plataforma) */}
                                 <div className="flex items-center gap-1.5 pt-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleWhatsAppContact(p)}
-                                    className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-50 text-emerald-700 shadow-2xs transition-colors hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300"
-                                    title={`Chamar ${p.name} no WhatsApp`}
-                                    aria-label={`Chamar ${p.name} no WhatsApp`}
-                                  >
-                                    <MessageCircle className="size-3.5" />
-                                  </button>
                                   <Button
                                     size="sm"
                                     variant="outline"

@@ -28,7 +28,6 @@ import {
   Heart,
   MapPin,
   Navigation,
-  Phone,
   Quote,
   Share2,
   ShieldCheck,
@@ -66,21 +65,6 @@ const ProviderMiniMap = dynamic(() => import("@/components/shared/provider-mini-
   ssr: false,
   loading: () => <Skeleton className="h-48 w-full rounded-xl" />,
 })
-
-function formatPhoneBR(raw?: string | null): string {
-  if (!raw) return ""
-  const digits = raw.replace(/\D/g, "")
-  if (digits.length === 13 && digits.startsWith("55")) {
-    const ddd = digits.slice(2, 4)
-    const part1 = digits.slice(4, 9)
-    const part2 = digits.slice(9, 13)
-    return `+55 (${ddd}) ${part1}-${part2}`
-  }
-  if (digits.length === 11) {
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
-  }
-  return raw
-}
 
 // ---------------------------------------------------------------------------
 // Main modal wrapper
@@ -965,6 +949,7 @@ function ServiceCard({
 // ---------------------------------------------------------------------------
 
 function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: boolean }) {
+  const openQuote = useUIStore((s) => s.openQuote)
   const userLat = useGeoStore((s) => s.lat)
   const userLng = useGeoStore((s) => s.lng)
   const [previewRadius, setPreviewRadius] = React.useState<number | null>(null)
@@ -1092,34 +1077,31 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
           </div>
         </div>
 
-        {/* Contact */}
+        {/* Contact Intermediado / Protegido */}
         <div className="border-border/50 bg-card flex items-center justify-between gap-2.5 rounded-xl border p-3">
           <div className="flex min-w-0 items-start gap-2.5">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
-              <Phone className="size-4" />
+              <ShieldCheck className="size-4" />
             </div>
             <div className="min-w-0">
               <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
-                WhatsApp
+                Comunicação Segura
               </p>
-              <p className="mt-0.5 truncate text-xs font-medium">
-                {provider?.whatsapp ? formatPhoneBR(provider.whatsapp) : "Via Plataforma"}
+              <p className="mt-0.5 truncate text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                100% Protegida por Custódia
               </p>
-              <span className="text-muted-foreground text-[11px]">Contato verificado</span>
+              <span className="text-muted-foreground text-[11px]">
+                Orçamento e chat intermediados pela plataforma
+              </span>
             </div>
           </div>
-          {provider?.whatsapp && (
-            <a
-              href={`https://wa.me/${provider.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(
-                `Olá ${provider.name || ""}, vi seu perfil no Severinno e gostaria de solicitar um orçamento.`,
-              )}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs transition-colors hover:bg-emerald-700 active:scale-95"
-            >
-              <span>Conversar</span>
-            </a>
-          )}
+          <Button
+            size="sm"
+            onClick={() => provider && openQuote({ providerId: provider.id })}
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs transition-colors hover:bg-emerald-700 active:scale-95"
+          >
+            <span>Pedir Orçamento</span>
+          </Button>
         </div>
       </div>
     </div>
