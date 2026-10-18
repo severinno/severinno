@@ -250,9 +250,37 @@ export default function Hero({
   const [howItWorksOpen, setHowItWorksOpen] = React.useState(false)
   const [searchDropdownOpen, setSearchDropdownOpen] = React.useState(false)
   const [selectedCategoryIdx, setSelectedCategoryIdx] = React.useState(0)
+  const [isHovered, setIsHovered] = React.useState(false)
+  const [progress, setProgress] = React.useState(0)
 
   // Current featured category & provider
   const currentFeatured = FEATURED_SERVICES[selectedCategoryIdx] ?? FEATURED_SERVICES[0]
+
+  // Auto-rotate featured categories every 6s with pause on hover
+  React.useEffect(() => {
+    if (isHovered) return
+
+    const ROTATION_INTERVAL_MS = 6000
+    const TICK_MS = 100
+    const increment = (TICK_MS / ROTATION_INTERVAL_MS) * 100
+
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 100) {
+          setSelectedCategoryIdx((idx) => (idx + 1) % FEATURED_SERVICES.length)
+          return 0
+        }
+        return prev + increment
+      })
+    }, TICK_MS)
+
+    return () => clearInterval(interval)
+  }, [isHovered])
+
+  const handleCategorySelect = (idx: number) => {
+    setSelectedCategoryIdx(idx)
+    setProgress(0)
+  }
 
   // Live activity cycling
   const activities = activityData?.activities ?? []
@@ -368,8 +396,41 @@ export default function Hero({
               </span>
             </div>
 
+            {/* Front 2: Micro-Stack de Prova Social Humana Acima do Título */}
+            <div className="mt-3.5 flex flex-wrap items-center gap-2.5">
+              <div className="flex -space-x-2 overflow-hidden">
+                {[
+                  { name: "Mariana R.", bg: "from-pink-500 to-rose-600", letter: "M" },
+                  { name: "Carlos E.", bg: "from-blue-500 to-indigo-600", letter: "C" },
+                  { name: "Juliana P.", bg: "from-emerald-500 to-teal-600", letter: "J" },
+                  { name: "Roberto S.", bg: "from-amber-500 to-orange-600", letter: "R" },
+                  { name: "Fernanda T.", bg: "from-violet-500 to-purple-600", letter: "F" },
+                ].map((u, i) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      "flex size-6 items-center justify-center rounded-full bg-gradient-to-br text-[10px] font-bold text-white shadow-xs ring-2 ring-slate-950 sm:size-7",
+                      u.bg,
+                    )}
+                    title={u.name}
+                  >
+                    {u.letter}
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-1.5 text-xs">
+                <div className="flex items-center text-amber-400">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star key={i} className="size-3.5 fill-amber-400 text-amber-400" />
+                  ))}
+                </div>
+                <span className="font-bold text-white">4.9/5.0</span>
+                <span className="text-slate-400">• +1.400 chamados atendidos em GV</span>
+              </div>
+            </div>
+
             {/* Headline */}
-            <h1 className="mt-5 text-3xl leading-[1.08] font-extrabold tracking-tight text-balance sm:text-4xl md:text-5xl lg:text-[3.25rem] xl:text-[3.5rem]">
+            <h1 className="mt-4 text-3xl leading-[1.08] font-extrabold tracking-tight text-balance sm:text-4xl md:text-5xl lg:text-[3.25rem] xl:text-[3.5rem]">
               {regionalContext.heroHeadline}{" "}
               <span className="bg-gradient-to-r from-emerald-300 via-teal-200 to-emerald-400 bg-clip-text text-transparent">
                 {regionalContext.heroHighlight}
@@ -513,35 +574,56 @@ export default function Hero({
               </button>
             </div>
 
-            {/* Trust Badges */}
-            <ul className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-medium text-slate-300">
-              <li className="flex items-center gap-2">
-                <span className="flex size-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400">
-                  <BadgeCheck className="size-3.5" />
-                </span>
-                <span>Prestadores 100% verificados</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="flex size-5 items-center justify-center rounded-full bg-amber-500/20 text-amber-400">
-                  <Star className="size-3.5 fill-amber-400" />
-                </span>
-                <span>Avaliações reais pós-serviço</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="flex size-5 items-center justify-center rounded-full bg-teal-500/20 text-teal-400">
-                  <ShieldCheck className="size-3.5" />
-                </span>
-                <span>Garantia de Custódia Segura</span>
-              </li>
-            </ul>
+            {/* Front 4: Os 3 Escudos de Garantia Visual (Eliminação total de objeções) */}
+            <div className="mt-8 grid w-full max-w-2xl grid-cols-1 gap-2.5 sm:grid-cols-3 xl:max-w-3xl">
+              <div className="flex items-start gap-2.5 rounded-2xl border border-white/10 bg-white/[0.03] p-3 transition-colors hover:border-emerald-500/30 hover:bg-white/[0.06]">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400">
+                  <ShieldCheck className="size-4" />
+                </div>
+                <div className="min-w-0 leading-tight">
+                  <p className="text-xs font-bold text-white">Custódia Protegida</p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    O dinheiro só é liberado após seu OK e aprovação do serviço.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5 rounded-2xl border border-white/10 bg-white/[0.03] p-3 transition-colors hover:border-teal-500/30 hover:bg-white/[0.06]">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-teal-500/15 text-teal-400">
+                  <BadgeCheck className="size-4" />
+                </div>
+                <div className="min-w-0 leading-tight">
+                  <p className="text-xs font-bold text-white">100% Auditados</p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    Identidade, certidões criminais e antecedentes checados.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5 rounded-2xl border border-white/10 bg-white/[0.03] p-3 transition-colors hover:border-amber-500/30 hover:bg-white/[0.06]">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-400">
+                  <CheckCircle2 className="size-4" />
+                </div>
+                <div className="min-w-0 leading-tight">
+                  <p className="text-xs font-bold text-white">Garantia 90 Dias</p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    Se houver qualquer defeito no conserto, cobrimos a assistência.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* ============ RIGHT: Service & Provider Showcase (5 cols) ============ */}
           <div className="relative hidden lg:col-span-5 lg:block">
             <div className="relative mx-auto max-w-lg">
-              {/* Main Showcase Glass Card */}
-              <div className="rounded-3xl border border-white/15 bg-white/[0.08] p-6 shadow-2xl backdrop-blur-xl">
-                {/* Category selector pills */}
+              {/* Main Showcase Glass Card with Pause on Hover */}
+              <div
+                onMouseEnter={() => setIsHovered(true)}
+                onMouseLeave={() => setIsHovered(false)}
+                className="rounded-3xl border border-white/15 bg-white/[0.08] p-6 shadow-2xl backdrop-blur-xl transition-all"
+              >
+                {/* Category selector pills with progress indicator */}
                 <div className="mb-5 flex items-center justify-between border-b border-white/10 pb-4">
                   <div className="flex items-center gap-2">
                     <span className="relative flex size-2.5">
@@ -557,15 +639,22 @@ export default function Hero({
                       <button
                         key={cat.id}
                         type="button"
-                        onClick={() => setSelectedCategoryIdx(idx)}
+                        onClick={() => handleCategorySelect(idx)}
                         className={cn(
-                          "rounded-full px-2.5 py-1 text-xs font-medium transition-all",
+                          "relative overflow-hidden rounded-full px-2.5 py-1 text-xs font-medium transition-all",
                           selectedCategoryIdx === idx
                             ? "bg-emerald-500 font-bold text-slate-950 shadow-xs"
                             : "text-slate-400 hover:text-white",
                         )}
                       >
                         {cat.name}
+                        {/* Progress bar on active tab */}
+                        {selectedCategoryIdx === idx && !isHovered && (
+                          <span
+                            className="absolute bottom-0 left-0 h-[2px] bg-slate-950/40 transition-all duration-100 ease-linear"
+                            style={{ width: `${progress}%` }}
+                          />
+                        )}
                       </button>
                     ))}
                   </div>
@@ -640,16 +729,43 @@ export default function Hero({
                     ))}
                   </div>
 
-                  {/* Action Button inside card */}
-                  <div className="pt-2">
+                  {/* Front 3: Action Buttons inside card (Direct Quote + Browse All) */}
+                  <div className="flex flex-col gap-2 pt-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const text = `Olá! Vi o perfil do prestador ${currentFeatured.providerName} (${currentFeatured.name}) na Severinno e gostaria de solicitar um orçamento rápido sem compromisso em Governador Valadares.`
+                        window.open(
+                          `https://wa.me/5533991113030?text=${encodeURIComponent(text)}`,
+                          "_blank",
+                          "noopener,noreferrer",
+                        )
+                      }}
+                      className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-2.5 text-xs font-bold text-slate-950 shadow-md shadow-emerald-500/20 transition-all hover:bg-emerald-400 active:scale-[0.98]"
+                    >
+                      <MessageCircle className="size-3.5" />
+                      <span>Orçar com {currentFeatured.providerName.split(" ")[0]}</span>
+                    </button>
                     <Button
                       type="button"
                       onClick={() => handlePopularClick(currentFeatured.name)}
-                      className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/10 text-xs font-semibold text-white transition-all hover:bg-white/20"
+                      className="flex items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-xs font-semibold text-white transition-all hover:bg-white/20"
                     >
-                      <span>Ver todos os {currentFeatured.name}s disponíveis</span>
+                      <span>Ver outros</span>
                       <ArrowRight className="size-3.5" />
                     </Button>
+                  </div>
+
+                  {/* Trust indicator strip inside card */}
+                  <div className="flex items-center justify-between border-t border-white/10 pt-2 text-[11px] text-slate-400">
+                    <span className="flex items-center gap-1 text-emerald-400">
+                      <Zap className="size-3 fill-emerald-400" />
+                      Responde em ~3 min
+                    </span>
+                    <span className="flex items-center gap-1 text-slate-300">
+                      <ShieldCheck className="size-3 text-teal-400" />
+                      Cobertura contra danos
+                    </span>
                   </div>
                 </motion.div>
 
