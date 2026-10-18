@@ -66,6 +66,19 @@ const ProviderMiniMap = dynamic(() => import("@/components/shared/provider-mini-
   loading: () => <Skeleton className="h-48 w-full rounded-xl" />,
 })
 
+function decodeEntities(str?: string | null): string {
+  if (!str) return ""
+  let decoded = str
+  while (decoded.includes("&amp;")) {
+    decoded = decoded.replace(/&amp;/g, "&")
+  }
+  return decoded
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+}
+
 // ---------------------------------------------------------------------------
 // Main modal wrapper
 // ---------------------------------------------------------------------------
@@ -255,10 +268,12 @@ export function ProviderProfileModal() {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent
-        className="w-[95vw] max-w-[95vw] min-w-0 gap-0 overflow-hidden rounded-2xl border p-0 shadow-2xl sm:max-w-3xl lg:max-w-4xl"
+        className="border-border/70 bg-background w-[95vw] max-w-[95vw] min-w-0 gap-0 overflow-hidden rounded-3xl border p-0 shadow-2xl sm:max-w-3xl lg:max-w-4xl"
         showCloseButton={false}
       >
-        <DialogTitle className="sr-only">{provider?.name ?? "Perfil do prestador"}</DialogTitle>
+        <DialogTitle className="sr-only">
+          {decodeEntities(provider?.name) || "Perfil do prestador"}
+        </DialogTitle>
         <DialogDescription className="sr-only">
           Detalhes do prestador de serviços.
         </DialogDescription>
@@ -343,28 +358,28 @@ function ProfileBody({
     <div
       className={cn(
         "bg-background flex w-full min-w-0 flex-col overflow-hidden",
-        isMobile ? "h-full" : "h-[680px] max-h-[88vh]",
+        isMobile ? "h-full" : "h-[700px] max-h-[90vh]",
       )}
     >
       {/* ── Top Navigation & Window Controls Bar ── */}
-      <div className="bg-muted/30 border-border/50 flex shrink-0 items-center justify-between gap-2 border-b px-5 py-2.5 sm:px-6">
-        <div className="flex min-w-0 items-center gap-1.5">
+      <div className="bg-muted/20 border-border/40 flex shrink-0 items-center justify-between gap-2 border-b px-5 py-2.5 sm:px-7">
+        <div className="flex min-w-0 items-center gap-2">
           {hasNavigation ? (
-            <div data-testid="provider-modal-nav" className="flex items-center gap-1">
+            <div data-testid="provider-modal-nav" className="flex items-center gap-1.5">
               <button
                 type="button"
                 data-testid="provider-nav-prev"
                 onClick={onPrevProvider}
                 aria-label="Prestador anterior"
                 title="Prestador anterior (Tecla ←)"
-                className="border-border/60 bg-background hover:bg-muted text-foreground inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border px-2.5 text-xs font-medium shadow-2xs transition-colors"
+                className="border-border/60 bg-background hover:bg-muted text-foreground inline-flex h-7.5 cursor-pointer items-center gap-1 rounded-full border px-3 text-xs font-semibold shadow-2xs transition-all hover:scale-[1.02] active:scale-98"
               >
                 <ChevronLeft className="size-3.5" />
                 <span className="hidden sm:inline">Anterior</span>
               </button>
 
-              <span className="text-muted-foreground px-2 text-[11px] font-medium tabular-nums">
-                {currentIndex + 1} de {totalNavigable}
+              <span className="text-muted-foreground px-2 text-xs font-semibold tabular-nums">
+                <span className="text-foreground">{currentIndex + 1}</span> de {totalNavigable}
               </span>
 
               <button
@@ -373,26 +388,33 @@ function ProfileBody({
                 onClick={onNextProvider}
                 aria-label="Próximo prestador"
                 title="Próximo prestador (Tecla →)"
-                className="border-border/60 bg-background hover:bg-muted text-foreground inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border px-2.5 text-xs font-medium shadow-2xs transition-colors"
+                className="border-border/60 bg-background hover:bg-muted text-foreground inline-flex h-7.5 cursor-pointer items-center gap-1 rounded-full border px-3 text-xs font-semibold shadow-2xs transition-all hover:scale-[1.02] active:scale-98"
               >
                 <span className="hidden sm:inline">Próximo</span>
                 <ChevronRight className="size-3.5" />
               </button>
 
-              <span className="text-muted-foreground/70 hidden pl-2 text-[11px] lg:inline">
-                Use as setas ← → do teclado para navegar
+              <span className="text-muted-foreground/60 hidden items-center gap-1 pl-2 text-[11px] lg:inline-flex">
+                Use as setas{" "}
+                <kbd className="border-border/60 bg-muted/50 rounded border px-1 py-0.5 font-mono text-[10px]">
+                  ←
+                </kbd>{" "}
+                <kbd className="border-border/60 bg-muted/50 rounded border px-1 py-0.5 font-mono text-[10px]">
+                  →
+                </kbd>{" "}
+                para navegar
               </span>
             </div>
           ) : (
-            <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs font-medium">
-              <ShieldCheck className="size-3.5 text-emerald-600" />
-              Perfil Oficial Verificado · Severinno GV
+            <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs font-semibold">
+              <ShieldCheck className="size-4 text-emerald-600" />
+              Perfil Oficial Verificado · Severinno
             </span>
           )}
         </div>
 
-        {/* Action buttons — always inside bounds, never clipped */}
-        <div className="flex shrink-0 items-center gap-1">
+        {/* Action buttons — rounded-full, clean, never clipped */}
+        <div className="flex shrink-0 items-center gap-1.5">
           {provider && (
             <button
               type="button"
@@ -400,10 +422,10 @@ function ProfileBody({
               aria-label={inCompare ? "Remover da comparação" : "Comparar prestador"}
               title="Comparar prestador"
               className={cn(
-                "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors",
+                "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3 text-xs font-semibold shadow-2xs transition-all",
                 inCompare
-                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  ? "bg-emerald-600 text-white"
+                  : "border-border/50 bg-background text-muted-foreground hover:bg-muted hover:text-foreground border",
               )}
             >
               <GitCompare className="size-3.5" />
@@ -415,9 +437,9 @@ function ProfileBody({
             onClick={onShare}
             aria-label="Compartilhar"
             title="Compartilhar perfil"
-            className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-8 cursor-pointer items-center justify-center rounded-lg transition-colors"
+            className="border-border/50 text-muted-foreground hover:bg-muted hover:text-foreground bg-background inline-flex size-8 cursor-pointer items-center justify-center rounded-full border shadow-2xs transition-colors"
           >
-            <Share2 className="size-4" />
+            <Share2 className="size-3.5" />
           </button>
           <button
             type="button"
@@ -426,20 +448,20 @@ function ProfileBody({
             aria-pressed={favorited}
             title="Favoritar"
             className={cn(
-              "inline-flex size-8 cursor-pointer items-center justify-center rounded-lg transition-colors",
+              "border-border/50 bg-background inline-flex size-8 cursor-pointer items-center justify-center rounded-full border shadow-2xs transition-colors",
               favorited
-                ? "text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                ? "border-rose-200 bg-rose-50/50 text-rose-500 dark:border-rose-900/50 dark:bg-rose-950/30"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
-            <Heart className={cn("size-4", favorited && "fill-current")} />
+            <Heart className={cn("size-3.5", favorited && "fill-current")} />
           </button>
           <button
             type="button"
             onClick={onClose}
             aria-label="Fechar"
             title="Fechar (Esc)"
-            className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-8 cursor-pointer items-center justify-center rounded-lg transition-colors"
+            className="border-border/50 text-muted-foreground hover:bg-muted hover:text-foreground bg-background inline-flex size-8 cursor-pointer items-center justify-center rounded-full border shadow-2xs transition-colors"
           >
             <X className="size-4" />
           </button>
@@ -447,25 +469,28 @@ function ProfileBody({
       </div>
 
       {/* ── Compact Identity Header ── */}
-      <div className="shrink-0 px-5 pt-4 pb-3.5 sm:px-6">
-        <div className="flex items-start gap-4">
-          {/* Avatar */}
+      <div className="shrink-0 px-5 pt-5 pb-4 sm:px-7">
+        <div className="flex items-start gap-4 sm:gap-5">
+          {/* Avatar - 100% Redondo (Requisito Explícito do Usuário) */}
           <div className="relative shrink-0">
-            <Avatar className="border-border/60 size-15 rounded-2xl border shadow-xs">
+            <Avatar className="border-background size-16 overflow-hidden rounded-full border-2 shadow-md ring-4 ring-emerald-500/15 transition-all sm:size-20">
               {provider?.avatarUrl ? (
                 <AvatarImage
                   src={provider.avatarUrl}
                   alt={provider.name}
-                  className="object-cover"
+                  className="rounded-full object-cover"
                 />
               ) : null}
-              <AvatarFallback className="rounded-2xl bg-emerald-100 text-lg font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+              <AvatarFallback className="rounded-full bg-gradient-to-br from-emerald-100 to-teal-200 text-xl font-black text-emerald-800 dark:from-emerald-950 dark:to-teal-900 dark:text-emerald-200">
                 {provider?.name?.[0]?.toUpperCase() ?? "?"}
               </AvatarFallback>
             </Avatar>
             {provider?.verified && (
-              <span className="ring-background absolute -right-1 -bottom-1 flex size-5 items-center justify-center rounded-full bg-emerald-600 text-white ring-2">
-                <BadgeCheck className="size-3" />
+              <span
+                className="ring-background absolute -right-0.5 -bottom-0.5 flex size-6 items-center justify-center rounded-full bg-emerald-600 text-white shadow-xs ring-2"
+                title="Perfil Verificado"
+              >
+                <BadgeCheck className="size-3.5" />
               </span>
             )}
           </div>
@@ -474,36 +499,37 @@ function ProfileBody({
           <div className="min-w-0 flex-1">
             {loading ? (
               <div className="space-y-2">
-                <Skeleton className="h-5 w-48 rounded" />
-                <Skeleton className="h-3.5 w-32 rounded" />
+                <Skeleton className="h-6 w-48 rounded-lg" />
+                <Skeleton className="h-4 w-32 rounded-lg" />
               </div>
             ) : (
               <>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-foreground truncate text-base leading-tight font-bold sm:text-lg">
-                    {provider?.name}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h2 className="text-foreground text-lg leading-tight font-black tracking-tight sm:text-xl lg:text-2xl">
+                    {decodeEntities(provider?.name)}
                   </h2>
                   {provider?.verified && (
                     <Badge
                       data-testid="badge"
-                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-300"
                     >
                       <BadgeCheck className="size-3" /> Verificado
                     </Badge>
                   )}
                 </div>
 
-                <div className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-xs">
                   {provider && (
                     <StarRatingDisplay
                       value={provider.rating}
                       count={provider.reviewCount}
-                      size={12}
+                      size={13}
                     />
                   )}
+                  <span className="text-muted-foreground/30 hidden sm:inline">•</span>
                   {(provider?.district || provider?.city) && (
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin className="text-muted-foreground/70 size-3.5 shrink-0" />
+                    <span className="text-foreground/80 inline-flex items-center gap-1 font-medium">
+                      <MapPin className="text-muted-foreground size-3.5 shrink-0" />
                       <span className="truncate">
                         {provider.district ? `${provider.district}, ` : ""}
                         {provider.city}
@@ -512,12 +538,15 @@ function ProfileBody({
                     </span>
                   )}
                   {provider?.distanceKm != null && (
-                    <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
-                      <Navigation className="size-3 shrink-0" />
-                      {provider.distanceKm < 1
-                        ? `${Math.round(provider.distanceKm * 1000)} m`
-                        : `${provider.distanceKm.toFixed(1)} km`}
-                    </span>
+                    <>
+                      <span className="text-muted-foreground/30 hidden sm:inline">•</span>
+                      <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400">
+                        <Navigation className="size-3 shrink-0" />
+                        {provider.distanceKm < 1
+                          ? `${Math.round(provider.distanceKm * 1000)} m`
+                          : `${provider.distanceKm.toFixed(1)} km`}
+                      </span>
+                    </>
                   )}
                 </div>
               </>
@@ -525,35 +554,62 @@ function ProfileBody({
           </div>
         </div>
 
-        {/* ── Uniform 4-Column Stat Strip ── */}
+        {/* ── Modern Clean Highlight Strip ── */}
         {!loading && provider && (
-          <div className="mt-3.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <StatPill
-              icon={<Wrench className="size-3.5" />}
-              value={provider.services.length}
-              label="Serviços"
-            />
-            <StatPill
-              icon={<Navigation className="size-3.5" />}
-              value={
-                provider.distanceKm != null
-                  ? provider.distanceKm < 1
-                    ? `${Math.round(provider.distanceKm * 1000)} m`
-                    : `${provider.distanceKm.toFixed(1)} km`
-                  : `${provider.radiusKm ?? 25} km`
-              }
-              label={provider.distanceKm != null ? "Distância" : "Cobertura"}
-            />
-            <StatPill
-              icon={<Calendar className="size-3.5" />}
-              value={memberYear}
-              label="Membro desde"
-            />
-            <StatPill
-              icon={<ShieldCheck className="size-3.5 text-emerald-600" />}
-              value="Escrow PIX"
-              label="Garantia 90d"
-            />
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="border-border/40 bg-muted/20 hover:bg-muted/30 flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                <Wrench className="size-3.5" />
+              </span>
+              <div className="min-w-0 leading-tight">
+                <p className="text-foreground text-xs font-extrabold tabular-nums sm:text-sm">
+                  {provider.services.length}
+                </p>
+                <p className="text-muted-foreground truncate text-[10px]">Serviços ativos</p>
+              </div>
+            </div>
+
+            <div className="border-border/40 bg-muted/20 hover:bg-muted/30 flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                <Navigation className="size-3.5" />
+              </span>
+              <div className="min-w-0 leading-tight">
+                <p className="text-foreground text-xs font-extrabold tabular-nums sm:text-sm">
+                  {provider.distanceKm != null
+                    ? provider.distanceKm < 1
+                      ? `${Math.round(provider.distanceKm * 1000)} m`
+                      : `${provider.distanceKm.toFixed(1)} km`
+                    : `${provider.radiusKm ?? 25} km`}
+                </p>
+                <p className="text-muted-foreground truncate text-[10px]">
+                  {provider.distanceKm != null ? "Distância" : "Cobertura GV"}
+                </p>
+              </div>
+            </div>
+
+            <div className="border-border/40 bg-muted/20 hover:bg-muted/30 flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                <Calendar className="size-3.5" />
+              </span>
+              <div className="min-w-0 leading-tight">
+                <p className="text-foreground text-xs font-extrabold tabular-nums sm:text-sm">
+                  {memberYear}
+                </p>
+                <p className="text-muted-foreground truncate text-[10px]">Membro desde</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 transition-colors hover:bg-emerald-500/10">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-2xs">
+                <ShieldCheck className="size-3.5" />
+              </span>
+              <div className="min-w-0 leading-tight">
+                <p className="text-xs font-extrabold text-emerald-700 sm:text-sm dark:text-emerald-400">
+                  Escrow PIX
+                </p>
+                <p className="text-muted-foreground truncate text-[10px]">Garantia 90 dias</p>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -563,31 +619,40 @@ function ProfileBody({
       {/* ── Tabs with Fixed Scrollable Viewport ── */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Tabs defaultValue="services" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="bg-background shrink-0 px-5 sm:px-6">
-            <TabsList className="border-border flex h-auto w-full justify-start gap-1 border-b bg-transparent p-0">
+          <div className="bg-background shrink-0 px-5 sm:px-7">
+            <TabsList className="border-border/50 flex h-auto w-full justify-start gap-1 border-b bg-transparent p-0">
               {(["services", "about", "reviews", "hours"] as const).map((tab) => (
                 <TabsTrigger
                   key={tab}
                   value={tab}
-                  className="text-muted-foreground data-[state=active]:text-foreground hover:text-foreground relative cursor-pointer rounded-none border-b-2 border-transparent px-4 pt-2 pb-2.5 text-xs font-semibold transition-colors data-[state=active]:border-emerald-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                  data-testid="tab-trigger"
+                  className="text-muted-foreground hover:text-foreground relative h-10 cursor-pointer rounded-none border-x-0 border-t-0 border-b-2 border-transparent bg-transparent px-3.5 text-xs font-semibold shadow-none transition-colors data-[state=active]:border-b-2 data-[state=active]:border-emerald-600 data-[state=active]:bg-transparent data-[state=active]:font-bold data-[state=active]:text-emerald-700 data-[state=active]:shadow-none dark:data-[state=active]:text-emerald-400"
                 >
-                  {tab === "services"
-                    ? "Serviços"
-                    : tab === "about"
-                      ? "Sobre"
-                      : tab === "reviews"
-                        ? "Avaliações"
-                        : "Expediente"}
-                  {tab === "services" && provider && provider.services.length > 0 && (
-                    <span className="text-muted-foreground ml-1 text-[10px]">
-                      ({provider.services.length})
+                  <span className="flex items-center gap-1.5">
+                    {tab === "services" && <Wrench className="size-3.5" />}
+                    {tab === "about" && <ShieldCheck className="size-3.5" />}
+                    {tab === "reviews" && <Star className="size-3.5" />}
+                    {tab === "hours" && <Clock className="size-3.5" />}
+                    <span>
+                      {tab === "services"
+                        ? "Serviços"
+                        : tab === "about"
+                          ? "Sobre"
+                          : tab === "reviews"
+                            ? "Avaliações"
+                            : "Expediente"}
                     </span>
-                  )}
-                  {tab === "reviews" && provider && provider.reviewCount > 0 && (
-                    <span className="text-muted-foreground ml-1 text-[10px]">
-                      ({provider.reviewCount})
-                    </span>
-                  )}
+                    {tab === "services" && provider && provider.services.length > 0 && (
+                      <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-extrabold text-emerald-700 dark:text-emerald-300">
+                        {provider.services.length}
+                      </span>
+                    )}
+                    {tab === "reviews" && provider && provider.reviewCount > 0 && (
+                      <span className="bg-muted text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px] font-bold">
+                        {provider.reviewCount}
+                      </span>
+                    )}
+                  </span>
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -596,7 +661,7 @@ function ProfileBody({
           <ScrollArea className="min-h-0 w-full flex-1 overflow-x-hidden [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:!w-full [&_[data-slot=scroll-area-viewport]>div]:!min-w-0">
             <TabsContent
               value="services"
-              className="m-0 w-full min-w-0 px-5 py-4 focus-visible:outline-none sm:px-6"
+              className="m-0 w-full min-w-0 px-5 py-4 focus-visible:outline-none sm:px-7"
             >
               <ServicesTab
                 providerId={provider?.id}
@@ -608,13 +673,13 @@ function ProfileBody({
             </TabsContent>
             <TabsContent
               value="about"
-              className="m-0 w-full min-w-0 px-5 py-4 focus-visible:outline-none sm:px-6"
+              className="m-0 w-full min-w-0 px-5 py-4 focus-visible:outline-none sm:px-7"
             >
               <AboutTab provider={provider} loading={loading} />
             </TabsContent>
             <TabsContent
               value="reviews"
-              className="m-0 w-full min-w-0 px-5 py-4 focus-visible:outline-none sm:px-6"
+              className="m-0 w-full min-w-0 px-5 py-4 focus-visible:outline-none sm:px-7"
             >
               <ReviewsTab
                 providerName={provider?.name}
@@ -626,7 +691,7 @@ function ProfileBody({
             </TabsContent>
             <TabsContent
               value="hours"
-              className="m-0 w-full min-w-0 px-5 py-4 focus-visible:outline-none sm:px-6"
+              className="m-0 w-full min-w-0 px-5 py-4 focus-visible:outline-none sm:px-7"
             >
               <HoursTab
                 providerId={provider?.id}
@@ -640,67 +705,47 @@ function ProfileBody({
       </div>
 
       {/* ── Sticky Footer CTA ── */}
-      <div className="bg-background border-border/60 shrink-0 border-t px-5 py-3 sm:px-6">
-        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="bg-background/95 border-border/60 shrink-0 border-t px-5 py-3 backdrop-blur-md sm:px-7">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="hidden min-w-0 sm:block">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               {minServicePrice != null ? (
-                <span className="text-foreground text-sm font-bold">
+                <span className="text-foreground text-sm font-black sm:text-base">
                   A partir de {formatBRL(minServicePrice)}
                 </span>
               ) : (
-                <span className="text-foreground text-sm font-semibold">Orçamento sob medida</span>
+                <span className="text-foreground text-sm font-bold">Orçamento sob medida</span>
               )}
-              <span className="text-muted-foreground text-xs">·</span>
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 className="size-3.5" />
+              <span className="text-muted-foreground/40">•</span>
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="size-3.5 shrink-0" />
                 Pagamento só após aprovação
               </span>
             </div>
+            <p className="text-muted-foreground mt-0.5 text-[11px]">
+              Custódia PIX 100% protegida: seu valor fica retido com segurança até o término do
+              serviço.
+            </p>
           </div>
 
           <div className="flex flex-1 gap-2.5 sm:max-w-md">
             <Button
               onClick={() => onQuote()}
               variant="outline"
-              className="border-border/70 hover:bg-muted/60 h-10 flex-1 cursor-pointer rounded-xl text-xs font-semibold transition-colors"
+              className="border-border/80 hover:bg-muted/70 h-10.5 flex-1 cursor-pointer rounded-xl text-xs font-bold shadow-2xs transition-all"
             >
               <Quote className="mr-1.5 size-3.5" />
               Pedir orçamento
             </Button>
             <Button
               onClick={() => onBooking()}
-              className="h-10 flex-1 cursor-pointer rounded-xl bg-emerald-600 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-emerald-700"
+              className="h-10.5 flex-1 cursor-pointer rounded-xl bg-emerald-600 text-xs font-bold text-white shadow-sm shadow-emerald-600/15 transition-all hover:bg-emerald-700 active:scale-98"
             >
               <Calendar className="mr-1.5 size-3.5" />
               Agendar serviço
             </Button>
           </div>
         </div>
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Stat Pill — uniform metric card
-// ---------------------------------------------------------------------------
-
-function StatPill({
-  icon,
-  value,
-  label,
-}: {
-  icon: React.ReactNode
-  value: string | number
-  label: string
-}) {
-  return (
-    <div className="bg-muted/40 border-border/50 flex items-center gap-2 rounded-xl border px-3 py-2 text-xs">
-      <span className="text-muted-foreground shrink-0">{icon}</span>
-      <div className="min-w-0 truncate">
-        <span className="text-foreground font-bold tabular-nums">{value}</span>{" "}
-        <span className="text-muted-foreground text-[11px]">{label}</span>
       </div>
     </div>
   )
@@ -760,7 +805,7 @@ function ServicesTab({
     return (
       <div className="space-y-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-20 w-full rounded-xl" />
+          <Skeleton key={i} className="h-24 w-full rounded-2xl" />
         ))}
       </div>
     )
@@ -786,28 +831,37 @@ function ServicesTab({
   }
 
   return (
-    <div className="w-full min-w-0 space-y-3.5">
+    <div className="w-full min-w-0 space-y-4">
       {/* Quick-Book Next Available Slots Bar */}
-      <div className="bg-muted/30 border-border/50 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3.5 py-2">
-        <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs font-medium">
-          <Clock className="size-3.5 text-emerald-600" />
-          Próximos horários livres para agendamento rápido:
-        </span>
-        <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3.5 transition-all sm:px-4 sm:py-3">
+        <div className="flex items-center gap-2.5">
+          <span className="flex size-7.5 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-xs">
+            <Clock className="size-3.5" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-foreground text-xs font-bold">
+              Horários livres para agendamento rápido
+            </p>
+            <p className="text-muted-foreground text-[11px]">
+              Agende direto com garantia e custódia segura
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
           {quickSlots.map((slot) => (
             <button
               key={slot.label}
               type="button"
               onClick={() => onBooking(services[0]?.id)}
               className={cn(
-                "inline-flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors",
+                "inline-flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold shadow-2xs transition-all hover:scale-[1.02] active:scale-98",
                 slot.isToday
-                  ? "bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
-                  : "bg-background border-border/60 text-foreground hover:bg-muted border",
+                  ? "bg-emerald-600 text-white shadow-emerald-600/10 hover:bg-emerald-700"
+                  : "bg-background border-border/80 text-foreground hover:bg-muted/80 border",
               )}
             >
               <Calendar className="size-3" />
-              {slot.label}
+              <span>{slot.label}</span>
             </button>
           ))}
         </div>
@@ -821,19 +875,23 @@ function ServicesTab({
             <button
               type="button"
               onClick={() => toggleCat(categoryName)}
-              className="hover:bg-muted/50 mb-1.5 flex w-full cursor-pointer items-center justify-between rounded-lg px-2.5 py-1.5 text-left transition-colors"
+              className="hover:bg-muted/40 mb-2 flex w-full cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-left transition-colors"
             >
-              <div className="flex items-center gap-2">
-                <span className="flex size-6 items-center justify-center rounded-md bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+              <div className="flex items-center gap-2.5">
+                <span className="flex size-6.5 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                   <Wrench className="size-3.5" />
                 </span>
-                <span className="text-xs font-bold">{categoryName}</span>
-                <span className="text-muted-foreground text-[11px]">({items.length})</span>
+                <span className="text-foreground text-xs font-bold sm:text-sm">
+                  {decodeEntities(categoryName)}
+                </span>
+                <span className="bg-muted/60 text-muted-foreground rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                  {items.length} {items.length === 1 ? "opção" : "opções"}
+                </span>
               </div>
               {expanded ? (
-                <ChevronUp className="text-muted-foreground size-3.5" />
+                <ChevronUp className="text-muted-foreground size-4" />
               ) : (
-                <ChevronDown className="text-muted-foreground size-3.5" />
+                <ChevronDown className="text-muted-foreground size-4" />
               )}
             </button>
 
@@ -847,7 +905,7 @@ function ServicesTab({
                   transition={{ duration: 0.2 }}
                   className="overflow-hidden"
                 >
-                  <div className="space-y-2 pb-1">
+                  <div className="space-y-2.5 pb-1">
                     {items.map((s) => (
                       <ServiceCard
                         key={s.id}
@@ -879,64 +937,75 @@ function ServiceCard({
   const photos = service.photos ?? []
 
   return (
-    <div className="group border-border/60 bg-card hover:border-border w-full min-w-0 overflow-hidden rounded-xl border transition-all hover:shadow-2xs">
-      <div className="flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 flex-1 items-start gap-3">
-          {/* Photo thumbnail */}
+    <div className="group border-border/60 bg-card w-full min-w-0 rounded-2xl border p-4 transition-all hover:border-emerald-500/40 hover:shadow-xs">
+      <div className="flex flex-col gap-3.5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 flex-1 items-start gap-3.5">
+          {/* Thumbnail / Icon */}
           {photos.length > 0 ? (
-            <div className="bg-muted relative size-12 shrink-0 overflow-hidden rounded-lg">
+            <div className="bg-muted border-border/40 relative size-14 shrink-0 overflow-hidden rounded-xl border shadow-2xs">
               <Image
                 src={photos[0]}
                 alt={service.title}
                 fill
-                sizes="48px"
-                className="object-cover"
+                sizes="56px"
+                className="object-cover transition-transform duration-300 group-hover:scale-105"
                 loading="lazy"
               />
             </div>
           ) : (
-            <div className="bg-muted/70 text-muted-foreground flex size-11 shrink-0 items-center justify-center rounded-lg">
-              <Wrench className="size-4" />
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-emerald-500/10 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <Wrench className="size-5" />
             </div>
           )}
 
           {/* Info */}
           <div className="min-w-0 flex-1">
-            <h4 className="text-foreground truncate text-sm leading-tight font-semibold transition-colors group-hover:text-emerald-700 dark:group-hover:text-emerald-400">
-              {service.title}
-            </h4>
+            <div className="flex items-center gap-2">
+              <h4 className="text-foreground text-sm leading-tight font-bold transition-colors group-hover:text-emerald-600 sm:text-base dark:group-hover:text-emerald-400">
+                {decodeEntities(service.title)}
+              </h4>
+            </div>
+
             {service.description && (
-              <p className="text-muted-foreground mt-0.5 line-clamp-2 text-xs leading-relaxed">
-                {service.description}
+              <p className="text-muted-foreground mt-1 line-clamp-2 text-xs leading-relaxed">
+                {decodeEntities(service.description)}
               </p>
             )}
-            <div className="mt-1.5 inline-flex items-baseline gap-1">
-              <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
-                {formatBRL(Number(service.basePrice))}
-              </span>
-              <span className="text-muted-foreground text-[11px]">
-                /{SERVICE_UNIT_SHORT[service.unit as keyof typeof SERVICE_UNIT_SHORT] ?? "un"}
+
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <div className="inline-flex items-baseline gap-1">
+                <span className="text-muted-foreground text-xs font-medium">A partir de</span>
+                <span className="text-base font-black text-emerald-700 sm:text-lg dark:text-emerald-400">
+                  {formatBRL(Number(service.basePrice))}
+                </span>
+                <span className="text-muted-foreground text-[11px]">
+                  /{SERVICE_UNIT_SHORT[service.unit as keyof typeof SERVICE_UNIT_SHORT] ?? "un"}
+                </span>
+              </div>
+              <span className="text-muted-foreground/30 hidden sm:inline">•</span>
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                <ShieldCheck className="size-3" /> Garantia 90 dias
               </span>
             </div>
           </div>
         </div>
 
-        {/* Actions — side-by-side on desktop, never clipped */}
+        {/* Actions */}
         <div className="flex shrink-0 items-center gap-2 sm:pl-2">
           <Button
             size="sm"
             variant="outline"
             onClick={onQuote}
-            className="border-border/60 hover:bg-muted/60 h-8 cursor-pointer rounded-lg px-3 text-xs font-medium"
+            className="border-border/70 hover:bg-muted/70 h-9 cursor-pointer rounded-xl px-3.5 text-xs font-semibold shadow-none transition-colors"
           >
-            <Quote className="mr-1 size-3" /> Orçamento
+            <Quote className="mr-1.5 size-3.5" /> Orçamento
           </Button>
           <Button
             size="sm"
             onClick={onBooking}
-            className="bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground h-8 cursor-pointer rounded-lg px-3 text-xs font-semibold shadow-none transition-colors"
+            className="h-9 cursor-pointer rounded-xl bg-emerald-600 px-4 text-xs font-bold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-98"
           >
-            <Calendar className="mr-1 size-3" /> Agendar
+            <Calendar className="mr-1.5 size-3.5" /> Agendar
           </Button>
         </div>
       </div>
@@ -979,25 +1048,25 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
   return (
     <div className="w-full min-w-0 space-y-4 text-sm">
       {/* Bio Card */}
-      <div className="bg-muted/30 border-border/50 rounded-xl border p-4">
-        <p className="text-muted-foreground mb-1.5 text-[10px] font-semibold tracking-wider uppercase">
+      <div className="border-border/50 bg-muted/20 rounded-2xl border p-5">
+        <p className="text-muted-foreground mb-2 text-[10px] font-bold tracking-wider uppercase">
           Apresentação Profissional
         </p>
         {provider?.bio ? (
           <p className="text-foreground/90 text-xs leading-relaxed whitespace-pre-line sm:text-sm">
-            {provider.bio}
+            {decodeEntities(provider.bio)}
           </p>
         ) : (
           <p className="text-muted-foreground text-xs italic">Sem descrição cadastrada.</p>
         )}
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          <span className="bg-background border-border/50 inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium">
-            <CheckCircle2 className="size-3 text-emerald-600" />
+        <div className="mt-4 flex flex-wrap gap-2">
+          <span className="bg-background border-border/50 inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-medium shadow-2xs">
+            <CheckCircle2 className="size-3.5 text-emerald-600" />
             Antecedentes & CPF/CNPJ Verificados
           </span>
-          <span className="bg-background border-border/50 inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium">
-            <ShieldCheck className="size-3 text-emerald-600" />
+          <span className="bg-background border-border/50 inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-medium shadow-2xs">
+            <ShieldCheck className="size-3.5 text-emerald-600" />
             Custódia PIX + Garantia 90 dias
           </span>
         </div>
@@ -1005,7 +1074,7 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
 
       {/* Mini map with radius circle — strictly contained so slider never overflows */}
       {hasProviderCoords ? (
-        <div className="border-border/50 bg-card w-full min-w-0 overflow-hidden rounded-xl border p-3">
+        <div className="border-border/50 bg-card w-full min-w-0 overflow-hidden rounded-2xl border p-3.5">
           <ProviderMiniMap
             providerLat={provider!.lat!}
             providerLng={provider!.lng!}
@@ -1019,7 +1088,7 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
             className="w-full max-w-full overflow-hidden"
           />
           {provider!.gpsAccuracyM != null && provider!.gpsAccuracyM > 0 ? (
-            <p className="text-muted-foreground mt-1.5 text-[11px]">
+            <p className="text-muted-foreground mt-2 text-[11px]">
               Círculo pontilhado âmbar = precisão do último GPS (±
               {provider!.gpsAccuracyM >= 1000
                 ? ` ${(provider!.gpsAccuracyM / 1000).toLocaleString("pt-BR", {
@@ -1035,15 +1104,15 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
       {/* Info grid */}
       <div className="grid gap-3 sm:grid-cols-3">
         {/* Address */}
-        <div className="border-border/50 bg-card flex items-start gap-2.5 rounded-xl border p-3">
-          <div className="bg-muted text-muted-foreground flex size-8 shrink-0 items-center justify-center rounded-lg">
+        <div className="border-border/50 bg-card flex items-start gap-3 rounded-2xl border p-4">
+          <div className="bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-xl">
             <MapPin className="size-4" />
           </div>
           <div className="min-w-0">
-            <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+            <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
               Endereço
             </p>
-            <p className="mt-0.5 text-xs leading-relaxed font-medium">
+            <p className="mt-1 text-xs leading-relaxed font-semibold">
               {formattedAddress || "Atendimento em Domicílio"}
               <br />
               <span className="text-muted-foreground font-normal">
@@ -1056,17 +1125,17 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
         </div>
 
         {/* Coverage */}
-        <div className="border-border/50 bg-card flex items-start gap-2.5 rounded-xl border p-3">
-          <div className="bg-muted text-muted-foreground flex size-8 shrink-0 items-center justify-center rounded-lg">
+        <div className="border-border/50 bg-card flex items-start gap-3 rounded-2xl border p-4">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
             <Navigation className="size-4" />
           </div>
           <div className="min-w-0">
-            <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+            <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
               Área de cobertura
             </p>
-            <p className="mt-0.5 text-xs leading-relaxed">
+            <p className="mt-1 text-xs leading-relaxed">
               Raio de{" "}
-              <strong className="text-emerald-700 dark:text-emerald-400">
+              <strong className="font-bold text-emerald-700 dark:text-emerald-400">
                 {effectiveRadius} km
               </strong>
               <br />
@@ -1078,27 +1147,27 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
         </div>
 
         {/* Contact Intermediado / Protegido */}
-        <div className="border-border/50 bg-card flex items-center justify-between gap-2.5 rounded-xl border p-3">
-          <div className="flex min-w-0 items-start gap-2.5">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+        <div className="border-border/50 bg-card flex items-center justify-between gap-3 rounded-2xl border p-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
               <ShieldCheck className="size-4" />
             </div>
             <div className="min-w-0">
-              <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+              <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
                 Comunicação Segura
               </p>
-              <p className="mt-0.5 truncate text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+              <p className="mt-0.5 truncate text-xs font-bold text-emerald-600 dark:text-emerald-400">
                 100% Protegida por Custódia
               </p>
               <span className="text-muted-foreground text-[11px]">
-                Orçamento e chat intermediados pela plataforma
+                Orçamento e chat intermediados
               </span>
             </div>
           </div>
           <Button
             size="sm"
             onClick={() => provider && openQuote({ providerId: provider.id })}
-            className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs transition-colors hover:bg-emerald-700 active:scale-95"
+            className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-emerald-700 active:scale-95"
           >
             <span>Pedir Orçamento</span>
           </Button>
