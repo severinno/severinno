@@ -880,11 +880,15 @@ export function MessagesView({
                         active && "bg-emerald-50/60 dark:bg-emerald-950/20",
                       )}
                     >
-                      <Avatar className="size-9 border">
+                      <Avatar className="ring-border/50 size-9 rounded-full border ring-1">
                         {c.peer?.avatarUrl && (
-                          <AvatarImage src={c.peer.avatarUrl} alt={c.peer.name} />
+                          <AvatarImage
+                            src={c.peer.avatarUrl}
+                            alt={c.peer.name}
+                            className="rounded-full object-cover"
+                          />
                         )}
-                        <AvatarFallback className="bg-emerald-600 text-xs text-white">
+                        <AvatarFallback className="rounded-full bg-emerald-600 text-xs text-white">
                           {initials(c.peer?.name)}
                         </AvatarFallback>
                       </Avatar>
@@ -935,9 +939,15 @@ export function MessagesView({
           <>
             <header className="flex items-center justify-between border-b p-3">
               <div className="flex items-center gap-3">
-                <Avatar className="size-9 border">
-                  {peer.avatarUrl && <AvatarImage src={peer.avatarUrl} alt={peer.name} />}
-                  <AvatarFallback className="bg-emerald-600 text-xs text-white">
+                <Avatar className="ring-border/50 size-9 rounded-full border ring-1">
+                  {peer.avatarUrl && (
+                    <AvatarImage
+                      src={peer.avatarUrl}
+                      alt={peer.name}
+                      className="rounded-full object-cover"
+                    />
+                  )}
+                  <AvatarFallback className="rounded-full bg-emerald-600 text-xs text-white">
                     {initials(peer.name)}
                   </AvatarFallback>
                 </Avatar>
