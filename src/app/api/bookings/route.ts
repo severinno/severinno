@@ -204,6 +204,16 @@ export const GET = withRoute("api.bookings.GET", async (request, { span }) => {
         },
         client: { select: { id: true, name: true, avatarUrl: true } },
         payment: { select: { status: true, amount: true } },
+        reviews: {
+          select: {
+            id: true,
+            rating: true,
+            comment: true,
+            photos: true,
+            providerReply: true,
+            createdAt: true,
+          },
+        },
       },
       orderBy: { scheduledAt: "desc" },
       skip,
