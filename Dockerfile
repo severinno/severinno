@@ -39,7 +39,7 @@ RUN bun install --frozen-lockfile
 # instável nesta stack; as imagens de produção vêm do pipeline host-artifacts
 # (build no host, montagem da imagem sobre .next/standalone). Este Dockerfile
 # permanece como fonte canônica das camadas de runtime.
-FROM node:22-bookworm-slim AS builder
+FROM node:26-bookworm-slim AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
@@ -78,7 +78,7 @@ RUN npm run build
 # ── Runner: Node.js standalone server ────────────────────────────────────────
 # Mesma família glibc do builder: as engines do Prisma geradas em bookworm
 # (debian-openssl) não rodam em alpine/musl.
-FROM node:22-bookworm-slim AS runner
+FROM node:26-bookworm-slim AS runner
 ENV NODE_ENV=production
 
 RUN addgroup --system --gid 1001 nodejs && \
