@@ -1230,6 +1230,7 @@ export function StatCard({
   tone = "primary",
   index = 0,
   trend,
+  compact = false,
 }: {
   icon: LucideIcon
   label: string
@@ -1240,14 +1241,66 @@ export function StatCard({
   index?: number
   /** Optional trend indicator shown next to the value. */
   trend?: { direction: "up" | "down"; label: string }
+  /** Ultra-compact minimalist Bento micro-card variant (~52px height). */
+  compact?: boolean
 }) {
   const toneClass = {
-    primary: "bg-primary/10 text-primary",
-    amber: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200",
-    sky: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200",
-    rose: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200",
-    zinc: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200",
+    primary: "bg-primary/10 text-primary border-primary/20",
+    amber:
+      "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200 border-amber-300/40",
+    sky: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200 border-sky-300/40",
+    rose: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200 border-rose-300/40",
+    zinc: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200 border-zinc-300/40",
   }[tone]
+
+  if (compact) {
+    return (
+      <motion.div
+        initial={cardMotion.initial}
+        animate={cardMotion.animate}
+        transition={{ delay: index * 0.05, duration: 0.25, ease: "easeOut" }}
+      >
+        <div
+          className="border-border/60 bg-card rounded-xl border p-3 shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+          title={hint}
+        >
+          <div className="flex items-center gap-3">
+            <span
+              className={cn(
+                "flex size-9 shrink-0 items-center justify-center rounded-lg border",
+                toneClass,
+              )}
+            >
+              <Icon className="size-4.5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-foreground text-base font-bold tracking-tight tabular-nums sm:text-lg">
+                  {value}
+                </span>
+                {trend ? (
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9.5px] font-semibold",
+                      trend.direction === "up"
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
+                        : "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200",
+                    )}
+                  >
+                    {trend.direction === "up" ? "↑" : "↓"} {trend.label}
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-muted-foreground truncate text-xs font-medium tracking-wide uppercase">
+                {label}
+              </p>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    )
+  }
+
   return (
     <motion.div
       initial={cardMotion.initial}

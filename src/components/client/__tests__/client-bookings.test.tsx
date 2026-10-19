@@ -270,6 +270,27 @@ describe("ClientBookings — rendering and structure", () => {
       expect(screen.queryByText("Carlos Encanador")).toBeNull()
     })
   })
+
+  it("permite alternar entre visualização em lista e em grade", async () => {
+    renderWithClient(<ClientBookings />)
+    await waitFor(() => {
+      expect(screen.getByText("Carlos Encanador")).toBeDefined()
+    })
+
+    const gridBtn = screen.getByLabelText("Visualização em grade")
+    expect(gridBtn).toBeDefined()
+    fireEvent.click(gridBtn)
+
+    // In grid view, both providers remain rendered with their actions
+    expect(screen.getByText("Carlos Encanador")).toBeDefined()
+    expect(screen.getByText("Mariana Santos")).toBeDefined()
+
+    const listBtn = screen.getByLabelText("Visualização em lista")
+    expect(listBtn).toBeDefined()
+    fireEvent.click(listBtn)
+
+    expect(screen.getByText("Carlos Encanador")).toBeDefined()
+  })
 })
 
 describe("ClientBookings — accessibility", () => {

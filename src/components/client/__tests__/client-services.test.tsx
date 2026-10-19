@@ -363,6 +363,24 @@ describe("ClientServices — rendering and structure", () => {
     fireEvent.change(input, { target: { value: "inexistente" } })
     expect(screen.getByText("Sem resultados")).toBeDefined()
   })
+
+  it("permite alternar entre visualização em lista e em grade", () => {
+    render(<ClientServices />)
+    expect(screen.getAllByText("Carlos Encanador").length).toBeGreaterThanOrEqual(1)
+
+    const gridBtn = screen.getByLabelText("Visualização em grade")
+    expect(gridBtn).toBeDefined()
+    fireEvent.click(gridBtn)
+
+    // In grid view, items are still rendered with their details
+    expect(screen.getAllByText("Carlos Encanador").length).toBeGreaterThanOrEqual(1)
+
+    const listBtn = screen.getByLabelText("Visualização em lista")
+    expect(listBtn).toBeDefined()
+    fireEvent.click(listBtn)
+
+    expect(screen.getAllByText("Carlos Encanador").length).toBeGreaterThanOrEqual(1)
+  })
 })
 
 describe("ClientServices — empty state", () => {

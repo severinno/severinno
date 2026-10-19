@@ -33,6 +33,7 @@ import {
   Eye,
   FileText,
   LayoutGrid,
+  LayoutList,
   Loader2,
   MapPin,
   MessageSquare,
@@ -191,6 +192,7 @@ export function ClientBookings() {
   const openBooking = useUIStore((s) => s.openBooking)
 
   const [tab, setTab] = React.useState("ALL")
+  const [viewMode, setViewMode] = React.useState<"list" | "grid">("list")
   const [filterText, setFilterText] = React.useState("")
   const [page, setPage] = React.useState(1)
   const [detailsId, setDetailsId] = React.useState<string | null>(null)
@@ -315,18 +317,18 @@ export function ClientBookings() {
   })
 
   return (
-    <div className="space-y-6">
-      {/* Search & Hero Banner */}
-      <div className="border-border/60 from-card via-card/95 to-primary/5 relative overflow-hidden rounded-3xl border bg-gradient-to-br p-5 shadow-xs sm:p-7">
+    <div className="space-y-4">
+      {/* Search & Hero Banner — Compact Bento Header */}
+      <div className="border-border/60 from-card via-card/95 to-primary/5 relative overflow-hidden rounded-2xl border bg-gradient-to-br p-4 shadow-xs sm:p-5">
         <div className="bg-primary/10 pointer-events-none absolute -top-24 -right-24 size-80 rounded-full blur-3xl" />
 
-        <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-1.5">
-            <div className="bg-primary/10 text-primary inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold">
-              <Sparkles className="size-3.5" />
+        <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <div className="bg-primary/10 text-primary inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold">
+              <Sparkles className="size-3" />
               <span>Gestão de Serviços & Custódia Escrow</span>
             </div>
-            <h1 className="text-foreground text-2xl font-bold tracking-tight sm:text-3xl">
+            <h1 className="text-foreground text-xl font-bold tracking-tight sm:text-2xl">
               Agendamentos
             </h1>
             <p className="text-muted-foreground text-xs sm:text-sm">
@@ -337,88 +339,125 @@ export function ClientBookings() {
           <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
             <Button
               variant="outline"
+              size="sm"
               onClick={() => {
                 triggerHaptic("selection")
                 navigate("client.providers")
               }}
-              className="border-border/60 hover:bg-muted/60 h-10 gap-2 rounded-2xl px-4 text-xs font-semibold shadow-xs transition-all active:scale-95"
+              className="border-border/60 hover:bg-muted/60 h-9 gap-1.5 rounded-xl px-3.5 text-xs font-semibold shadow-xs transition-all active:scale-95"
             >
-              <MapPin className="text-primary size-4" />
+              <MapPin className="text-primary size-3.5" />
               Buscar prestadores
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Status Segmented Rail + Search Filter */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        {/* Status Pills */}
-        <div className="-mx-1 flex scrollbar-none gap-1.5 overflow-x-auto px-1 pb-1">
-          {TABS.map((t) => {
-            const count = counts[t.key] ?? 0
-            const active = tab === t.key
-            const Icon = t.icon
-            return (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => {
-                  triggerHaptic("selection")
-                  setTab(t.key)
-                }}
-                className={cn(
-                  "flex h-9 shrink-0 items-center gap-2 rounded-xl px-3.5 text-xs font-medium transition-all active:scale-95",
-                  active
-                    ? "bg-primary text-primary-foreground ring-primary/20 font-semibold shadow-xs ring-2"
-                    : "border-border/60 bg-card hover:bg-muted/70 text-muted-foreground hover:text-foreground border",
-                )}
-              >
-                <Icon
-                  className={cn(
-                    "size-3.5",
-                    active ? "text-primary-foreground" : "text-muted-foreground",
-                  )}
-                />
-                <span>{t.label}</span>
-                <span
-                  className={cn(
-                    "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums",
-                    active
-                      ? "bg-primary-foreground/20 text-primary-foreground"
-                      : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {count}
-                </span>
-              </button>
-            )
-          })}
+      {/* Prominent Search & View Mode Toolbar */}
+      <div className="bg-card border-border/60 flex flex-wrap items-center gap-2.5 rounded-xl border p-2.5 shadow-2xs sm:p-3">
+        {/* Prominent Search Input */}
+        <div className="relative min-w-[200px] flex-1">
+          <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+          <Input
+            type="text"
+            placeholder="Filtrar por prestador ou serviço..."
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            className="border-border/50 bg-background/60 focus:bg-background h-9 pr-8 pl-9 text-xs"
+          />
+          {filterText ? (
+            <button
+              type="button"
+              onClick={() => setFilterText("")}
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-0.5"
+              title="Limpar filtro"
+              aria-label="Limpar filtro"
+            >
+              <X className="size-3.5" />
+            </button>
+          ) : null}
         </div>
 
-        {/* Quick Search inside Bookings */}
-        {allBookings.length > 0 && (
-          <div className="relative min-w-[220px] sm:w-72">
-            <Search className="text-muted-foreground/60 pointer-events-none absolute top-2.5 left-3 size-4" />
-            <Input
-              type="text"
-              placeholder="Filtrar por prestador ou serviço..."
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              className="border-border/60 bg-background h-9 rounded-xl pr-8 pl-9 text-xs"
-            />
-            {filterText && (
-              <button
-                type="button"
-                onClick={() => setFilterText("")}
-                className="text-muted-foreground hover:text-foreground absolute top-2.5 right-2.5 p-0.5"
-                title="Limpar filtro"
-                aria-label="Limpar filtro"
-              >
-                <X className="size-3.5" />
-              </button>
+        {/* View Mode Toggle: Lista / Grade */}
+        <div className="border-border/60 bg-muted/30 flex shrink-0 items-center gap-0.5 rounded-xl border p-0.5">
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic("selection")
+              setViewMode("list")
+            }}
+            aria-label="Visualização em lista"
+            title="Visualização em lista"
+            className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-lg text-xs transition-all active:scale-95",
+              viewMode === "list"
+                ? "bg-card text-foreground ring-border/40 font-semibold shadow-xs ring-1"
+                : "text-muted-foreground hover:text-foreground",
             )}
-          </div>
-        )}
+          >
+            <LayoutList className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic("selection")
+              setViewMode("grid")
+            }}
+            aria-label="Visualização em grade"
+            title="Visualização em grade"
+            className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-lg text-xs transition-all active:scale-95",
+              viewMode === "grid"
+                ? "bg-card text-foreground ring-border/40 font-semibold shadow-xs ring-1"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <LayoutGrid className="size-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Status Segmented Rail */}
+      <div className="-mx-1 flex scrollbar-none gap-1.5 overflow-x-auto px-1 pb-1">
+        {TABS.map((t) => {
+          const count = counts[t.key] ?? 0
+          const active = tab === t.key
+          const Icon = t.icon
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => {
+                triggerHaptic("selection")
+                setTab(t.key)
+              }}
+              className={cn(
+                "flex h-8.5 shrink-0 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-all active:scale-95",
+                active
+                  ? "bg-primary text-primary-foreground ring-primary/20 font-semibold shadow-xs ring-2"
+                  : "border-border/60 bg-card hover:bg-muted/70 text-muted-foreground hover:text-foreground border",
+              )}
+            >
+              <Icon
+                className={cn(
+                  "size-3.5",
+                  active ? "text-primary-foreground" : "text-muted-foreground",
+                )}
+              />
+              <span>{t.label}</span>
+              <span
+                className={cn(
+                  "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums",
+                  active
+                    ? "bg-primary-foreground/20 text-primary-foreground"
+                    : "bg-muted text-muted-foreground",
+                )}
+              >
+                {count}
+              </span>
+            </button>
+          )
+        })}
       </div>
 
       {/* Results Counter & Escrow Reassurance */}
@@ -449,16 +488,16 @@ export function ClientBookings() {
 
       {/* Content */}
       {isLoading ? (
-        <div className="grid gap-3">
+        <div className="grid gap-2.5">
           {Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i} className="border-border/60 rounded-2xl p-5 shadow-xs">
-              <div className="flex items-center gap-4">
-                <div className="bg-muted size-13 animate-pulse rounded-full" />
-                <div className="flex-1 space-y-2">
-                  <div className="bg-muted h-4 w-48 rounded" />
-                  <div className="bg-muted h-3 w-32 rounded" />
+            <Card key={i} className="border-border/60 rounded-xl p-4 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="bg-muted size-10 animate-pulse rounded-full" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="bg-muted h-3.5 w-40 rounded" />
+                  <div className="bg-muted h-2.5 w-28 rounded" />
                 </div>
-                <div className="bg-muted h-6 w-20 rounded" />
+                <div className="bg-muted h-5 w-16 rounded" />
               </div>
             </Card>
           ))}
@@ -485,10 +524,44 @@ export function ClientBookings() {
             </Button>
           }
         />
-      ) : (
-        <div className="grid gap-4">
+      ) : viewMode === "list" ? (
+        <div className="grid gap-2.5">
           {pageItems.map((b) => (
             <BookingCard
+              key={b.id}
+              booking={b}
+              onViewDetails={() => setDetailsId(b.id)}
+              onCancel={() => setCancelBooking(b)}
+              onComplete={() => setEscrowReleaseBooking(b)}
+              onReview={() => setReviewBooking(b)}
+              onMessage={() =>
+                navigate("client.messages", {
+                  with: b.provider.id,
+                  peerId: b.provider.id,
+                  providerId: b.provider.id,
+                })
+              }
+              onViewProvider={() => openProvider(b.provider.id)}
+              onRebook={() => openBooking({ providerId: b.provider.id, serviceId: b.service.id })}
+              onTrack={() => setTrackingBooking(b)}
+              onViewReceipt={() => setReceiptBookingId(b.id)}
+              onOpenReport={() => setReportBooking(b)}
+              onCarePlan={() => setCarePlanBooking(b)}
+              onPay={
+                (b.status === "PENDING" || b.status === "CONFIRMED") &&
+                b.paymentMethod === "PIX" &&
+                b.paymentStatus === "PENDING"
+                  ? () => setPixBooking(b)
+                  : undefined
+              }
+              isCompleting={completeMutation.isPending}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {pageItems.map((b) => (
+            <BookingGridCard
               key={b.id}
               booking={b}
               onViewDetails={() => setDetailsId(b.id)}
@@ -849,7 +922,28 @@ export function ClientBookings() {
 }
 
 // ---------------------------------------------------------------------------
-// BookingCard
+// BookingCardProps
+// ---------------------------------------------------------------------------
+
+type BookingCardProps = {
+  booking: Booking
+  onViewDetails: () => void
+  onCancel: () => void
+  onComplete: () => void
+  onReview: () => void
+  onMessage: () => void
+  onViewProvider: () => void
+  onRebook?: () => void
+  onTrack?: () => void
+  onPay?: () => void
+  onViewReceipt?: () => void
+  onOpenReport?: () => void
+  onCarePlan?: () => void
+  isCompleting: boolean
+}
+
+// ---------------------------------------------------------------------------
+// BookingCard (List View — Ultra-compact, clean & minimalist)
 // ---------------------------------------------------------------------------
 
 function BookingCard({
@@ -867,22 +961,7 @@ function BookingCard({
   onOpenReport,
   onCarePlan,
   isCompleting,
-}: {
-  booking: Booking
-  onViewDetails: () => void
-  onCancel: () => void
-  onComplete: () => void
-  onReview: () => void
-  onMessage: () => void
-  onViewProvider: () => void
-  onRebook?: () => void
-  onTrack?: () => void
-  onPay?: () => void
-  onViewReceipt?: () => void
-  onOpenReport?: () => void
-  onCarePlan?: () => void
-  isCompleting: boolean
-}) {
+}: BookingCardProps) {
   const provider = booking.provider
   const initials = providerInitials(provider.name)
 
@@ -903,11 +982,11 @@ function BookingCard({
       : null
 
   return (
-    <Card className="border-border/60 bg-card hover:border-primary/40 relative overflow-hidden rounded-2xl shadow-xs transition-all duration-200 hover:shadow-md">
-      <CardContent className="space-y-4 p-4 sm:p-5">
+    <Card className="border-border/60 bg-card hover:border-primary/40 relative overflow-hidden rounded-xl shadow-2xs transition-all duration-150 hover:shadow-xs">
+      <CardContent className="p-3 sm:p-3.5">
         {/* Main Card Header: Avatar, Provider, Status, Price */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 flex-1 items-start gap-3.5">
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             {/* Round Avatar with click to provider modal */}
             <button
               type="button"
@@ -915,10 +994,10 @@ function BookingCard({
                 triggerHaptic("selection")
                 onViewProvider()
               }}
-              className="ring-background shrink-0 rounded-full ring-2 transition-transform duration-200 outline-none hover:scale-105 focus-visible:ring-2"
+              className="ring-background shrink-0 rounded-full ring-1 transition-transform outline-none hover:scale-105 focus-visible:ring-2"
               aria-label={`Ver perfil de ${provider.name}`}
             >
-              <Avatar className="border-border/40 size-13 rounded-full border shadow-xs">
+              <Avatar className="border-border/40 size-10 rounded-full border shadow-2xs sm:size-11">
                 {provider.avatarUrl ? (
                   <AvatarImage
                     src={provider.avatarUrl}
@@ -934,14 +1013,14 @@ function BookingCard({
 
             {/* Provider Info & Service Details */}
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                 <button
                   type="button"
                   onClick={() => {
                     triggerHaptic("selection")
                     onViewProvider()
                   }}
-                  className="text-foreground hover:text-primary truncate text-base font-bold tracking-tight transition-colors focus-visible:underline"
+                  className="text-foreground hover:text-primary truncate text-sm font-bold tracking-tight transition-colors hover:underline"
                 >
                   {provider.name}
                 </button>
@@ -951,197 +1030,135 @@ function BookingCard({
                 </StatusBadge>
 
                 {hasReview && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-200/60 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/40 dark:text-amber-300">
-                    <Star className="size-3 fill-amber-400 text-amber-400" />
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-200/60 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/40 dark:text-amber-300">
+                    <Star className="size-2.5 fill-amber-400 text-amber-400" />
                     Avaliado
                   </span>
                 )}
               </div>
 
               {/* Service Title — cleanly rendered without empty () */}
-              <div className="mt-1 flex items-center gap-1.5 text-sm">
-                <span className="text-foreground/90 truncate font-medium">
-                  {booking.service.title}
-                </span>
+              <div className="text-foreground/90 mt-0.5 flex items-center gap-1.5 text-xs">
+                <span className="truncate font-medium">{booking.service.title}</span>
                 {unitLabel && (
-                  <span className="bg-muted text-muted-foreground py-0.2 rounded-md px-1.5 text-[10px] font-semibold uppercase">
+                  <span className="bg-muted text-muted-foreground shrink-0 rounded px-1 text-[9px] font-semibold uppercase">
                     {unitLabel}
                   </span>
                 )}
               </div>
 
               {/* Date & Address */}
-              <div className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                <span className="text-foreground/90 inline-flex items-center gap-1.5 font-medium tabular-nums">
-                  <CalendarDays className="text-primary size-3.5" />
+              <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] sm:text-xs">
+                <span className="text-foreground/85 inline-flex items-center gap-1 font-medium tabular-nums">
+                  <CalendarDays className="text-primary size-3" />
                   {formatDateTime(booking.scheduledAt)}
                 </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <MapPin className="text-primary/70 size-3.5" />
-                  <span className="max-w-[16rem] truncate">{booking.address}</span>
+                <span className="inline-flex items-center gap-1">
+                  <MapPin className="text-primary/70 size-3" />
+                  <span className="max-w-[14rem] truncate sm:max-w-[18rem]">{booking.address}</span>
                 </span>
               </div>
             </div>
           </div>
 
           {/* Right: Financial & Payment Info + Menu */}
-          <div className="flex items-center justify-between gap-1 sm:flex-col sm:items-end sm:justify-start">
-            <div className="flex items-center gap-2 sm:flex-col sm:items-end sm:gap-1">
-              <span className="text-foreground text-base font-bold tracking-tight tabular-nums sm:text-lg">
+          <div className="border-border/40 flex items-center justify-between border-t pt-2 sm:flex-col sm:items-end sm:justify-center sm:border-0 sm:pt-0">
+            <div className="flex items-baseline gap-1.5 sm:flex-col sm:items-end sm:gap-0.5">
+              <span className="text-foreground text-sm font-bold tracking-tight tabular-nums sm:text-base">
                 {formatBRL(booking.amount)}
               </span>
               {booking.quantity > 1 && (
-                <span className="text-muted-foreground text-[11px] tabular-nums">
+                <span className="text-muted-foreground text-[10px] tabular-nums">
                   {booking.quantity} × {unitLabel ?? booking.unit}
                 </span>
               )}
+            </div>
+
+            <div className="flex items-center gap-1">
               <StatusBadge
                 tone={paymentTone(booking.paymentStatus as PaymentStatus)}
                 icon={paymentIcon(booking.paymentStatus as PaymentStatus)}
-                className="text-[10.5px] font-medium"
+                className="text-[10px] font-medium"
               >
                 {PAYMENT_METHOD_LABELS[booking.paymentMethod as PaymentMethod]} ·{" "}
                 {PAYMENT_STATUS_LABELS[booking.paymentStatus as PaymentStatus]}
               </StatusBadge>
-            </div>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-muted-foreground hover:text-foreground size-8 shrink-0 rounded-xl"
-                  aria-label="Mais opções"
-                >
-                  <MoreHorizontal className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem onSelect={onViewDetails}>
-                  <Eye className="mr-2 size-4" />
-                  Ver detalhes
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={onViewProvider}>
-                  <MapPin className="mr-2 size-4" />
-                  Ver perfil do prestador
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={onMessage}>
-                  <MessageSquare className="mr-2 size-4" />
-                  Enviar mensagem
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {canTrack && (
-                  <DropdownMenuItem onSelect={onTrack}>
-                    <Navigation className="mr-2 size-4 text-sky-600" />
-                    Rastrear ao vivo
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground hover:text-foreground size-7 shrink-0 rounded-lg sm:hidden"
+                    aria-label="Mais opções"
+                  >
+                    <MoreHorizontal className="size-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuItem onSelect={onViewDetails}>
+                    <Eye className="mr-2 size-3.5" />
+                    Ver detalhes
                   </DropdownMenuItem>
-                )}
-                {canPay && (
-                  <DropdownMenuItem onSelect={onPay}>
-                    <QrCode className="mr-2 size-4 text-emerald-600" />
-                    Pagar com PIX
+                  <DropdownMenuItem onSelect={onViewProvider}>
+                    <MapPin className="mr-2 size-3.5" />
+                    Perfil do prestador
                   </DropdownMenuItem>
-                )}
-                {canComplete && (
-                  <DropdownMenuItem onSelect={onComplete} disabled={isCompleting}>
-                    <ShieldCheck className="mr-2 size-4 text-emerald-600" />
-                    {booking.paymentStatus === "HELD" ? "Liberar custódia" : "Concluir e liberar"}
+                  <DropdownMenuItem onSelect={onMessage}>
+                    <MessageSquare className="mr-2 size-3.5" />
+                    Mensagem
                   </DropdownMenuItem>
-                )}
-                {canReview && (
-                  <DropdownMenuItem onSelect={onReview}>
-                    <Star className="mr-2 size-4 text-amber-500" />
-                    Avaliar serviço
-                  </DropdownMenuItem>
-                )}
-                {onOpenReport && (
-                  <DropdownMenuItem onSelect={onOpenReport}>
-                    <ClipboardCheck className="mr-2 size-4 text-emerald-600" />
-                    Laudo & Checklist
-                  </DropdownMenuItem>
-                )}
-                {onCarePlan && (
-                  <DropdownMenuItem onSelect={onCarePlan}>
-                    <Sparkles className="mr-2 size-4 text-emerald-600" />
-                    Plano Recorrente (-15%)
-                  </DropdownMenuItem>
-                )}
-                {(status === "COMPLETED" || booking.paymentStatus === "PAID") && onViewReceipt && (
-                  <DropdownMenuItem onSelect={onViewReceipt}>
-                    <FileText className="mr-2 size-4 text-blue-600" />
-                    Ver recibo / comprovante
-                  </DropdownMenuItem>
-                )}
-                {status === "CANCELLED" && onRebook && (
-                  <DropdownMenuItem onSelect={onRebook}>
-                    <Sparkles className="text-primary mr-2 size-4" />
-                    Contratar novamente
-                  </DropdownMenuItem>
-                )}
-                {canCancel && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem variant="destructive" onSelect={onCancel}>
-                      <XCircle className="mr-2 size-4" />
-                      Cancelar agendamento
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
 
-        {/* Contextual Escrow / Service Design Reassurance Banner */}
+        {/* Contextual Escrow / Service Design Reassurance Banner (Ultra-compact) */}
         {status === "COMPLETED" ? (
-          <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-200/60 bg-emerald-50/50 p-2.5 text-xs font-medium text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <span>Serviço finalizado e inspecionado · Garantia Severinno ativa por 90 dias</span>
+          <div className="mt-2 flex items-center justify-between gap-1.5 rounded-lg border border-emerald-200/50 bg-emerald-50/40 px-2.5 py-1 text-[11px] font-medium text-emerald-800 dark:border-emerald-900/30 dark:bg-emerald-950/20 dark:text-emerald-300">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <span>Serviço finalizado e inspecionado · Garantia 90D ativa</span>
             </div>
-            <span className="hidden text-[11px] font-semibold text-emerald-700 sm:inline dark:text-emerald-300">
+            <span className="hidden text-[10px] font-semibold text-emerald-700 sm:inline dark:text-emerald-300">
               Pagamento Liberado
             </span>
           </div>
         ) : status === "IN_PROGRESS" ? (
-          <div className="flex items-center justify-between gap-2 rounded-xl border border-sky-200/60 bg-sky-50/50 p-2.5 text-xs font-medium text-sky-900 dark:border-sky-900/40 dark:bg-sky-950/20 dark:text-sky-200">
-            <div className="flex items-center gap-2">
+          <div className="mt-2 flex items-center justify-between gap-1.5 rounded-lg border border-sky-200/50 bg-sky-50/40 px-2.5 py-1 text-[11px] font-medium text-sky-900 dark:border-sky-900/30 dark:bg-sky-950/20 dark:text-sky-200">
+            <div className="flex items-center gap-1.5">
               <span className="relative flex size-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"></span>
                 <span className="relative inline-flex size-2 rounded-full bg-sky-500"></span>
               </span>
-              <span>
-                Prestador a caminho ou realizando o serviço · Pagamento em custódia protegida
-              </span>
+              <span>Prestador a caminho ou executando o serviço · Pagamento protegido</span>
             </div>
-            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
               🛡️ Escrow Seguro
             </span>
           </div>
         ) : status === "CONFIRMED" ? (
-          <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-200/50 bg-emerald-50/40 p-2.5 text-xs font-medium text-emerald-800 dark:border-emerald-900/30 dark:bg-emerald-950/20 dark:text-emerald-300">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <span>
-                Horário confirmado · O valor de {formatBRL(booking.amount)} está protegido e só será
-                liberado após o serviço
-              </span>
+          <div className="mt-2 flex items-center justify-between gap-1.5 rounded-lg border border-emerald-200/40 bg-emerald-50/30 px-2.5 py-1 text-[11px] font-medium text-emerald-800 dark:border-emerald-900/20 dark:bg-emerald-950/15 dark:text-emerald-300">
+            <div className="flex items-center gap-1.5">
+              <ShieldCheck className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <span>Horário confirmado · {formatBRL(booking.amount)} protegido em custódia</span>
             </div>
             {booking.paymentStatus === "HELD" && (
-              <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
                 Custódia Ativa
               </span>
             )}
           </div>
         ) : status === "CANCELLED" ? (
-          <div className="border-border/50 bg-muted/30 text-muted-foreground flex items-center gap-2 rounded-xl border p-2.5 text-xs font-medium">
-            <XCircle className="size-4 shrink-0 text-rose-500" />
+          <div className="border-border/40 bg-muted/20 text-muted-foreground mt-2 flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium">
+            <XCircle className="size-3.5 shrink-0 text-rose-500" />
             <span>Agendamento cancelado · Nenhuma cobrança pendente</span>
           </div>
         ) : null}
 
         {/* Quick Action Buttons Strip */}
-        <div className="border-border/40 flex flex-wrap items-center gap-2 border-t pt-3">
+        <div className="border-border/40 mt-2 flex flex-wrap items-center gap-1.5 border-t pt-2">
           {/* Primary Action Button based on status */}
           {status === "COMPLETED" && canReview && (
             <Button
@@ -1150,9 +1167,9 @@ function BookingCard({
                 triggerHaptic("selection")
                 onReview()
               }}
-              className="h-8 gap-1.5 rounded-xl bg-amber-500 text-xs font-semibold text-white shadow-xs transition-all hover:bg-amber-600 active:scale-95"
+              className="h-7.5 gap-1 rounded-lg bg-amber-500 px-2.5 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-amber-600 active:scale-95"
             >
-              <Star className="size-3.5 fill-white text-white" />
+              <Star className="size-3 fill-white text-white" />
               Avaliar
             </Button>
           )}
@@ -1165,12 +1182,12 @@ function BookingCard({
                 onComplete()
               }}
               disabled={isCompleting}
-              className="h-8 gap-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-95"
+              className="h-7.5 gap-1 rounded-lg bg-emerald-600 px-2.5 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-emerald-700 active:scale-95"
             >
               {isCompleting ? (
-                <Loader2 className="size-3.5 animate-spin" />
+                <Loader2 className="size-3 animate-spin" />
               ) : (
-                <ShieldCheck className="size-3.5" />
+                <ShieldCheck className="size-3" />
               )}
               {booking.paymentStatus === "HELD" ? "Liberar Custódia" : "Liberar Pagamento"}
             </Button>
@@ -1184,9 +1201,9 @@ function BookingCard({
                 triggerHaptic("selection")
                 onTrack?.()
               }}
-              className="h-8 gap-1.5 rounded-xl border-sky-300 text-xs font-semibold text-sky-700 transition-all hover:bg-sky-50 active:scale-95 dark:border-sky-800 dark:text-sky-300 dark:hover:bg-sky-950/30"
+              className="h-7.5 gap-1 rounded-lg border-sky-300 px-2.5 text-xs font-semibold text-sky-700 transition-all hover:bg-sky-50 active:scale-95 dark:border-sky-800 dark:text-sky-300 dark:hover:bg-sky-950/30"
             >
-              <Navigation className="size-3.5" />
+              <Navigation className="size-3" />
               Rastrear
             </Button>
           )}
@@ -1198,9 +1215,9 @@ function BookingCard({
                 triggerHaptic("selection")
                 onPay?.()
               }}
-              className="h-8 gap-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-95"
+              className="h-7.5 gap-1 rounded-lg bg-emerald-600 px-2.5 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-emerald-700 active:scale-95"
             >
-              <CreditCard className="size-3.5" />
+              <CreditCard className="size-3" />
               Pagar PIX
             </Button>
           )}
@@ -1213,9 +1230,9 @@ function BookingCard({
               triggerHaptic("selection")
               onViewDetails()
             }}
-            className="border-border/60 hover:bg-muted/60 h-8 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95"
+            className="border-border/60 hover:bg-muted/60 h-7.5 gap-1 rounded-lg px-2.5 text-xs font-medium transition-all active:scale-95"
           >
-            <Eye className="size-3.5" />
+            <Eye className="size-3" />
             Detalhes
           </Button>
 
@@ -1228,9 +1245,9 @@ function BookingCard({
                 triggerHaptic("selection")
                 onRebook()
               }}
-              className="border-primary/50 text-primary hover:bg-primary/10 h-8 gap-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
+              className="border-primary/50 text-primary hover:bg-primary/10 h-7.5 gap-1 rounded-lg px-2.5 text-xs font-semibold transition-all active:scale-95"
             >
-              <Sparkles className="size-3.5" />
+              <Sparkles className="size-3" />
               Contratar Novamente
             </Button>
           )}
@@ -1245,9 +1262,9 @@ function BookingCard({
                   triggerHaptic("selection")
                   onOpenReport()
                 }}
-                className="border-border/60 hover:bg-muted/60 h-8 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95"
+                className="border-border/60 hover:bg-muted/60 h-7.5 gap-1 rounded-lg px-2.5 text-xs font-medium transition-all active:scale-95"
               >
-                <ClipboardCheck className="size-3.5" />
+                <ClipboardCheck className="size-3" />
                 Laudo / Fotos
               </Button>
             )}
@@ -1261,9 +1278,9 @@ function BookingCard({
                 triggerHaptic("selection")
                 onViewReceipt()
               }}
-              className="border-border/60 hover:bg-muted/60 h-8 gap-1.5 rounded-xl text-xs font-medium text-blue-700 transition-all active:scale-95 dark:text-blue-400"
+              className="border-border/60 hover:bg-muted/60 h-7.5 gap-1 rounded-lg px-2.5 text-xs font-medium text-blue-700 transition-all active:scale-95 dark:text-blue-400"
             >
-              <FileText className="size-3.5" />
+              <FileText className="size-3" />
               Recibo
             </Button>
           )}
@@ -1277,9 +1294,9 @@ function BookingCard({
                 triggerHaptic("selection")
                 onCarePlan()
               }}
-              className="h-8 gap-1.5 rounded-xl border-emerald-300 text-xs font-medium text-emerald-700 transition-all hover:bg-emerald-50 active:scale-95 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              className="h-7.5 gap-1 rounded-lg border-emerald-300 px-2.5 text-xs font-medium text-emerald-700 transition-all hover:bg-emerald-50 active:scale-95 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
             >
-              <Sparkles className="size-3.5" />
+              <Sparkles className="size-3" />
               Plano Recorrente
             </Button>
           )}
@@ -1292,11 +1309,11 @@ function BookingCard({
               triggerHaptic("selection")
               onMessage()
             }}
-            className="text-muted-foreground hover:text-foreground hover:bg-muted/60 h-8 w-8 shrink-0 rounded-xl p-0 transition-colors"
+            className="text-muted-foreground hover:text-foreground hover:bg-muted/60 h-7.5 w-7.5 shrink-0 rounded-lg p-0 transition-colors"
             title="Enviar mensagem na plataforma"
             aria-label="Enviar mensagem na plataforma"
           >
-            <MessageSquare className="size-4" />
+            <MessageSquare className="size-3.5" />
           </Button>
 
           {/* Cancel button if applicable */}
@@ -1308,12 +1325,332 @@ function BookingCard({
                 triggerHaptic("selection")
                 onCancel()
               }}
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive ml-auto h-8 gap-1.5 rounded-xl px-2.5 text-xs font-medium transition-all active:scale-95"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive ml-auto h-7.5 gap-1 rounded-lg px-2 text-xs font-medium transition-all active:scale-95"
             >
-              <XCircle className="size-3.5" />
+              <XCircle className="size-3" />
               Cancelar
             </Button>
           )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// BookingGridCard (Grid View — Modern Bento micro-card)
+// ---------------------------------------------------------------------------
+
+function BookingGridCard({
+  booking,
+  onViewDetails,
+  onCancel,
+  onComplete,
+  onReview,
+  onMessage,
+  onViewProvider,
+  onRebook,
+  onTrack,
+  onPay,
+  onViewReceipt,
+  onOpenReport,
+  onCarePlan,
+  isCompleting,
+}: BookingCardProps) {
+  const provider = booking.provider
+  const initials = providerInitials(provider.name)
+  const status = booking.status as BookingStatus
+  const canCancel = status === "PENDING" || status === "CONFIRMED" || status === "IN_PROGRESS"
+  const canComplete =
+    status === "CONFIRMED" || status === "IN_PROGRESS" || booking.paymentStatus === "HELD"
+  const canTrack = status === "IN_PROGRESS"
+  const canPay = (status === "PENDING" || status === "CONFIRMED") && !!onPay
+  const hasReview = (booking.reviews?.length ?? 0) > 0
+  const canReview = status === "COMPLETED" && !hasReview
+
+  const unitLabel =
+    booking.service.unit && SERVICE_UNIT_SHORT[booking.service.unit as ServiceUnit]
+      ? SERVICE_UNIT_SHORT[booking.service.unit as ServiceUnit]
+      : null
+
+  return (
+    <Card className="border-border/60 bg-card hover:border-primary/40 flex flex-col justify-between rounded-xl shadow-2xs transition-all duration-150 hover:shadow-xs">
+      <CardContent className="flex h-full flex-col justify-between p-3.5">
+        <div className="space-y-2.5">
+          {/* Top header: Avatar + Provider info + Price */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onViewProvider()
+                }}
+                className="shrink-0 rounded-full transition-transform outline-none hover:scale-105"
+                aria-label={`Ver perfil de ${provider.name}`}
+              >
+                <Avatar className="border-border/40 size-10 rounded-full border shadow-2xs">
+                  {provider.avatarUrl ? (
+                    <AvatarImage
+                      src={provider.avatarUrl}
+                      alt={provider.name}
+                      className="rounded-full object-cover"
+                    />
+                  ) : null}
+                  <AvatarFallback className="bg-primary/10 text-primary rounded-full text-xs font-bold">
+                    {initials || "PR"}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
+
+              <div className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    onViewProvider()
+                  }}
+                  className="text-foreground hover:text-primary block truncate text-left text-sm font-bold tracking-tight"
+                >
+                  {provider.name}
+                </button>
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  <StatusBadge tone={bookingTone(status)} icon={bookingIcon(status)}>
+                    {BOOKING_STATUS_LABELS[status]}
+                  </StatusBadge>
+                  {hasReview && (
+                    <span className="inline-flex items-center gap-0.5 rounded-full border border-amber-200/60 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/40 dark:text-amber-300">
+                      <Star className="size-2.5 fill-amber-400 text-amber-400" />
+                      Avaliado
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="shrink-0 text-right">
+              <p className="text-foreground text-sm font-bold tabular-nums sm:text-base">
+                {formatBRL(booking.amount)}
+              </p>
+              <StatusBadge
+                tone={paymentTone(booking.paymentStatus as PaymentStatus)}
+                icon={paymentIcon(booking.paymentStatus as PaymentStatus)}
+                className="text-[9px] font-medium"
+              >
+                {PAYMENT_STATUS_LABELS[booking.paymentStatus as PaymentStatus]}
+              </StatusBadge>
+            </div>
+          </div>
+
+          {/* Service Title */}
+          <div className="border-border/40 border-t pt-2">
+            <div className="text-foreground/90 flex items-center gap-1.5 text-xs font-medium">
+              <span className="truncate">{booking.service.title}</span>
+              {unitLabel && (
+                <span className="bg-muted text-muted-foreground shrink-0 rounded px-1 text-[9px] font-semibold uppercase">
+                  {unitLabel}
+                </span>
+              )}
+            </div>
+
+            {/* Date and Address */}
+            <div className="text-muted-foreground mt-1.5 space-y-1 text-xs">
+              <div className="text-foreground/80 inline-flex items-center gap-1.5 font-medium tabular-nums">
+                <CalendarDays className="text-primary size-3 shrink-0" />
+                <span>{formatDateTime(booking.scheduledAt)}</span>
+              </div>
+              <div className="text-muted-foreground flex items-center gap-1.5">
+                <MapPin className="text-primary/70 size-3 shrink-0" />
+                <span className="truncate">{booking.address}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer Actions */}
+        <div className="border-border/40 mt-3 flex items-center justify-between gap-1.5 border-t pt-2.5">
+          <div className="flex flex-1 items-center gap-1">
+            {status === "COMPLETED" && canReview ? (
+              <Button
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onReview()
+                }}
+                className="h-7.5 flex-1 gap-1 rounded-lg bg-amber-500 text-xs font-semibold text-white shadow-2xs hover:bg-amber-600"
+              >
+                <Star className="size-3 fill-white text-white" />
+                Avaliar
+              </Button>
+            ) : canComplete ? (
+              <Button
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onComplete()
+                }}
+                disabled={isCompleting}
+                className="h-7.5 flex-1 gap-1 rounded-lg bg-emerald-600 text-xs font-semibold text-white shadow-2xs hover:bg-emerald-700"
+              >
+                {isCompleting ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <ShieldCheck className="size-3" />
+                )}
+                {booking.paymentStatus === "HELD" ? "Liberar Custódia" : "Liberar"}
+              </Button>
+            ) : canTrack ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onTrack?.()
+                }}
+                className="h-7.5 flex-1 gap-1 rounded-lg border-sky-300 text-xs font-semibold text-sky-700 hover:bg-sky-50 dark:border-sky-800 dark:text-sky-300"
+              >
+                <Navigation className="size-3" />
+                Rastrear
+              </Button>
+            ) : canPay ? (
+              <Button
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onPay?.()
+                }}
+                className="h-7.5 flex-1 gap-1 rounded-lg bg-emerald-600 text-xs font-semibold text-white shadow-2xs hover:bg-emerald-700"
+              >
+                <CreditCard className="size-3" />
+                Pagar PIX
+              </Button>
+            ) : status === "CANCELLED" && onRebook ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onRebook()
+                }}
+                className="border-primary/50 text-primary hover:bg-primary/10 h-7.5 flex-1 gap-1 rounded-lg text-xs font-semibold"
+              >
+                <Sparkles className="size-3" />
+                Contratar Novamente
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onViewDetails()
+                }}
+                className="h-7.5 flex-1 gap-1 rounded-lg text-xs font-medium"
+              >
+                <Eye className="size-3" />
+                Detalhes
+              </Button>
+            )}
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                triggerHaptic("selection")
+                onMessage()
+              }}
+              className="text-muted-foreground hover:text-foreground size-7.5 shrink-0 rounded-lg"
+              title="Enviar mensagem na plataforma"
+              aria-label="Enviar mensagem na plataforma"
+            >
+              <MessageSquare className="size-3.5" />
+            </Button>
+          </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-muted-foreground hover:text-foreground size-7.5 shrink-0 rounded-lg"
+                aria-label="Mais opções"
+              >
+                <MoreHorizontal className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem onSelect={onViewDetails}>
+                <Eye className="mr-2 size-3.5" />
+                Ver detalhes
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onViewProvider}>
+                <MapPin className="mr-2 size-3.5" />
+                Perfil do prestador
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onMessage}>
+                <MessageSquare className="mr-2 size-3.5" />
+                Mensagem
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {canTrack && (
+                <DropdownMenuItem onSelect={onTrack}>
+                  <Navigation className="mr-2 size-3.5 text-sky-600" />
+                  Rastrear ao vivo
+                </DropdownMenuItem>
+              )}
+              {canPay && (
+                <DropdownMenuItem onSelect={onPay}>
+                  <QrCode className="mr-2 size-3.5 text-emerald-600" />
+                  Pagar PIX
+                </DropdownMenuItem>
+              )}
+              {canComplete && (
+                <DropdownMenuItem onSelect={onComplete} disabled={isCompleting}>
+                  <ShieldCheck className="mr-2 size-3.5 text-emerald-600" />
+                  Liberar custódia
+                </DropdownMenuItem>
+              )}
+              {canReview && (
+                <DropdownMenuItem onSelect={onReview}>
+                  <Star className="mr-2 size-3.5 text-amber-500" />
+                  Avaliar serviço
+                </DropdownMenuItem>
+              )}
+              {onOpenReport && (
+                <DropdownMenuItem onSelect={onOpenReport}>
+                  <ClipboardCheck className="mr-2 size-3.5 text-emerald-600" />
+                  Laudo & Checklist
+                </DropdownMenuItem>
+              )}
+              {onCarePlan && (
+                <DropdownMenuItem onSelect={onCarePlan}>
+                  <Sparkles className="mr-2 size-3.5 text-emerald-600" />
+                  Plano Recorrente (-15%)
+                </DropdownMenuItem>
+              )}
+              {(status === "COMPLETED" || booking.paymentStatus === "PAID") && onViewReceipt && (
+                <DropdownMenuItem onSelect={onViewReceipt}>
+                  <FileText className="mr-2 size-3.5 text-blue-600" />
+                  Ver recibo
+                </DropdownMenuItem>
+              )}
+              {status === "CANCELLED" && onRebook && (
+                <DropdownMenuItem onSelect={onRebook}>
+                  <Sparkles className="text-primary mr-2 size-3.5" />
+                  Contratar novamente
+                </DropdownMenuItem>
+              )}
+              {canCancel && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onSelect={onCancel}>
+                    <XCircle className="mr-2 size-3.5" />
+                    Cancelar agendamento
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </CardContent>
     </Card>

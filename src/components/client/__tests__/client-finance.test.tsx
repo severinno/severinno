@@ -179,6 +179,8 @@ vi.mock("lucide-react", () => ({
   Calendar: () => <svg />,
   CreditCard: () => <svg />,
   FileText: () => <svg />,
+  LayoutGrid: () => <svg />,
+  LayoutList: () => <svg />,
   Loader2: () => <svg />,
   Lock: () => <svg />,
   MessageSquare: () => <svg />,
@@ -188,6 +190,7 @@ vi.mock("lucide-react", () => ({
   Search: () => <svg />,
   ShieldCheck: () => <svg />,
   Wallet: () => <svg />,
+  X: () => <svg />,
 }))
 
 vi.mock("@/components/shared/dashboard-shell", () => ({
@@ -395,6 +398,22 @@ describe("ClientFinance — data rendering", () => {
     const input = screen.getByPlaceholderText("Filtrar por prestador ou serviço...")
     fireEvent.change(input, { target: { value: "inexistente" } })
     expect(screen.getByText("Sem resultados")).toBeDefined()
+  })
+
+  it("alterna entre modo de visualização em lista e grade", () => {
+    render(<ClientFinance />)
+    const gridBtn = screen.getByLabelText("Visualização em grade")
+    const listBtn = screen.getByLabelText("Visualização em lista")
+    expect(gridBtn).toBeDefined()
+    expect(listBtn).toBeDefined()
+
+    // Switch to grid
+    fireEvent.click(gridBtn)
+    expect(screen.getAllByText("Paulo Prestador").length).toBeGreaterThanOrEqual(1)
+
+    // Switch back to list
+    fireEvent.click(listBtn)
+    expect(screen.getAllByText("Paulo Prestador").length).toBeGreaterThanOrEqual(1)
   })
 })
 

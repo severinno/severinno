@@ -30,6 +30,8 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
+  LayoutGrid,
+  LayoutList,
   Loader2,
   Lock,
   MapPin,
@@ -40,6 +42,7 @@ import {
   Star,
   Wallet,
   Wrench,
+  X,
   XCircle,
 } from "lucide-react"
 
@@ -54,6 +57,7 @@ import {
   type ServiceUnit,
 } from "@/lib/constants"
 import { formatBRL, formatDate } from "@/lib/format"
+import { triggerHaptic } from "@/lib/haptics"
 import { useUIStore } from "@/store/ui"
 import { useViewStore } from "@/store/view"
 import { ReceiptModal } from "@/components/shared/receipt-modal"
@@ -147,6 +151,7 @@ export function ClientServices() {
   const openBooking = useUIStore((s) => s.openBooking)
 
   const [tab, setTab] = React.useState("COMPLETED")
+  const [viewMode, setViewMode] = React.useState<"list" | "grid">("list")
   const [page, setPage] = React.useState(1)
   const [filterText, setFilterText] = React.useState("")
   const [sortBy, setSortBy] = React.useState<"recent" | "oldest" | "highest">("recent")
@@ -257,19 +262,19 @@ export function ClientServices() {
   const hasFilters = filterText !== "" || sortBy !== "recent"
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Hero Banner */}
-      <div className="border-border/60 from-card via-card/95 to-primary/5 relative overflow-hidden rounded-2xl border bg-gradient-to-br p-6 shadow-sm">
-        <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="border-border/60 from-card via-card/95 to-primary/5 relative overflow-hidden rounded-2xl border bg-gradient-to-br p-4 shadow-xs sm:p-5">
+        <div className="relative z-10 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="border-primary/20 bg-primary/10 text-primary inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium">
-              <Wrench className="size-3.5" />
+            <div className="border-primary/20 bg-primary/10 text-primary inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold">
+              <Wrench className="size-3" />
               <span>Histórico & Garantia de Serviços</span>
             </div>
-            <h1 className="text-foreground mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
+            <h1 className="text-foreground mt-1.5 text-xl font-bold tracking-tight sm:text-2xl">
               Serviços contratados
             </h1>
-            <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
+            <p className="text-muted-foreground mt-0.5 max-w-2xl text-xs sm:text-sm">
               Histórico dos serviços que você contratou com garantia de satisfação e comprovantes
               digitais.
             </p>
@@ -278,8 +283,11 @@ export function ClientServices() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => navigate("client.bookings")}
-              className="gap-1.5 text-xs font-medium"
+              onClick={() => {
+                triggerHaptic("selection")
+                navigate("client.bookings")
+              }}
+              className="h-9 gap-1.5 rounded-xl px-3 text-xs font-medium"
             >
               <Calendar className="size-3.5" />
               Ver agendamentos
@@ -287,8 +295,11 @@ export function ClientServices() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => navigate("client.providers")}
-              className="gap-1.5 text-xs font-medium"
+              onClick={() => {
+                triggerHaptic("selection")
+                navigate("client.providers")
+              }}
+              className="h-9 gap-1.5 rounded-xl px-3 text-xs font-medium"
             >
               <MapPin className="size-3.5" />
               Buscar prestadores
@@ -298,25 +309,25 @@ export function ClientServices() {
       </div>
 
       {/* 90-Day Legal Warranty & Protection Banner */}
-      <div className="border-primary/20 bg-primary/5 rounded-xl border p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="bg-primary/15 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
-              <ShieldCheck className="size-5" />
+      <div className="border-primary/20 bg-primary/5 rounded-xl border p-3 sm:p-3.5">
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="bg-primary/15 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
+              <ShieldCheck className="size-4" />
             </div>
             <div>
-              <h2 className="text-foreground text-sm font-semibold">
+              <h2 className="text-foreground text-xs font-semibold sm:text-sm">
                 Garantia Severinno de 90 Dias
               </h2>
-              <p className="text-muted-foreground mt-0.5 text-xs">
+              <p className="text-muted-foreground text-[11px] sm:text-xs">
                 Todos os serviços concluídos contam com a proteção legal do Código de Defesa do
-                Consumidor (Art. 26). Em caso de qualquer anormalidade na execução, você pode
-                acionar o prestador diretamente pelo chat oficial.
+                Consumidor (Art. 26). Em caso de anormalidade na execução, acione o prestador no
+                chat oficial.
               </p>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2 self-start pl-12 sm:pl-0">
-            <span className="border-primary/30 bg-primary/10 text-primary inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium">
+          <div className="flex shrink-0 items-center gap-2 self-start pl-10.5 sm:self-center sm:pl-0">
+            <span className="border-primary/30 bg-primary/10 text-primary inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-medium">
               <Lock className="size-3" />
               Cobertura Ativa
             </span>
@@ -324,7 +335,7 @@ export function ClientServices() {
         </div>
       </div>
 
-      {/* Impact StatCards */}
+      {/* Impact StatCards (Compact Bento micro-cards) */}
       <div className="grid gap-3 sm:grid-cols-3">
         <StatCard
           icon={CheckCircle2}
@@ -332,6 +343,7 @@ export function ClientServices() {
           value={String(summary.completedCount)}
           tone="primary"
           hint="Serviços finalizados"
+          compact
         />
         <StatCard
           icon={Wallet}
@@ -339,6 +351,7 @@ export function ClientServices() {
           value={formatBRL(summary.totalInvested)}
           tone="amber"
           hint="Em manutenções residenciais"
+          compact
         />
         <StatCard
           icon={XCircle}
@@ -346,6 +359,7 @@ export function ClientServices() {
           value={String(summary.cancelledCount)}
           tone="zinc"
           hint="Estornados ou descontinuados"
+          compact
         />
       </div>
 
@@ -356,12 +370,18 @@ export function ClientServices() {
             const count = counts[t.key as keyof typeof counts] ?? 0
             const active = tab === t.key
             return (
-              <TabsTrigger key={t.key} value={t.key} className="h-8 flex-shrink-0 gap-1.5">
+              <TabsTrigger
+                key={t.key}
+                value={t.key}
+                className="h-8.5 flex-shrink-0 gap-1.5 rounded-xl px-3 text-xs"
+              >
                 {t.label}
                 <span
                   className={cn(
-                    "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums",
-                    active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
+                    "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums",
+                    active
+                      ? "bg-primary/15 text-primary font-bold"
+                      : "bg-muted text-muted-foreground",
                   )}
                 >
                   {count}
@@ -372,8 +392,8 @@ export function ClientServices() {
         </TabsList>
       </Tabs>
 
-      {/* Filter bar */}
-      <div className="bg-card flex flex-wrap items-center gap-3 rounded-xl border p-3">
+      {/* Filter & View Mode Toolbar */}
+      <div className="bg-card border-border/60 flex flex-wrap items-center gap-2.5 rounded-xl border p-2.5 shadow-2xs sm:p-3">
         <div className="relative min-w-[200px] flex-1">
           <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
           <Input
@@ -383,19 +403,33 @@ export function ClientServices() {
               setPage(1)
             }}
             placeholder="Filtrar por prestador ou serviço..."
-            className="h-9 pl-9 text-xs"
+            className="border-border/50 bg-background/60 focus:bg-background h-9 pr-8 pl-9 text-xs"
           />
+          {filterText ? (
+            <button
+              type="button"
+              onClick={() => {
+                setFilterText("")
+                setPage(1)
+              }}
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-0.5"
+              title="Limpar busca"
+              aria-label="Limpar busca"
+            >
+              <X className="size-3.5" />
+            </button>
+          ) : null}
         </div>
 
-        <div className="flex flex-col gap-1">
-          <span className="text-muted-foreground text-[10px] font-semibold tracking-wide uppercase">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-muted-foreground text-[9px] font-semibold tracking-wide uppercase">
             Ordenar
           </span>
           <Select
             value={sortBy}
             onValueChange={(val) => setSortBy(val as "recent" | "oldest" | "highest")}
           >
-            <SelectTrigger className="h-9 w-36" size="sm">
+            <SelectTrigger className="h-9 w-34" size="sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -404,6 +438,49 @@ export function ClientServices() {
               <SelectItem value="highest">Maior valor</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        {/* View Mode Toggle: Lista / Grade */}
+        <div className="flex flex-col gap-0.5">
+          <span className="text-muted-foreground text-[9px] font-semibold tracking-wide uppercase">
+            Visualização
+          </span>
+          <div className="border-border/60 bg-muted/30 flex shrink-0 items-center gap-0.5 rounded-xl border p-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic("selection")
+                setViewMode("list")
+              }}
+              aria-label="Visualização em lista"
+              title="Visualização em lista"
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-lg text-xs transition-all active:scale-95",
+                viewMode === "list"
+                  ? "bg-card text-foreground ring-border/40 font-semibold shadow-xs ring-1"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <LayoutList className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic("selection")
+                setViewMode("grid")
+              }}
+              aria-label="Visualização em grade"
+              title="Visualização em grade"
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-lg text-xs transition-all active:scale-95",
+                viewMode === "grid"
+                  ? "bg-card text-foreground ring-border/40 font-semibold shadow-xs ring-1"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <LayoutGrid className="size-3.5" />
+            </button>
+          </div>
         </div>
 
         {hasFilters ? (
@@ -415,7 +492,7 @@ export function ClientServices() {
               setSortBy("recent")
               setPage(1)
             }}
-            className="text-muted-foreground hover:text-foreground h-9 gap-1.5 self-end"
+            className="text-muted-foreground hover:text-foreground h-9 gap-1.5 self-end rounded-xl"
           >
             <RotateCcw className="size-3.5" />
             Limpar
@@ -461,10 +538,34 @@ export function ClientServices() {
             </Button>
           }
         />
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+      ) : viewMode === "list" ? (
+        <div className="grid gap-2.5">
           {pageItems.map((b) => (
             <ServiceHistoryCard
+              key={b.id}
+              booking={b}
+              onViewProvider={() => openProvider(b.provider.id)}
+              onRebook={() =>
+                openBooking({
+                  providerId: b.provider.id,
+                  serviceId: b.service.id,
+                })
+              }
+              onOpenReceipt={() => setSelectedReceiptBookingId(b.id)}
+              onOpenReview={() => setReviewingBooking(b)}
+              onMessage={() =>
+                navigate("client.messages", {
+                  providerId: b.provider.id,
+                  bookingId: b.id,
+                })
+              }
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {pageItems.map((b) => (
+            <ServiceHistoryGridCard
               key={b.id}
               booking={b}
               onViewProvider={() => openProvider(b.provider.id)}
@@ -547,7 +648,20 @@ export function ClientServices() {
 }
 
 // ---------------------------------------------------------------------------
-// ServiceHistoryCard
+// ServiceHistoryCardProps
+// ---------------------------------------------------------------------------
+
+type ServiceHistoryCardProps = {
+  booking: Booking
+  onViewProvider: () => void
+  onRebook: () => void
+  onOpenReceipt: () => void
+  onOpenReview: () => void
+  onMessage: () => void
+}
+
+// ---------------------------------------------------------------------------
+// ServiceHistoryCard (List View — Ultra-compact, clean & minimalist)
 // ---------------------------------------------------------------------------
 
 function ServiceHistoryCard({
@@ -557,14 +671,7 @@ function ServiceHistoryCard({
   onOpenReceipt,
   onOpenReview,
   onMessage,
-}: {
-  booking: Booking
-  onViewProvider: () => void
-  onRebook: () => void
-  onOpenReceipt: () => void
-  onOpenReview: () => void
-  onMessage: () => void
-}) {
+}: ServiceHistoryCardProps) {
   const provider = booking.provider
   const initials = providerInitials(provider.name)
   const review = booking.reviews?.[0]
@@ -577,16 +684,19 @@ function ServiceHistoryCard({
       : ""
 
   return (
-    <Card className="flex flex-col rounded-xl shadow-sm transition-shadow hover:shadow-md">
-      <CardContent className="flex-1 py-4">
+    <Card className="border-border/60 bg-card hover:border-primary/40 relative overflow-hidden rounded-xl shadow-2xs transition-all duration-150 hover:shadow-xs">
+      <CardContent className="p-3 sm:p-3.5">
         <div className="flex items-start gap-3">
           <button
             type="button"
-            onClick={onViewProvider}
-            className="focus-visible:ring-ring shrink-0 rounded-full outline-none focus-visible:ring-2"
+            onClick={() => {
+              triggerHaptic("selection")
+              onViewProvider()
+            }}
+            className="ring-background shrink-0 rounded-full ring-1 transition-transform outline-none hover:scale-105 focus-visible:ring-2"
             aria-label={`Ver perfil de ${provider.name}`}
           >
-            <Avatar className="ring-border/50 size-11 rounded-full border ring-1">
+            <Avatar className="border-border/40 size-10 rounded-full border shadow-2xs">
               {provider.avatarUrl ? (
                 <AvatarImage
                   src={provider.avatarUrl}
@@ -601,10 +711,13 @@ function ServiceHistoryCard({
           </button>
 
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               <button
                 type="button"
-                onClick={onViewProvider}
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onViewProvider()
+                }}
                 className="hover:text-primary text-foreground truncate text-left text-sm font-semibold transition-colors hover:underline"
               >
                 {provider.name}
@@ -613,102 +726,312 @@ function ServiceHistoryCard({
                 {BOOKING_STATUS_LABELS[status]}
               </StatusBadge>
             </div>
-            <p className="text-muted-foreground mt-0.5 truncate text-sm">
+            <p className="text-muted-foreground mt-0.5 truncate text-xs sm:text-sm">
               {booking.service.title}
-              {unitLabel ? <span className="ml-1 text-xs">{unitLabel}</span> : null}
+              {unitLabel ? <span className="ml-1 text-[11px] font-medium">{unitLabel}</span> : null}
             </p>
-            <p className="text-muted-foreground mt-1 inline-flex items-center gap-1 text-xs tabular-nums">
-              <CalendarDays className="size-3.5" />
+            <p className="text-muted-foreground mt-1 inline-flex items-center gap-1 text-[11px] tabular-nums sm:text-xs">
+              <CalendarDays className="text-primary size-3" />
               {isCompleted ? "Concluído" : "Cancelado"} em {formatDate(booking.scheduledAt)} ·{" "}
               {PAYMENT_METHOD_LABELS[booking.paymentMethod as PaymentMethod]}
             </p>
           </div>
 
           <div className="shrink-0 text-right">
-            <p className="text-muted-foreground text-xs">{isCompleted ? "Pago" : "Valor"}</p>
-            <p className="text-sm font-semibold tabular-nums">{formatBRL(booking.amount)}</p>
+            <p className="text-muted-foreground text-[10px] font-semibold uppercase">
+              {isCompleted ? "Pago" : "Valor"}
+            </p>
+            <p className="text-foreground text-sm font-bold tabular-nums sm:text-base">
+              {formatBRL(booking.amount)}
+            </p>
           </div>
         </div>
 
         {/* Review display or prompt */}
         {review ? (
-          <div className="bg-muted/30 mt-3 rounded-lg border p-3">
+          <div className="border-border/40 bg-muted/20 mt-2.5 rounded-lg border p-2.5">
             <div className="flex items-center justify-between gap-2">
-              <StarRatingDisplay value={review.rating} size={14} showCount={false} />
-              <span className="text-muted-foreground text-xs tabular-nums">
+              <StarRatingDisplay value={review.rating} size={13} showCount={false} />
+              <span className="text-muted-foreground text-[10px] tabular-nums">
                 {formatDate(review.createdAt)}
               </span>
             </div>
             {review.comment ? (
-              <p className="text-muted-foreground mt-1.5 line-clamp-3 text-xs italic">
+              <p className="text-muted-foreground mt-1 line-clamp-2 text-xs italic">
                 “{review.comment}”
               </p>
             ) : null}
           </div>
         ) : isCompleted ? (
-          <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-dashed border-amber-300 bg-amber-50/60 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-            <div className="flex items-center gap-2">
-              <Star className="size-4 shrink-0 fill-amber-500 text-amber-500" />
-              <span>Avalie para fortalecer a reputação do prestador em GV.</span>
+          <div className="mt-2.5 flex items-center justify-between gap-2 rounded-lg border border-dashed border-amber-300/80 bg-amber-50/50 p-2 text-xs text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200">
+            <div className="flex items-center gap-1.5">
+              <Star className="size-3.5 shrink-0 fill-amber-500 text-amber-500" />
+              <span className="text-[11px]">
+                Avalie para fortalecer a reputação do prestador em GV.
+              </span>
             </div>
             <Button
               size="sm"
               variant="outline"
-              onClick={onOpenReview}
-              className="h-7 border-amber-300 bg-white px-2.5 text-xs text-amber-900 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+              onClick={() => {
+                triggerHaptic("selection")
+                onOpenReview()
+              }}
+              className="h-6.5 border-amber-300 bg-white px-2 text-[11px] font-semibold text-amber-900 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
             >
               Avaliar agora
             </Button>
           </div>
         ) : null}
-      </CardContent>
 
-      {/* Card Action Footer */}
-      <div className="bg-muted/20 flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5">
-        <div className="flex items-center gap-1.5">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onViewProvider}
-            className="text-muted-foreground hover:text-foreground h-8 gap-1 px-2 text-xs"
-          >
-            <MapPin className="size-3.5" />
-            <span>Perfil</span>
-          </Button>
-
-          {isCompleted && (
+        {/* Card Action Footer */}
+        <div className="border-border/40 mt-2.5 flex flex-wrap items-center justify-between gap-1.5 border-t pt-2">
+          <div className="flex items-center gap-1">
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
-              onClick={onOpenReceipt}
-              className="h-8 gap-1 border-emerald-200 px-2.5 text-xs text-emerald-600 hover:bg-emerald-50 dark:border-emerald-800/40 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              onClick={() => {
+                triggerHaptic("selection")
+                onViewProvider()
+              }}
+              className="text-muted-foreground hover:text-foreground h-7.5 gap-1 px-2 text-xs"
             >
-              <FileText className="size-3.5" />
-              <span>Recibo</span>
+              <MapPin className="size-3" />
+              <span>Perfil</span>
             </Button>
-          )}
+
+            {isCompleted && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onOpenReceipt()
+                }}
+                className="h-7.5 gap-1 border-emerald-200 px-2 text-xs text-emerald-600 hover:bg-emerald-50 dark:border-emerald-800/40 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              >
+                <FileText className="size-3" />
+                <span>Recibo</span>
+              </Button>
+            )}
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                triggerHaptic("selection")
+                onMessage()
+              }}
+              className="text-muted-foreground hover:text-foreground h-7.5 w-7.5 shrink-0 rounded-lg p-0"
+              title="Enviar mensagem na plataforma"
+              aria-label="Enviar mensagem na plataforma"
+            >
+              <MessageSquare className="size-3.5" />
+            </Button>
+          </div>
 
           <Button
-            variant="ghost"
             size="sm"
-            onClick={onMessage}
-            className="text-muted-foreground hover:text-foreground h-8 gap-1 px-2 text-xs"
-            title="Enviar mensagem na plataforma"
+            onClick={() => {
+              triggerHaptic("selection")
+              onRebook()
+            }}
+            className="ml-auto h-7.5 gap-1 rounded-lg px-2.5 text-xs font-medium"
           >
-            <MessageSquare className="size-3.5" />
-            <span>Mensagem</span>
+            <RotateCcw className="size-3" />
+            Contratar novamente
           </Button>
         </div>
+      </CardContent>
+    </Card>
+  )
+}
 
-        <Button
-          size="sm"
-          onClick={onRebook}
-          className="ml-auto h-8 gap-1.5 px-3 text-xs font-medium"
-        >
-          <RotateCcw className="size-3.5" />
-          Contratar novamente
-        </Button>
-      </div>
+// ---------------------------------------------------------------------------
+// ServiceHistoryGridCard (Grid View — Modern Bento micro-card)
+// ---------------------------------------------------------------------------
+
+function ServiceHistoryGridCard({
+  booking,
+  onViewProvider,
+  onRebook,
+  onOpenReceipt,
+  onOpenReview,
+  onMessage,
+}: ServiceHistoryCardProps) {
+  const provider = booking.provider
+  const initials = providerInitials(provider.name)
+  const review = booking.reviews?.[0]
+  const status = booking.status as BookingStatus
+  const isCompleted = status === "COMPLETED"
+
+  const unitLabel =
+    booking.service.unit && SERVICE_UNIT_SHORT[booking.service.unit]
+      ? `(${SERVICE_UNIT_SHORT[booking.service.unit]})`
+      : ""
+
+  return (
+    <Card className="border-border/60 bg-card hover:border-primary/40 flex flex-col justify-between rounded-xl shadow-2xs transition-all duration-150 hover:shadow-xs">
+      <CardContent className="flex h-full flex-col justify-between p-3.5">
+        <div className="space-y-2">
+          {/* Top header: Avatar + Provider info + Price */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onViewProvider()
+                }}
+                className="shrink-0 rounded-full transition-transform outline-none hover:scale-105"
+                aria-label={`Ver perfil de ${provider.name}`}
+              >
+                <Avatar className="border-border/40 size-10 rounded-full border shadow-2xs">
+                  {provider.avatarUrl ? (
+                    <AvatarImage
+                      src={provider.avatarUrl}
+                      alt={provider.name}
+                      className="rounded-full object-cover"
+                    />
+                  ) : null}
+                  <AvatarFallback className="bg-primary/10 text-primary rounded-full text-xs font-semibold">
+                    {initials || "P"}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
+
+              <div className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    onViewProvider()
+                  }}
+                  className="hover:text-primary text-foreground block truncate text-left text-sm font-semibold transition-colors hover:underline"
+                >
+                  {provider.name}
+                </button>
+                <StatusBadge tone={bookingTone(status)} icon={bookingIcon(status)}>
+                  {BOOKING_STATUS_LABELS[status]}
+                </StatusBadge>
+              </div>
+            </div>
+
+            <div className="shrink-0 text-right">
+              <p className="text-muted-foreground text-[10px] font-semibold uppercase">
+                {isCompleted ? "Pago" : "Valor"}
+              </p>
+              <p className="text-foreground text-sm font-bold tabular-nums sm:text-base">
+                {formatBRL(booking.amount)}
+              </p>
+            </div>
+          </div>
+
+          {/* Service Title */}
+          <div className="border-border/40 border-t pt-1.5">
+            <p className="text-foreground/90 truncate text-xs font-medium">
+              {booking.service.title}
+              {unitLabel ? <span className="ml-1 text-[11px] font-medium">{unitLabel}</span> : null}
+            </p>
+            <p className="text-muted-foreground mt-0.5 inline-flex items-center gap-1 text-[11px] tabular-nums">
+              <CalendarDays className="text-primary size-3" />
+              {isCompleted ? "Concluído" : "Cancelado"} em {formatDate(booking.scheduledAt)} ·{" "}
+              {PAYMENT_METHOD_LABELS[booking.paymentMethod as PaymentMethod]}
+            </p>
+          </div>
+
+          {/* Review or prompt */}
+          {review ? (
+            <div className="border-border/40 bg-muted/20 rounded-lg border p-2">
+              <div className="flex items-center justify-between gap-1.5">
+                <StarRatingDisplay value={review.rating} size={12} showCount={false} />
+                <span className="text-muted-foreground text-[10px] tabular-nums">
+                  {formatDate(review.createdAt)}
+                </span>
+              </div>
+              {review.comment ? (
+                <p className="text-muted-foreground mt-1 line-clamp-2 text-[11px] italic">
+                  “{review.comment}”
+                </p>
+              ) : null}
+            </div>
+          ) : isCompleted ? (
+            <div className="flex items-center justify-between gap-1.5 rounded-lg border border-dashed border-amber-300/80 bg-amber-50/50 p-2 text-[11px] text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200">
+              <span className="truncate">Avalie este serviço</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onOpenReview()
+                }}
+                className="h-6 border-amber-300 bg-white px-2 text-[10px] font-semibold text-amber-900 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+              >
+                Avaliar
+              </Button>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Footer Actions */}
+        <div className="border-border/40 mt-2.5 flex items-center justify-between gap-1 border-t pt-2">
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                triggerHaptic("selection")
+                onViewProvider()
+              }}
+              className="text-muted-foreground hover:text-foreground h-7.5 gap-1 px-1.5 text-xs"
+            >
+              <MapPin className="size-3" />
+              <span>Perfil</span>
+            </Button>
+
+            {isCompleted && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onOpenReceipt()
+                }}
+                className="h-7.5 gap-1 border-emerald-200 px-2 text-xs text-emerald-600 hover:bg-emerald-50 dark:border-emerald-800/40 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              >
+                <FileText className="size-3" />
+                <span>Recibo</span>
+              </Button>
+            )}
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                triggerHaptic("selection")
+                onMessage()
+              }}
+              className="text-muted-foreground hover:text-foreground h-7.5 w-7.5 shrink-0 rounded-lg p-0"
+              title="Enviar mensagem na plataforma"
+              aria-label="Enviar mensagem na plataforma"
+            >
+              <MessageSquare className="size-3.5" />
+            </Button>
+          </div>
+
+          <Button
+            size="sm"
+            onClick={() => {
+              triggerHaptic("selection")
+              onRebook()
+            }}
+            className="ml-auto h-7.5 gap-1 rounded-lg px-2.5 text-xs font-medium"
+          >
+            <RotateCcw className="size-3" />
+            Contratar novamente
+          </Button>
+        </div>
+      </CardContent>
     </Card>
   )
 }
