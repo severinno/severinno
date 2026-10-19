@@ -291,6 +291,52 @@ describe("ClientFavorites", () => {
     })
   })
 
+  it("allows toggling between list view and grid view", async () => {
+    renderWithClient(<ClientFavorites />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Carlos Silva")).toBeInTheDocument()
+    })
+
+    const listBtn = screen.getByRole("button", { name: "Visualização em lista" })
+    const gridBtn = screen.getByRole("button", { name: "Visualização em grade" })
+
+    expect(listBtn).toBeInTheDocument()
+    expect(gridBtn).toBeInTheDocument()
+
+    // Switch to grid view
+    fireEvent.click(gridBtn)
+    expect(screen.getByText("Carlos Silva")).toBeInTheDocument()
+    expect(screen.getByText("Mariana Santos")).toBeInTheDocument()
+
+    // Switch back to list view
+    fireEvent.click(listBtn)
+    expect(screen.getByText("Carlos Silva")).toBeInTheDocument()
+    expect(screen.getByText("Mariana Santos")).toBeInTheDocument()
+  })
+
+  it("clears search filter using the X quick-clear button in the search input", async () => {
+    renderWithClient(<ClientFavorites />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Carlos Silva")).toBeInTheDocument()
+      expect(screen.getByText("Mariana Santos")).toBeInTheDocument()
+    })
+
+    const searchInput = screen.getByPlaceholderText(/Filtrar por nome, serviço ou bairro/i)
+    fireEvent.change(searchInput, { target: { value: "Mariana" } })
+
+    expect(screen.queryByText("Carlos Silva")).not.toBeInTheDocument()
+    expect(screen.getByText("Mariana Santos")).toBeInTheDocument()
+
+    // Click the X button inside input
+    const clearSearchBtn = screen.getByRole("button", { name: "Limpar busca" })
+    fireEvent.click(clearSearchBtn)
+
+    expect(screen.getByText("Carlos Silva")).toBeInTheDocument()
+    expect(screen.getByText("Mariana Santos")).toBeInTheDocument()
+  })
+
   it("passes accessibility checks with 0 axe violations", async () => {
     const { container } = renderWithClient(<ClientFavorites />)
 
