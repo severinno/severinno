@@ -210,6 +210,72 @@ describe("ClientSecurity", () => {
     expect(confirmBtn).not.toBeDisabled()
   })
 
+  it("allows toggling between list view and grid view", async () => {
+    renderWithClient(<ClientSecurity />)
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Segurança & Privacidade" })).toBeInTheDocument()
+    })
+
+    const listBtn = screen.getByRole("button", { name: "Visualização em lista" })
+    const gridBtn = screen.getByRole("button", { name: "Visualização em grade" })
+
+    expect(listBtn).toBeInTheDocument()
+    expect(gridBtn).toBeInTheDocument()
+
+    // Switch to grid view
+    fireEvent.click(gridBtn)
+    expect(screen.getByText("Alterar Senha de Acesso")).toBeInTheDocument()
+    expect(screen.getByText("Blindagem da Conta")).toBeInTheDocument()
+
+    // Switch back to list view
+    fireEvent.click(listBtn)
+    expect(screen.getByText("Alterar Senha de Acesso")).toBeInTheDocument()
+    expect(screen.getByText("Blindagem da Conta")).toBeInTheDocument()
+  })
+
+  it("filters security configurations via search input and clears via X button", async () => {
+    renderWithClient(<ClientSecurity />)
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Segurança & Privacidade" })).toBeInTheDocument()
+    })
+
+    const searchInput = screen.getByPlaceholderText(
+      /Filtrar configurações de segurança ou privacidade/i,
+    )
+    fireEvent.change(searchInput, { target: { value: "senha" } })
+
+    expect(screen.getByText("Alterar Senha de Acesso")).toBeInTheDocument()
+
+    // Clear with X button
+    const clearBtn = screen.getByRole("button", { name: "Limpar busca" })
+    fireEvent.click(clearBtn)
+
+    expect(screen.getByText("Alterar Senha de Acesso")).toBeInTheDocument()
+    expect(screen.getByText("Blindagem da Conta")).toBeInTheDocument()
+  })
+
+  it("shows empty state when search term has no matches and allows resetting", async () => {
+    renderWithClient(<ClientSecurity />)
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Segurança & Privacidade" })).toBeInTheDocument()
+    })
+
+    const searchInput = screen.getByPlaceholderText(
+      /Filtrar configurações de segurança ou privacidade/i,
+    )
+    fireEvent.change(searchInput, { target: { value: "termo-inexistente-xyz" } })
+
+    expect(screen.getByText("Nenhuma configuração encontrada")).toBeInTheDocument()
+
+    const resetBtn = screen.getByRole("button", { name: "Limpar filtro" })
+    fireEvent.click(resetBtn)
+
+    expect(screen.getByText("Alterar Senha de Acesso")).toBeInTheDocument()
+  })
+
   it("passes accessibility checks with 0 axe violations", async () => {
     const { container } = renderWithClient(<ClientSecurity />)
 
