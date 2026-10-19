@@ -231,6 +231,64 @@ describe("ClientProfile", () => {
     expect(mockToastSuccess).toHaveBeenCalledWith("Perfil atualizado com sucesso!")
   })
 
+  it("allows toggling between list view and grid view", async () => {
+    renderWithClient(<ClientProfile />)
+
+    const gridBtn = await screen.findByRole("button", { name: "Visualização em Grade" })
+    const listBtn = screen.getByRole("button", { name: "Visualização em Lista" })
+
+    expect(listBtn).toHaveAttribute("aria-pressed", "true")
+    expect(gridBtn).toHaveAttribute("aria-pressed", "false")
+
+    fireEvent.click(gridBtn)
+    expect(gridBtn).toHaveAttribute("aria-pressed", "true")
+    expect(listBtn).toHaveAttribute("aria-pressed", "false")
+
+    fireEvent.click(listBtn)
+    expect(listBtn).toHaveAttribute("aria-pressed", "true")
+    expect(gridBtn).toHaveAttribute("aria-pressed", "false")
+  })
+
+  it("filters profile sections via search input and clears via X button", async () => {
+    renderWithClient(<ClientProfile />)
+
+    expect(await screen.findByText("Dados Pessoais & Contato")).toBeInTheDocument()
+
+    const searchInput = screen.getByPlaceholderText(
+      /filtrar dados cadastrais, endereço ou preferências/i,
+    )
+
+    // Filter to something only in Address
+    fireEvent.change(searchInput, { target: { value: "residencial" } })
+    expect(screen.getByText(/endereço & localização residencial/i)).toBeInTheDocument()
+    expect(screen.queryByText("Dados Pessoais & Contato")).not.toBeInTheDocument()
+
+    // Clear via X button
+    const clearBtn = screen.getByRole("button", { name: /limpar busca/i })
+    fireEvent.click(clearBtn)
+    expect(searchInput).toHaveValue("")
+    expect(screen.getByText("Dados Pessoais & Contato")).toBeInTheDocument()
+  })
+
+  it("shows empty state when search term has no matches and allows resetting", async () => {
+    renderWithClient(<ClientProfile />)
+
+    expect(await screen.findByText("Dados Pessoais & Contato")).toBeInTheDocument()
+
+    const searchInput = screen.getByPlaceholderText(
+      /filtrar dados cadastrais, endereço ou preferências/i,
+    )
+    fireEvent.change(searchInput, { target: { value: "inexistente999xyz" } })
+
+    expect(screen.getByText("Nenhuma seção encontrada")).toBeInTheDocument()
+    expect(screen.queryByText("Dados Pessoais & Contato")).not.toBeInTheDocument()
+
+    const resetBtn = screen.getByRole("button", { name: /limpar filtro/i })
+    fireEvent.click(resetBtn)
+
+    expect(screen.getByText("Dados Pessoais & Contato")).toBeInTheDocument()
+  })
+
   it("passes accessibility checks with 0 axe violations", async () => {
     const { container } = renderWithClient(<ClientProfile />)
 
