@@ -219,39 +219,36 @@ function InteractiveKpiCard({
   return (
     <button
       type="button"
+      title={hint}
       onClick={() => {
         triggerHaptic("selection")
         onClick()
       }}
-      className={`group border-border/60 bg-card focus-visible:ring-primary relative flex cursor-pointer flex-col justify-between overflow-hidden rounded-2xl border p-5 text-left shadow-2xs transition-all duration-200 outline-none hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 ${toneConfig.hoverBorder}`}
+      className={`group border-border/60 bg-card focus-visible:ring-primary relative flex cursor-pointer items-center justify-between overflow-hidden rounded-xl border p-3 text-left shadow-2xs transition-all duration-200 outline-none hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 ${toneConfig.hoverBorder}`}
     >
-      <div className="flex w-full items-start justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         <span
-          className={`flex size-11 items-center justify-center rounded-xl border transition-transform duration-200 group-hover:scale-105 ${toneConfig.halo}`}
+          className={`flex size-9 shrink-0 items-center justify-center rounded-lg border transition-transform duration-200 group-hover:scale-105 ${toneConfig.halo}`}
         >
-          <Icon className="size-5" />
+          <Icon className="size-4.5" />
         </span>
-        <div className="flex items-center gap-1.5">
-          {badgeText && (
-            <span
-              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${toneConfig.badge}`}
-            >
-              {badgeText}
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-foreground text-lg font-bold tracking-tight tabular-nums">
+              {value}
             </span>
-          )}
-          <ChevronRight className="text-muted-foreground/40 group-hover:text-foreground size-4 transition-all duration-200 group-hover:translate-x-0.5" />
+            {badgeText && (
+              <span
+                className={`rounded-full border px-1.5 py-0.5 text-[9.5px] leading-none font-medium tracking-tight ${toneConfig.badge}`}
+              >
+                {badgeText}
+              </span>
+            )}
+          </div>
+          <p className="text-muted-foreground truncate text-xs font-medium">{label}</p>
         </div>
       </div>
-
-      <div className="mt-4">
-        <p className="text-foreground text-2xl font-extrabold tracking-tight tabular-nums sm:text-3xl">
-          {value}
-        </p>
-        <p className="text-muted-foreground mt-1 text-xs font-semibold tracking-wider uppercase">
-          {label}
-        </p>
-        <p className="text-muted-foreground/80 mt-1 text-[11px] leading-tight">{hint}</p>
-      </div>
+      <ChevronRight className="text-muted-foreground/35 group-hover:text-foreground size-4 shrink-0 transition-all duration-200 group-hover:translate-x-0.5" />
     </button>
   )
 }
@@ -603,7 +600,7 @@ export function ClientDashboard() {
       <OnboardingChecklist />
 
       {/* 6. 4 Interactive Command KPI cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <InteractiveKpiCard
           icon={CalendarDays}
           label="Próximos agendamentos"
