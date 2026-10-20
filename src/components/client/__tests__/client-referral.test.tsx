@@ -257,6 +257,57 @@ describe("ClientReferral", () => {
     ).toBeInTheDocument()
   })
 
+  it("toggles between List and Grid view modes in leaderboard", async () => {
+    renderWithClient(<ClientReferral />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Ana Clara Souza")).toBeInTheDocument()
+    })
+
+    const listBtn = screen.getByRole("button", { name: /Visualização em Lista/i })
+    const gridBtn = screen.getByRole("button", { name: /Visualização em Grade/i })
+
+    expect(listBtn.getAttribute("aria-pressed")).toBe("true")
+    expect(gridBtn.getAttribute("aria-pressed")).toBe("false")
+
+    // Switch to Grid mode
+    fireEvent.click(gridBtn)
+    expect(gridBtn.getAttribute("aria-pressed")).toBe("true")
+    expect(listBtn.getAttribute("aria-pressed")).toBe("false")
+
+    // In grid mode, the cards are rendered
+    expect(screen.getByText("Ana Clara Souza")).toBeInTheDocument()
+    expect(screen.getByText("Bruno Carvalho")).toBeInTheDocument()
+
+    // Switch back to List mode
+    fireEvent.click(listBtn)
+    expect(listBtn.getAttribute("aria-pressed")).toBe("true")
+    expect(gridBtn.getAttribute("aria-pressed")).toBe("false")
+  })
+
+  it("filters leaderboard items when typing in search input and clears with 'X'", async () => {
+    renderWithClient(<ClientReferral />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Ana Clara Souza")).toBeInTheDocument()
+    })
+
+    const searchInput = screen.getByPlaceholderText(
+      "Buscar no ranking por nome ou selo...",
+    ) as HTMLInputElement
+    fireEvent.change(searchInput, { target: { value: "Bruno" } })
+
+    expect(screen.getByText("Bruno Carvalho")).toBeInTheDocument()
+    expect(screen.queryByText("Ana Clara Souza")).toBeNull()
+
+    const clearBtn = screen.getByRole("button", { name: /Limpar busca/i })
+    fireEvent.click(clearBtn)
+
+    expect(searchInput.value).toBe("")
+    expect(screen.getByText("Ana Clara Souza")).toBeInTheDocument()
+    expect(screen.getByText("Bruno Carvalho")).toBeInTheDocument()
+  })
+
   it("passes accessibility checks with 0 axe violations", async () => {
     const { container } = renderWithClient(<ClientReferral />)
 
