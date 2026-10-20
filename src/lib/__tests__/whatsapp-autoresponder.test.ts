@@ -47,8 +47,39 @@ vi.mock("@/lib/db", () => ({
     quoteItem: {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
+    user: {
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+    },
     $transaction: vi.fn((promises) => Promise.all(promises)),
   },
+}))
+
+vi.mock("@/lib/loyalty", () => ({
+  getLoyaltyStats: vi.fn().mockResolvedValue({
+    points: 85,
+    tier: "prata",
+    tierName: "Prata",
+    badges: [],
+    streak: 2,
+    totalBookings: 8,
+    totalReviews: 6,
+    nextTier: { name: "Ouro", pointsNeeded: 915 },
+  }),
+}))
+
+vi.mock("@/lib/referral", () => ({
+  getOrCreateReferralCode: vi.fn().mockResolvedValue("SEVTEST1"),
+  getReferralStats: vi.fn().mockResolvedValue({
+    code: "SEVTEST1",
+    inviteLink: "https://severinno.com.br/convite/SEVTEST1",
+    shareText: "",
+    whatsappShareUrl: "",
+    totalInvites: 3,
+    activeFriends: 2,
+    pointsEarned: 100,
+    tierBonusTitle: "Bronze",
+  }),
 }))
 
 vi.mock("@/lib/lytex", () => ({
@@ -107,6 +138,9 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
       expect(menu).toContain("3️⃣ *3* ou *PIX*")
       expect(menu).toContain("4️⃣ *4* ou *SUPORTE*")
       expect(menu).toContain("5️⃣ *5* ou *SERVICOS*")
+      expect(menu).toContain("7️⃣ *7* ou *PONTOS*")
+      expect(menu).toContain("8️⃣ *8* ou *CONVITE*")
+      expect(menu).toContain("9️⃣ *9* ou *REPUTACAO*")
     })
   })
 
@@ -703,6 +737,80 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
       expect(res.replyText).toContain("Solicitação de Orçamento - Severinno")
       expect(res.replyText).toContain("Mariana")
       expect(res.replyText).toContain("O que você precisa que seja feito?")
+    })
+
+    it("processInteractiveCommand reconhece PONTOS e responde com saldo do Clube de Fidelidade", async () => {
+      const res = await processInteractiveCommand({
+        phone: "5533999991111",
+        text: "PONTOS",
+        user: { id: "user-client", name: "Mariana" },
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Clube de Benefícios Severinno")
+      expect(res.replyText).toContain("85 pontos")
+      expect(res.replyText).toContain("🥈 Prata")
+      expect(res.replyText).toContain("Aviso Anti-Cash")
+      expect(enqueueWhatsApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "5533999991111",
+          context: "autoresponder:PONTOS",
+        }),
+      )
+    })
+
+    it("processInteractiveCommand reconhece CONVITE e responde com link do Indique & Ganhe", async () => {
+      const res = await processInteractiveCommand({
+        phone: "5533999991111",
+        text: "CONVITE",
+        user: { id: "user-client", name: "Mariana" },
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Programa Indique & Ganhe")
+      expect(res.replyText).toContain("SEVTEST1")
+      expect(res.replyText).toContain("https://severinno.com.br/convite/SEVTEST1")
+      expect(res.replyText).toContain("50 pontos")
+      expect(enqueueWhatsApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "5533999991111",
+          context: "autoresponder:CONVITE",
+        }),
+      )
+    })
+
+    it("processInteractiveCommand reconhece REPUTACAO para prestador e responde com cartão de reputação", async () => {
+      vi.mocked(db.user.findUnique).mockResolvedValueOnce({
+        id: "prov-valadares",
+        name: "Carlos Eletricista",
+        slug: "carlos-eletricista",
+        role: "PROVIDER",
+        avgRating: 4.9,
+        reviewCount: 32,
+        city: "Governador Valadares, MG",
+        _count: {
+          bookingsAsProvider: 45,
+        },
+      } as any)
+
+      const res = await processInteractiveCommand({
+        phone: "5533988887777",
+        text: "REPUTACAO",
+        user: { id: "prov-valadares", name: "Carlos Eletricista" },
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Cartão Profissional Severinno")
+      expect(res.replyText).toContain("Carlos Eletricista")
+      expect(res.replyText).toContain("4.9")
+      expect(res.replyText).toContain("45 serviços concluídos")
+      expect(res.replyText).toContain("https://severinno.com.br/u/carlos-eletricista")
+      expect(enqueueWhatsApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "5533988887777",
+          context: "autoresponder:REPUTACAO",
+        }),
+      )
     })
   })
 })

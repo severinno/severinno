@@ -32,6 +32,7 @@ import { PullToRefresh } from "@/components/shared/pull-to-refresh"
 import { ProviderTransitHud } from "@/components/provider/provider-transit-hud"
 import { useLocationBroadcaster } from "@/hooks/use-location-broadcaster"
 import { apiGet, apiPatch } from "@/lib/api"
+import { cacheOfflineBookings, getCachedOfflineBookings } from "@/lib/offline-bookings-cache"
 import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
@@ -404,10 +405,35 @@ export function ProviderBookings() {
     setMediationBooking(b)
   }
 
-  // Fetch all bookings once for tab counts + table data
+  const [isOfflineFallback, setIsOfflineFallback] = React.useState(false)
+
+  // Fetch all bookings once for tab counts + table data com fallback em IndexedDB
   const allQuery = useQuery<{ items: Booking[]; total: number }>({
     queryKey: ["provider", "bookings", "all"],
-    queryFn: async () => apiGet("/api/bookings", { role: "PROVIDER", page: 1, limit: 200 }),
+    queryFn: async () => {
+      try {
+        const res = await apiGet<{ items: Booking[]; total: number }>("/api/bookings", {
+          role: "PROVIDER",
+          page: 1,
+          limit: 200,
+        })
+        if (res?.items) {
+          cacheOfflineBookings(res.items).catch(() => {})
+          setIsOfflineFallback(false)
+        }
+        return res
+      } catch (err) {
+        const cached = await getCachedOfflineBookings()
+        if (cached.items.length > 0) {
+          setIsOfflineFallback(true)
+          return {
+            items: cached.items as unknown as Booking[],
+            total: cached.items.length,
+          }
+        }
+        throw err
+      }
+    },
   })
 
   const allBookings = React.useMemo(() => allQuery.data?.items ?? [], [allQuery.data?.items])
@@ -499,6 +525,20 @@ export function ProviderBookings() {
           </Badge>
         </div>
       </div>
+
+      {isOfflineFallback && (
+        <div
+          role="status"
+          className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5 text-xs font-medium text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-300"
+        >
+          <Info className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <span>
+            <strong>Modo Offline Ativo:</strong> Exibindo agendamentos salvos no dispositivo. Novas
+            atualizações serão sincronizadas automaticamente assim que a conexão 4G/Wi-Fi for
+            restabelecida.
+          </span>
+        </div>
+      )}
 
       {/* Pipeline Strip / Cartões de Status (Nielsen #1: Visibilidade do estado do sistema) */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

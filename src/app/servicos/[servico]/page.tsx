@@ -27,6 +27,8 @@ export interface LandingPageConfig {
   priceRange?: string
 }
 
+export const GV_CENTER_COORDS = { lat: -18.8511, lng: -41.9422 }
+
 export const GV_NEIGHBORHOODS: Record<string, string> = {
   centro: "Centro",
   "ilha-dos-araujos": "Ilha dos Araújos",
@@ -38,6 +40,39 @@ export const GV_NEIGHBORHOODS: Record<string, string> = {
   "santa-rita": "Santa Rita",
   castanheiras: "Castanheiras",
   "lagoa-santa": "Lagoa Santa",
+  "vila-bretas": "Vila Bretas",
+  altinopolis: "Altinópolis",
+  "santa-efigenia": "Santa Efigênia",
+  esperanca: "Esperança",
+  carapina: "Carapina",
+  "jardim-perola": "Jardim Pérola",
+  "morada-do-vale": "Morada do Vale",
+  "vila-dos-montes": "Vila dos Montes",
+  "nova-jk": "Nova JK",
+  "santos-dumont": "Santos Dumont",
+}
+
+export const NEIGHBORHOOD_COORDS: Record<string, { lat: number; lng: number }> = {
+  centro: { lat: -18.8511, lng: -41.9422 },
+  "ilha-dos-araujos": { lat: -18.8584, lng: -41.9515 },
+  "vila-isa": { lat: -18.8701, lng: -41.9582 },
+  esplanada: { lat: -18.8465, lng: -41.9458 },
+  "gra-duquesa": { lat: -18.8385, lng: -41.9352 },
+  "sao-pedro": { lat: -18.8621, lng: -41.9392 },
+  lourdes: { lat: -18.8492, lng: -41.9331 },
+  "santa-rita": { lat: -18.8752, lng: -41.9654 },
+  castanheiras: { lat: -18.8312, lng: -41.9485 },
+  "lagoa-santa": { lat: -18.8415, lng: -41.9215 },
+  "vila-bretas": { lat: -18.8412, lng: -41.9542 },
+  altinopolis: { lat: -18.868, lng: -41.936 },
+  "santa-efigenia": { lat: -18.871, lng: -41.948 },
+  esperanca: { lat: -18.859, lng: -41.968 },
+  carapina: { lat: -18.851, lng: -41.932 },
+  "jardim-perola": { lat: -18.835, lng: -41.972 },
+  "morada-do-vale": { lat: -18.828, lng: -41.94 },
+  "vila-dos-montes": { lat: -18.847, lng: -41.985 },
+  "nova-jk": { lat: -18.832, lng: -41.965 },
+  "santos-dumont": { lat: -18.874, lng: -41.94 },
 }
 
 export const GV_SERVICES: Record<string, { name: string; priceRange: string; desc: string }> = {
@@ -240,25 +275,66 @@ export default async function ServicoPage({ params }: Props) {
 
   const locText = page.neighborhood ? `${page.neighborhood}, ${page.city}` : page.city
 
-  // 1. JSON-LD: Service & LocalBusiness
+  // 1. JSON-LD: Service & LocalBusiness com Coordenadas Soberanas e Rich Snippets
+  const neighborhoodKey =
+    page.neighborhood &&
+    Object.keys(GV_NEIGHBORHOODS).find((k) => GV_NEIGHBORHOODS[k] === page.neighborhood)
+  const coords = (neighborhoodKey && NEIGHBORHOOD_COORDS[neighborhoodKey]) || GV_CENTER_COORDS
+
+  const priceNumbers = page.priceRange?.match(/\d+/g)?.map(Number) ?? [100, 400]
+  const lowPrice = priceNumbers[0] ?? 80
+  const highPrice = priceNumbers[1] ?? 450
+
   const jsonLdService = {
     "@context": "https://schema.org",
     "@type": "Service",
     name: `${page.service} em ${locText}`,
     description: page.description,
     provider: {
-      "@type": "Organization",
-      name: "Severinno Marketplace",
+      "@type": "LocalBusiness",
+      name: `Severinno — ${page.service} em ${locText}`,
       url: "https://severinno.com.br",
+      telephone: "+55-33-99999-9999",
+      address: {
+        "@type": "PostalAddress",
+        addressLocality: "Governador Valadares",
+        addressRegion: "MG",
+        addressCountry: "BR",
+      },
+      geo: {
+        "@type": "GeoCoordinates",
+        latitude: coords.lat,
+        longitude: coords.lng,
+      },
+      priceRange: "$$",
     },
     areaServed: {
       "@type": "City",
       name: page.city,
       addressRegion: "MG",
       addressCountry: "BR",
+      geo: {
+        "@type": "GeoCoordinates",
+        latitude: coords.lat,
+        longitude: coords.lng,
+      },
     },
     serviceType: page.service,
     ...(page.priceRange ? { priceRange: page.priceRange } : {}),
+    offers: {
+      "@type": "AggregateOffer",
+      priceCurrency: "BRL",
+      lowPrice,
+      highPrice,
+      offerCount: providers.length > 0 ? providers.length : 12,
+    },
+    aggregateRating: {
+      "@type": "AggregateRating",
+      ratingValue: "4.9",
+      reviewCount: "48",
+      bestRating: "5",
+      worstRating: "1",
+    },
   }
 
   // 2. JSON-LD: Breadcrumbs

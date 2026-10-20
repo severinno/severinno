@@ -67,7 +67,10 @@ export function getMainMenuText(userName?: string | null): string {
     `3️⃣ *3* ou *PIX* — Instruções e pagamentos pendentes\n` +
     `4️⃣ *4* ou *SUPORTE* — Falar com suporte humano\n` +
     `5️⃣ *5* ou *SERVICOS* — Catálogo de serviços em Governador Valadares\n` +
-    `6️⃣ *6* ou *ORCAR* — Solicitar novo orçamento em Governador Valadares\n\n` +
+    `6️⃣ *6* ou *ORCAR* — Solicitar novo orçamento em Governador Valadares\n` +
+    `7️⃣ *7* ou *PONTOS* — Saldo no Clube de Benefícios (Fidelidade)\n` +
+    `8️⃣ *8* ou *CONVITE* — Indique & Ganhe (seu link exclusivo)\n` +
+    `9️⃣ *9* ou *REPUTACAO* — Cartão profissional (para prestadores)\n\n` +
     `💡 _Dica: Digite *MENU* a qualquer momento para ver estas opções novamente._`
   )
 }
@@ -248,6 +251,125 @@ export async function getPixHelpText(userId: string): Promise<string> {
   } catch (error) {
     autoresponderLogger.error({ error, userId }, "Erro ao consultar pendências PIX")
     return "❌ Erro ao consultar pendências financeiras. Acesse o painel pelo aplicativo."
+  }
+}
+
+/**
+ * Consulta saldo de fidelidade e categoria no Clube de Benefícios Severinno
+ */
+export async function getLoyaltyStatusText(
+  userId: string,
+  userName?: string | null,
+): Promise<string> {
+  try {
+    const { getLoyaltyStats } = await import("@/lib/loyalty")
+    const stats = await getLoyaltyStats(userId)
+    const tierEmoji: Record<string, string> = {
+      bronze: "🥉 Bronze",
+      prata: "🥈 Prata",
+      ouro: "🥇 Ouro",
+      diamante: "💎 Diamante",
+    }
+    const tierDisplay = tierEmoji[stats.tier] || "🥉 Bronze"
+
+    return (
+      `🎁 *Clube de Benefícios Severinno*\n\n` +
+      `Olá${userName ? `, *${userName}*` : ""}! Aqui está seu saldo de fidelidade:\n\n` +
+      `• *Saldo Atual:* ${stats.points} pontos\n` +
+      `• *Categoria:* ${tierDisplay}\n` +
+      `• *Serviços Realizados:* ${stats.totalBookings}\n\n` +
+      `🌟 *Como acumular mais pontos:*\n` +
+      `• Indique amigos e ganhe *50 pontos* após o primeiro serviço realizado\n` +
+      `• Contrate e avalie serviços com garantia de custódia PIX\n\n` +
+      `🛡️ *Aviso Anti-Cash:* Os pontos do Clube Severinno são exclusivos para resgate de benefícios, descontos e ferramentas na plataforma (vedado saque em dinheiro).\n\n` +
+      `Acesse a central no app para resgatar: https://severinno.com.br`
+    )
+  } catch (error) {
+    autoresponderLogger.error({ error, userId }, "Erro ao consultar saldo de pontos")
+    return "❌ Erro ao consultar seu saldo no Clube de Benefícios. Tente novamente mais tarde."
+  }
+}
+
+/**
+ * Retorna código exclusivo e link canônico do programa Indique & Ganhe
+ */
+export async function getReferralInviteText(userId: string): Promise<string> {
+  try {
+    const { getOrCreateReferralCode, getReferralStats } = await import("@/lib/referral")
+    const code = await getOrCreateReferralCode(userId)
+    const stats = await getReferralStats(userId).catch(() => ({
+      totalInvites: 0,
+      activeFriends: 0,
+      pointsEarned: 0,
+    }))
+
+    return (
+      `🎟️ *Programa Indique & Ganhe — Severinno*\n\n` +
+      `Convide amigos, familiares e vizinhos para contratarem serviços em Governador Valadares com 100% de garantia de custódia!\n\n` +
+      `• *Seu Código:* ${code}\n` +
+      `• *Seu Link:* https://severinno.com.br/convite/${code}\n` +
+      `• *Amigos convidados:* ${stats.totalInvites} (${stats.activeFriends} serviços concluídos)\n\n` +
+      `🎁 *Benefícios:*\n` +
+      `• Você ganha *50 pontos* quando seu amigo concluir o 1º serviço pago\n` +
+      `• Seu amigo ganha *25 pontos* de boas-vindas logo no cadastro!\n\n` +
+      `📲 *Mensagem pronta para encaminhar:*\n` +
+      `_"Oi! Conheça o Severinno para contratar profissionais verificados em Valadares com pagamento protegido por custódia PIX. Acesse com meu convite: https://severinno.com.br/convite/${code}"_`
+    )
+  } catch (error) {
+    autoresponderLogger.error({ error, userId }, "Erro ao gerar link de indicação")
+    return "❌ Erro ao consultar seu código de indicação. Tente novamente mais tarde."
+  }
+}
+
+/**
+ * Retorna o Cartão de Reputação Social do prestador com link de perfil público
+ */
+export async function getProviderReputationCardText(userId: string): Promise<string> {
+  try {
+    const provider = await db.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        role: true,
+        avgRating: true,
+        reviewCount: true,
+        city: true,
+        _count: {
+          select: {
+            bookingsAsProvider: { where: { status: "COMPLETED" } },
+          },
+        },
+      },
+    })
+
+    if (!provider || provider.role !== "PROVIDER") {
+      return (
+        `ℹ️ O Cartão de Reputação Profissional é exclusivo para prestadores cadastrados no Severinno.\n\n` +
+        `Para se cadastrar como profissional verificado em Governador Valadares, acesse: https://severinno.com.br/register?role=provider`
+      )
+    }
+
+    const rating = provider.avgRating ? Number(provider.avgRating).toFixed(1) : "5.0"
+    const completed = provider._count?.bookingsAsProvider ?? 0
+    const profileSlug = provider.slug || provider.id
+    const profileUrl = `https://severinno.com.br/u/${profileSlug}`
+
+    return (
+      `⭐ *Cartão Profissional Severinno*\n\n` +
+      `*${provider.name}*\n` +
+      `📍 ${provider.city || "Governador Valadares, MG"}\n` +
+      `⭐ *${rating}* (${provider.reviewCount} avaliações de clientes)\n` +
+      `🛠️ *${completed} serviços concluídos* com garantia de custódia\n` +
+      `🛡️ *Identidade Verificada* pela plataforma\n\n` +
+      `🔗 *Seu Perfil Público Oficial:*\n${profileUrl}\n\n` +
+      `📲 *Mensagem para enviar aos seus clientes:*\n` +
+      `_"Olá! Agende meus serviços com garantia de custódia e pagamento seguro pelo Severinno: ${profileUrl}"_`
+    )
+  } catch (error) {
+    autoresponderLogger.error({ error, userId }, "Erro ao gerar cartão de reputação")
+    return "❌ Erro ao consultar seu cartão de reputação. Tente novamente mais tarde."
   }
 }
 
@@ -940,6 +1062,40 @@ export async function processInteractiveCommand(
     normalized.startsWith("PAGAR ORCAMENTO ")
   ) {
     replyText = await handleInstantQuoteHiring(ctx.user.id, ctx.phone, explicitRef)
+  }
+  // 11. Pontos / Clube de Fidelidade
+  else if (
+    normalized === "7" ||
+    normalized === "PONTOS" ||
+    normalized === "PONTO" ||
+    normalized === "FIDELIDADE" ||
+    normalized === "CLUBE" ||
+    normalized === "MEUS PONTOS"
+  ) {
+    replyText = await getLoyaltyStatusText(ctx.user.id, ctx.user.name)
+  }
+  // 12. Convite / Indique & Ganhe
+  else if (
+    normalized === "8" ||
+    normalized === "CONVITE" ||
+    normalized === "INDICACAO" ||
+    normalized === "INDIQUE" ||
+    normalized === "INDICAR" ||
+    normalized === "MEU CONVITE" ||
+    normalized === "MEU LINK"
+  ) {
+    replyText = await getReferralInviteText(ctx.user.id)
+  }
+  // 13. Reputação / Cartão do Prestador
+  else if (
+    normalized === "9" ||
+    normalized === "REPUTACAO" ||
+    normalized === "CARTAO" ||
+    normalized === "MEU CARTAO" ||
+    normalized === "PERFIL" ||
+    normalized === "MEU PERFIL"
+  ) {
+    replyText = await getProviderReputationCardText(ctx.user.id)
   }
 
   if (replyText) {
