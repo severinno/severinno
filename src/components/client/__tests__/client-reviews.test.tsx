@@ -283,6 +283,49 @@ describe("ClientReviews — rendering and structure", () => {
       expect(screen.getByText("Avalie em 30s")).toBeDefined()
     })
   })
+
+  it("toggles between List and Grid view modes with appropriate aria-pressed attributes", async () => {
+    renderWithClient(<ClientReviews />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Carlos Encanador")).toBeDefined()
+    })
+
+    const listBtn = screen.getByRole("button", { name: /Visualização em Lista/i })
+    const gridBtn = screen.getByRole("button", { name: /Visualização em Grade/i })
+
+    // Defaults to List mode
+    expect(listBtn.getAttribute("aria-pressed")).toBe("true")
+    expect(gridBtn.getAttribute("aria-pressed")).toBe("false")
+
+    // Switch to Grid mode
+    fireEvent.click(gridBtn)
+    expect(gridBtn.getAttribute("aria-pressed")).toBe("true")
+    expect(listBtn.getAttribute("aria-pressed")).toBe("false")
+
+    // Switch back to List mode
+    fireEvent.click(listBtn)
+    expect(listBtn.getAttribute("aria-pressed")).toBe("true")
+    expect(gridBtn.getAttribute("aria-pressed")).toBe("false")
+  })
+
+  it("clears search input when clicking the clear 'X' button", async () => {
+    renderWithClient(<ClientReviews />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Carlos Encanador")).toBeDefined()
+    })
+
+    const searchInput = screen.getByPlaceholderText(
+      "Filtrar por prestador ou serviço...",
+    ) as HTMLInputElement
+    fireEvent.change(searchInput, { target: { value: "Carlos" } })
+    expect(searchInput.value).toBe("Carlos")
+
+    const clearBtn = screen.getByRole("button", { name: /Limpar busca/i })
+    fireEvent.click(clearBtn)
+    expect(searchInput.value).toBe("")
+  })
 })
 
 describe("ClientReviews — accessibility", () => {
