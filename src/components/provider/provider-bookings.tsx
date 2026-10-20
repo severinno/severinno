@@ -22,9 +22,13 @@ import {
   Sparkles,
   X,
   ClipboardCheck,
+  HelpCircle,
 } from "lucide-react"
 
 import { ServiceDeliveryReportModal } from "@/components/shared/service-delivery-report-modal"
+import { ServiceCompletionCelebrationDialog } from "@/components/shared/service-completion-celebration-dialog"
+import { QuickMediationModal } from "@/components/shared/quick-mediation-modal"
+import { PullToRefresh } from "@/components/shared/pull-to-refresh"
 import { ProviderTransitHud } from "@/components/provider/provider-transit-hud"
 import { useLocationBroadcaster } from "@/hooks/use-location-broadcaster"
 import { apiGet, apiPatch } from "@/lib/api"
@@ -383,6 +387,8 @@ export function ProviderBookings() {
   const [reportBooking, setReportBooking] = React.useState<Booking | null>(null)
   const [reportOpen, setReportOpen] = React.useState(false)
   const [transitBooking, setTransitBooking] = React.useState<Booking | null>(null)
+  const [celebrationBooking, setCelebrationBooking] = React.useState<Booking | null>(null)
+  const [mediationBooking, setMediationBooking] = React.useState<Booking | null>(null)
   const [actioningId, setActioningId] = React.useState<string | null>(null)
 
   const openReport = (b: Booking) => {
@@ -392,6 +398,10 @@ export function ProviderBookings() {
 
   const openTransitHud = (b: Booking) => {
     setTransitBooking(b)
+  }
+
+  const openMediation = (b: Booking) => {
+    setMediationBooking(b)
   }
 
   // Fetch all bookings once for tab counts + table data
@@ -606,225 +616,231 @@ export function ProviderBookings() {
         </div>
       </div>
 
-      {allQuery.isLoading ? (
-        <div className="grid gap-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-muted/20 h-16 animate-pulse rounded-2xl border" />
-          ))}
-        </div>
-      ) : pageItems.length === 0 ? (
-        counts.all > 0 ? (
-          <div className="bg-muted/10 mx-auto flex max-w-md flex-col items-center gap-3 rounded-2xl border border-dashed p-8 text-center">
-            <div className="bg-muted text-muted-foreground flex size-12 items-center justify-center rounded-2xl shadow-xs">
-              <CalendarCheck className="size-6 opacity-75" />
+      <PullToRefresh onRefresh={() => qc.invalidateQueries({ queryKey: ["provider", "bookings"] })}>
+        {allQuery.isLoading ? (
+          <div className="grid gap-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-muted/20 h-16 animate-pulse rounded-2xl border" />
+            ))}
+          </div>
+        ) : pageItems.length === 0 ? (
+          counts.all > 0 ? (
+            <div className="bg-muted/10 mx-auto flex max-w-md flex-col items-center gap-3 rounded-2xl border border-dashed p-8 text-center">
+              <div className="bg-muted text-muted-foreground flex size-12 items-center justify-center rounded-2xl shadow-xs">
+                <CalendarCheck className="size-6 opacity-75" />
+              </div>
+              <div>
+                <p className="text-foreground text-sm font-semibold">
+                  Nenhum agendamento encontrado
+                </p>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  {search.trim()
+                    ? `Nenhum resultado corresponde à busca "${search}".`
+                    : `Nenhum agendamento com status "${STATUS_TABS.find((t) => t.value === tab)?.label}".`}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                {search.trim() && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSearch("")}
+                    className="h-8 text-xs"
+                  >
+                    Limpar busca
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setTab("all")}
+                  className="text-muted-foreground h-8 text-xs"
+                >
+                  Ver todos ({counts.all})
+                </Button>
+              </div>
             </div>
-            <div>
-              <p className="text-foreground text-sm font-semibold">Nenhum agendamento encontrado</p>
-              <p className="text-muted-foreground mt-1 text-xs">
-                {search.trim()
-                  ? `Nenhum resultado corresponde à busca "${search}".`
-                  : `Nenhum agendamento com status "${STATUS_TABS.find((t) => t.value === tab)?.label}".`}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-              {search.trim() && (
+          ) : (
+            <div className="bg-muted/10 mx-auto flex max-w-lg flex-col items-center gap-4 rounded-2xl border border-dashed p-10 text-center">
+              <div className="bg-primary/10 text-primary flex size-14 items-center justify-center rounded-2xl">
+                <Sparkles className="size-7" />
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-foreground text-base font-semibold">
+                  Seus agendamentos aparecerão aqui
+                </p>
+                <p className="text-muted-foreground max-w-sm text-xs leading-relaxed">
+                  Quando clientes em Governador Valadares contratarem seus serviços pela vitrine,
+                  você receberá notificações em tempo real para confirmar e atender.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setSearch("")}
-                  className="h-8 text-xs"
+                  onClick={() => navigate("provider.expediente")}
+                  className="h-8 gap-1.5 text-xs"
                 >
-                  Limpar busca
+                  <Clock className="size-3.5" />
+                  Configurar expediente
                 </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setTab("all")}
-                className="text-muted-foreground h-8 text-xs"
-              >
-                Ver todos ({counts.all})
-              </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate("provider.services")}
+                  className="h-8 gap-1.5 text-xs"
+                >
+                  Gerenciar catálogo de serviços
+                </Button>
+              </div>
             </div>
-          </div>
+          )
         ) : (
-          <div className="bg-muted/10 mx-auto flex max-w-lg flex-col items-center gap-4 rounded-2xl border border-dashed p-10 text-center">
-            <div className="bg-primary/10 text-primary flex size-14 items-center justify-center rounded-2xl">
-              <Sparkles className="size-7" />
-            </div>
-            <div className="space-y-1.5">
-              <p className="text-foreground text-base font-semibold">
-                Seus agendamentos aparecerão aqui
-              </p>
-              <p className="text-muted-foreground max-w-sm text-xs leading-relaxed">
-                Quando clientes em Governador Valadares contratarem seus serviços pela vitrine, você
-                receberá notificações em tempo real para confirmar e atender.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate("provider.expediente")}
-                className="h-8 gap-1.5 text-xs"
-              >
-                <Clock className="size-3.5" />
-                Configurar expediente
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate("provider.services")}
-                className="h-8 gap-1.5 text-xs"
-              >
-                Gerenciar catálogo de serviços
-              </Button>
-            </div>
-          </div>
-        )
-      ) : (
-        <>
-          {/* Desktop Table View */}
-          <div className="bg-card hidden overflow-hidden rounded-2xl border shadow-xs md:block">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40 h-11 border-b">
-                  <TableHead className="text-muted-foreground pl-4 text-[11px] font-semibold tracking-wider uppercase">
-                    Cliente & Local
-                  </TableHead>
-                  <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
-                    Serviço Solicitado
-                  </TableHead>
-                  <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
-                    Data Agendada
-                  </TableHead>
-                  <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
-                    Status
-                  </TableHead>
-                  <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
-                    Pagamento
-                  </TableHead>
-                  <TableHead className="text-muted-foreground pr-4 text-right text-[11px] font-semibold tracking-wider uppercase">
-                    Valor Líquido
-                  </TableHead>
-                  <TableHead className="w-12 pr-4" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pageItems.map((b) => (
-                  <TableRow
-                    key={b.id}
-                    className="hover:bg-muted/30 h-16 border-b transition-colors last:border-b-0"
-                  >
-                    <TableCell className="pl-4">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="size-9 shrink-0 border shadow-xs">
-                          {b.client.avatarUrl ? (
-                            <AvatarImage src={b.client.avatarUrl} alt={b.client.name} />
-                          ) : null}
-                          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-                            {initials(b.client.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <button
-                            type="button"
-                            onClick={() => openDetail(b)}
-                            className="text-foreground block truncate text-left text-sm font-semibold hover:underline"
-                          >
-                            {b.client.name}
-                          </button>
-                          <span className="text-muted-foreground flex max-w-[220px] items-center gap-1 truncate text-[11px]">
-                            <MapPin className="text-muted-foreground/70 size-3 shrink-0" />
-                            <span className="truncate">{b.address}</span>
+          <>
+            {/* Desktop Table View */}
+            <div className="bg-card hidden overflow-hidden rounded-2xl border shadow-xs md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40 h-11 border-b">
+                    <TableHead className="text-muted-foreground pl-4 text-[11px] font-semibold tracking-wider uppercase">
+                      Cliente & Local
+                    </TableHead>
+                    <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
+                      Serviço Solicitado
+                    </TableHead>
+                    <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
+                      Data Agendada
+                    </TableHead>
+                    <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
+                      Status
+                    </TableHead>
+                    <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
+                      Pagamento
+                    </TableHead>
+                    <TableHead className="text-muted-foreground pr-4 text-right text-[11px] font-semibold tracking-wider uppercase">
+                      Valor Líquido
+                    </TableHead>
+                    <TableHead className="w-12 pr-4" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pageItems.map((b) => (
+                    <TableRow
+                      key={b.id}
+                      className="hover:bg-muted/30 h-16 border-b transition-colors last:border-b-0"
+                    >
+                      <TableCell className="pl-4">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="size-9 shrink-0 border shadow-xs">
+                            {b.client.avatarUrl ? (
+                              <AvatarImage src={b.client.avatarUrl} alt={b.client.name} />
+                            ) : null}
+                            <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                              {initials(b.client.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <button
+                              type="button"
+                              onClick={() => openDetail(b)}
+                              className="text-foreground block truncate text-left text-sm font-semibold hover:underline"
+                            >
+                              {b.client.name}
+                            </button>
+                            <span className="text-muted-foreground flex max-w-[220px] items-center gap-1 truncate text-[11px]">
+                              <MapPin className="text-muted-foreground/70 size-3 shrink-0" />
+                              <span className="truncate">{b.address}</span>
+                            </span>
+                          </div>
+                        </div>
+                      </TableCell>
+
+                      <TableCell className="max-w-[200px]">
+                        <p className="text-foreground truncate text-sm font-medium">
+                          {b.service.title}
+                        </p>
+                        {b.quantity > 1 && (
+                          <p className="text-muted-foreground text-[11px]">{b.quantity} un.</p>
+                        )}
+                      </TableCell>
+
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="text-foreground text-xs font-semibold tabular-nums">
+                            {formatDate(b.scheduledAt)}
+                          </span>
+                          <span className="text-muted-foreground text-[11px] tabular-nums">
+                            às {formatTime(b.scheduledAt)}
                           </span>
                         </div>
-                      </div>
-                    </TableCell>
+                      </TableCell>
 
-                    <TableCell className="max-w-[200px]">
-                      <p className="text-foreground truncate text-sm font-medium">
-                        {b.service.title}
-                      </p>
-                      {b.quantity > 1 && (
-                        <p className="text-muted-foreground text-[11px]">{b.quantity} un.</p>
-                      )}
-                    </TableCell>
+                      <TableCell>
+                        <BookingStatusBadge status={b.status} />
+                      </TableCell>
 
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="text-foreground text-xs font-semibold tabular-nums">
-                          {formatDate(b.scheduledAt)}
-                        </span>
-                        <span className="text-muted-foreground text-[11px] tabular-nums">
-                          às {formatTime(b.scheduledAt)}
-                        </span>
-                      </div>
-                    </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-0.5">
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                              PAY_BADGE_STYLES[b.paymentStatus],
+                            )}
+                          >
+                            {PAYMENT_STATUS_LABELS[b.paymentStatus]}
+                          </Badge>
+                          <span className="text-muted-foreground pl-0.5 text-[10px]">
+                            {PAYMENT_METHOD_LABELS[b.paymentMethod]}
+                          </span>
+                        </div>
+                      </TableCell>
 
-                    <TableCell>
-                      <BookingStatusBadge status={b.status} />
-                    </TableCell>
+                      <TableCell className="text-foreground pr-4 text-right text-sm font-bold tabular-nums">
+                        {formatBRL(b.amount)}
+                      </TableCell>
 
-                    <TableCell>
-                      <div className="flex flex-col gap-0.5">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                            PAY_BADGE_STYLES[b.paymentStatus],
-                          )}
-                        >
-                          {PAYMENT_STATUS_LABELS[b.paymentStatus]}
-                        </Badge>
-                        <span className="text-muted-foreground pl-0.5 text-[10px]">
-                          {PAYMENT_METHOD_LABELS[b.paymentMethod]}
-                        </span>
-                      </div>
-                    </TableCell>
+                      <TableCell className="pr-4">
+                        <BookingActions
+                          booking={b}
+                          actioning={actioningId === b.id}
+                          onDetail={() => openDetail(b)}
+                          onMessage={() => messageClient(b.clientId)}
+                          onConfirm={() => updateStatus(b, "CONFIRMED", "Confirmado")}
+                          onStart={() => updateStatus(b, "IN_PROGRESS", "Iniciado")}
+                          onCancel={() => updateStatus(b, "CANCELLED", "Cancelado")}
+                          onReport={() => openReport(b)}
+                          onTransitHud={() => openTransitHud(b)}
+                          onMediate={() => openMediation(b)}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
 
-                    <TableCell className="text-foreground pr-4 text-right text-sm font-bold tabular-nums">
-                      {formatBRL(b.amount)}
-                    </TableCell>
-
-                    <TableCell className="pr-4">
-                      <BookingActions
-                        booking={b}
-                        actioning={actioningId === b.id}
-                        onDetail={() => openDetail(b)}
-                        onMessage={() => messageClient(b.clientId)}
-                        onConfirm={() => updateStatus(b, "CONFIRMED", "Confirmado")}
-                        onStart={() => updateStatus(b, "IN_PROGRESS", "Iniciado")}
-                        onCancel={() => updateStatus(b, "CANCELLED", "Cancelado")}
-                        onReport={() => openReport(b)}
-                        onTransitHud={() => openTransitHud(b)}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Mobile Cards View */}
-          <div className="grid gap-3 md:hidden">
-            {pageItems.map((b) => (
-              <BookingCard
-                key={b.id}
-                booking={b}
-                actioning={actioningId === b.id}
-                onDetail={() => openDetail(b)}
-                onMessage={() => messageClient(b.clientId)}
-                onConfirm={() => updateStatus(b, "CONFIRMED", "Confirmado")}
-                onStart={() => updateStatus(b, "IN_PROGRESS", "Iniciado")}
-                onCancel={() => updateStatus(b, "CANCELLED", "Cancelado")}
-                onReport={() => openReport(b)}
-                onTransitHud={() => openTransitHud(b)}
-              />
-            ))}
-          </div>
-        </>
-      )}
+            {/* Mobile Cards View */}
+            <div className="grid gap-3 md:hidden">
+              {pageItems.map((b) => (
+                <BookingCard
+                  key={b.id}
+                  booking={b}
+                  actioning={actioningId === b.id}
+                  onDetail={() => openDetail(b)}
+                  onMessage={() => messageClient(b.clientId)}
+                  onConfirm={() => updateStatus(b, "CONFIRMED", "Confirmado")}
+                  onStart={() => updateStatus(b, "IN_PROGRESS", "Iniciado")}
+                  onCancel={() => updateStatus(b, "CANCELLED", "Cancelado")}
+                  onReport={() => openReport(b)}
+                  onTransitHud={() => openTransitHud(b)}
+                  onMediate={() => openMediation(b)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </PullToRefresh>
 
       {/* Paginação */}
       {pageCount > 1 && (
@@ -873,6 +889,8 @@ export function ProviderBookings() {
           isCompleted={reportBooking.status === "COMPLETED"}
           onSuccess={() => {
             qc.invalidateQueries({ queryKey: ["provider", "bookings"] })
+            qc.invalidateQueries({ queryKey: ["provider", "wallet"] })
+            setCelebrationBooking(reportBooking)
           }}
         />
       )}
@@ -887,6 +905,34 @@ export function ProviderBookings() {
           serviceTitle={transitBooking.service.title}
           onClose={() => setTransitBooking(null)}
           onCheckinSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["provider", "bookings"] })
+          }}
+        />
+      )}
+
+      <ServiceCompletionCelebrationDialog
+        open={Boolean(celebrationBooking)}
+        onOpenChange={(open) => {
+          if (!open) setCelebrationBooking(null)
+        }}
+        bookingTitle={celebrationBooking?.service?.title}
+        amount={celebrationBooking?.amount}
+        pointsAwarded={10}
+        geofenceVerified={true}
+        role="PROVIDER"
+      />
+
+      {mediationBooking && (
+        <QuickMediationModal
+          open={Boolean(mediationBooking)}
+          onOpenChange={(open) => {
+            if (!open) setMediationBooking(null)
+          }}
+          bookingId={mediationBooking.id}
+          serviceTitle={mediationBooking.service.title}
+          peerName={mediationBooking.client.name}
+          userRole="PROVIDER"
+          onSuccess={() => {
             qc.invalidateQueries({ queryKey: ["provider", "bookings"] })
           }}
         />
@@ -909,6 +955,7 @@ function BookingActions({
   onCancel,
   onReport,
   onTransitHud,
+  onMediate,
 }: {
   booking: Booking
   actioning: boolean
@@ -919,6 +966,7 @@ function BookingActions({
   onCancel: () => void
   onReport?: () => void
   onTransitHud?: () => void
+  onMediate?: () => void
 }) {
   return (
     <div className="flex items-center justify-end gap-1.5">
@@ -1000,6 +1048,14 @@ function BookingActions({
           <DropdownMenuItem onClick={onDetail}>
             <Info className="text-muted-foreground mr-2 size-4" /> Ver detalhes
           </DropdownMenuItem>
+          {onMediate &&
+            (booking.status === "PENDING" ||
+              booking.status === "CONFIRMED" ||
+              booking.status === "IN_PROGRESS") && (
+              <DropdownMenuItem onClick={onMediate}>
+                <HelpCircle className="mr-2 size-4 text-amber-500" /> Imprevisto / Atraso
+              </DropdownMenuItem>
+            )}
           {booking.status === "IN_PROGRESS" && onTransitHud && (
             <DropdownMenuItem onClick={onTransitHud}>
               <Navigation className="mr-2 size-4 text-sky-500" /> Modo Trânsito (HUD)
@@ -1078,6 +1134,7 @@ function BookingCard({
   onCancel,
   onReport,
   onTransitHud,
+  onMediate,
 }: {
   booking: Booking
   actioning: boolean
@@ -1088,6 +1145,7 @@ function BookingCard({
   onCancel: () => void
   onReport?: () => void
   onTransitHud?: () => void
+  onMediate?: () => void
 }) {
   return (
     <div className="bg-card flex flex-col gap-3 rounded-2xl border p-4 shadow-xs">
@@ -1120,32 +1178,203 @@ function BookingCard({
         </span>
       </div>
 
+      {/* Row 1: Valor + Status do Pagamento + Menu de Ações Secundárias */}
       <div className="flex items-center justify-between gap-2 pt-1">
         <div className="flex items-center gap-2">
-          <span className="text-primary text-sm font-bold tabular-nums">
+          <span className="text-primary text-sm font-bold tabular-nums sm:text-base">
             {formatBRL(booking.amount)}
           </span>
           <Badge
             variant="outline"
             className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+              "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold",
               PAY_BADGE_STYLES[booking.paymentStatus],
             )}
           >
             {PAYMENT_STATUS_LABELS[booking.paymentStatus]}
           </Badge>
         </div>
-        <BookingActions
-          booking={booking}
-          actioning={actioning}
-          onDetail={onDetail}
-          onMessage={onMessage}
-          onConfirm={onConfirm}
-          onStart={onStart}
-          onCancel={onCancel}
-          onReport={onReport}
-          onTransitHud={onTransitHud}
-        />
+
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDetail}
+            className="text-muted-foreground hover:text-foreground h-9 px-2.5 text-xs"
+          >
+            <Info className="mr-1 size-3.5" /> Detalhes
+          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-9 rounded-lg"
+                aria-label="Mais opções"
+              >
+                <MoreVertical className="text-muted-foreground size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48 rounded-xl">
+              <DropdownMenuItem onClick={onMessage}>
+                <MessageSquare className="mr-2 size-4 text-blue-500" /> Conversar com cliente
+              </DropdownMenuItem>
+              {onMediate &&
+                (booking.status === "PENDING" ||
+                  booking.status === "CONFIRMED" ||
+                  booking.status === "IN_PROGRESS") && (
+                  <DropdownMenuItem onClick={onMediate}>
+                    <HelpCircle className="mr-2 size-4 text-amber-500" /> Imprevisto / Atraso
+                  </DropdownMenuItem>
+                )}
+              {booking.status === "PENDING" && (
+                <DropdownMenuItem onClick={onConfirm}>
+                  <CheckCircle2 className="mr-2 size-4 text-emerald-600" /> Confirmar
+                </DropdownMenuItem>
+              )}
+              {booking.status === "CONFIRMED" && (
+                <DropdownMenuItem onClick={onStart}>
+                  <Play className="text-primary mr-2 size-4" /> Iniciar atendimento
+                </DropdownMenuItem>
+              )}
+              {booking.status === "IN_PROGRESS" && onTransitHud && (
+                <DropdownMenuItem onClick={onTransitHud}>
+                  <Navigation className="mr-2 size-4 text-sky-500" /> Modo Trânsito (HUD)
+                </DropdownMenuItem>
+              )}
+              {onReport && (
+                <DropdownMenuItem onClick={onReport}>
+                  <ClipboardCheck className="mr-2 size-4 text-emerald-600" /> Laudo & Checklist
+                </DropdownMenuItem>
+              )}
+              {(booking.status === "PENDING" ||
+                booking.status === "CONFIRMED" ||
+                booking.status === "IN_PROGRESS") && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={onCancel}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <X className="mr-2 size-4" /> Cancelar agendamento
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {/* Row 2: Botões de Ação Primária em Grade Ergonômica Mobile */}
+      <div className="border-border/40 mt-1 flex flex-wrap items-center gap-2 border-t pt-2.5">
+        {actioning && <Loader2 className="text-muted-foreground size-4 animate-spin" />}
+
+        {booking.status === "PENDING" && (
+          <Button
+            size="sm"
+            onClick={onConfirm}
+            disabled={actioning}
+            className="h-11 w-full gap-2 rounded-xl text-xs font-semibold shadow-xs sm:h-9.5"
+          >
+            <CheckCircle2 className="size-4" /> Confirmar Atendimento
+          </Button>
+        )}
+
+        {booking.status === "CONFIRMED" && (
+          <>
+            <Button
+              size="sm"
+              onClick={onStart}
+              disabled={actioning}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 h-11 flex-1 gap-1.5 rounded-xl text-xs font-semibold shadow-xs sm:h-9.5"
+            >
+              <Play className="fill-primary-foreground/20 size-3.5" /> Iniciar
+            </Button>
+            {onTransitHud && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onTransitHud}
+                className="h-11 flex-1 gap-1.5 rounded-xl border-sky-500/40 text-xs font-medium text-sky-700 hover:bg-sky-50 sm:h-9.5 dark:border-sky-700 dark:text-sky-300 dark:hover:bg-sky-950/30"
+              >
+                <Navigation className="size-3.5 text-sky-500" /> Trânsito HUD
+              </Button>
+            )}
+            {onReport && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onReport}
+                className="h-11 gap-1.5 rounded-xl border-emerald-500/40 px-3 text-xs font-medium text-emerald-700 hover:bg-emerald-50 sm:h-9.5 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              >
+                <ClipboardCheck className="size-3.5" /> Laudo
+              </Button>
+            )}
+          </>
+        )}
+
+        {booking.status === "IN_PROGRESS" && (
+          <>
+            <div className="flex-1">
+              <LocationBroadcastButton bookingId={booking.id} />
+            </div>
+            {onTransitHud && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onTransitHud}
+                className="h-11 flex-1 gap-1.5 rounded-xl border-sky-500/40 text-xs font-medium text-sky-700 hover:bg-sky-50 sm:h-9.5 dark:border-sky-700 dark:text-sky-300 dark:hover:bg-sky-950/30"
+              >
+                <Navigation className="size-3.5 text-sky-500" /> Trânsito HUD
+              </Button>
+            )}
+            {onReport && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onReport}
+                className="h-11 gap-1.5 rounded-xl border-emerald-500/40 px-3 text-xs font-medium text-emerald-700 hover:bg-emerald-50 sm:h-9.5 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              >
+                <ClipboardCheck className="size-3.5" /> Laudo
+              </Button>
+            )}
+          </>
+        )}
+
+        {booking.status === "COMPLETED" && (
+          <>
+            {onReport && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onReport}
+                className="h-9.5 flex-1 gap-1.5 rounded-xl border-emerald-500/40 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              >
+                <ClipboardCheck className="size-3.5" /> Ver Laudo & Fotos
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onMessage()}
+              className="h-9.5 flex-1 gap-1.5 rounded-xl text-xs font-medium"
+            >
+              <MessageSquare className="size-3.5 text-blue-500" /> Mensagem
+            </Button>
+          </>
+        )}
+
+        {booking.status === "CANCELLED" && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onDetail}
+            className="text-muted-foreground h-9.5 w-full rounded-xl text-xs"
+          >
+            Ver Detalhes do Cancelamento
+          </Button>
+        )}
       </div>
     </div>
   )

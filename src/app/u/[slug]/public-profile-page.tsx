@@ -1,6 +1,9 @@
 "use client"
 
-import { Star, MapPin, Award, ShieldCheck, Crown } from "lucide-react"
+import * as React from "react"
+import { Star, MapPin, Award, ShieldCheck, Crown, Share2, Check } from "lucide-react"
+import { toast } from "sonner"
+import { triggerHaptic } from "@/lib/haptics"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -53,6 +56,38 @@ export type PublicProfileProvider = Props["provider"]
 
 export function PublicProfilePage({ provider }: Props) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://severinno.com.br"
+  const [copied, setCopied] = React.useState(false)
+
+  const handleShare = async () => {
+    triggerHaptic("selection")
+    const profileUrl =
+      typeof window !== "undefined" && window.location.pathname.startsWith("/u/")
+        ? window.location.href
+        : `${appUrl}/u/${provider.id}`
+    const shareText = `Confira os serviços de ${provider.name} no Severinno: ${profileUrl}`
+
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({
+          title: `${provider.name} - Severinno`,
+          text: shareText,
+          url: profileUrl,
+        })
+        return
+      } catch {
+        // Fallback to clipboard if share was cancelled or failed
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(profileUrl)
+      setCopied(true)
+      toast.success("Link do perfil copiado!")
+      setTimeout(() => setCopied(false), 2500)
+    } catch {
+      toast.error("Não foi possível copiar o link")
+    }
+  }
 
   return (
     <div className="from-background to-muted/30 min-h-screen bg-gradient-to-b">
@@ -117,7 +152,7 @@ export function PublicProfilePage({ provider }: Props) {
         {provider.availability && provider.availability.length > 0 && (
           <Card className="mt-6">
             <CardContent className="p-4">
-              <h3 className="mb-3 text-sm font-semibold">Horários de atendimento</h3>
+              <h2 className="mb-3 text-sm font-semibold">Horários de atendimento</h2>
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 {provider.availability
                   .filter((a) => a.active)
@@ -167,8 +202,8 @@ export function PublicProfilePage({ provider }: Props) {
           </section>
         )}
 
-        <div className="mt-8 flex justify-center">
-          <Button size="lg" asChild>
+        <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <Button size="lg" asChild className="w-full sm:w-auto">
             <a
               href={`${appUrl}/?provider=${provider.id}`}
               target="_blank"
@@ -176,6 +211,24 @@ export function PublicProfilePage({ provider }: Props) {
             >
               Agendar na plataforma
             </a>
+          </Button>
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={handleShare}
+            className="w-full gap-2 sm:w-auto"
+          >
+            {copied ? (
+              <>
+                <Check className="size-4 text-emerald-600 dark:text-emerald-400" />
+                Copiado!
+              </>
+            ) : (
+              <>
+                <Share2 className="size-4" />
+                Compartilhar perfil
+              </>
+            )}
           </Button>
         </div>
 

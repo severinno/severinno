@@ -235,7 +235,7 @@ export default React.memo(function ProviderCard({
                 )}
                 {typeof provider.matchScore === "number" && provider.matchScore > 0 && (
                   <span
-                    className="text-primary bg-primary/8 inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
+                    className="text-primary bg-primary/8 inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-semibold"
                     title={
                       provider.matchReasons?.join(" • ") ||
                       `Compatibilidade: ${Math.round(provider.matchScore)}%`
@@ -288,8 +288,8 @@ export default React.memo(function ProviderCard({
             </div>
           </div>
 
-          {/* Ações Rápidas Ghost (Sem bordas pesadas) */}
-          <div className="-mt-0.5 -mr-1 flex shrink-0 items-center gap-0.5">
+          {/* Ações Rápidas Ghost (Sem bordas pesadas - Touch Target Otimizado) */}
+          <div className="-mt-0.5 -mr-1 flex shrink-0 items-center gap-0.5 sm:gap-1">
             <button
               type="button"
               data-testid="provider-quick-view-btn"
@@ -301,13 +301,13 @@ export default React.memo(function ProviderCard({
               aria-label="Espiar tabela de preços e credenciais"
               title="Ver tabela de preços"
               className={cn(
-                "flex size-7 cursor-pointer items-center justify-center rounded-full transition-colors",
+                "flex size-10 cursor-pointer items-center justify-center rounded-full transition-colors active:scale-95 sm:size-8",
                 quickViewOpen
                   ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground/60 hover:bg-muted hover:text-foreground",
+                  : "text-muted-foreground/70 hover:bg-muted hover:text-foreground",
               )}
             >
-              <FileText className="size-3.5" />
+              <FileText className="size-4 sm:size-3.5" />
             </button>
             <button
               type="button"
@@ -315,16 +315,16 @@ export default React.memo(function ProviderCard({
               aria-label={inCompare ? "Remover da comparação" : "Comparar prestador"}
               title="Comparar"
               className={cn(
-                "flex size-7 cursor-pointer items-center justify-center rounded-full transition-colors",
+                "flex size-10 cursor-pointer items-center justify-center rounded-full transition-colors active:scale-95 sm:size-8",
                 inCompare
                   ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground/60 hover:bg-muted hover:text-foreground",
+                  : "text-muted-foreground/70 hover:bg-muted hover:text-foreground",
               )}
             >
               {inCompare ? (
-                <CheckCircle2 className="size-3.5" />
+                <CheckCircle2 className="text-primary size-4 sm:size-3.5" />
               ) : (
-                <GitCompare className="size-3.5" />
+                <GitCompare className="size-4 sm:size-3.5" />
               )}
             </button>
             <button
@@ -333,13 +333,13 @@ export default React.memo(function ProviderCard({
               aria-label={favorited ? "Remover dos favoritos" : "Salvar nos favoritos"}
               title="Favoritar"
               className={cn(
-                "flex size-7 cursor-pointer items-center justify-center rounded-full transition-colors",
+                "flex size-10 cursor-pointer items-center justify-center rounded-full transition-colors active:scale-95 sm:size-8",
                 favorited
-                  ? "text-rose-500"
-                  : "text-muted-foreground/60 hover:bg-muted hover:text-foreground",
+                  ? "bg-rose-50 text-rose-500 dark:bg-rose-950/30"
+                  : "text-muted-foreground/70 hover:bg-muted hover:text-foreground",
               )}
             >
-              <Heart className={cn("size-3.5", favorited && "fill-current")} />
+              <Heart className={cn("size-4 sm:size-3.5", favorited && "fill-current")} />
             </button>
           </div>
         </div>
@@ -357,7 +357,7 @@ export default React.memo(function ProviderCard({
             {provider.services.slice(0, 2).map((s) => (
               <span
                 key={s.id}
-                className="bg-muted/50 text-foreground/80 rounded-md px-2 py-0.5 text-[11px] font-medium"
+                className="bg-muted/50 text-foreground/80 rounded-md px-2 py-0.5 text-xs font-medium"
               >
                 {s.title}
               </span>
@@ -369,7 +369,7 @@ export default React.memo(function ProviderCard({
                   e.stopPropagation()
                   setQuickViewOpen(true)
                 }}
-                className="text-muted-foreground hover:text-foreground cursor-pointer px-1 text-[11px] font-medium underline-offset-2 hover:underline"
+                className="text-muted-foreground hover:text-foreground cursor-pointer px-1 py-0.5 text-xs font-medium underline-offset-2 hover:underline"
                 title="Ver todos os serviços e preços"
               >
                 +{provider.services.length - 2}
@@ -379,7 +379,7 @@ export default React.memo(function ProviderCard({
         )}
 
         {/* 4. Linha Sutil de Confiança & Tempo de Resposta (Sem caixas coloridas) */}
-        <div className="text-muted-foreground mt-3 flex items-center justify-between text-[11px]">
+        <div className="text-muted-foreground mt-3 flex items-center justify-between text-xs">
           <EscrowPopover>
             <span className="inline-flex cursor-pointer items-center gap-1 transition-colors hover:text-emerald-700 dark:hover:text-emerald-300">
               <ShieldCheck className="size-3.5 text-emerald-600/80" />
@@ -500,7 +500,7 @@ export default React.memo(function ProviderCard({
             data-testid="provider-card-slots"
             className="flex items-center gap-1.5 overflow-hidden"
           >
-            <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
+            <span className="text-muted-foreground flex items-center gap-1 text-xs">
               <Clock className="size-3" />
               Vagas:
             </span>
@@ -518,7 +518,7 @@ export default React.memo(function ProviderCard({
                     }
                   }}
                   className={cn(
-                    "inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium transition-colors",
+                    "inline-flex min-h-[30px] cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors sm:min-h-0 sm:py-0.5 sm:text-[10px]",
                     slot.isToday
                       ? "bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300"
                       : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -532,7 +532,7 @@ export default React.memo(function ProviderCard({
           </div>
 
           <div className="shrink-0 text-right">
-            <span className="text-muted-foreground block text-[10px] leading-none">
+            <span className="text-muted-foreground block text-xs leading-none font-medium">
               a partir de
             </span>
             <span className="text-foreground text-sm font-bold">
@@ -554,7 +554,7 @@ export default React.memo(function ProviderCard({
                 triggerHaptic("selection")
                 onQuote(provider.id)
               }}
-              className="border-border/60 hover:bg-muted/60 h-9 flex-1 rounded-xl text-xs font-medium"
+              className="border-border/60 hover:bg-muted/60 h-11 flex-1 rounded-xl text-xs font-semibold active:scale-98 sm:h-9 sm:text-xs"
             >
               Orçamento
             </Button>
@@ -570,7 +570,7 @@ export default React.memo(function ProviderCard({
                 onView?.(provider.id)
               }
             }}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 h-9 flex-1 rounded-xl text-xs font-semibold shadow-2xs"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 h-11 flex-1 rounded-xl text-xs font-semibold shadow-2xs active:scale-98 sm:h-9 sm:text-xs"
           >
             Agendar
             <ChevronRight className="ml-1 size-3.5" />

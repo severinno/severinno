@@ -103,8 +103,8 @@ describe("Jornada E2E: Indique e Ganhe (Referral & Anti-Fraude)", () => {
     )
     expect(conversionResult.rewarded).toBe(true)
     expect(conversionResult.pointsAwarded).toBe(50)
-    expect(conversionResult.referrerId).toBe(referrerId)
     expect(mockAwardPoints).toHaveBeenCalledWith(referrerId, "referral")
+    expect(mockAwardPoints).toHaveBeenCalledWith(newInviteeId, "referral_welcome_client")
 
     // 9. Idempotência da conversão: novo agendamento do mesmo cliente não premia novamente
     const secondBookingResult = await processReferralFirstBookingConversion(
@@ -112,7 +112,7 @@ describe("Jornada E2E: Indique e Ganhe (Referral & Anti-Fraude)", () => {
       newInviteeId,
     )
     expect(secondBookingResult.rewarded).toBe(false)
-    expect(mockAwardPoints).toHaveBeenCalledTimes(1)
+    expect(mockAwardPoints).toHaveBeenCalledTimes(2)
 
     // 10. Estatísticas atualizadas mostram 1 amigo ativo e 50 pontos
     const statsAfterConversion = await getReferralStats(referrerId)

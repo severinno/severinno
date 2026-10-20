@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
+  Award,
   CalendarCheck,
   CalendarDays,
   Clock,
@@ -79,14 +80,14 @@ const ProviderRouteOptimizer = dynamic(
   () => import("./provider-route-optimizer").then((m) => ({ default: m.ProviderRouteOptimizer })),
   { ssr: false },
 )
-const ReferralCard = dynamic(
-  () => import("@/components/shared/referral-card").then((m) => ({ default: m.ReferralCard })),
+const ProviderReferral = dynamic(
+  () => import("./provider-referral").then((m) => ({ default: m.ProviderReferral })),
   { ssr: false },
 )
-const ReferralLeaderboard = dynamic(
+const LoyaltyRewardsCenter = dynamic(
   () =>
-    import("@/components/shared/referral-leaderboard").then((m) => ({
-      default: m.ReferralLeaderboard,
+    import("@/components/shared/loyalty-rewards-center").then((m) => ({
+      default: m.LoyaltyRewardsCenter,
     })),
   { ssr: false },
 )
@@ -187,6 +188,13 @@ const VIEWS: ViewMeta[] = [
     icon: Gift,
     title: "Programa de Indicação",
     subtitle: "Indique colegas prestadores e clientes para acumular benefícios exclusivos.",
+  },
+  {
+    view: "provider.rewards",
+    label: "Clube & Benefícios",
+    icon: Award,
+    title: "Severinno Clube & Benefícios",
+    subtitle: "Central de resgate de pontos, cupons exclusivos e vantagens profissionais.",
   },
   {
     view: "provider.profile",
@@ -322,11 +330,12 @@ export function ProviderPanel() {
       {view === "provider.reviews" && <ProviderReviews />}
       {view === "provider.security" && <ClientSecurity />}
       {view === "provider.routes" && <ProviderRouteOptimizer />}
-      {view === "provider.referral" && (
-        <div className="space-y-6">
-          <ReferralCard />
-          <ReferralLeaderboard />
-        </div>
+      {view === "provider.referral" && <ProviderReferral />}
+      {view === "provider.rewards" && (
+        <LoyaltyRewardsCenter
+          role="provider"
+          onNavigateToServices={() => navigate("provider.services")}
+        />
       )}
       {view === "provider.profile" && <ProviderProfile />}
     </DashboardShell>

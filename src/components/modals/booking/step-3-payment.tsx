@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { RadioGroup } from "@/components/ui/radio-group"
 import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
+import { triggerHaptic } from "@/lib/haptics"
 import { StepHeader, InfoCard } from "../step-wizard"
 import { PaymentOption } from "./payment-option"
 import {
@@ -240,16 +241,14 @@ export function Step3Payment({ state, set, markTouched, touched, selectedService
               <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
                 Pague com qualquer app de banco
               </p>
-              <p className="text-muted-foreground text-[11px]">
+              <p className="text-muted-foreground text-xs">
                 Escaneie o QR Code ou copie o código PIX Copia e Cola
               </p>
             </div>
 
             <Button
               type="button"
-              variant="outline"
-              size="sm"
-              className="mt-1 h-8 gap-1.5 text-xs font-semibold text-emerald-700 hover:border-emerald-400 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+              className="h-11 w-full gap-2 rounded-xl bg-emerald-600 text-sm font-bold text-white shadow-sm transition-all hover:bg-emerald-700 active:scale-98"
               onClick={() => {
                 navigator.clipboard
                   .writeText(
@@ -258,23 +257,54 @@ export function Step3Payment({ state, set, markTouched, touched, selectedService
                   .catch((err) => {
                     console.warn("[booking-modal] clipboard copy failed:", err)
                   })
+                triggerHaptic("success")
                 toast.success("Código PIX Copia e Cola copiado com sucesso!")
               }}
             >
-              <Copy className="size-3.5" />
-              Copiar código PIX
+              <Copy className="size-4 shrink-0" />
+              Copiar código PIX (Copia e Cola)
             </Button>
+          </div>
+
+          {/* Guia 1-2-3 simplificado para celulares e idosos */}
+          <div className="w-full space-y-1.5 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 text-xs dark:border-slate-800 dark:bg-slate-900/60">
+            <p className="font-semibold text-slate-800 dark:text-slate-200">
+              Passo a passo no celular:
+            </p>
+            <div className="grid gap-1.5 text-slate-600 dark:text-slate-400">
+              <div className="flex items-center gap-2">
+                <span className="flex size-4.5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  1
+                </span>
+                <span>Toque no botão verde acima para copiar o código.</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="flex size-4.5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  2
+                </span>
+                <span>
+                  Abra o app do seu banco e escolha <strong>PIX Copia e Cola</strong>.
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="flex size-4.5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  3
+                </span>
+                <span>Confirme e toque no botão abaixo para concluir.</span>
+              </div>
+            </div>
           </div>
 
           <Button
             type="button"
             className={cn(
-              "h-10 w-full gap-2 font-semibold transition-all",
+              "h-11 w-full gap-2 rounded-xl text-sm font-semibold transition-all",
               paid
                 ? "bg-emerald-600 text-white hover:bg-emerald-600"
-                : "bg-emerald-600 text-white hover:bg-emerald-700 active:scale-98",
+                : "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 active:scale-98",
             )}
             onClick={() => {
+              triggerHaptic("success")
               setPaid(true)
               toast.success("Pagamento confirmado via PIX! Pode concluir o agendamento.")
             }}

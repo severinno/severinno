@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 
 import { TransparentQuoteModal } from "@/components/shared/transparent-quote-modal"
+import { ProviderPriceEstimatorDialog } from "./provider-price-estimator-dialog"
 import {
   formatTransparentQuoteNote,
   parseTransparentQuoteNote,
@@ -208,6 +209,7 @@ function QuoteItemCard({ item, clientName }: { item: QuoteItem; clientName?: str
   const [sending, setSending] = React.useState(false)
   const [previewOpen, setPreviewOpen] = React.useState(false)
   const [breakdownModalOpen, setBreakdownModalOpen] = React.useState(false)
+  const [estimatorOpen, setEstimatorOpen] = React.useState(false)
   const [breakdown, setBreakdown] = React.useState<TransparentQuoteBreakdown | null>(() =>
     parseTransparentQuoteNote(item.providerNote),
   )
@@ -282,18 +284,30 @@ function QuoteItemCard({ item, clientName }: { item: QuoteItem; clientName?: str
               <Calculator className="text-primary size-4" />
               <p className="text-primary text-xs font-bold">Compor Proposta Comercial</p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setBreakdownModalOpen(true)}
-              className="h-7 gap-1.5 border-blue-300 bg-blue-50/50 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300"
-            >
-              <Package className="size-3.5 text-blue-600" />
-              {breakdown
-                ? "Mão de Obra + Materiais (Configurado)"
-                : "Discriminar Mão de Obra e Materiais (GV)"}
-            </Button>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setEstimatorOpen(true)}
+                className="h-8.5 w-full gap-1.5 rounded-xl border-amber-300 bg-amber-50/50 text-[11px] font-semibold text-amber-800 transition-all hover:bg-amber-100 active:scale-98 sm:h-7.5 sm:w-auto dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+              >
+                <Calculator className="size-3.5 text-amber-600 dark:text-amber-400" />
+                Calculadora Rápida
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setBreakdownModalOpen(true)}
+                className="h-8.5 w-full gap-1.5 rounded-xl border-blue-300 bg-blue-50/50 text-[11px] font-semibold text-blue-700 transition-all hover:bg-blue-100 active:scale-98 sm:h-7.5 sm:w-auto dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300"
+              >
+                <Package className="size-3.5 text-blue-600" />
+                {breakdown
+                  ? "Mão de Obra + Materiais (Configurado)"
+                  : "Discriminar Mão de Obra e Materiais (GV)"}
+              </Button>
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-[180px_1fr] sm:items-start">
@@ -350,14 +364,14 @@ function QuoteItemCard({ item, clientName }: { item: QuoteItem; clientName?: str
             </div>
           )}
 
-          <div className="flex items-center justify-between pt-1">
+          <div className="flex flex-col items-stretch justify-between gap-2 pt-1 sm:flex-row sm:items-center">
             <Button
               type="button"
               variant="ghost"
               size="sm"
               onClick={() => setPreviewOpen(true)}
               disabled={!numPrice}
-              className="text-muted-foreground hover:text-foreground h-8 gap-1.5 text-xs"
+              className="text-muted-foreground hover:text-foreground h-9 gap-1.5 rounded-xl text-xs transition-all active:scale-98 sm:h-8"
             >
               <Eye className="size-3.5" /> Pré-visualizar
             </Button>
@@ -366,7 +380,7 @@ function QuoteItemCard({ item, clientName }: { item: QuoteItem; clientName?: str
               size="sm"
               onClick={respond}
               disabled={sending || !price || numPrice <= 0}
-              className="h-8 gap-1.5 px-4 text-xs font-semibold shadow-xs"
+              className="h-9.5 gap-1.5 rounded-xl px-4 text-xs font-semibold shadow-xs transition-all active:scale-98 sm:h-8"
             >
               {sending ? (
                 <Loader2 className="size-3.5 animate-spin" />
@@ -504,6 +518,15 @@ function QuoteItemCard({ item, clientName }: { item: QuoteItem; clientName?: str
           }}
         />
       )}
+
+      {/* Pocket Price Estimator Modal */}
+      {estimatorOpen && (
+        <ProviderPriceEstimatorDialog
+          open={estimatorOpen}
+          onOpenChange={setEstimatorOpen}
+          onApplyPrice={(suggested) => setPrice(suggested.toFixed(2))}
+        />
+      )}
     </div>
   )
 }
@@ -633,7 +656,7 @@ function QuoteRequestCard({ request }: { request: QuoteRequest }) {
                 variant="outline"
                 size="sm"
                 onClick={() => navigate("provider.messages", { peerId: request.clientId })}
-                className="gap-1.5 text-xs font-medium"
+                className="h-9.5 w-full gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-98 sm:h-8.5 sm:w-auto"
               >
                 <MessageSquare className="size-3.5 text-blue-500" /> Conversar com{" "}
                 {request.client.name.split(" ")[0]}

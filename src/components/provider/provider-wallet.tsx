@@ -4,11 +4,13 @@ import * as React from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowDownLeft,
+  Award,
   Banknote,
   CheckCircle2,
   Clock,
   History,
   Loader2,
+  Sparkles,
   TrendingUp,
   Wallet,
   Zap,
@@ -17,6 +19,7 @@ import {
 import { apiGet, apiPost } from "@/lib/api"
 import { formatBRL } from "@/lib/format"
 import { useAuthStore } from "@/store/auth"
+import { useViewStore } from "@/store/view"
 import { toast } from "sonner"
 
 // ---------------------------------------------------------------------------
@@ -43,6 +46,7 @@ type SimulatedWallet = {
   }>
 }
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -268,6 +272,7 @@ function WithdrawDialog({
 
 export function ProviderWallet() {
   const user = useAuthStore((s) => s.user)
+  const navigate = useViewStore((s) => s.navigate)
   const queryClient = useQueryClient()
   const [withdrawOpen, setWithdrawOpen] = React.useState(false)
   const [historyOpen, setHistoryOpen] = React.useState(false)
@@ -384,6 +389,41 @@ export function ProviderWallet() {
           accent="violet"
           subtitle={`Ticket médio: ${formatBRL(data.avgTicket)}`}
         />
+      </div>
+
+      {/* Severinno Clube & Pontos Callout (Anti-Cash: Benefícios & Vantagens) */}
+      <div className="border-border/60 flex flex-col items-start justify-between gap-3 rounded-2xl border bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent p-4 shadow-2xs sm:flex-row sm:items-center">
+        <div className="flex items-center gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-300">
+            <Award className="size-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-foreground text-xs font-bold tracking-tight">
+                Severinno Clube de Benefícios
+              </span>
+              <Badge
+                variant="outline"
+                className="border-amber-300 bg-amber-50/80 text-[10px] font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+              >
+                100% Pontos &amp; Vantagens
+              </Badge>
+            </div>
+            <p className="text-muted-foreground text-xs">
+              Seus atendimentos e indicações acumulam pontos conversíveis em abatimento de taxas,
+              destaque de vitrine e cupons em lojas parceiras.
+            </p>
+          </div>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate("provider.rewards")}
+          className="h-8 shrink-0 gap-1.5 rounded-xl border-amber-300/80 bg-white/90 text-xs font-semibold text-amber-800 hover:bg-amber-50 dark:border-amber-800 dark:bg-slate-900 dark:text-amber-200 dark:hover:bg-amber-950/60"
+        >
+          <Sparkles className="size-3.5 text-amber-600 dark:text-amber-400" />
+          Ver Central de Resgate
+        </Button>
       </div>
 
       {/* Recent transactions */}

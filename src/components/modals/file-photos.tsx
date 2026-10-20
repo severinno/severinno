@@ -4,6 +4,7 @@ import * as React from "react"
 import { Loader2, UploadCloud, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SafeImage } from "@/components/shared/safe-image"
+import { compressImageFile } from "@/lib/client-image-compression"
 
 type FilePhotosProps = {
   /** Current list of stored photo URLs. */
@@ -53,8 +54,20 @@ export function FilePhotos({
   const remaining = Math.max(0, max - value.length)
 
   const upload = React.useCallback(async (file: File) => {
+    let fileToUpload = file
+    if (file.type.startsWith("image/") && file.type !== "image/svg+xml") {
+      try {
+        fileToUpload = await compressImageFile(file, {
+          maxWidth: 1920,
+          maxHeight: 1080,
+          quality: 0.82,
+        })
+      } catch {
+        fileToUpload = file
+      }
+    }
     const formData = new FormData()
-    formData.append("file", file)
+    formData.append("file", fileToUpload)
     try {
       const res = await fetch("/api/upload", {
         method: "POST",

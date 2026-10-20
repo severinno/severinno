@@ -144,6 +144,8 @@
     "e2e:visual": "playwright test e2e/visual-regression.spec.ts",
     "e2e:visual:update": "playwright test e2e/visual-regression.spec.ts --update-snapshots",
     "test:e2e:a11y": "bash scripts/test-e2e-a11y.sh",
+    "simulate:e2e": "bun scripts/simulate-e2e-complete-journey.ts",
+    "test:e2e:journey": "vitest run src/lib/__tests__/e2e-complete-marketplace-journey.test.ts",
     "db:search:index": "bun --conditions=react-server scripts/search-index.ts",
     "db:search:reset": "bun --conditions=react-server scripts/search-index.ts --delete",
     "db:search:refresh": "bun --conditions=react-server scripts/search-index.ts --refresh",

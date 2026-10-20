@@ -2,8 +2,9 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import { FileText, Printer, Check, Copy, ShieldCheck, Loader2 } from "lucide-react"
+import { FileText, Printer, Check, Copy, ShieldCheck, Loader2, Share2 } from "lucide-react"
 import { apiGet } from "@/lib/api"
+import { triggerHaptic } from "@/lib/haptics"
 import {
   Dialog,
   DialogContent,
@@ -72,10 +73,40 @@ export function ReceiptModal({ bookingId, open, onOpenChange }: ReceiptModalProp
 
   const handleCopyAuth = () => {
     if (!receipt?.authCode) return
+    triggerHaptic("selection")
     navigator.clipboard.writeText(receipt.authCode)
     setCopied(true)
     toast.success("Código de autenticidade copiado! 📋")
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleShare = async () => {
+    triggerHaptic("selection")
+    const receiptUrl = `${window.location.origin}/api/bookings/${bookingId}/receipt?format=html`
+    const shareData = {
+      title: `Recibo Severinno — ${receipt?.service.title || "Serviço"}`,
+      text: `Recibo de prestação de serviços Severinno Marketplace\nServiço: ${receipt?.service.title}\nValor: ${receipt?.financials.formattedTotal}\nCódigo de Autenticidade: ${receipt?.authCode}\nConfira o recibo:`,
+      url: receiptUrl,
+    }
+
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share(shareData)
+        triggerHaptic("success")
+      } catch (err) {
+        if ((err as Error)?.name !== "AbortError") {
+          toast.error("Não foi possível abrir o menu de compartilhamento.")
+        }
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(`${shareData.text} ${shareData.url}`)
+        triggerHaptic("success")
+        toast.success("Link e resumo do recibo copiados para compartilhar! 📋")
+      } catch {
+        toast.error("Erro ao copiar link do recibo.")
+      }
+    }
   }
 
   return (
@@ -154,23 +185,36 @@ export function ReceiptModal({ bookingId, open, onOpenChange }: ReceiptModalProp
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-2 pt-1">
-              <Button onClick={handlePrint} className="flex-1 gap-1.5 text-xs font-semibold">
-                <Printer className="size-3.5" />
-                Imprimir / Salvar PDF
-              </Button>
+            <div className="flex flex-col items-stretch gap-2 pt-1 sm:flex-row sm:items-center">
               <Button
-                variant="outline"
-                onClick={handleCopyAuth}
-                className="gap-1.5 text-xs font-medium"
+                onClick={handleShare}
+                className="h-9.5 flex-1 gap-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-98 sm:h-9"
               >
-                {copied ? (
-                  <Check className="size-3.5 text-emerald-500" />
-                ) : (
-                  <Copy className="size-3.5" />
-                )}
-                {copied ? "Copiado!" : "Código"}
+                <Share2 className="size-3.5" />
+                Compartilhar no WhatsApp
               </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handlePrint}
+                  className="h-9.5 flex-1 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-98 sm:h-9 sm:flex-initial"
+                >
+                  <Printer className="size-3.5" />
+                  PDF / Imprimir
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleCopyAuth}
+                  className="h-9.5 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-98 sm:h-9"
+                >
+                  {copied ? (
+                    <Check className="size-3.5 text-emerald-500" />
+                  ) : (
+                    <Copy className="size-3.5" />
+                  )}
+                  {copied ? "Copiado!" : "Código"}
+                </Button>
+              </div>
             </div>
           </div>
         ) : (

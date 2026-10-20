@@ -62,31 +62,38 @@ vi.mock("@/components/ui/sidebar", () => ({
 
 // ---- lucide-react icons (dashboard-shell + subcomponentes) ---------------
 vi.mock("lucide-react", () => {
-  // Retorna um SVG simples para cada ícone — evita resolver o módulo real
   const MockIcon = (props: Record<string, unknown>) => (
     <svg aria-hidden="true" data-testid="mock-icon" {...props} />
   )
   return {
-    // dashboard-shell
     Bell: MockIcon,
     BellRing: MockIcon,
+    Calendar: MockIcon,
+    CalendarCheck: MockIcon,
+    CalendarDays: MockIcon,
     Check: MockIcon,
     CheckCheck: MockIcon,
     ChevronRight: MockIcon,
+    FileText: MockIcon,
     LayoutDashboard: MockIcon,
     Loader2: MockIcon,
     LogOut: MockIcon,
     MapPin: MockIcon,
     Menu: MockIcon,
+    MessageSquare: MockIcon,
     Moon: MockIcon,
+    Radio: MockIcon,
+    Search: MockIcon,
+    Smartphone: MockIcon,
     Sun: MockIcon,
-    // MuteIndicator
+    User: MockIcon,
+    Users: MockIcon,
     Volume2: MockIcon,
     VolumeX: MockIcon,
-    // VibrationIndicator
-    Smartphone: MockIcon,
-    // WalletBalancePill
     Wallet: MockIcon,
+    Wrench: MockIcon,
+    X: MockIcon,
+    Zap: MockIcon,
   }
 })
 
@@ -449,7 +456,7 @@ describe("DashboardShell — notification sound integration", () => {
     renderShell({ user: { role: "CLIENT" } })
 
     // The bell icon badge should render the count
-    expect(screen.getByText("1")).toBeDefined()
+    expect(screen.getAllByText("1").length).toBeGreaterThanOrEqual(1)
   })
 
   it("renders '9+' for unread count when > 9", () => {
@@ -467,7 +474,7 @@ describe("DashboardShell — notification sound integration", () => {
     renderShell({ user: { role: "CLIENT" } })
 
     // Should show "9+" instead of the raw count
-    expect(screen.getByText("9+")).toBeDefined()
+    expect(screen.getAllByText("9+").length).toBeGreaterThanOrEqual(1)
   })
 
   // ── Title and children render ────────────────────────────────────────────

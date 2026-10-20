@@ -89,4 +89,22 @@ describe("MessagesView", () => {
     expect(parsed?.estimatedTime).toBe("1 hora")
     expect(parsed?.status).toBe("PENDING")
   })
+
+  it("exports valid FIELD_QUICK_REPLIES shortcuts", async () => {
+    const { FIELD_QUICK_REPLIES } = await import("../messages-view")
+    expect(FIELD_QUICK_REPLIES).toHaveLength(5)
+    expect(FIELD_QUICK_REPLIES[0].label).toContain("A caminho")
+    expect(FIELD_QUICK_REPLIES[1].label).toContain("Cheguei")
+    expect(FIELD_QUICK_REPLIES[2].label).toContain("Iniciando")
+    expect(FIELD_QUICK_REPLIES[3].label).toContain("Fotos registradas")
+    expect(FIELD_QUICK_REPLIES[4].label).toContain("Concluído")
+  })
+
+  it("passes axe accessibility checks with 0 violations", async () => {
+    const { axe } = await import("vitest-axe")
+    const { MessagesView } = await import("../messages-view")
+    const { container } = render(<MessagesView />)
+    const results = await axe(container)
+    expect(results.violations).toHaveLength(0)
+  })
 })

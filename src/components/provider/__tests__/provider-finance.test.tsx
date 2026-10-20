@@ -271,7 +271,7 @@ describe("ProviderFinance — data rendering", () => {
 
   it("renderiza a tabela de transações com bookings", () => {
     render(<ProviderFinance />)
-    expect(screen.getByText("Maria Cliente")).toBeDefined()
+    expect(screen.getAllByText("Maria Cliente").length).toBeGreaterThanOrEqual(1)
   })
 
   it("mostra contagem de transações", () => {

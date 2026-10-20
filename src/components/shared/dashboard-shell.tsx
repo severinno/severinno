@@ -46,6 +46,8 @@ import { APP_NAME, ROLE_LABELS, NOTIFICATION_TYPE_LABELS } from "@/lib/constants
 import { formatRelative } from "@/lib/format"
 import { usePushSubscription } from "@/hooks/use-service-worker"
 import { PwaInstallBanner } from "@/components/shared/pwa-install-banner"
+import { PushPromptBanner } from "@/components/shared/push-prompt-banner"
+import { MobileBottomNav } from "@/components/shared/mobile-bottom-nav"
 import { apiGet, apiPatch } from "@/lib/api"
 import { triggerHaptic } from "@/lib/haptics"
 import { useRealtime } from "@/hooks/use-realtime"
@@ -873,7 +875,9 @@ export function DashboardShell({
 
             {/* Main scroll area */}
             <main className="flex-1 overflow-y-auto">
-              <div className="mx-auto w-full max-w-7xl p-6 lg:p-8">{children}</div>
+              <div className="mx-auto w-full max-w-7xl p-3.5 pb-24 sm:p-6 sm:pb-8 lg:p-8">
+                {children}
+              </div>
 
               {/* Thin copyright bar */}
               <footer className="border-border/50 mt-auto border-t">
@@ -890,6 +894,13 @@ export function DashboardShell({
             </main>
           </SidebarInset>
         </div>
+        <MobileBottomNav
+          role={user?.role}
+          currentView={currentView}
+          onNavigate={navigate}
+          unreadCount={unreadCount}
+        />
+        <PushPromptBanner />
         <PwaInstallBanner />
       </div>
     </SidebarProvider>

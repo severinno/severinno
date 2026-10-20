@@ -53,6 +53,7 @@ import { cn } from "@/lib/utils"
 import { BookingStatusBadge, ErrorState, FreshnessLabel, initials } from "./_shared"
 import { TOOLTIP_STYLE } from "./admin-chart-theme"
 import { AdminUnitEconomicsCard } from "./admin-unit-economics-card"
+import { useUIStore } from "@/store/ui"
 
 // ---------------------------------------------------------------------------
 // Types — mirrors /api/admin/stats response
@@ -440,6 +441,7 @@ function RecentBookingsTable({
   onNavigate: (view: string) => void
 }) {
   const rows = bookings.slice(0, 5)
+  const openProvider = useUIStore((s) => s.openProvider)
 
   return (
     <div className="border-border/50 bg-card overflow-hidden rounded-xl border">
@@ -494,19 +496,40 @@ function RecentBookingsTable({
                     </td>
                     {/* Provider */}
                     <td className="px-4">
-                      <div className="flex items-center gap-2">
-                        <Avatar className="size-6 shrink-0">
-                          {b.provider?.avatarUrl ? (
-                            <AvatarImage src={b.provider.avatarUrl} alt={b.provider.name ?? ""} />
-                          ) : null}
-                          <AvatarFallback className="bg-primary/8 text-primary text-[10px] font-semibold">
-                            {initials(b.provider?.name ?? "?")}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="max-w-[120px] truncate text-xs">
-                          {b.provider?.name ?? "—"}
-                        </span>
-                      </div>
+                      {b.provider?.id ? (
+                        <button
+                          type="button"
+                          onClick={() => openProvider(b.provider!.id)}
+                          className="group flex items-center gap-2 text-left transition-colors focus-visible:outline-hidden"
+                          aria-label={`Ver perfil de ${b.provider.name ?? "prestador"}`}
+                        >
+                          <Avatar className="size-6 shrink-0 transition-transform group-hover:scale-105">
+                            {b.provider.avatarUrl ? (
+                              <AvatarImage src={b.provider.avatarUrl} alt={b.provider.name ?? ""} />
+                            ) : null}
+                            <AvatarFallback className="bg-primary/8 text-primary text-[10px] font-semibold">
+                              {initials(b.provider.name ?? "?")}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="group-hover:text-primary max-w-[120px] truncate text-xs transition-colors">
+                            {b.provider.name ?? "—"}
+                          </span>
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Avatar className="size-6 shrink-0">
+                            {b.provider?.avatarUrl ? (
+                              <AvatarImage src={b.provider.avatarUrl} alt={b.provider.name ?? ""} />
+                            ) : null}
+                            <AvatarFallback className="bg-primary/8 text-primary text-[10px] font-semibold">
+                              {initials(b.provider?.name ?? "?")}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="max-w-[120px] truncate text-xs">
+                            {b.provider?.name ?? "—"}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     {/* Service */}
                     <td className="px-4">
@@ -547,6 +570,7 @@ function TopProvidersList({
   onNavigate: (view: string) => void
 }) {
   const items = providers.slice(0, 5)
+  const openProvider = useUIStore((s) => s.openProvider)
 
   return (
     <div className="border-border/50 bg-card overflow-hidden rounded-xl border">
@@ -570,15 +594,29 @@ function TopProvidersList({
         <ul className="divide-y">
           {items.map((p) => (
             <li key={p.id}>
-              <div className="flex items-center gap-3 px-5 py-3">
-                <Avatar className="size-9 shrink-0">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => openProvider(p.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    openProvider(p.id)
+                  }
+                }}
+                className="hover:bg-muted/30 group flex cursor-pointer items-center gap-3 px-5 py-3 outline-hidden transition-colors"
+                aria-label={`Ver perfil de ${p.name}`}
+              >
+                <Avatar className="size-9 shrink-0 transition-transform group-hover:scale-105">
                   {p.avatarUrl ? <AvatarImage src={p.avatarUrl} alt={p.name} /> : null}
                   <AvatarFallback className="bg-primary/8 text-primary text-[11px] font-semibold">
                     {initials(p.name)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
-                  <p className="text-foreground truncate text-sm font-medium">{p.name}</p>
+                  <p className="text-foreground group-hover:text-primary truncate text-sm font-medium transition-colors">
+                    {p.name}
+                  </p>
                   <div className="mt-0.5 flex items-center gap-1.5">
                     <Star className="size-3 fill-amber-400 text-amber-400" />
                     <span className="text-foreground text-xs font-medium tabular-nums">
@@ -590,6 +628,17 @@ function TopProvidersList({
                 {p.city ? (
                   <span className="text-muted-foreground shrink-0 text-xs">{p.city}</span>
                 ) : null}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-foreground h-7 px-2 text-xs opacity-0 transition-opacity group-hover:opacity-100"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openProvider(p.id)
+                  }}
+                >
+                  Ver perfil
+                </Button>
               </div>
             </li>
           ))}

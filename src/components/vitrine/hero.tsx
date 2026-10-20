@@ -32,10 +32,12 @@ import {
   Siren,
   Camera,
   Play,
+  X,
 } from "lucide-react"
 
 import { useGeoStore } from "@/store/geo"
 import { apiGet } from "@/lib/api"
+import { triggerHaptic } from "@/lib/haptics"
 import AddressAutocomplete from "@/components/vitrine/address-autocomplete"
 import { PredictiveSearchDropdown } from "@/components/vitrine/predictive-search-dropdown"
 import { HowItWorksModal } from "@/components/vitrine/how-it-works-modal"
@@ -458,16 +460,30 @@ export default function Hero({
                       setSearchDropdownOpen(true)
                     }}
                     placeholder="Qual serviço você procura? Ex.: encanador, eletricista…"
-                    className="text-foreground h-11 border-0 bg-transparent pr-10 pl-11 text-xs shadow-none focus-visible:ring-0 sm:text-sm"
+                    className="text-foreground h-12 border-0 bg-transparent pr-14 pl-11 text-base shadow-none focus-visible:ring-0 sm:h-11 sm:pr-10 sm:text-sm"
                     aria-label="Serviço buscado"
                   />
+                  {query ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onQueryChange("")
+                        triggerHaptic("selection")
+                      }}
+                      title="Limpar pesquisa"
+                      aria-label="Limpar pesquisa"
+                      className="text-muted-foreground hover:text-foreground hover:bg-muted/60 mr-1 flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors active:scale-95"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  ) : null}
                   {onCameraSearchClick && (
                     <button
                       type="button"
                       onClick={onCameraSearchClick}
                       title="Diagnóstico visual por foto com IA"
                       aria-label="Buscar serviço por foto com IA"
-                      className="text-muted-foreground hover:text-primary hover:bg-muted/60 mr-2 flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors"
+                      className="text-muted-foreground hover:text-primary hover:bg-muted/60 mr-2 flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors active:scale-95 sm:size-8"
                     >
                       <Camera className="size-4" />
                     </button>
@@ -500,7 +516,7 @@ export default function Hero({
                 <Button
                   type="submit"
                   size="lg"
-                  className="h-11 shrink-0 rounded-full bg-emerald-600 px-6 text-sm font-semibold text-white shadow-md shadow-emerald-950/20 transition-all hover:bg-emerald-500 active:scale-[0.98]"
+                  className="h-12 shrink-0 rounded-full bg-emerald-600 px-6 text-base font-semibold text-white shadow-md shadow-emerald-950/20 transition-all hover:bg-emerald-500 active:scale-[0.98] sm:h-11 sm:text-sm"
                 >
                   <Search className="mr-1.5 size-4" />
                   Buscar
@@ -518,7 +534,7 @@ export default function Hero({
                   key={s.label}
                   type="button"
                   onClick={() => handlePopularClick(s.label)}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-200 transition-all hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-white"
+                  className="inline-flex min-h-[36px] cursor-pointer items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs font-medium text-slate-200 transition-all hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-white active:scale-95 sm:min-h-0 sm:py-1"
                 >
                   <span aria-hidden>{s.emoji}</span>
                   {s.label}
@@ -676,6 +692,7 @@ export default function Hero({
                         alt={currentFeatured.providerName}
                         width={64}
                         height={64}
+                        priority
                         className="size-full object-cover"
                       />
                       <span

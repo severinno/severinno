@@ -16,6 +16,8 @@ import {
 } from "@/lib/notifications"
 import { type BookingStatus, type PaymentStatus } from "@prisma/client"
 import { toMoneyNumber } from "@/lib/money"
+import { awardPoints } from "@/lib/loyalty"
+import { processReferralFirstBookingConversion } from "@/lib/referral"
 
 import { withParams } from "@/lib/api-route"
 
@@ -205,6 +207,19 @@ export const PATCH = withParams<{ id: string }>(
     if (updated.clientId !== updated.providerId) {
       notifyBookingStatus(updated.providerId, id, newStatus, serviceName).catch((err) =>
         logger.warn({ err }, "notification failed (fire-and-forget)"),
+      )
+    }
+
+    // Award loyalty points to both client and provider on service completion (+10 pts)
+    if (next === "COMPLETED") {
+      awardPoints(updated.clientId, "booking_completed").catch((err) =>
+        logger.warn({ err }, "loyalty points award for client failed (fire-and-forget)"),
+      )
+      awardPoints(updated.providerId, "booking_completed").catch((err) =>
+        logger.warn({ err }, "loyalty points award for provider failed (fire-and-forget)"),
+      )
+      processReferralFirstBookingConversion(updated.id, updated.clientId, updated.providerId).catch(
+        (err) => logger.warn({ err }, "referral conversion check failed (fire-and-forget)"),
       )
     }
 

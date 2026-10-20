@@ -112,13 +112,19 @@ export async function compressImageDetailed(
   const quality = Math.min(1, Math.max(0.1, options.quality ?? 0.82))
   const mimeType = (options.mimeType as "image/webp" | "image/jpeg") ?? "image/jpeg"
 
-  // Fallback seguro para ambientes sem suporte a DOM / Canvas / toBlob (ex: SSR / JSDOM / Node)
+  // Fallback seguro para ambientes sem suporte real a Canvas/Image (ex: SSR / JSDOM / Node)
+  const isJsdom =
+    typeof navigator !== "undefined" &&
+    (navigator.userAgent.includes("jsdom") ||
+      Boolean((window as unknown as { _virtualConsole?: unknown })._virtualConsole))
+
   if (
     typeof window === "undefined" ||
     typeof document === "undefined" ||
     typeof HTMLCanvasElement === "undefined" ||
     !HTMLCanvasElement.prototype.toBlob ||
-    typeof Image === "undefined"
+    typeof Image === "undefined" ||
+    isJsdom
   ) {
     return {
       file,

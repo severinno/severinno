@@ -4,6 +4,7 @@ import * as React from "react"
 import { MapPin, Clock, ShieldCheck, Users, Sparkles, ChevronRight, TrendingUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { triggerHaptic } from "@/lib/haptics"
 import { useRegionalContext } from "@/hooks/use-regional-context"
 
 export type NeighborhoodSelectorBarProps = {
@@ -139,6 +140,7 @@ export function NeighborhoodSelectorBar({
   }, [propNeighborhood])
 
   const handleSelect = (neighborhood: string) => {
+    triggerHaptic("selection")
     setActiveDistrict(neighborhood)
     onSelectNeighborhood?.(neighborhood)
   }
@@ -185,7 +187,7 @@ export function NeighborhoodSelectorBar({
       </div>
 
       {/* Horizontal Neighborhood Pills Slider */}
-      <div className="-mx-1 mt-3.5 flex [scrollbar-width:none] gap-1.5 overflow-x-auto px-1 pt-0.5 pb-1.5">
+      <div className="-mx-1 mt-3.5 flex snap-x snap-mandatory [scrollbar-width:none] gap-2 overflow-x-auto scroll-smooth px-1 pt-0.5 pb-1.5">
         {GV_NEIGHBORHOOD_NAMES.map((name) => {
           const isSelected = name === activeDistrict
           return (
@@ -194,10 +196,10 @@ export function NeighborhoodSelectorBar({
               type="button"
               onClick={() => handleSelect(name)}
               className={cn(
-                "group relative shrink-0 cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition-all",
+                "group relative inline-flex min-h-[40px] shrink-0 cursor-pointer snap-start items-center rounded-full px-4 text-xs font-semibold transition-all duration-150 active:scale-95 sm:h-7.5 sm:min-h-[32px]",
                 isSelected
                   ? "scale-[1.02] bg-emerald-600 text-white shadow-sm shadow-emerald-600/30"
-                  : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground border-border/50 border",
+                  : "bg-card text-muted-foreground hover:bg-muted hover:text-foreground border-border/60 border shadow-2xs",
               )}
             >
               {name}
@@ -216,8 +218,8 @@ export function NeighborhoodSelectorBar({
             <Clock className="size-4" />
           </div>
           <div>
-            <p className="text-muted-foreground text-[10px] font-medium uppercase">Chegada</p>
-            <p className="text-foreground text-xs font-bold">{currentMetrics.etaRange}</p>
+            <p className="text-muted-foreground text-xs font-semibold uppercase">Chegada</p>
+            <p className="text-foreground text-sm font-bold">{currentMetrics.etaRange}</p>
           </div>
         </div>
 
@@ -226,10 +228,10 @@ export function NeighborhoodSelectorBar({
             <Users className="size-4" />
           </div>
           <div>
-            <p className="text-muted-foreground text-[10px] font-medium uppercase">
+            <p className="text-muted-foreground text-xs font-semibold uppercase">
               A postos no bairro
             </p>
-            <p className="text-foreground text-xs font-bold">
+            <p className="text-foreground text-sm font-bold">
               {currentMetrics.activeProviders} profissionais
             </p>
           </div>
@@ -240,10 +242,10 @@ export function NeighborhoodSelectorBar({
             <TrendingUp className="size-4" />
           </div>
           <div>
-            <p className="text-muted-foreground text-[10px] font-medium uppercase">
+            <p className="text-muted-foreground text-xs font-semibold uppercase">
               Satisfação local
             </p>
-            <p className="text-foreground text-xs font-bold">
+            <p className="text-foreground text-sm font-bold">
               {currentMetrics.satisfactionRate}% aprovado
             </p>
           </div>

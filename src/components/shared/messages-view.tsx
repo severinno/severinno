@@ -26,7 +26,9 @@ import {
   Check,
   CheckCheck,
   CheckCircle2,
+  ChevronLeft,
   Paperclip,
+  Camera,
   Mic,
   X,
   ShieldAlert,
@@ -37,6 +39,7 @@ import {
   FileText,
   Copy,
   QrCode,
+  Zap,
 } from "lucide-react"
 import { toast } from "sonner"
 import { triggerHaptic } from "@/lib/haptics"
@@ -118,6 +121,24 @@ function isAudioUrl(url: string): boolean {
     (/\.(webm|ogg|mp3|m4a|wav)($|\?)/i.test(url) || url.includes("audio-"))
   )
 }
+
+// ---------------------------------------------------------------------------
+// Field Quick Replies (Atalhos de Campo Rápidos)
+// ---------------------------------------------------------------------------
+
+export const FIELD_QUICK_REPLIES = [
+  { label: "🚚 A caminho", text: "Estou a caminho do endereço informado." },
+  { label: "📍 Cheguei", text: "Cheguei no local! Aguardo sua recepção." },
+  { label: "🔧 Iniciando", text: "Iniciando a execução técnica do serviço conforme combinado." },
+  {
+    label: "📸 Fotos registradas",
+    text: "Acabei de registrar as fotos de antes/depois no laudo de entrega.",
+  },
+  {
+    label: "✅ Concluído",
+    text: "Serviço finalizado com sucesso! Peço que confira para liberação da custódia.",
+  },
+]
 
 // ---------------------------------------------------------------------------
 // Proposal Types & Helpers
@@ -522,6 +543,7 @@ export function MessagesView({
   const typingTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
   const lastTypingSentRef = React.useRef<number>(0)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const cameraInputRef = React.useRef<HTMLInputElement>(null)
   const scrollRef = React.useRef<HTMLDivElement>(null)
 
   const { on, emit, isConnected, join } = useRealtime()
@@ -737,6 +759,7 @@ export function MessagesView({
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ""
+      if (cameraInputRef.current) cameraInputRef.current.value = ""
     }
   }
 
@@ -755,6 +778,7 @@ export function MessagesView({
       }
 
       mediaRecorder.start()
+      triggerHaptic("light")
       setIsRecording(true)
       setRecordingSeconds(0)
       recordingTimerRef.current = setInterval(() => {
@@ -791,6 +815,7 @@ export function MessagesView({
         const data = await res.json()
         if (data.url) {
           await send(data.url)
+          triggerHaptic("success")
           toast.success("Mensagem de voz enviada!")
         }
       } catch {
@@ -810,6 +835,7 @@ export function MessagesView({
       mediaRecorderRef.current = null
       setIsRecording(false)
       setRecordingSeconds(0)
+      triggerHaptic("light")
     }
   }
 
@@ -850,7 +876,12 @@ export function MessagesView({
       )}
     >
       {/* Conversations list */}
-      <aside className="flex flex-col border-b md:border-r md:border-b-0">
+      <aside
+        className={cn(
+          "flex flex-col border-b md:border-r md:border-b-0",
+          selectedPeerId ? "hidden md:flex md:w-[320px]" : "flex w-full md:w-[320px]",
+        )}
+      >
         <div className="border-b p-3">
           <h2 className="text-sm font-semibold">Conversas</h2>
           <p className="text-muted-foreground text-xs">
@@ -874,7 +905,10 @@ export function MessagesView({
                   <li key={c.peerId}>
                     <button
                       type="button"
-                      onClick={() => setSelectedPeerId(c.peerId)}
+                      onClick={() => {
+                        triggerHaptic("selection")
+                        setSelectedPeerId(c.peerId)
+                      }}
                       className={cn(
                         "hover:bg-accent/50 flex w-full items-start gap-3 p-3 text-left transition-colors",
                         active && "bg-emerald-50/60 dark:bg-emerald-950/20",
@@ -924,7 +958,12 @@ export function MessagesView({
       </aside>
 
       {/* Thread */}
-      <section className="flex flex-col">
+      <section
+        className={cn(
+          "flex flex-col",
+          !selectedPeerId ? "hidden md:flex md:flex-1" : "flex w-full flex-1",
+        )}
+      >
         {!selectedPeerId || !peer ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
             <div className="flex size-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
@@ -938,7 +977,19 @@ export function MessagesView({
         ) : (
           <>
             <header className="flex items-center justify-between border-b p-3">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    setSelectedPeerId(undefined)
+                  }}
+                  aria-label="Voltar para conversas"
+                  title="Voltar"
+                  className="text-muted-foreground hover:bg-muted hover:text-foreground mr-1 flex size-8 items-center justify-center rounded-lg transition-colors active:scale-95 md:hidden"
+                >
+                  <ChevronLeft className="size-5" />
+                </button>
                 <Avatar className="ring-border/50 size-9 rounded-full border ring-1">
                   {peer.avatarUrl && (
                     <AvatarImage
@@ -1280,6 +1331,30 @@ export function MessagesView({
                   </div>
                 </div>
               )}
+
+              {/* ── Field Quick Replies (Atalhos de Campo Rápidos) ── */}
+              <div
+                aria-label="Atalhos de Campo Rápidos"
+                className="no-scrollbar mb-2 flex scrollbar-none items-center gap-1.5 overflow-x-auto pb-1"
+              >
+                <span className="text-muted-foreground flex shrink-0 items-center gap-1 text-[10px] font-semibold tracking-wider uppercase">
+                  <Zap className="size-3 text-amber-500" /> Campo:
+                </span>
+                {FIELD_QUICK_REPLIES.map((reply, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      setDraft(reply.text)
+                    }}
+                    className="border-border/70 bg-muted/50 text-foreground hover:bg-muted shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors active:scale-95"
+                  >
+                    {reply.label}
+                  </button>
+                ))}
+              </div>
+
               {isRecording ? (
                 <div className="bg-destructive/10 border-destructive/20 flex w-full items-center justify-between rounded-xl border p-2 px-3">
                   <div className="text-destructive flex items-center gap-2 text-xs font-medium">
@@ -1324,14 +1399,42 @@ export function MessagesView({
                     onChange={handleFileUpload}
                     className="hidden"
                   />
+                  <input
+                    type="file"
+                    ref={cameraInputRef}
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
 
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
                     disabled={uploading || sending}
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      cameraInputRef.current?.click()
+                    }}
+                    title="Tirar foto com câmera"
+                    aria-label="Tirar foto com câmera"
+                    className="text-muted-foreground hover:text-foreground shrink-0"
+                  >
+                    <Camera className="size-4" />
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    disabled={uploading || sending}
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      fileInputRef.current?.click()
+                    }}
                     title="Anexar imagem"
+                    aria-label="Anexar imagem"
                     className="text-muted-foreground hover:text-foreground shrink-0"
                   >
                     {uploading ? (

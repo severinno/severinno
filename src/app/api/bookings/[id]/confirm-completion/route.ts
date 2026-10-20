@@ -8,6 +8,8 @@ import { badRequest, forbidden, notFound } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { notifyPaymentConfirmed } from "@/lib/notifications"
 import { toMoneyNumber } from "@/lib/money"
+import { processReferralFirstBookingConversion } from "@/lib/referral"
+import { awardPoints } from "@/lib/loyalty"
 
 import { withParams } from "@/lib/api-route"
 
@@ -84,9 +86,23 @@ export const POST = withParams<{ id: string }>(
       (err) => logger.warn({ err }, "payment notification failed (fire-and-forget)"),
     )
 
+    // Trigger referral first booking conversion check for client & provider
+    processReferralFirstBookingConversion(booking.id, booking.clientId, booking.providerId).catch(
+      (err) => logger.warn({ err }, "referral conversion check failed (fire-and-forget)"),
+    )
+
+    // Award loyalty points to both client and provider for completing the booking (+10 pts)
+    awardPoints(booking.clientId, "booking_completed").catch((err) =>
+      logger.warn({ err }, "loyalty points award for client failed (fire-and-forget)"),
+    )
+    awardPoints(booking.providerId, "booking_completed").catch((err) =>
+      logger.warn({ err }, "loyalty points award for provider failed (fire-and-forget)"),
+    )
+
     return NextResponse.json({
       ok: true,
       message: "Conclusão confirmada e pagamento liberado ao prestador com sucesso!",
+      pointsAwarded: 10,
       booking: updated,
     })
   },

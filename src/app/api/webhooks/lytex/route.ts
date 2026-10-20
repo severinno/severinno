@@ -169,9 +169,9 @@ async function confirmBookingPayment(
     paymentMethod: "PIX",
   }).catch((err) => logger.warn({ err }, "lytex realtime payment confirmation emit failed"))
 
-  // 🚀 Referral first booking conversion (reward referrer +50 pts)
-  processReferralFirstBookingConversion(bookingId, booking.clientId).catch((err) =>
-    lytexLogger.warn({ err }, "referral conversion check failed (fire-and-forget)"),
+  // 🚀 Referral first booking conversion (reward referrer +50 pts for client, +200 pts for provider)
+  processReferralFirstBookingConversion(bookingId, booking.clientId, booking.providerId).catch(
+    (err) => lytexLogger.warn({ err }, "referral conversion check failed (fire-and-forget)"),
   )
 }
 

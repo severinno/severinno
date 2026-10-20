@@ -44,6 +44,7 @@ import {
   ShieldCheck,
   Sparkles,
   Star,
+  HelpCircle,
   X,
   XCircle,
 } from "lucide-react"
@@ -92,7 +93,10 @@ import { PixCheckout } from "@/components/shared/pix-checkout"
 import { LiveTracking } from "@/components/shared/live-tracking"
 import { ReceiptModal } from "@/components/shared/receipt-modal"
 import { ServiceDeliveryReportModal } from "@/components/shared/service-delivery-report-modal"
+import { ServiceCompletionCelebrationDialog } from "@/components/shared/service-completion-celebration-dialog"
+import { QuickMediationModal } from "@/components/shared/quick-mediation-modal"
 import { CarePlanModal } from "@/components/shared/care-plan-modal"
+import { PullToRefresh } from "@/components/shared/pull-to-refresh"
 import { SafeImage } from "@/components/shared/safe-image"
 import {
   StatusBadge,
@@ -204,6 +208,8 @@ export function ClientBookings() {
   const [reportBooking, setReportBooking] = React.useState<Booking | null>(null)
   const [carePlanBooking, setCarePlanBooking] = React.useState<Booking | null>(null)
   const [escrowReleaseBooking, setEscrowReleaseBooking] = React.useState<Booking | null>(null)
+  const [celebrationBooking, setCelebrationBooking] = React.useState<Booking | null>(null)
+  const [mediationBooking, setMediationBooking] = React.useState<Booking | null>(null)
 
   // Reset page when tab or search filter changes
   React.useEffect(() => {
@@ -304,11 +310,12 @@ export function ClientBookings() {
       toast.success("Pagamento liberado e serviço concluído com sucesso!")
       qc.invalidateQueries({ queryKey: ["bookings"] })
       qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+      qc.invalidateQueries({ queryKey: ["loyalty"] })
 
       const target = allBookings.find((b) => b.id === id) || escrowReleaseBooking
       setEscrowReleaseBooking(null)
       if (target) {
-        setReviewBooking(target)
+        setCelebrationBooking(target)
       }
     },
     onError: (e: { message?: string }) => {
@@ -487,112 +494,118 @@ export function ClientBookings() {
       </div>
 
       {/* Content */}
-      {isLoading ? (
-        <div className="grid gap-2.5">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i} className="border-border/60 rounded-xl p-4 shadow-xs">
-              <div className="flex items-center gap-3">
-                <div className="bg-muted size-10 animate-pulse rounded-full" />
-                <div className="flex-1 space-y-1.5">
-                  <div className="bg-muted h-3.5 w-40 rounded" />
-                  <div className="bg-muted h-2.5 w-28 rounded" />
+      <PullToRefresh onRefresh={() => qc.invalidateQueries({ queryKey: ["bookings"] })}>
+        {isLoading ? (
+          <div className="grid gap-2.5">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Card key={i} className="border-border/60 rounded-xl p-4 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="bg-muted size-10 animate-pulse rounded-full" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="bg-muted h-3.5 w-40 rounded" />
+                    <div className="bg-muted h-2.5 w-28 rounded" />
+                  </div>
+                  <div className="bg-muted h-5 w-16 rounded" />
                 </div>
-                <div className="bg-muted h-5 w-16 rounded" />
-              </div>
-            </Card>
-          ))}
-        </div>
-      ) : pageItems.length === 0 ? (
-        <EmptyState
-          icon={CalendarDays}
-          title={tab === "ALL" ? "Nenhum agendamento ainda" : "Nenhum agendamento com este status"}
-          description={
-            tab === "ALL"
-              ? "Você ainda não agendou nenhum serviço. Explore prestadores verificados e agende seu primeiro serviço com segurança."
-              : "Não há agendamentos com este status no momento. Tente outra categoria ou faça uma nova busca."
-          }
-          action={
-            <Button
-              onClick={() => {
-                triggerHaptic("selection")
-                navigate("client.providers")
-              }}
-              className="mt-2 gap-2 rounded-xl"
-            >
-              <MapPin className="size-4" />
-              Buscar prestadores
-            </Button>
-          }
-        />
-      ) : viewMode === "list" ? (
-        <div className="grid gap-2.5">
-          {pageItems.map((b) => (
-            <BookingCard
-              key={b.id}
-              booking={b}
-              onViewDetails={() => setDetailsId(b.id)}
-              onCancel={() => setCancelBooking(b)}
-              onComplete={() => setEscrowReleaseBooking(b)}
-              onReview={() => setReviewBooking(b)}
-              onMessage={() =>
-                navigate("client.messages", {
-                  with: b.provider.id,
-                  peerId: b.provider.id,
-                  providerId: b.provider.id,
-                })
-              }
-              onViewProvider={() => openProvider(b.provider.id)}
-              onRebook={() => openBooking({ providerId: b.provider.id, serviceId: b.service.id })}
-              onTrack={() => setTrackingBooking(b)}
-              onViewReceipt={() => setReceiptBookingId(b.id)}
-              onOpenReport={() => setReportBooking(b)}
-              onCarePlan={() => setCarePlanBooking(b)}
-              onPay={
-                (b.status === "PENDING" || b.status === "CONFIRMED") &&
-                b.paymentMethod === "PIX" &&
-                b.paymentStatus === "PENDING"
-                  ? () => setPixBooking(b)
-                  : undefined
-              }
-              isCompleting={completeMutation.isPending}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {pageItems.map((b) => (
-            <BookingGridCard
-              key={b.id}
-              booking={b}
-              onViewDetails={() => setDetailsId(b.id)}
-              onCancel={() => setCancelBooking(b)}
-              onComplete={() => setEscrowReleaseBooking(b)}
-              onReview={() => setReviewBooking(b)}
-              onMessage={() =>
-                navigate("client.messages", {
-                  with: b.provider.id,
-                  peerId: b.provider.id,
-                  providerId: b.provider.id,
-                })
-              }
-              onViewProvider={() => openProvider(b.provider.id)}
-              onRebook={() => openBooking({ providerId: b.provider.id, serviceId: b.service.id })}
-              onTrack={() => setTrackingBooking(b)}
-              onViewReceipt={() => setReceiptBookingId(b.id)}
-              onOpenReport={() => setReportBooking(b)}
-              onCarePlan={() => setCarePlanBooking(b)}
-              onPay={
-                (b.status === "PENDING" || b.status === "CONFIRMED") &&
-                b.paymentMethod === "PIX" &&
-                b.paymentStatus === "PENDING"
-                  ? () => setPixBooking(b)
-                  : undefined
-              }
-              isCompleting={completeMutation.isPending}
-            />
-          ))}
-        </div>
-      )}
+              </Card>
+            ))}
+          </div>
+        ) : pageItems.length === 0 ? (
+          <EmptyState
+            icon={CalendarDays}
+            title={
+              tab === "ALL" ? "Nenhum agendamento ainda" : "Nenhum agendamento com este status"
+            }
+            description={
+              tab === "ALL"
+                ? "Você ainda não agendou nenhum serviço. Explore prestadores verificados e agende seu primeiro serviço com segurança."
+                : "Não há agendamentos com este status no momento. Tente outra categoria ou faça uma nova busca."
+            }
+            action={
+              <Button
+                onClick={() => {
+                  triggerHaptic("selection")
+                  navigate("client.providers")
+                }}
+                className="mt-2 gap-2 rounded-xl"
+              >
+                <MapPin className="size-4" />
+                Buscar prestadores
+              </Button>
+            }
+          />
+        ) : viewMode === "list" ? (
+          <div className="grid gap-2.5">
+            {pageItems.map((b) => (
+              <BookingCard
+                key={b.id}
+                booking={b}
+                onViewDetails={() => setDetailsId(b.id)}
+                onCancel={() => setCancelBooking(b)}
+                onComplete={() => setEscrowReleaseBooking(b)}
+                onReview={() => setReviewBooking(b)}
+                onMessage={() =>
+                  navigate("client.messages", {
+                    with: b.provider.id,
+                    peerId: b.provider.id,
+                    providerId: b.provider.id,
+                  })
+                }
+                onViewProvider={() => openProvider(b.provider.id)}
+                onRebook={() => openBooking({ providerId: b.provider.id, serviceId: b.service.id })}
+                onTrack={() => setTrackingBooking(b)}
+                onViewReceipt={() => setReceiptBookingId(b.id)}
+                onOpenReport={() => setReportBooking(b)}
+                onCarePlan={() => setCarePlanBooking(b)}
+                onMediate={() => setMediationBooking(b)}
+                onPay={
+                  (b.status === "PENDING" || b.status === "CONFIRMED") &&
+                  b.paymentMethod === "PIX" &&
+                  b.paymentStatus === "PENDING"
+                    ? () => setPixBooking(b)
+                    : undefined
+                }
+                isCompleting={completeMutation.isPending}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {pageItems.map((b) => (
+              <BookingGridCard
+                key={b.id}
+                booking={b}
+                onViewDetails={() => setDetailsId(b.id)}
+                onCancel={() => setCancelBooking(b)}
+                onComplete={() => setEscrowReleaseBooking(b)}
+                onReview={() => setReviewBooking(b)}
+                onMessage={() =>
+                  navigate("client.messages", {
+                    with: b.provider.id,
+                    peerId: b.provider.id,
+                    providerId: b.provider.id,
+                  })
+                }
+                onViewProvider={() => openProvider(b.provider.id)}
+                onRebook={() => openBooking({ providerId: b.provider.id, serviceId: b.service.id })}
+                onTrack={() => setTrackingBooking(b)}
+                onViewReceipt={() => setReceiptBookingId(b.id)}
+                onOpenReport={() => setReportBooking(b)}
+                onCarePlan={() => setCarePlanBooking(b)}
+                onMediate={() => setMediationBooking(b)}
+                onPay={
+                  (b.status === "PENDING" || b.status === "CONFIRMED") &&
+                  b.paymentMethod === "PIX" &&
+                  b.paymentStatus === "PENDING"
+                    ? () => setPixBooking(b)
+                    : undefined
+                }
+                isCompleting={completeMutation.isPending}
+              />
+            ))}
+          </div>
+        )}
+      </PullToRefresh>
 
       {/* Pagination */}
       {total > PAGE_SIZE ? (
@@ -917,6 +930,40 @@ export function ClientBookings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ServiceCompletionCelebrationDialog
+        open={Boolean(celebrationBooking)}
+        onOpenChange={(open) => {
+          if (!open) {
+            const finished = celebrationBooking
+            setCelebrationBooking(null)
+            if (finished) {
+              setReviewBooking(finished)
+            }
+          }
+        }}
+        bookingTitle={celebrationBooking?.service?.title}
+        amount={celebrationBooking?.amount}
+        pointsAwarded={10}
+        geofenceVerified={true}
+        role="CLIENT"
+      />
+
+      {mediationBooking && (
+        <QuickMediationModal
+          open={Boolean(mediationBooking)}
+          onOpenChange={(open) => {
+            if (!open) setMediationBooking(null)
+          }}
+          bookingId={mediationBooking.id}
+          serviceTitle={mediationBooking.service.title}
+          peerName={mediationBooking.provider.name}
+          userRole="CLIENT"
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["bookings"] })
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -939,6 +986,7 @@ type BookingCardProps = {
   onViewReceipt?: () => void
   onOpenReport?: () => void
   onCarePlan?: () => void
+  onMediate?: () => void
   isCompleting: boolean
 }
 
@@ -960,6 +1008,7 @@ function BookingCard({
   onViewReceipt,
   onOpenReport,
   onCarePlan,
+  onMediate,
   isCompleting,
 }: BookingCardProps) {
   const provider = booking.provider
@@ -1030,8 +1079,8 @@ function BookingCard({
                 </StatusBadge>
 
                 {hasReview && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-200/60 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/40 dark:text-amber-300">
-                    <Star className="size-2.5 fill-amber-400 text-amber-400" />
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-200/60 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/40 dark:text-amber-300">
+                    <Star className="size-3 fill-amber-400 text-amber-400" />
                     Avaliado
                   </span>
                 )}
@@ -1041,14 +1090,14 @@ function BookingCard({
               <div className="text-foreground/90 mt-0.5 flex items-center gap-1.5 text-xs">
                 <span className="truncate font-medium">{booking.service.title}</span>
                 {unitLabel && (
-                  <span className="bg-muted text-muted-foreground shrink-0 rounded px-1 text-[9px] font-semibold uppercase">
+                  <span className="bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold uppercase sm:text-[10px]">
                     {unitLabel}
                   </span>
                 )}
               </div>
 
               {/* Date & Address */}
-              <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] sm:text-xs">
+              <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
                 <span className="text-foreground/85 inline-flex items-center gap-1 font-medium tabular-nums">
                   <CalendarDays className="text-primary size-3" />
                   {formatDateTime(booking.scheduledAt)}
@@ -1068,7 +1117,7 @@ function BookingCard({
                 {formatBRL(booking.amount)}
               </span>
               {booking.quantity > 1 && (
-                <span className="text-muted-foreground text-[10px] tabular-nums">
+                <span className="text-muted-foreground text-xs tabular-nums sm:text-[10px]">
                   {booking.quantity} × {unitLabel ?? booking.unit}
                 </span>
               )}
@@ -1078,7 +1127,7 @@ function BookingCard({
               <StatusBadge
                 tone={paymentTone(booking.paymentStatus as PaymentStatus)}
                 icon={paymentIcon(booking.paymentStatus as PaymentStatus)}
-                className="text-[10px] font-medium"
+                className="text-xs font-medium sm:text-[10px]"
               >
                 {PAYMENT_METHOD_LABELS[booking.paymentMethod as PaymentMethod]} ·{" "}
                 {PAYMENT_STATUS_LABELS[booking.paymentStatus as PaymentStatus]}
@@ -1167,9 +1216,9 @@ function BookingCard({
                 triggerHaptic("selection")
                 onReview()
               }}
-              className="h-7.5 gap-1 rounded-lg bg-amber-500 px-2.5 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-amber-600 active:scale-95"
+              className="h-10 gap-1.5 rounded-xl bg-amber-500 px-3 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-amber-600 active:scale-95 sm:h-8"
             >
-              <Star className="size-3 fill-white text-white" />
+              <Star className="size-3.5 fill-white text-white" />
               Avaliar
             </Button>
           )}
@@ -1182,12 +1231,12 @@ function BookingCard({
                 onComplete()
               }}
               disabled={isCompleting}
-              className="h-7.5 gap-1 rounded-lg bg-emerald-600 px-2.5 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-emerald-700 active:scale-95"
+              className="h-10 gap-1.5 rounded-xl bg-emerald-600 px-3 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-emerald-700 active:scale-95 sm:h-8"
             >
               {isCompleting ? (
-                <Loader2 className="size-3 animate-spin" />
+                <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                <ShieldCheck className="size-3" />
+                <ShieldCheck className="size-3.5" />
               )}
               {booking.paymentStatus === "HELD" ? "Liberar Custódia" : "Liberar Pagamento"}
             </Button>
@@ -1201,9 +1250,9 @@ function BookingCard({
                 triggerHaptic("selection")
                 onTrack?.()
               }}
-              className="h-7.5 gap-1 rounded-lg border-sky-300 px-2.5 text-xs font-semibold text-sky-700 transition-all hover:bg-sky-50 active:scale-95 dark:border-sky-800 dark:text-sky-300 dark:hover:bg-sky-950/30"
+              className="h-10 gap-1.5 rounded-xl border-sky-300 px-3 text-xs font-semibold text-sky-700 transition-all hover:bg-sky-50 active:scale-95 sm:h-8 dark:border-sky-800 dark:text-sky-300 dark:hover:bg-sky-950/30"
             >
-              <Navigation className="size-3" />
+              <Navigation className="size-3.5" />
               Rastrear
             </Button>
           )}
@@ -1215,9 +1264,9 @@ function BookingCard({
                 triggerHaptic("selection")
                 onPay?.()
               }}
-              className="h-7.5 gap-1 rounded-lg bg-emerald-600 px-2.5 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-emerald-700 active:scale-95"
+              className="h-10 gap-1.5 rounded-xl bg-emerald-600 px-3 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-emerald-700 active:scale-95 sm:h-8"
             >
-              <CreditCard className="size-3" />
+              <CreditCard className="size-3.5" />
               Pagar PIX
             </Button>
           )}
@@ -1230,9 +1279,9 @@ function BookingCard({
               triggerHaptic("selection")
               onViewDetails()
             }}
-            className="border-border/60 hover:bg-muted/60 h-7.5 gap-1 rounded-lg px-2.5 text-xs font-medium transition-all active:scale-95"
+            className="border-border/60 hover:bg-muted/60 h-10 gap-1.5 rounded-xl px-3 text-xs font-medium transition-all active:scale-95 sm:h-8"
           >
-            <Eye className="size-3" />
+            <Eye className="size-3.5" />
             Detalhes
           </Button>
 
@@ -1245,9 +1294,9 @@ function BookingCard({
                 triggerHaptic("selection")
                 onRebook()
               }}
-              className="border-primary/50 text-primary hover:bg-primary/10 h-7.5 gap-1 rounded-lg px-2.5 text-xs font-semibold transition-all active:scale-95"
+              className="border-primary/50 text-primary hover:bg-primary/10 h-10 gap-1.5 rounded-xl px-3 text-xs font-semibold transition-all active:scale-95 sm:h-8"
             >
-              <Sparkles className="size-3" />
+              <Sparkles className="size-3.5" />
               Contratar Novamente
             </Button>
           )}
@@ -1262,7 +1311,7 @@ function BookingCard({
                   triggerHaptic("selection")
                   onOpenReport()
                 }}
-                className="border-border/60 hover:bg-muted/60 h-7.5 gap-1 rounded-lg px-2.5 text-xs font-medium transition-all active:scale-95"
+                className="border-border/60 hover:bg-muted/60 h-8.5 gap-1.5 rounded-xl px-2.5 text-xs font-medium transition-all active:scale-95 sm:h-8"
               >
                 <ClipboardCheck className="size-3" />
                 Laudo / Fotos
@@ -1278,7 +1327,7 @@ function BookingCard({
                 triggerHaptic("selection")
                 onViewReceipt()
               }}
-              className="border-border/60 hover:bg-muted/60 h-7.5 gap-1 rounded-lg px-2.5 text-xs font-medium text-blue-700 transition-all active:scale-95 dark:text-blue-400"
+              className="border-border/60 hover:bg-muted/60 h-8.5 gap-1.5 rounded-xl px-2.5 text-xs font-medium text-blue-700 transition-all active:scale-95 sm:h-8 dark:text-blue-400"
             >
               <FileText className="size-3" />
               Recibo
@@ -1294,7 +1343,7 @@ function BookingCard({
                 triggerHaptic("selection")
                 onCarePlan()
               }}
-              className="h-7.5 gap-1 rounded-lg border-emerald-300 px-2.5 text-xs font-medium text-emerald-700 transition-all hover:bg-emerald-50 active:scale-95 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              className="h-8.5 gap-1.5 rounded-xl border-emerald-300 px-2.5 text-xs font-medium text-emerald-700 transition-all hover:bg-emerald-50 active:scale-95 sm:h-8 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
             >
               <Sparkles className="size-3" />
               Plano Recorrente
@@ -1309,12 +1358,30 @@ function BookingCard({
               triggerHaptic("selection")
               onMessage()
             }}
-            className="text-muted-foreground hover:text-foreground hover:bg-muted/60 h-7.5 w-7.5 shrink-0 rounded-lg p-0 transition-colors"
+            className="text-muted-foreground hover:text-foreground hover:bg-muted/60 size-8.5 shrink-0 rounded-xl p-0 transition-colors sm:size-8"
             title="Enviar mensagem na plataforma"
             aria-label="Enviar mensagem na plataforma"
           >
             <MessageSquare className="size-3.5" />
           </Button>
+
+          {/* Imprevisto / Mediação rápida */}
+          {onMediate &&
+            (status === "CONFIRMED" || status === "IN_PROGRESS" || status === "PENDING") && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onMediate()
+                }}
+                className="h-8.5 gap-1 rounded-xl border-amber-500/30 px-2 text-xs font-medium text-amber-700 transition-all hover:bg-amber-50 active:scale-95 sm:h-8 dark:border-amber-700/40 dark:text-amber-400 dark:hover:bg-amber-950/20"
+                title="Ajuste de horário ou reagendamento amigável"
+              >
+                <HelpCircle className="size-3 text-amber-500" />
+                Imprevisto
+              </Button>
+            )}
 
           {/* Cancel button if applicable */}
           {canCancel && (
@@ -1325,7 +1392,7 @@ function BookingCard({
                 triggerHaptic("selection")
                 onCancel()
               }}
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive ml-auto h-7.5 gap-1 rounded-lg px-2 text-xs font-medium transition-all active:scale-95"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive ml-auto h-8.5 gap-1.5 rounded-xl px-2 text-xs font-medium transition-all active:scale-95 sm:h-8"
             >
               <XCircle className="size-3" />
               Cancelar
@@ -1355,6 +1422,7 @@ function BookingGridCard({
   onViewReceipt,
   onOpenReport,
   onCarePlan,
+  onMediate,
   isCompleting,
 }: BookingCardProps) {
   const provider = booking.provider
@@ -1419,8 +1487,8 @@ function BookingGridCard({
                     {BOOKING_STATUS_LABELS[status]}
                   </StatusBadge>
                   {hasReview && (
-                    <span className="inline-flex items-center gap-0.5 rounded-full border border-amber-200/60 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/40 dark:text-amber-300">
-                      <Star className="size-2.5 fill-amber-400 text-amber-400" />
+                    <span className="inline-flex items-center gap-0.5 rounded-full border border-amber-200/60 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:border-amber-800/40 dark:bg-amber-950/40 dark:text-amber-300">
+                      <Star className="size-3 fill-amber-400 text-amber-400" />
                       Avaliado
                     </span>
                   )}
@@ -1435,7 +1503,7 @@ function BookingGridCard({
               <StatusBadge
                 tone={paymentTone(booking.paymentStatus as PaymentStatus)}
                 icon={paymentIcon(booking.paymentStatus as PaymentStatus)}
-                className="text-[9px] font-medium"
+                className="text-xs font-medium sm:text-[9px]"
               >
                 {PAYMENT_STATUS_LABELS[booking.paymentStatus as PaymentStatus]}
               </StatusBadge>
@@ -1447,7 +1515,7 @@ function BookingGridCard({
             <div className="text-foreground/90 flex items-center gap-1.5 text-xs font-medium">
               <span className="truncate">{booking.service.title}</span>
               {unitLabel && (
-                <span className="bg-muted text-muted-foreground shrink-0 rounded px-1 text-[9px] font-semibold uppercase">
+                <span className="bg-muted text-muted-foreground shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold uppercase sm:text-[10px]">
                   {unitLabel}
                 </span>
               )}
@@ -1469,7 +1537,7 @@ function BookingGridCard({
 
         {/* Footer Actions */}
         <div className="border-border/40 mt-3 flex items-center justify-between gap-1.5 border-t pt-2.5">
-          <div className="flex flex-1 items-center gap-1">
+          <div className="flex flex-1 items-center gap-1.5">
             {status === "COMPLETED" && canReview ? (
               <Button
                 size="sm"
@@ -1477,9 +1545,9 @@ function BookingGridCard({
                   triggerHaptic("selection")
                   onReview()
                 }}
-                className="h-7.5 flex-1 gap-1 rounded-lg bg-amber-500 text-xs font-semibold text-white shadow-2xs hover:bg-amber-600"
+                className="h-10 flex-1 gap-1.5 rounded-xl bg-amber-500 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-amber-600 active:scale-95 sm:h-8"
               >
-                <Star className="size-3 fill-white text-white" />
+                <Star className="size-3.5 fill-white text-white" />
                 Avaliar
               </Button>
             ) : canComplete ? (
@@ -1490,12 +1558,12 @@ function BookingGridCard({
                   onComplete()
                 }}
                 disabled={isCompleting}
-                className="h-7.5 flex-1 gap-1 rounded-lg bg-emerald-600 text-xs font-semibold text-white shadow-2xs hover:bg-emerald-700"
+                className="h-10 flex-1 gap-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-emerald-700 active:scale-95 sm:h-8"
               >
                 {isCompleting ? (
-                  <Loader2 className="size-3 animate-spin" />
+                  <Loader2 className="size-3.5 animate-spin" />
                 ) : (
-                  <ShieldCheck className="size-3" />
+                  <ShieldCheck className="size-3.5" />
                 )}
                 {booking.paymentStatus === "HELD" ? "Liberar Custódia" : "Liberar"}
               </Button>
@@ -1507,9 +1575,9 @@ function BookingGridCard({
                   triggerHaptic("selection")
                   onTrack?.()
                 }}
-                className="h-7.5 flex-1 gap-1 rounded-lg border-sky-300 text-xs font-semibold text-sky-700 hover:bg-sky-50 dark:border-sky-800 dark:text-sky-300"
+                className="h-10 flex-1 gap-1.5 rounded-xl border-sky-300 text-xs font-semibold text-sky-700 transition-all hover:bg-sky-50 active:scale-95 sm:h-8 dark:border-sky-800 dark:text-sky-300"
               >
-                <Navigation className="size-3" />
+                <Navigation className="size-3.5" />
                 Rastrear
               </Button>
             ) : canPay ? (
@@ -1519,9 +1587,9 @@ function BookingGridCard({
                   triggerHaptic("selection")
                   onPay?.()
                 }}
-                className="h-7.5 flex-1 gap-1 rounded-lg bg-emerald-600 text-xs font-semibold text-white shadow-2xs hover:bg-emerald-700"
+                className="h-10 flex-1 gap-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-emerald-700 active:scale-95 sm:h-8"
               >
-                <CreditCard className="size-3" />
+                <CreditCard className="size-3.5" />
                 Pagar PIX
               </Button>
             ) : status === "CANCELLED" && onRebook ? (
@@ -1532,9 +1600,9 @@ function BookingGridCard({
                   triggerHaptic("selection")
                   onRebook()
                 }}
-                className="border-primary/50 text-primary hover:bg-primary/10 h-7.5 flex-1 gap-1 rounded-lg text-xs font-semibold"
+                className="border-primary/50 text-primary hover:bg-primary/10 h-10 flex-1 gap-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95 sm:h-8"
               >
-                <Sparkles className="size-3" />
+                <Sparkles className="size-3.5" />
                 Contratar Novamente
               </Button>
             ) : (
@@ -1545,9 +1613,9 @@ function BookingGridCard({
                   triggerHaptic("selection")
                   onViewDetails()
                 }}
-                className="h-7.5 flex-1 gap-1 rounded-lg text-xs font-medium"
+                className="h-10 flex-1 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95 sm:h-8"
               >
-                <Eye className="size-3" />
+                <Eye className="size-3.5" />
                 Detalhes
               </Button>
             )}
@@ -1559,7 +1627,7 @@ function BookingGridCard({
                 triggerHaptic("selection")
                 onMessage()
               }}
-              className="text-muted-foreground hover:text-foreground size-7.5 shrink-0 rounded-lg"
+              className="text-muted-foreground hover:text-foreground size-10 shrink-0 rounded-xl transition-all active:scale-95 sm:size-8"
               title="Enviar mensagem na plataforma"
               aria-label="Enviar mensagem na plataforma"
             >
@@ -1572,7 +1640,7 @@ function BookingGridCard({
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-muted-foreground hover:text-foreground size-7.5 shrink-0 rounded-lg"
+                className="text-muted-foreground hover:text-foreground size-8.5 shrink-0 rounded-xl transition-all active:scale-95 sm:size-8"
                 aria-label="Mais opções"
               >
                 <MoreHorizontal className="size-3.5" />
@@ -1591,6 +1659,13 @@ function BookingGridCard({
                 <MessageSquare className="mr-2 size-3.5" />
                 Mensagem
               </DropdownMenuItem>
+              {onMediate &&
+                (status === "CONFIRMED" || status === "IN_PROGRESS" || status === "PENDING") && (
+                  <DropdownMenuItem onSelect={onMediate}>
+                    <HelpCircle className="mr-2 size-3.5 text-amber-500" />
+                    Imprevisto / Atraso
+                  </DropdownMenuItem>
+                )}
               <DropdownMenuSeparator />
               {canTrack && (
                 <DropdownMenuItem onSelect={onTrack}>

@@ -737,8 +737,13 @@ export function AdminServices() {
                           </div>
                         </TableCell>
                         <TableCell className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <Avatar className="size-8 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => openProvider(s.provider.id)}
+                            className="group flex items-center gap-2 text-left transition-colors focus-visible:outline-hidden"
+                            aria-label={`Ver perfil de ${s.provider.name}`}
+                          >
+                            <Avatar className="size-8 shrink-0 transition-transform group-hover:scale-105">
                               {s.provider.avatarUrl ? (
                                 <AvatarImage src={s.provider.avatarUrl} alt={s.provider.name} />
                               ) : null}
@@ -747,7 +752,7 @@ export function AdminServices() {
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0">
-                              <p className="hover:text-primary truncate text-xs font-medium transition-colors">
+                              <p className="group-hover:text-primary truncate text-xs font-medium transition-colors">
                                 {s.provider.name}
                               </p>
                               <p className="text-muted-foreground truncate text-[10px]">
@@ -755,7 +760,7 @@ export function AdminServices() {
                                 {s.provider.state ? `/${s.provider.state}` : ""}
                               </p>
                             </div>
-                          </div>
+                          </button>
                         </TableCell>
                         <TableCell className="hidden px-4 py-3 md:table-cell">
                           {leaf ? (

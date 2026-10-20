@@ -8,6 +8,8 @@ import { toast } from "sonner"
 import {
   BadgeCheck,
   Bell,
+  Calculator,
+  Eye,
   ImagePlus,
   Loader2,
   LocateFixed,
@@ -15,6 +17,7 @@ import {
   Navigation,
   Play,
   Save,
+  Share2,
   Smartphone,
   Sparkles,
   User,
@@ -25,12 +28,16 @@ import {
 import { apiGet, apiPatch } from "@/lib/api"
 import { nearbyPhrase, suggestRadiusFromAccuracy } from "@/lib/geo-radius"
 import { refineSuggestedRadius } from "@/lib/geo-density"
+import { triggerHaptic } from "@/lib/haptics"
 import { playCoinSound, playCompletionSound, playReviewSound, tryVibrate } from "@/lib/sounds"
 import { providerProfileSchema, type ProviderProfileInput } from "@/lib/validators"
 import { useAuthStore } from "@/store/auth"
+import { useUIStore } from "@/store/ui"
 
 import { SafeImage } from "@/components/shared/safe-image"
 import { PushNotificationCard } from "@/components/shared/push-notification-card"
+import { ProviderSocialReputationCard } from "./provider-social-reputation-card"
+import { ProviderPriceEstimatorDialog } from "./provider-price-estimator-dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -221,7 +228,10 @@ export function ProviderProfile() {
   const qc = useQueryClient()
   const user = useAuthStore((s) => s.user)
   const fetchMe = useAuthStore((s) => s.fetchMe)
+  const openProvider = useUIStore((s) => s.openProvider)
   const [activeTab, setActiveTab] = React.useState("identity")
+  const [reputationCardOpen, setReputationCardOpen] = React.useState(false)
+  const [priceEstimatorOpen, setPriceEstimatorOpen] = React.useState(false)
 
   const profileQuery = useQuery<{
     user: {
@@ -431,11 +441,49 @@ export function ProviderProfile() {
               Configure sua apresentação pública, endereço base em Governador Valadares e raio GPS.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                triggerHaptic("selection")
+                setReputationCardOpen(true)
+              }}
+              className="h-9 gap-1.5 rounded-xl border-emerald-500/30 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-50 active:scale-95 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              title="Compartilhar selo de confiança e avaliações no WhatsApp"
+            >
+              <Share2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+              Cartão de Reputação
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                triggerHaptic("selection")
+                setPriceEstimatorOpen(true)
+              }}
+              className="h-9 gap-1.5 rounded-xl border-blue-500/30 text-xs font-semibold text-blue-700 transition-all hover:bg-blue-50 active:scale-95 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950/30"
+              title="Calculadora expressa de mão de obra e deslocamento em GV"
+            >
+              <Calculator className="size-3.5 text-blue-600 dark:text-blue-400" />
+              Calculadora de Preço
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                triggerHaptic("selection")
+                if (user?.id) openProvider(user.id)
+              }}
+              className="border-border/70 hover:bg-muted/60 h-9 gap-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
+            >
+              <Eye className="text-primary size-3.5" />
+              Ver Perfil Público
+            </Button>
             <Button
               type="submit"
               disabled={saving}
-              className="h-9 gap-1.5 rounded-xl px-4 text-xs font-semibold shadow-xs"
+              className="h-9 gap-1.5 rounded-xl px-4 text-xs font-semibold shadow-xs transition-all active:scale-95"
             >
               {saving ? (
                 <Loader2 className="size-3.5 animate-spin" />
@@ -966,6 +1014,28 @@ export function ProviderProfile() {
           </Button>
         </div>
       </form>
+
+      {/* Modais de Reputação & Precificação */}
+      {profile && (
+        <>
+          <ProviderSocialReputationCard
+            open={reputationCardOpen}
+            onOpenChange={setReputationCardOpen}
+            provider={{
+              id: profile.id,
+              name: profile.name,
+              avatarUrl: profile.avatarUrl,
+              bio: profile.bio,
+              city: profile.city || "Governador Valadares, MG",
+              verified: profile.verified,
+            }}
+          />
+          <ProviderPriceEstimatorDialog
+            open={priceEstimatorOpen}
+            onOpenChange={setPriceEstimatorOpen}
+          />
+        </>
+      )}
     </Form>
   )
 }

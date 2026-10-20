@@ -35,6 +35,7 @@ import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { playCoinSound } from "@/lib/sounds"
 import { useRealtime } from "@/hooks/use-realtime"
+import { triggerHaptic } from "@/lib/haptics"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -352,8 +353,9 @@ export function PixCheckout({
     if (!qrCode) return
     try {
       await navigator.clipboard.writeText(qrCode)
+      triggerHaptic("success")
       setCopied(true)
-      toast.success("Código PIX copiado!")
+      toast.success("Código PIX copiado com sucesso!")
       setTimeout(() => setCopied(false), 3000)
     } catch {
       toast.error("Não foi possível copiar. Selecione o código manualmente.")
@@ -401,25 +403,25 @@ export function PixCheckout({
             <p className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
               Valor a pagar
             </p>
-            <p className="text-2xl font-bold text-emerald-700 tabular-nums dark:text-emerald-400">
+            <p className="text-2xl font-bold text-emerald-700 tabular-nums sm:text-3xl dark:text-emerald-400">
               {formatBRL(amount)}
             </p>
           </div>
 
           {/* Escrow Guarantee Trust Banner */}
-          <div className="w-full rounded-xl border border-emerald-300/60 bg-emerald-100/40 p-3 text-left dark:border-emerald-800/50 dark:bg-emerald-950/50">
+          <div className="w-full rounded-xl border border-emerald-300/60 bg-emerald-100/40 p-3.5 text-left dark:border-emerald-800/50 dark:bg-emerald-950/50">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <span className="text-xs font-semibold text-emerald-950 dark:text-emerald-100">
+              <ShieldCheck className="size-4.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <span className="text-xs font-bold text-emerald-950 sm:text-sm dark:text-emerald-100">
                 Custódia Protegida com Escrow
               </span>
-              <span className="ml-auto rounded-full bg-emerald-600/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+              <span className="ml-auto rounded-full bg-emerald-600/15 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:text-emerald-300">
                 Garantia 90 dias
               </span>
             </div>
-            <p className="mt-1 text-[11px] leading-relaxed text-emerald-800/90 dark:text-emerald-300/90">
-              O valor fica retido com segurança e só é transferido ao prestador após a conclusão do
-              serviço aprovada por você.
+            <p className="mt-1.5 text-xs leading-relaxed text-emerald-900/90 dark:text-emerald-200/90">
+              O valor fica retido com segurança na plataforma e só é transferido ao prestador após a
+              conclusão do serviço aprovada por você.
             </p>
           </div>
 
@@ -441,37 +443,58 @@ export function PixCheckout({
             </div>
           )}
 
-          {/* Instructions */}
-          <div className="flex items-start gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
-            <Smartphone className="mt-0.5 size-4 shrink-0" />
-            <span>
-              Abra o app do seu banco, selecione <strong>Pagar com PIX</strong> e escaneie o QR code
-              acima. Ou copie o código abaixo.
-            </span>
-          </div>
-
-          {/* Copy PIX code */}
+          {/* Copy PIX code — High contrast primary touch target for mobile & elderly */}
           <Button
-            variant="outline"
+            type="button"
             onClick={handleCopy}
             className={cn(
-              "w-full gap-2 transition-colors",
-              copied &&
-                "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+              "h-12 w-full gap-2.5 rounded-xl text-sm font-bold shadow-md transition-all active:scale-98",
+              copied
+                ? "bg-emerald-700 text-white hover:bg-emerald-700"
+                : "bg-emerald-600 text-white hover:bg-emerald-700",
             )}
           >
             {copied ? (
               <>
-                <Check className="size-4" />
-                Copiado!
+                <Check className="size-5 shrink-0" />
+                <span>Código PIX copiado com sucesso!</span>
               </>
             ) : (
               <>
-                <Copy className="size-4" />
-                Copiar código PIX
+                <Copy className="size-5 shrink-0" />
+                <span>Copiar código PIX (Copia e Cola)</span>
               </>
             )}
           </Button>
+
+          {/* Step-by-Step 1-2-3 Guide for all ages */}
+          <div className="w-full space-y-2 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 text-xs dark:border-slate-800 dark:bg-slate-900/60">
+            <p className="font-semibold text-slate-800 dark:text-slate-200">
+              Como pagar no seu celular:
+            </p>
+            <div className="grid gap-2 text-slate-600 dark:text-slate-400">
+              <div className="flex items-start gap-2">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  1
+                </span>
+                <span>Toque no botão verde acima para copiar o código PIX.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  2
+                </span>
+                <span>Abra o app do seu banco (Nubank, Caixa, Itaú, Bradesco, BB, etc.).</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  3
+                </span>
+                <span>
+                  Escolha a opção <strong>PIX Copia e Cola</strong> e confirme o pagamento.
+                </span>
+              </div>
+            </div>
+          </div>
 
           {/* Timer */}
           <div className="w-full space-y-1.5">

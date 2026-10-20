@@ -58,7 +58,7 @@ describe("API /api/referral", () => {
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json.ok).toBe(true)
-    expect(registerReferralInvite).toHaveBeenCalledWith("u-1", "SEV99999")
+    expect(registerReferralInvite).toHaveBeenCalledWith("u-1", "SEV99999", "client")
   })
 
   it("POST rejeita código inválido com 400", async () => {

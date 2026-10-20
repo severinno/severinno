@@ -425,74 +425,125 @@ export function ProviderFinance() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/40 hover:bg-muted/40 border-border/40 h-11 border-b">
-                    <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                      Data
-                    </TableHead>
-                    <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                      Cliente
-                    </TableHead>
-                    <TableHead className="text-muted-foreground hidden text-xs font-semibold tracking-wide uppercase sm:table-cell">
-                      Serviço
-                    </TableHead>
-                    <TableHead className="text-muted-foreground hidden text-xs font-semibold tracking-wide uppercase md:table-cell">
-                      Método
-                    </TableHead>
-                    <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                      Status
-                    </TableHead>
-                    <TableHead className="text-muted-foreground text-right text-xs font-semibold tracking-wide uppercase">
-                      Valor
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((b) => (
-                    <TableRow
-                      key={b.id}
-                      className="hover:bg-muted/30 border-border/30 h-14 border-b transition-colors"
-                    >
-                      <TableCell className="text-muted-foreground text-xs tabular-nums">
-                        {formatDate(b.scheduledAt)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2.5">
-                          <Avatar className="border-border/60 size-7 border">
-                            {b.client.avatarUrl ? (
-                              <AvatarImage src={b.client.avatarUrl} alt={b.client.name} />
-                            ) : null}
-                            <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-semibold">
-                              {initials(b.client.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="text-foreground truncate text-sm font-medium">
+            <>
+              {/* Mobile Card List (md:hidden) — ergonomia sem scroll horizontal */}
+              <div className="divide-border/40 divide-y p-3 md:hidden">
+                {filtered.map((b) => (
+                  <div key={b.id} className="space-y-2.5 py-3 first:pt-0 last:pb-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <Avatar className="border-border/60 size-8 shrink-0 border">
+                          {b.client.avatarUrl ? (
+                            <AvatarImage src={b.client.avatarUrl} alt={b.client.name} />
+                          ) : null}
+                          <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-semibold">
+                            {initials(b.client.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <p className="text-foreground truncate text-xs font-medium">
                             {b.client.name}
-                          </span>
+                          </p>
+                          <p className="text-muted-foreground text-[11px] tabular-nums">
+                            {formatDate(b.scheduledAt)}
+                          </p>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground hidden max-w-[200px] truncate text-sm sm:table-cell">
-                        {b.service.title}
-                      </TableCell>
-                      <TableCell className="hidden text-sm md:table-cell">
-                        <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
-                          <CreditCard className="size-3.5" />
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-foreground text-sm font-bold tabular-nums">
+                          {formatBRL(b.amount)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="border-border/30 flex items-center justify-between gap-2 border-t pt-1.5 text-xs">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-muted-foreground truncate text-xs font-medium">
+                          {b.service.title}
+                        </p>
+                        <span className="text-muted-foreground/80 inline-flex items-center gap-1 text-[10.5px]">
+                          <CreditCard className="size-3" />
                           {PAYMENT_METHOD_LABELS[b.paymentMethod]}
                         </span>
-                      </TableCell>
-                      <TableCell>
+                      </div>
+                      <div className="shrink-0">
                         <PayStatusBadge status={b.paymentStatus} />
-                      </TableCell>
-                      <TableCell className="text-foreground text-right text-sm font-semibold tabular-nums">
-                        {formatBRL(b.amount)}
-                      </TableCell>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop Table View (hidden md:block) */}
+              <div className="hidden overflow-x-auto md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40 border-border/40 h-11 border-b">
+                      <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                        Data
+                      </TableHead>
+                      <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                        Cliente
+                      </TableHead>
+                      <TableHead className="text-muted-foreground hidden text-xs font-semibold tracking-wide uppercase sm:table-cell">
+                        Serviço
+                      </TableHead>
+                      <TableHead className="text-muted-foreground hidden text-xs font-semibold tracking-wide uppercase md:table-cell">
+                        Método
+                      </TableHead>
+                      <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                        Status
+                      </TableHead>
+                      <TableHead className="text-muted-foreground text-right text-xs font-semibold tracking-wide uppercase">
+                        Valor
+                      </TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.map((b) => (
+                      <TableRow
+                        key={b.id}
+                        className="hover:bg-muted/30 border-border/30 h-14 border-b transition-colors"
+                      >
+                        <TableCell className="text-muted-foreground text-xs tabular-nums">
+                          {formatDate(b.scheduledAt)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2.5">
+                            <Avatar className="border-border/60 size-7 border">
+                              {b.client.avatarUrl ? (
+                                <AvatarImage src={b.client.avatarUrl} alt={b.client.name} />
+                              ) : null}
+                              <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-semibold">
+                                {initials(b.client.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-foreground truncate text-sm font-medium">
+                              {b.client.name}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground hidden max-w-[200px] truncate text-sm sm:table-cell">
+                          {b.service.title}
+                        </TableCell>
+                        <TableCell className="hidden text-sm md:table-cell">
+                          <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
+                            <CreditCard className="size-3.5" />
+                            {PAYMENT_METHOD_LABELS[b.paymentMethod]}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <PayStatusBadge status={b.paymentStatus} />
+                        </TableCell>
+                        <TableCell className="text-foreground text-right text-sm font-semibold tabular-nums">
+                          {formatBRL(b.amount)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

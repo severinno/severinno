@@ -861,7 +861,7 @@ function QuoteListCard({
                     triggerHaptic("selection")
                     onSchedule()
                   }}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 h-7.5 gap-1 rounded-lg px-2.5 text-xs font-semibold shadow-2xs"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 gap-1.5 rounded-xl px-3 text-xs font-semibold shadow-2xs transition-all active:scale-95 sm:h-8"
                 >
                   <CalendarDays className="size-3.5" />
                   Agendar Atendimento
@@ -876,7 +876,7 @@ function QuoteListCard({
                     onApprove()
                   }}
                   disabled={isApproving}
-                  className="h-7.5 gap-1 rounded-lg bg-emerald-600 px-2.5 text-xs font-semibold text-white shadow-2xs hover:bg-emerald-700"
+                  className="h-10 gap-1.5 rounded-xl bg-emerald-600 px-3 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-emerald-700 active:scale-95 sm:h-8"
                 >
                   {isApproving ? (
                     <Loader2 className="size-3.5 animate-spin" />
@@ -894,7 +894,7 @@ function QuoteListCard({
                   triggerHaptic("selection")
                   onViewProvider()
                 }}
-                className="border-border/60 hover:bg-muted/60 h-7.5 gap-1 rounded-lg px-2 text-xs font-medium"
+                className="border-border/60 hover:bg-muted/60 h-8.5 gap-1.5 rounded-xl px-2 text-xs font-medium transition-all active:scale-95 sm:h-8"
               >
                 <MapPin className="text-primary size-3" />
                 <span className="hidden sm:inline">Ver prestador</span>
@@ -907,7 +907,7 @@ function QuoteListCard({
                   triggerHaptic("selection")
                   onMessage()
                 }}
-                className="border-border/60 hover:bg-muted/60 size-7.5 rounded-lg p-0"
+                className="border-border/60 hover:bg-muted/60 size-8.5 rounded-xl p-0 transition-all active:scale-95 sm:size-8"
                 title="Enviar mensagem na plataforma"
                 aria-label="Enviar mensagem na plataforma"
               >
@@ -921,7 +921,7 @@ function QuoteListCard({
                   triggerHaptic("selection")
                   setOpen(!open)
                 }}
-                className="text-primary hover:bg-primary/10 h-7.5 gap-1 rounded-lg px-2 text-xs font-semibold"
+                className="text-primary hover:bg-primary/10 h-8.5 gap-1.5 rounded-xl px-2 text-xs font-semibold transition-all active:scale-95 sm:h-8"
                 aria-label={
                   open
                     ? "Ocultar itens detalhados"
@@ -1324,7 +1324,7 @@ function QuoteCard({
                 triggerHaptic("selection")
                 onSchedule()
               }}
-              className="bg-primary text-primary-foreground hover:bg-primary/90 h-8 gap-1.5 rounded-lg text-xs font-semibold shadow-2xs"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 gap-1.5 rounded-xl text-xs font-semibold shadow-2xs transition-all active:scale-95 sm:h-8"
             >
               <CalendarDays className="size-3.5" />
               Agendar Atendimento
@@ -1339,7 +1339,7 @@ function QuoteCard({
                 onApprove()
               }}
               disabled={isApproving}
-              className="h-8 gap-1.5 rounded-lg bg-emerald-600 text-xs font-semibold text-white shadow-2xs hover:bg-emerald-700"
+              className="h-10 gap-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-emerald-700 active:scale-95 sm:h-8"
             >
               {isApproving ? (
                 <Loader2 className="size-3.5 animate-spin" />
@@ -1357,7 +1357,7 @@ function QuoteCard({
               triggerHaptic("selection")
               onViewProvider()
             }}
-            className="border-border/60 hover:bg-muted/60 h-8 gap-1.5 rounded-lg text-xs font-medium"
+            className="border-border/60 hover:bg-muted/60 h-8.5 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95 sm:h-8"
           >
             <MapPin className="text-primary size-3.5" />
             Ver prestador
@@ -1370,7 +1370,7 @@ function QuoteCard({
               triggerHaptic("selection")
               onMessage()
             }}
-            className="border-border/60 hover:bg-muted/60 h-8 gap-1.5 rounded-lg text-xs font-medium"
+            className="border-border/60 hover:bg-muted/60 h-8.5 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95 sm:h-8"
             title="Enviar mensagem na plataforma"
             aria-label="Enviar mensagem na plataforma"
           >
@@ -1387,7 +1387,7 @@ function QuoteCard({
                 onReject()
               }}
               disabled={isRejecting}
-              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive ml-auto h-8 gap-1.5 rounded-lg text-xs font-medium"
+              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive ml-auto h-8.5 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95 sm:h-8"
             >
               {isRejecting ? (
                 <Loader2 className="size-3.5 animate-spin" />

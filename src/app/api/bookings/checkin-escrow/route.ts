@@ -72,7 +72,7 @@ export const POST = withRoute("api.bookings.checkin-escrow.POST", async (req) =>
         try {
           const booking = await db.booking.findUnique({
             where: { id: parsed.bookingId },
-            select: { id: true, providerId: true, amount: true, status: true },
+            select: { id: true, providerId: true, clientId: true, amount: true, status: true },
           })
 
           if (booking) {
@@ -105,6 +105,19 @@ export const POST = withRoute("api.bookings.checkin-escrow.POST", async (req) =>
                 booking.providerId,
                 booking.id,
                 toMoneyNumber(booking.amount),
+              ).catch(() => {})
+
+              // Bônus de Fidelidade Severinno Clube (+10 pts)
+              const { awardPoints } = await import("@/lib/loyalty")
+              awardPoints(booking.clientId, "booking_completed").catch(() => {})
+              awardPoints(booking.providerId, "booking_completed").catch(() => {})
+
+              // Bônus de Indicação se primeiro agendamento
+              const { processReferralFirstBookingConversion } = await import("@/lib/referral")
+              processReferralFirstBookingConversion(
+                booking.id,
+                booking.clientId,
+                booking.providerId,
               ).catch(() => {})
             }
           }

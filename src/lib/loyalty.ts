@@ -39,12 +39,100 @@ export type LoyaltyBadge = {
 export type LoyaltyStats = {
   points: number
   tier: LoyaltyTier
+  tierName: string
   badges: LoyaltyBadge[]
   streak: number
   totalBookings: number
   totalReviews: number
   nextTier: { name: string; pointsNeeded: number } | null
 }
+
+export interface LoyaltyRewardItem {
+  id: string
+  title: string
+  description: string
+  pointsCost: number
+  category: "taxa" | "visibilidade" | "parceiro" | "cupom"
+  icon: string
+  badgeText?: string
+  expiresInDays: number
+}
+
+export interface RedeemedPerk {
+  id: string
+  rewardId: string
+  title: string
+  code: string
+  pointsCost: number
+  category: "taxa" | "visibilidade" | "parceiro" | "cupom"
+  redeemedAt: string
+  expiresAt: string
+  status: "active" | "used" | "expired"
+}
+
+export interface LoyaltyTransactionRecord {
+  action: string
+  label: string
+  points: number
+  at: number
+}
+
+export const LOYALTY_REWARDS_CATALOG: LoyaltyRewardItem[] = [
+  {
+    id: "taxa_50_desconto",
+    title: "50% de Desconto na Taxa Severinno",
+    description: "Abatimento de 50% na taxa de intermediação no seu próximo atendimento concluído.",
+    pointsCost: 200,
+    category: "taxa",
+    icon: "Percent",
+    badgeText: "Economia no Bolso",
+    expiresInDays: 30,
+  },
+  {
+    id: "vitrine_destaque_7d",
+    title: "Destaque na Vitrine por 7 Dias",
+    description:
+      "Selo 'Especialista em Destaque' e prioridade no topo das buscas em Governador Valadares.",
+    pointsCost: 300,
+    category: "visibilidade",
+    icon: "Sparkles",
+    badgeText: "Mais Chamados",
+    expiresInDays: 7,
+  },
+  {
+    id: "voucher_parceiro_material_50",
+    title: "Voucher R$ 50 em Materiais & Ferramentas",
+    description:
+      "Crédito para compra de materiais elétricos/hidráulicos em parceiros credenciados de GV.",
+    pointsCost: 500,
+    category: "parceiro",
+    icon: "Wrench",
+    badgeText: "Lojas Credenciadas",
+    expiresInDays: 60,
+  },
+  {
+    id: "voucher_servico_25",
+    title: "Cupom R$ 25 para Próximo Serviço",
+    description:
+      "Voucher de R$ 25 de abatimento direto na mão de obra em qualquer serviço contratado.",
+    pointsCost: 150,
+    category: "cupom",
+    icon: "Ticket",
+    badgeText: "Desconto Direto",
+    expiresInDays: 45,
+  },
+  {
+    id: "prioridade_despacho_30d",
+    title: "Prioridade na Fila de Despacho",
+    description:
+      "Notificação antecipada de novos chamados e orçamentos na sua rota com exclusividade de 60s.",
+    pointsCost: 250,
+    category: "visibilidade",
+    icon: "Zap",
+    badgeText: "Acesso Antecipado",
+    expiresInDays: 30,
+  },
+]
 
 const TIER_THRESHOLDS: Record<LoyaltyTier, number> = {
   bronze: 0,
@@ -62,18 +150,31 @@ const TIER_NAMES: Record<LoyaltyTier, string> = {
 
 // ── Points Engine ─────────────────────────────────────────────────────────
 
+export type LoyaltyAction =
+  | "booking_completed"
+  | "five_star_review"
+  | "review_left"
+  | "referral"
+  | "referral_provider"
+  | "referral_welcome_client"
+  | "referral_welcome_provider"
+  | "weekly_streak"
+
 /**
  * Award points to a user for an action.
  */
 export async function awardPoints(
   userId: string,
-  action: "booking_completed" | "five_star_review" | "review_left" | "referral" | "weekly_streak",
+  action: LoyaltyAction,
 ): Promise<{ points: number; total: number; newBadges: string[] }> {
-  const POINT_VALUES: Record<string, number> = {
+  const POINT_VALUES: Record<LoyaltyAction, number> = {
     booking_completed: 10,
     five_star_review: 20,
     review_left: 10,
     referral: 50,
+    referral_provider: 200,
+    referral_welcome_client: 25,
+    referral_welcome_provider: 50,
     weekly_streak: 5,
   }
 
@@ -130,7 +231,16 @@ export async function getLoyaltyStats(userId: string): Promise<LoyaltyStats> {
         }
       : null
 
-  return { points, tier, badges, streak, totalBookings, totalReviews, nextTier }
+  return {
+    points,
+    tier,
+    tierName: TIER_NAMES[tier],
+    badges,
+    streak,
+    totalBookings,
+    totalReviews,
+    nextTier,
+  }
 }
 
 // ── Tier Calculation ──────────────────────────────────────────────────────
@@ -266,5 +376,126 @@ async function getUserBadges(userId: string): Promise<LoyaltyBadge[]> {
       description: def?.description ?? "",
       earnedAt: new Date().toISOString(), // Approximate
     }
+  })
+}
+
+// ── Transaction Labels ────────────────────────────────────────────────────
+
+const ACTION_LABELS: Record<string, string> = {
+  booking_completed: "Serviço concluído (+10 pts)",
+  five_star_review: "Avaliação 5 estrelas (+20 pts)",
+  review_left: "Avaliação registrada (+10 pts)",
+  referral: "Indicação de cliente (+50 pts)",
+  referral_provider: "Indicação de especialista parceiro (+200 pts)",
+  referral_welcome_client: "Boas-vindas ao Clube (+25 pts)",
+  referral_welcome_provider: "Credenciamento de parceiro (+50 pts)",
+  weekly_streak: "Sequência semanal ativa (+5 pts)",
+}
+
+// ── Redemption Engine (Anti-Cash: 100% Pontos e Vantagens) ───────────────
+
+/**
+ * Redeem loyalty points for a catalog benefit.
+ * Anti-cash mandate: strictly platform advantages, zero direct cash withdrawals.
+ */
+export async function redeemReward(
+  userId: string,
+  rewardId: string,
+): Promise<{
+  success: boolean
+  error?: string
+  perk?: RedeemedPerk
+  remainingPoints?: number
+}> {
+  const item = LOYALTY_REWARDS_CATALOG.find((r) => r.id === rewardId)
+  if (!item) {
+    return { success: false, error: "Recompensa não encontrada no catálogo do Clube." }
+  }
+
+  const current = (await cacheGet<number>(`loyalty:points:${userId}`)) ?? 0
+  if (current < item.pointsCost) {
+    return {
+      success: false,
+      error: `Saldo insuficiente. Você possui ${current} pontos, mas este benefício requer ${item.pointsCost} pontos.`,
+    }
+  }
+
+  const remainingPoints = current - item.pointsCost
+  await cacheSet(`loyalty:points:${userId}`, remainingPoints, 365 * 24 * 60 * 60)
+
+  // Append transaction log with negative points
+  const txKey = `loyalty:tx:${userId}`
+  const txs = (await cacheGet<Array<{ action: string; points: number; at: number }>>(txKey)) ?? []
+  txs.push({ action: `redeem_${item.id}`, points: -item.pointsCost, at: Date.now() })
+  if (txs.length > 100) txs.splice(0, txs.length - 100)
+  await cacheSet(txKey, txs, 365 * 24 * 60 * 60)
+
+  // Generate unique voucher code
+  const codeSuffix = Math.random().toString(36).substring(2, 6).toUpperCase()
+  const code = `SEV-${item.id.slice(0, 4).toUpperCase()}-${codeSuffix}`
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + item.expiresInDays * 24 * 60 * 60 * 1000).toISOString()
+
+  const perk: RedeemedPerk = {
+    id: `perk_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    rewardId: item.id,
+    title: item.title,
+    code,
+    pointsCost: item.pointsCost,
+    category: item.category,
+    redeemedAt: now.toISOString(),
+    expiresAt,
+    status: "active",
+  }
+
+  const perksKey = `loyalty:rewards:${userId}`
+  const perks = (await cacheGet<RedeemedPerk[]>(perksKey)) ?? []
+  perks.unshift(perk)
+  if (perks.length > 50) perks.splice(50)
+  await cacheSet(perksKey, perks, 365 * 24 * 60 * 60)
+
+  logger.info({ userId, rewardId, code, remainingPoints }, "loyalty: reward redeemed successfully")
+
+  return { success: true, perk, remainingPoints }
+}
+
+/**
+ * Returns user's points transaction statement.
+ */
+export async function getLoyaltyTransactions(userId: string): Promise<LoyaltyTransactionRecord[]> {
+  const txKey = `loyalty:tx:${userId}`
+  const raw = (await cacheGet<Array<{ action: string; points: number; at: number }>>(txKey)) ?? []
+  return raw
+    .slice(-30)
+    .reverse()
+    .map((t) => {
+      let label = ACTION_LABELS[t.action]
+      if (!label && t.action.startsWith("redeem_")) {
+        const rewardId = t.action.replace("redeem_", "")
+        const cat = LOYALTY_REWARDS_CATALOG.find((c) => c.id === rewardId)
+        label = cat ? `Resgate: ${cat.title}` : `Resgate de benefício (${t.points} pts)`
+      }
+      return {
+        action: t.action,
+        label: label ?? `Movimentação de pontos (${t.points > 0 ? "+" : ""}${t.points} pts)`,
+        points: t.points,
+        at: t.at,
+      }
+    })
+}
+
+/**
+ * Returns active and past redeemed perks for a user.
+ */
+export async function getUserPerks(userId: string): Promise<RedeemedPerk[]> {
+  const perksKey = `loyalty:rewards:${userId}`
+  const raw = (await cacheGet<RedeemedPerk[]>(perksKey)) ?? []
+  const now = Date.now()
+
+  return raw.map((p) => {
+    if (p.status === "active" && new Date(p.expiresAt).getTime() < now) {
+      return { ...p, status: "expired" as const }
+    }
+    return p
   })
 }

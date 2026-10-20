@@ -115,4 +115,35 @@ describe("Referral Engine (Indique e Ganhe)", () => {
 
     expect(success).toBe(false)
   })
+
+  it("motor dual: premia indicação de prestador especialista com peso 4x (+200 pts) e pontos de boas-vindas (+50 pts)", async () => {
+    const { awardPoints } = await import("@/lib/loyalty")
+    const code = await getOrCreateReferralCode("pro-referrer")
+
+    // Vincula prestador especialista convidado
+    const registered = await registerReferralInvite("pro-electrician", code, "provider")
+    expect(registered).toBe(true)
+
+    // Prestador conclui seu 1º atendimento
+    const res = await processReferralFirstBookingConversion(
+      "b-service-1",
+      "any-client",
+      "pro-electrician",
+    )
+    expect(res.rewarded).toBe(true)
+    expect(res.pointsAwarded).toBe(200)
+    expect(res.convertedRole).toBe("provider")
+    expect(res.welcomePointsAwarded).toBe(50)
+    expect(res.welcomeUserId).toBe("pro-electrician")
+
+    expect(awardPoints).toHaveBeenCalledWith("pro-referrer", "referral_provider")
+    expect(awardPoints).toHaveBeenCalledWith("pro-electrician", "referral_welcome_provider")
+
+    // Métricas segregadas refletem a conversão do prestador
+    const stats = await getReferralStats("pro-referrer")
+    expect(stats.providerConversionsCount).toBe(1)
+    expect(stats.providerPointsEarned).toBe(200)
+    expect(stats.providerInviteLink).toContain("tipo=prestador")
+    expect(stats.clientInviteLink).toContain("tipo=cliente")
+  })
 })

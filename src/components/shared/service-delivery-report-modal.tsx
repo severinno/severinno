@@ -33,6 +33,7 @@ import { FilePhotos } from "@/components/modals/file-photos"
 import { SafeImage } from "@/components/shared/safe-image"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { enqueueOfflineReport } from "@/lib/offline-reports-queue"
 
 export interface InspectionChecklistItem {
   id: string
@@ -302,6 +303,30 @@ export function ServiceDeliveryReportModal({
       return
     }
 
+    // Salvar offline se o dispositivo estiver desconectado
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      await enqueueOfflineReport({
+        bookingId,
+        serviceTitle,
+        clientName,
+        beforePhotos,
+        afterPhotos,
+        completionNote: notes,
+        checklist,
+      })
+      try {
+        localStorage.removeItem(draftKey)
+      } catch {
+        // no-op
+      }
+      toast.info(
+        "📱 Laudo salvo no dispositivo! Sincronização automática assim que houver sinal de rede.",
+      )
+      onSuccess?.()
+      onOpenChange(false)
+      return
+    }
+
     setIsSaving(true)
     try {
       const res = await fetch(`/api/bookings/${bookingId}/photos`, {
@@ -329,6 +354,30 @@ export function ServiceDeliveryReportModal({
       onSuccess?.()
       onOpenChange(false)
     } catch (err: unknown) {
+      // Fallback offline se a conexão caiu durante o envio
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        await enqueueOfflineReport({
+          bookingId,
+          serviceTitle,
+          clientName,
+          beforePhotos,
+          afterPhotos,
+          completionNote: notes,
+          checklist,
+        })
+        try {
+          localStorage.removeItem(draftKey)
+        } catch {
+          // no-op
+        }
+        toast.info(
+          "📱 Laudo salvo no dispositivo! Sincronização automática assim que houver sinal de rede.",
+        )
+        onSuccess?.()
+        onOpenChange(false)
+        return
+      }
+
       const msg = err instanceof Error ? err.message : "Erro ao salvar"
       toast.error(msg)
     } finally {

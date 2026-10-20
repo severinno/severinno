@@ -83,6 +83,7 @@ import {
   SearchInput,
   TableSkeleton,
 } from "./_shared"
+import { useUIStore } from "@/store/ui"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -118,6 +119,7 @@ type StatusFilter = "ALL" | BookingStatus
 // Main component
 // ---------------------------------------------------------------------------
 export function AdminBookings() {
+  const openProvider = useUIStore((s) => s.openProvider)
   const [status, setStatus] = React.useState<StatusFilter>("ALL")
   const [page, setPage] = React.useState(1)
   const [q, setQ] = React.useState("")
@@ -408,6 +410,15 @@ export function AdminBookings() {
                   label="Prestador"
                   value={detail.provider?.name ?? "—"}
                   avatarUrl={detail.provider?.avatarUrl}
+                  onAction={
+                    detail.provider?.id
+                      ? () => {
+                          setDetail(null)
+                          openProvider(detail.provider!.id)
+                        }
+                      : undefined
+                  }
+                  actionLabel="Ver perfil"
                 />
               </div>
 
@@ -499,14 +510,29 @@ function DetailField({
   label,
   value,
   avatarUrl,
+  onAction,
+  actionLabel,
 }: {
   label: string
   value: string
   avatarUrl?: string | null
+  onAction?: () => void
+  actionLabel?: string
 }) {
   return (
     <div className="space-y-1">
-      <p className="text-muted-foreground text-[11px] tracking-wider uppercase">{label}</p>
+      <div className="flex items-center justify-between">
+        <p className="text-muted-foreground text-[11px] tracking-wider uppercase">{label}</p>
+        {onAction && actionLabel ? (
+          <button
+            type="button"
+            onClick={onAction}
+            className="text-primary text-[11px] font-medium hover:underline"
+          >
+            {actionLabel}
+          </button>
+        ) : null}
+      </div>
       <div className="flex items-center gap-2">
         <Avatar className="size-7 shrink-0">
           {avatarUrl ? <AvatarImage src={avatarUrl} alt={value} /> : null}

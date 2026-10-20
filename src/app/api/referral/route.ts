@@ -10,6 +10,7 @@ import { z } from "zod"
 
 const claimReferralSchema = z.object({
   code: z.string().min(4, "Código de indicação inválido").max(16),
+  intentType: z.enum(["client", "provider"]).optional(),
 })
 
 /**
@@ -37,9 +38,9 @@ export const POST = withRoute("api.referral.POST", async (request) => {
   const session = await requireUser()
 
   const body = await request.json().catch(() => ({}))
-  const { code } = claimReferralSchema.parse(body)
+  const { code, intentType } = claimReferralSchema.parse(body)
 
-  const success = await registerReferralInvite(session.userId, code)
+  const success = await registerReferralInvite(session.userId, code, intentType ?? "client")
 
   if (!success) {
     throw badRequest("Código de indicação inválido ou você não pode indicar a si mesmo.")

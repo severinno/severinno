@@ -332,15 +332,36 @@ function showNotificationFromPayload(data) {
     data.notificationType === "PROVIDER_ARRIVED" ||
     (data.data && data.data.notificationType === "PROVIDER_ARRIVED")
 
+  const isNewJob =
+    data.type === "NEW_BOOKING" ||
+    data.type === "NEW_JOB" ||
+    data.notificationType === "NEW_BOOKING" ||
+    data.notificationType === "NEW_JOB" ||
+    (data.data &&
+      (data.data.notificationType === "NEW_BOOKING" || data.data.notificationType === "NEW_JOB"))
+
+  const actions =
+    data.actions && data.actions.length > 0
+      ? data.actions
+      : isNewJob
+        ? [{ action: "view_job", title: "⚡ Ver Chamado" }]
+        : isMessage
+          ? [{ action: "open_chat", title: "💬 Responder" }]
+          : []
+
   const options = {
     body: data.body || "",
     icon: data.icon || "/icon-192.png",
     badge: data.badge || "/icon-192.png",
-    vibrate: isArrival ? [300, 100, 300, 100, 300] : [200, 100, 200],
+    vibrate: isNewJob
+      ? [250, 100, 250, 100, 500]
+      : isArrival
+        ? [300, 100, 300, 100, 300]
+        : [200, 100, 200],
     data: data.data || { url: data.url || "/" },
     tag: data.tag,
     renotify: true,
-    requireInteraction: isArrival || !!(actions.length > 0),
+    requireInteraction: isArrival || isNewJob || !!(actions.length > 0),
     actions,
   }
 
@@ -378,6 +399,14 @@ self.addEventListener("notificationclick", (event) => {
 
   // ── Handle action buttons ────────────────────────────────────────────
   const peerId = data.peerId || data.senderId || (data.data && data.data.peerId)
+
+  if (action === "view_job") {
+    const jobUrl = bookingId
+      ? `/provider?view=provider.bookings&bookingId=${bookingId}`
+      : "/provider?view=provider.bookings"
+    event.waitUntil(openOrFocusUrl(jobUrl))
+    return
+  }
 
   if (action === "open_chat" || (peerId && !bookingId && action !== "reject")) {
     const chatUrl = `/dashboard?tab=messages&peer=${peerId}`

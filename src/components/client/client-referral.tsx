@@ -32,6 +32,7 @@ import {
   Copy,
   Crown,
   Gift,
+  Info,
   LayoutGrid,
   LayoutList,
   Loader2,
@@ -43,6 +44,7 @@ import {
   Sparkles,
   Trophy,
   Users,
+  Wrench,
   X,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -95,6 +97,7 @@ function getBadgeStyle(badge: ReferralLeaderboardEntry["badge"]) {
 
 export function ClientReferral() {
   const navigate = useViewStore((s) => s.navigate)
+  const [activeTab, setActiveTab] = React.useState<"client" | "provider">("client")
   const [copied, setCopied] = React.useState(false)
   const [viewMode, setViewMode] = React.useState<"list" | "grid">("list")
   const [searchQuery, setSearchQuery] = React.useState("")
@@ -134,30 +137,47 @@ export function ClientReferral() {
     )
   }, [leaderboard, searchQuery])
 
-  const inviteLink = stats?.inviteLink
-  const shareText = stats?.shareText
-  const whatsappShareUrl = stats?.whatsappShareUrl
+  // Dual funnel links and texts
+  const currentLink =
+    activeTab === "provider"
+      ? stats?.providerInviteLink || stats?.inviteLink
+      : stats?.clientInviteLink || stats?.inviteLink
+
+  const currentShareText =
+    activeTab === "provider"
+      ? stats?.providerShareText || stats?.shareText
+      : stats?.clientShareText || stats?.shareText
+
+  const currentWhatsappUrl =
+    activeTab === "provider"
+      ? stats?.whatsappShareUrlProvider || stats?.whatsappShareUrl
+      : stats?.whatsappShareUrlClient || stats?.whatsappShareUrl
 
   const handleCopyLink = React.useCallback(() => {
-    if (!inviteLink) return
+    if (!currentLink) return
     triggerHaptic("success")
-    navigator.clipboard.writeText(inviteLink)
+    navigator.clipboard.writeText(currentLink)
     setCopied(true)
-    toast.success("Link de indicação copiado! 📋")
+    toast.success(
+      activeTab === "provider"
+        ? "Link para prestadores copiado! 📋"
+        : "Link de indicação copiado! 📋",
+    )
     setTimeout(() => setCopied(false), 2500)
-  }, [inviteLink])
+  }, [currentLink, activeTab])
 
   const handleShare = React.useCallback(async () => {
-    if (!inviteLink) return
+    if (!currentLink) return
     triggerHaptic("selection")
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share({
-          title: "Severinno — Conheça e Contrate com Segurança",
-          text:
-            shareText ||
-            "Estou usando o Severinno para serviços em Governador Valadares. Use meu convite para ganhar vantagens no 1º serviço:",
-          url: inviteLink,
+          title:
+            activeTab === "provider"
+              ? "Severinno GV — Indicação de Prestador Especialista"
+              : "Severinno GV — Serviços Residenciais com Garantia",
+          text: currentShareText,
+          url: currentLink,
         })
         return
       } catch {
@@ -165,13 +185,13 @@ export function ClientReferral() {
       }
     }
     handleCopyLink()
-  }, [inviteLink, shareText, handleCopyLink])
+  }, [currentLink, currentShareText, handleCopyLink, activeTab])
 
   const handleWhatsAppShare = React.useCallback(() => {
-    if (!whatsappShareUrl) return
+    if (!currentWhatsappUrl) return
     triggerHaptic("selection")
-    window.open(whatsappShareUrl, "_blank", "noopener,noreferrer")
-  }, [whatsappShareUrl])
+    window.open(currentWhatsappUrl, "_blank", "noopener,noreferrer")
+  }, [currentWhatsappUrl])
 
   const totalInvites = stats?.totalInvites ?? 0
   const activeFriends = stats?.activeFriends ?? 0
@@ -226,7 +246,7 @@ export function ClientReferral() {
       </div>
 
       {/* Impact StatCards — Bento micro-cards (~68px) */}
-      <div className="grid gap-2.5 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         <StatCard
           icon={Users}
           label="Convites Enviados"
@@ -238,22 +258,30 @@ export function ClientReferral() {
         <StatCard
           icon={CheckCircle2}
           label="Amigos Ativos"
-          value={String(activeFriends)}
+          value={String(stats?.clientConversionsCount ?? activeFriends)}
           tone="primary"
-          hint="Concluíram o 1º serviço seguro"
+          hint="Concluíram o 1º serviço (+50 pts)"
+          compact={true}
+        />
+        <StatCard
+          icon={Wrench}
+          label="Prestadores Indicados"
+          value={String(stats?.providerConversionsCount ?? 0)}
+          tone="amber"
+          hint="+200 pts por prestador ativo (4x peso)"
           compact={true}
         />
         <StatCard
           icon={Award}
           label="Pontos Conquistados"
-          value={`+${pointsEarned}`}
+          value={`+${stats?.totalPointsEarned ?? pointsEarned}`}
           tone="amber"
-          hint="No Clube de Fidelidade"
+          hint="No Clube de Fidelidade (não dinheiro)"
           compact={true}
         />
       </div>
 
-      {/* Main Referral Sharing Card */}
+      {/* Main Referral Sharing Card with Dual Funnel Switcher */}
       {isLoadingStats ? (
         <Card className="border-border/60 rounded-xl p-6 shadow-2xs">
           <div className="flex h-32 items-center justify-center">
@@ -263,7 +291,7 @@ export function ClientReferral() {
       ) : (
         <Card className="from-card via-card/95 overflow-hidden rounded-xl border border-emerald-500/25 bg-gradient-to-br to-emerald-500/5 shadow-2xs">
           <CardHeader className="p-3.5 pb-2 sm:p-4">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-600 dark:text-emerald-400">
                   <Gift className="size-4.5" />
@@ -273,28 +301,98 @@ export function ClientReferral() {
                     Seu Link de Convite Exclusivo
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    Ganhe +50 pontos no Clube de Fidelidade quando seu amigo contratar o 1º serviço.
+                    {activeTab === "provider"
+                      ? "Indique prestadores especialistas de confiança e ganhe +200 pontos no Clube."
+                      : "Ganhe +50 pontos no Clube quando seu amigo morador contratar o 1º serviço."}
                   </CardDescription>
                 </div>
               </div>
-              {stats?.tierBonusTitle && (
-                <Badge
-                  variant="outline"
-                  className="self-start border-emerald-500/30 bg-emerald-500/10 text-emerald-700 sm:self-auto dark:text-emerald-300"
+
+              <div className="flex flex-wrap items-center gap-2">
+                {stats?.tierBonusTitle && (
+                  <Badge
+                    variant="outline"
+                    className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                  >
+                    <Sparkles className="mr-1 size-3" />
+                    {stats.tierBonusTitle}
+                  </Badge>
+                )}
+
+                {/* Segmented Tab Switcher */}
+                <div
+                  role="tablist"
+                  aria-label="Funil de indicação"
+                  className="bg-muted/60 inline-flex items-center self-start rounded-xl p-1 text-xs sm:self-auto"
                 >
-                  <Sparkles className="mr-1 size-3" />
-                  {stats.tierBonusTitle}
-                </Badge>
-              )}
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === "client"}
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      setActiveTab("client")
+                    }}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1 font-semibold transition-all ${
+                      activeTab === "client"
+                        ? "bg-primary text-primary-foreground shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Users className="size-3.5" />
+                    <span>Amigos (+50 pts)</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === "provider"}
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      setActiveTab("provider")
+                    }}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1 font-semibold transition-all ${
+                      activeTab === "provider"
+                        ? "bg-amber-600 text-white shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Trophy className="size-3.5" />
+                    <span>Prestador (+200 pts)</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </CardHeader>
 
           <CardContent className="space-y-3 p-3.5 pt-0 sm:p-4 sm:pt-0">
+            {/* Pitch banner for selected tab */}
+            {activeTab === "provider" ? (
+              <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-900 dark:text-amber-200">
+                <Trophy className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <p>
+                  <strong>Indique os melhores profissionais de GV:</strong> Conhece um ótimo
+                  eletricista, encanador ou pintor? Envie seu link exclusivo de prestador. Quando
+                  ele concluir o 1º atendimento, você ganha <strong>+200 pontos</strong> e ele
+                  recebe
+                  <strong>+50 pontos</strong> de boas-vindas no Clube.
+                </p>
+              </div>
+            ) : (
+              <div className="border-primary/20 bg-primary/5 text-foreground flex items-start gap-2.5 rounded-xl border p-3 text-xs">
+                <Users className="text-primary mt-0.5 size-4 shrink-0" />
+                <p>
+                  <strong>Indique vizinhos e amigos:</strong> Compartilhe para contratações seguras
+                  com garantia do CDC e proteção Escrow. Você ganha <strong>+50 pontos</strong> e
+                  seu amigo recebe <strong>+25 pontos</strong> de boas-vindas.
+                </p>
+              </div>
+            )}
+
             {/* Link Box */}
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="border-border/70 bg-muted/40 flex flex-1 items-center justify-between rounded-lg border px-3 py-2 font-mono text-xs shadow-inner">
-                <span className="text-muted-foreground truncate" title={stats?.inviteLink}>
-                  {stats?.inviteLink || "Carregando link..."}
+              <div className="border-border/70 bg-muted/40 flex flex-1 items-center justify-between rounded-lg border px-3 py-2 font-mono text-xs shadow-inner select-all">
+                <span className="text-muted-foreground truncate" title={currentLink}>
+                  {currentLink || "Carregando link..."}
                 </span>
                 <span className="bg-background text-foreground border-border/60 ml-2 shrink-0 rounded border px-2 py-0.5 text-xs font-bold shadow-2xs">
                   {stats?.code}
@@ -338,6 +436,16 @@ export function ClientReferral() {
                   <span>Convidar no WhatsApp</span>
                 </Button>
               </div>
+            </div>
+
+            {/* Points Notice */}
+            <div className="bg-muted/30 border-border/60 text-2xs text-muted-foreground flex items-start gap-2 rounded-lg border p-2.5">
+              <Info className="text-muted-foreground mt-0.5 size-3.5 shrink-0" />
+              <span>
+                <strong>Regra de Pontuação:</strong> Todos os participantes ganham pontos creditados
+                no <em>Clube de Fidelidade Severinno</em> para conversão futura em benefícios e
+                descontos em serviços na plataforma — não dinheiro.
+              </span>
             </div>
           </CardContent>
         </Card>

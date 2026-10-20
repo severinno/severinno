@@ -652,11 +652,15 @@ export function AdminGeoFilter({
 
       {/* Radius slider */}
       <div className="flex items-center gap-2">
-        <label className="text-muted-foreground flex items-center gap-1 text-xs whitespace-nowrap">
+        <label
+          htmlFor="admin-geo-radius"
+          className="text-muted-foreground flex items-center gap-1 text-xs whitespace-nowrap"
+        >
           <MapPin className="size-3" />
           {value.radiusKm}km
         </label>
         <input
+          id="admin-geo-radius"
           type="range"
           min={5}
           max={200}
@@ -665,6 +669,7 @@ export function AdminGeoFilter({
           onChange={(e) => onChange({ ...value, radiusKm: Number(e.target.value) })}
           className="bg-muted accent-primary h-1.5 w-20 cursor-pointer appearance-none rounded-full"
           title="Raio de busca (km)"
+          aria-label="Raio de busca em quilômetros"
         />
       </div>
 

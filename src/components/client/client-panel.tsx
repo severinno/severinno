@@ -17,6 +17,7 @@
 import * as React from "react"
 import dynamic from "next/dynamic"
 import {
+  Award,
   Calendar,
   FileText,
   Gift,
@@ -94,6 +95,13 @@ const ClientReferral = dynamic(
   () => import("@/components/client/client-referral").then((m) => ({ default: m.ClientReferral })),
   { ssr: false },
 )
+const LoyaltyRewardsCenter = dynamic(
+  () =>
+    import("@/components/shared/loyalty-rewards-center").then((m) => ({
+      default: m.LoyaltyRewardsCenter,
+    })),
+  { ssr: false },
+)
 
 // ---------------------------------------------------------------------------
 // Nav items
@@ -107,6 +115,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Serviços", icon: Wrench, view: "client.services" },
   { label: "Financeiro", icon: Wallet, view: "client.finance" },
   { label: "Indique e Ganhe", icon: Gift, view: "client.referral" },
+  { label: "Clube & Benefícios", icon: Award, view: "client.rewards" },
   { label: "Mensagens", icon: MessageSquare, view: "client.messages" },
   { label: "Avaliações", icon: Star, view: "client.reviews" },
   { label: "Favoritos", icon: Heart, view: "client.favorites" },
@@ -151,6 +160,10 @@ const VIEW_META: Record<string, ViewMeta> = {
   "client.referral": {
     title: "Indique e Ganhe",
     subtitle: "Convide amigos para o Severinno e acumule recompensas no Clube de Fidelidade",
+  },
+  "client.rewards": {
+    title: "Severinno Clube & Benefícios",
+    subtitle: "Resgate seus pontos em cupons de desconto, vantagens e parcerias exclusivas",
   },
   "client.messages": {
     title: "Mensagens",
@@ -253,6 +266,8 @@ function renderView(view: string): React.ReactNode {
       return <ClientFinance />
     case "client.referral":
       return <ClientReferral />
+    case "client.rewards":
+      return <LoyaltyRewardsCenter role="client" />
     case "client.messages":
       return <ClientMessages />
     case "client.reviews":

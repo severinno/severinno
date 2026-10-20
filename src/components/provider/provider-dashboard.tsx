@@ -15,7 +15,9 @@ import {
 } from "recharts"
 import {
   ArrowRight,
+  Award,
   Banknote,
+  Calculator,
   CalendarCheck,
   CalendarDays,
   CheckCircle2,
@@ -26,6 +28,7 @@ import {
   Plus,
   Radio,
   Send,
+  Share2,
   Star,
   Wallet,
 } from "lucide-react"
@@ -45,6 +48,7 @@ import { ptBR } from "date-fns/locale"
 import { apiGet } from "@/lib/api"
 import { type BookingStatus } from "@/lib/constants"
 import { formatBRL, formatDateTime, formatTime } from "@/lib/format"
+import { triggerHaptic } from "@/lib/haptics"
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 
@@ -58,6 +62,8 @@ import { StatCard } from "@/components/shared/dashboard-shell"
 import ProviderGeoAwarenessBadge from "@/components/provider/provider-geo-awareness-badge"
 import { BookingStatusBadge } from "@/components/admin/admin-shared"
 import { ProviderAnalyticsPanel } from "@/components/provider/provider-analytics-panel"
+import { ProviderSocialReputationCard } from "./provider-social-reputation-card"
+import { ProviderPriceEstimatorDialog } from "./provider-price-estimator-dialog"
 
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 12,
@@ -124,6 +130,8 @@ function initials(name?: string) {
 export function ProviderDashboard() {
   const user = useAuthStore((s) => s.user)
   const navigate = useViewStore((s) => s.navigate)
+  const [reputationCardOpen, setReputationCardOpen] = React.useState(false)
+  const [priceEstimatorOpen, setPriceEstimatorOpen] = React.useState(false)
 
   const bookingsQuery = useQuery<{ items: Booking[]; total: number }>({
     queryKey: ["provider", "dashboard", "bookings", user?.id],
@@ -158,6 +166,15 @@ export function ProviderDashboard() {
     queryFn: () => apiGet("/api/provider/wallet"),
     enabled: !!user,
     refetchInterval: 30_000,
+  })
+
+  const loyaltyQuery = useQuery<{
+    stats: { points: number; tier: string; tierName: string }
+  }>({
+    queryKey: ["loyalty", user?.id],
+    queryFn: () => apiGet("/api/loyalty"),
+    enabled: !!user,
+    staleTime: 30_000,
   })
 
   const bookings = React.useMemo(() => bookingsQuery.data?.items ?? [], [bookingsQuery.data?.items])
@@ -269,7 +286,7 @@ export function ProviderDashboard() {
       {/* Greeting & Header HUD (Nielsen #1: Visibilidade do estado do sistema) */}
       <div className="flex flex-col gap-3 border-b pb-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-1">
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <h2 className="text-foreground text-2xl font-bold tracking-tight">
               Olá, {user?.name?.split(" ")[0] ?? "Prestador"} <span className="ml-0.5">👋</span>
             </h2>
@@ -280,6 +297,17 @@ export function ProviderDashboard() {
               <Radio className="size-3 animate-pulse text-emerald-500" />
               <span>Disponível em GV</span>
             </Badge>
+            <button
+              type="button"
+              onClick={() => navigate("provider.rewards")}
+              className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/80 bg-amber-50/70 px-2.5 py-0.5 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/50"
+            >
+              <Award className="size-3 text-amber-600 dark:text-amber-400" />
+              <span>
+                {loyaltyQuery.data?.stats?.points ?? 0} pts &middot;{" "}
+                {loyaltyQuery.data?.stats?.tierName ?? "Bronze"}
+              </span>
+            </button>
           </div>
           <p className="text-muted-foreground text-xs capitalize">
             {format(today, "EEEE, dd 'de' MMMM", { locale: ptBR })} &middot; Governador Valadares,
@@ -312,6 +340,40 @@ export function ProviderDashboard() {
             className="h-8 gap-1.5 rounded-xl text-xs font-medium"
           >
             <Compass className="size-3.5 text-sky-500" /> Rotas do dia
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("provider.rewards")}
+            className="h-8 gap-1.5 rounded-xl border-amber-300/70 bg-amber-50/40 text-xs font-semibold text-amber-800 hover:bg-amber-100/50 dark:border-amber-800/70 dark:bg-amber-950/30 dark:text-amber-300"
+          >
+            <Award className="size-3.5 text-amber-600 dark:text-amber-400" /> Clube &amp; Pontos
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              triggerHaptic("selection")
+              setReputationCardOpen(true)
+            }}
+            className="h-8 gap-1.5 rounded-xl border-emerald-300/70 bg-emerald-50/40 text-xs font-semibold text-emerald-800 hover:bg-emerald-100/50 dark:border-emerald-800/70 dark:bg-emerald-950/30 dark:text-emerald-300"
+            title="Compartilhar prova social e reputação no WhatsApp"
+          >
+            <Share2 className="size-3.5 text-emerald-600 dark:text-emerald-400" /> Cartão de
+            Reputação
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              triggerHaptic("selection")
+              setPriceEstimatorOpen(true)
+            }}
+            className="h-8 gap-1.5 rounded-xl border-blue-300/70 bg-blue-50/40 text-xs font-semibold text-blue-800 hover:bg-blue-100/50 dark:border-blue-800/70 dark:bg-blue-950/30 dark:text-blue-300"
+            title="Calculadora rápida de mão de obra e deslocamento em GV"
+          >
+            <Calculator className="size-3.5 text-blue-600 dark:text-blue-400" /> Calculadora de
+            Preço
           </Button>
           <Button
             size="sm"
@@ -371,6 +433,7 @@ export function ProviderDashboard() {
             hint={`${bookingsThisWeek.length} na semana`}
             icon={CalendarCheck}
             tone="primary"
+            compact={true}
           />
           <StatCard
             index={1}
@@ -378,6 +441,7 @@ export function ProviderDashboard() {
             value={pendingQuoteItems}
             icon={FileText}
             tone="amber"
+            compact={true}
           />
           <StatCard
             index={2}
@@ -386,13 +450,16 @@ export function ProviderDashboard() {
             hint={`${reviews.length} avaliaç${reviews.length === 1 ? "ão" : "ões"}`}
             icon={Star}
             tone="primary"
+            compact={true}
           />
           <StatCard
             index={3}
             label="Receita recebida"
             value={formatBRL(revenuePaid)}
+            hint={`${loyaltyQuery.data?.stats?.points ?? 0} pts no Clube`}
             icon={Wallet}
             tone="primary"
+            compact={true}
           />
         </div>
       </div>
@@ -750,6 +817,30 @@ export function ProviderDashboard() {
               vibrateEnabled={user?.vibrateEnabled ?? true}
             />
           </div>
+        </>
+      )}
+
+      {/* Modais de Reputação Social & Precificação Expressa */}
+      {user && (
+        <>
+          <ProviderSocialReputationCard
+            open={reputationCardOpen}
+            onOpenChange={setReputationCardOpen}
+            provider={{
+              id: user.id,
+              name: user.name || "Prestador Parceiro",
+              avatarUrl: user.avatarUrl,
+              rating: avgRating > 0 ? avgRating : 5.0,
+              reviewCount: reviews.length,
+              completedBookings: bookings.filter((b) => b.status === "COMPLETED").length,
+              city: "Governador Valadares, MG",
+              verified: user.verified,
+            }}
+          />
+          <ProviderPriceEstimatorDialog
+            open={priceEstimatorOpen}
+            onOpenChange={setPriceEstimatorOpen}
+          />
         </>
       )}
     </div>
