@@ -184,7 +184,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <QueryClientProvider client={client}>
         <SoundProvider>
           {children}
-          <SonnerToaster position="top-right" richColors closeButton />
+          <SonnerToaster position="top-center" richColors closeButton />
           <ActionToastListener />
           <RealtimeProviderLazy />
         </SoundProvider>
