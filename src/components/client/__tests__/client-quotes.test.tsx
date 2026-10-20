@@ -438,6 +438,54 @@ describe("ClientQuotes — rendering and structure", () => {
     fireEvent.click(emptyPedirBtns[emptyPedirBtns.length - 1])
     expect(mockOpenQuote).toHaveBeenCalledTimes(1)
   })
+
+  it("renders ultra-compact Bento StatCards", async () => {
+    renderWithClient(<ClientQuotes />)
+
+    await waitFor(() => {
+      expect(screen.getByText("Aguardando Decisão")).toBeDefined()
+      expect(screen.getByText("Em Análise")).toBeDefined()
+      expect(screen.getByText("Aprovados / Total")).toBeDefined()
+    })
+  })
+
+  it("allows toggling between list view and grid view", async () => {
+    renderWithClient(<ClientQuotes />)
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Visualização em Grade" })).toBeDefined()
+    })
+
+    const gridBtn = screen.getByRole("button", { name: "Visualização em Grade" })
+    const listBtn = screen.getByRole("button", { name: "Visualização em Lista" })
+
+    expect(listBtn).toHaveAttribute("aria-pressed", "true")
+    expect(gridBtn).toHaveAttribute("aria-pressed", "false")
+
+    fireEvent.click(gridBtn)
+    expect(gridBtn).toHaveAttribute("aria-pressed", "true")
+    expect(listBtn).toHaveAttribute("aria-pressed", "false")
+
+    fireEvent.click(listBtn)
+    expect(listBtn).toHaveAttribute("aria-pressed", "true")
+    expect(gridBtn).toHaveAttribute("aria-pressed", "false")
+  })
+
+  it("clears search filter when clicking X button", async () => {
+    renderWithClient(<ClientQuotes />)
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/filtrar por prestador ou serviço/i)).toBeDefined()
+    })
+
+    const searchInput = screen.getByPlaceholderText(/filtrar por prestador ou serviço/i)
+    fireEvent.change(searchInput, { target: { value: "Carlos" } })
+    expect(searchInput).toHaveValue("Carlos")
+
+    const clearBtn = screen.getByRole("button", { name: /limpar busca/i })
+    fireEvent.click(clearBtn)
+    expect(searchInput).toHaveValue("")
+  })
 })
 
 describe("ClientQuotes — accessibility", () => {
