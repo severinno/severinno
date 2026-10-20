@@ -119,6 +119,9 @@ export function enqueueOfflineMutation<T extends Record<string, unknown>>(
 
   memoryQueue.push(mutation as QueuedMutation)
   saveOfflineQueue()
+  if (typeof window !== "undefined") {
+    registerBackgroundSync("sync-offline-actions").catch(() => {})
+  }
   return mutation
 }
 
@@ -265,4 +268,73 @@ export function getCachedBookings<T = unknown[]>(userId: string): T | null {
 export function isOnline(): boolean {
   if (typeof navigator === "undefined") return true
   return navigator.onLine ?? true
+}
+
+/**
+ * Registers background sync with Service Worker (SyncManager) or sets an online event fallback
+ */
+export async function registerBackgroundSync(
+  tag: string = "sync-offline-actions",
+): Promise<boolean> {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
+    return false
+  }
+
+  try {
+    const reg = await navigator.serviceWorker.ready
+    const syncManager = (reg as unknown as { sync?: { register: (t: string) => Promise<void> } })
+      .sync
+    if (syncManager && typeof syncManager.register === "function") {
+      await syncManager.register(tag)
+      return true
+    }
+  } catch {
+    // Background Sync may be restricted by permissions or browser policy
+  }
+
+  // Fallback: listen to window "online" event to auto-flush
+  if (typeof window !== "undefined" && window.addEventListener) {
+    window.addEventListener(
+      "online",
+      () => {
+        window.dispatchEvent(new CustomEvent("severinno:trigger-offline-sync"))
+      },
+      { once: true },
+    )
+  }
+
+  return false
+}
+
+/**
+ * Enqueues an outgoing network request directly into the Service Worker sync cache (severinno-sync-v1)
+ */
+export async function queueBackgroundSyncRequest(
+  url: string,
+  body: Record<string, unknown>,
+  method: string = "POST",
+): Promise<boolean> {
+  if (typeof window === "undefined") return false
+
+  try {
+    if ("caches" in window) {
+      const cache = await window.caches.open("severinno-sync-v1")
+      const syncId = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+      const requestUrl = url.includes("?")
+        ? `${url}&_offline_sync_id=${syncId}`
+        : `${url}?_offline_sync_id=${syncId}`
+
+      const req = new Request(requestUrl, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      await cache.put(req, new Response(JSON.stringify({ status: "queued", syncId })))
+    }
+
+    await registerBackgroundSync("sync-offline-actions")
+    return true
+  } catch {
+    return false
+  }
 }

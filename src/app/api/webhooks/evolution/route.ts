@@ -230,10 +230,54 @@ export async function POST(request: Request) {
                 "Webhook Evolution: falha no processamento smart voice quote",
               )
             }
+          } else {
+            // Se o áudio não tem transcrição de texto prévia, tenta transcrever o payload de áudio via Whisper
+            const base64Audio =
+              message.audioMessage?.base64 ||
+              message.voiceMessage?.base64 ||
+              data?.base64 ||
+              data?.message?.base64
+            const audioUrl = message.audioMessage?.url || message.voiceMessage?.url
+
+            if (
+              base64Audio ||
+              (audioUrl && typeof audioUrl === "string" && audioUrl.startsWith("http"))
+            ) {
+              try {
+                let buffer: Buffer | null = null
+                if (base64Audio) {
+                  buffer = Buffer.from(base64Audio, "base64")
+                } else if (audioUrl) {
+                  const audioRes = await fetch(audioUrl, { signal: AbortSignal.timeout(10_000) })
+                  if (audioRes.ok) {
+                    const arrBuf = await audioRes.arrayBuffer()
+                    buffer = Buffer.from(arrBuf)
+                  }
+                }
+
+                if (buffer && buffer.length > 0) {
+                  const { processVoiceQuote } = await import("@/lib/whatsapp-voice-quote")
+                  const voiceResult = await processVoiceQuote(buffer)
+                  const { enqueueWhatsApp } = await import("@/lib/whatsapp-queue")
+                  await enqueueWhatsApp({
+                    to: senderNumber,
+                    text: voiceResult.formattedReply,
+                    userId: user?.id,
+                    context: "audio:whisper-voice-quote",
+                  })
+                  break
+                }
+              } catch (audioErr) {
+                evolutionLogger.warn(
+                  { err: (audioErr as Error).message },
+                  "Webhook Evolution: falha na transcrição de áudio via Whisper, acionando fallback",
+                )
+              }
+            }
           }
         }
 
-        // Se for áudio sem transcrição direta de texto:
+        // Se for áudio sem transcrição direta de texto e sem sucesso no Whisper:
         if (isAudio && !text) {
           const { enqueueWhatsApp } = await import("@/lib/whatsapp-queue")
           const audioReply =

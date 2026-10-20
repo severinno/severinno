@@ -432,57 +432,68 @@ export async function handleEscrowApproval(
 
     const booking =
       numericChoice !== null ? eligibleBookings[numericChoice - 1] : eligibleBookings[0]
-    const now = new Date()
 
-    // Atualização atômica condicional para prevenir race conditions e dupla liberação
-    const [bookingUpdateResult] = await db.$transaction([
-      db.booking.updateMany({
-        where: {
-          id: booking.id,
-          paymentStatus: "HELD",
-        },
-        data: {
-          paymentStatus: "PAID",
-          escrowReleasedAt: now,
-        },
-      }),
-      db.payment.updateMany({
-        where: {
-          bookingId: booking.id,
-          status: { not: "PAID" },
-        },
-        data: {
-          status: "PAID",
-          paidAt: now,
-        },
-      }),
-    ])
+    const { acquireEscrowLock } = await import("@/lib/escrow-lock")
+    const lock = await acquireEscrowLock(booking.id, 15)
+    if (!lock.acquired) {
+      return `ℹ️ O pagamento do agendamento *#${booking.id.slice(0, 8)}* já está sendo processado concorrentemente. Por favor, aguarde alguns instantes.`
+    }
 
-    if (bookingUpdateResult.count === 0) {
+    try {
+      const now = new Date()
+
+      // Atualização atômica condicional para prevenir race conditions e dupla liberação
+      const [bookingUpdateResult] = await db.$transaction([
+        db.booking.updateMany({
+          where: {
+            id: booking.id,
+            paymentStatus: "HELD",
+          },
+          data: {
+            paymentStatus: "PAID",
+            escrowReleasedAt: now,
+          },
+        }),
+        db.payment.updateMany({
+          where: {
+            bookingId: booking.id,
+            status: { not: "PAID" },
+          },
+          data: {
+            status: "PAID",
+            paidAt: now,
+          },
+        }),
+      ])
+
+      if (bookingUpdateResult.count === 0) {
+        return (
+          `ℹ️ O pagamento do agendamento *#${booking.id.slice(0, 8)}* já foi liberado ou não está mais sob custódia.\n\n` +
+          `Acesse o app para consultar os detalhes: https://severinno.com`
+        )
+      }
+
+      // Notifica o prestador via WhatsApp sobre a liberação imediata
+      if (booking.provider.whatsapp) {
+        await enqueueWhatsApp({
+          to: booking.provider.whatsapp,
+          text:
+            `🎉 *Pagamento Liberado!*\n\n` +
+            `O cliente aprovou a conclusão do serviço *${booking.service?.title || "Serviço"}* (#${booking.id.slice(0, 8)}).\n` +
+            `O valor de R$ ${Number(booking.amount).toFixed(2)} foi liberado da custódia e está disponível para repasse na sua conta! 💰`,
+          userId: booking.provider.id,
+          context: `escrow:released:${booking.id}`,
+        }).catch(() => {})
+      }
+
       return (
-        `ℹ️ O pagamento do agendamento *#${booking.id.slice(0, 8)}* já foi liberado ou não está mais sob custódia.\n\n` +
-        `Acesse o app para consultar os detalhes: https://severinno.com`
+        `✅ *Pagamento Liberado com Sucesso!*\n\n` +
+        `Obrigado por confirmar! Os fundos do agendamento *#${booking.id.slice(0, 8)}* foram repassados com sucesso para o profissional *${booking.provider.name}*.\n\n` +
+        `Avalie o serviço no app para ajudar outros clientes: https://severinno.com/?view=client.bookings`
       )
+    } finally {
+      await lock.release()
     }
-
-    // Notifica o prestador via WhatsApp sobre a liberação imediata
-    if (booking.provider.whatsapp) {
-      await enqueueWhatsApp({
-        to: booking.provider.whatsapp,
-        text:
-          `🎉 *Pagamento Liberado!*\n\n` +
-          `O cliente aprovou a conclusão do serviço *${booking.service?.title || "Serviço"}* (#${booking.id.slice(0, 8)}).\n` +
-          `O valor de R$ ${Number(booking.amount).toFixed(2)} foi liberado da custódia e está disponível para repasse na sua conta! 💰`,
-        userId: booking.provider.id,
-        context: `escrow:released:${booking.id}`,
-      }).catch(() => {})
-    }
-
-    return (
-      `✅ *Pagamento Liberado com Sucesso!*\n\n` +
-      `Obrigado por confirmar! Os fundos do agendamento *#${booking.id.slice(0, 8)}* foram repassados com sucesso para o profissional *${booking.provider.name}*.\n\n` +
-      `Avalie o serviço no app para ajudar outros clientes: https://severinno.com/?view=client.bookings`
-    )
   } catch (error) {
     autoresponderLogger.error(
       { error, userId },

@@ -306,4 +306,31 @@ describe("POST /api/webhooks/evolution", () => {
     expect(parsed.status).toBe(200)
     expect(parsed.body!.received).toBe(true)
   })
+
+  it("processes audioMessage with base64 payload gracefully", async () => {
+    ;(vi.mocked(db.user.findFirst) as any).mockResolvedValue(null)
+
+    const payload = {
+      event: "messages.upsert",
+      instance: "severinno-instance",
+      data: {
+        key: {
+          remoteJid: "5533991234567@s.whatsapp.net",
+          fromMe: false,
+        },
+        message: {
+          audioMessage: {
+            base64: "T2dnUwACAAAAAAAAAAAAAAA",
+          },
+        },
+      },
+    }
+
+    const req = createMockRequest({ method: "POST", body: payload })
+    const res = await evolutionWebhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect(parsed.body!.received).toBe(true)
+  })
 })

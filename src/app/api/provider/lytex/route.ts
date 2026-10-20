@@ -5,7 +5,7 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 
 import { FEE_RATE } from "@/lib/constants"
-import { toMoneyNumber } from "@/lib/money"
+import { toMoneyNumber, netOf } from "@/lib/money"
 
 import { withRoute } from "@/lib/api-route"
 
@@ -40,7 +40,7 @@ export const GET = withRoute("api.provider.lytex.GET", async (_request) => {
     let pendingBalance = 0
 
     for (const b of bookings) {
-      const earned = toMoneyNumber(b.amount) * (1 - FEE_RATE)
+      const earned = toMoneyNumber(netOf(b.amount, FEE_RATE))
       if (b.status === "COMPLETED") {
         balance += earned
       } else if (b.status === "CONFIRMED" || b.status === "IN_PROGRESS") {
@@ -59,7 +59,7 @@ export const GET = withRoute("api.provider.lytex.GET", async (_request) => {
       .map((b) => ({
         _id: `SIM-SPLIT-${b.id.slice(0, 8).toUpperCase()}`,
         _invoiceId: `SIM-INV-${b.id.slice(0, 8).toUpperCase()}`,
-        value: toMoneyNumber(b.amount) * (1 - FEE_RATE),
+        value: toMoneyNumber(netOf(b.amount, FEE_RATE)),
         status: "paid",
         createdAt: b.createdAt.toISOString(),
       }))
@@ -84,7 +84,7 @@ export const GET = withRoute("api.provider.lytex.GET", async (_request) => {
 
   let balance = 0
   for (const b of bookingsForWallet) {
-    const earned = toMoneyNumber(b.amount) * (1 - FEE_RATE)
+    const earned = toMoneyNumber(netOf(b.amount, FEE_RATE))
     if (b.status === "COMPLETED") {
       balance += earned
     }
@@ -101,7 +101,7 @@ export const GET = withRoute("api.provider.lytex.GET", async (_request) => {
     .map((b) => ({
       _id: `SIM-SPLIT-${b.id.slice(0, 8).toUpperCase()}`,
       _invoiceId: `SIM-INV-${b.id.slice(0, 8).toUpperCase()}`,
-      value: toMoneyNumber(b.amount) * (1 - FEE_RATE),
+      value: toMoneyNumber(netOf(b.amount, FEE_RATE)),
       status: "paid",
       createdAt: b.createdAt.toISOString(),
     }))

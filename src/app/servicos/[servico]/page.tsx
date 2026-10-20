@@ -387,6 +387,10 @@ export default async function ServicoPage({ params }: Props) {
     ],
   }
 
+  const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_SUPPORT ?? "5533999999999"
+  const waPreFillMessage = `Olá! Vi na página do Severinno o serviço ${page.service} em ${locText} e gostaria de solicitar um orçamento rápido com garantia de custódia.`
+  const waUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(waPreFillMessage)}`
+
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">
       <script
@@ -452,12 +456,22 @@ export default async function ServicoPage({ params }: Props) {
           <p className="text-muted-foreground mt-1 text-sm">
             Nossa equipe conecta você diretamente via WhatsApp com um profissional verificado.
           </p>
-          <Link
-            href="/busca"
-            className="bg-primary text-primary-foreground mt-4 inline-block rounded-lg px-6 py-2.5 font-medium transition-colors hover:opacity-90"
-          >
-            Buscar em bairros vizinhos
-          </Link>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+            <a
+              href={waUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 font-medium text-white shadow transition-colors hover:bg-emerald-700"
+            >
+              <span>💬 Solicitar {page.service} no WhatsApp</span>
+            </a>
+            <Link
+              href="/busca"
+              className="hover:bg-muted inline-flex items-center rounded-lg border px-5 py-2.5 font-medium transition-colors"
+            >
+              Buscar em bairros vizinhos
+            </Link>
+          </div>
         </div>
       ) : (
         <>
@@ -511,8 +525,30 @@ export default async function ServicoPage({ params }: Props) {
         </>
       )}
 
+      {/* Banner de Atendimento Rápido via WhatsApp */}
+      <section className="mt-10 flex flex-col items-center justify-between gap-4 rounded-xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent p-6 sm:flex-row">
+        <div>
+          <h2 className="text-foreground flex items-center gap-2 text-base font-bold sm:text-lg">
+            <span>💬</span> Precisa de um {page.service.toLowerCase()} em {locText} agora?
+          </h2>
+          <p className="text-muted-foreground mt-1 text-xs sm:text-sm">
+            Nossa equipe e o bot de triagem conectam você com os profissionais disponíveis mais
+            próximos em poucos minutos.
+          </p>
+        </div>
+        <a
+          href={waUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold whitespace-nowrap text-white shadow transition-all hover:bg-emerald-700 hover:shadow-md"
+        >
+          <span>Chamar no WhatsApp</span>
+          <span aria-hidden="true">→</span>
+        </a>
+      </section>
+
       {/* Seção explicativa de confiança para SEO e conversão */}
-      <section className="bg-muted/40 mt-12 rounded-xl border p-6">
+      <section className="bg-muted/40 mt-10 rounded-xl border p-6">
         <h2 className="mb-3 text-lg font-bold">
           Por que contratar {page.service.toLowerCase()} pelo Severinno?
         </h2>
@@ -539,6 +575,23 @@ export default async function ServicoPage({ params }: Props) {
           </div>
         </div>
       </section>
+
+      {/* Botão Flutuante de WhatsApp para Conversão Imediata */}
+      <aside aria-label="Atendimento WhatsApp" className="fixed right-6 bottom-6 z-50">
+        <a
+          href={waUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Pedir orçamento de ${page.service} em ${locText} pelo WhatsApp`}
+          className="group flex items-center gap-2.5 rounded-full bg-emerald-600 px-4 py-3 text-white shadow-lg transition-all duration-200 hover:scale-105 hover:bg-emerald-700 hover:shadow-xl focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:outline-none"
+        >
+          <span className="relative flex size-3">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-75" />
+            <span className="relative inline-flex size-3 rounded-full bg-white" />
+          </span>
+          <span className="text-sm font-semibold">Orçar no WhatsApp</span>
+        </a>
+      </aside>
     </main>
   )
 }

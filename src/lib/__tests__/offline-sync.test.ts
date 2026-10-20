@@ -71,4 +71,20 @@ describe("Offline Sync & Local Caching Engine", () => {
   it("reports isOnline based on navigator.onLine", () => {
     expect(typeof isOnline()).toBe("boolean")
   })
+
+  it("handles registerBackgroundSync gracefully when Service Worker sync is not present", async () => {
+    const { registerBackgroundSync } = await import("@/lib/offline-sync")
+    const result = await registerBackgroundSync("sync-offline-actions")
+    expect(typeof result).toBe("boolean")
+  })
+
+  it("queues network request for background sync without throwing", async () => {
+    const { queueBackgroundSyncRequest } = await import("@/lib/offline-sync")
+    const res = await queueBackgroundSyncRequest("/api/checkin", {
+      bookingId: "b1",
+      lat: -18.85,
+      lng: -41.94,
+    })
+    expect(typeof res).toBe("boolean")
+  })
 })
