@@ -207,6 +207,7 @@ export async function computeAvailableBalance(providerId: string): Promise<Prism
       status: "COMPLETED",
     },
     select: { amount: true },
+    take: 1000,
   })
 
   const earnedBalance = bookings.reduce((acc, b) => acc.plus(netOf(b.amount)), new DecimalCtor(0))
@@ -215,10 +216,12 @@ export async function computeAvailableBalance(providerId: string): Promise<Prism
     db.walletTransaction.findMany({
       where: { providerId, status: "completed" },
       select: { amount: true, status: true },
+      take: 1000,
     }),
     db.walletTransaction.findMany({
       where: { providerId, status: "pending" },
       select: { amount: true, status: true },
+      take: 1000,
     }),
   ])
 
