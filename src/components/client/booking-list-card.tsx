@@ -301,7 +301,7 @@ export function BookingCard({
                 triggerHaptic("selection")
                 onReview()
               }}
-              className="h-10 gap-1.5 rounded-xl bg-amber-500 px-3 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-amber-600 active:scale-95 sm:h-8"
+              className="h-9 gap-1.5 rounded-xl bg-amber-500 px-3 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-amber-600 active:scale-95 sm:h-8"
             >
               <Star className="size-3.5 fill-white text-white" />
               Avaliar
@@ -316,7 +316,7 @@ export function BookingCard({
                 onComplete()
               }}
               disabled={isCompleting}
-              className="h-10 gap-1.5 rounded-xl bg-emerald-600 px-3 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-emerald-700 active:scale-95 sm:h-8"
+              className="h-9 gap-1.5 rounded-xl bg-emerald-600 px-3 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-emerald-700 active:scale-95 sm:h-8"
             >
               {isCompleting ? (
                 <Loader2 className="size-3.5 animate-spin" />
@@ -335,7 +335,7 @@ export function BookingCard({
                 triggerHaptic("selection")
                 onTrack?.()
               }}
-              className="h-10 gap-1.5 rounded-xl border-sky-300 px-3 text-xs font-semibold text-sky-700 transition-all hover:bg-sky-50 active:scale-95 sm:h-8 dark:border-sky-800 dark:text-sky-300 dark:hover:bg-sky-950/30"
+              className="h-9 gap-1.5 rounded-xl border-sky-300 px-3 text-xs font-semibold text-sky-700 transition-all hover:bg-sky-50 active:scale-95 sm:h-8 dark:border-sky-800 dark:text-sky-300 dark:hover:bg-sky-950/30"
             >
               <Navigation className="size-3.5" />
               Rastrear
@@ -349,7 +349,7 @@ export function BookingCard({
                 triggerHaptic("selection")
                 onPay?.()
               }}
-              className="h-10 gap-1.5 rounded-xl bg-emerald-600 px-3 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-emerald-700 active:scale-95 sm:h-8"
+              className="h-9 gap-1.5 rounded-xl bg-emerald-600 px-3 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-emerald-700 active:scale-95 sm:h-8"
             >
               <CreditCard className="size-3.5" />
               Pagar PIX
@@ -364,7 +364,7 @@ export function BookingCard({
               triggerHaptic("selection")
               onViewDetails()
             }}
-            className="border-border/60 hover:bg-muted/60 h-10 gap-1.5 rounded-xl px-3 text-xs font-medium transition-all active:scale-95 sm:h-8"
+            className="border-border/60 hover:bg-muted/60 h-9 gap-1.5 rounded-xl px-3 text-xs font-medium transition-all active:scale-95 sm:h-8"
           >
             <Eye className="size-3.5" />
             Detalhes
@@ -379,7 +379,7 @@ export function BookingCard({
                 triggerHaptic("selection")
                 onRebook()
               }}
-              className="border-primary/50 text-primary hover:bg-primary/10 h-10 gap-1.5 rounded-xl px-3 text-xs font-semibold transition-all active:scale-95 sm:h-8"
+              className="border-primary/50 text-primary hover:bg-primary/10 h-9 gap-1.5 rounded-xl px-3 text-xs font-semibold transition-all active:scale-95 sm:h-8"
             >
               <Sparkles className="size-3.5" />
               Contratar Novamente

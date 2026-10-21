@@ -696,8 +696,9 @@ export function DashboardShell({
         <Button
           variant="ghost"
           size="icon"
-          className="text-muted-foreground size-8 shrink-0 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/30"
+          className="text-muted-foreground size-8 shrink-0 transition-all hover:bg-rose-50 hover:text-rose-500 active:scale-95 dark:hover:bg-rose-950/30"
           onClick={() => {
+            triggerHaptic("selection")
             setMobileOpen(false)
             logout()
           }}
@@ -1019,7 +1020,7 @@ function PushNotificationButton() {
           <Button
             variant="ghost"
             size="icon"
-            className="relative size-9 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+            className="relative size-9 text-emerald-600 transition-all hover:text-emerald-700 active:scale-95 dark:text-emerald-400"
             aria-label="Notificações Push no dispositivo ativas"
             title="Notificações Push no dispositivo ativas"
           >
@@ -1038,6 +1039,7 @@ function PushNotificationButton() {
           <DropdownMenuItem
             disabled={testing}
             onClick={async () => {
+              triggerHaptic("selection")
               const res = await sendTestNotification()
               if (res.ok) {
                 toast.success("Notificação de teste enviada com sucesso!")
@@ -1053,6 +1055,7 @@ function PushNotificationButton() {
           <DropdownMenuItem
             disabled={loading}
             onClick={async () => {
+              triggerHaptic("selection")
               const ok = await unsubscribe()
               if (ok) {
                 toast.info("Notificações push desativadas neste aparelho.")
@@ -1071,7 +1074,7 @@ function PushNotificationButton() {
     <Button
       variant="ghost"
       size="icon"
-      className="text-muted-foreground hover:text-foreground size-9"
+      className="text-muted-foreground hover:text-foreground size-9 transition-all active:scale-95"
       onClick={handleSubscribe}
       disabled={loading}
       aria-label="Ativar Notificações Push no dispositivo"
@@ -1162,7 +1165,7 @@ function NotificationsBell({
                 onMarkAllRead(unreadIds)
               }}
               disabled={markingAll}
-              className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-[11px] font-medium transition-colors disabled:opacity-50"
+              className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-[11px] font-medium transition-all active:scale-95 disabled:opacity-50"
             >
               {markingAll ? (
                 <Loader2 className="size-3 animate-spin" />
@@ -1183,7 +1186,7 @@ function NotificationsBell({
               triggerHaptic("selection")
             }}
             className={cn(
-              "rounded-md px-2 py-0.5 text-xs font-medium transition-colors",
+              "rounded-md px-2 py-0.5 text-xs font-medium transition-all active:scale-95",
               filter === "all"
                 ? "bg-background text-foreground font-semibold shadow-2xs"
                 : "text-muted-foreground hover:text-foreground",
@@ -1198,7 +1201,7 @@ function NotificationsBell({
               triggerHaptic("selection")
             }}
             className={cn(
-              "rounded-md px-2 py-0.5 text-xs font-medium transition-colors",
+              "rounded-md px-2 py-0.5 text-xs font-medium transition-all active:scale-95",
               filter === "unread"
                 ? "bg-background text-foreground font-semibold shadow-2xs"
                 : "text-muted-foreground hover:text-foreground",

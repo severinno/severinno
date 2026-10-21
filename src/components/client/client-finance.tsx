@@ -444,7 +444,13 @@ export function ClientFinance() {
       </Card>
 
       {/* Status tabs (segmented, with counts) */}
-      <Tabs value={tab} onValueChange={setTab}>
+      <Tabs
+        value={tab}
+        onValueChange={(val) => {
+          triggerHaptic("selection")
+          setTab(val)
+        }}
+      >
         <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1 sm:w-auto">
           {TABS.map((t) => {
             const count = counts[t.key] ?? 0
@@ -480,7 +486,10 @@ export function ClientFinance() {
           {filterText ? (
             <button
               type="button"
-              onClick={() => setFilterText("")}
+              onClick={() => {
+                triggerHaptic("selection")
+                setFilterText("")
+              }}
               className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-0.5"
               title="Limpar busca"
               aria-label="Limpar busca"
@@ -662,7 +671,10 @@ export function ClientFinance() {
                               </Avatar>
                               <button
                                 type="button"
-                                onClick={() => openProvider(b.provider.id)}
+                                onClick={() => {
+                                  triggerHaptic("selection")
+                                  openProvider(b.provider.id)
+                                }}
                                 className="hover:text-primary text-foreground truncate text-left text-sm font-medium transition-colors hover:underline"
                               >
                                 {b.provider.name}
@@ -870,7 +882,7 @@ function FinanceMobileCard({
                 triggerHaptic("selection")
                 onOpenReceipt(booking.id)
               }}
-              className="h-8 gap-1.5 rounded-xl border-emerald-200 px-3 text-xs text-emerald-600 transition-all hover:bg-emerald-50 active:scale-95 dark:border-emerald-800/40 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              className="h-9 gap-1.5 rounded-xl border-emerald-200 px-3 text-xs text-emerald-600 transition-all hover:bg-emerald-50 active:scale-95 sm:h-8 dark:border-emerald-800/40 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
             >
               <FileText className="size-3.5" />
               <span>Recibo</span>
@@ -887,7 +899,7 @@ function FinanceMobileCard({
                   serviceId: booking.service.id,
                 })
               }}
-              className="h-8 gap-1.5 rounded-xl border-amber-200 px-3 text-xs text-amber-600 transition-all hover:bg-amber-50 active:scale-95 dark:border-amber-800/40 dark:text-amber-400 dark:hover:bg-amber-950/30"
+              className="h-9 gap-1.5 rounded-xl border-amber-200 px-3 text-xs text-amber-600 transition-all hover:bg-amber-50 active:scale-95 sm:h-8 dark:border-amber-800/40 dark:text-amber-400 dark:hover:bg-amber-950/30"
             >
               <Calendar className="size-3.5" />
               <span>Agendamento</span>
@@ -903,7 +915,7 @@ function FinanceMobileCard({
                 bookingId: booking.id,
               })
             }}
-            className="text-muted-foreground hover:text-foreground h-8 gap-1.5 rounded-xl px-3 text-xs transition-all active:scale-95"
+            className="text-muted-foreground hover:text-foreground h-9 gap-1.5 rounded-xl px-3 text-xs transition-all active:scale-95 sm:h-8"
             title="Enviar mensagem na plataforma"
             aria-label="Enviar mensagem na plataforma"
           >
@@ -991,7 +1003,7 @@ function FinanceGridCard({
                 triggerHaptic("selection")
                 onOpenReceipt(booking.id)
               }}
-              className="h-8 gap-1 rounded-xl border-emerald-200 px-2.5 text-xs text-emerald-600 transition-all hover:bg-emerald-50 active:scale-95 dark:border-emerald-800/40 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              className="h-9 gap-1 rounded-xl border-emerald-200 px-2.5 text-xs text-emerald-600 transition-all hover:bg-emerald-50 active:scale-95 sm:h-8 dark:border-emerald-800/40 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
             >
               <FileText className="size-3.5" />
               <span>Recibo</span>
@@ -1008,7 +1020,7 @@ function FinanceGridCard({
                   serviceId: booking.service.id,
                 })
               }}
-              className="h-8 gap-1 rounded-xl border-amber-200 px-2.5 text-xs text-amber-600 transition-all hover:bg-amber-50 active:scale-95 dark:border-amber-800/40 dark:text-amber-400 dark:hover:bg-amber-950/30"
+              className="h-9 gap-1 rounded-xl border-amber-200 px-2.5 text-xs text-amber-600 transition-all hover:bg-amber-50 active:scale-95 sm:h-8 dark:border-amber-800/40 dark:text-amber-400 dark:hover:bg-amber-950/30"
             >
               <Calendar className="size-3.5" />
               <span>Agendamento</span>
@@ -1024,7 +1036,7 @@ function FinanceGridCard({
                 bookingId: booking.id,
               })
             }}
-            className="text-muted-foreground hover:text-foreground h-8 gap-1 rounded-xl px-2 text-xs transition-all active:scale-95"
+            className="text-muted-foreground hover:text-foreground h-9 gap-1 rounded-xl px-2 text-xs transition-all active:scale-95 sm:h-8"
             title="Enviar mensagem na plataforma"
             aria-label="Enviar mensagem na plataforma"
           >
