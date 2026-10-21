@@ -50,6 +50,16 @@ export const POST = withRoute("api.bookings.checkin-escrow.POST", async (req) =>
               booking.provider.name,
               booking.service?.title ?? "Serviço",
             ).catch(() => {})
+
+            // ⚡ WebSocket realtime → toast instantâneo no dashboard do cliente
+            const { sendProviderArrived } = await import("@/lib/realtime-client")
+            sendProviderArrived({
+              bookingId: parsed.bookingId,
+              clientId: booking.clientId,
+              providerId: parsed.providerId,
+              providerName: booking.provider.name,
+              serviceName: booking.service?.title ?? "Serviço",
+            }).catch(() => {})
           }
         } catch {
           // Best effort notification

@@ -85,6 +85,16 @@ export async function sendMessageRead(opts: {
   await emitRealtime("message:read", opts)
 }
 
+export async function sendProviderArrived(opts: {
+  bookingId: string
+  clientId: string
+  providerId: string
+  providerName: string
+  serviceName: string
+}): Promise<void> {
+  await emitRealtime("provider:arrived", opts)
+}
+
 export async function sendPaymentConfirmed(opts: {
   bookingId: string
   clientId: string

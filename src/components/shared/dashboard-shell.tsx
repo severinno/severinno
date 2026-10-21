@@ -426,11 +426,68 @@ export function DashboardShell({
       })
     })
 
+    // 5. Provider arrived at service location (client sees instant toast)
+    const unbindArrived = onRealtime<{
+      bookingId: string
+      clientId: string
+      providerId: string
+      providerName: string
+      serviceName: string
+    }>("provider:arrived", (evt) => {
+      qc.invalidateQueries({ queryKey: ["bookings"] })
+      qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+      triggerHaptic("success")
+      try {
+        playCoin()
+      } catch {}
+
+      toast.success("📍 Prestador chegou ao local!", {
+        description: `${evt.providerName} está no local do atendimento para "${evt.serviceName}".`,
+        action: {
+          label: "Ver Agendamento",
+          onClick: () => navigate("client.bookings"),
+        },
+      })
+    })
+
+    // 6. Payment confirmed in real-time (both client and provider)
+    const unbindPayment = onRealtime<{
+      bookingId: string
+      clientId: string
+      providerId?: string
+      amount?: number
+      paymentMethod?: string
+    }>("payment:confirmed", (evt) => {
+      qc.invalidateQueries({ queryKey: ["bookings"] })
+      qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+      qc.invalidateQueries({ queryKey: ["provider", "dashboard"] })
+      qc.invalidateQueries({ queryKey: ["provider", "finance"] })
+      triggerHaptic("success")
+      try {
+        playCoin()
+      } catch {}
+
+      const amountStr = evt.amount ? ` R\$ ${evt.amount.toFixed(2)}` : ""
+      const isProvider = user?.role === "PROVIDER"
+
+      toast.success(isProvider ? "💰 Pagamento confirmado!" : "✅ Pagamento recebido!", {
+        description: isProvider
+          ? `Pagamento${amountStr} confirmado — valor disponível para saque.`
+          : `Seu pagamento${amountStr} foi confirmado com sucesso.`,
+        action: {
+          label: isProvider ? "Ver Financeiro" : "Ver Agendamento",
+          onClick: () => navigate(isProvider ? "provider.finance" : "client.bookings"),
+        },
+      })
+    })
+
     return () => {
       unbindNotif()
       unbindBooking()
       unbindQuote()
       unbindMessage()
+      unbindArrived()
+      unbindPayment()
     }
   }, [onRealtime, qc, navigate, user?.id, user?.role, playCoin])
 
