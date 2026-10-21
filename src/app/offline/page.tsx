@@ -150,7 +150,7 @@ export default function OfflinePage() {
               size="sm"
               onClick={handleReload}
               disabled={reloading}
-              className="gap-2 text-xs font-semibold"
+              className="gap-2 text-xs font-semibold transition-all active:scale-95"
             >
               <RefreshCw className={cn("size-3.5", reloading && "animate-spin")} />
               {reloading ? "Verificando sinal..." : "Tentar Reconectar"}
@@ -339,7 +339,7 @@ export default function OfflinePage() {
                           type="button"
                           onClick={() => setSelectedType(opt.id)}
                           className={cn(
-                            "flex flex-col items-start rounded-2xl border p-3 text-left transition-all",
+                            "flex flex-col items-start rounded-2xl border p-3 text-left transition-all active:scale-95",
                             isSelected
                               ? "border-rose-500 bg-rose-500/10 shadow-xs ring-1 ring-rose-500/30"
                               : "border-border/60 hover:bg-muted/40",
@@ -392,7 +392,7 @@ export default function OfflinePage() {
                   <Button
                     size="lg"
                     onClick={() => handleDispatch("sms")}
-                    className="h-12 w-full gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-rose-600 font-bold text-white shadow-md hover:from-amber-500 hover:to-rose-500"
+                    className="h-12 w-full gap-2 rounded-xl bg-gradient-to-r from-amber-600 to-rose-600 font-bold text-white shadow-md transition-all hover:from-amber-500 hover:to-rose-500 active:scale-95"
                   >
                     <Smartphone className="size-4.5" />
                     Enviar SOS via SMS (100% Sem Internet)
@@ -402,7 +402,7 @@ export default function OfflinePage() {
                     <Button
                       variant="outline"
                       onClick={() => handleDispatch("whatsapp")}
-                      className="gap-1.5 border-emerald-500/40 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                      className="gap-1.5 border-emerald-500/40 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-50 active:scale-95 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
                     >
                       <MessageSquare className="size-3.5" />
                       Via WhatsApp
@@ -410,7 +410,7 @@ export default function OfflinePage() {
                     <Button
                       variant="outline"
                       onClick={() => handleDispatch("call")}
-                      className="gap-1.5 border-rose-500/40 text-xs font-semibold text-rose-700 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                      className="gap-1.5 border-rose-500/40 text-xs font-semibold text-rose-700 transition-all hover:bg-rose-50 active:scale-95 dark:text-rose-400 dark:hover:bg-rose-950/40"
                     >
                       <PhoneCall className="size-3.5" />
                       Ligar Central 24h

@@ -72,9 +72,29 @@ describe("Auditoria do Service Worker & PWA Offline Cache (public/sw.js)", () =>
     swContent = fs.readFileSync(swPath, "utf-8")
     expect(swContent).toContain("IMAGE_CACHE")
     expect(swContent).toContain("MAX_CACHED_IMAGES")
-    expect(swContent).toContain("imageStrategy(event.request)")
+    // `event` é repassado para que a revalidação em background use event.waitUntil
+    expect(swContent).toContain("imageStrategy(event.request, event)")
     expect(swContent).toContain("pruneImageCache")
     expect(swContent).toContain("OFFLINE_IMAGE_SVG")
     expect(swContent).toContain("image/svg+xml")
+  })
+
+  it("nunca cacheia respostas de APIs privadas/autenticadas", () => {
+    swContent = fs.readFileSync(swPath, "utf-8")
+    const excludedMatch = swContent.match(/const\s+isExcludedApi\s*=([\s\S]*?)\n\s*\n/)
+    expect(excludedMatch).not.toBeNull()
+    const excludedBlock = excludedMatch![1]
+    for (const prefix of [
+      "/api/auth/",
+      "/api/admin/",
+      "/api/users/me",
+      "/api/provider/",
+      "/api/client/",
+      "/api/wallet",
+      "/api/webhooks/",
+      "/api/payments/",
+    ]) {
+      expect(excludedBlock).toContain(`"${prefix}"`)
+    }
   })
 })

@@ -15,7 +15,9 @@ const ASSETS = [
 const OSM_TILE_CACHE = "severinno-osm-tiles-v1"
 
 // API cache — stale-while-revalidate for public endpoints
-const API_CACHE = "severinno-api-v1"
+// v2: purges responses from private routes (/api/users/me, /api/client/*,
+// /api/provider/*, /api/wallet) cached before they were excluded.
+const API_CACHE = "severinno-api-v2"
 
 // Image cache — stale-while-revalidate for services, portfolio, and avatars
 const IMAGE_CACHE = "severinno-images-v1"
@@ -78,7 +80,10 @@ self.addEventListener("fetch", (event) => {
   const isExcludedApi =
     url.pathname.startsWith("/api/auth/") ||
     url.pathname.startsWith("/api/admin/") ||
-    url.pathname.startsWith("/api/provider/reports") ||
+    url.pathname.startsWith("/api/users/me") ||
+    url.pathname.startsWith("/api/provider/") ||
+    url.pathname.startsWith("/api/client/") ||
+    url.pathname.startsWith("/api/wallet") ||
     url.pathname.startsWith("/api/webhooks/") ||
     url.pathname.startsWith("/api/payments/") ||
     url.pathname.startsWith("/api/cron/") ||
