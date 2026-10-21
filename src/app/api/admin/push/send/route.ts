@@ -67,37 +67,44 @@ export const POST = withRoute("api.admin.push.send.POST", async (request) => {
   let directPushCount = 0
   let errorCount = 0
 
-  for (const userId of userIds) {
-    try {
-      // Tenta enfileirar via RabbitMQ
-      await saveAndQueueNotification({
-        userId,
-        type: notificationType,
-        title: notificationTitle,
-        body: notificationBody,
-        pushUrl: notificationUrl,
-      })
-      sentCount++
-    } catch (queueErr) {
-      // RabbitMQ indisponivel — fallback para push direto
-      logger.warn({ err: queueErr, userId }, "queue unavailable, falling back to direct push")
-      try {
-        await sendPushNotification(userId, notificationTitle, notificationBody, notificationUrl)
-        await db.notification.create({
-          data: {
+  // Processamento paralelo em lotes controlados (concorrencia 10)
+  const CONCURRENCY = 10
+  for (let i = 0; i < userIds.length; i += CONCURRENCY) {
+    const chunk = userIds.slice(i, i + CONCURRENCY)
+    await Promise.all(
+      chunk.map(async (userId) => {
+        try {
+          // Tenta enfileirar via RabbitMQ
+          await saveAndQueueNotification({
             userId,
             type: notificationType,
             title: notificationTitle,
-            body: notificationBody || null,
-          },
-        })
-        directPushCount++
-        sentCount++
-      } catch (fallbackErr) {
-        errorCount++
-        logger.error({ err: fallbackErr, userId }, "direct push also failed")
-      }
-    }
+            body: notificationBody,
+            pushUrl: notificationUrl,
+          })
+          sentCount++
+        } catch (queueErr) {
+          // RabbitMQ indisponivel — fallback para push direto
+          logger.warn({ err: queueErr, userId }, "queue unavailable, falling back to direct push")
+          try {
+            await sendPushNotification(userId, notificationTitle, notificationBody, notificationUrl)
+            await db.notification.create({
+              data: {
+                userId,
+                type: notificationType,
+                title: notificationTitle,
+                body: notificationBody || null,
+              },
+            })
+            directPushCount++
+            sentCount++
+          } catch (fallbackErr) {
+            errorCount++
+            logger.error({ err: fallbackErr, userId }, "direct push also failed")
+          }
+        }
+      }),
+    )
   }
 
   // ── Audit log ────────────────────────────────────────────────────

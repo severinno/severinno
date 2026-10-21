@@ -1227,7 +1227,10 @@ describe("GET /api/admin/push/users", () => {
         where: expect.objectContaining({
           role: "CLIENT",
           pushSubscriptions: { some: {} },
-          OR: [{ name: { contains: "ali" } }, { email: { contains: "ali" } }],
+          OR: [
+            { name: { contains: "ali", mode: "insensitive" } },
+            { email: { contains: "ali", mode: "insensitive" } },
+          ],
         }),
       }),
     )

@@ -12,7 +12,13 @@ import { emitRealtime } from "@/lib/realtime-client"
 import logger from "@/lib/logger"
 import { toMoneyNumber } from "@/lib/money"
 
+import { z } from "zod"
 import { withParams } from "@/lib/api-route"
+
+const bookQuoteSchema = z.object({
+  scheduledAt: z.string().min(1, "Data e horário são obrigatórios"),
+  address: z.string().min(1).max(500).optional(),
+})
 
 export const POST = withParams<{ id: string }>(
   "api.quotes.:id.book.POST",
@@ -51,8 +57,8 @@ export const POST = withParams<{ id: string }>(
     })
     if (existingBooking) throw conflict("Este orçamento já possui um agendamento vinculado")
 
-    const body = (await request.json()) as { scheduledAt?: string; address?: string }
-    if (!body.scheduledAt) throw badRequest("Data e horário são obrigatórios")
+    const raw = await request.json().catch(() => ({}))
+    const body = bookQuoteSchema.parse(raw)
 
     const scheduleDate = new Date(body.scheduledAt)
     if (isNaN(scheduleDate.getTime())) throw badRequest("Data inválida")

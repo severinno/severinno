@@ -35,7 +35,10 @@ export const GET = withRoute("api.admin.push.users.GET", async (request) => {
     ...(role ? { role } : {}),
     ...(q
       ? {
-          OR: [{ name: { contains: q } }, { email: { contains: q } }],
+          OR: [
+            { name: { contains: q, mode: "insensitive" } },
+            { email: { contains: q, mode: "insensitive" } },
+          ],
         }
       : {}),
   }

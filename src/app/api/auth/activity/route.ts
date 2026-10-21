@@ -30,32 +30,6 @@ export type ActivityItem = {
   metadata?: Record<string, unknown>
 }
 
-/**
- * Helper to record activity to Redis
- */
-export async function recordUserActivity(
-  userId: string,
-  activity: Omit<ActivityItem, "id" | "timestamp">,
-) {
-  try {
-    const redis = getClient()
-    if (!redis) return
-
-    const item: ActivityItem = {
-      ...activity,
-      id: `act_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      timestamp: Date.now(),
-    }
-
-    const key = `activity:${userId}`
-    await redis.lpush(key, JSON.stringify(item))
-    await redis.ltrim(key, 0, 99) // keep last 100
-    await redis.expire(key, 90 * 24 * 3600) // 90 days TTL
-  } catch (err) {
-    log.warn({ err, userId }, "Failed to record user activity log")
-  }
-}
-
 export async function GET() {
   const session = await getSession()
   if (!session?.userId) {
