@@ -71,6 +71,8 @@ import { EmptyState, SectionTitle } from "@/components/shared/dashboard-shell"
 import { OnboardingChecklist } from "@/components/client/onboarding-checklist"
 import GeoAwarenessBadge from "@/components/client/geo-awareness-badge"
 import { PreferenceToggles } from "@/components/shared/preference-toggles"
+import { ReferralCard } from "@/components/shared/referral-card"
+import { ReferralLeaderboard } from "@/components/shared/referral-leaderboard"
 import {
   PageHeader,
   StatusBadge,
@@ -1103,7 +1105,13 @@ export function ClientDashboard() {
         </Card>
       </div>
 
-      {/* 10. Sound & vibration preferences utility */}
+      {/* 10. Indique e Ganhe & Comunidade — Programa de Fidelidade */}
+      <div className="grid gap-5 lg:grid-cols-2">
+        <ReferralCard />
+        <ReferralLeaderboard />
+      </div>
+
+      {/* 11. Sound & vibration preferences utility */}
       <div className="border-border/50 bg-card/60 rounded-2xl border p-4 shadow-2xs">
         <PreferenceToggles
           soundEnabled={user?.soundEnabled ?? true}

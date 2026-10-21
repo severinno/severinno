@@ -202,6 +202,7 @@ export async function GET(request: NextRequest) {
           providerId: session.userId,
           createdAt: { gte: startDate, lte: endDate },
         },
+        take: 200,
         select: { id: true, amount: true, status: true, createdAt: true },
       })
 
@@ -226,6 +227,7 @@ export async function GET(request: NextRequest) {
           paymentStatus: "PAID",
           createdAt: { gte: ytdStart, lte: endDate },
         },
+        take: 2000,
         select: { amount: true },
       })
       const ytdGross =

@@ -37,6 +37,7 @@ export const GET = withRoute("api.admin.push.webhooks.GET", async (_request) => 
 
   const webhooks = await db.eventWebhook.findMany({
     orderBy: { createdAt: "desc" },
+    take: 100,
     select: {
       id: true,
       event: true,

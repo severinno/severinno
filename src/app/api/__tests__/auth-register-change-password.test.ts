@@ -29,9 +29,20 @@ vi.mock("@/lib/auth-rate-limit", () => ({
   })),
 }))
 
+const { mockLoggerInstance } = vi.hoisted(() => {
+  const inst: any = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }
+  inst.child = vi.fn(() => inst)
+  return { mockLoggerInstance: inst }
+})
+
 vi.mock("@/lib/logger", () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  default: mockLoggerInstance,
+  logger: mockLoggerInstance,
 }))
 
 let _mockSession: any = null

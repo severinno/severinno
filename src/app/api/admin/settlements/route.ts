@@ -115,6 +115,7 @@ export const POST = withRoute("api.admin.settlements.POST", async (request) => {
       status: "PAID",
       createdAt: { gte: startDate, lt: endDate },
     },
+    take: 5000,
     select: {
       amount: true,
       booking: {

@@ -79,8 +79,17 @@ vi.mock("@/lib/auth", () => ({
   createSession: vi.fn(),
 }))
 
+const mockLoggerInst = {
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+  child: vi.fn(() => mockLoggerInst),
+}
+
 vi.mock("@/lib/logger", () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  default: mockLoggerInst,
+  logger: mockLoggerInst,
 }))
 
 vi.mock("@/lib/rate-limit", () => ({

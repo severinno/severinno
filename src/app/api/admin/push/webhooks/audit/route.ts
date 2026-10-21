@@ -86,6 +86,7 @@ export const GET = withRoute("api.admin.push.webhooks.audit.GET", async (request
     db.eventWebhook.findMany({
       select: { id: true, title: true, event: true },
       orderBy: { createdAt: "desc" },
+      take: 100,
     }),
   ])
 

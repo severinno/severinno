@@ -34,6 +34,7 @@ export const GET = withRoute("api.provider.analytics.GET", async (_request) => {
       escrowReleasedAt: null,
       status: { notIn: ["CANCELLED"] },
     },
+    take: 200,
     select: { amount: true, id: true, status: true, scheduledAt: true },
   })
 
@@ -56,6 +57,7 @@ export const GET = withRoute("api.provider.analytics.GET", async (_request) => {
       providerId: userId,
       createdAt: { gte: subDays(new Date(), 60) },
     },
+    take: 500,
     select: { createdAt: true },
   })
 
@@ -103,6 +105,7 @@ export const GET = withRoute("api.provider.analytics.GET", async (_request) => {
       paymentStatus: "PAID",
       scheduledAt: { gte: startOf6MonthsAgo, lte: endOfCurrentMonth },
     },
+    take: 1000,
     select: { amount: true, scheduledAt: true },
   })
 

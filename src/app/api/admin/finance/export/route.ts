@@ -50,6 +50,7 @@ export const GET = withRoute("api.admin.finance.export.GET", async (request) => 
   const transactions = await db.payment.findMany({
     where: paymentWhere,
     orderBy: { createdAt: "desc" },
+    take: 5000,
     include: {
       booking: {
         select: {

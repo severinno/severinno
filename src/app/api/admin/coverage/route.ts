@@ -87,6 +87,7 @@ export const GET = withRoute("api.admin.coverage.GET", async (request) => {
       lng: { not: null },
       radiusKm: { not: null, gt: 0 },
     },
+    take: 1000,
     select: {
       id: true,
       name: true,

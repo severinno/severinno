@@ -83,6 +83,7 @@ export const GET = withRoute("api.admin.commissions.export.GET", async (request)
       },
     },
     orderBy: { createdAt: "desc" },
+    take: 5000,
   })
 
   // ── Aggregate totals ─────────────────────────────────────────────────

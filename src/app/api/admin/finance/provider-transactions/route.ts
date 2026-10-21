@@ -60,6 +60,7 @@ export const GET = withRoute("api.admin.finance.provider-transactions.GET", asyn
       booking: { providerId },
     },
     orderBy: { createdAt: "desc" },
+    take: 200,
     include: {
       booking: {
         select: {
