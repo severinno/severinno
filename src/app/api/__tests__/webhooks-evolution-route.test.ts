@@ -34,6 +34,19 @@ vi.mock("@/lib/db", () => ({
   },
 }))
 
+const { testCache } = vi.hoisted(() => ({
+  testCache: new Map<string, unknown>(),
+}))
+
+vi.mock("@/lib/redis", () => ({
+  cacheGet: vi.fn(async (key: string) => testCache.get(key) ?? null),
+  cacheSet: vi.fn(async (key: string, val: unknown) => {
+    testCache.set(key, val)
+  }),
+  cacheInvalidate: vi.fn().mockResolvedValue(undefined),
+  withCache: vi.fn((_key: string, fn: () => Promise<unknown>) => fn()),
+}))
+
 // ── Imports ────────────────────────────────────────────────────────────────
 
 import { POST as evolutionWebhookHandler } from "../webhooks/evolution/route"
@@ -43,6 +56,7 @@ import { db } from "@/lib/db"
 
 describe("POST /api/webhooks/evolution", () => {
   beforeEach(() => {
+    testCache.clear()
     vi.clearAllMocks()
   })
 
@@ -432,5 +446,43 @@ describe("POST /api/webhooks/evolution", () => {
     } finally {
       delete process.env.EVOLUTION_WEBHOOK_SECRET
     }
+  })
+
+  it("deduplicates messages with the same message id", async () => {
+    ;(vi.mocked(db.user.findFirst) as any).mockResolvedValue({
+      id: "user-1",
+      name: "Test User",
+    })
+
+    const payload = {
+      event: "messages.upsert",
+      instance: "severinno-instance",
+      data: {
+        key: {
+          id: "MSG_UNIQUE_DEDUP_123",
+          remoteJid: "5511999999999@s.whatsapp.net",
+          fromMe: false,
+        },
+        message: { conversation: "Olá!" },
+      },
+    }
+
+    const req1 = createMockRequest({
+      method: "POST",
+      body: payload,
+    })
+    const res1 = await evolutionWebhookHandler(req1)
+    const parsed1 = await parseResponse(res1)
+    expect(parsed1.status).toBe(200)
+
+    // Second request with same message ID
+    const req2 = createMockRequest({
+      method: "POST",
+      body: payload,
+    })
+    const res2 = await evolutionWebhookHandler(req2)
+    const parsed2 = await parseResponse(res2)
+    expect(parsed2.status).toBe(200)
+    expect(parsed2.body?.deduplicated).toBe(true)
   })
 })

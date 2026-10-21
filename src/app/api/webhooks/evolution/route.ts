@@ -20,6 +20,7 @@ import { db } from "@/lib/db"
 import { evolutionLogger } from "@/lib/evolution"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { processInteractiveCommand, processDemandSearch } from "@/lib/whatsapp-autoresponder"
+import { cacheGet, cacheSet } from "@/lib/redis"
 
 // ---------------------------------------------------------------------------
 // Helper: extrair número do JID (remoteJid)
@@ -184,6 +185,28 @@ export async function POST(request: Request) {
         if (!key || key.fromMe) {
           // Ignorar mensagens enviadas pelo próprio sistema
           break
+        }
+
+        // 🛡️ Deduplicação idempotente de mensagens recebidas (evita double-reply em retries da Evolution)
+        const messageId = key.id
+        if (messageId) {
+          const dedupKey = `evo:msg:${messageId}`
+          try {
+            const seen = await cacheGet(dedupKey)
+            if (seen) {
+              evolutionLogger.info(
+                { messageId },
+                "Webhook Evolution: mensagem duplicada ignorada (dedup)",
+              )
+              return NextResponse.json({ ok: true, deduplicated: true })
+            }
+            await cacheSet(dedupKey, 1, 3600)
+          } catch (err) {
+            evolutionLogger.warn(
+              { err, messageId },
+              "Webhook Evolution: falha no check de dedup (prosseguindo)",
+            )
+          }
         }
 
         const remoteJid = key.remoteJid
