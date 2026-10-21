@@ -3,11 +3,18 @@ import { GET as runReminders } from "@/app/api/cron/reminders/route"
 import { GET as runCommissions } from "@/app/api/cron/commissions-report/route"
 import { GET as runHealthMonitor } from "@/app/api/cron/health-monitor/route"
 import { GET as runIdentityPurge } from "@/app/api/cron/identity-purge/route"
+import { GET as runServiceReminders } from "@/app/api/cron/service-reminders/route"
 import { db } from "@/lib/db"
 import { sendMail } from "@/lib/mail"
 import { sendPushNotification } from "@/lib/push"
 import { runHealthMonitor as executeMonitor } from "@/lib/health-monitor"
 import { purgeStalePendingIdentities } from "@/lib/identity-retention"
+import { identifyDueServiceReminders } from "@/lib/smart-service-reminders"
+
+vi.mock("@/lib/smart-service-reminders", () => ({
+  identifyDueServiceReminders: vi.fn().mockResolvedValue([]),
+  formatRebookingInvitation: vi.fn().mockReturnValue("Mensagem teste de convite"),
+}))
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -185,6 +192,70 @@ describe("Cron API Routes (/api/cron/*)", () => {
       expect(json.ok).toBe(true)
       expect(json.purged).toBe(3)
       expect(purgeStalePendingIdentities).toHaveBeenCalledWith(30)
+    })
+  })
+
+  describe("GET /api/cron/service-reminders — lembretes preventivos fail-closed", () => {
+    it("rejects request with invalid token", async () => {
+      const req = new Request("http://localhost:3000/api/cron/service-reminders", {
+        headers: { authorization: "Bearer wrong-secret" },
+      })
+      const res = await runServiceReminders(req)
+      expect(res.status).toBe(401)
+      expect(identifyDueServiceReminders).not.toHaveBeenCalled()
+    })
+
+    it("fail-closed: sem CRON_SECRET configurado, nem Bearer válido passa", async () => {
+      const prev = process.env.CRON_SECRET
+      delete process.env.CRON_SECRET
+      try {
+        const req = new Request("http://localhost:3000/api/cron/service-reminders", {
+          headers: { authorization: `Bearer ${CRON_SECRET}` },
+        })
+        const res = await runServiceReminders(req)
+        expect(res.status).toBe(401)
+        expect(identifyDueServiceReminders).not.toHaveBeenCalled()
+      } finally {
+        process.env.CRON_SECRET = prev
+      }
+    })
+
+    it("runs service reminders and returns candidate count when authenticated", async () => {
+      vi.mocked(identifyDueServiceReminders).mockResolvedValue([
+        {
+          bookingId: "b-1",
+          clientId: "c-1",
+          clientName: "João",
+          clientPhone: "5533999990001",
+          providerId: "p-1",
+          providerName: "Carlos Eletricista",
+          providerSlug: "carlos-eletricista",
+          serviceId: "s-1",
+          serviceTitle: "Revisão Elétrica",
+          completedAt: new Date(),
+          daysSinceCompleted: 366,
+          rule: {
+            title: "Revisão Elétrica Preventiva",
+            intervalDays: 365,
+            friendlyReason: "Revisão anual",
+            couponDiscountPct: 15,
+            couponCode: "SEGURANCA15",
+            categoryMatch: ["eletrica"],
+          },
+        },
+      ])
+
+      const req = new Request("http://localhost:3000/api/cron/service-reminders", {
+        headers: { authorization: `Bearer ${CRON_SECRET}` },
+      })
+      const res = await runServiceReminders(req)
+      const json = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(json.status).toBe("SUCCESS")
+      expect(json.totalDueCandidates).toBe(1)
+      expect(json.previews).toHaveLength(1)
+      expect(json.previews[0].client).toBe("João")
     })
   })
 })

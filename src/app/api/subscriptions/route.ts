@@ -35,7 +35,10 @@ export const GET = withRoute("api.subscriptions.GET", async (request) => {
   const bookings = await db.booking.findMany({
     where: {
       ...(isProvider ? { providerId: session.userId } : { clientId: session.userId }),
-      OR: [{ notes: { contains: "[RECORRENTE" } }, { notes: { contains: "[PLANO_CUIDADO:" } }],
+      OR: [
+        { notes: { contains: "[RECORRENTE", mode: "insensitive" } },
+        { notes: { contains: "[PLANO_CUIDADO:", mode: "insensitive" } },
+      ],
     },
     include: {
       service: { select: { title: true, basePrice: true } },

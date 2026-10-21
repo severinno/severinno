@@ -50,33 +50,44 @@ export async function GET(request: NextRequest) {
     take: 50,
   })
 
-  // Fetch OCR data & rejection reasons from Redis
+  // Fetch OCR data & rejection reasons from Redis in a single batch roundtrip
   const { getClient } = await import("@/lib/redis")
   const redis = getClient()
 
-  const result = await Promise.all(
-    users.map(async (u) => {
-      let ocrData = null
-      let rejectionReason = null
-      if (redis) {
+  let ocrAndReasons: (string | null)[] = []
+  if (redis && users.length > 0) {
+    try {
+      const keys: string[] = []
+      for (const u of users) {
+        keys.push(`identity:ocr:${u.id}`, `identity:reason:${u.id}`)
+      }
+      ocrAndReasons = await redis.mget(...keys)
+    } catch {
+      // ignore Redis failure, fallback gracefully
+    }
+  }
+
+  const result = users.map((u, index) => {
+    let ocrData = null
+    let rejectionReason = null
+    if (ocrAndReasons.length > index * 2) {
+      const rawOcr = ocrAndReasons[index * 2]
+      const rawReason = ocrAndReasons[index * 2 + 1]
+      if (rawOcr) {
         try {
-          const [rawOcr, rawReason] = await Promise.all([
-            redis.get(`identity:ocr:${u.id}`),
-            redis.get(`identity:reason:${u.id}`),
-          ])
-          if (rawOcr) ocrData = JSON.parse(rawOcr)
-          if (rawReason) rejectionReason = rawReason
+          ocrData = JSON.parse(rawOcr)
         } catch {
-          // ignore
+          // ignore parse error
         }
       }
-      return {
-        ...u,
-        identityOcrData: ocrData,
-        identityRejectionReason: rejectionReason,
-      }
-    }),
-  )
+      if (rawReason) rejectionReason = rawReason
+    }
+    return {
+      ...u,
+      identityOcrData: ocrData,
+      identityRejectionReason: rejectionReason,
+    }
+  })
 
   return NextResponse.json({ verifications: result })
 }
