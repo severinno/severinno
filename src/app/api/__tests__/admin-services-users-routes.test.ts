@@ -26,6 +26,7 @@ vi.mock("@/lib/auth", () => ({
   requireRole: vi.fn().mockResolvedValue({ userId: "admin-1", role: "ADMIN" } as any),
   requireUser: vi.fn().mockResolvedValue({ userId: "admin-1", role: "ADMIN" } as any),
   invalidateUserCache: vi.fn().mockResolvedValue(undefined),
+  invalidateSessionCache: vi.fn().mockResolvedValue(undefined),
 }))
 
 // Keep the REAL helpers (badRequest/notFound/forbidden/parsePagination and the
@@ -62,7 +63,7 @@ vi.mock("@/lib/db", () => ({
 
 // ---- SUT imports ----------------------------------------------------------
 
-import { requireRole, invalidateUserCache } from "@/lib/auth"
+import { requireRole, invalidateUserCache, invalidateSessionCache } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { db } from "@/lib/db"
 import { haversineKm } from "@/lib/geo-server"
@@ -609,6 +610,7 @@ describe("PATCH /api/admin/users/[id] — update user", () => {
       select: expect.any(Object),
     })
     expect(invalidateUserCache).toHaveBeenCalledWith("u-1")
+    expect(invalidateSessionCache).toHaveBeenCalledWith("u-1")
   })
 
   it("returns 404 when the user does not exist", async () => {
@@ -676,6 +678,7 @@ describe("DELETE /api/admin/users/[id] — soft delete", () => {
     expect(updateArgs.where).toEqual({ id: "u-1" })
     expect(updateArgs.data.deletedAt).toBeInstanceOf(Date)
     expect(invalidateUserCache).toHaveBeenCalledWith("u-1")
+    expect(invalidateSessionCache).toHaveBeenCalledWith("u-1")
   })
 
   it("returns 404 when the user does not exist", async () => {

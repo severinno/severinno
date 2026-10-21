@@ -88,7 +88,7 @@ export const GET = withRoute("api.admin.users.GET", async (request) => {
   let filtered = itemsWithDistance
   if (radiusKm != null && radiusKm > 0 && lat != null && lng != null) {
     filtered = itemsWithDistance.filter(
-      (item) => item.distanceKm != null && item.distanceKm <= radiusKm,
+      (item) => item.distanceKm == null || item.distanceKm <= radiusKm,
     )
   }
 
