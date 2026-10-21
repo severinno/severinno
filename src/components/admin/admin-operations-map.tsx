@@ -71,8 +71,34 @@ type LiveOperationsData = {
     active: boolean
     verified: boolean
   }>
-  neighborhoods: Record<string, { total: number; inProgress: number; heldAmount: number }>
+  neighborhoods: Record<
+    string,
+    { total: number; inProgress: number; heldAmount: number; lat?: number; lng?: number }
+  >
 }
+
+export const GV_ALL_20_NEIGHBORHOODS: Array<{ name: string; lat: number; lng: number }> = [
+  { name: "Centro", lat: -18.8511, lng: -41.9422 },
+  { name: "Ilha dos Araújos", lat: -18.8584, lng: -41.9515 },
+  { name: "Vila Isa", lat: -18.8701, lng: -41.9582 },
+  { name: "Esplanada", lat: -18.8465, lng: -41.9458 },
+  { name: "Grã-Duquesa", lat: -18.8385, lng: -41.9352 },
+  { name: "São Pedro", lat: -18.8621, lng: -41.9392 },
+  { name: "Lourdes", lat: -18.8492, lng: -41.9331 },
+  { name: "Santa Rita", lat: -18.8752, lng: -41.9654 },
+  { name: "Castanheiras", lat: -18.8312, lng: -41.9485 },
+  { name: "Lagoa Santa", lat: -18.8415, lng: -41.9215 },
+  { name: "Vila Bretas", lat: -18.8412, lng: -41.9542 },
+  { name: "Altinópolis", lat: -18.868, lng: -41.936 },
+  { name: "Santa Efigênia", lat: -18.871, lng: -41.948 },
+  { name: "Esperança", lat: -18.859, lng: -41.968 },
+  { name: "Carapina", lat: -18.851, lng: -41.932 },
+  { name: "Jardim Pérola", lat: -18.835, lng: -41.972 },
+  { name: "Morada do Vale", lat: -18.828, lng: -41.94 },
+  { name: "Vila dos Montes", lat: -18.847, lng: -41.985 },
+  { name: "Nova JK", lat: -18.832, lng: -41.965 },
+  { name: "Santos Dumont", lat: -18.874, lng: -41.94 },
+]
 
 export function AdminOperationsMap() {
   const queryClient = useQueryClient()
@@ -81,6 +107,25 @@ export function AdminOperationsMap() {
   const markersRef = React.useRef<unknown[]>([])
 
   const [selectedNeighborhood, setSelectedNeighborhood] = React.useState<string>("TODOS")
+
+  const handleSelectNeighborhood = (bairro: string) => {
+    setSelectedNeighborhood(bairro)
+    if (mapRef.current) {
+      const map = mapRef.current as {
+        flyTo?: (opts: { center: [number, number]; zoom: number; duration?: number }) => void
+      }
+      if (typeof map.flyTo === "function") {
+        if (bairro === "TODOS") {
+          map.flyTo({ center: [-41.9482, -18.8548], zoom: 13, duration: 1200 })
+        } else {
+          const found = GV_ALL_20_NEIGHBORHOODS.find((n) => n.name === bairro)
+          if (found) {
+            map.flyTo({ center: [found.lng, found.lat], zoom: 14.5, duration: 1200 })
+          }
+        }
+      }
+    }
+  }
 
   const { data, isLoading, isFetching, refetch } = useQuery<LiveOperationsData>({
     queryKey: ["admin-operations-live"],
@@ -241,6 +286,21 @@ export function AdminOperationsMap() {
 
         markersRef.current.push(marker)
       })
+
+      // 3. Marcadores de Polos Operacionais nos 20 Bairros de GV
+      GV_ALL_20_NEIGHBORHOODS.forEach((n) => {
+        const stat = data.neighborhoods[n.name]
+        if (stat && stat.total > 0 && selectedNeighborhood === "TODOS") {
+          const el = document.createElement("div")
+          el.className =
+            "flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-900/85 text-white text-[10px] font-bold border border-slate-600 shadow-lg pointer-events-none"
+          el.innerHTML = `<span>📍 ${n.name}</span> <span class="text-amber-400 font-extrabold">(${stat.total})</span>`
+
+          const marker = new maplibregl.Marker({ element: el }).setLngLat([n.lng, n.lat]).addTo(map)
+
+          markersRef.current.push(marker)
+        }
+      })
     }
 
     renderMarkers()
@@ -351,31 +411,24 @@ export function AdminOperationsMap() {
         </Card>
       </div>
 
-      {/* Filtro por Bairros de Valadares */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-muted-foreground mr-1 flex items-center gap-1 text-xs font-semibold uppercase">
-          <Layers className="h-3.5 w-3.5" /> Bairros:
+      {/* Filtro por 20 Bairros de Governador Valadares */}
+      <div className="flex scrollbar-thin items-center gap-1.5 overflow-x-auto pb-1.5">
+        <span className="text-muted-foreground mr-1 flex shrink-0 items-center gap-1 text-xs font-semibold uppercase">
+          <Layers className="h-3.5 w-3.5 text-emerald-600" /> 20 Bairros de GV:
         </span>
-        {[
-          "TODOS",
-          "Centro",
-          "Ilha dos Araújos",
-          "Vila Bretas",
-          "São Pedro",
-          "Santa Rita",
-          "Grã-Duquesa",
-          "Esplanada",
-        ].map((bairro) => (
+        {["TODOS", ...GV_ALL_20_NEIGHBORHOODS.map((n) => n.name)].map((bairro) => (
           <Button
             key={bairro}
             variant={selectedNeighborhood === bairro ? "default" : "outline"}
             size="sm"
-            onClick={() => setSelectedNeighborhood(bairro)}
-            className="h-7 px-3 text-xs"
+            onClick={() => handleSelectNeighborhood(bairro)}
+            className="h-7 shrink-0 px-2.5 text-xs font-medium"
           >
             {bairro}
-            {bairro !== "TODOS" && data?.neighborhoods[bairro] ? (
-              <span className="ml-1.5 opacity-70">({data.neighborhoods[bairro].total})</span>
+            {bairro !== "TODOS" && data?.neighborhoods[bairro]?.total ? (
+              <span className="ml-1 font-bold text-amber-500">
+                ({data.neighborhoods[bairro].total})
+              </span>
             ) : null}
           </Button>
         ))}

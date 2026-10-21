@@ -33,6 +33,7 @@ import { ProviderTransitHud } from "@/components/provider/provider-transit-hud"
 import { useLocationBroadcaster } from "@/hooks/use-location-broadcaster"
 import { apiGet, apiPatch } from "@/lib/api"
 import { cacheOfflineBookings, getCachedOfflineBookings } from "@/lib/offline-bookings-cache"
+import { OfflineSimulationToggle } from "@/components/provider/offline-simulation-toggle"
 import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
@@ -520,6 +521,7 @@ export function ProviderBookings() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <OfflineSimulationToggle />
           <Badge variant="outline" className="px-2.5 py-1 text-xs font-semibold">
             {counts.all} {counts.all === 1 ? "agendamento" : "agendamentos"} no total
           </Badge>

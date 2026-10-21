@@ -8,6 +8,7 @@
 
 import logger from "@/lib/logger"
 import { chatCompletionHybrid } from "./ai-client"
+import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/redis"
 
 const log =
   typeof logger?.child === "function" ? logger.child({ module: "whatsapp-voice-quote" }) : logger
@@ -22,11 +23,71 @@ export interface StructuredVoiceQuote {
   confidence: number
 }
 
+export interface VoiceQuoteSession {
+  phone: string
+  transcription: string
+  quote: StructuredVoiceQuote
+  createdAt: number
+}
+
 export interface VoiceQuoteResult {
   transcription: string
   quote: StructuredVoiceQuote
   formattedReply: string
   quoteUrl: string
+}
+
+const VOICE_SESSION_TTL_SECONDS = 1800 // 30 minutos
+
+function getVoiceQuoteSessionKey(phone: string): string {
+  const digits = phone.replace(/\D/g, "")
+  return `wa:voice:quote:${digits}`
+}
+
+/**
+ * Salva a sessão de orçamento por voz para posterior contratação via WhatsApp
+ */
+export async function saveVoiceQuoteSession(
+  phone: string,
+  quote: StructuredVoiceQuote,
+  transcription: string,
+): Promise<void> {
+  try {
+    const session: VoiceQuoteSession = {
+      phone,
+      transcription,
+      quote,
+      createdAt: Date.now(),
+    }
+    await cacheSet(getVoiceQuoteSessionKey(phone), session, VOICE_SESSION_TTL_SECONDS)
+  } catch (err) {
+    log.warn({ err, phone }, "Erro ao salvar sessão de orçamento por voz")
+  }
+}
+
+/**
+ * Recupera sessão de orçamento por voz ativa
+ */
+export async function getVoiceQuoteSession(phone: string): Promise<VoiceQuoteSession | null> {
+  try {
+    const raw = await cacheGet(getVoiceQuoteSessionKey(phone))
+    if (!raw) return null
+    return typeof raw === "string" ? JSON.parse(raw) : (raw as VoiceQuoteSession)
+  } catch (err) {
+    log.warn({ err, phone }, "Erro ao recuperar sessão de orçamento por voz")
+    return null
+  }
+}
+
+/**
+ * Remove a sessão de orçamento por voz
+ */
+export async function clearVoiceQuoteSession(phone: string): Promise<void> {
+  try {
+    await cacheInvalidate(getVoiceQuoteSessionKey(phone))
+  } catch (err) {
+    log.warn({ err, phone }, "Erro ao limpar sessão de orçamento por voz")
+  }
 }
 
 /**
@@ -173,6 +234,8 @@ export function buildVoiceQuoteWhatsAppReply(
   })
   const quoteUrl = `${baseUrl.replace(/\/$/, "")}/?${queryParams.toString()}`
 
+  const avgPrice = Math.round((quote.estimatedPriceRange[0] + quote.estimatedPriceRange[1]) / 2)
+
   const replyText =
     `🎙️ *Áudio Entendido com Sucesso!*\n\n` +
     `Entendemos o seu pedido:\n` +
@@ -180,21 +243,25 @@ export function buildVoiceQuoteWhatsAppReply(
     `📁 *Categoria:* ${quote.category}\n` +
     `📍 *Região:* ${quote.neighborhood}\n` +
     `⚡ *Urgência:* ${urgencyLabel}\n` +
-    `💰 *Faixa Média Estimada:* R$ ${quote.estimatedPriceRange[0]} a R$ ${quote.estimatedPriceRange[1]}\n\n` +
+    `💰 *Faixa Média Estimada:* R$ ${quote.estimatedPriceRange[0]} a R$ ${quote.estimatedPriceRange[1]} (Média R$ ${avgPrice})\n\n` +
     `📝 _"${transcription.length > 90 ? transcription.slice(0, 90) + "..." : transcription}"_\n\n` +
-    `👉 *Toque no link abaixo para acionar os prestadores verificados disponíveis agora com garantia de pagamento seguro:*\n` +
-    `${quoteUrl}\n\n` +
-    `_Ou responda *CONFIRMAR* para despacharmos a chamada imediatamente aos profissionais mais próximos._`
+    `💸 *Emissão Instantânea de PIX Copia-e-Cola:*\n` +
+    `Para contratar o profissional mais próximo agora com 100% de garantia Escrow e receber a chave PIX Copia-e-Cola diretamente aqui no chat, responda:\n` +
+    `👉 *CONFIRMAR* ou *PAGAR*\n\n` +
+    `🔗 Ou toque no link abaixo para escolher o prestador na vitrine online:\n` +
+    `${quoteUrl}`
 
   return { replyText, quoteUrl }
 }
 
 /**
  * Orquestrador completo: recebe transcrição prévia ou processa o áudio e gera o VoiceQuoteResult.
+ * Salva a sessão no Redis se o telefone for informado para permitir contratação instantânea.
  */
 export async function processVoiceQuote(
   transcriptionOrBuffer: string | Buffer,
   baseUrl?: string,
+  phone?: string,
 ): Promise<VoiceQuoteResult> {
   let transcription = ""
 
@@ -206,6 +273,10 @@ export async function processVoiceQuote(
 
   const quote = await extractStructuredQuoteFromSpeech(transcription)
   const { replyText, quoteUrl } = buildVoiceQuoteWhatsAppReply(transcription, quote, baseUrl)
+
+  if (phone) {
+    await saveVoiceQuoteSession(phone, quote, transcription)
+  }
 
   return {
     transcription,

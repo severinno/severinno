@@ -77,31 +77,143 @@ export const GET = withRoute("api.admin.operations.live.GET", async () => {
     },
   })
 
-  // 4. Mapeamento dos agendamentos formatados para o mapa e tabela
+  // 4. Mapeamento dos 20 bairros de Governador Valadares
+  const GV_NEIGHBORHOODS_MAP: Record<
+    string,
+    { name: string; lat: number; lng: number; keywords: string[] }
+  > = {
+    centro: {
+      name: "Centro",
+      lat: -18.8511,
+      lng: -41.9422,
+      keywords: ["centro", "israel pinheiro", "peçanha", "pecanha", "rio branco"],
+    },
+    "ilha-dos-araujos": {
+      name: "Ilha dos Araújos",
+      lat: -18.8584,
+      lng: -41.9515,
+      keywords: ["ilha", "araujo", "araújo", "piracicaba"],
+    },
+    "vila-isa": {
+      name: "Vila Isa",
+      lat: -18.8701,
+      lng: -41.9582,
+      keywords: ["vila isa", "rio doce"],
+    },
+    esplanada: {
+      name: "Esplanada",
+      lat: -18.8465,
+      lng: -41.9458,
+      keywords: ["esplanada", "sete de setembro"],
+    },
+    "gra-duquesa": {
+      name: "Grã-Duquesa",
+      lat: -18.8385,
+      lng: -41.9352,
+      keywords: ["gra-duquesa", "grã-duquesa", "gra duquesa", "veneza"],
+    },
+    "sao-pedro": {
+      name: "São Pedro",
+      lat: -18.8621,
+      lng: -41.9392,
+      keywords: ["sao pedro", "são pedro", "paleta", "univale"],
+    },
+    lourdes: {
+      name: "Lourdes",
+      lat: -18.8492,
+      lng: -41.9331,
+      keywords: ["lourdes"],
+    },
+    "santa-rita": {
+      name: "Santa Rita",
+      lat: -18.8752,
+      lng: -41.9654,
+      keywords: ["santa rita", "washington", "eusebio", "eusébio"],
+    },
+    castanheiras: {
+      name: "Castanheiras",
+      lat: -18.8312,
+      lng: -41.9485,
+      keywords: ["castanheiras", "castanheira"],
+    },
+    "lagoa-santa": {
+      name: "Lagoa Santa",
+      lat: -18.8415,
+      lng: -41.9215,
+      keywords: ["lagoa santa", "lagoa"],
+    },
+    "vila-bretas": {
+      name: "Vila Bretas",
+      lat: -18.8412,
+      lng: -41.9542,
+      keywords: ["bretas", "vila bretas"],
+    },
+    altinopolis: {
+      name: "Altinópolis",
+      lat: -18.868,
+      lng: -41.936,
+      keywords: ["altinopolis", "altinópolis"],
+    },
+    "santa-efigenia": {
+      name: "Santa Efigênia",
+      lat: -18.871,
+      lng: -41.948,
+      keywords: ["santa efigenia", "santa efigênia", "efigenia"],
+    },
+    esperanca: {
+      name: "Esperança",
+      lat: -18.859,
+      lng: -41.968,
+      keywords: ["esperanca", "esperança"],
+    },
+    carapina: {
+      name: "Carapina",
+      lat: -18.851,
+      lng: -41.932,
+      keywords: ["carapina"],
+    },
+    "jardim-perola": {
+      name: "Jardim Pérola",
+      lat: -18.835,
+      lng: -41.972,
+      keywords: ["jardim perola", "jardim pérola", "perola"],
+    },
+    "morada-do-vale": {
+      name: "Morada do Vale",
+      lat: -18.828,
+      lng: -41.94,
+      keywords: ["morada do vale", "morada"],
+    },
+    "vila-dos-montes": {
+      name: "Vila dos Montes",
+      lat: -18.847,
+      lng: -41.985,
+      keywords: ["vila dos montes", "montes"],
+    },
+    "nova-jk": {
+      name: "Nova JK",
+      lat: -18.832,
+      lng: -41.965,
+      keywords: ["nova jk", "jk"],
+    },
+    "santos-dumont": {
+      name: "Santos Dumont",
+      lat: -18.874,
+      lng: -41.94,
+      keywords: ["santos dumont", "dumont"],
+    },
+  }
+
+  // 5. Mapeamento dos agendamentos formatados para o mapa e tabela
   const liveBookings = bookings.map((b) => {
-    // Determina o bairro com base no endereço
     const addr = b.address.toLowerCase()
-    let neighborhood = "Centro"
-    if (addr.includes("ilha") || addr.includes("araujo") || addr.includes("piracicaba")) {
-      neighborhood = "Ilha dos Araújos"
-    } else if (addr.includes("bretas") || addr.includes("santos dumont") || addr.includes("jk")) {
-      neighborhood = "Vila Bretas"
-    } else if (addr.includes("sao pedro") || addr.includes("paleta")) {
-      neighborhood = "São Pedro"
-    } else if (
-      addr.includes("santa rita") ||
-      addr.includes("washington") ||
-      addr.includes("eusebio")
-    ) {
-      neighborhood = "Santa Rita"
-    } else if (
-      addr.includes("gra-duquesa") ||
-      addr.includes("gra duquesa") ||
-      addr.includes("veneza")
-    ) {
-      neighborhood = "Grã-Duquesa"
-    } else if (addr.includes("esplanada") || addr.includes("sete de setembro")) {
-      neighborhood = "Esplanada"
+    let detected = "Centro"
+
+    for (const item of Object.values(GV_NEIGHBORHOODS_MAP)) {
+      if (item.keywords.some((k) => addr.includes(k))) {
+        detected = item.name
+        break
+      }
     }
 
     return {
@@ -119,29 +231,37 @@ export const GET = withRoute("api.admin.operations.live.GET", async () => {
       lat: b.lat,
       lng: b.lng,
       address: b.address,
-      neighborhood,
+      neighborhood: detected,
       scheduledAt: b.scheduledAt.toISOString(),
       escrowReleasedAt: b.escrowReleasedAt?.toISOString() ?? null,
     }
   })
 
-  // 5. Agrupamento e estatísticas por bairro
+  // 6. Agrupamento e estatísticas para todos os 20 bairros de GV
   const neighborhoodStats: Record<
     string,
-    { total: number; inProgress: number; heldAmount: number }
-  > = {
-    Centro: { total: 0, inProgress: 0, heldAmount: 0 },
-    "Ilha dos Araújos": { total: 0, inProgress: 0, heldAmount: 0 },
-    "Vila Bretas": { total: 0, inProgress: 0, heldAmount: 0 },
-    "São Pedro": { total: 0, inProgress: 0, heldAmount: 0 },
-    "Santa Rita": { total: 0, inProgress: 0, heldAmount: 0 },
-    "Grã-Duquesa": { total: 0, inProgress: 0, heldAmount: 0 },
-    Esplanada: { total: 0, inProgress: 0, heldAmount: 0 },
+    { total: number; inProgress: number; heldAmount: number; lat: number; lng: number }
+  > = {}
+
+  for (const item of Object.values(GV_NEIGHBORHOODS_MAP)) {
+    neighborhoodStats[item.name] = {
+      total: 0,
+      inProgress: 0,
+      heldAmount: 0,
+      lat: item.lat,
+      lng: item.lng,
+    }
   }
 
   for (const b of liveBookings) {
     if (!neighborhoodStats[b.neighborhood]) {
-      neighborhoodStats[b.neighborhood] = { total: 0, inProgress: 0, heldAmount: 0 }
+      neighborhoodStats[b.neighborhood] = {
+        total: 0,
+        inProgress: 0,
+        heldAmount: 0,
+        lat: -18.8511,
+        lng: -41.9422,
+      }
     }
     neighborhoodStats[b.neighborhood].total++
     if (b.status === "IN_PROGRESS") {

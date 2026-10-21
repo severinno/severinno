@@ -215,7 +215,7 @@ export async function POST(request: Request) {
           if (text) {
             try {
               const { processVoiceQuote } = await import("@/lib/whatsapp-voice-quote")
-              const voiceResult = await processVoiceQuote(text)
+              const voiceResult = await processVoiceQuote(text, undefined, senderNumber)
               const { enqueueWhatsApp } = await import("@/lib/whatsapp-queue")
               await enqueueWhatsApp({
                 to: senderNumber,
@@ -257,7 +257,7 @@ export async function POST(request: Request) {
 
                 if (buffer && buffer.length > 0) {
                   const { processVoiceQuote } = await import("@/lib/whatsapp-voice-quote")
-                  const voiceResult = await processVoiceQuote(buffer)
+                  const voiceResult = await processVoiceQuote(buffer, undefined, senderNumber)
                   const { enqueueWhatsApp } = await import("@/lib/whatsapp-queue")
                   await enqueueWhatsApp({
                     to: senderNumber,

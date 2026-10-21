@@ -43,9 +43,20 @@ vi.mock("@/lib/db", () => ({
       findMany: vi.fn(),
       findFirst: vi.fn(),
       update: vi.fn().mockResolvedValue({}),
+      create: vi
+        .fn()
+        .mockImplementation((data) => Promise.resolve({ id: "quote-new-1", ...data.data })),
     },
     quoteItem: {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    category: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+    },
+    service: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
     },
     user: {
       findUnique: vi.fn(),
@@ -53,6 +64,20 @@ vi.mock("@/lib/db", () => ({
     },
     $transaction: vi.fn((promises) => Promise.all(promises)),
   },
+}))
+
+const redisStore = new Map<string, string>()
+vi.mock("@/lib/redis", () => ({
+  cacheGet: vi.fn(async (key: string) => {
+    const val = redisStore.get(key)
+    return val ? JSON.parse(val) : null
+  }),
+  cacheSet: vi.fn(async (key: string, val: unknown) => {
+    redisStore.set(key, JSON.stringify(val))
+  }),
+  cacheInvalidate: vi.fn(async (key: string) => {
+    redisStore.delete(key)
+  }),
 }))
 
 vi.mock("@/lib/loyalty", () => ({
@@ -119,6 +144,7 @@ vi.mock("@/lib/logger", () => ({
 describe("WhatsApp Autoresponder & Interactive Parser", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    redisStore.clear()
   })
 
   describe("normalizeCommand", () => {
@@ -811,6 +837,89 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
           context: "autoresponder:REPUTACAO",
         }),
       )
+    })
+
+    it("processInteractiveCommand reconhece CONFIRMAR, PAGAR e PIX para contratação rápida e emissão de PIX", async () => {
+      vi.mocked(db.quoteRequest.findFirst).mockResolvedValueOnce({
+        id: "quote-pix-1",
+        clientId: "client-1",
+        providerId: "prov-1",
+        address: "Rua Israel Pinheiro, 200 - Centro",
+        cep: "35010-000",
+        lat: -18.8511,
+        lng: -41.9422,
+        client: {
+          id: "client-1",
+          name: "Maria Cliente",
+          email: "maria@teste.com",
+          cpfCnpj: "111",
+          whatsapp: "5533999991111",
+        },
+        provider: { id: "prov-1", name: "José Encanador", whatsapp: "5533988882222" },
+        items: [{ price: 180, service: { id: "srv-1", title: "Conserto de Vazamento" } }],
+        bookings: [],
+      } as any)
+
+      const res = await processInteractiveCommand({
+        phone: "5533999991111",
+        text: "CONFIRMAR",
+        user: { id: "client-1", name: "Maria Cliente" },
+      })
+
+      expect(res.handled).toBe(true)
+      expect(res.replyText).toContain("Contratação Confirmada")
+      expect(res.replyText).toContain("José Encanador")
+      expect(res.replyText).toContain("R$ 180.00")
+      expect(res.replyText).toContain("Garantia Severinno Escrow")
+      expect(res.replyText).toContain("`00020126580014br.gov.bcb.pix0136test-qr-code`")
+    })
+
+    it("handleInstantQuoteHiring converte sessão de áudio ativa em agendamento e emite PIX Copia-e-Cola", async () => {
+      const { saveVoiceQuoteSession } = await import("../whatsapp-voice-quote")
+      await saveVoiceQuoteSession(
+        "5533977778888",
+        {
+          category: "Eletricista",
+          serviceTitle: "Instalação de Chuveiro",
+          description: "Chuveiro queimou",
+          urgency: "HIGH",
+          estimatedPriceRange: [90, 150],
+          neighborhood: "Ilha dos Araújos",
+          confidence: 0.95,
+        },
+        "chuveiro queimou na ilha",
+      )
+
+      // Mock de categoria e serviço
+      vi.mocked(db.category.findFirst).mockResolvedValueOnce({
+        id: "cat-elec",
+        name: "Eletricista",
+        slug: "eletricista",
+      } as any)
+      vi.mocked(db.service.findFirst).mockResolvedValueOnce({
+        id: "srv-elec-1",
+        title: "Instalação Elétrica",
+        provider: {
+          id: "prov-elec",
+          name: "Marcos Eletricista",
+          whatsapp: "5533999993333",
+          email: "marcos@teste.com",
+          cpfCnpj: "222",
+        },
+      } as any)
+      vi.mocked(db.user.findUnique).mockResolvedValueOnce({
+        id: "usr-aud-client",
+        name: "Ana Cliente",
+        email: "ana@teste.com",
+      } as any)
+
+      const reply = await handleInstantQuoteHiring("usr-aud-client", "5533977778888")
+
+      expect(reply).toContain("Pedido Confirmado e PIX Copia-e-Cola Emitido")
+      expect(reply).toContain("Marcos Eletricista")
+      expect(reply).toContain("Ilha dos Araújos")
+      expect(reply).toContain("Código PIX Copia-e-Cola (toque para copiar)")
+      expect(reply).toContain("Garantia Severinno Escrow")
     })
   })
 })

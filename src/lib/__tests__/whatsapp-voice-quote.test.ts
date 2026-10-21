@@ -17,6 +17,20 @@ vi.mock("@/lib/logger", () => {
   return { default: mockLog }
 })
 
+const redisMap = new Map<string, string>()
+vi.mock("@/lib/redis", () => ({
+  cacheGet: vi.fn(async (key: string) => {
+    const val = redisMap.get(key)
+    return val ? JSON.parse(val) : null
+  }),
+  cacheSet: vi.fn(async (key: string, val: unknown) => {
+    redisMap.set(key, JSON.stringify(val))
+  }),
+  cacheInvalidate: vi.fn(async (key: string) => {
+    redisMap.delete(key)
+  }),
+}))
+
 describe("whatsapp-voice-quote — Voice-to-Quote Pipeline", () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -107,5 +121,33 @@ describe("whatsapp-voice-quote — Voice-to-Quote Pipeline", () => {
     expect(result.quote.category).toBe("Chaveiro")
     expect(result.quote.urgency).toBe("EMERGENCY")
     expect(result.formattedReply).toContain("EMERGÊNCIA IMEDIATA")
+    expect(result.formattedReply).toContain("CONFIRMAR")
+    expect(result.formattedReply).toContain("PIX Copia-e-Cola")
+  })
+
+  it("salva, recupera e limpa sessão de orçamento por voz vinculada ao telefone", async () => {
+    const { saveVoiceQuoteSession, getVoiceQuoteSession, clearVoiceQuoteSession } =
+      await import("../whatsapp-voice-quote")
+
+    const testQuote = {
+      category: "Eletricista",
+      serviceTitle: "Troca de Disjuntor",
+      description: "Disjuntor desarmando",
+      urgency: "NORMAL" as const,
+      estimatedPriceRange: [100, 180] as [number, number],
+      neighborhood: "Centro",
+      confidence: 0.9,
+    }
+
+    await saveVoiceQuoteSession("5533999992222", testQuote, "disjuntor desarmando")
+    const session = await getVoiceQuoteSession("5533999992222")
+
+    expect(session).not.toBeNull()
+    expect(session?.quote.category).toBe("Eletricista")
+    expect(session?.quote.serviceTitle).toBe("Troca de Disjuntor")
+
+    await clearVoiceQuoteSession("5533999992222")
+    const cleared = await getVoiceQuoteSession("5533999992222")
+    expect(cleared).toBeNull()
   })
 })

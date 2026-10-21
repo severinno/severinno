@@ -104,6 +104,11 @@ describe("GET & POST /api/admin/operations/live (Torre de Controle Operacional G
     expect(data.bookings.length).toBe(1)
     expect(data.bookings[0].neighborhood).toBe("Centro")
     expect(data.providers.length).toBe(1)
+    expect(Object.keys(data.neighborhoods).length).toBe(20)
+    expect(data.neighborhoods["Centro"].total).toBe(1)
+    expect(data.neighborhoods["Ilha dos Araújos"]).toBeDefined()
+    expect(data.neighborhoods["Ilha dos Araújos"].lat).toBeCloseTo(-18.8584, 3)
+    expect(data.neighborhoods["Vila Isa"].lat).toBeCloseTo(-18.8701, 3)
   })
 
   it("permite liberação manual de custódia (Escrow) pelo admin via POST", async () => {

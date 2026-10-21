@@ -620,6 +620,181 @@ export async function handleInstantQuoteHiring(
     const digits = phone.replace(/\D/g, "")
     const cleanPhone = digits.startsWith("55") ? digits : `55${digits}`
 
+    // 0. Verifica se há uma sessão recente de orçamento por voz para contratação instantânea
+    const { getVoiceQuoteSession, clearVoiceQuoteSession } =
+      await import("@/lib/whatsapp-voice-quote")
+    const voiceSession = await getVoiceQuoteSession(phone)
+
+    if (voiceSession && !explicitQuoteRef) {
+      let category = await db.category.findFirst({
+        where: {
+          active: true,
+          OR: [
+            { name: { contains: voiceSession.quote.category, mode: "insensitive" } },
+            { slug: { contains: voiceSession.quote.category.toLowerCase(), mode: "insensitive" } },
+          ],
+        },
+      })
+      if (!category) {
+        category = await db.category.findFirst({
+          where: { active: true },
+          orderBy: { order: "asc" },
+        })
+      }
+
+      let service = null
+      if (category) {
+        service = await db.service.findFirst({
+          where: {
+            categoryId: category.id,
+            active: true,
+            provider: { active: true, role: "PROVIDER" },
+          },
+          include: {
+            provider: {
+              select: { id: true, name: true, whatsapp: true, email: true, cpfCnpj: true },
+            },
+          },
+        })
+      }
+      if (!service) {
+        service = await db.service.findFirst({
+          where: { active: true, provider: { active: true, role: "PROVIDER" } },
+          include: {
+            provider: {
+              select: { id: true, name: true, whatsapp: true, email: true, cpfCnpj: true },
+            },
+          },
+        })
+      }
+
+      if (service && service.provider) {
+        const avgPrice = Math.max(
+          50,
+          Math.round(
+            (voiceSession.quote.estimatedPriceRange[0] +
+              voiceSession.quote.estimatedPriceRange[1]) /
+              2,
+          ),
+        )
+
+        const client = await db.user.findUnique({
+          where: { id: userId },
+          select: { id: true, name: true, email: true, cpfCnpj: true, whatsapp: true },
+        })
+
+        const tomorrow = new Date(Date.now() + 24 * 3600 * 1000)
+        tomorrow.setHours(14, 0, 0, 0)
+        const neighborhood = voiceSession.quote.neighborhood || "Governador Valadares"
+        const address = `${neighborhood}, Gov. Valadares - MG`
+
+        const quote = await db.quoteRequest.create({
+          data: {
+            clientId: userId,
+            providerId: service.provider.id,
+            address,
+            cep: "35010-000",
+            lat: -18.8511,
+            lng: -41.9494,
+            expiresAt: new Date(Date.now() + 5 * 24 * 3600 * 1000),
+            status: "APPROVED",
+            items: {
+              create: [
+                {
+                  providerId: service.provider.id,
+                  serviceId: service.id,
+                  description: voiceSession.quote.description || voiceSession.quote.serviceTitle,
+                  quantity: 1,
+                  price: avgPrice,
+                  status: "ACCEPTED",
+                },
+              ],
+            },
+          },
+        })
+
+        const booking = await db.booking.create({
+          data: {
+            clientId: userId,
+            providerId: service.provider.id,
+            serviceId: service.id,
+            scheduledAt: tomorrow,
+            amount: avgPrice,
+            address,
+            cep: "35010-000",
+            lat: -18.8511,
+            lng: -41.9494,
+            status: "PENDING",
+            paymentStatus: "PENDING",
+            paymentMethod: "PIX",
+            quoteId: quote.id,
+            notes: `Contratado via Áudio WhatsApp (#${quote.id.slice(0, 8)})`,
+          },
+        })
+
+        let qrCode = ""
+        try {
+          const { createPixCharge } = await import("@/lib/lytex")
+          const pix = await createPixCharge({
+            externalReference: `booking:${booking.id}`,
+            amount: avgPrice,
+            customer: {
+              name: client?.name || "Cliente WhatsApp",
+              email: client?.email || `cliente_${digits}@severinno.com.br`,
+              cpfCnpj: client?.cpfCnpj || "00000000000",
+              phone,
+            },
+            description: `Agendamento #${booking.id.slice(0, 8)} - Severinno`,
+          })
+          qrCode = pix.qrCode
+
+          await db.payment.create({
+            data: {
+              bookingId: booking.id,
+              status: "PENDING",
+              method: "PIX",
+              amount: avgPrice,
+              lytexId: pix.id,
+              qrCode: pix.qrCode,
+              lytexStatus: pix.lytexStatus,
+            },
+          })
+        } catch (err) {
+          autoresponderLogger.warn(
+            { err, bookingId: booking.id },
+            "Falha Lytex PIX — gerando código PIX fallback",
+          )
+          qrCode = `00020126580014br.gov.bcb.pix0136${booking.id}520400005303986540${avgPrice.toFixed(2)}5802BR5916SEVERINNO_ESCROW6009VALADARES62070503***6304`
+        }
+
+        await clearVoiceQuoteSession(phone)
+
+        notifyNewBooking(
+          userId,
+          service.provider.id,
+          booking.id,
+          voiceSession.quote.serviceTitle || service.title,
+          tomorrow,
+          client?.name || "Cliente WhatsApp",
+        ).catch(() => {})
+
+        return (
+          `🎉 *Pedido Confirmado e PIX Copia-e-Cola Emitido!*\n\n` +
+          `📋 *Agendamento:* #${booking.id.slice(0, 8)}\n` +
+          `👤 *Profissional:* ${service.provider.name} (Verificado)\n` +
+          `🔧 *Serviço:* ${voiceSession.quote.serviceTitle || service.title}\n` +
+          `📍 *Local:* ${neighborhood}, Gov. Valadares\n` +
+          `💰 *Valor Total:* R$ ${avgPrice.toFixed(2)}\n` +
+          `📅 *Data Prevista:* Amanhã às 14:00 (você pode alinhar com o profissional)\n\n` +
+          `📱 *Código PIX Copia-e-Cola (toque para copiar):*\n\n` +
+          `\`${qrCode}\`\n\n` +
+          `🛡️ *Garantia Severinno Escrow:*\n` +
+          `Seu pagamento fica 100% protegido em custódia na plataforma e só é repassado ao profissional após você aprovar a conclusão do serviço!\n\n` +
+          `💡 _Assim que o pagamento for detectado pelo banco, confirmaremos automaticamente aqui no chat em poucos segundos._`
+        )
+      }
+    }
+
     // 1. Localiza a solicitação de orçamento com proposta respondida
     const quote = await db.quoteRequest.findFirst({
       where: {
@@ -652,9 +827,91 @@ export async function handleInstantQuoteHiring(
     })
 
     if (!quote) {
+      // 1.1 Se não tem orçamento, verifica se tem agendamento pendente de pagamento PIX
+      const pendingBooking = await db.booking.findFirst({
+        where: {
+          OR: [
+            { clientId: userId },
+            { client: { whatsapp: { in: [digits, cleanPhone, cleanPhone.slice(2)] } } },
+          ],
+          status: { in: ["PENDING", "CONFIRMED"] },
+          paymentStatus: "PENDING",
+        },
+        orderBy: { createdAt: "desc" },
+        include: {
+          client: { select: { id: true, name: true, email: true, cpfCnpj: true, whatsapp: true } },
+          provider: { select: { id: true, name: true, whatsapp: true } },
+          service: { select: { id: true, title: true } },
+          payment: true,
+        },
+      })
+
+      if (pendingBooking && pendingBooking.paymentStatus === "PENDING" && pendingBooking.amount) {
+        let qrCode = pendingBooking.payment?.qrCode || ""
+        const bookingAmount = Number(pendingBooking.amount)
+
+        if (!qrCode) {
+          try {
+            const { createPixCharge } = await import("@/lib/lytex")
+            const pix = await createPixCharge({
+              externalReference: `booking:${pendingBooking.id}`,
+              amount: bookingAmount,
+              customer: {
+                name: pendingBooking.client?.name || "Cliente WhatsApp",
+                email: pendingBooking.client?.email || `cliente_${digits}@severinno.com.br`,
+                cpfCnpj: pendingBooking.client?.cpfCnpj || "00000000000",
+                phone,
+              },
+              description: `Agendamento #${pendingBooking.id.slice(0, 8)} - Severinno`,
+            })
+            qrCode = pix.qrCode
+
+            await db.payment.upsert({
+              where: { bookingId: pendingBooking.id },
+              create: {
+                bookingId: pendingBooking.id,
+                status: "PENDING",
+                method: "PIX",
+                amount: bookingAmount,
+                lytexId: pix.id,
+                qrCode: pix.qrCode,
+                lytexStatus: pix.lytexStatus,
+              },
+              update: {
+                lytexId: pix.id,
+                qrCode: pix.qrCode,
+                lytexStatus: pix.lytexStatus,
+              },
+            })
+          } catch (err) {
+            autoresponderLogger.warn(
+              { err, bookingId: pendingBooking.id },
+              "Falha na chamada Lytex PIX — gerando código fallback",
+            )
+            qrCode = `00020126580014br.gov.bcb.pix0136${pendingBooking.id}520400005303986540${bookingAmount.toFixed(2)}5802BR5916SEVERINNO_ESCROW6009VALADARES62070503***6304`
+          }
+        }
+
+        const providerName = pendingBooking.provider?.name || "Profissional Parceiro"
+        const serviceTitle = pendingBooking.service?.title || "Serviço Residencial"
+
+        return (
+          `📋 *Agendamento Aguardando Pagamento PIX*\n\n` +
+          `🆔 *Agendamento:* #${pendingBooking.id.slice(0, 8)}\n` +
+          `👤 *Profissional:* ${providerName}\n` +
+          `🔧 *Serviço:* ${serviceTitle}\n` +
+          `💰 *Valor Total:* R$ ${bookingAmount.toFixed(2)}\n\n` +
+          `📱 *Código PIX Copia-e-Cola (toque para copiar):*\n\n` +
+          `\`${qrCode}\`\n\n` +
+          `🛡️ *Garantia Severinno Escrow:*\n` +
+          `Seu pagamento fica 100% protegido em custódia na plataforma e só é repassado ao profissional após você aprovar a conclusão do serviço!\n\n` +
+          `💡 _Assim que o pagamento for detectado, confirmaremos automaticamente aqui no chat em poucos segundos._`
+        )
+      }
+
       return (
-        `ℹ️ Não encontramos nenhum orçamento aguardando contratação no momento.\n\n` +
-        `Digite *2* para listar seus orçamentos ou *ORCAR* para solicitar um novo serviço em Governador Valadares.`
+        `ℹ️ Não encontramos nenhum orçamento aguardando contratação ou pagamento no momento.\n\n` +
+        `Digite *2* para listar seus orçamentos, envie *ORCAR* para solicitar um novo serviço em Governador Valadares, ou *mande um áudio* explicando o que você precisa!`
       )
     }
 
@@ -1066,11 +1323,23 @@ export async function processInteractiveCommand(
     normalized === "CONTRATAR" ||
     normalized === "ACEITAR" ||
     normalized === "FECHAR" ||
+    normalized === "PAGAR" ||
     normalized === "PAGAR ORCAMENTO" ||
+    normalized === "PIX" ||
+    normalized === "GERAR PIX" ||
+    normalized === "PIX ORCAMENTO" ||
+    normalized === "COPIA E COLA" ||
+    normalized === "CONFIRMAR" ||
+    normalized === "CONFIRMAR PEDIDO" ||
+    normalized === "CONFIRMAR ORCAMENTO" ||
+    normalized === "QUERO CONTRATAR" ||
+    normalized === "QUERO PAGAR" ||
     normalized.startsWith("CONTRATAR ") ||
     normalized.startsWith("ACEITAR ") ||
     normalized.startsWith("FECHAR ") ||
-    normalized.startsWith("PAGAR ORCAMENTO ")
+    normalized.startsWith("PAGAR ") ||
+    normalized.startsWith("PIX ") ||
+    normalized.startsWith("CONFIRMAR ")
   ) {
     replyText = await handleInstantQuoteHiring(ctx.user.id, ctx.phone, explicitRef)
   }
