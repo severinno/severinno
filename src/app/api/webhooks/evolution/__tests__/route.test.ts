@@ -64,6 +64,10 @@ vi.mock("@/lib/whatsapp-autoresponder", () => ({
   processDemandSearch: vi.fn().mockResolvedValue({ handled: false }),
 }))
 
+vi.mock("@/lib/whatsapp-ai-triage", () => ({
+  processAiTriage: vi.fn().mockResolvedValue({ handled: false }),
+}))
+
 import { processDemandSearch } from "@/lib/whatsapp-autoresponder"
 import { POST, __testing__extractNumber, __testing__findUserByPhone } from "../route"
 

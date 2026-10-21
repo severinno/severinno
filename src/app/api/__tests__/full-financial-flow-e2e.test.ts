@@ -8,6 +8,7 @@ const mockDb = vi.hoisted(() => {
       create: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       findMany: vi.fn(),
       aggregate: vi.fn(),
     },
@@ -183,6 +184,7 @@ describe("Full Financial Flow E2E", () => {
       service: { title: "Limpeza" },
     })
     mockDb.booking.update.mockResolvedValue({ id: "b1", status: "COMPLETED" })
+    mockDb.booking.updateMany.mockResolvedValue({ count: 1 })
     mockDb.payment.updateMany.mockResolvedValue({ count: 1 })
 
     const { POST: confirm } = await import("@/app/api/bookings/[id]/confirm-completion/route")
