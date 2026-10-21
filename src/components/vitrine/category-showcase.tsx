@@ -57,6 +57,7 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { triggerHaptic } from "@/lib/haptics"
 import type { Category } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -150,6 +151,12 @@ export default function CategoryShowcase({
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const subScrollRef = React.useRef<HTMLDivElement>(null)
 
+  // Selection haptic on every category pick (macro, sub, "Todas" and "Limpar")
+  const select = (id: string | null) => {
+    triggerHaptic("selection")
+    onSelect(id)
+  }
+
   const handleScroll = (direction: "left" | "right") => {
     if (!scrollRef.current) return
     const delta = direction === "left" ? -280 : 280
@@ -221,9 +228,9 @@ export default function CategoryShowcase({
             {/* Botão "Todas" */}
             <button
               type="button"
-              onClick={() => onSelect(null)}
+              onClick={() => select(null)}
               className={cn(
-                "flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-full px-4 text-xs font-medium transition-all",
+                "flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-full px-4 text-xs font-medium transition-all active:scale-95",
                 activeId === null
                   ? "bg-primary text-primary-foreground font-semibold shadow-sm shadow-emerald-500/20"
                   : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -247,9 +254,9 @@ export default function CategoryShowcase({
                     key={cat.id}
                     type="button"
                     title={cat.slug}
-                    onClick={() => onSelect(isExactActive ? null : cat.id)}
+                    onClick={() => select(isExactActive ? null : cat.id)}
                     className={cn(
-                      "relative flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-full border px-4 text-xs font-semibold transition-all",
+                      "relative flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-full border px-4 text-xs font-semibold transition-all active:scale-95",
                       isExactActive
                         ? "border-rose-600 bg-rose-600 text-white shadow-md ring-2 shadow-rose-600/30 ring-rose-500/30"
                         : "border-rose-500/40 bg-rose-500/10 text-rose-700 hover:bg-rose-500/20 dark:border-rose-500/30 dark:bg-rose-950/40 dark:text-rose-300",
@@ -279,9 +286,9 @@ export default function CategoryShowcase({
                 <button
                   key={cat.id}
                   type="button"
-                  onClick={() => onSelect(isExactActive ? null : cat.id)}
+                  onClick={() => select(isExactActive ? null : cat.id)}
                   className={cn(
-                    "flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-full border px-4 text-xs font-medium transition-all",
+                    "flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-full border px-4 text-xs font-medium transition-all active:scale-95",
                     isRootActive
                       ? "border-primary bg-primary/10 text-primary ring-primary/20 font-semibold shadow-xs ring-1"
                       : "border-border/50 bg-card/60 text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground",
@@ -312,9 +319,9 @@ export default function CategoryShowcase({
           {activeId !== null && (
             <button
               type="button"
-              onClick={() => onSelect(null)}
+              onClick={() => select(null)}
               aria-label="Limpar categoria selecionada"
-              className="border-border/60 bg-muted/70 text-muted-foreground hover:text-foreground inline-flex h-8 shrink-0 cursor-pointer items-center gap-1 rounded-full border px-3 text-[11px] font-semibold transition-colors"
+              className="border-border/60 bg-muted/70 text-muted-foreground hover:text-foreground inline-flex h-8 shrink-0 cursor-pointer items-center gap-1 rounded-full border px-3 text-[11px] font-semibold transition-colors active:scale-95"
             >
               <X className="size-3" />
               <span className="hidden sm:inline">Limpar</span>
@@ -343,9 +350,9 @@ export default function CategoryShowcase({
               {/* Botão para manter filtro no macro-domínio inteiro */}
               <button
                 type="button"
-                onClick={() => onSelect(activeRoot.id)}
+                onClick={() => select(activeRoot.id)}
                 className={cn(
-                  "flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[11px] font-medium transition-all",
+                  "flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[11px] font-medium transition-all active:scale-95",
                   activeId === activeRoot.id
                     ? "bg-foreground/10 text-foreground font-semibold"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
@@ -365,9 +372,9 @@ export default function CategoryShowcase({
                   <button
                     key={sub.id}
                     type="button"
-                    onClick={() => onSelect(isSubActive ? activeRoot.id : sub.id)}
+                    onClick={() => select(isSubActive ? activeRoot.id : sub.id)}
                     className={cn(
-                      "flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-[11px] font-medium transition-all",
+                      "flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-[11px] font-medium transition-all active:scale-95",
                       isSubActive
                         ? "border-primary bg-primary text-primary-foreground shadow-xs"
                         : "border-border/60 bg-muted/40 text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground",

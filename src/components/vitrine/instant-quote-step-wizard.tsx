@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { triggerHaptic } from "@/lib/haptics"
 
 export type InstantQuoteStepWizardProps = {
   onFilterResults?: (serviceQuery: string) => void
@@ -153,8 +154,23 @@ export function InstantQuoteStepWizard({
 
   // Atualiza escopo padrão quando troca categoria
   const handleSelectCategory = (cat: ServiceCategory) => {
+    triggerHaptic("selection")
     setSelectedCategory(cat)
     setSelectedScope(cat.commonScopes[0])
+  }
+
+  // Wraps option setters with a selection haptic
+  const pick =
+    <T,>(setter: (v: T) => void) =>
+    (v: T) => {
+      triggerHaptic("selection")
+      setter(v)
+    }
+
+  // Avançar = toque leve; voltar = seleção (mais sutil)
+  const goToStep = (next: 1 | 2 | 3) => {
+    triggerHaptic(next > step ? "light" : "selection")
+    setStep(next)
   }
 
   // Cálculo da estimativa com base na urgência
@@ -253,7 +269,7 @@ export function InstantQuoteStepWizard({
                       type="button"
                       onClick={() => handleSelectCategory(cat)}
                       className={cn(
-                        "flex items-center gap-3 rounded-xl border p-3 text-left transition-all",
+                        "flex items-center gap-3 rounded-xl border p-3 text-left transition-all active:scale-[0.98]",
                         active
                           ? "border-primary bg-primary/10 ring-primary/30 shadow-xs ring-2"
                           : "border-border/60 bg-background/80 hover:border-primary/40 hover:bg-muted/50",
@@ -285,9 +301,9 @@ export function InstantQuoteStepWizard({
                   <button
                     key={bairro}
                     type="button"
-                    onClick={() => setSelectedNeighborhood(bairro)}
+                    onClick={() => pick(setSelectedNeighborhood)(bairro)}
                     className={cn(
-                      "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all",
+                      "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all active:scale-95",
                       selectedNeighborhood === bairro
                         ? "bg-primary text-primary-foreground shadow-xs"
                         : "border-border/80 bg-background text-foreground hover:bg-muted border",
@@ -303,7 +319,7 @@ export function InstantQuoteStepWizard({
             <div className="flex justify-end pt-2">
               <Button
                 type="button"
-                onClick={() => setStep(2)}
+                onClick={() => goToStep(2)}
                 className="gap-2 font-bold shadow-md"
               >
                 <span>Avançar para Detalhes</span>
@@ -332,9 +348,9 @@ export function InstantQuoteStepWizard({
                     <button
                       key={scope}
                       type="button"
-                      onClick={() => setSelectedScope(scope)}
+                      onClick={() => pick(setSelectedScope)(scope)}
                       className={cn(
-                        "flex items-center gap-2.5 rounded-xl border p-3 text-left text-xs font-semibold transition-all",
+                        "flex items-center gap-2.5 rounded-xl border p-3 text-left text-xs font-semibold transition-all active:scale-[0.98]",
                         active
                           ? "border-primary bg-primary/10 ring-primary/30 shadow-xs ring-2"
                           : "border-border/60 bg-background/80 hover:border-primary/40 hover:bg-muted/50",
@@ -363,9 +379,9 @@ export function InstantQuoteStepWizard({
                     <button
                       key={prop}
                       type="button"
-                      onClick={() => setSelectedProperty(prop)}
+                      onClick={() => pick(setSelectedProperty)(prop)}
                       className={cn(
-                        "rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all",
+                        "rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all active:scale-95",
                         selectedProperty === prop
                           ? "border-primary bg-primary/10 text-primary font-bold"
                           : "border-border/60 bg-background hover:bg-muted",
@@ -386,9 +402,9 @@ export function InstantQuoteStepWizard({
                     <button
                       key={urg.label}
                       type="button"
-                      onClick={() => setSelectedUrgency(urg)}
+                      onClick={() => pick(setSelectedUrgency)(urg)}
                       className={cn(
-                        "rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all",
+                        "rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all active:scale-95",
                         selectedUrgency.label === urg.label
                           ? "border-emerald-600 bg-emerald-500/10 font-bold text-emerald-700 dark:text-emerald-400"
                           : "border-border/60 bg-background hover:bg-muted",
@@ -405,7 +421,7 @@ export function InstantQuoteStepWizard({
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => setStep(1)}
+                onClick={() => goToStep(1)}
                 className="gap-2 text-xs"
               >
                 <ArrowLeft className="size-4" />
@@ -413,7 +429,7 @@ export function InstantQuoteStepWizard({
               </Button>
               <Button
                 type="button"
-                onClick={() => setStep(3)}
+                onClick={() => goToStep(3)}
                 className="gap-2 font-bold shadow-md"
               >
                 <span>Ver Estimativa & Disparar</span>
@@ -468,6 +484,7 @@ export function InstantQuoteStepWizard({
                 href={whatsappUrl}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() => triggerHaptic("success")}
                 className="group flex w-full items-center justify-center gap-2.5 rounded-2xl bg-emerald-600 px-6 py-4 text-center font-black text-white shadow-lg shadow-emerald-600/30 transition-all hover:bg-emerald-700 hover:shadow-xl active:scale-[0.99]"
               >
                 <MessageCircle className="size-5 transition-transform group-hover:scale-110" />
@@ -497,7 +514,7 @@ export function InstantQuoteStepWizard({
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => setStep(2)}
+                onClick={() => goToStep(2)}
                 className="gap-1.5 text-xs"
               >
                 <ArrowLeft className="size-3.5" />

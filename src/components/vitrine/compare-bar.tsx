@@ -13,6 +13,7 @@ import { GitCompare, X, Trash2, ArrowRight, Navigation } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 
 import { cn } from "@/lib/utils"
+import { triggerHaptic } from "@/lib/haptics"
 import { useCompareStore, MAX_COMPARE } from "@/store/compare"
 
 import { Button } from "@/components/ui/button"
@@ -176,9 +177,12 @@ export default function CompareBar() {
                   ) : null}
                   <button
                     type="button"
-                    onClick={() => remove(p.id)}
+                    onClick={() => {
+                      triggerHaptic("light")
+                      remove(p.id)
+                    }}
                     aria-label={`Remover ${p.name} da comparação`}
-                    className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive flex size-5 items-center justify-center rounded-full transition"
+                    className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive flex size-5 items-center justify-center rounded-full transition active:scale-90"
                   >
                     <X className="size-3.5" />
                   </button>
@@ -191,7 +195,10 @@ export default function CompareBar() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={clear}
+                onClick={() => {
+                  triggerHaptic("light")
+                  clear()
+                }}
                 className="text-muted-foreground hover:text-destructive"
                 aria-label="Limpar seleção"
               >
@@ -200,7 +207,10 @@ export default function CompareBar() {
               </Button>
               <Button
                 size="sm"
-                onClick={openCompare}
+                onClick={() => {
+                  triggerHaptic("medium")
+                  openCompare()
+                }}
                 onMouseEnter={handlePrefetch}
                 onFocus={handlePrefetch}
                 onTouchStart={handlePrefetch}
