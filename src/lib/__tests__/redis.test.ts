@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest"
  * health endpoint integration tests and manual verification.
  */
 
-import { cacheGet, cacheSet, cacheInvalidate, withCache } from "@/lib/redis"
+import { cacheGet, cacheSet, cacheSetNX, cacheInvalidate, withCache } from "@/lib/redis"
 
 describe("redis module exports", () => {
   it("exporta cacheGet como função", () => {
@@ -18,6 +18,10 @@ describe("redis module exports", () => {
 
   it("exporta cacheSet como função", () => {
     expect(typeof cacheSet).toBe("function")
+  })
+
+  it("exporta cacheSetNX como função", () => {
+    expect(typeof cacheSetNX).toBe("function")
   })
 
   it("exporta cacheInvalidate como função", () => {

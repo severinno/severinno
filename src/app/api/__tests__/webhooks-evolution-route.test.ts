@@ -43,6 +43,11 @@ vi.mock("@/lib/redis", () => ({
   cacheSet: vi.fn(async (key: string, val: unknown) => {
     testCache.set(key, val)
   }),
+  cacheSetNX: vi.fn(async (key: string, val: unknown) => {
+    if (testCache.has(key)) return false
+    testCache.set(key, val)
+    return true
+  }),
   cacheInvalidate: vi.fn().mockResolvedValue(undefined),
   withCache: vi.fn((_key: string, fn: () => Promise<unknown>) => fn()),
 }))

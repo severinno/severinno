@@ -199,24 +199,39 @@ export async function runFinancialReconciliationAudit(
     const bookingAmount = toMoneyNumber(booking.amount)
     if (autoRepair) {
       try {
-        await db.booking.update({
-          where: { id: booking.id },
-          data: {
-            paymentStatus: "PAID",
-            escrowReleasedAt: new Date(),
-          },
-        })
-        reconciledCount++
-        discrepancies.push({
-          id: `escrow-${booking.id}`,
-          bookingId: booking.id,
-          type: "UNRELEASED_ESCROW",
-          severity: "WARNING",
-          details: `Custódia liberada automaticamente após expirar janela de 24h sem contestação`,
-          amount: bookingAmount,
-          reconciled: true,
-          actionTaken: "Liberado status para PAID com escrowReleasedAt",
-        })
+        const { acquireEscrowLock } = await import("@/lib/escrow-lock")
+        const lock = await acquireEscrowLock(booking.id, 15)
+        if (!lock.acquired) {
+          log.warn(
+            { bookingId: booking.id },
+            "Reconciliação: lock de escrow ativo para este booking (operação concorrente) — pulando auto-reparo",
+          )
+          continue
+        }
+
+        try {
+          await db.booking.update({
+            where: { id: booking.id },
+            data: {
+              paymentStatus: "PAID",
+              escrowReleasedAt: new Date(),
+            },
+          })
+
+          reconciledCount++
+          discrepancies.push({
+            id: `escrow-${booking.id}`,
+            bookingId: booking.id,
+            type: "UNRELEASED_ESCROW",
+            severity: "WARNING",
+            details: `Custódia liberada automaticamente após expirar janela de 24h sem contestação`,
+            amount: bookingAmount,
+            reconciled: true,
+            actionTaken: "Liberado status para PAID com escrowReleasedAt",
+          })
+        } finally {
+          await lock.release()
+        }
       } catch (err) {
         log.warn({ err }, "Falha ao liberar custódia retida")
       }

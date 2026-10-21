@@ -37,6 +37,7 @@ import {
 import { toMoneyNumber } from "@/lib/money"
 import { sendPaymentConfirmed } from "@/lib/realtime-client"
 import { processReferralFirstBookingConversion } from "@/lib/referral"
+import { acquireEscrowLock } from "@/lib/escrow-lock"
 
 // ---------------------------------------------------------------------------
 // Helper: confirmar pagamento do booking
@@ -58,121 +59,134 @@ async function confirmBookingPayment(
     transactionId?: string
   },
 ) {
-  const booking = await db.booking.findUnique({
-    where: { id: bookingId },
-    select: {
-      id: true,
-      paymentStatus: true,
-      status: true,
-      clientId: true,
-      providerId: true,
-      amount: true,
-      service: { select: { title: true } },
-      provider: { select: { name: true } },
-      payment: { select: { id: true, status: true } },
-    },
-  })
-  if (!booking || !booking.payment) {
-    lytexLogger.warn({ bookingId }, "Webhook: booking ou payment não encontrado ")
+  const lock = await acquireEscrowLock(bookingId, 15)
+  if (!lock.acquired) {
+    lytexLogger.warn(
+      { bookingId },
+      "Webhook Lytex: lock de escrow ativo por processamento concorrente — requisição ignorada para manter integridade",
+    )
     return
   }
 
-  // ── Validação de valor pago (anti-fraude) ──────────────────────────────
-  // Se o webhook informa um valor pago, ele DEVE ser >= ao valor esperado
-  // do booking. Impede que um atacante adultere o link de pagamento para
-  // R$0.01 e o sistema confirme como pagamento integral.
-  if (paymentData.paidAmountCents != null) {
-    const expectedCents = Math.round(toMoneyNumber(booking.amount) * 100)
-    if (paymentData.paidAmountCents < expectedCents) {
-      lytexLogger.warn(
-        {
-          bookingId,
-          paidCents: paymentData.paidAmountCents,
-          expectedCents,
-        },
-        "Webhook: valor pago INFERIOR ao esperado — pagamento REJEITADO (possível fraude)",
-      )
-      return
-    }
-  }
-
-  // Se já está pago, só atualiza metadados (não duplica confirmação)
-  if (booking.paymentStatus === "PAID") {
-    await db.payment.update({
-      where: { bookingId },
-      data: {
-        lytexId: paymentData.lytexId,
-        lytexStatus: paymentData.lytexStatus,
-        qrCode: paymentData.qrCode,
-        qrCodeImage: paymentData.qrCodeImage,
-        cardLastDigits: paymentData.cardLastDigits,
-        cardBrand: paymentData.cardBrand,
-        installments: paymentData.installments,
-        ...(paymentData.paidAt ? { paidAt: new Date(paymentData.paidAt) } : {}),
-        transactionId: paymentData.transactionId ?? undefined,
+  try {
+    const booking = await db.booking.findUnique({
+      where: { id: bookingId },
+      select: {
+        id: true,
+        paymentStatus: true,
+        status: true,
+        clientId: true,
+        providerId: true,
+        amount: true,
+        service: { select: { title: true } },
+        provider: { select: { name: true } },
+        payment: { select: { id: true, status: true } },
       },
     })
-    lytexLogger.info({ bookingId }, "Webhook: pagamento já confirmado (metadados atualizados)")
-    return
+    if (!booking || !booking.payment) {
+      lytexLogger.warn({ bookingId }, "Webhook: booking ou payment não encontrado ")
+      return
+    }
+
+    // ── Validação de valor pago (anti-fraude) ──────────────────────────────
+    // Se o webhook informa um valor pago, ele DEVE ser >= ao valor esperado
+    // do booking. Impede que um atacante adultere o link de pagamento para
+    // R$0.01 e o sistema confirme como pagamento integral.
+    if (paymentData.paidAmountCents != null) {
+      const expectedCents = Math.round(toMoneyNumber(booking.amount) * 100)
+      if (paymentData.paidAmountCents < expectedCents) {
+        lytexLogger.warn(
+          {
+            bookingId,
+            paidCents: paymentData.paidAmountCents,
+            expectedCents,
+          },
+          "Webhook: valor pago INFERIOR ao esperado — pagamento REJEITADO (possível fraude)",
+        )
+        return
+      }
+    }
+
+    // Se já está pago, só atualiza metadados (não duplica confirmação)
+    if (booking.paymentStatus === "PAID") {
+      await db.payment.update({
+        where: { bookingId },
+        data: {
+          lytexId: paymentData.lytexId,
+          lytexStatus: paymentData.lytexStatus,
+          qrCode: paymentData.qrCode,
+          qrCodeImage: paymentData.qrCodeImage,
+          cardLastDigits: paymentData.cardLastDigits,
+          cardBrand: paymentData.cardBrand,
+          installments: paymentData.installments,
+          ...(paymentData.paidAt ? { paidAt: new Date(paymentData.paidAt) } : {}),
+          transactionId: paymentData.transactionId ?? undefined,
+        },
+      })
+      lytexLogger.info({ bookingId }, "Webhook: pagamento já confirmado (metadados atualizados)")
+      return
+    }
+
+    // Atualizar payment + booking
+    const now = paymentData.paidAt ? new Date(paymentData.paidAt) : new Date()
+
+    await db.$transaction([
+      db.payment.update({
+        where: { bookingId },
+        data: {
+          status: "PAID",
+          lytexId: paymentData.lytexId,
+          lytexStatus: paymentData.lytexStatus,
+          qrCode: paymentData.qrCode,
+          qrCodeImage: paymentData.qrCodeImage,
+          cardLastDigits: paymentData.cardLastDigits,
+          cardBrand: paymentData.cardBrand,
+          installments: paymentData.installments,
+          paidAt: now,
+          transactionId: paymentData.transactionId ?? undefined,
+        },
+      }),
+      db.booking.update({
+        where: { id: bookingId },
+        data: { paymentStatus: "PAID" },
+      }),
+    ])
+
+    lytexLogger.info(
+      { bookingId, amount: toMoneyNumber(booking.amount) },
+      "Webhook: pagamento confirmado com sucesso",
+    )
+
+    // Notificar provider via WhatsApp (best-effort)
+    notifyPaymentConfirmed(booking.providerId, bookingId, toMoneyNumber(booking.amount)).catch(
+      (err) => logger.warn({ err }, "lytex payment notification failed"),
+    )
+
+    // Notificar cliente com recibo via WhatsApp (best-effort)
+    notifyPaymentConfirmedToClient(
+      booking.clientId,
+      bookingId,
+      toMoneyNumber(booking.amount),
+      booking.service?.title ?? "Serviço",
+      booking.provider?.name ?? "Prestador",
+    ).catch((err) => logger.warn({ err }, "lytex client payment confirmation failed"))
+
+    // ⚡ Emissão Instantânea em Tempo Real via WebSocket
+    sendPaymentConfirmed({
+      bookingId,
+      clientId: booking.clientId,
+      providerId: booking.providerId,
+      amount: toMoneyNumber(booking.amount),
+      paymentMethod: "PIX",
+    }).catch((err) => logger.warn({ err }, "lytex realtime payment confirmation emit failed"))
+
+    // 🚀 Referral first booking conversion (reward referrer +50 pts for client, +200 pts for provider)
+    processReferralFirstBookingConversion(bookingId, booking.clientId, booking.providerId).catch(
+      (err) => lytexLogger.warn({ err }, "referral conversion check failed (fire-and-forget)"),
+    )
+  } finally {
+    await lock.release()
   }
-
-  // Atualizar payment + booking
-  const now = paymentData.paidAt ? new Date(paymentData.paidAt) : new Date()
-
-  await db.$transaction([
-    db.payment.update({
-      where: { bookingId },
-      data: {
-        status: "PAID",
-        lytexId: paymentData.lytexId,
-        lytexStatus: paymentData.lytexStatus,
-        qrCode: paymentData.qrCode,
-        qrCodeImage: paymentData.qrCodeImage,
-        cardLastDigits: paymentData.cardLastDigits,
-        cardBrand: paymentData.cardBrand,
-        installments: paymentData.installments,
-        paidAt: now,
-        transactionId: paymentData.transactionId ?? undefined,
-      },
-    }),
-    db.booking.update({
-      where: { id: bookingId },
-      data: { paymentStatus: "PAID" },
-    }),
-  ])
-
-  lytexLogger.info(
-    { bookingId, amount: toMoneyNumber(booking.amount) },
-    "Webhook: pagamento confirmado com sucesso",
-  )
-
-  // Notificar provider via WhatsApp (best-effort)
-  notifyPaymentConfirmed(booking.providerId, bookingId, toMoneyNumber(booking.amount)).catch(
-    (err) => logger.warn({ err }, "lytex payment notification failed"),
-  )
-
-  // Notificar cliente com recibo via WhatsApp (best-effort)
-  notifyPaymentConfirmedToClient(
-    booking.clientId,
-    bookingId,
-    toMoneyNumber(booking.amount),
-    booking.service?.title ?? "Serviço",
-    booking.provider?.name ?? "Prestador",
-  ).catch((err) => logger.warn({ err }, "lytex client payment confirmation failed"))
-
-  // ⚡ Emissão Instantânea em Tempo Real via WebSocket
-  sendPaymentConfirmed({
-    bookingId,
-    clientId: booking.clientId,
-    providerId: booking.providerId,
-    amount: toMoneyNumber(booking.amount),
-    paymentMethod: "PIX",
-  }).catch((err) => logger.warn({ err }, "lytex realtime payment confirmation emit failed"))
-
-  // 🚀 Referral first booking conversion (reward referrer +50 pts for client, +200 pts for provider)
-  processReferralFirstBookingConversion(bookingId, booking.clientId, booking.providerId).catch(
-    (err) => lytexLogger.warn({ err }, "referral conversion check failed (fire-and-forget)"),
-  )
 }
 
 // ---------------------------------------------------------------------------
@@ -180,29 +194,42 @@ async function confirmBookingPayment(
 // ---------------------------------------------------------------------------
 
 async function refundBookingPayment(bookingId: string) {
-  const payment = await db.payment.findUnique({
-    where: { bookingId },
-    select: { id: true, status: true, lytexId: true },
-  })
-
-  if (!payment || !payment.lytexId) {
-    lytexLogger.warn({ bookingId }, "Webhook: payment sem lytexId para reembolso")
+  const lock = await acquireEscrowLock(bookingId, 15)
+  if (!lock.acquired) {
+    lytexLogger.warn(
+      { bookingId },
+      "Webhook Lytex: lock de escrow ativo para reembolso concorrente — adiando/ignorado",
+    )
     return
   }
 
-  // Só atualiza status — o reembolso já foi processado pela Lytex
-  await db.$transaction([
-    db.payment.update({
+  try {
+    const payment = await db.payment.findUnique({
       where: { bookingId },
-      data: { status: "REFUNDED", lytexStatus: "refunded" },
-    }),
-    db.booking.update({
-      where: { id: bookingId },
-      data: { paymentStatus: "REFUNDED" },
-    }),
-  ])
+      select: { id: true, status: true, lytexId: true },
+    })
 
-  lytexLogger.info({ bookingId }, "Webhook: reembolso processado")
+    if (!payment || !payment.lytexId) {
+      lytexLogger.warn({ bookingId }, "Webhook: payment sem lytexId para reembolso")
+      return
+    }
+
+    // Só atualiza status — o reembolso já foi processado pela Lytex
+    await db.$transaction([
+      db.payment.update({
+        where: { bookingId },
+        data: { status: "REFUNDED", lytexStatus: "refunded" },
+      }),
+      db.booking.update({
+        where: { id: bookingId },
+        data: { paymentStatus: "REFUNDED" },
+      }),
+    ])
+
+    lytexLogger.info({ bookingId }, "Webhook: reembolso processado")
+  } finally {
+    await lock.release()
+  }
 }
 
 // ---------------------------------------------------------------------------
