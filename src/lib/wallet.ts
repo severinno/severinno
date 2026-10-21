@@ -32,6 +32,10 @@ export type SimulatedWallet = {
   totalBookings: number
   avgTicket: number
   totalWithdrawn: number
+  pendingWithdrawalsAmount: number
+  pendingWithdrawalsCount: number
+  escrowInCustody: number
+  escrowReleased: number
   transactions: Transaction[]
 }
 
@@ -120,20 +124,32 @@ export async function computeBaseBalance(providerId: string) {
 }
 
 /**
- * Fetch all completed withdrawals for a provider and compute the total
- * withdrawn amount, returning both the total and individual transaction records.
+ * Fetch all completed and pending withdrawals for a provider, returning
+ * both totals and individual transaction records.
  */
 export async function getWithdrawals(providerId: string) {
-  const withdrawals = await db.walletTransaction.findMany({
-    where: { providerId, status: "completed" },
-    select: { id: true, amount: true, description: true, createdAt: true },
-    orderBy: { createdAt: "desc" },
-  })
+  const [completedWithdrawals, pendingWithdrawalsList] = await Promise.all([
+    db.walletTransaction.findMany({
+      where: { providerId, status: "completed" },
+      select: { id: true, amount: true, description: true, createdAt: true, status: true },
+      orderBy: { createdAt: "desc" },
+    }),
+    db.walletTransaction.findMany({
+      where: { providerId, status: "pending" },
+      select: { id: true, amount: true, description: true, createdAt: true, status: true },
+      orderBy: { createdAt: "desc" },
+    }),
+  ])
+
+  // Backward compatible filtering in case generic mocks returned all records
+  const actualCompleted = completedWithdrawals.filter((w) => !w.status || w.status === "completed")
+  const actualPending = pendingWithdrawalsList.filter((w) => w.status === "pending")
 
   let totalWithdrawn = new DecimalCtor(0)
+  let pendingWithdrawalsAmount = new DecimalCtor(0)
   const withdrawalTxns: Transaction[] = []
 
-  for (const w of withdrawals) {
+  for (const w of actualCompleted) {
     const amountD = toDecimal(w.amount)
     totalWithdrawn = totalWithdrawn.plus(amountD)
     withdrawalTxns.push({
@@ -143,22 +159,42 @@ export async function getWithdrawals(providerId: string) {
       fee: 0,
       netAmount: amountD.toNumber(),
       status: "withdrawn",
-      description: w.description ?? "Saque simulado",
+      description: w.description ?? "Saque PIX realizado",
       clientName: "—",
       date: w.createdAt.toISOString(),
     })
   }
 
-  return { totalWithdrawn, withdrawalTxns }
+  for (const pw of actualPending) {
+    const amountD = toDecimal(pw.amount)
+    pendingWithdrawalsAmount = pendingWithdrawalsAmount.plus(amountD)
+    withdrawalTxns.push({
+      id: `SIM-WTH-PEND-${pw.id.slice(0, 8).toUpperCase()}`,
+      bookingId: "",
+      amount: amountD.toNumber(),
+      fee: 0,
+      netAmount: amountD.toNumber(),
+      status: "pending",
+      description: pw.description ?? "Saque PIX em processamento",
+      clientName: "—",
+      date: pw.createdAt.toISOString(),
+    })
+  }
+
+  return {
+    totalWithdrawn,
+    pendingWithdrawalsAmount,
+    pendingWithdrawalsCount: actualPending.length,
+    withdrawalTxns,
+  }
 }
 
 /**
  * Compute the current available balance for a provider (used by POST withdraw
  * to validate if there's enough balance). Only considers COMPLETED + PAID
- * bookings minus total withdrawn. Simpler and faster than computeBaseBalance.
+ * bookings minus total completed AND pending withdrawals (prevents double-spending).
  *
- * Decimal puro de ponta a ponta — o retorno é `Prisma.Decimal` (a rota grava
- * este valor no banco e compara limites sem conversão).
+ * Decimal puro de ponta a ponta — o retorno é `Prisma.Decimal`.
  */
 export async function computeAvailableBalance(providerId: string): Promise<Prisma.Decimal> {
   const bookings = await db.booking.findMany({
@@ -172,17 +208,30 @@ export async function computeAvailableBalance(providerId: string): Promise<Prism
 
   const earnedBalance = bookings.reduce((acc, b) => acc.plus(netOf(b.amount)), new DecimalCtor(0))
 
-  const withdrawals = await db.walletTransaction.findMany({
-    where: { providerId, status: "completed" },
-    select: { amount: true },
-  })
+  const [completedWithdrawals, pendingWithdrawals] = await Promise.all([
+    db.walletTransaction.findMany({
+      where: { providerId, status: "completed" },
+      select: { amount: true, status: true },
+    }),
+    db.walletTransaction.findMany({
+      where: { providerId, status: "pending" },
+      select: { amount: true, status: true },
+    }),
+  ])
 
-  const totalWithdrawn = withdrawals.reduce(
+  const actualCompleted = completedWithdrawals.filter((w) => !w.status || w.status === "completed")
+  const actualPending = pendingWithdrawals.filter((w) => w.status === "pending")
+
+  const totalWithdrawn = actualCompleted.reduce(
+    (acc, w) => acc.plus(toDecimal(w.amount)),
+    new DecimalCtor(0),
+  )
+  const totalPending = actualPending.reduce(
     (acc, w) => acc.plus(toDecimal(w.amount)),
     new DecimalCtor(0),
   )
 
-  const available = earnedBalance.minus(totalWithdrawn)
+  const available = earnedBalance.minus(totalWithdrawn).minus(totalPending)
   return available.isNegative() ? new DecimalCtor(0) : available.toDecimalPlaces(2)
 }
 
@@ -192,7 +241,12 @@ export async function computeAvailableBalance(providerId: string): Promise<Prism
  */
 export function buildWallet(
   base: Awaited<ReturnType<typeof computeBaseBalance>>,
-  withdrawals: Awaited<ReturnType<typeof getWithdrawals>>,
+  withdrawals: {
+    totalWithdrawn: Prisma.Decimal
+    pendingWithdrawalsAmount?: Prisma.Decimal
+    pendingWithdrawalsCount?: number
+    withdrawalTxns: Transaction[]
+  },
 ): SimulatedWallet {
   const adjustedBalance = base.balance.minus(withdrawals.totalWithdrawn)
   const adjusted = adjustedBalance.isNegative() ? new DecimalCtor(0) : adjustedBalance
@@ -202,6 +256,7 @@ export function buildWallet(
   )
 
   const round2 = (d: Prisma.Decimal) => d.toDecimalPlaces(2).toNumber()
+  const pendingWithdrawn = withdrawals.pendingWithdrawalsAmount ?? new DecimalCtor(0)
 
   return {
     balance: round2(adjusted),
@@ -213,6 +268,10 @@ export function buildWallet(
         ? base.completedSum.dividedBy(base.completedCount).toDecimalPlaces(2).toNumber()
         : 0,
     totalWithdrawn: round2(withdrawals.totalWithdrawn),
+    pendingWithdrawalsAmount: round2(pendingWithdrawn),
+    pendingWithdrawalsCount: withdrawals.pendingWithdrawalsCount ?? 0,
+    escrowInCustody: round2(base.pendingBalance),
+    escrowReleased: round2(base.balance),
     transactions: allTxns,
   }
 }

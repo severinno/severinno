@@ -21,6 +21,7 @@ export interface BeforeInstallPromptEvent extends Event {
 export interface UsePWAInstallOptions {
   storageKey?: string
   dismissDays?: number
+  minVisits?: number
 }
 
 export interface PWAInstallState {
@@ -28,6 +29,8 @@ export interface PWAInstallState {
   isInstalled: boolean
   isIOS: boolean
   isDismissed: boolean
+  hasEngagement: boolean
+  visitCount: number
   promptInstall: () => Promise<"accepted" | "dismissed" | "unavailable">
   dismiss: () => void
   resetDismiss: () => void
@@ -35,6 +38,27 @@ export interface PWAInstallState {
 
 const DEFAULT_STORAGE_KEY = "severinno_pwa_banner_dismissed_until"
 const DEFAULT_DISMISS_DAYS = 7
+const VISIT_COUNT_STORAGE_KEY = "severinno_pwa_visit_count"
+const SESSION_COUNTED_KEY = "severinno_pwa_session_counted"
+const DEFAULT_MIN_VISITS = 2
+
+function getAndIncrementVisitCount(): number {
+  if (typeof window === "undefined") return 1
+  try {
+    const isSessionCounted = sessionStorage.getItem(SESSION_COUNTED_KEY) === "true"
+    let current = Number.parseInt(localStorage.getItem(VISIT_COUNT_STORAGE_KEY) || "0", 10)
+    if (Number.isNaN(current)) current = 0
+
+    if (!isSessionCounted) {
+      current += 1
+      localStorage.setItem(VISIT_COUNT_STORAGE_KEY, String(current))
+      sessionStorage.setItem(SESSION_COUNTED_KEY, "true")
+    }
+    return current
+  } catch {
+    return 1
+  }
+}
 
 function checkStandalone(): boolean {
   if (typeof window === "undefined") return false
@@ -66,12 +90,18 @@ function checkIsIOS(): boolean {
 }
 
 export function usePWAInstall(options: UsePWAInstallOptions = {}): PWAInstallState {
-  const { storageKey = DEFAULT_STORAGE_KEY, dismissDays = DEFAULT_DISMISS_DAYS } = options
+  const {
+    storageKey = DEFAULT_STORAGE_KEY,
+    dismissDays = DEFAULT_DISMISS_DAYS,
+    minVisits = DEFAULT_MIN_VISITS,
+  } = options
 
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [isInstalled, setIsInstalled] = useState<boolean>(() => checkStandalone())
   const [isIOS] = useState<boolean>(() => checkIsIOS())
   const [isDismissed, setIsDismissed] = useState<boolean>(() => checkDismissed(storageKey))
+  const [visitCount] = useState<number>(() => getAndIncrementVisitCount())
+  const hasEngagement = visitCount >= minVisits
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -149,6 +179,8 @@ export function usePWAInstall(options: UsePWAInstallOptions = {}): PWAInstallSta
     isInstalled,
     isIOS: isIOS && !isInstalled,
     isDismissed,
+    hasEngagement,
+    visitCount,
     promptInstall,
     dismiss,
     resetDismiss,

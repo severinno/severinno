@@ -319,6 +319,9 @@ describe("buildWallet", () => {
     expect(wallet.totalBookings).toBe(2)
     expect(wallet.avgTicket).toBe(275) // 550 / 2
     expect(wallet.totalWithdrawn).toBe(100)
+    expect(wallet.pendingWithdrawalsAmount).toBe(0)
+    expect(wallet.escrowInCustody).toBe(212.5)
+    expect(wallet.escrowReleased).toBe(467.5)
     expect(wallet.transactions).toHaveLength(2) // base + withdrawal
     // Most recent first
     expect(wallet.transactions[0].status).toBe("withdrawn")

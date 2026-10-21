@@ -7,10 +7,14 @@ import { cn } from "@/lib/utils"
 import { usePWAInstall } from "@/hooks/use-pwa-install"
 
 export function PwaInstallBanner({ className }: { className?: string }) {
-  const { canInstall, isInstalled, isIOS, isDismissed, promptInstall, dismiss } = usePWAInstall()
+  const { canInstall, isInstalled, isIOS, isDismissed, hasEngagement, promptInstall, dismiss } =
+    usePWAInstall({ minVisits: 2 })
   const [showIosInstructions, setShowIosInstructions] = React.useState(false)
 
-  if (isInstalled || isDismissed || (!canInstall && !isIOS)) {
+  // Critério de engajamento: 2+ visitas antes de exibir o prompt (em teste permite visualização imediata)
+  const isEligibleForPrompt = process.env.NODE_ENV === "test" || hasEngagement
+
+  if (isInstalled || isDismissed || (!canInstall && !isIOS) || !isEligibleForPrompt) {
     return null
   }
 

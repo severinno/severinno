@@ -33,6 +33,10 @@ type SimulatedWallet = {
   totalBookings: number
   avgTicket: number
   totalWithdrawn: number
+  pendingWithdrawalsAmount?: number
+  pendingWithdrawalsCount?: number
+  escrowInCustody?: number
+  escrowReleased?: number
   transactions: Array<{
     id: string
     bookingId: string
@@ -355,6 +359,25 @@ export function ProviderWallet() {
         </div>
       </div>
 
+      {/* Pending withdrawals banner (if any in processing) */}
+      {data.pendingWithdrawalsAmount && data.pendingWithdrawalsAmount > 0 ? (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-amber-900 shadow-2xs dark:text-amber-200">
+          <div className="flex items-center gap-2.5">
+            <Clock className="size-4 shrink-0 animate-pulse text-amber-600 dark:text-amber-400" />
+            <p className="text-xs font-medium">
+              <strong className="font-semibold">{formatBRL(data.pendingWithdrawalsAmount)}</strong>{" "}
+              em saques PIX em processamento ({data.pendingWithdrawalsCount || 1} solicitação(ões)).
+            </p>
+          </div>
+          <Badge
+            variant="outline"
+            className="shrink-0 border-amber-400 text-[10px] font-bold text-amber-700 dark:text-amber-300"
+          >
+            Liquidando via PIX
+          </Badge>
+        </div>
+      ) : null}
+
       {/* Stat cards — 4 Clean minimalist KPI cards (Image 2 Redesign) */}
       <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
         <WalletStatCard
@@ -370,10 +393,14 @@ export function ProviderWallet() {
         />
         <WalletStatCard
           label="Em Custódia (Escrow)"
-          value={formatBRL(data.pendingBalance)}
+          value={formatBRL(data.escrowInCustody ?? data.pendingBalance)}
           icon={Clock}
           accent="amber"
-          subtitle="Liberado após aprovação do cliente"
+          subtitle={
+            data.escrowReleased
+              ? `Liberado histórico: ${formatBRL(data.escrowReleased)}`
+              : "Liberado após aprovação do cliente"
+          }
         />
         <WalletStatCard
           label="Total recebido"

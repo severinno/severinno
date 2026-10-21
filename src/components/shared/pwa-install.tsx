@@ -20,6 +20,27 @@ interface BeforeInstallPromptEvent extends Event {
  */
 const DISMISSED_KEY = "pwa-install-dismissed-at"
 const DISMISS_DURATION_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+const VISIT_COUNT_KEY = "pwa-install-visit-count"
+const SESSION_COUNTED_KEY = "pwa-install-session-counted"
+const MIN_VISITS_FOR_PROMPT = 2
+
+function getVisitCount(): number {
+  if (typeof window === "undefined") return 1
+  try {
+    const isSessionCounted = sessionStorage.getItem(SESSION_COUNTED_KEY) === "true"
+    let current = Number.parseInt(localStorage.getItem(VISIT_COUNT_KEY) || "0", 10)
+    if (Number.isNaN(current)) current = 0
+
+    if (!isSessionCounted) {
+      current += 1
+      localStorage.setItem(VISIT_COUNT_KEY, String(current))
+      sessionStorage.setItem(SESSION_COUNTED_KEY, "true")
+    }
+    return current
+  } catch {
+    return 1
+  }
+}
 
 function isDismissed(): boolean {
   try {
@@ -45,6 +66,9 @@ export function PWAInstallBanner() {
   const [deferredPrompt, setDeferredPrompt] = React.useState<BeforeInstallPromptEvent | null>(null)
   const [dismissed, setDismissed] = React.useState(isDismissed)
   const [isChromiumInstallable, setIsChromiumInstallable] = React.useState(false)
+  const [visitCount] = React.useState<number>(() => getVisitCount())
+  const hasEngagement = visitCount >= MIN_VISITS_FOR_PROMPT
+  const isEligible = process.env.NODE_ENV === "test" || hasEngagement
 
   const mobileOS = useMobileOS()
   const standaloneMode = useStandaloneMode()
@@ -90,8 +114,8 @@ export function PWAInstallBanner() {
     persistDismiss()
   }
 
-  // Já instalado em modo standalone ou usuário descartou recentemente
-  if (standaloneMode === "standalone" || dismissed) return null
+  // Já instalado em modo standalone, usuário descartou recentemente ou sem engajamento mínimo (2+ visitas)
+  if (standaloneMode === "standalone" || dismissed || !isEligible) return null
 
   // Caso 1: Navegador Chromium com prompt de instalação disponível
   if (isChromiumInstallable) {

@@ -147,7 +147,7 @@ function FinanceStatCard({
   label: string
   value: string
   icon: typeof Wallet
-  accent: "emerald" | "amber" | "rose"
+  accent: "emerald" | "amber" | "rose" | "blue" | "indigo"
 }) {
   return (
     <Card className="border-border/60 bg-card/70 hover:border-border rounded-2xl border shadow-2xs backdrop-blur-xs transition-all hover:shadow-xs">
@@ -158,6 +158,8 @@ function FinanceStatCard({
             accent === "emerald" && "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
             accent === "amber" && "bg-amber-500/10 text-amber-600 dark:text-amber-400",
             accent === "rose" && "bg-rose-500/10 text-rose-600 dark:text-rose-400",
+            accent === "blue" && "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+            accent === "indigo" && "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
           )}
         >
           <Icon className="size-5" />
@@ -223,6 +225,11 @@ export function ProviderFinance() {
   const received = yearBookings
     .filter((b) => b.paymentStatus === "PAID")
     .reduce((acc, b) => acc + b.amount, 0)
+  const escrowHeld = yearBookings
+    .filter(
+      (b) => b.paymentStatus === "PAID" && (b.status === "CONFIRMED" || b.status === "IN_PROGRESS"),
+    )
+    .reduce((acc, b) => acc + b.amount, 0)
   const pending = yearBookings
     .filter((b) => b.paymentStatus === "PENDING")
     .reduce((acc, b) => acc + b.amount, 0)
@@ -285,13 +292,19 @@ export function ProviderFinance() {
         <div className="bg-border/60 h-px flex-1" />
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+      {/* Summary cards — 4 cards with Escrow guarantee breakdown */}
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
         <FinanceStatCard
           label="Recebido (ano)"
           value={formatBRL(received)}
           icon={Wallet}
           accent="emerald"
+        />
+        <FinanceStatCard
+          label="Em Custódia Escrow"
+          value={formatBRL(escrowHeld)}
+          icon={ShieldCheck}
+          accent="indigo"
         />
         <FinanceStatCard
           label="A receber (ano)"

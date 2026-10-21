@@ -85,6 +85,21 @@ function safeCompare(a: string, b: string): boolean {
 }
 
 /**
+ * Verifica assinatura HMAC-SHA256 da Evolution API.
+ * Suporta headers 'x-evolution-signature', 'x-hub-signature-256' ou 'x-webhook-signature'.
+ */
+function verifyEvolutionHmac(
+  rawBody: string,
+  signatureHeader: string | null,
+  secret: string,
+): boolean {
+  if (!signatureHeader || !secret) return false
+  const expectedSig = crypto.createHmac("sha256", secret).update(rawBody).digest("hex")
+  const rawSig = signatureHeader.replace(/^sha256=/, "").trim()
+  return safeCompare(rawSig, expectedSig)
+}
+
+/**
  * POST /api/webhooks/evolution
  *
  * Recebe eventos da Evolution API.
@@ -103,21 +118,55 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Webhook authentication unconfigured" }, { status: 500 })
     }
 
+    // ── Ler body BRUTO para validação HMAC e depois parsear ─────────────
+    const rawBody = await request.text()
+    let body: any
+    try {
+      body = JSON.parse(rawBody)
+    } catch {
+      evolutionLogger.warn("Webhook Evolution: corpo JSON inválido — descartando graciosamente")
+      return NextResponse.json({ received: true })
+    }
+
     if (evolutionSecret) {
       const authHeader = request.headers.get("authorization")
       const apiKey = request.headers.get("apikey")
       const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : apiKey || ""
 
-      if (!token || !safeCompare(token, evolutionSecret)) {
-        evolutionLogger.warn("Webhook Evolution: autenticação inválida ou ausente")
+      const hmacHeader =
+        request.headers.get("x-evolution-signature") ||
+        request.headers.get("x-hub-signature-256") ||
+        request.headers.get("x-webhook-signature")
+
+      const isTokenValid = token ? safeCompare(token, evolutionSecret) : false
+      const isHmacValid = hmacHeader
+        ? verifyEvolutionHmac(rawBody, hmacHeader, evolutionSecret)
+        : false
+
+      if (!isTokenValid && !isHmacValid) {
+        evolutionLogger.warn(
+          "Webhook Evolution: autenticação inválida ou ausente (HMAC/Token falhou)",
+        )
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      }
+
+      // Prevenção contra replay attacks quando timestamp é fornecido
+      const timestampHeader =
+        request.headers.get("x-evolution-timestamp") || request.headers.get("x-webhook-timestamp")
+      if (timestampHeader) {
+        const ts = new Date(timestampHeader).getTime()
+        if (!isNaN(ts) && Math.abs(Date.now() - ts) > 10 * 60 * 1000) {
+          evolutionLogger.warn(
+            { timestampHeader },
+            "Webhook Evolution: timestamp expirado (> 10min)",
+          )
+          return NextResponse.json({ error: "Timestamp expirado" }, { status: 401 })
+        }
       }
     }
 
     // 🛡️ Rate limit dedicado para chamadas autenticadas da Evolution API (evita DoS de terceiros)
     await assertRateLimit(request, RATE_LIMITS.webhookEvolution)
-
-    const body = await request.json()
 
     evolutionLogger.debug(
       { event: body.event, instance: body.instance },

@@ -332,6 +332,7 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
       status: "IN_PROGRESS",
       paymentStatus: "PAID",
     })
+    mockDb.booking.updateMany.mockResolvedValue({ count: 1 })
     mockDb.booking.update.mockResolvedValue({
       ...mockBooking,
       status: "COMPLETED",

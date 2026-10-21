@@ -333,4 +333,104 @@ describe("POST /api/webhooks/evolution", () => {
     expect(parsed.status).toBe(200)
     expect(parsed.body!.received).toBe(true)
   })
+
+  it("authenticates webhook using HMAC-SHA256 signature when secret is configured", async () => {
+    const crypto = await import("node:crypto")
+    const secret = "test-evolution-secret-key-12345"
+    process.env.EVOLUTION_WEBHOOK_SECRET = secret
+
+    try {
+      const payload = {
+        event: "connection.update",
+        instance: "severinno-instance",
+        data: { state: "open" },
+      }
+      const rawBody = JSON.stringify(payload)
+      const hmac = crypto.createHmac("sha256", secret).update(rawBody).digest("hex")
+
+      const req = new Request("http://localhost/api/webhooks/evolution", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-evolution-signature": `sha256=${hmac}`,
+        },
+        body: rawBody,
+      })
+
+      const res = await evolutionWebhookHandler(req)
+      const parsed = await parseResponse(res)
+
+      expect(parsed.status).toBe(200)
+      expect(parsed.body!.received).toBe(true)
+    } finally {
+      delete process.env.EVOLUTION_WEBHOOK_SECRET
+    }
+  })
+
+  it("rejects webhook when HMAC-SHA256 signature is invalid", async () => {
+    const secret = "test-evolution-secret-key-12345"
+    process.env.EVOLUTION_WEBHOOK_SECRET = secret
+
+    try {
+      const payload = {
+        event: "connection.update",
+        instance: "severinno-instance",
+        data: { state: "open" },
+      }
+      const rawBody = JSON.stringify(payload)
+
+      const req = new Request("http://localhost/api/webhooks/evolution", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-evolution-signature":
+            "sha256=invalid0000000000000000000000000000000000000000000000000000000000",
+        },
+        body: rawBody,
+      })
+
+      const res = await evolutionWebhookHandler(req)
+      const parsed = await parseResponse(res)
+
+      expect(parsed.status).toBe(401)
+      expect(parsed.body!.error).toBe("Unauthorized")
+    } finally {
+      delete process.env.EVOLUTION_WEBHOOK_SECRET
+    }
+  })
+
+  it("rejects webhook when timestamp is expired (> 10 minutes)", async () => {
+    const crypto = await import("node:crypto")
+    const secret = "test-evolution-secret-key-12345"
+    process.env.EVOLUTION_WEBHOOK_SECRET = secret
+
+    try {
+      const payload = {
+        event: "connection.update",
+        instance: "severinno-instance",
+        data: { state: "open" },
+      }
+      const rawBody = JSON.stringify(payload)
+      const hmac = crypto.createHmac("sha256", secret).update(rawBody).digest("hex")
+      const expiredTimestamp = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+
+      const req = new Request("http://localhost/api/webhooks/evolution", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-evolution-signature": hmac,
+          "x-evolution-timestamp": expiredTimestamp,
+        },
+        body: rawBody,
+      })
+
+      const res = await evolutionWebhookHandler(req)
+      const parsed = await parseResponse(res)
+
+      expect(parsed.status).toBe(401)
+      expect(parsed.body!.error).toBe("Timestamp expirado")
+    } finally {
+      delete process.env.EVOLUTION_WEBHOOK_SECRET
+    }
+  })
 })
