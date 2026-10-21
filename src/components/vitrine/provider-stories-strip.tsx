@@ -1,4 +1,5 @@
-"use client"
+import { SUPPORT_WHATSAPP } from "@/lib/constants"
+;("use client")
 
 import * as React from "react"
 import { Star, BadgeCheck, X, MessageCircle, Sparkles } from "lucide-react"
@@ -92,8 +93,6 @@ const STORIES_DATA: ProviderStory[] = [
     accentColor: "from-purple-600 to-pink-600",
   },
 ]
-
-const SUPPORT_WHATSAPP = "5533999999999"
 
 export type ProviderStoriesStripProps = {
   onQuoteProvider: (providerId: string) => void

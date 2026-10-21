@@ -1,4 +1,5 @@
-"use client"
+import { SUPPORT_WHATSAPP } from "@/lib/constants"
+;("use client")
 
 import * as React from "react"
 import {
@@ -243,7 +244,7 @@ export function HomeHealthScoreQuiz({ onScheduleCheckup, className }: HomeHealth
         ? `Pontos de atenção identificados: ${criticalPoints.join(", ")}.`
         : "Casa em ótimo estado de manutenção preventiva!"
     }\nQuero solicitar um check-up com garantia de custódia.`
-    const url = `https://wa.me/5533999999999?text=${encodeURIComponent(text)}`
+    const url = `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(text)}`
     window.open(url, "_blank", "noopener,noreferrer")
   }
 

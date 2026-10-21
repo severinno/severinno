@@ -1,4 +1,5 @@
-"use client"
+import { SUPPORT_WHATSAPP } from "@/lib/constants"
+;("use client")
 
 import * as React from "react"
 import {
@@ -325,7 +326,7 @@ export function GvReelsShowcase({ onQuoteProvider, className }: GvReelsShowcaseP
 
               <div className="flex gap-2 pt-1">
                 <a
-                  href={`https://wa.me/5533999999999?text=${encodeURIComponent(activeReel.whatsappPreFill)}`}
+                  href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(activeReel.whatsappPreFill)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black text-white shadow-md transition-colors hover:bg-emerald-700"

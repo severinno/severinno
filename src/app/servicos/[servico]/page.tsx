@@ -3,6 +3,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { db } from "@/lib/db"
 import { toMoneyNumber } from "@/lib/money"
+import { SUPPORT_WHATSAPP } from "@/lib/constants"
 
 /**
  * SEO Landing Pages Programáticas por Bairro & Categoria em Governador Valadares.
@@ -387,7 +388,7 @@ export default async function ServicoPage({ params }: Props) {
     ],
   }
 
-  const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_SUPPORT ?? "5533999999999"
+  const whatsappNumber = SUPPORT_WHATSAPP
   const waPreFillMessage = `Olá! Vi na página do Severinno o serviço ${page.service} em ${locText} e gostaria de solicitar um orçamento rápido com garantia de custódia.`
   const waUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(waPreFillMessage)}`
 

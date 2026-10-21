@@ -1,4 +1,5 @@
-"use client"
+import { SUPPORT_WHATSAPP } from "@/lib/constants"
+;("use client")
 
 import * as React from "react"
 import {
@@ -346,7 +347,7 @@ export function ProblemSolverWizard({ onSelectProblem, className }: ProblemSolve
               </button>
 
               <a
-                href={`https://wa.me/5533999999999?text=${whatsappMessage}`}
+                href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${whatsappMessage}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 rounded-xl border border-emerald-600/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/20 dark:text-emerald-400"

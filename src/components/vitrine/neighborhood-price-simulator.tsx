@@ -1,4 +1,5 @@
-"use client"
+import { SUPPORT_WHATSAPP } from "@/lib/constants"
+;("use client")
 
 import * as React from "react"
 import {
@@ -21,8 +22,6 @@ export type NeighborhoodPriceSimulatorProps = {
   onQuote: (serviceName: string, district: string) => void
   className?: string
 }
-
-const SUPPORT_WHATSAPP = "5533999999999"
 
 const GV_NEIGHBORHOODS = [
   "Centro",

@@ -1,4 +1,5 @@
-"use client"
+import { SUPPORT_WHATSAPP } from "@/lib/constants"
+;("use client")
 
 import * as React from "react"
 import {
@@ -189,7 +190,7 @@ export function InstantQuoteStepWizard({
       `Gostaria de verificar a disponibilidade dos prestadores verificados mais próximos!`,
   )
 
-  const whatsappUrl = `https://wa.me/5533999999999?text=${whatsappMessage}`
+  const whatsappUrl = `https://wa.me/${SUPPORT_WHATSAPP}?text=${whatsappMessage}`
 
   return (
     <section

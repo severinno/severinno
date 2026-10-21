@@ -1,4 +1,5 @@
-"use client"
+import { SUPPORT_WHATSAPP } from "@/lib/constants"
+;("use client")
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
@@ -28,8 +29,6 @@ export type TrendingServicesProps = {
   onViewProvider: (providerId: string) => void
   className?: string
 }
-
-const SUPPORT_WHATSAPP = "5533999999999"
 
 export function TrendingServices({
   onQuote: _onQuote,

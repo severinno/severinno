@@ -38,10 +38,11 @@ import { useGeoStore } from "@/store/geo"
 import { useOnlineStatus } from "@/hooks/use-online-status"
 import { queueMutation } from "@/lib/offline-sync"
 import { cn } from "@/lib/utils"
+import { SUPPORT_WHATSAPP } from "@/lib/constants"
 
 export type EmergencyType = "hidraulica" | "eletrica" | "chaveiro" | "desentupimento"
 
-export const EMERGENCY_PHONE = "5533999999999"
+export const EMERGENCY_PHONE = SUPPORT_WHATSAPP
 
 export const EMERGENCY_OPTIONS: Array<{
   id: EmergencyType

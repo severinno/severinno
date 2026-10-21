@@ -170,3 +170,24 @@ export const DEFAULT_SEARCH_RADIUS_KM = 15
 // ---------------------------------------------------------------------------
 // Platform commission rate (15% of each booking)
 export const FEE_RATE = 0.15
+
+// ---------------------------------------------------------------------------
+// WHATSAPP & SUPPORT
+// ---------------------------------------------------------------------------
+/**
+ * Número oficial de suporte e atendimento WhatsApp (com DDI e DDD).
+ * Configurável via variável de ambiente NEXT_PUBLIC_WHATSAPP_SUPPORT ou NEXT_PUBLIC_SUPPORT_WHATSAPP.
+ */
+export const SUPPORT_WHATSAPP =
+  process.env.NEXT_PUBLIC_WHATSAPP_SUPPORT ||
+  process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP ||
+  "5533999999999"
+
+/**
+ * Gera URL oficial de atendimento via WhatsApp (wa.me) com mensagem pré-preenchida.
+ */
+export function getWhatsAppUrl(message?: string, number: string = SUPPORT_WHATSAPP): string {
+  const cleanNumber = number.replace(/\D/g, "")
+  if (!message) return `https://wa.me/${cleanNumber}`
+  return `https://wa.me/${cleanNumber}?text=${encodeURIComponent(message)}`
+}

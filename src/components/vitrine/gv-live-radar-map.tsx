@@ -1,4 +1,5 @@
-"use client"
+import { SUPPORT_WHATSAPP } from "@/lib/constants"
+;("use client")
 
 import * as React from "react"
 import { MapPin, Clock, ArrowRight, MessageCircle, LocateFixed, Radio } from "lucide-react"
@@ -307,7 +308,7 @@ export function GvLiveRadarMap({ onSelectDistrict, className }: GvLiveRadarMapPr
           {/* Action CTAs */}
           <div className="mt-6 space-y-2.5">
             <a
-              href={`https://wa.me/5533999999999?text=${whatsappMessage}`}
+              href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${whatsappMessage}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-xs font-black text-black shadow-lg shadow-emerald-500/30 transition-colors hover:bg-emerald-400"
