@@ -91,6 +91,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useFaviconBadge } from "@/hooks/use-favicon-badge"
 import { NOTIFICATION_TYPE_LABELS } from "@/lib/constants"
 import { formatRelative } from "@/lib/format"
+import { triggerHaptic } from "@/lib/haptics"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -341,6 +342,7 @@ export default function Topbar({
 
   const clearRecentSearches = React.useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
+    triggerHaptic("selection")
     setRecentSearches([])
     try {
       localStorage.removeItem("severinno_recent_searches")
@@ -421,9 +423,13 @@ export default function Topbar({
     : "?"
 
   const handleLocate = React.useCallback(async () => {
+    triggerHaptic("selection")
     setLocating(true)
     try {
       await setFromGPS()
+      triggerHaptic("success")
+    } catch {
+      triggerHaptic("error")
     } finally {
       setLocating(false)
     }
@@ -431,6 +437,7 @@ export default function Topbar({
 
   const triggerSearch = React.useCallback(
     (customQuery?: string) => {
+      triggerHaptic("selection")
       const term = customQuery !== undefined ? customQuery : query
       if (term) {
         saveRecentSearch(term)
@@ -444,6 +451,7 @@ export default function Topbar({
 
   const onSelectCategory = React.useCallback(
     (id: string | null) => {
+      triggerHaptic("selection")
       setMobileOpen(false)
       onCategorySelect?.(id)
     },
@@ -555,6 +563,7 @@ export default function Topbar({
                                 aria-label="Limpar busca"
                                 onClick={(e) => {
                                   e.stopPropagation()
+                                  triggerHaptic("selection")
                                   onQueryChange("")
                                   searchInputRef.current?.focus()
                                 }}
@@ -562,7 +571,7 @@ export default function Topbar({
                                 animate={{ scale: 1, opacity: 1 }}
                                 exit={{ scale: 0, opacity: 0 }}
                                 transition={{ duration: 0.15 }}
-                                className="bg-muted text-muted-foreground hover:bg-destructive/10 hover:text-destructive flex size-6 items-center justify-center rounded-full transition-colors"
+                                className="bg-muted text-muted-foreground hover:bg-destructive/10 hover:text-destructive flex size-6 items-center justify-center rounded-full transition-colors active:scale-95"
                               >
                                 <X className="size-3.5" />
                               </motion.button>
@@ -752,8 +761,11 @@ export default function Topbar({
             <Button
               variant="ghost"
               size="icon"
-              className="group text-muted-foreground hover:bg-accent hover:text-foreground size-9 rounded-xl transition-all duration-200"
-              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+              className="group text-muted-foreground hover:bg-accent hover:text-foreground size-9 rounded-xl transition-all duration-200 active:scale-95"
+              onClick={() => {
+                triggerHaptic("selection")
+                setTheme(resolvedTheme === "dark" ? "light" : "dark")
+              }}
               aria-label="Alternar tema"
               title="Alternar tema"
             >
@@ -787,8 +799,11 @@ export default function Topbar({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={openCompare}
-                    className="h-9 gap-2 rounded-xl border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-50/50 text-emerald-700 shadow-sm transition-all hover:from-emerald-100 hover:to-emerald-50 hover:text-emerald-800 hover:shadow-md dark:border-emerald-800/40 dark:from-emerald-950/40 dark:to-emerald-950/20 dark:text-emerald-300 dark:hover:from-emerald-900/40 dark:hover:text-emerald-200"
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      openCompare()
+                    }}
+                    className="h-9 gap-2 rounded-xl border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-50/50 text-emerald-700 shadow-sm transition-all hover:from-emerald-100 hover:to-emerald-50 hover:text-emerald-800 hover:shadow-md active:scale-95 dark:border-emerald-800/40 dark:from-emerald-950/40 dark:to-emerald-950/20 dark:text-emerald-300 dark:hover:from-emerald-900/40 dark:hover:text-emerald-200"
                     aria-label={`Comparar ${compareCount} prestador(es)`}
                     title={`Comparar ${compareCount} prestador(es)`}
                   >
@@ -1033,8 +1048,11 @@ export default function Topbar({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => openAuth("register", "PROVIDER")}
-                  className="hidden h-9 gap-1.5 rounded-xl px-3 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50/80 hover:text-emerald-800 lg:inline-flex dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    openAuth("register", "PROVIDER")
+                  }}
+                  className="hidden h-9 gap-1.5 rounded-xl px-3 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50/80 hover:text-emerald-800 active:scale-95 lg:inline-flex dark:text-emerald-300 dark:hover:bg-emerald-950/40"
                   title="Cadastre-se como prestador de serviços"
                 >
                   <Briefcase className="size-3.5" />
@@ -1043,15 +1061,21 @@ export default function Topbar({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => openAuth("login")}
-                  className="hover:bg-accent hover:text-foreground h-9 rounded-xl px-4 text-xs font-semibold transition-all duration-200"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    openAuth("login")
+                  }}
+                  className="hover:bg-accent hover:text-foreground h-9 rounded-xl px-4 text-xs font-semibold transition-all duration-200 active:scale-95"
                 >
                   Entrar
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => openAuth("register", "CLIENT")}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 h-9 rounded-xl px-4 text-xs font-semibold shadow-xs transition-all duration-200 hover:shadow-md hover:brightness-105"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    openAuth("register", "CLIENT")
+                  }}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 h-9 rounded-xl px-4 text-xs font-semibold shadow-xs transition-all duration-200 hover:shadow-md hover:brightness-105 active:scale-95"
                 >
                   Cadastrar
                 </Button>
@@ -1065,8 +1089,11 @@ export default function Topbar({
             <Button
               variant="ghost"
               size="icon"
-              className="text-muted-foreground hover:text-foreground size-9 rounded-xl"
-              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+              className="text-muted-foreground hover:text-foreground size-9 rounded-xl transition-all active:scale-95"
+              onClick={() => {
+                triggerHaptic("selection")
+                setTheme(resolvedTheme === "dark" ? "light" : "dark")
+              }}
               aria-label="Alternar tema"
               title="Alternar tema"
             >
@@ -1100,8 +1127,11 @@ export default function Topbar({
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={openCompare}
-                    className="relative size-9 rounded-xl border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300"
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      openCompare()
+                    }}
+                    className="relative size-9 rounded-xl border-emerald-200 bg-emerald-50 text-emerald-700 transition-all hover:bg-emerald-100 hover:text-emerald-800 active:scale-95 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300"
                     aria-label={`Comparar ${compareCount} prestador(es)`}
                     title={`Comparar ${compareCount} prestador(es)`}
                   >
@@ -1127,7 +1157,7 @@ export default function Topbar({
               size="icon"
               onClick={handleLocate}
               disabled={locating || geoStatus === "locating"}
-              className="size-9 rounded-xl border border-emerald-200/80 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300"
+              className="size-9 rounded-xl border border-emerald-200/80 bg-emerald-50 text-emerald-700 transition-all hover:bg-emerald-100 hover:text-emerald-800 active:scale-95 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300"
               title="Definir localização"
               aria-label="Definir localização"
             >
@@ -1199,7 +1229,7 @@ export default function Topbar({
                       setMobileOpen(false)
                     }}
                     disabled={locating}
-                    className="h-11 justify-start gap-2.5 rounded-xl border-emerald-200/80 bg-gradient-to-r from-emerald-50 to-emerald-50/50 text-emerald-700 hover:from-emerald-100 hover:to-emerald-50 hover:text-emerald-800 dark:border-emerald-800/40 dark:from-emerald-950/40 dark:to-emerald-950/20 dark:text-emerald-300"
+                    className="h-11 justify-start gap-2.5 rounded-xl border-emerald-200/80 bg-gradient-to-r from-emerald-50 to-emerald-50/50 text-emerald-700 transition-all hover:from-emerald-100 hover:to-emerald-50 hover:text-emerald-800 active:scale-95 dark:border-emerald-800/40 dark:from-emerald-950/40 dark:to-emerald-950/20 dark:text-emerald-300"
                   >
                     {locating ? (
                       <Loader2 className="size-4 animate-spin" />
@@ -1233,10 +1263,11 @@ export default function Topbar({
                         <Button
                           variant="outline"
                           onClick={() => {
+                            triggerHaptic("selection")
                             setMobileOpen(false)
                             if (user) navigate(DASHBOARD_VIEW[user.role])
                           }}
-                          className="h-11 gap-2.5 rounded-xl"
+                          className="h-11 gap-2.5 rounded-xl transition-all active:scale-95"
                         >
                           <LayoutDashboard className="text-primary size-4" />
                           Meu painel
@@ -1244,10 +1275,11 @@ export default function Topbar({
                         <Button
                           variant="ghost"
                           onClick={() => {
+                            triggerHaptic("selection")
                             setMobileOpen(false)
                             logout()
                           }}
-                          className="text-destructive hover:bg-destructive/5 hover:text-destructive h-11 gap-2.5 rounded-xl"
+                          className="text-destructive hover:bg-destructive/5 hover:text-destructive h-11 gap-2.5 rounded-xl transition-all active:scale-95"
                         >
                           <LogOut className="size-4" />
                           Sair
@@ -1258,19 +1290,21 @@ export default function Topbar({
                         <Button
                           variant="outline"
                           onClick={() => {
+                            triggerHaptic("selection")
                             setMobileOpen(false)
                             openAuth("login")
                           }}
-                          className="h-11 rounded-xl font-medium"
+                          className="h-11 rounded-xl font-medium transition-all active:scale-95"
                         >
                           Entrar
                         </Button>
                         <Button
                           onClick={() => {
+                            triggerHaptic("selection")
                             setMobileOpen(false)
                             openAuth("register", "CLIENT")
                           }}
-                          className="from-primary shadow-primary/20 h-11 rounded-xl bg-gradient-to-r to-emerald-600 font-medium shadow-md"
+                          className="from-primary shadow-primary/20 h-11 rounded-xl bg-gradient-to-r to-emerald-600 font-medium shadow-md transition-all active:scale-95"
                         >
                           Cadastrar grátis
                         </Button>

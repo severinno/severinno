@@ -6,7 +6,7 @@ import { CalendarDays, ChevronRight, FileText, Loader2, MapPin, Plus } from "luc
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { EmptyState, SectionTitle } from "@/components/shared/dashboard-shell"
+import { EmptyState, SectionTitle } from "@/components/shared/shell"
 import {
   StatusBadge,
   bookingIcon,

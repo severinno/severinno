@@ -299,6 +299,7 @@ function ForgotPasswordForm({ onBackToLogin }: { onBackToLogin: () => void }) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!emailOrPhone.trim()) {
+      triggerHaptic("error")
       toast.error("Por favor, informe seu e-mail ou WhatsApp.")
       return
     }
@@ -306,6 +307,7 @@ function ForgotPasswordForm({ onBackToLogin }: { onBackToLogin: () => void }) {
     setTimeout(() => {
       setLoading(false)
       setSubmitted(true)
+      triggerHaptic("success")
       toast.success("Instruções de recuperação enviadas!")
     }, 500)
   }
@@ -315,8 +317,11 @@ function ForgotPasswordForm({ onBackToLogin }: { onBackToLogin: () => void }) {
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={onBackToLogin}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 transition-colors hover:text-emerald-800 dark:text-emerald-400"
+          onClick={() => {
+            triggerHaptic("selection")
+            onBackToLogin()
+          }}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 transition-colors hover:text-emerald-800 active:scale-95 dark:text-emerald-400"
         >
           <ArrowLeft className="size-3.5" />
           Voltar para o login
@@ -347,8 +352,11 @@ function ForgotPasswordForm({ onBackToLogin }: { onBackToLogin: () => void }) {
             type="button"
             variant="outline"
             size="sm"
-            onClick={onBackToLogin}
-            className="mt-2 w-full text-xs"
+            onClick={() => {
+              triggerHaptic("selection")
+              onBackToLogin()
+            }}
+            className="mt-2 w-full text-xs transition-all active:scale-95"
           >
             Voltar para o login
           </Button>
@@ -375,7 +383,7 @@ function ForgotPasswordForm({ onBackToLogin }: { onBackToLogin: () => void }) {
           <Button
             type="submit"
             disabled={loading}
-            className="h-11 w-full rounded-xl bg-emerald-600 font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-[0.98]"
+            className="h-11 w-full rounded-xl bg-emerald-600 font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-95"
           >
             {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
             Enviar instruções de recuperação
@@ -421,11 +429,13 @@ function LoginForm({
       if (res.ok) {
         // login() already populated the store with the authenticated user.
         const user = useAuthStore.getState().user
+        triggerHaptic("success")
         toast.success("Bem-vindo de volta!")
         navigate(dashboardViewFor(user?.role))
         onSuccess()
       } else {
         const msg = res.error ?? "Não foi possível entrar."
+        triggerHaptic("error")
         setFormError(msg)
         toast.error(msg)
       }
@@ -600,7 +610,7 @@ function LoginForm({
         <Button
           type="submit"
           disabled={loading}
-          className="mt-1 h-11 w-full rounded-xl bg-emerald-600 font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-[0.98]"
+          className="mt-1 h-11 w-full rounded-xl bg-emerald-600 font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-95"
         >
           {loading && <Loader2 className="size-4 animate-spin" />}
           Entrar
@@ -675,12 +685,14 @@ function RegisterForm({
       const res = await register(values)
       if (res.ok) {
         await fetchMe()
+        triggerHaptic("success")
         toast.success("Conta criada! Bem-vindo ao Severinno.")
         const user = useAuthStore.getState().user
         navigate(dashboardViewFor(user?.role))
         onSuccess()
       } else {
         const msg = res.error ?? "Não foi possível criar a conta."
+        triggerHaptic("error")
         setFormError(msg)
         toast.error(msg)
       }
@@ -986,7 +998,7 @@ function RegisterForm({
         <Button
           type="submit"
           disabled={loading}
-          className="mt-1 h-11 w-full rounded-xl bg-emerald-600 font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-[0.98]"
+          className="mt-1 h-11 w-full rounded-xl bg-emerald-600 font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-95"
         >
           {loading && <Loader2 className="size-4 animate-spin" />}
           Criar conta

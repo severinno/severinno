@@ -86,13 +86,7 @@ import {
 } from "@/components/ui/sidebar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
-import {
-  NotificationsBell,
-  PushNotificationButton,
-  EmptyState,
-  StatCard,
-  SectionTitle,
-} from "./shell"
+import { NotificationsBell, PushNotificationButton } from "./shell"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -926,5 +920,5 @@ export function DashboardShell({
 // Re-exports for backwards compatibility
 // ---------------------------------------------------------------------------
 
-export { EmptyState, StatCard, SectionTitle } from "./shell"
+export { EmptyState, StatCard, SectionTitle } from "./shell/shell-cards"
 export { Separator }

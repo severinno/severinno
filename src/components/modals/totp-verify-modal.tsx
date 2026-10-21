@@ -16,6 +16,7 @@ import { apiPost } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { triggerHaptic } from "@/lib/haptics"
 import {
   Dialog,
   DialogContent,
@@ -61,11 +62,13 @@ export function TotpVerifyModal({
         isBackupCode,
       }),
     onSuccess: (data) => {
+      triggerHaptic("success")
       toast.success("Verificado com sucesso!")
       onOpenChange(false)
       onSuccess(data.user)
     },
     onError: (err: Error) => {
+      triggerHaptic("error")
       toast.error(err.message || "Código inválido")
       setCode("")
     },
@@ -118,7 +121,7 @@ export function TotpVerifyModal({
 
           <Button
             type="submit"
-            className="w-full"
+            className="h-10 w-full transition-all active:scale-95"
             disabled={
               verifyMutation.isPending || (isBackupCode ? code.length !== 8 : code.length !== 6)
             }
@@ -134,8 +137,9 @@ export function TotpVerifyModal({
           <div className="text-center">
             <button
               type="button"
-              className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
+              className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 transition-colors hover:underline active:scale-95"
               onClick={() => {
+                triggerHaptic("selection")
                 setIsBackupCode(!isBackupCode)
                 setCode("")
               }}
