@@ -144,4 +144,18 @@ describe("AdminOperationsMap — Torre de Controle Operacional GV", () => {
       expect(screen.getByText("Prestador 1")).toBeDefined()
     })
   })
+
+  it("renderiza o painel visual com balanço de custódia e ranking de bairros", async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AdminOperationsMap />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText("Balanço de Custódia Escrow (GV)")).toBeDefined()
+      expect(screen.getByText("Concentração Operacional por Bairro")).toBeDefined()
+      expect(screen.getByText(/Volume Total em Operação/)).toBeDefined()
+    })
+  })
 })

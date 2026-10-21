@@ -407,12 +407,6 @@ function showNotificationFromPayload(data) {
     data.type === "message" ||
     data.notificationType === "message" ||
     !!(data.data && (data.data.peerId || data.data.senderId))
-  const actions =
-    data.actions && data.actions.length > 0
-      ? data.actions
-      : isMessage
-        ? [{ action: "open_chat", title: "💬 Responder" }]
-        : []
 
   const isArrival =
     data.type === "PROVIDER_ARRIVED" ||
@@ -427,14 +421,36 @@ function showNotificationFromPayload(data) {
     (data.data &&
       (data.data.notificationType === "NEW_BOOKING" || data.data.notificationType === "NEW_JOB"))
 
-  const actions =
-    data.actions && data.actions.length > 0
-      ? data.actions
-      : isNewJob
-        ? [{ action: "view_job", title: "⚡ Ver Chamado" }]
-        : isMessage
-          ? [{ action: "open_chat", title: "💬 Responder" }]
-          : []
+  const isCompletionReady =
+    data.type === "ESCROW_RELEASE" ||
+    data.type === "SERVICE_COMPLETED" ||
+    data.notificationType === "ESCROW_RELEASE" ||
+    data.notificationType === "SERVICE_COMPLETED" ||
+    (data.data &&
+      (data.data.notificationType === "ESCROW_RELEASE" ||
+        data.data.notificationType === "SERVICE_COMPLETED"))
+
+  let actions = []
+  if (data.actions && data.actions.length > 0) {
+    actions = data.actions
+  } else if (isArrival) {
+    actions = [
+      { action: "view_tracking", title: "📍 Ver Localização" },
+      { action: "open_chat", title: "💬 Mensagem" },
+    ]
+  } else if (isCompletionReady) {
+    actions = [
+      { action: "approve_escrow", title: "🛡️ Liberar Pagamento" },
+      { action: "view_report", title: "📷 Ver Laudo/Fotos" },
+    ]
+  } else if (isNewJob) {
+    actions = [
+      { action: "view_job", title: "⚡ Ver Chamado" },
+      { action: "view_route", title: "🗺️ Ver Rota" },
+    ]
+  } else if (isMessage) {
+    actions = [{ action: "open_chat", title: "💬 Responder" }]
+  }
 
   const options = {
     body: data.body || "",
@@ -448,7 +464,7 @@ function showNotificationFromPayload(data) {
     data: data.data || { url: data.url || "/" },
     tag: data.tag,
     renotify: true,
-    requireInteraction: isArrival || isNewJob || !!(actions.length > 0),
+    requireInteraction: isArrival || isNewJob || isCompletionReady || actions.length > 0,
     actions,
   }
 
@@ -487,6 +503,30 @@ self.addEventListener("notificationclick", (event) => {
   // ── Handle action buttons ────────────────────────────────────────────
   const peerId = data.peerId || data.senderId || (data.data && data.data.peerId)
 
+  if (action === "approve_escrow" && bookingId) {
+    const escrowUrl = `/client?view=client.bookings&bookingId=${bookingId}&action=approve_escrow`
+    event.waitUntil(openOrFocusUrl(escrowUrl))
+    return
+  }
+
+  if (action === "view_report" && bookingId) {
+    const reportUrl = `/client?view=client.bookings&bookingId=${bookingId}&action=view_report`
+    event.waitUntil(openOrFocusUrl(reportUrl))
+    return
+  }
+
+  if (action === "view_tracking" && bookingId) {
+    const trackUrl = `/client?view=client.bookings&bookingId=${bookingId}&action=track`
+    event.waitUntil(openOrFocusUrl(trackUrl))
+    return
+  }
+
+  if (action === "view_route" && bookingId) {
+    const routeUrl = `/provider?view=provider.routes&bookingId=${bookingId}`
+    event.waitUntil(openOrFocusUrl(routeUrl))
+    return
+  }
+
   if (action === "view_job") {
     const jobUrl = bookingId
       ? `/provider?view=provider.bookings&bookingId=${bookingId}`
@@ -496,7 +536,7 @@ self.addEventListener("notificationclick", (event) => {
   }
 
   if (action === "open_chat" || (peerId && !bookingId && action !== "reject")) {
-    const chatUrl = `/dashboard?tab=messages&peer=${peerId}`
+    const chatUrl = `/dashboard?tab=messages&peer=${peerId || ""}`
     event.waitUntil(openOrFocusUrl(chatUrl))
     return
   }

@@ -163,4 +163,33 @@ describe("ProviderTransitHud", () => {
 
     expect(defaultProps.onClose).toHaveBeenCalled()
   })
+
+  it("permite validação por token de presença quando GPS indisponível", async () => {
+    ;(global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ success: true, data: { checkedInAt: "2026-01-01" } }),
+    })
+
+    render(<ProviderTransitHud {...defaultProps} />)
+
+    const toggleBtn = screen.getByText(/Sem sinal GPS no subsolo ou prédio/i)
+    fireEvent.click(toggleBtn)
+
+    const tokenInput = screen.getByPlaceholderText("Código de 6 dígitos")
+    fireEvent.change(tokenInput, { target: { value: "123456" } })
+
+    const confirmBtn = screen.getByRole("button", { name: "Confirmar" })
+    fireEvent.click(confirmBtn)
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/bookings/checkin-escrow",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining("presence-checkin"),
+        }),
+      )
+      expect(defaultProps.onCheckinSuccess).toHaveBeenCalled()
+    })
+  })
 })

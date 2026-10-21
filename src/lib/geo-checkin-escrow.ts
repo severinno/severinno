@@ -265,3 +265,126 @@ export function cleanupExpiredPins(): number {
   }
   return cleaned
 }
+
+export interface PresenceToken {
+  bookingId: string
+  token: string
+  expiresAt: string
+  qrPayload: string
+}
+
+const PRESENCE_TOKEN_KEY_PREFIX = "escrow:presence:"
+const PRESENCE_TOKEN_TTL_SECONDS = 15 * 60 // 15 minutos
+const activePresenceTokens = new Map<string, { token: string; expiresAt: number }>()
+
+/**
+ * Generates a dynamic 6-digit presence verification token and QR payload.
+ * Displayed on the customer's phone as a fallback when GPS accuracy is degraded
+ * (e.g. underground parking, high-rise building, dense urban canyon).
+ */
+export async function generatePresenceToken(bookingId: string): Promise<PresenceToken> {
+  const token = String(randomInt(100000, 1000000))
+  const expiresAt = Date.now() + PRESENCE_TOKEN_TTL_SECONDS * 1000
+
+  const redisKey = `${PRESENCE_TOKEN_KEY_PREFIX}${bookingId}`
+  try {
+    await cacheSet(redisKey, { token, expiresAt }, PRESENCE_TOKEN_TTL_SECONDS)
+  } catch (err) {
+    logger.warn({ err, bookingId }, "checkin-escrow: failed to store presence token in Redis")
+  }
+  activePresenceTokens.set(bookingId, { token, expiresAt })
+
+  const qrPayload = JSON.stringify({
+    type: "severinno-presence-checkin",
+    bookingId,
+    token,
+    ts: Date.now(),
+  })
+
+  return {
+    bookingId,
+    token,
+    expiresAt: new Date(expiresAt).toISOString(),
+    qrPayload,
+  }
+}
+
+/**
+ * Validates a 6-digit presence token or QR payload submitted by the provider.
+ * Uses timingSafeEqual to avoid timing side-channels and auto-invalidates token on success.
+ */
+export async function validatePresenceCheckin(
+  bookingId: string,
+  inputToken: string,
+  _providerId?: string,
+): Promise<CheckinResult> {
+  // If the provider scanned a QR code containing JSON, extract the token
+  let cleanToken = inputToken.trim()
+  if (cleanToken.startsWith("{") && cleanToken.includes("token")) {
+    try {
+      const parsed = JSON.parse(cleanToken)
+      if (parsed.token) cleanToken = String(parsed.token).trim()
+    } catch {
+      // Keep original input
+    }
+  }
+
+  const redisKey = `${PRESENCE_TOKEN_KEY_PREFIX}${bookingId}`
+  let stored: { token: string; expiresAt: number } | null = null
+
+  try {
+    stored = await cacheGet<{ token: string; expiresAt: number }>(redisKey)
+  } catch (err) {
+    logger.warn({ err, bookingId }, "checkin-escrow: failed to read presence token from Redis")
+  }
+  if (!stored) {
+    stored = activePresenceTokens.get(bookingId) ?? null
+  }
+
+  if (!stored) {
+    return {
+      success: false,
+      distanceMeters: 0,
+      maxAllowedMeters: MAX_CHECKIN_DISTANCE_METERS,
+      reason:
+        "Nenhum código de presença ativo encontrado. Peça ao cliente para gerar um novo código.",
+    }
+  }
+
+  if (Date.now() > stored.expiresAt) {
+    activePresenceTokens.delete(bookingId)
+    try {
+      await cacheInvalidate(redisKey)
+    } catch {}
+    return {
+      success: false,
+      distanceMeters: 0,
+      maxAllowedMeters: MAX_CHECKIN_DISTANCE_METERS,
+      reason: "Código de presença expirado. Solicite a atualização no app do cliente.",
+    }
+  }
+
+  const storedBuf = Buffer.from(stored.token, "utf-8")
+  const inputBuf = Buffer.from(cleanToken, "utf-8")
+  if (storedBuf.length !== inputBuf.length || !timingSafeEqual(storedBuf, inputBuf)) {
+    return {
+      success: false,
+      distanceMeters: 0,
+      maxAllowedMeters: MAX_CHECKIN_DISTANCE_METERS,
+      reason: "Código de presença incorreto. Verifique os 6 dígitos fornecidos pelo cliente.",
+    }
+  }
+
+  // Anti-replay: invalidate token on first successful check-in
+  activePresenceTokens.delete(bookingId)
+  try {
+    await cacheInvalidate(redisKey)
+  } catch {}
+
+  return {
+    success: true,
+    distanceMeters: 0,
+    maxAllowedMeters: MAX_CHECKIN_DISTANCE_METERS,
+    checkedInAt: new Date().toISOString(),
+  }
+}

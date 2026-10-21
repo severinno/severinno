@@ -16,18 +16,26 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/db", () => ({ db: {} }))
 
-const { mockValidateGeoCheckin, mockGenerateEscrowPIN, mockValidateEscrowRelease } = vi.hoisted(
-  () => ({
-    mockValidateGeoCheckin: vi.fn(),
-    mockGenerateEscrowPIN: vi.fn(),
-    mockValidateEscrowRelease: vi.fn(),
-  }),
-)
+const {
+  mockValidateGeoCheckin,
+  mockGenerateEscrowPIN,
+  mockValidateEscrowRelease,
+  mockGeneratePresenceToken,
+  mockValidatePresenceCheckin,
+} = vi.hoisted(() => ({
+  mockValidateGeoCheckin: vi.fn(),
+  mockGenerateEscrowPIN: vi.fn(),
+  mockValidateEscrowRelease: vi.fn(),
+  mockGeneratePresenceToken: vi.fn(),
+  mockValidatePresenceCheckin: vi.fn(),
+}))
 
 vi.mock("@/lib/geo-checkin-escrow", () => ({
   validateGeoCheckin: mockValidateGeoCheckin,
   generateEscrowPIN: mockGenerateEscrowPIN,
   validateEscrowRelease: mockValidateEscrowRelease,
+  generatePresenceToken: mockGeneratePresenceToken,
+  validatePresenceCheckin: mockValidatePresenceCheckin,
 }))
 
 import { POST } from "../bookings/checkin-escrow/route"
@@ -110,6 +118,38 @@ describe("POST /api/bookings/checkin-escrow", () => {
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(200)
     expect((parsed.body as any).success).toBe(true)
+  })
+
+  it("generate-presence-token — returns token data", async () => {
+    mockGeneratePresenceToken.mockResolvedValue({
+      bookingId: "b1",
+      token: "654321",
+      expiresAt: "2026-01-01T00:15:00Z",
+      qrPayload: '{"type":"severinno-presence-checkin"}',
+    })
+    const res = await POST(req({ action: "generate-presence-token", bookingId: "b1" }), {
+      params: Promise.resolve({}),
+    })
+    const parsed = await parseResponse(res)
+    expect(parsed.status).toBe(200)
+    expect((parsed.body as any).success).toBe(true)
+    expect((parsed.body as any).data.token).toBe("654321")
+  })
+
+  it("presence-checkin — validates presence checkin successfully", async () => {
+    mockValidatePresenceCheckin.mockResolvedValue({
+      success: true,
+      distanceMeters: 0,
+      checkedInAt: "2026-01-01T00:00:00Z",
+    })
+    const res = await POST(
+      req({ action: "presence-checkin", bookingId: "b1", providerId: "u1", token: "654321" }),
+      { params: Promise.resolve({}) },
+    )
+    const parsed = await parseResponse(res)
+    expect(parsed.status).toBe(200)
+    expect((parsed.body as any).success).toBe(true)
+    expect(mockValidatePresenceCheckin).toHaveBeenCalledWith("b1", "654321", "u1")
   })
 
   it("returns 401 when not authenticated", async () => {

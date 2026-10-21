@@ -49,6 +49,8 @@ export function ProviderTransitHud({
   } | null>(null)
   const [isCheckingIn, setIsCheckingIn] = React.useState(false)
   const [hasCheckedIn, setHasCheckedIn] = React.useState(false)
+  const [showTokenInput, setShowTokenInput] = React.useState(false)
+  const [presenceToken, setPresenceToken] = React.useState("")
 
   // Watch GPS do prestador com alta precisão
   React.useEffect(() => {
@@ -133,6 +135,43 @@ export function ProviderTransitHud({
       }
     } catch {
       toast.error("Erro de conexão ao enviar check-in.")
+      vibrateWarning()
+    } finally {
+      setIsCheckingIn(false)
+    }
+  }
+
+  const handlePresenceTokenCheckin = async () => {
+    if (presenceToken.trim().length !== 6) {
+      toast.warning("Informe os 6 dígitos do token de presença.")
+      return
+    }
+
+    setIsCheckingIn(true)
+    try {
+      const res = await fetch("/api/bookings/checkin-escrow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "presence-checkin",
+          bookingId,
+          providerId: "current",
+          token: presenceToken.trim(),
+        }),
+      })
+
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setHasCheckedIn(true)
+        vibrateSuccess()
+        toast.success("✅ Presença confirmada via token do cliente!")
+        onCheckinSuccess?.()
+      } else {
+        toast.error(data.data?.reason ?? data.error ?? "Código de presença inválido.")
+        vibrateWarning()
+      }
+    } catch {
+      toast.error("Erro ao validar código de presença.")
       vibrateWarning()
     } finally {
       setIsCheckingIn(false)
@@ -253,6 +292,40 @@ export function ProviderTransitHud({
               </>
             )}
           </Button>
+        )}
+
+        {/* Fallback de Presença sem Sinal GPS */}
+        {!hasCheckedIn && (
+          <div className="space-y-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setShowTokenInput((v) => !v)}
+              className="w-full text-center text-xs text-zinc-400 underline hover:text-zinc-200"
+            >
+              Sem sinal GPS no subsolo ou prédio? Digitar Token de Presença (6 dígitos)
+            </button>
+
+            {showTokenInput && (
+              <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/90 p-2">
+                <input
+                  type="text"
+                  placeholder="Código de 6 dígitos"
+                  maxLength={6}
+                  value={presenceToken}
+                  onChange={(e) => setPresenceToken(e.target.value.replace(/\D/g, ""))}
+                  className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-center font-mono text-sm tracking-widest text-white focus:border-emerald-500 focus:outline-none"
+                />
+                <Button
+                  size="sm"
+                  onClick={handlePresenceTokenCheckin}
+                  disabled={isCheckingIn || presenceToken.length < 6}
+                  className="bg-emerald-600 px-3 text-xs font-bold hover:bg-emerald-700"
+                >
+                  Confirmar
+                </Button>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Botões de Navegação Externa (Waze e Google Maps) */}

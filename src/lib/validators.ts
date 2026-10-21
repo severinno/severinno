@@ -452,6 +452,16 @@ export const checkinEscrowSchema = z.union([
     pin: z.string().min(4).max(8),
     escrowAmount: z.number().min(0),
   }),
+  z.object({
+    action: z.literal("generate-presence-token"),
+    bookingId: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal("presence-checkin"),
+    bookingId: z.string().min(1),
+    providerId: z.string().optional().default("unknown"),
+    token: z.string().min(4).max(500),
+  }),
 ])
 export type CheckinEscrowInput = z.infer<typeof checkinEscrowSchema>
 

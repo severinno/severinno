@@ -41,6 +41,7 @@ import {
   Navigation,
   QrCode,
   Search,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
   Star,
@@ -95,6 +96,7 @@ import { ReceiptModal } from "@/components/shared/receipt-modal"
 import { ServiceDeliveryReportModal } from "@/components/shared/service-delivery-report-modal"
 import { ServiceCompletionCelebrationDialog } from "@/components/shared/service-completion-celebration-dialog"
 import { QuickMediationModal } from "@/components/shared/quick-mediation-modal"
+import { EscrowDisputeModal } from "@/components/shared/escrow-dispute-modal"
 import { CarePlanModal } from "@/components/shared/care-plan-modal"
 import { PullToRefresh } from "@/components/shared/pull-to-refresh"
 import { SafeImage } from "@/components/shared/safe-image"
@@ -210,6 +212,7 @@ export function ClientBookings() {
   const [escrowReleaseBooking, setEscrowReleaseBooking] = React.useState<Booking | null>(null)
   const [celebrationBooking, setCelebrationBooking] = React.useState<Booking | null>(null)
   const [mediationBooking, setMediationBooking] = React.useState<Booking | null>(null)
+  const [disputeBooking, setDisputeBooking] = React.useState<Booking | null>(null)
 
   // Reset page when tab or search filter changes
   React.useEffect(() => {
@@ -558,6 +561,7 @@ export function ClientBookings() {
                 onOpenReport={() => setReportBooking(b)}
                 onCarePlan={() => setCarePlanBooking(b)}
                 onMediate={() => setMediationBooking(b)}
+                onDispute={() => setDisputeBooking(b)}
                 onPay={
                   (b.status === "PENDING" || b.status === "CONFIRMED") &&
                   b.paymentMethod === "PIX" &&
@@ -593,6 +597,7 @@ export function ClientBookings() {
                 onOpenReport={() => setReportBooking(b)}
                 onCarePlan={() => setCarePlanBooking(b)}
                 onMediate={() => setMediationBooking(b)}
+                onDispute={() => setDisputeBooking(b)}
                 onPay={
                   (b.status === "PENDING" || b.status === "CONFIRMED") &&
                   b.paymentMethod === "PIX" &&
@@ -964,6 +969,22 @@ export function ClientBookings() {
           }}
         />
       )}
+
+      {disputeBooking && (
+        <EscrowDisputeModal
+          open={Boolean(disputeBooking)}
+          onOpenChange={(open) => {
+            if (!open) setDisputeBooking(null)
+          }}
+          bookingId={disputeBooking.id}
+          serviceTitle={disputeBooking.service.title}
+          providerName={disputeBooking.provider.name}
+          amount={Number(disputeBooking.amount)}
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["bookings"] })
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -987,6 +1008,7 @@ type BookingCardProps = {
   onOpenReport?: () => void
   onCarePlan?: () => void
   onMediate?: () => void
+  onDispute?: () => void
   isCompleting: boolean
 }
 
@@ -1009,6 +1031,7 @@ function BookingCard({
   onOpenReport,
   onCarePlan,
   onMediate,
+  onDispute,
   isCompleting,
 }: BookingCardProps) {
   const provider = booking.provider
@@ -1383,6 +1406,23 @@ function BookingCard({
               </Button>
             )}
 
+          {/* Contestar / Disputar Escrow */}
+          {onDispute && booking.paymentStatus === "HELD" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                triggerHaptic("selection")
+                onDispute()
+              }}
+              className="h-8.5 gap-1 rounded-xl border-red-500/30 px-2 text-xs font-medium text-red-700 transition-all hover:bg-red-50 active:scale-95 sm:h-8 dark:border-red-700/40 dark:text-red-400 dark:hover:bg-red-950/20"
+              title="Contestar serviço e congelar custódia com evidências"
+            >
+              <ShieldAlert className="size-3 text-red-500" />
+              Contestar
+            </Button>
+          )}
+
           {/* Cancel button if applicable */}
           {canCancel && (
             <Button
@@ -1423,6 +1463,7 @@ function BookingGridCard({
   onOpenReport,
   onCarePlan,
   onMediate,
+  onDispute,
   isCompleting,
 }: BookingCardProps) {
   const provider = booking.provider
@@ -1666,6 +1707,12 @@ function BookingGridCard({
                     Imprevisto / Atraso
                   </DropdownMenuItem>
                 )}
+              {onDispute && booking.paymentStatus === "HELD" && (
+                <DropdownMenuItem onSelect={onDispute}>
+                  <ShieldAlert className="mr-2 size-3.5 text-red-500" />
+                  Contestar Escrow (Fotos)
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               {canTrack && (
                 <DropdownMenuItem onSelect={onTrack}>

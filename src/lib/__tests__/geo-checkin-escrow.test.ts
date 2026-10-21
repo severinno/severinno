@@ -3,6 +3,8 @@ import {
   generateEscrowPIN,
   validateGeoCheckin,
   validateEscrowRelease,
+  generatePresenceToken,
+  validatePresenceCheckin,
   type CheckinAttempt,
 } from "../geo-checkin-escrow"
 
@@ -130,5 +132,57 @@ describe("validateEscrowRelease — PIN Verification & Fund Release", () => {
     // Second attempt should fail (single-use PIN consumed)
     const replayAttempt = await validateEscrowRelease("booking-valid-release", escrow.pin, 350.5)
     expect(replayAttempt.success).toBe(false)
+  })
+})
+
+describe("generatePresenceToken & validatePresenceCheckin — Geofence Fallback", () => {
+  it("generates 6-digit presence token and QR payload with 15min expiry", async () => {
+    const tokenData = await generatePresenceToken("booking-presence-1")
+    expect(tokenData.bookingId).toBe("booking-presence-1")
+    expect(tokenData.token).toMatch(/^\d{6}$/)
+    expect(new Date(tokenData.expiresAt).getTime()).toBeGreaterThan(Date.now())
+
+    const parsedQr = JSON.parse(tokenData.qrPayload)
+    expect(parsedQr.type).toBe("severinno-presence-checkin")
+    expect(parsedQr.bookingId).toBe("booking-presence-1")
+    expect(parsedQr.token).toBe(tokenData.token)
+  })
+
+  it("validates checkin with clean 6-digit token", async () => {
+    const tokenData = await generatePresenceToken("booking-presence-2")
+    const result = await validatePresenceCheckin("booking-presence-2", tokenData.token, "prov-1")
+
+    expect(result.success).toBe(true)
+    expect(result.checkedInAt).toBeDefined()
+    expect(result.distanceMeters).toBe(0)
+  })
+
+  it("validates checkin with scanned JSON QR payload", async () => {
+    const tokenData = await generatePresenceToken("booking-presence-3")
+    const result = await validatePresenceCheckin(
+      "booking-presence-3",
+      tokenData.qrPayload,
+      "prov-1",
+    )
+
+    expect(result.success).toBe(true)
+    expect(result.checkedInAt).toBeDefined()
+  })
+
+  it("rejects checkin with wrong token and prevents replay on successful token", async () => {
+    const tokenData = await generatePresenceToken("booking-presence-4")
+
+    // Wrong token
+    const wrong = await validatePresenceCheckin("booking-presence-4", "999999", "prov-1")
+    expect(wrong.success).toBe(false)
+    expect(wrong.reason).toContain("Código de presença incorreto")
+
+    // Correct token succeeds
+    const ok = await validatePresenceCheckin("booking-presence-4", tokenData.token, "prov-1")
+    expect(ok.success).toBe(true)
+
+    // Replay fails (token was consumed)
+    const replay = await validatePresenceCheckin("booking-presence-4", tokenData.token, "prov-1")
+    expect(replay.success).toBe(false)
   })
 })

@@ -22,6 +22,7 @@ import {
   Clock,
   Navigation,
   Activity,
+  BarChart3,
   Layers,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -108,24 +109,24 @@ export function AdminOperationsMap() {
 
   const [selectedNeighborhood, setSelectedNeighborhood] = React.useState<string>("TODOS")
 
-  const handleSelectNeighborhood = (bairro: string) => {
+  const handleSelectNeighborhood = React.useCallback((bairro: string) => {
     setSelectedNeighborhood(bairro)
-    if (mapRef.current) {
-      const map = mapRef.current as {
-        flyTo?: (opts: { center: [number, number]; zoom: number; duration?: number }) => void
-      }
-      if (typeof map.flyTo === "function") {
-        if (bairro === "TODOS") {
-          map.flyTo({ center: [-41.9482, -18.8548], zoom: 13, duration: 1200 })
-        } else {
-          const found = GV_ALL_20_NEIGHBORHOODS.find((n) => n.name === bairro)
-          if (found) {
-            map.flyTo({ center: [found.lng, found.lat], zoom: 14.5, duration: 1200 })
-          }
-        }
+  }, [])
+
+  React.useEffect(() => {
+    const map = mapRef.current as {
+      flyTo?: (opts: { center: [number, number]; zoom: number; duration?: number }) => void
+    } | null
+    if (!map || typeof map.flyTo !== "function") return
+    if (selectedNeighborhood === "TODOS") {
+      map.flyTo({ center: [-41.9482, -18.8548], zoom: 13, duration: 1200 })
+    } else {
+      const found = GV_ALL_20_NEIGHBORHOODS.find((n) => n.name === selectedNeighborhood)
+      if (found) {
+        map.flyTo({ center: [found.lng, found.lat], zoom: 14.5, duration: 1200 })
       }
     }
-  }
+  }, [selectedNeighborhood])
 
   const { data, isLoading, isFetching, refetch } = useQuery<LiveOperationsData>({
     queryKey: ["admin-operations-live"],
@@ -311,6 +312,33 @@ export function AdminOperationsMap() {
       selectedNeighborhood === "TODOS" ? true : b.neighborhood === selectedNeighborhood,
     ) ?? []
 
+  // Top bairros com atendimentos para o gráfico
+  const neighborhoods = data?.neighborhoods
+  const topNeighborhoods = React.useMemo(() => {
+    if (!neighborhoods) return []
+    const list = Object.entries(neighborhoods).map(([name, stats]) => ({
+      name,
+      total: stats.total,
+      inProgress: stats.inProgress,
+      heldAmount: stats.heldAmount,
+    }))
+    list.sort((a, b) => b.total - a.total || b.heldAmount - a.heldAmount)
+    return list.slice(0, 6)
+  }, [neighborhoods])
+
+  const maxNeighborhoodTotal = Math.max(1, ...topNeighborhoods.map((n) => n.total))
+
+  const totalEscrowVolume =
+    (data?.kpis.escrowHeldAmount ?? 0) + (data?.kpis.escrowReleasedToday ?? 0)
+  const heldPercentage =
+    totalEscrowVolume > 0
+      ? Math.round(((data?.kpis.escrowHeldAmount ?? 0) / totalEscrowVolume) * 100)
+      : 0
+  const releasedPercentage =
+    totalEscrowVolume > 0
+      ? Math.round(((data?.kpis.escrowReleasedToday ?? 0) / totalEscrowVolume) * 100)
+      : 0
+
   return (
     <div className="space-y-6">
       {/* Cabeçalho e Ações */}
@@ -407,6 +435,134 @@ export function AdminOperationsMap() {
               </div>
             )}
             <p className="text-muted-foreground mt-1 text-xs">Repasses liberados após validação</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Visual Analytics: Balanço de Custódia Escrow & Ranking Operacional dos Bairros */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* Balanço de Custódia Escrow */}
+        <Card className="lg:col-span-1">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              <Banknote className="h-4 w-4 text-amber-600" />
+              Balanço de Custódia Escrow (GV)
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Distribuição proporcional de fundos
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-1">
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-medium">
+                <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
+                  <span className="h-2 w-2 rounded-full bg-amber-500" />
+                  Retido em Custódia ({heldPercentage}%)
+                </span>
+                <span className="font-bold text-amber-600 tabular-nums">
+                  R$ {(data?.kpis.escrowHeldAmount ?? 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between text-xs font-medium">
+                <span className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  Liberado Hoje ({releasedPercentage}%)
+                </span>
+                <span className="font-bold text-emerald-600 tabular-nums">
+                  R$ {(data?.kpis.escrowReleasedToday ?? 0).toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            {/* Barra Visual de Proporção Escrow */}
+            <div className="bg-muted flex h-3 w-full overflow-hidden rounded-full">
+              <div
+                style={{ width: `${heldPercentage}%` }}
+                className="bg-amber-500 transition-all duration-500"
+                title={`Retido: ${heldPercentage}%`}
+              />
+              <div
+                style={{ width: `${releasedPercentage}%` }}
+                className="bg-emerald-500 transition-all duration-500"
+                title={`Liberado: ${releasedPercentage}%`}
+              />
+            </div>
+
+            <div className="border-muted bg-muted/30 space-y-1 rounded-lg border p-2.5 text-xs">
+              <div className="text-muted-foreground flex justify-between text-[11px]">
+                <span>Volume Total em Operação:</span>
+                <span className="text-foreground font-semibold">
+                  R$ {totalEscrowVolume.toFixed(2)}
+                </span>
+              </div>
+              <div className="text-muted-foreground flex justify-between text-[11px]">
+                <span>Taxa de Liquidação:</span>
+                <span className="font-semibold text-emerald-600">
+                  {releasedPercentage}% aprovado
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Concentração de Demandas por Bairro */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center justify-between text-sm font-semibold">
+              <span className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-emerald-600" />
+                Concentração Operacional por Bairro
+              </span>
+              <span className="text-muted-foreground text-xs font-normal">
+                Clique para focar no mapa
+              </span>
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Densidade de chamados e volume financeiro em Governador Valadares
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 pt-1">
+            {topNeighborhoods.length === 0 ? (
+              <p className="text-muted-foreground py-4 text-center text-xs">
+                Nenhum dado por bairro disponível no momento.
+              </p>
+            ) : (
+              topNeighborhoods.map((b) => {
+                const pct = Math.max(8, Math.round((b.total / maxNeighborhoodTotal) * 100))
+                const isSelected = selectedNeighborhood === b.name
+                return (
+                  <button
+                    key={b.name}
+                    type="button"
+                    onClick={() => handleSelectNeighborhood(b.name)}
+                    className={`w-full rounded-lg p-1.5 text-left transition-colors ${
+                      isSelected
+                        ? "border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30"
+                        : "hover:bg-muted/50"
+                    }`}
+                  >
+                    <div className="mb-1 flex justify-between text-xs">
+                      <span className="text-foreground flex items-center gap-1.5 font-medium">
+                        <MapPin className="h-3 w-3 text-emerald-600" />
+                        {b.name}
+                      </span>
+                      <span className="text-muted-foreground text-[11px] tabular-nums">
+                        {b.total} chamado(s){" "}
+                        {b.heldAmount > 0 ? `· R$ ${b.heldAmount.toFixed(0)} retido` : ""}
+                      </span>
+                    </div>
+                    <div className="bg-muted h-2 w-full overflow-hidden rounded-full">
+                      <div
+                        style={{ width: `${pct}%` }}
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          b.inProgress > 0 ? "bg-amber-500" : "bg-emerald-600"
+                        }`}
+                      />
+                    </div>
+                  </button>
+                )
+              })
+            )}
           </CardContent>
         </Card>
       </div>
