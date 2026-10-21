@@ -65,7 +65,7 @@ import { Switch } from "@/components/ui/switch"
 import { Progress } from "@/components/ui/progress"
 import { GeoAddressForm, type AddressFormValue } from "@/components/forms/geo-address-form"
 import { PushNotificationCard } from "@/components/shared/push-notification-card"
-import { StatCard } from "@/components/shared/dashboard-shell"
+import { StatCard } from "@/components/shared/shell"
 
 // ---------------------------------------------------------------------------
 // Types

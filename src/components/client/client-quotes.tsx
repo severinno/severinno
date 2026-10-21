@@ -79,7 +79,7 @@ import { Input } from "@/components/ui/input"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { QuoteTimeline } from "@/components/shared/flow-timeline"
 import { StatusBadge, quoteIcon, quoteTone } from "@/components/client/client-shared"
-import { StatCard } from "@/components/shared/dashboard-shell"
+import { StatCard } from "@/components/shared/shell"
 
 // ---------------------------------------------------------------------------
 // Types

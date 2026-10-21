@@ -79,7 +79,7 @@ import {
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { EmptyState, StatCard } from "@/components/shared/dashboard-shell"
+import { EmptyState, StatCard } from "@/components/shared/shell"
 import { StatusBadge, paymentIcon, paymentTone } from "@/components/client/client-shared"
 
 // ---------------------------------------------------------------------------

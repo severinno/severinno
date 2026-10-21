@@ -55,7 +55,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { StarRatingDisplay } from "@/components/modals/star-rating"
 import { ReviewDialog } from "@/components/client/review-dialog"
-import { StatCard } from "@/components/shared/dashboard-shell"
+import { StatCard } from "@/components/shared/shell"
 
 // ---------------------------------------------------------------------------
 // Types

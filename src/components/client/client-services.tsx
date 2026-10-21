@@ -76,7 +76,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { StarRatingDisplay } from "@/components/modals/star-rating"
-import { EmptyState, StatCard } from "@/components/shared/dashboard-shell"
+import { EmptyState, StatCard } from "@/components/shared/shell"
 import { StatusBadge, bookingIcon, bookingTone } from "@/components/client/client-shared"
 
 // ---------------------------------------------------------------------------

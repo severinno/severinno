@@ -59,7 +59,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { EmptyState, StatCard } from "@/components/shared/dashboard-shell"
+import { EmptyState, StatCard } from "@/components/shared/shell"
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -87,7 +87,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { EmptyState } from "@/components/shared/dashboard-shell"
+import { EmptyState } from "@/components/shared/shell"
 import { ReviewDialog } from "@/components/client/review-dialog"
 import { BookingTimeline } from "@/components/shared/flow-timeline"
 import { PixCheckout } from "@/components/shared/pix-checkout"

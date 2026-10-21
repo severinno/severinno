@@ -56,7 +56,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { EmptyState, StatCard } from "@/components/shared/dashboard-shell"
+import { EmptyState, StatCard } from "@/components/shared/shell"
 import { StatusBadge } from "@/components/client/client-shared"
 
 // ---------------------------------------------------------------------------
