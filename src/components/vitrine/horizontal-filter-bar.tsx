@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { triggerHaptic } from "@/lib/haptics"
 import type { Category } from "@/lib/api"
 import type { FiltersState } from "@/components/vitrine/filters"
 import { DEFAULT_FILTERS } from "@/components/vitrine/filters"
@@ -66,6 +67,12 @@ export function HorizontalFilterBar({
   const [ratingOpen, setRatingOpen] = React.useState(false)
   const [categorySearch, setCategorySearch] = React.useState("")
 
+  // Discrete filter changes get a light selection haptic; continuous slider drags do not.
+  const selectChange = (next: FiltersState) => {
+    triggerHaptic("selection")
+    onChange(next)
+  }
+
   // Selected category object
   const selectedCategory = React.useMemo(() => {
     if (!value.categoryId) return null
@@ -102,7 +109,7 @@ export function HorizontalFilterBar({
               <button
                 type="button"
                 className={cn(
-                  "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
+                  "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 active:scale-95",
                   selectedCategory
                     ? "border-emerald-500 bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
                     : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
@@ -128,7 +135,7 @@ export function HorizontalFilterBar({
                 <button
                   type="button"
                   onClick={() => {
-                    onChange({ ...value, categoryId: null })
+                    selectChange({ ...value, categoryId: null })
                     setCategoryOpen(false)
                   }}
                   className={cn(
@@ -146,7 +153,7 @@ export function HorizontalFilterBar({
                     key={cat.id}
                     type="button"
                     onClick={() => {
-                      onChange({ ...value, categoryId: cat.id })
+                      selectChange({ ...value, categoryId: cat.id })
                       setCategoryOpen(false)
                     }}
                     className={cn(
@@ -171,7 +178,7 @@ export function HorizontalFilterBar({
             <button
               type="button"
               className={cn(
-                "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
+                "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 active:scale-95",
                 value.radius !== DEFAULT_FILTERS.radius
                   ? "border-emerald-500 bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
                   : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
@@ -214,7 +221,7 @@ export function HorizontalFilterBar({
                 <button
                   key={p}
                   type="button"
-                  onClick={() => onChange({ ...value, radius: p })}
+                  onClick={() => selectChange({ ...value, radius: p })}
                   className={cn(
                     "flex-1 rounded-lg border py-1 text-center text-[11px] font-medium transition-colors",
                     value.radius === p
@@ -235,7 +242,7 @@ export function HorizontalFilterBar({
             <button
               type="button"
               className={cn(
-                "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
+                "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 active:scale-95",
                 value.minRating > 0
                   ? "border-emerald-500 bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
                   : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
@@ -256,7 +263,7 @@ export function HorizontalFilterBar({
                   key={stars}
                   type="button"
                   onClick={() => {
-                    onChange({ ...value, minRating: stars as FiltersState["minRating"] })
+                    selectChange({ ...value, minRating: stars as FiltersState["minRating"] })
                     setRatingOpen(false)
                   }}
                   className={cn(
@@ -277,9 +284,9 @@ export function HorizontalFilterBar({
         {/* 5. Quick Toggle Chip: Verified */}
         <button
           type="button"
-          onClick={() => onChange({ ...value, verifiedOnly: !value.verifiedOnly })}
+          onClick={() => selectChange({ ...value, verifiedOnly: !value.verifiedOnly })}
           className={cn(
-            "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
+            "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 active:scale-95",
             value.verifiedOnly
               ? "border-emerald-500 bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
               : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
@@ -297,8 +304,11 @@ export function HorizontalFilterBar({
         {/* 6. Advanced Filters Modal Trigger */}
         <button
           type="button"
-          onClick={onOpenAdvancedFilters}
-          className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition-all duration-150 outline-none hover:border-slate-300 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+          onClick={() => {
+            triggerHaptic("light")
+            onOpenAdvancedFilters()
+          }}
+          className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition-all duration-150 outline-none hover:border-slate-300 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-emerald-500 active:scale-95 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
         >
           <SlidersHorizontal className="size-3.5 text-slate-500" />
           <span>Mais Filtros</span>
@@ -314,7 +324,7 @@ export function HorizontalFilterBar({
           <button
             type="button"
             onClick={() =>
-              onChange({
+              selectChange({
                 ...DEFAULT_FILTERS,
                 q: value.q,
                 categoryId: value.categoryId,
@@ -337,7 +347,7 @@ export function HorizontalFilterBar({
             <button
               type="button"
               className={cn(
-                "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
+                "inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-medium transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 active:scale-95",
                 value.sort === "distance"
                   ? "border-emerald-500 bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
                   : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
@@ -357,7 +367,7 @@ export function HorizontalFilterBar({
                     onRequestGeo?.()
                     return
                   }
-                  onChange({ ...value, sort: "distance" })
+                  selectChange({ ...value, sort: "distance" })
                   setSortOpen(false)
                 }}
                 className={cn(
@@ -382,7 +392,7 @@ export function HorizontalFilterBar({
               <button
                 type="button"
                 onClick={() => {
-                  onChange({ ...value, sort: "rating" })
+                  selectChange({ ...value, sort: "rating" })
                   setSortOpen(false)
                 }}
                 className={cn(
@@ -418,9 +428,12 @@ export function HorizontalFilterBar({
             type="button"
             role="tab"
             aria-selected={view === "list"}
-            onClick={() => onViewChange("list")}
+            onClick={() => {
+              triggerHaptic("selection")
+              onViewChange("list")
+            }}
             className={cn(
-              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-150",
+              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-150 active:scale-95",
               view === "list"
                 ? "bg-white font-semibold text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
                 : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white",
@@ -433,9 +446,12 @@ export function HorizontalFilterBar({
             type="button"
             role="tab"
             aria-selected={view === "map"}
-            onClick={() => onViewChange("map")}
+            onClick={() => {
+              triggerHaptic("selection")
+              onViewChange("map")
+            }}
             className={cn(
-              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-150",
+              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-150 active:scale-95",
               view === "map"
                 ? "bg-white font-semibold text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white"
                 : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white",

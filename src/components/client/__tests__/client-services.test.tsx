@@ -179,7 +179,7 @@ vi.mock("@/components/modals/star-rating", () => ({
   ),
 }))
 
-vi.mock("@/components/shared/dashboard-shell", () => ({
+vi.mock("@/components/shared/shell", () => ({
   EmptyState: ({ title, description }: { title: string; description?: string }) => (
     <div data-testid="empty-state">
       <h3>{title}</h3>
