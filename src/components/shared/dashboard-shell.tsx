@@ -22,15 +22,9 @@
 
 import * as React from "react"
 import { useTheme } from "next-themes"
-import { motion } from "framer-motion"
 import {
-  Bell,
-  BellRing,
-  Check,
-  CheckCheck,
   ChevronRight,
   LayoutDashboard,
-  Loader2,
   LogOut,
   MapPin,
   Menu,
@@ -43,14 +37,11 @@ import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
 import { APP_NAME, ROLE_LABELS, NOTIFICATION_TYPE_LABELS } from "@/lib/constants"
-import { formatRelative } from "@/lib/format"
-import { usePushSubscription } from "@/hooks/use-service-worker"
 import { PwaInstallBanner } from "@/components/shared/pwa-install-banner"
 import { PushPromptBanner } from "@/components/shared/push-prompt-banner"
 import { MobileBottomNav } from "@/components/shared/mobile-bottom-nav"
 import { apiGet, apiPatch } from "@/lib/api"
 import { triggerHaptic } from "@/lib/haptics"
-import { playCoinSound } from "@/lib/sounds"
 import { useRealtime } from "@/hooks/use-realtime"
 import {
   useCoinSound,
@@ -61,11 +52,12 @@ import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 import { MuteIndicator } from "@/components/shared/mute-indicator"
 import { VibrationIndicator } from "@/components/shared/vibration-indicator"
+import { WalletBalancePill } from "@/components/shared/wallet-balance-pill"
+import { useFaviconBadge } from "@/hooks/use-favicon-badge"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import {
   DropdownMenu,
@@ -93,6 +85,14 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { ScrollArea } from "@/components/ui/scroll-area"
+
+import {
+  NotificationsBell,
+  PushNotificationButton,
+  EmptyState,
+  StatCard,
+  SectionTitle,
+} from "./shell"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -178,54 +178,6 @@ const NOTIFICATION_ROUTES: Record<string, string> = {
   UPDATE: "client.dashboard",
 }
 
-/** Agrupa notificações por período: Hoje, Ontem, Esta semana, Este mês, Anterior */
-function groupNotificationsByDate(
-  items: NotificationItem[],
-): Array<{ label: string; items: NotificationItem[] }> {
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
-  const thisWeekStart = new Date(today)
-  thisWeekStart.setDate(thisWeekStart.getDate() - today.getDay()) // domingo
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-
-  const groups: Record<string, NotificationItem[]> = {
-    today: [],
-    yesterday: [],
-    week: [],
-    month: [],
-    older: [],
-  }
-
-  for (const item of items) {
-    const d = new Date(item.createdAt)
-    if (d >= today) {
-      groups.today.push(item)
-    } else if (d >= yesterday) {
-      groups.yesterday.push(item)
-    } else if (d >= thisWeekStart) {
-      groups.week.push(item)
-    } else if (d >= thisMonthStart) {
-      groups.month.push(item)
-    } else {
-      groups.older.push(item)
-    }
-  }
-
-  const labels: Record<string, string> = {
-    today: "Hoje",
-    yesterday: "Ontem",
-    week: "Esta semana",
-    month: "Este mês",
-    older: "Anterior",
-  }
-
-  return Object.entries(groups)
-    .filter(([, groupItems]) => groupItems.length > 0)
-    .map(([key, groupItems]) => ({ label: labels[key], items: groupItems }))
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -246,12 +198,6 @@ const DASHBOARD_VIEW: Record<string, string> = {
   PROVIDER: "provider.dashboard",
   ADMIN: "admin.dashboard",
 }
-
-// Reusable motion presets for staggered card mount.
-const cardMotion = {
-  initial: { opacity: 0, y: 8 },
-  animate: { opacity: 1, y: 0 },
-} as const
 
 // ---------------------------------------------------------------------------
 // Shared nav item styles — used by both desktop SidebarMenuButton and mobile Sheet
@@ -976,534 +922,9 @@ export function DashboardShell({
   )
 }
 
-import { WalletBalancePill } from "@/components/shared/wallet-balance-pill"
-import { useFaviconBadge } from "@/hooks/use-favicon-badge"
-
 // ---------------------------------------------------------------------------
-// PushNotificationButton — Native Web Push toggle & test
+// Re-exports for backwards compatibility
 // ---------------------------------------------------------------------------
 
-function PushNotificationButton() {
-  const {
-    isSubscribed,
-    isSupported,
-    permission,
-    loading,
-    testing,
-    subscribe,
-    unsubscribe,
-    sendTestNotification,
-  } = usePushSubscription()
-
-  if (!isSupported) return null
-
-  const handleSubscribe = async () => {
-    if (loading || testing) return
-    triggerHaptic("medium")
-    const ok = await subscribe()
-    if (ok) {
-      toast.success("Notificações Push ativadas!", {
-        description: "Você receberá alertas em tempo real no seu dispositivo.",
-      })
-    } else if (permission === "denied") {
-      toast.error("Notificações bloqueadas", {
-        description:
-          "Permita as notificações nas configurações do seu navegador para receber avisos.",
-      })
-    }
-  }
-
-  if (isSubscribed) {
-    return (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative size-9 text-emerald-600 transition-all hover:text-emerald-700 active:scale-95 dark:text-emerald-400"
-            aria-label="Notificações Push no dispositivo ativas"
-            title="Notificações Push no dispositivo ativas"
-          >
-            <BellRing className="size-[18px]" />
-            <span className="absolute top-2 right-2 size-2 animate-pulse rounded-full bg-emerald-500" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-60">
-          <DropdownMenuLabel className="text-xs font-semibold">
-            Notificações no Dispositivo
-          </DropdownMenuLabel>
-          <div className="text-muted-foreground px-2 py-1 text-xs">
-            Alertas em tempo real ativados para mensagens, reservas e propostas.
-          </div>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            disabled={testing}
-            onClick={async () => {
-              triggerHaptic("selection")
-              const res = await sendTestNotification()
-              if (res.ok) {
-                toast.success("Notificação de teste enviada com sucesso!")
-              } else {
-                toast.error(res.message || "Erro ao testar envio de notificação push")
-              }
-            }}
-            className="cursor-pointer text-xs"
-          >
-            {testing ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
-            Testar Notificação Push
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={loading}
-            onClick={async () => {
-              triggerHaptic("selection")
-              const ok = await unsubscribe()
-              if (ok) {
-                toast.info("Notificações push desativadas neste aparelho.")
-              }
-            }}
-            className="cursor-pointer text-xs text-rose-600 focus:text-rose-600 dark:text-rose-400"
-          >
-            Desativar neste aparelho
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    )
-  }
-
-  return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="text-muted-foreground hover:text-foreground size-9 transition-all active:scale-95"
-      onClick={handleSubscribe}
-      disabled={loading}
-      aria-label="Ativar Notificações Push no dispositivo"
-      title={
-        permission === "denied"
-          ? "Notificações bloqueadas no navegador"
-          : "Ativar notificações em tempo real no dispositivo"
-      }
-    >
-      {loading ? (
-        <Loader2 className="size-[18px] animate-spin" />
-      ) : (
-        <BellRing className="size-[18px] opacity-70" />
-      )}
-    </Button>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// NotificationsBell — dropdown list of recent notifications
-// ---------------------------------------------------------------------------
-
-function NotificationsBell({
-  items,
-  unreadCount,
-  isLoading,
-  onMarkRead,
-  onMarkAllRead,
-  markingAll,
-  onNavigate,
-}: {
-  items: NotificationItem[]
-  unreadCount: number
-  isLoading: boolean
-  onMarkRead: (id: string) => void
-  onMarkAllRead: (ids: string[]) => void
-  markingAll: boolean
-  onNavigate: (view: string) => void
-}) {
-  const [filter, setFilter] = React.useState<"all" | "unread">("all")
-  const unreadIds = React.useMemo(() => items.filter((n) => !n.read).map((n) => n.id), [items])
-  const filteredItems = React.useMemo(
-    () => (filter === "unread" ? items.filter((n) => !n.read) : items),
-    [items, filter],
-  )
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-muted-foreground hover:text-foreground relative size-9"
-          aria-label={`Notificações${unreadCount > 0 ? ` (${unreadCount} não lidas)` : ""}`}
-        >
-          <Bell className="size-[18px]" />
-          {unreadCount > 0 ? (
-            <span
-              className="bg-primary text-primary-foreground ring-background absolute -top-0.5 -right-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold ring-2"
-              aria-hidden
-            >
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </span>
-          ) : null}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80 gap-0 p-0">
-        <div className="flex items-center justify-between border-b px-3 py-2.5">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-semibold">Notificações</p>
-            {unreadCount > 0 ? (
-              <Badge
-                variant="secondary"
-                className="bg-primary/10 text-primary h-5 px-1.5 text-[10px] font-semibold"
-              >
-                {unreadCount} nova{unreadCount > 1 ? "s" : ""}
-              </Badge>
-            ) : null}
-          </div>
-          {unreadCount > 0 ? (
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic("success")
-                try {
-                  playCoinSound({ vibrate: true })
-                } catch {}
-                onMarkAllRead(unreadIds)
-              }}
-              disabled={markingAll}
-              className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-[11px] font-medium transition-all active:scale-95 disabled:opacity-50"
-            >
-              {markingAll ? (
-                <Loader2 className="size-3 animate-spin" />
-              ) : (
-                <CheckCheck className="size-3.5" />
-              )}
-              Marcar todas
-            </button>
-          ) : null}
-        </div>
-
-        {/* Filter bar: Todas / Não lidas */}
-        <div className="bg-muted/30 flex items-center gap-1 border-b px-3 py-1.5 text-xs">
-          <button
-            type="button"
-            onClick={() => {
-              setFilter("all")
-              triggerHaptic("selection")
-            }}
-            className={cn(
-              "rounded-md px-2 py-0.5 text-xs font-medium transition-all active:scale-95",
-              filter === "all"
-                ? "bg-background text-foreground font-semibold shadow-2xs"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Todas ({items.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setFilter("unread")
-              triggerHaptic("selection")
-            }}
-            className={cn(
-              "rounded-md px-2 py-0.5 text-xs font-medium transition-all active:scale-95",
-              filter === "unread"
-                ? "bg-background text-foreground font-semibold shadow-2xs"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Não lidas ({unreadCount})
-          </button>
-        </div>
-
-        <ScrollArea className="max-h-80">
-          {isLoading ? (
-            <div className="text-muted-foreground flex items-center justify-center gap-2 p-8 text-sm">
-              <Loader2 className="size-4 animate-spin" />
-              Carregando…
-            </div>
-          ) : filteredItems.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 p-8 text-center">
-              {filter === "unread" && items.length > 0 ? (
-                <>
-                  <span className="flex size-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
-                    <CheckCheck className="size-5" />
-                  </span>
-                  <p className="text-foreground text-sm font-medium">Tudo em dia!</p>
-                  <p className="text-muted-foreground text-xs">
-                    Você não tem notificações não lidas.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <span className="bg-muted text-muted-foreground flex size-12 items-center justify-center rounded-full">
-                    <Bell className="size-5" />
-                  </span>
-                  <p className="text-muted-foreground text-sm">Você não tem notificações.</p>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="max-h-80 overflow-y-auto">
-              {groupNotificationsByDate(filteredItems).map((group) => (
-                <div key={group.label}>
-                  <div className="bg-popover text-muted-foreground sticky top-0 z-10 px-3 py-1.5 text-[10px] font-medium tracking-wider uppercase">
-                    {group.label}
-                  </div>
-                  <ul className="divide-y">
-                    {group.items.map((n) => {
-                      const typeLabel = NOTIFICATION_TYPE_LABELS[n.type]
-                      const targetRoute = NOTIFICATION_ROUTES[n.type]
-                      return (
-                        <li
-                          key={n.id}
-                          className={cn(
-                            "relative flex gap-3 px-3 py-2.5 transition-colors",
-                            !n.read && "bg-primary/5",
-                            targetRoute && "hover:bg-accent/50 cursor-pointer",
-                          )}
-                          onClick={() => {
-                            triggerHaptic("selection")
-                            if (targetRoute) {
-                              onNavigate(targetRoute)
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            if ((e.key === "Enter" || e.key === " ") && targetRoute) {
-                              e.preventDefault()
-                              triggerHaptic("selection")
-                              onNavigate(targetRoute)
-                            }
-                          }}
-                          role={targetRoute ? "button" : undefined}
-                          tabIndex={targetRoute ? 0 : undefined}
-                          title={targetRoute ? `Ir para ${typeLabel ?? targetRoute}` : undefined}
-                        >
-                          <span
-                            className={cn(
-                              "mt-1.5 size-2 shrink-0 rounded-full",
-                              n.read ? "ring-border bg-transparent ring-1" : "bg-primary",
-                            )}
-                            aria-hidden
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-baseline justify-between gap-2">
-                              <p className="text-sm leading-tight font-medium">{n.title}</p>
-                              <span className="text-muted-foreground shrink-0 text-[10px] tabular-nums">
-                                {formatRelative(n.createdAt)}
-                              </span>
-                            </div>
-                            {n.body ? (
-                              <p className="text-muted-foreground mt-0.5 line-clamp-2 text-xs">
-                                {n.body}
-                              </p>
-                            ) : null}
-                            <div className="mt-1 flex items-center gap-2">
-                              {typeLabel ? (
-                                <Badge
-                                  variant="outline"
-                                  className="text-muted-foreground h-4 px-1.5 text-[10px] font-medium"
-                                >
-                                  {typeLabel}
-                                </Badge>
-                              ) : null}
-                              {!n.read ? (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    triggerHaptic("selection")
-                                    onMarkRead(n.id)
-                                  }}
-                                  className="text-primary inline-flex items-center gap-1 text-[10px] font-medium hover:underline"
-                                >
-                                  <Check className="size-3" />
-                                  Marcar como lida
-                                </button>
-                              ) : null}
-                            </div>
-                          </div>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Shared small UI helpers used by the panel views
-// ---------------------------------------------------------------------------
-
-export function EmptyState({
-  icon: Icon,
-  title,
-  description,
-  action,
-  className,
-}: {
-  icon: LucideIcon
-  title: string
-  description?: string
-  action?: React.ReactNode
-  className?: string
-}) {
-  return (
-    <Card className={cn("bg-muted/30 border-dashed py-10 text-center", className)}>
-      <CardContent className="flex flex-col items-center gap-3">
-        <div className="bg-primary/10 text-primary flex size-14 items-center justify-center rounded-full">
-          <Icon className="size-7" />
-        </div>
-        <div className="space-y-1">
-          <p className="text-base font-semibold">{title}</p>
-          {description ? (
-            <p className="text-muted-foreground mx-auto max-w-md text-sm">{description}</p>
-          ) : null}
-        </div>
-        {action}
-      </CardContent>
-    </Card>
-  )
-}
-
-export function StatCard({
-  icon: Icon,
-  label,
-  value,
-  hint,
-  tone = "primary",
-  index = 0,
-  trend,
-  compact = false,
-}: {
-  icon: LucideIcon
-  label: string
-  value: React.ReactNode
-  hint?: string
-  tone?: "primary" | "amber" | "sky" | "rose" | "zinc"
-  /** Index for staggered mount animation (0-based). */
-  index?: number
-  /** Optional trend indicator shown next to the value. */
-  trend?: { direction: "up" | "down"; label: string }
-  /** Ultra-compact minimalist Bento micro-card variant (~52px height). */
-  compact?: boolean
-}) {
-  const toneClass = {
-    primary: "bg-primary/10 text-primary border-primary/20",
-    amber:
-      "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200 border-amber-300/40",
-    sky: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200 border-sky-300/40",
-    rose: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200 border-rose-300/40",
-    zinc: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200 border-zinc-300/40",
-  }[tone]
-
-  if (compact) {
-    return (
-      <motion.div
-        initial={cardMotion.initial}
-        animate={cardMotion.animate}
-        transition={{ delay: index * 0.05, duration: 0.25, ease: "easeOut" }}
-      >
-        <div
-          className="border-border/60 bg-card rounded-xl border p-3 shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
-          title={hint}
-        >
-          <div className="flex items-center gap-3">
-            <span
-              className={cn(
-                "flex size-9 shrink-0 items-center justify-center rounded-lg border",
-                toneClass,
-              )}
-            >
-              <Icon className="size-4.5" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-foreground text-base font-bold tracking-tight tabular-nums sm:text-lg">
-                  {value}
-                </span>
-                {trend ? (
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9.5px] font-semibold",
-                      trend.direction === "up"
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
-                        : "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200",
-                    )}
-                  >
-                    {trend.direction === "up" ? "↑" : "↓"} {trend.label}
-                  </span>
-                ) : null}
-              </div>
-              <p className="text-muted-foreground truncate text-xs font-medium tracking-wide uppercase">
-                {label}
-              </p>
-            </div>
-          </div>
-        </div>
-      </motion.div>
-    )
-  }
-
-  return (
-    <motion.div
-      initial={cardMotion.initial}
-      animate={cardMotion.animate}
-      transition={{ delay: index * 0.05, duration: 0.25, ease: "easeOut" }}
-    >
-      <Card className="bg-card rounded-xl shadow-sm transition-shadow hover:shadow-md">
-        <CardContent className="p-5">
-          <div className="flex items-start justify-between gap-3">
-            <span className={cn("flex size-10 items-center justify-center rounded-lg", toneClass)}>
-              <Icon className="size-5" />
-            </span>
-            {trend ? (
-              <span
-                className={cn(
-                  "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-                  trend.direction === "up"
-                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
-                    : "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200",
-                )}
-              >
-                {trend.direction === "up" ? "↑" : "↓"} {trend.label}
-              </span>
-            ) : null}
-          </div>
-          <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-          <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wide uppercase">
-            {label}
-          </p>
-          {hint ? <p className="text-muted-foreground mt-1 text-xs">{hint}</p> : null}
-        </CardContent>
-      </Card>
-    </motion.div>
-  )
-}
-
-export function SectionTitle({
-  title,
-  description,
-  action,
-}: {
-  title: string
-  description?: string
-  action?: React.ReactNode
-}) {
-  return (
-    <div className="mb-3 flex items-end justify-between gap-3">
-      <div className="min-w-0">
-        <h2 className="text-foreground text-base font-semibold tracking-tight md:text-lg">
-          {title}
-        </h2>
-        {description ? (
-          <p className="text-muted-foreground truncate text-xs">{description}</p>
-        ) : null}
-      </div>
-      {action}
-    </div>
-  )
-}
-
+export { EmptyState, StatCard, SectionTitle } from "./shell"
 export { Separator }
