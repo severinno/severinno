@@ -62,6 +62,7 @@ export async function computeBaseBalance(providerId: string) {
       client: { select: { name: true } },
     },
     orderBy: { createdAt: "desc" },
+    take: 200,
   })
 
   let balance = new DecimalCtor(0)
@@ -133,11 +134,13 @@ export async function getWithdrawals(providerId: string) {
       where: { providerId, status: "completed" },
       select: { id: true, amount: true, description: true, createdAt: true, status: true },
       orderBy: { createdAt: "desc" },
+      take: 100,
     }),
     db.walletTransaction.findMany({
       where: { providerId, status: "pending" },
       select: { id: true, amount: true, description: true, createdAt: true, status: true },
       orderBy: { createdAt: "desc" },
+      take: 100,
     }),
   ])
 

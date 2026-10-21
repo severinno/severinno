@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireUser } from "@/lib/auth"
 import { getClient } from "@/lib/redis"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // =============================================================================
 // GET /api/messages/stream — Server-Sent Events for real-time messaging
@@ -22,6 +23,12 @@ export async function GET(request: Request) {
   const session = await requireUser().catch(() => null)
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  try {
+    await assertRateLimit(request, RATE_LIMITS.general)
+  } catch {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 })
   }
 
   const userId = session.userId

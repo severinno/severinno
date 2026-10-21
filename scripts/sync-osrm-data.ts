@@ -177,12 +177,10 @@ if (process.argv[1] && process.argv[1].endsWith("sync-osrm-data.ts")) {
 
   syncOsrmData({ checkOnly, dryRun, force })
     .then((result) => {
-       
       console.log(JSON.stringify(result, null, 2))
       process.exit(result.success ? 0 : 1)
     })
     .catch((err) => {
-       
       console.error("Falha fatal na sincronização OSRM:", err)
       process.exit(1)
     })
