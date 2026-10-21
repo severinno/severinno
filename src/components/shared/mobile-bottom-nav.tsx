@@ -84,8 +84,8 @@ export function MobileBottomNav({
       aria-label="Navegação inferior mobile"
       data-testid="mobile-bottom-nav"
       className={cn(
-        "border-border/60 bg-background/95 fixed right-0 bottom-0 left-0 z-40 border-t backdrop-blur-md [contain:layout_style] lg:hidden",
-        "pb-[max(env(safe-area-inset-bottom,0px),8px)] shadow-[0_-4px_16px_rgba(0,0,0,0.04)] dark:shadow-[0_-4px_16px_rgba(0,0,0,0.2)]",
+        "border-border/80 bg-background/95 fixed inset-x-0 bottom-0 z-50 border-t backdrop-blur-md lg:hidden",
+        "pb-[max(env(safe-area-inset-bottom,0px),8px)] shadow-[0_-4px_20px_rgba(0,0,0,0.06)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.3)]",
         className,
       )}
     >
@@ -108,7 +108,7 @@ export function MobileBottomNav({
               aria-current={active ? "page" : undefined}
               aria-label={item.label}
               className={cn(
-                "group relative flex min-h-[48px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl transition-all duration-150 outline-none active:scale-95",
+                "group relative flex min-h-[48px] flex-1 touch-manipulation flex-col items-center justify-center gap-0.5 rounded-xl transition-all duration-150 outline-none select-none active:scale-95",
                 active
                   ? "text-primary font-semibold"
                   : "text-muted-foreground/75 hover:text-foreground",
@@ -143,7 +143,7 @@ export function MobileBottomNav({
               {active && (
                 <span
                   data-testid="bottom-nav-active-dot"
-                  className="bg-primary absolute -bottom-1 h-0.5 w-4 rounded-full"
+                  className="bg-primary absolute bottom-0.5 h-0.5 w-4 rounded-full"
                 />
               )}
             </button>

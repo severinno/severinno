@@ -87,7 +87,7 @@ export function PushPromptBanner() {
   return (
     <aside
       aria-label="Ativar notificações do aplicativo"
-      className="animate-in fade-in slide-in-from-bottom-5 fixed right-4 bottom-4 left-4 z-50 mx-auto max-w-lg duration-300 sm:right-6 sm:bottom-6 sm:left-auto"
+      className="animate-in fade-in slide-in-from-bottom-5 fixed right-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] left-4 z-40 mx-auto max-w-lg duration-300 sm:right-6 sm:bottom-6 sm:left-auto"
     >
       <div className="bg-background/95 dark:bg-card/95 flex items-start gap-3 rounded-2xl border border-emerald-500/30 p-4 shadow-xl backdrop-blur-md">
         <div className="mt-0.5 shrink-0 rounded-xl bg-emerald-500/10 p-2.5 text-emerald-600 dark:text-emerald-400">

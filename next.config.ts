@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   generateEtags: true,
   compress: true,
+  devIndicators: false,
 
   // Skip TypeScript type-checking during build ONLY in Docker (CI always runs tsc --noEmit separately).
   // ⚠️ NEVER set this to true in CI/CD — it masks type errors that break production.

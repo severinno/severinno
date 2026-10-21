@@ -44,7 +44,7 @@ export function PwaInstallBanner({ className }: { className?: string }) {
         exit={{ y: 16, opacity: 0, scale: 0.96 }}
         transition={{ type: "spring", stiffness: 350, damping: 28 }}
         className={cn(
-          "fixed right-4 bottom-4 left-4 z-40 mx-auto max-w-md rounded-2xl border border-emerald-500/25 bg-white/95 p-4 shadow-2xl shadow-emerald-950/10 backdrop-blur-xl sm:right-6 sm:bottom-6 sm:left-auto sm:mx-0 sm:max-w-[410px] dark:border-emerald-500/20 dark:bg-slate-900/95 dark:shadow-black/40",
+          "fixed right-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] left-4 z-40 mx-auto max-w-md rounded-2xl border border-emerald-500/25 bg-white/95 p-4 shadow-2xl shadow-emerald-950/10 backdrop-blur-xl sm:right-6 sm:bottom-6 sm:left-auto sm:mx-0 sm:max-w-[410px] dark:border-emerald-500/20 dark:bg-slate-900/95 dark:shadow-black/40",
           className,
         )}
       >
