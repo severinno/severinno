@@ -56,6 +56,7 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import {
   apiGet,
@@ -473,11 +474,25 @@ function Step1Provider({ form }: { form: UseFormReturn<QuoteFormValues> }) {
 }
 
 function SelectedProviderCard({ providerId }: { providerId: string }) {
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["providers-options", ""],
     queryFn: () => apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 50 }),
     staleTime: 30 * 1000,
   })
+
+  if (isLoading) {
+    return (
+      <InfoCard variant="emerald">
+        <div className="flex items-center gap-3">
+          <Skeleton className="size-10 rounded-md" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-20" />
+          </div>
+        </div>
+      </InfoCard>
+    )
+  }
 
   const provider = data?.items?.find((p) => p.id === providerId)
   if (!provider) return null
@@ -556,12 +571,26 @@ function Step2Service({ form }: { form: UseFormReturn<QuoteFormValues> }) {
 }
 
 function ServiceInfoCard({ providerId, serviceId }: { providerId: string; serviceId: string }) {
-  const { data: services } = useQuery({
+  const { data: services, isLoading } = useQuery({
     queryKey: ["services-by-provider", providerId],
     queryFn: () => apiGet<ProviderService[]>("/api/services", { providerId }),
     enabled: !!providerId,
     staleTime: 30 * 1000,
   })
+
+  if (isLoading) {
+    return (
+      <InfoCard variant="emerald">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-48" />
+          </div>
+          <Skeleton className="h-5 w-20 rounded-md" />
+        </div>
+      </InfoCard>
+    )
+  }
 
   const selected = services?.find((s) => s.id === serviceId)
   if (!selected) return null
@@ -755,21 +784,21 @@ function Step5Review({
   const item = useWatch({ control: form.control, name: "items.0" })
   const address = useWatch({ control: form.control, name: "address" })
 
-  const { data: providerData } = useQuery({
+  const { data: providerData, isLoading: isLoadingProviders } = useQuery({
     queryKey: ["providers-options", ""],
     queryFn: () => apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 50 }),
     staleTime: 30 * 1000,
   })
 
-  const { data: services } = useQuery({
+  const { data: services, isLoading: isLoadingServices } = useQuery({
     queryKey: ["services-by-provider", item?.providerId],
     queryFn: () => apiGet<ProviderService[]>("/api/services", { providerId: item?.providerId }),
     enabled: !!item?.providerId,
     staleTime: 30 * 1000,
   })
 
-  const providerName = providerData?.items?.find((p) => p.id === item?.providerId)?.name ?? "—"
-  const serviceTitle = services?.find((s) => s.id === item?.serviceId)?.title ?? "—"
+  const providerName = providerData?.items?.find((p) => p.id === item?.providerId)?.name
+  const serviceTitle = services?.find((s) => s.id === item?.serviceId)?.title
 
   return (
     <div className="grid gap-4">
@@ -781,12 +810,20 @@ function Step5Review({
 
       {/* Provider section */}
       <ReviewSection label="Prestador" onEdit={() => goToStep(1)}>
-        <p className="text-sm font-medium">{providerName}</p>
+        {isLoadingProviders && !providerName ? (
+          <Skeleton className="my-0.5 h-4 w-32" />
+        ) : (
+          <p className="text-sm font-medium">{providerName ?? "—"}</p>
+        )}
       </ReviewSection>
 
       {/* Service section */}
       <ReviewSection label="Serviço" onEdit={() => goToStep(2)}>
-        <p className="text-sm font-medium">{serviceTitle}</p>
+        {isLoadingServices && !serviceTitle ? (
+          <Skeleton className="my-0.5 h-4 w-40" />
+        ) : (
+          <p className="text-sm font-medium">{serviceTitle ?? "—"}</p>
+        )}
         <Badge variant="secondary" className="mt-1">
           {item?.quantity ?? 0} {item?.unit ? SERVICE_UNIT_SHORT[item.unit] : "un"}
         </Badge>

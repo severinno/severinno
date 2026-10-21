@@ -518,7 +518,7 @@ export default React.memo(function ProviderCard({
                     }
                   }}
                   className={cn(
-                    "inline-flex min-h-[30px] cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors sm:min-h-0 sm:py-0.5 sm:text-[10px]",
+                    "inline-flex min-h-[28px] cursor-pointer items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium transition-all active:scale-95 sm:min-h-0 sm:py-0.5 sm:text-[10px]",
                     slot.isToday
                       ? "bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300"
                       : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -554,7 +554,7 @@ export default React.memo(function ProviderCard({
                 triggerHaptic("selection")
                 onQuote(provider.id)
               }}
-              className="border-border/60 hover:bg-muted/60 h-11 flex-1 rounded-xl text-xs font-semibold active:scale-98 sm:h-9 sm:text-xs"
+              className="border-border/60 hover:bg-muted/60 h-9 flex-1 rounded-lg text-xs font-semibold transition-transform active:scale-95 sm:h-8"
             >
               Orçamento
             </Button>
@@ -570,7 +570,7 @@ export default React.memo(function ProviderCard({
                 onView?.(provider.id)
               }
             }}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 h-11 flex-1 rounded-xl text-xs font-semibold shadow-2xs active:scale-98 sm:h-9 sm:text-xs"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 h-9 flex-1 rounded-lg text-xs font-semibold shadow-2xs transition-transform active:scale-95 sm:h-8"
           >
             Agendar
             <ChevronRight className="ml-1 size-3.5" />
@@ -586,22 +586,22 @@ export function ProviderCardSkeleton() {
     <Card className="border-border/50 bg-card flex animate-pulse flex-col justify-between rounded-xl border p-4 shadow-xs">
       <div>
         <div className="flex items-center gap-3">
-          <Skeleton className="size-11 animate-pulse rounded-xl" />
+          <Skeleton className="size-11 rounded-xl" />
           <div className="flex-1 space-y-1.5">
-            <Skeleton className="h-4 w-32 animate-pulse" />
-            <Skeleton className="h-3 w-20 animate-pulse" />
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-20" />
           </div>
         </div>
         <div className="border-border/40 mt-3 flex items-center justify-between border-t pt-2.5">
-          <Skeleton className="h-3.5 w-24 animate-pulse" />
-          <Skeleton className="h-3.5 w-20 animate-pulse" />
+          <Skeleton className="h-3.5 w-24" />
+          <Skeleton className="h-3.5 w-20" />
         </div>
-        <Skeleton className="mt-2.5 h-3 w-full animate-pulse" />
-        <Skeleton className="mt-1.5 h-3 w-3/4 animate-pulse" />
+        <Skeleton className="mt-2.5 h-3 w-full" />
+        <Skeleton className="mt-1.5 h-3 w-3/4" />
       </div>
       <div className="border-border/40 mt-4 flex gap-2 border-t pt-3">
-        <Skeleton className="h-8 flex-1 animate-pulse rounded-lg" />
-        <Skeleton className="h-8 flex-1 animate-pulse rounded-lg" />
+        <Skeleton className="h-9 flex-1 rounded-lg sm:h-8" />
+        <Skeleton className="h-9 flex-1 rounded-lg sm:h-8" />
       </div>
     </Card>
   )
