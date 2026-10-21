@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Smartphone, Download, X, Sparkles, Share2, PlusSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { usePWAInstall } from "@/hooks/use-pwa-install"
+import { triggerHaptic } from "@/lib/haptics"
 
 export function PwaInstallBanner({ className }: { className?: string }) {
   const { canInstall, isInstalled, isIOS, isDismissed, hasEngagement, promptInstall, dismiss } =
@@ -19,12 +20,18 @@ export function PwaInstallBanner({ className }: { className?: string }) {
   }
 
   const handleInstallClick = async () => {
+    triggerHaptic("selection")
     if (isIOS) {
       setShowIosInstructions(true)
       return
     }
 
     await promptInstall()
+  }
+
+  const handleDismiss = () => {
+    triggerHaptic("selection")
+    dismiss()
   }
 
   return (
@@ -56,9 +63,9 @@ export function PwaInstallBanner({ className }: { className?: string }) {
               </span>
               <button
                 type="button"
-                onClick={dismiss}
+                onClick={handleDismiss}
                 aria-label="Fechar aviso de instalação"
-                className="text-muted-foreground hover:text-foreground -mr-1 p-1 transition-colors"
+                className="text-muted-foreground hover:text-foreground -mr-1 p-1 transition-all active:scale-95"
               >
                 <X className="size-4" />
               </button>
@@ -92,7 +99,7 @@ export function PwaInstallBanner({ className }: { className?: string }) {
                 <button
                   type="button"
                   onClick={handleInstallClick}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-emerald-500 active:scale-97"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-emerald-500 active:scale-95"
                 >
                   <Download className="size-3.5" />
                   <span>Instalar Agora</span>
@@ -100,8 +107,8 @@ export function PwaInstallBanner({ className }: { className?: string }) {
 
                 <button
                   type="button"
-                  onClick={dismiss}
-                  className="text-muted-foreground hover:text-foreground px-2.5 py-1.5 text-xs font-medium transition-colors"
+                  onClick={handleDismiss}
+                  className="text-muted-foreground hover:text-foreground px-2.5 py-1.5 text-xs font-medium transition-all active:scale-95"
                 >
                   Agora não
                 </button>

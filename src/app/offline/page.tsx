@@ -38,6 +38,7 @@ import {
 import { useGeoStore } from "@/store/geo"
 import { queueMutation } from "@/lib/offline-sync"
 import { useOfflineBookings } from "@/hooks/use-offline-bookings"
+import { triggerHaptic } from "@/lib/haptics"
 import { cn } from "@/lib/utils"
 
 export default function OfflinePage() {
@@ -48,6 +49,19 @@ export default function OfflinePage() {
   >(null)
   const [reloading, setReloading] = React.useState(false)
 
+  // Auto-detect when network connection is restored
+  React.useEffect(() => {
+    const handleOnline = () => {
+      triggerHaptic("success")
+      toast.success("Conexão com a internet restabelecida! Atualizando aplicativo...")
+      setTimeout(() => {
+        window.location.reload()
+      }, 1000)
+    }
+    window.addEventListener("online", handleOnline)
+    return () => window.removeEventListener("online", handleOnline)
+  }, [])
+
   const { city: storedCity, lat, lng } = useGeoStore()
   const city = storedCity || "Governador Valadares"
   const neighborhood = "Ilha dos Araújos / Centro"
@@ -55,6 +69,7 @@ export default function OfflinePage() {
   const selectedOpt = EMERGENCY_OPTIONS.find((o) => o.id === selectedType) ?? EMERGENCY_OPTIONS[0]!
 
   const handleDispatch = (channel: "sms" | "whatsapp" | "call") => {
+    triggerHaptic("warning")
     const textMsg = buildSosDispatchMessage({
       emergencyTitle: selectedOpt.title,
       price: selectedOpt.basePrice,
@@ -96,6 +111,7 @@ export default function OfflinePage() {
   }
 
   const handleReload = () => {
+    triggerHaptic("selection")
     setReloading(true)
     setTimeout(() => {
       window.location.reload()

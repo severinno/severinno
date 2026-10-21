@@ -340,7 +340,7 @@ export default function VitrineResults({
                       setLayoutMode("grid")
                     }}
                     className={cn(
-                      "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all",
+                      "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all active:scale-95",
                       layoutMode === "grid"
                         ? "bg-white font-bold text-slate-900 shadow-xs dark:bg-slate-800 dark:text-white"
                         : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white",
@@ -360,7 +360,7 @@ export default function VitrineResults({
                       setLayoutMode("compact")
                     }}
                     className={cn(
-                      "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all",
+                      "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all active:scale-95",
                       layoutMode === "compact"
                         ? "bg-white font-bold text-slate-900 shadow-xs dark:bg-slate-800 dark:text-white"
                         : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white",
@@ -385,7 +385,7 @@ export default function VitrineResults({
                     setAvailableToday((v) => !v)
                   }}
                   className={cn(
-                    "flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-all",
+                    "flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-all active:scale-95",
                     availableToday
                       ? "border-amber-500/60 bg-amber-500/10 font-bold text-amber-800 shadow-2xs dark:text-amber-300"
                       : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400",
@@ -409,7 +409,7 @@ export default function VitrineResults({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="lg:hidden"
+                    className="h-9 transition-all active:scale-95 sm:h-8 lg:hidden"
                     aria-label="Abrir filtros"
                   >
                     <SlidersHorizontal className="size-4" />
@@ -432,7 +432,13 @@ export default function VitrineResults({
                     />
                   </div>
                   <div className="border-t p-3">
-                    <Button className="w-full" onClick={() => setMobileFiltersOpen(false)}>
+                    <Button
+                      className="h-10 w-full transition-all active:scale-95 sm:h-9"
+                      onClick={() => {
+                        triggerHaptic("selection")
+                        setMobileFiltersOpen(false)
+                      }}
+                    >
                       Ver {total} resultados
                     </Button>
                   </div>
@@ -466,14 +472,15 @@ export default function VitrineResults({
               </ul>
               <button
                 type="button"
-                onClick={() =>
+                onClick={() => {
+                  triggerHaptic("selection")
                   onFiltersChange({
                     ...DEFAULT_FILTERS,
                     categoryId: filters.categoryId,
                     sort: filters.sort,
                   })
-                }
-                className="text-xs font-medium text-emerald-700 underline-offset-2 transition-colors hover:underline dark:text-emerald-400"
+                }}
+                className="text-xs font-medium text-emerald-700 underline-offset-2 transition-all hover:underline active:scale-95 dark:text-emerald-400"
               >
                 Limpar filtros
               </button>
@@ -678,10 +685,14 @@ export default function VitrineResults({
               variant="outline"
               size="sm"
               disabled={!hasPrevPage || isFetching}
-              onClick={() => onPrevPage?.()}
+              onClick={() => {
+                triggerHaptic("selection")
+                onPrevPage?.()
+              }}
               onPointerEnter={onPrefetchPrev}
               onFocus={onPrefetchPrev}
               onTouchStart={onPrefetchPrev}
+              className="h-9 transition-all active:scale-95 sm:h-8"
             >
               ← Anterior
             </Button>
@@ -700,10 +711,14 @@ export default function VitrineResults({
               variant="outline"
               size="sm"
               disabled={!hasNextPage || isFetching}
-              onClick={() => onNextPage?.()}
+              onClick={() => {
+                triggerHaptic("selection")
+                onNextPage?.()
+              }}
               onPointerEnter={onPrefetchNext}
               onFocus={onPrefetchNext}
               onTouchStart={onPrefetchNext}
+              className="h-9 transition-all active:scale-95 sm:h-8"
             >
               Próxima →
             </Button>
@@ -874,7 +889,7 @@ function EmptyState({
           <Button
             variant="outline"
             size="sm"
-            className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10 hover:text-primary rounded-xl font-medium"
+            className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10 hover:text-primary rounded-xl font-medium transition-all active:scale-95"
             onClick={() => {
               playPopSound()
               triggerHaptic("selection")
@@ -895,7 +910,7 @@ function EmptyState({
               triggerHaptic("selection")
               onExpandRadius()
             }}
-            className="flex items-center gap-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white shadow-2xs hover:bg-emerald-700"
+            className="flex items-center gap-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white shadow-2xs transition-all hover:bg-emerald-700 active:scale-95"
           >
             <MapPin className="size-3.5" />
             <span>Expandir busca para toda GV (+15 km)</span>
@@ -943,7 +958,7 @@ function EmptyState({
             type="submit"
             size="sm"
             disabled={!quickQuoteText.trim()}
-            className="h-8.5 gap-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-700"
+            className="h-9 gap-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white transition-all hover:bg-emerald-700 active:scale-95 sm:h-8"
           >
             <MessageCircle className="size-3.5" />
             <span>Enviar Pedido de Orçamento</span>
@@ -964,7 +979,7 @@ function EmptyState({
                 triggerHaptic("selection")
                 onSuggestionSelect?.(term)
               }}
-              className="border-border/60 bg-muted/50 hover:border-primary/40 hover:bg-primary/10 hover:text-primary cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition-colors"
+              className="border-border/60 bg-muted/50 hover:border-primary/40 hover:bg-primary/10 hover:text-primary cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition-all active:scale-95"
             >
               {term}
             </button>
@@ -985,7 +1000,15 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
       <p className="text-muted-foreground mt-1 max-w-sm text-sm">
         Não foi possível carregar os prestadores. Verifique sua conexão e tente novamente.
       </p>
-      <Button variant="outline" size="sm" className="mt-4" onClick={onRetry}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="mt-4 transition-all active:scale-95"
+        onClick={() => {
+          triggerHaptic("selection")
+          onRetry()
+        }}
+      >
         Tentar novamente
       </Button>
     </div>

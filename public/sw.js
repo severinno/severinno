@@ -5,6 +5,8 @@ const ASSETS = [
   "/manifest.json",
   "/sw.js",
   "/logo.svg",
+  "/logo.png",
+  "/favicon.svg",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
 ]
@@ -72,8 +74,17 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  // ---- API calls: network-first with stale fallback -------------------
-  if (url.pathname.startsWith("/api/") && url.pathname !== "/api/notifications") {
+  // ---- API calls: network-first with stale fallback (public endpoints only) --
+  const isExcludedApi =
+    url.pathname.startsWith("/api/auth/") ||
+    url.pathname.startsWith("/api/admin/") ||
+    url.pathname.startsWith("/api/provider/reports") ||
+    url.pathname.startsWith("/api/webhooks/") ||
+    url.pathname.startsWith("/api/payments/") ||
+    url.pathname.startsWith("/api/cron/") ||
+    url.pathname === "/api/notifications"
+
+  if (url.pathname.startsWith("/api/") && !isExcludedApi) {
     event.respondWith(apiStrategy(event.request))
     return
   }
@@ -101,7 +112,7 @@ self.addEventListener("fetch", (event) => {
     url.pathname.startsWith("/uploads/") ||
     /\.(png|jpg|jpeg|webp|avif|gif|svg)$/i.test(url.pathname)
   ) {
-    event.respondWith(imageStrategy(event.request))
+    event.respondWith(imageStrategy(event.request, event))
     return
   }
 
@@ -252,7 +263,7 @@ const OFFLINE_IMAGE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="400" h
  * Image strategy: Stale-While-Revalidate with offline fallback SVG.
  * Returns cached image instantly (0ms) and updates cache in background.
  */
-async function imageStrategy(request) {
+async function imageStrategy(request, event) {
   const cache = await caches.open(IMAGE_CACHE)
   const cached = await cache.match(request)
 
@@ -272,9 +283,12 @@ async function imageStrategy(request) {
       return null
     })
 
-  // Stale-While-Revalidate: Return cached response immediately if available
+  // Stale-While-Revalidate: Return cached response immediately if available,
+  // keeping the SW event alive to guarantee background revalidation completes.
   if (cached) {
-    // Revalidate in background
+    if (event && event.waitUntil) {
+      event.waitUntil(fetchPromise)
+    }
     return cached
   }
 
@@ -389,8 +403,8 @@ self.addEventListener("push", (event) => {
         // Fallback for plain text push messages
         await self.registration.showNotification("Severinno", {
           body: event.data.text(),
-          icon: "/icon-192.png",
-          badge: "/icon-192.png",
+          icon: "/icons/icon-192.png",
+          badge: "/icons/icon-192.png",
         })
       }
     })(),
@@ -454,8 +468,8 @@ function showNotificationFromPayload(data) {
 
   const options = {
     body: data.body || "",
-    icon: data.icon || "/icon-192.png",
-    badge: data.badge || "/icon-192.png",
+    icon: data.icon || "/icons/icon-192.png",
+    badge: data.badge || "/icons/icon-192.png",
     vibrate: isNewJob
       ? [250, 100, 250, 100, 500]
       : isArrival
