@@ -574,8 +574,11 @@ export function ClientFinance() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={clearFilters}
-            className="text-muted-foreground hover:text-foreground h-9 gap-1.5 self-end"
+            onClick={() => {
+              triggerHaptic("selection")
+              clearFilters()
+            }}
+            className="text-muted-foreground hover:text-foreground h-9 gap-1.5 self-end transition-all active:scale-95"
           >
             <RotateCcw className="size-3.5" />
             Limpar
@@ -691,8 +694,11 @@ export function ClientFinance() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => setSelectedReceiptBookingId(b.id)}
-                                  className="h-8 gap-1 border-emerald-200 px-2.5 text-xs text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:border-emerald-800/40 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                                  onClick={() => {
+                                    triggerHaptic("selection")
+                                    setSelectedReceiptBookingId(b.id)
+                                  }}
+                                  className="h-8 gap-1 rounded-xl border-emerald-200 px-2.5 text-xs text-emerald-600 transition-all hover:bg-emerald-50 hover:text-emerald-700 active:scale-95 dark:border-emerald-800/40 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
                                 >
                                   <FileText className="size-3.5" />
                                   <span>Recibo</span>
@@ -702,13 +708,14 @@ export function ClientFinance() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() =>
+                                  onClick={() => {
+                                    triggerHaptic("selection")
                                     openBooking({
                                       providerId: b.provider.id,
                                       serviceId: b.service.id,
                                     })
-                                  }
-                                  className="h-8 gap-1 border-amber-200 px-2.5 text-xs text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:border-amber-800/40 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                                  }}
+                                  className="h-8 gap-1 rounded-xl border-amber-200 px-2.5 text-xs text-amber-600 transition-all hover:bg-amber-50 hover:text-amber-700 active:scale-95 dark:border-amber-800/40 dark:text-amber-400 dark:hover:bg-amber-950/30"
                                 >
                                   <Calendar className="size-3.5" />
                                   <span>Agendamento</span>
@@ -717,14 +724,16 @@ export function ClientFinance() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() =>
+                                onClick={() => {
+                                  triggerHaptic("selection")
                                   navigate("client.messages", {
                                     providerId: b.provider.id,
                                     bookingId: b.id,
                                   })
-                                }
-                                className="text-muted-foreground hover:text-foreground h-8 gap-1 px-2 text-xs"
+                                }}
+                                className="text-muted-foreground hover:text-foreground h-8 gap-1 rounded-xl px-2 text-xs transition-all active:scale-95"
                                 title="Enviar mensagem na plataforma"
+                                aria-label="Enviar mensagem na plataforma"
                               >
                                 <MessageSquare className="size-3.5" />
                                 <span className="sr-only">Mensagem</span>
@@ -820,7 +829,10 @@ function FinanceMobileCard({
             <div className="min-w-0">
               <button
                 type="button"
-                onClick={() => onOpenProvider(booking.provider.id)}
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onOpenProvider(booking.provider.id)
+                }}
                 className="hover:text-primary text-foreground line-clamp-1 text-left text-sm font-semibold transition-colors hover:underline"
               >
                 {booking.provider.name}
@@ -854,8 +866,11 @@ function FinanceMobileCard({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onOpenReceipt(booking.id)}
-              className="h-8 gap-1.5 border-emerald-200 px-3 text-xs text-emerald-600 hover:bg-emerald-50 dark:border-emerald-800/40 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              onClick={() => {
+                triggerHaptic("selection")
+                onOpenReceipt(booking.id)
+              }}
+              className="h-8 gap-1.5 rounded-xl border-emerald-200 px-3 text-xs text-emerald-600 transition-all hover:bg-emerald-50 active:scale-95 dark:border-emerald-800/40 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
             >
               <FileText className="size-3.5" />
               <span>Recibo</span>
@@ -865,13 +880,14 @@ function FinanceMobileCard({
             <Button
               variant="outline"
               size="sm"
-              onClick={() =>
+              onClick={() => {
+                triggerHaptic("selection")
                 onOpenBooking({
                   providerId: booking.provider.id,
                   serviceId: booking.service.id,
                 })
-              }
-              className="h-8 gap-1.5 border-amber-200 px-3 text-xs text-amber-600 hover:bg-amber-50 dark:border-amber-800/40 dark:text-amber-400 dark:hover:bg-amber-950/30"
+              }}
+              className="h-8 gap-1.5 rounded-xl border-amber-200 px-3 text-xs text-amber-600 transition-all hover:bg-amber-50 active:scale-95 dark:border-amber-800/40 dark:text-amber-400 dark:hover:bg-amber-950/30"
             >
               <Calendar className="size-3.5" />
               <span>Agendamento</span>
@@ -880,13 +896,14 @@ function FinanceMobileCard({
           <Button
             variant="outline"
             size="sm"
-            onClick={() =>
+            onClick={() => {
+              triggerHaptic("selection")
               onMessage({
                 providerId: booking.provider.id,
                 bookingId: booking.id,
               })
-            }
-            className="text-muted-foreground hover:text-foreground h-8 gap-1.5 px-3 text-xs"
+            }}
+            className="text-muted-foreground hover:text-foreground h-8 gap-1.5 rounded-xl px-3 text-xs transition-all active:scale-95"
             title="Enviar mensagem na plataforma"
             aria-label="Enviar mensagem na plataforma"
           >
@@ -933,7 +950,10 @@ function FinanceGridCard({
             <div className="min-w-0">
               <button
                 type="button"
-                onClick={() => onOpenProvider(booking.provider.id)}
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onOpenProvider(booking.provider.id)
+                }}
                 className="hover:text-primary text-foreground truncate text-left text-sm font-semibold transition-colors hover:underline"
               >
                 {booking.provider.name}
@@ -967,8 +987,11 @@ function FinanceGridCard({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onOpenReceipt(booking.id)}
-              className="h-8 gap-1 border-emerald-200 px-2.5 text-xs text-emerald-600 hover:bg-emerald-50 dark:border-emerald-800/40 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              onClick={() => {
+                triggerHaptic("selection")
+                onOpenReceipt(booking.id)
+              }}
+              className="h-8 gap-1 rounded-xl border-emerald-200 px-2.5 text-xs text-emerald-600 transition-all hover:bg-emerald-50 active:scale-95 dark:border-emerald-800/40 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
             >
               <FileText className="size-3.5" />
               <span>Recibo</span>
@@ -978,13 +1001,14 @@ function FinanceGridCard({
             <Button
               variant="outline"
               size="sm"
-              onClick={() =>
+              onClick={() => {
+                triggerHaptic("selection")
                 onOpenBooking({
                   providerId: booking.provider.id,
                   serviceId: booking.service.id,
                 })
-              }
-              className="h-8 gap-1 border-amber-200 px-2.5 text-xs text-amber-600 hover:bg-amber-50 dark:border-amber-800/40 dark:text-amber-400 dark:hover:bg-amber-950/30"
+              }}
+              className="h-8 gap-1 rounded-xl border-amber-200 px-2.5 text-xs text-amber-600 transition-all hover:bg-amber-50 active:scale-95 dark:border-amber-800/40 dark:text-amber-400 dark:hover:bg-amber-950/30"
             >
               <Calendar className="size-3.5" />
               <span>Agendamento</span>
@@ -993,13 +1017,14 @@ function FinanceGridCard({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() =>
+            onClick={() => {
+              triggerHaptic("selection")
               onMessage({
                 providerId: booking.provider.id,
                 bookingId: booking.id,
               })
-            }
-            className="text-muted-foreground hover:text-foreground h-8 gap-1 px-2 text-xs"
+            }}
+            className="text-muted-foreground hover:text-foreground h-8 gap-1 rounded-xl px-2 text-xs transition-all active:scale-95"
             title="Enviar mensagem na plataforma"
             aria-label="Enviar mensagem na plataforma"
           >

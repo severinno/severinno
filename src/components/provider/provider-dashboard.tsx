@@ -320,32 +320,44 @@ export function ProviderDashboard() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => navigate("provider.quotes")}
-            className="h-8 gap-1.5 rounded-xl text-xs font-medium"
+            onClick={() => {
+              triggerHaptic("selection")
+              navigate("provider.quotes")
+            }}
+            className="h-8 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95"
           >
             <Send className="size-3.5 text-blue-500" /> Responder orçamentos
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => navigate("provider.agenda")}
-            className="h-8 gap-1.5 rounded-xl text-xs font-medium"
+            onClick={() => {
+              triggerHaptic("selection")
+              navigate("provider.agenda")
+            }}
+            className="h-8 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95"
           >
             <CalendarDays className="text-primary size-3.5" /> Ver agenda
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => navigate("provider.routes")}
-            className="h-8 gap-1.5 rounded-xl text-xs font-medium"
+            onClick={() => {
+              triggerHaptic("selection")
+              navigate("provider.routes")
+            }}
+            className="h-8 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95"
           >
             <Compass className="size-3.5 text-sky-500" /> Rotas do dia
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => navigate("provider.rewards")}
-            className="h-8 gap-1.5 rounded-xl border-amber-300/70 bg-amber-50/40 text-xs font-semibold text-amber-800 hover:bg-amber-100/50 dark:border-amber-800/70 dark:bg-amber-950/30 dark:text-amber-300"
+            onClick={() => {
+              triggerHaptic("selection")
+              navigate("provider.rewards")
+            }}
+            className="h-8 gap-1.5 rounded-xl border-amber-300/70 bg-amber-50/40 text-xs font-semibold text-amber-800 transition-all hover:bg-amber-100/50 active:scale-95 dark:border-amber-800/70 dark:bg-amber-950/30 dark:text-amber-300"
           >
             <Award className="size-3.5 text-amber-600 dark:text-amber-400" /> Clube &amp; Pontos
           </Button>
@@ -356,7 +368,7 @@ export function ProviderDashboard() {
               triggerHaptic("selection")
               setReputationCardOpen(true)
             }}
-            className="h-8 gap-1.5 rounded-xl border-emerald-300/70 bg-emerald-50/40 text-xs font-semibold text-emerald-800 hover:bg-emerald-100/50 dark:border-emerald-800/70 dark:bg-emerald-950/30 dark:text-emerald-300"
+            className="h-8 gap-1.5 rounded-xl border-emerald-300/70 bg-emerald-50/40 text-xs font-semibold text-emerald-800 transition-all hover:bg-emerald-100/50 active:scale-95 dark:border-emerald-800/70 dark:bg-emerald-950/30 dark:text-emerald-300"
             title="Compartilhar prova social e reputação no WhatsApp"
           >
             <Share2 className="size-3.5 text-emerald-600 dark:text-emerald-400" /> Cartão de
@@ -369,7 +381,7 @@ export function ProviderDashboard() {
               triggerHaptic("selection")
               setPriceEstimatorOpen(true)
             }}
-            className="h-8 gap-1.5 rounded-xl border-blue-300/70 bg-blue-50/40 text-xs font-semibold text-blue-800 hover:bg-blue-100/50 dark:border-blue-800/70 dark:bg-blue-950/30 dark:text-blue-300"
+            className="h-8 gap-1.5 rounded-xl border-blue-300/70 bg-blue-50/40 text-xs font-semibold text-blue-800 transition-all hover:bg-blue-100/50 active:scale-95 dark:border-blue-800/70 dark:bg-blue-950/30 dark:text-blue-300"
             title="Calculadora rápida de mão de obra e deslocamento em GV"
           >
             <Calculator className="size-3.5 text-blue-600 dark:text-blue-400" /> Calculadora de
@@ -377,8 +389,11 @@ export function ProviderDashboard() {
           </Button>
           <Button
             size="sm"
-            onClick={() => navigate("provider.services")}
-            className="h-8 gap-1.5 rounded-xl text-xs font-semibold shadow-xs"
+            onClick={() => {
+              triggerHaptic("selection")
+              navigate("provider.services")
+            }}
+            className="h-8 gap-1.5 rounded-xl text-xs font-semibold shadow-xs transition-all active:scale-95"
           >
             <Plus className="size-3.5" /> Novo serviço
           </Button>
@@ -417,8 +432,11 @@ export function ProviderDashboard() {
           <Button
             variant="outline"
             size="sm"
-            className="w-full gap-1.5 rounded-xl border-emerald-300/80 bg-white/90 text-xs font-semibold text-emerald-800 shadow-xs hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-200 dark:hover:bg-emerald-950/60"
-            onClick={() => navigate("provider.finance")}
+            className="w-full gap-1.5 rounded-xl border-emerald-300/80 bg-white/90 text-xs font-semibold text-emerald-800 shadow-xs transition-all hover:bg-emerald-50 active:scale-95 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-200 dark:hover:bg-emerald-950/60"
+            onClick={() => {
+              triggerHaptic("selection")
+              navigate("provider.finance")
+            }}
           >
             <Wallet className="size-3.5" /> Ver financeiro
           </Button>

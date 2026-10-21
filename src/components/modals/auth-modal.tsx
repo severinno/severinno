@@ -46,6 +46,7 @@ import { useUIStore, type AuthModalMode, type AuthModalRole } from "@/store/ui"
 import { useAuthStore, type AuthUser } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 import { cn } from "@/lib/utils"
+import { triggerHaptic } from "@/lib/haptics"
 
 /**
  * Resolve the dashboard view for the authenticated user's role.
@@ -233,7 +234,10 @@ export function AuthModal() {
             ) : (
               <Tabs
                 value={localMode}
-                onValueChange={(v) => openAuth(v as AuthModalMode, localRole)}
+                onValueChange={(v) => {
+                  triggerHaptic("selection")
+                  openAuth(v as AuthModalMode, localRole)
+                }}
                 className="w-full"
               >
                 {/* Segmented toggle */}
@@ -241,13 +245,13 @@ export function AuthModal() {
                   <TabsList className="grid h-auto w-full grid-cols-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
                     <TabsTrigger
                       value="login"
-                      className="text-muted-foreground rounded-lg py-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:text-slate-900 data-[state=active]:shadow-xs dark:data-[state=active]:bg-slate-900 dark:data-[state=active]:text-slate-100"
+                      className="text-muted-foreground rounded-lg py-2 text-xs font-medium transition-all active:scale-95 data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:text-slate-900 data-[state=active]:shadow-xs dark:data-[state=active]:bg-slate-900 dark:data-[state=active]:text-slate-100"
                     >
                       Entrar
                     </TabsTrigger>
                     <TabsTrigger
                       value="register"
-                      className="text-muted-foreground rounded-lg py-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:text-slate-900 data-[state=active]:shadow-xs dark:data-[state=active]:bg-slate-900 dark:data-[state=active]:text-slate-100"
+                      className="text-muted-foreground rounded-lg py-2 text-xs font-medium transition-all active:scale-95 data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:text-slate-900 data-[state=active]:shadow-xs dark:data-[state=active]:bg-slate-900 dark:data-[state=active]:text-slate-100"
                     >
                       Cadastrar
                     </TabsTrigger>
@@ -371,7 +375,7 @@ function ForgotPasswordForm({ onBackToLogin }: { onBackToLogin: () => void }) {
           <Button
             type="submit"
             disabled={loading}
-            className="h-11 w-full bg-emerald-600 font-medium text-white hover:bg-emerald-700"
+            className="h-11 w-full rounded-xl bg-emerald-600 font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-[0.98]"
           >
             {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
             Enviar instruções de recuperação
@@ -469,7 +473,10 @@ function LoginForm({
                 <FormLabel className="text-sm font-medium">Senha</FormLabel>
                 <button
                   type="button"
-                  onClick={onForgotPassword}
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    onForgotPassword()
+                  }}
                   className="text-xs text-emerald-700 hover:underline dark:text-emerald-400"
                 >
                   Esqueci a senha
@@ -488,7 +495,10 @@ function LoginForm({
                   <button
                     type="button"
                     tabIndex={-1}
-                    onClick={() => setShowPassword((v) => !v)}
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      setShowPassword((v) => !v)
+                    }}
                     className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2 transition-colors"
                     aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                   >
@@ -532,11 +542,12 @@ function LoginForm({
               variant="outline"
               size="sm"
               onClick={() => {
+                triggerHaptic("selection")
                 form.setValue("email", "cliente@severinno.com", { shouldValidate: true })
                 form.setValue("password", "cliente123", { shouldValidate: true })
                 toast.success("Credenciais de Cliente Demo preenchidas!")
               }}
-              className="h-7 border-emerald-300/80 bg-white text-[11px] font-medium hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:hover:bg-emerald-950/60"
+              className="h-7 rounded-lg border-emerald-300/80 bg-white text-[11px] font-medium transition-all hover:bg-emerald-50 active:scale-95 dark:border-emerald-800 dark:bg-slate-900 dark:hover:bg-emerald-950/60"
             >
               👤 Cliente
             </Button>
@@ -545,13 +556,14 @@ function LoginForm({
               variant="outline"
               size="sm"
               onClick={() => {
+                triggerHaptic("selection")
                 form.setValue("email", "mariana.limpeza.gv@severinno.com.br", {
                   shouldValidate: true,
                 })
                 form.setValue("password", "provider123", { shouldValidate: true })
                 toast.success("Credenciais de Prestador Demo (GV) preenchidas!")
               }}
-              className="h-7 border-emerald-300/80 bg-white text-[11px] font-medium hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:hover:bg-emerald-950/60"
+              className="h-7 rounded-lg border-emerald-300/80 bg-white text-[11px] font-medium transition-all hover:bg-emerald-50 active:scale-95 dark:border-emerald-800 dark:bg-slate-900 dark:hover:bg-emerald-950/60"
             >
               🛠️ Prestador
             </Button>
@@ -560,11 +572,12 @@ function LoginForm({
               variant="outline"
               size="sm"
               onClick={() => {
+                triggerHaptic("selection")
                 form.setValue("email", "admin@severinno.com", { shouldValidate: true })
                 form.setValue("password", "admin123", { shouldValidate: true })
                 toast.success("Credenciais de Admin Demo preenchidas!")
               }}
-              className="h-7 border-emerald-300/80 bg-white text-[11px] font-medium hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-900 dark:hover:bg-emerald-950/60"
+              className="h-7 rounded-lg border-emerald-300/80 bg-white text-[11px] font-medium transition-all hover:bg-emerald-50 active:scale-95 dark:border-emerald-800 dark:bg-slate-900 dark:hover:bg-emerald-950/60"
             >
               🛡️ Admin
             </Button>
@@ -587,7 +600,7 @@ function LoginForm({
         <Button
           type="submit"
           disabled={loading}
-          className="mt-1 h-11 w-full bg-emerald-600 hover:bg-emerald-700"
+          className="mt-1 h-11 w-full rounded-xl bg-emerald-600 font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-[0.98]"
         >
           {loading && <Loader2 className="size-4 animate-spin" />}
           Entrar
@@ -597,7 +610,10 @@ function LoginForm({
           Não tem conta?{" "}
           <button
             type="button"
-            onClick={onSwitchRegister}
+            onClick={() => {
+              triggerHaptic("selection")
+              onSwitchRegister()
+            }}
             className="font-medium text-emerald-700 hover:underline dark:text-emerald-400"
           >
             Cadastre-se grátis
@@ -708,12 +724,13 @@ function RegisterForm({
                         key={opt.value}
                         type="button"
                         onClick={() => {
+                          triggerHaptic("selection")
                           onRoleChange(opt.value)
                           field.onChange(opt.value)
                         }}
                         aria-pressed={active}
                         className={cn(
-                          "relative flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-all",
+                          "relative flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-all active:scale-[0.98]",
                           active
                             ? "border-emerald-600 bg-emerald-50/70 text-emerald-950 shadow-xs ring-1 ring-emerald-600 dark:border-emerald-500 dark:bg-emerald-950/30 dark:text-emerald-100 dark:ring-emerald-500"
                             : "border-input hover:bg-accent/40 border-dashed hover:border-emerald-600/40",
@@ -969,7 +986,7 @@ function RegisterForm({
         <Button
           type="submit"
           disabled={loading}
-          className="mt-1 h-11 w-full bg-emerald-600 hover:bg-emerald-700"
+          className="mt-1 h-11 w-full rounded-xl bg-emerald-600 font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-[0.98]"
         >
           {loading && <Loader2 className="size-4 animate-spin" />}
           Criar conta
@@ -979,7 +996,10 @@ function RegisterForm({
           Já tem conta?{" "}
           <button
             type="button"
-            onClick={onSwitchLogin}
+            onClick={() => {
+              triggerHaptic("selection")
+              onSwitchLogin()
+            }}
             className="font-medium text-emerald-700 hover:underline dark:text-emerald-400"
           >
             Entrar

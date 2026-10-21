@@ -1336,7 +1336,7 @@ function BookingCard({
                   triggerHaptic("selection")
                   onOpenReport()
                 }}
-                className="border-border/60 hover:bg-muted/60 h-8.5 gap-1.5 rounded-xl px-2.5 text-xs font-medium transition-all active:scale-95 sm:h-8"
+                className="border-border/60 hover:bg-muted/60 h-9 gap-1.5 rounded-xl px-2.5 text-xs font-medium transition-all active:scale-95 sm:h-8"
               >
                 <ClipboardCheck className="size-3" />
                 Laudo / Fotos
@@ -1352,7 +1352,7 @@ function BookingCard({
                 triggerHaptic("selection")
                 onViewReceipt()
               }}
-              className="border-border/60 hover:bg-muted/60 h-8.5 gap-1.5 rounded-xl px-2.5 text-xs font-medium text-blue-700 transition-all active:scale-95 sm:h-8 dark:text-blue-400"
+              className="border-border/60 hover:bg-muted/60 h-9 gap-1.5 rounded-xl px-2.5 text-xs font-medium text-blue-700 transition-all active:scale-95 sm:h-8 dark:text-blue-400"
             >
               <FileText className="size-3" />
               Recibo
@@ -1368,7 +1368,7 @@ function BookingCard({
                 triggerHaptic("selection")
                 onCarePlan()
               }}
-              className="h-8.5 gap-1.5 rounded-xl border-emerald-300 px-2.5 text-xs font-medium text-emerald-700 transition-all hover:bg-emerald-50 active:scale-95 sm:h-8 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              className="h-9 gap-1.5 rounded-xl border-emerald-300 px-2.5 text-xs font-medium text-emerald-700 transition-all hover:bg-emerald-50 active:scale-95 sm:h-8 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
             >
               <Sparkles className="size-3" />
               Plano Recorrente
@@ -1383,7 +1383,7 @@ function BookingCard({
               triggerHaptic("selection")
               onMessage()
             }}
-            className="text-muted-foreground hover:text-foreground hover:bg-muted/60 size-8.5 shrink-0 rounded-xl p-0 transition-colors sm:size-8"
+            className="text-muted-foreground hover:text-foreground hover:bg-muted/60 size-9 shrink-0 rounded-xl p-0 transition-colors active:scale-95 sm:size-8"
             title="Enviar mensagem na plataforma"
             aria-label="Enviar mensagem na plataforma"
           >
@@ -1400,7 +1400,7 @@ function BookingCard({
                   triggerHaptic("selection")
                   onMediate()
                 }}
-                className="h-8.5 gap-1 rounded-xl border-amber-500/30 px-2 text-xs font-medium text-amber-700 transition-all hover:bg-amber-50 active:scale-95 sm:h-8 dark:border-amber-700/40 dark:text-amber-400 dark:hover:bg-amber-950/20"
+                className="h-9 gap-1 rounded-xl border-amber-500/30 px-2 text-xs font-medium text-amber-700 transition-all hover:bg-amber-50 active:scale-95 sm:h-8 dark:border-amber-700/40 dark:text-amber-400 dark:hover:bg-amber-950/20"
                 title="Ajuste de horário ou reagendamento amigável"
               >
                 <HelpCircle className="size-3 text-amber-500" />
@@ -1417,7 +1417,7 @@ function BookingCard({
                 triggerHaptic("selection")
                 onDispute()
               }}
-              className="h-8.5 gap-1 rounded-xl border-red-500/30 px-2 text-xs font-medium text-red-700 transition-all hover:bg-red-50 active:scale-95 sm:h-8 dark:border-red-700/40 dark:text-red-400 dark:hover:bg-red-950/20"
+              className="h-9 gap-1 rounded-xl border-red-500/30 px-2 text-xs font-medium text-red-700 transition-all hover:bg-red-50 active:scale-95 sm:h-8 dark:border-red-700/40 dark:text-red-400 dark:hover:bg-red-950/20"
               title="Contestar serviço e congelar custódia com evidências"
             >
               <ShieldAlert className="size-3 text-red-500" />
@@ -1434,7 +1434,7 @@ function BookingCard({
                 triggerHaptic("selection")
                 onCancel()
               }}
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive ml-auto h-8.5 gap-1.5 rounded-xl px-2 text-xs font-medium transition-all active:scale-95 sm:h-8"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive ml-auto h-9 gap-1.5 rounded-xl px-2 text-xs font-medium transition-all active:scale-95 sm:h-8"
             >
               <XCircle className="size-3" />
               Cancelar

@@ -582,7 +582,7 @@ export function ClientProfile() {
                   triggerHaptic("selection")
                   navigate("client.security")
                 }}
-                className="h-7.5 gap-1.5 text-xs font-medium"
+                className="h-8 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95"
               >
                 <ShieldCheck className="size-3.5" />
                 Gerenciar Segurança
@@ -789,11 +789,12 @@ export function ClientProfile() {
               <button
                 type="button"
                 onClick={() => {
+                  triggerHaptic("selection")
                   playCoinSound()
                   setTimeout(playCompletionSound, 300)
                   setTimeout(playReviewSound, 750)
                 }}
-                className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex size-7 items-center justify-center rounded-full border transition"
+                className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex size-7 items-center justify-center rounded-full border transition-all active:scale-95"
                 title="Ouvir demonstração dos efeitos sonoros"
                 aria-label="Ouvir demonstração dos efeitos sonoros"
               >
@@ -834,7 +835,7 @@ export function ClientProfile() {
                 onClick={() => {
                   tryVibrate([30, 50, 30, 50, 30])
                 }}
-                className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex size-7 items-center justify-center rounded-full border transition"
+                className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex size-7 items-center justify-center rounded-full border transition-all active:scale-95"
                 title="Testar resposta tátil do aparelho"
                 aria-label="Testar resposta tátil do aparelho"
               >
@@ -887,7 +888,7 @@ export function ClientProfile() {
                 triggerHaptic("selection")
                 navigate("client.dashboard")
               }}
-              className="h-8 gap-1.5 text-xs font-medium"
+              className="h-8 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95"
             >
               <LayoutDashboard className="size-3.5" />
               Visão geral
@@ -899,7 +900,7 @@ export function ClientProfile() {
                 triggerHaptic("selection")
                 navigate("client.security")
               }}
-              className="h-8 gap-1.5 text-xs font-medium"
+              className="h-8 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95"
             >
               <ShieldCheck className="size-3.5" />
               Segurança & Senha
@@ -984,7 +985,7 @@ export function ClientProfile() {
               triggerHaptic("selection")
               setViewMode("list")
             }}
-            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all ${
+            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all active:scale-95 ${
               viewMode === "list"
                 ? "bg-card text-foreground shadow-2xs"
                 : "text-muted-foreground hover:text-foreground"
@@ -1001,7 +1002,7 @@ export function ClientProfile() {
               triggerHaptic("selection")
               setViewMode("grid")
             }}
-            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all ${
+            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all active:scale-95 ${
               viewMode === "grid"
                 ? "bg-card text-foreground shadow-2xs"
                 : "text-muted-foreground hover:text-foreground"
@@ -1042,7 +1043,7 @@ export function ClientProfile() {
               triggerHaptic("selection")
               setFilterText("")
             }}
-            className="mt-4 h-8 gap-1.5 text-xs"
+            className="mt-4 h-8 gap-1.5 rounded-xl text-xs transition-all active:scale-95"
           >
             Limpar filtro
           </Button>
@@ -1116,9 +1117,12 @@ export function ClientProfile() {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={handleDiscard}
+                onClick={() => {
+                  triggerHaptic("selection")
+                  handleDiscard()
+                }}
                 disabled={saveMutation.isPending || !isDirty}
-                className="h-8 gap-1.5 text-xs font-medium"
+                className="h-8 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95"
               >
                 <RotateCcw className="size-3.5" />
                 Descartar
@@ -1127,8 +1131,9 @@ export function ClientProfile() {
               <Button
                 type="submit"
                 size="sm"
+                onClick={() => triggerHaptic("selection")}
                 disabled={saveMutation.isPending || !name.trim()}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 h-8 gap-1.5 text-xs font-semibold shadow-sm"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 h-8 gap-1.5 rounded-xl text-xs font-semibold shadow-xs transition-all active:scale-95"
               >
                 {saveMutation.isPending ? (
                   <Loader2 className="size-3.5 animate-spin" />

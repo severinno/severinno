@@ -493,6 +493,7 @@ export function DashboardShell({
   }, [onRealtime, qc, navigate, user?.id, user?.role, playCoin])
 
   const handleNav = (view: string) => {
+    triggerHaptic("selection")
     setMobileOpen(false)
     onNavigate(view)
   }
@@ -626,8 +627,11 @@ export function DashboardShell({
         <Button
           variant="ghost"
           size="icon"
-          className="text-muted-foreground size-8 shrink-0 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/30"
-          onClick={() => logout()}
+          className="text-muted-foreground size-8 shrink-0 transition-all hover:bg-rose-50 hover:text-rose-500 active:scale-95 dark:hover:bg-rose-950/30"
+          onClick={() => {
+            triggerHaptic("selection")
+            logout()
+          }}
           aria-label="Sair"
           title="Sair"
         >
@@ -784,8 +788,11 @@ export function DashboardShell({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-muted-foreground hover:text-foreground size-9 lg:hidden"
-                  onClick={() => setMobileOpen(true)}
+                  className="text-muted-foreground hover:text-foreground size-9 transition-all active:scale-95 lg:hidden"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    setMobileOpen(true)
+                  }}
                   aria-label="Abrir menu"
                 >
                   <Menu className="size-5" />
@@ -848,8 +855,11 @@ export function DashboardShell({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-muted-foreground hover:text-foreground size-9"
-                  onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+                  className="text-muted-foreground hover:text-foreground size-9 transition-all active:scale-95"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    setTheme(resolvedTheme === "dark" ? "light" : "dark")
+                  }}
                   aria-label="Alternar tema"
                   title="Alternar tema"
                 >

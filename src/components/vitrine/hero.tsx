@@ -557,6 +557,7 @@ export default function Hero({
               <button
                 type="button"
                 onClick={() => {
+                  triggerHaptic("selection")
                   const text =
                     "Olá! Gostaria de pedir um orçamento rápido com garantia de custódia em Governador Valadares."
                   window.open(
@@ -574,16 +575,22 @@ export default function Hero({
               <Button
                 size="lg"
                 variant="outline"
-                onClick={() => setAiWizardOpen(true)}
-                className="h-11 rounded-full border-white/20 bg-white/5 px-4 text-sm font-semibold text-white shadow-xs backdrop-blur transition-all hover:bg-white/10 hover:text-white"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  setAiWizardOpen(true)
+                }}
+                className="h-11 rounded-full border-white/20 bg-white/5 px-4 text-sm font-semibold text-white shadow-xs backdrop-blur transition-all hover:bg-white/10 hover:text-white active:scale-95"
               >
                 <Sparkles className="mr-1.5 size-4 text-amber-300" />
                 <span>Orçar com IA</span>
               </Button>
               <button
                 type="button"
-                onClick={() => setHowItWorksOpen(true)}
-                className="inline-flex h-11 cursor-pointer items-center gap-1.5 rounded-full px-3 text-xs font-medium text-slate-300 underline-offset-4 transition-colors hover:text-white hover:underline"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  setHowItWorksOpen(true)
+                }}
+                className="inline-flex h-11 cursor-pointer items-center gap-1.5 rounded-full px-3 text-xs font-medium text-slate-300 underline-offset-4 transition-colors hover:text-white hover:underline active:scale-95"
               >
                 <Play className="size-3 fill-emerald-300 text-emerald-300" />
                 <span>Como funciona em 40s</span>

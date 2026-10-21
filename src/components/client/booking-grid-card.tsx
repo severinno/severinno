@@ -299,7 +299,7 @@ export function BookingGridCard({
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-muted-foreground hover:text-foreground size-8.5 shrink-0 rounded-xl transition-all active:scale-95 sm:size-8"
+                className="text-muted-foreground hover:text-foreground size-9 shrink-0 rounded-xl transition-all active:scale-95 sm:size-8"
                 aria-label="Mais opções"
               >
                 <MoreHorizontal className="size-3.5" />
