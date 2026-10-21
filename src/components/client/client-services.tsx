@@ -684,7 +684,7 @@ function ServiceHistoryCard({
       : ""
 
   return (
-    <Card className="border-border/60 bg-card hover:border-primary/40 relative overflow-hidden rounded-xl shadow-2xs transition-all duration-150 hover:shadow-xs">
+    <Card className="border-border/50 bg-card hover:border-border/80 group relative overflow-hidden rounded-xl shadow-2xs transition-all duration-150 hover:shadow-xs">
       <CardContent className="p-3 sm:p-3.5">
         <div className="flex items-start gap-3">
           <button
@@ -696,7 +696,7 @@ function ServiceHistoryCard({
             className="ring-background shrink-0 rounded-full ring-1 transition-transform outline-none hover:scale-105 focus-visible:ring-2"
             aria-label={`Ver perfil de ${provider.name}`}
           >
-            <Avatar className="border-border/40 size-10 rounded-full border shadow-2xs">
+            <Avatar className="border-border/40 size-9.5 rounded-full border shadow-2xs sm:size-10">
               {provider.avatarUrl ? (
                 <AvatarImage
                   src={provider.avatarUrl}
@@ -730,15 +730,15 @@ function ServiceHistoryCard({
               {booking.service.title}
               {unitLabel ? <span className="ml-1 text-[11px] font-medium">{unitLabel}</span> : null}
             </p>
-            <p className="text-muted-foreground mt-1 inline-flex items-center gap-1 text-[11px] tabular-nums sm:text-xs">
-              <CalendarDays className="text-primary size-3" />
+            <p className="text-muted-foreground/80 mt-1 inline-flex items-center gap-1 text-[11px] tabular-nums sm:text-xs">
+              <CalendarDays className="text-primary size-3 shrink-0" />
               {isCompleted ? "Concluído" : "Cancelado"} em {formatDate(booking.scheduledAt)} ·{" "}
               {PAYMENT_METHOD_LABELS[booking.paymentMethod as PaymentMethod]}
             </p>
           </div>
 
-          <div className="shrink-0 text-right">
-            <p className="text-muted-foreground text-[10px] font-semibold uppercase">
+          <div className="shrink-0 pl-2 text-right">
+            <p className="text-muted-foreground/80 text-[10px] font-semibold tracking-wider uppercase">
               {isCompleted ? "Pago" : "Valor"}
             </p>
             <p className="text-foreground text-sm font-bold tabular-nums sm:text-base">
@@ -749,24 +749,29 @@ function ServiceHistoryCard({
 
         {/* Review display or prompt */}
         {review ? (
-          <div className="border-border/40 bg-muted/20 mt-2.5 rounded-lg border p-2.5">
+          <div className="border-border/30 bg-muted/20 mt-2 rounded-lg border px-2.5 py-1.5 transition-colors">
             <div className="flex items-center justify-between gap-2">
-              <StarRatingDisplay value={review.rating} size={13} showCount={false} />
-              <span className="text-muted-foreground text-[10px] tabular-nums">
+              <div className="flex items-center gap-1.5">
+                <StarRatingDisplay value={review.rating} size={11} showCount={false} />
+                <span className="text-foreground/80 text-[11px] font-medium tabular-nums">
+                  {review.rating.toFixed(1)}
+                </span>
+              </div>
+              <span className="text-muted-foreground/80 text-[10px] tabular-nums">
                 {formatDate(review.createdAt)}
               </span>
             </div>
             {review.comment ? (
-              <p className="text-muted-foreground mt-1 line-clamp-2 text-xs italic">
+              <p className="text-muted-foreground mt-0.5 line-clamp-2 text-[11px] leading-relaxed italic">
                 “{review.comment}”
               </p>
             ) : null}
           </div>
         ) : isCompleted ? (
-          <div className="mt-2.5 flex items-center justify-between gap-2 rounded-lg border border-dashed border-amber-300/80 bg-amber-50/50 p-2 text-xs text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200">
-            <div className="flex items-center gap-1.5">
-              <Star className="size-3.5 shrink-0 fill-amber-500 text-amber-500" />
-              <span className="text-[11px]">
+          <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-dashed border-amber-300/60 bg-amber-50/35 px-2.5 py-1 text-xs text-amber-900 dark:border-amber-800/40 dark:bg-amber-950/15 dark:text-amber-200">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <Star className="size-3 shrink-0 fill-amber-500 text-amber-500" />
+              <span className="truncate text-[11px]">
                 Avalie para fortalecer a reputação do prestador em GV.
               </span>
             </div>
@@ -777,7 +782,7 @@ function ServiceHistoryCard({
                 triggerHaptic("selection")
                 onOpenReview()
               }}
-              className="h-6.5 border-amber-300 bg-white px-2 text-[11px] font-semibold text-amber-900 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+              className="h-6 shrink-0 border-amber-300/80 bg-white/90 px-2 text-[10px] font-semibold text-amber-900 shadow-2xs hover:bg-amber-100 dark:border-amber-800/60 dark:bg-amber-950/60 dark:text-amber-100"
             >
               Avaliar agora
             </Button>
@@ -785,7 +790,7 @@ function ServiceHistoryCard({
         ) : null}
 
         {/* Card Action Footer */}
-        <div className="border-border/40 mt-2.5 flex flex-wrap items-center justify-between gap-1.5 border-t pt-2">
+        <div className="border-border/30 mt-2 flex flex-wrap items-center justify-between gap-1.5 border-t pt-2">
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -794,7 +799,7 @@ function ServiceHistoryCard({
                 triggerHaptic("selection")
                 onViewProvider()
               }}
-              className="text-muted-foreground hover:text-foreground h-7.5 gap-1 px-2 text-xs"
+              className="text-muted-foreground hover:bg-muted/50 hover:text-foreground h-7 gap-1 rounded-md px-2 text-xs transition-colors"
             >
               <MapPin className="size-3" />
               <span>Perfil</span>
@@ -808,7 +813,7 @@ function ServiceHistoryCard({
                   triggerHaptic("selection")
                   onOpenReceipt()
                 }}
-                className="h-7.5 gap-1 border-emerald-200 px-2 text-xs text-emerald-600 hover:bg-emerald-50 dark:border-emerald-800/40 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                className="h-7 gap-1 rounded-md border-emerald-500/25 bg-emerald-50/40 px-2 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100/60 hover:text-emerald-800 dark:border-emerald-800/30 dark:bg-emerald-950/30 dark:text-emerald-400 dark:hover:bg-emerald-950/50"
               >
                 <FileText className="size-3" />
                 <span>Recibo</span>
@@ -822,7 +827,7 @@ function ServiceHistoryCard({
                 triggerHaptic("selection")
                 onMessage()
               }}
-              className="text-muted-foreground hover:text-foreground h-7.5 w-7.5 shrink-0 rounded-lg p-0"
+              className="text-muted-foreground hover:bg-muted/50 hover:text-foreground h-7 w-7 shrink-0 rounded-md p-0 transition-colors"
               title="Enviar mensagem na plataforma"
               aria-label="Enviar mensagem na plataforma"
             >
@@ -836,7 +841,7 @@ function ServiceHistoryCard({
               triggerHaptic("selection")
               onRebook()
             }}
-            className="ml-auto h-7.5 gap-1 rounded-lg px-2.5 text-xs font-medium"
+            className="ml-auto h-7 gap-1.5 rounded-lg px-2.5 text-xs font-medium shadow-2xs transition-all hover:shadow-xs active:scale-98"
           >
             <RotateCcw className="size-3" />
             Contratar novamente
@@ -871,8 +876,8 @@ function ServiceHistoryGridCard({
       : ""
 
   return (
-    <Card className="border-border/60 bg-card hover:border-primary/40 flex flex-col justify-between rounded-xl shadow-2xs transition-all duration-150 hover:shadow-xs">
-      <CardContent className="flex h-full flex-col justify-between p-3.5">
+    <Card className="border-border/50 bg-card hover:border-border/80 group flex flex-col justify-between rounded-xl shadow-2xs transition-all duration-150 hover:shadow-xs">
+      <CardContent className="flex h-full flex-col justify-between p-3 sm:p-3.5">
         <div className="space-y-2">
           {/* Top header: Avatar + Provider info + Price */}
           <div className="flex items-start justify-between gap-2">
@@ -886,7 +891,7 @@ function ServiceHistoryGridCard({
                 className="shrink-0 rounded-full transition-transform outline-none hover:scale-105"
                 aria-label={`Ver perfil de ${provider.name}`}
               >
-                <Avatar className="border-border/40 size-10 rounded-full border shadow-2xs">
+                <Avatar className="border-border/40 size-9.5 rounded-full border shadow-2xs sm:size-10">
                   {provider.avatarUrl ? (
                     <AvatarImage
                       src={provider.avatarUrl}
@@ -917,8 +922,8 @@ function ServiceHistoryGridCard({
               </div>
             </div>
 
-            <div className="shrink-0 text-right">
-              <p className="text-muted-foreground text-[10px] font-semibold uppercase">
+            <div className="shrink-0 pl-1 text-right">
+              <p className="text-muted-foreground/80 text-[10px] font-semibold tracking-wider uppercase">
                 {isCompleted ? "Pago" : "Valor"}
               </p>
               <p className="text-foreground text-sm font-bold tabular-nums sm:text-base">
@@ -928,13 +933,13 @@ function ServiceHistoryGridCard({
           </div>
 
           {/* Service Title */}
-          <div className="border-border/40 border-t pt-1.5">
+          <div className="border-border/30 border-t pt-1.5">
             <p className="text-foreground/90 truncate text-xs font-medium">
               {booking.service.title}
               {unitLabel ? <span className="ml-1 text-[11px] font-medium">{unitLabel}</span> : null}
             </p>
-            <p className="text-muted-foreground mt-0.5 inline-flex items-center gap-1 text-[11px] tabular-nums">
-              <CalendarDays className="text-primary size-3" />
+            <p className="text-muted-foreground/80 mt-0.5 inline-flex items-center gap-1 text-[11px] tabular-nums">
+              <CalendarDays className="text-primary size-3 shrink-0" />
               {isCompleted ? "Concluído" : "Cancelado"} em {formatDate(booking.scheduledAt)} ·{" "}
               {PAYMENT_METHOD_LABELS[booking.paymentMethod as PaymentMethod]}
             </p>
@@ -942,21 +947,26 @@ function ServiceHistoryGridCard({
 
           {/* Review or prompt */}
           {review ? (
-            <div className="border-border/40 bg-muted/20 rounded-lg border p-2">
+            <div className="border-border/30 bg-muted/20 rounded-lg border px-2 py-1.5 transition-colors">
               <div className="flex items-center justify-between gap-1.5">
-                <StarRatingDisplay value={review.rating} size={12} showCount={false} />
-                <span className="text-muted-foreground text-[10px] tabular-nums">
+                <div className="flex items-center gap-1.5">
+                  <StarRatingDisplay value={review.rating} size={11} showCount={false} />
+                  <span className="text-foreground/80 text-[11px] font-medium tabular-nums">
+                    {review.rating.toFixed(1)}
+                  </span>
+                </div>
+                <span className="text-muted-foreground/80 text-[10px] tabular-nums">
                   {formatDate(review.createdAt)}
                 </span>
               </div>
               {review.comment ? (
-                <p className="text-muted-foreground mt-1 line-clamp-2 text-[11px] italic">
+                <p className="text-muted-foreground mt-0.5 line-clamp-2 text-[11px] leading-relaxed italic">
                   “{review.comment}”
                 </p>
               ) : null}
             </div>
           ) : isCompleted ? (
-            <div className="flex items-center justify-between gap-1.5 rounded-lg border border-dashed border-amber-300/80 bg-amber-50/50 p-2 text-[11px] text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200">
+            <div className="flex items-center justify-between gap-1.5 rounded-lg border border-dashed border-amber-300/60 bg-amber-50/35 px-2 py-1 text-[11px] text-amber-900 dark:border-amber-800/40 dark:bg-amber-950/15 dark:text-amber-200">
               <span className="truncate">Avalie este serviço</span>
               <Button
                 size="sm"
@@ -965,16 +975,16 @@ function ServiceHistoryGridCard({
                   triggerHaptic("selection")
                   onOpenReview()
                 }}
-                className="h-6 border-amber-300 bg-white px-2 text-[10px] font-semibold text-amber-900 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+                className="h-6 shrink-0 border-amber-300/80 bg-white/90 px-2 text-[10px] font-semibold text-amber-900 shadow-2xs hover:bg-amber-100 dark:border-amber-800/60 dark:bg-amber-950/60 dark:text-amber-100"
               >
-                Avaliar
+                Avaliar agora
               </Button>
             </div>
           ) : null}
         </div>
 
         {/* Footer Actions */}
-        <div className="border-border/40 mt-2.5 flex items-center justify-between gap-1 border-t pt-2">
+        <div className="border-border/30 mt-2 flex items-center justify-between gap-1 border-t pt-2">
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -983,7 +993,7 @@ function ServiceHistoryGridCard({
                 triggerHaptic("selection")
                 onViewProvider()
               }}
-              className="text-muted-foreground hover:text-foreground h-7.5 gap-1 px-1.5 text-xs"
+              className="text-muted-foreground hover:bg-muted/50 hover:text-foreground h-7 gap-1 rounded-md px-1.5 text-xs transition-colors"
             >
               <MapPin className="size-3" />
               <span>Perfil</span>
@@ -997,7 +1007,7 @@ function ServiceHistoryGridCard({
                   triggerHaptic("selection")
                   onOpenReceipt()
                 }}
-                className="h-7.5 gap-1 border-emerald-200 px-2 text-xs text-emerald-600 hover:bg-emerald-50 dark:border-emerald-800/40 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                className="h-7 gap-1 rounded-md border-emerald-500/25 bg-emerald-50/40 px-2 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100/60 hover:text-emerald-800 dark:border-emerald-800/30 dark:bg-emerald-950/30 dark:text-emerald-400 dark:hover:bg-emerald-950/50"
               >
                 <FileText className="size-3" />
                 <span>Recibo</span>
@@ -1011,7 +1021,7 @@ function ServiceHistoryGridCard({
                 triggerHaptic("selection")
                 onMessage()
               }}
-              className="text-muted-foreground hover:text-foreground h-7.5 w-7.5 shrink-0 rounded-lg p-0"
+              className="text-muted-foreground hover:bg-muted/50 hover:text-foreground h-7 w-7 shrink-0 rounded-md p-0 transition-colors"
               title="Enviar mensagem na plataforma"
               aria-label="Enviar mensagem na plataforma"
             >
@@ -1025,7 +1035,7 @@ function ServiceHistoryGridCard({
               triggerHaptic("selection")
               onRebook()
             }}
-            className="ml-auto h-7.5 gap-1 rounded-lg px-2.5 text-xs font-medium"
+            className="ml-auto h-7 gap-1.5 rounded-lg px-2.5 text-xs font-medium shadow-2xs transition-all hover:shadow-xs active:scale-98"
           >
             <RotateCcw className="size-3" />
             Contratar novamente
