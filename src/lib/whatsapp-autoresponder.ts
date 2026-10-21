@@ -62,7 +62,7 @@ export function getMainMenuText(userName?: string | null): string {
   return (
     `👋 ${greeting} Bem-vindo ao *Severinno Marketplace*.\n\n` +
     `Escolha uma das opções abaixo digitando o *número* ou a *palavra-chave* correspondente:\n\n` +
-    `1️⃣ *1* ou *AGENDAMENTOS* — Meus agendamentos recentes\n` +
+    `1️⃣ *1* ou *AGENDAMENTOS* (*STATUS*) — Meus agendamentos e proteção Escrow (ex: _STATUS #abc123_)\n` +
     `2️⃣ *2* ou *ORCAMENTOS* — Minhas solicitações de orçamento\n` +
     `3️⃣ *3* ou *PIX* — Instruções e pagamentos pendentes\n` +
     `4️⃣ *4* ou *SUPORTE* — Falar com suporte humano\n` +
@@ -98,13 +98,100 @@ export function getServicesCatalogText(): string {
 }
 
 /**
- * Consulta últimos agendamentos do usuário (cliente ou prestador)
+ * Consulta agendamentos do usuário (por ID do usuário, por código explícito #ID ou por telefone)
  */
-export async function getBookingsStatusText(userId: string): Promise<string> {
+export async function getBookingsStatusText(
+  userId: string,
+  explicitRef?: string,
+  phone?: string,
+): Promise<string> {
   try {
+    const digits = phone ? phone.replace(/\D/g, "") : ""
+    const cleanPhone = digits.startsWith("55") ? digits : `55${digits}`
+
+    // 1. Se informou código explícito de agendamento (ex: STATUS #12345 ou STATUS 12345)
+    if (explicitRef) {
+      const singleBooking = await db.booking.findFirst({
+        where: {
+          OR: [{ id: explicitRef }, { id: { startsWith: explicitRef } }],
+        },
+        include: {
+          service: { select: { title: true } },
+          client: { select: { id: true, name: true, phone: true } },
+          provider: { select: { id: true, name: true, phone: true } },
+          payment: { select: { status: true, method: true, amount: true } },
+        },
+      })
+
+      if (singleBooking) {
+        const idRef = `#${singleBooking.id.slice(0, 8)}`
+        const service = singleBooking.service?.title || "Serviço"
+        const dateStr = singleBooking.scheduledAt
+          ? new Date(singleBooking.scheduledAt).toLocaleDateString("pt-BR", {
+              day: "2-digit",
+              month: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "A combinar"
+
+        const statusTranslations: Record<string, string> = {
+          PENDING: "🟡 Pendente de Confirmação",
+          CONFIRMED: "🔵 Confirmado — Aguardando Atendimento",
+          IN_PROGRESS: "🔄 Em Execução (Prestador no Local)",
+          COMPLETED: "✅ Concluído",
+          CANCELLED: "❌ Cancelado",
+        }
+        const st = statusTranslations[singleBooking.status] || singleBooking.status
+
+        let escrowStatus = "⚠️ Pagamento Pendente (PIX)"
+        if (singleBooking.paymentStatus === "PAID") {
+          if ((singleBooking as any).escrowReleasedAt) {
+            escrowStatus = "✅ Pagamento Liberado ao Prestador"
+          } else {
+            escrowStatus = "🛡️ Protegido em Custódia Escrow (Fundos seguros até aprovação final)"
+          }
+        }
+
+        let actions = `Para detalhes, acesse: https://severinno.com.br/?view=client.bookings`
+        if (singleBooking.status === "COMPLETED" && !(singleBooking as any).escrowReleasedAt) {
+          actions = `🎉 O serviço foi concluído!\n• Para liberar o repasse: digite *APROVAR ${idRef}*\n• Se houve algum problema: digite *CONTESTAR ${idRef}*`
+        } else if (singleBooking.paymentStatus === "PENDING") {
+          actions = `💳 Para pagar e garantir sua data, digite *PIX* ou acesse: https://severinno.com.br`
+        }
+
+        return (
+          `📋 *Status do Agendamento ${idRef}*\n\n` +
+          `🔧 *Serviço:* ${service}\n` +
+          `👤 *Prestador:* ${singleBooking.provider?.name || "Profissional"}\n` +
+          `📅 *Data:* ${dateStr}\n` +
+          `📍 *Local:* ${singleBooking.address || "Governador Valadares"}\n` +
+          `💰 *Valor:* R$ ${Number(singleBooking.amount).toFixed(2)}\n` +
+          `📊 *Andamento:* ${st}\n` +
+          `🔒 *Escrow:* ${escrowStatus}\n\n` +
+          `${actions}`
+        )
+      }
+    }
+
+    // 2. Consulta múltiplos agendamentos recentes vinculados ao usuário ou telefone
+    const phoneQueries = digits
+      ? [
+          { client: { phone: digits } },
+          { client: { whatsapp: digits } },
+          { client: { phone: cleanPhone } },
+          { client: { whatsapp: cleanPhone } },
+        ]
+      : []
+
     const bookings = await db.booking.findMany({
       where: {
-        OR: [{ clientId: userId }, { providerId: userId }],
+        OR: [
+          ...(userId && !userId.startsWith("anon-")
+            ? [{ clientId: userId }, { providerId: userId }]
+            : []),
+          ...phoneQueries,
+        ],
       },
       orderBy: { createdAt: "desc" },
       take: 3,
@@ -117,10 +204,12 @@ export async function getBookingsStatusText(userId: string): Promise<string> {
 
     if (!bookings.length) {
       return (
-        `📋 *Agendamentos*\n\n` +
+        `📋 *Agendamentos no Severinno*\n\n` +
         `Você ainda não possui nenhum agendamento registrado.\n\n` +
-        `Acesse nosso app para encontrar profissionais qualificados:\n` +
-        `🔗 https://severinno.com`
+        `Deseja contratar um profissional verificado em Governador Valadares?\n\n` +
+        `1️⃣ Digite *SERVICOS* para ver especialidades disponíveis\n` +
+        `2️⃣ Digite *ORCAR* para solicitar um orçamento rápido\n` +
+        `3️⃣ Acesse nosso app com garantia Escrow: https://severinno.com.br`
       )
     }
 
@@ -145,18 +234,28 @@ export async function getBookingsStatusText(userId: string): Promise<string> {
           minute: "2-digit",
         })
 
-        return `• *${idRef}* — ${service}\n  Status: ${st}\n  Com: ${otherParty || "Profissional"}\n  Data: ${dateStr}`
+        const escrowBadge =
+          b.paymentStatus === "PAID"
+            ? (b as any).escrowReleasedAt
+              ? "✅ Pago"
+              : "🛡️ Escrow Ativo"
+            : "⚠️ PIX Pendente"
+
+        return `• *${idRef}* — ${service}\n  Status: ${st} (${escrowBadge})\n  Com: ${otherParty || "Profissional"}\n  Data: ${dateStr}`
       })
       .join("\n\n")
 
     return (
       `📋 *Seus Últimos Agendamentos:*\n\n` +
       `${list}\n\n` +
-      `Para mais detalhes ou gerenciar, acesse o app: https://severinno.com/?view=client.bookings`
+      `💡 _Para consultar um agendamento específico, envie: *STATUS #CODIGO*_`
     )
   } catch (error) {
-    autoresponderLogger.error({ error, userId }, "Erro ao consultar agendamentos do usuário")
-    return "❌ Ocorreu um erro ao consultar seus agendamentos. Tente novamente mais tarde."
+    autoresponderLogger.error(
+      { error, userId, explicitRef, phone },
+      "Erro ao consultar agendamentos do usuário",
+    )
+    return "❌ Ocorreu um erro ao consultar seus agendamentos. Tente novamente mais tarde ou digite *SUPORTE*."
   }
 }
 
@@ -1257,9 +1356,16 @@ export async function processInteractiveCommand(
     normalized === "AGENDAMENTO" ||
     normalized === "AGENDAMENTOS" ||
     normalized === "STATUS" ||
-    normalized === "MEUS AGENDAMENTOS"
+    normalized === "MEUS AGENDAMENTOS" ||
+    normalized.startsWith("STATUS ") ||
+    normalized.startsWith("AGENDAMENTO ") ||
+    normalized.startsWith("AGENDAMENTOS ")
   ) {
-    replyText = await getBookingsStatusText(ctx.user.id)
+    const statusArgMatch = ctx.text
+      .trim()
+      .match(/^(?:STATUS|AGENDAMENTO|AGENDAMENTOS)\s+(?:#)?([a-zA-Z0-9_-]{1,36})$/i)
+    const statusRef = explicitRef || statusArgMatch?.[1]
+    replyText = await getBookingsStatusText(ctx.user.id, statusRef, ctx.phone)
   }
   // 5. Orçamentos
   else if (

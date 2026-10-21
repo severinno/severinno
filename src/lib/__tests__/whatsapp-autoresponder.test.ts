@@ -922,4 +922,80 @@ describe("WhatsApp Autoresponder & Interactive Parser", () => {
       expect(reply).toContain("Garantia Severinno Escrow")
     })
   })
+
+  describe("Autoatendimento de Status & Escrow via WhatsApp", () => {
+    it("retorna detalhes completos e status de custódia Escrow ao consultar agendamento explícito (#id)", async () => {
+      vi.mocked(db.booking.findFirst).mockResolvedValueOnce({
+        id: "book-escrow-99",
+        amount: 350,
+        status: "CONFIRMED",
+        paymentStatus: "PAID",
+        escrowReleasedAt: null,
+        scheduledAt: new Date("2026-10-25T14:00:00Z"),
+        address: "Ilha dos Araújos, Gov. Valadares",
+        service: { title: "Limpeza de Ar-Condicionado" },
+        provider: { id: "prov-1", name: "Clima Bom GV", phone: "33999991111" },
+        client: { id: "client-1", name: "Marcos", phone: "33988882222" },
+        payment: { status: "PAID", method: "PIX", amount: 350 },
+      } as any)
+
+      const res = await getBookingsStatusText("client-1", "book-escrow-99")
+      expect(res).toContain("Status do Agendamento #book-esc")
+      expect(res).toContain("Limpeza de Ar-Condicionado")
+      expect(res).toContain("Clima Bom GV")
+      expect(res).toContain("R$ 350.00")
+      expect(res).toContain("Protegido em Custódia Escrow")
+    })
+
+    it("retorna instruções de aprovação quando o serviço está concluído e com pagamento em custódia", async () => {
+      vi.mocked(db.booking.findFirst).mockResolvedValueOnce({
+        id: "book-completed-77",
+        amount: 220,
+        status: "COMPLETED",
+        paymentStatus: "PAID",
+        escrowReleasedAt: null,
+        scheduledAt: new Date("2026-10-20T10:00:00Z"),
+        address: "Centro, Gov. Valadares",
+        service: { title: "Conserto de Torneira" },
+        provider: { id: "prov-2", name: "Encanador Valadares", phone: "33999993333" },
+        client: { id: "client-2", name: "Helena", phone: "33988884444" },
+        payment: { status: "PAID", method: "PIX", amount: 220 },
+      } as any)
+
+      const res = await getBookingsStatusText("client-2", "book-completed-77")
+      expect(res).toContain("Concluído")
+      expect(res).toContain("APROVAR #book-com")
+      expect(res).toContain("CONTESTAR #book-com")
+    })
+
+    it("processInteractiveCommand reconhece STATUS com código e enfileira resposta detalhada", async () => {
+      vi.mocked(db.booking.findFirst).mockResolvedValueOnce({
+        id: "book-test-1234",
+        amount: 180,
+        status: "CONFIRMED",
+        paymentStatus: "PAID",
+        escrowReleasedAt: null,
+        scheduledAt: new Date("2026-10-22T09:00:00Z"),
+        address: "Vila Bretas",
+        service: { title: "Troca de Resistência" },
+        provider: { id: "prov-3", name: "Carlos Reparos", phone: "33999995555" },
+        client: { id: "client-3", name: "Paulo", phone: "33988886666" },
+        payment: { status: "PAID", method: "PIX", amount: 180 },
+      } as any)
+
+      const result = await processInteractiveCommand({
+        phone: "5533988886666",
+        text: "STATUS #book-test-1234",
+        user: { id: "client-3", name: "Paulo", role: "CLIENT" },
+      })
+
+      expect(result.handled).toBe(true)
+      expect(enqueueWhatsApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "5533988886666",
+          text: expect.stringContaining("Status do Agendamento #book-tes"),
+        }),
+      )
+    })
+  })
 })

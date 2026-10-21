@@ -63,4 +63,14 @@ describe("Auditoria do Service Worker & PWA Offline Cache (public/sw.js)", () =>
     expect(swContent).toContain("showNotificationFromPayload")
     expect(swContent).toContain("PROVIDER_ARRIVED")
   })
+
+  it("valida cache dinâmico de imagens e fotos de portfólio (Stale-While-Revalidate)", () => {
+    swContent = fs.readFileSync(swPath, "utf-8")
+    expect(swContent).toContain("IMAGE_CACHE")
+    expect(swContent).toContain("MAX_CACHED_IMAGES")
+    expect(swContent).toContain("imageStrategy(event.request)")
+    expect(swContent).toContain("pruneImageCache")
+    expect(swContent).toContain("OFFLINE_IMAGE_SVG")
+    expect(swContent).toContain("image/svg+xml")
+  })
 })

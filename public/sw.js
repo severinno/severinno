@@ -15,6 +15,10 @@ const OSM_TILE_CACHE = "severinno-osm-tiles-v1"
 // API cache — stale-while-revalidate for public endpoints
 const API_CACHE = "severinno-api-v1"
 
+// Image cache — stale-while-revalidate for services, portfolio, and avatars
+const IMAGE_CACHE = "severinno-images-v1"
+const MAX_CACHED_IMAGES = 120
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE).then((cache) => {
@@ -37,7 +41,9 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((k) => k !== CACHE && k !== OSM_TILE_CACHE && k !== API_CACHE)
+            .filter(
+              (k) => k !== CACHE && k !== OSM_TILE_CACHE && k !== API_CACHE && k !== IMAGE_CACHE,
+            )
             .map((k) => caches.delete(k)),
         ),
       )
@@ -85,6 +91,17 @@ self.addEventListener("fetch", (event) => {
     url.pathname === "/logo.svg"
   ) {
     event.respondWith(cacheFirstStrategy(event.request))
+    return
+  }
+
+  // ---- Dynamic Service & Portfolio Images: stale-while-revalidate -----
+  if (
+    event.request.destination === "image" ||
+    url.pathname.startsWith("/_next/image") ||
+    url.pathname.startsWith("/uploads/") ||
+    /\.(png|jpg|jpeg|webp|avif|gif|svg)$/i.test(url.pathname)
+  ) {
+    event.respondWith(imageStrategy(event.request))
     return
   }
 
@@ -205,6 +222,76 @@ async function osmTileStrategy(request) {
     // Offline and not in cache — return a blank tile
     return new Response(null, { status: 204 })
   }
+}
+
+/**
+ * LRU cache pruning for images (max MAX_CACHED_IMAGES entries)
+ */
+async function pruneImageCache(cache) {
+  try {
+    const keys = await cache.keys()
+    if (keys.length > MAX_CACHED_IMAGES) {
+      const excess = keys.length - MAX_CACHED_IMAGES
+      for (let i = 0; i < excess; i++) {
+        await cache.delete(keys[i])
+      }
+    }
+  } catch {
+    // Best-effort
+  }
+}
+
+// Fallback offline SVG placeholder when network fails and image is not cached
+const OFFLINE_IMAGE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300" fill="none">
+  <rect width="400" height="300" fill="#f1f5f9"/>
+  <path d="M160 130a20 20 0 1 0 0-40 20 20 0 0 0 0 40zm-40 80h160l-50-65-35 45-25-30-50 50z" fill="#94a3b8"/>
+  <text x="200" y="240" font-family="-apple-system, sans-serif" font-size="13" fill="#64748b" text-anchor="middle" font-weight="500">Severinno (Modo Offline)</text>
+</svg>`
+
+/**
+ * Image strategy: Stale-While-Revalidate with offline fallback SVG.
+ * Returns cached image instantly (0ms) and updates cache in background.
+ */
+async function imageStrategy(request) {
+  const cache = await caches.open(IMAGE_CACHE)
+  const cached = await cache.match(request)
+
+  const fetchPromise = fetch(request)
+    .then((response) => {
+      if (response && response.status === 200) {
+        const clone = response.clone()
+        cache
+          .put(request, clone)
+          .then(() => pruneImageCache(cache))
+          .catch(() => {})
+      }
+      return response
+    })
+    .catch(() => {
+      // Network failed
+      return null
+    })
+
+  // Stale-While-Revalidate: Return cached response immediately if available
+  if (cached) {
+    // Revalidate in background
+    return cached
+  }
+
+  // If not in cache, wait for fetch
+  const networkResponse = await fetchPromise
+  if (networkResponse) {
+    return networkResponse
+  }
+
+  // If both network and cache failed, return the offline SVG placeholder
+  return new Response(OFFLINE_IMAGE_SVG, {
+    status: 200,
+    headers: {
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      "Cache-Control": "public, max-age=86400",
+    },
+  })
 }
 
 // ---- Push Notifications — rich payload with actions ---------------------

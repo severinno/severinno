@@ -96,6 +96,20 @@ export function ProviderFiscalBatchExport() {
     )
   }
 
+  const handleExportDRE = (outputFormat: "html" | "csv") => {
+    const dreUrl = `/api/provider/reports?type=dre&month=${selectedMonth}&format=${outputFormat}`
+    if (outputFormat === "html") {
+      window.open(dreUrl, "_blank")
+    } else {
+      const a = document.createElement("a")
+      a.href = dreUrl
+      a.download = `dre-mensal-${selectedMonth}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    }
+  }
+
   return (
     <Card className="border shadow-sm">
       <CardHeader className="pb-3">
@@ -241,6 +255,35 @@ export function ProviderFiscalBatchExport() {
           >
             <Mail className="size-4" /> Contador
           </Button>
+        </div>
+
+        {/* DRE & Extrato Contábil Especializado para MEI / Autônomo */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+          <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
+            <FileText className="size-3.5" />
+            <span className="text-foreground font-medium">Demonstrativo DRE &amp; Escrow:</span>
+            <span>Fluxo de caixa, taxas (12%) e enquadramento SIMEI</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleExportDRE("html")}
+              className="h-8 gap-1.5 text-xs font-medium"
+            >
+              <Printer className="size-3.5" /> DRE Imprimível (PDF)
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleExportDRE("csv")}
+              className="h-8 gap-1.5 text-xs font-medium"
+            >
+              <FileSpreadsheet className="size-3.5" /> DRE em CSV
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
