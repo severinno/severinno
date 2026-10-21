@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
+import { withRoute } from "@/lib/api-route"
 import { edgeCache, buildEdgeCacheHeaders } from "@/lib/edge-catalog-cache"
 
 // Simulação de busca no banco com fallback resiliente
@@ -19,38 +20,33 @@ async function searchServicesFromDb(query: string, city: string) {
   )
 }
 
-export async function GET(req: NextRequest) {
-  try {
-    const { searchParams } = new URL(req.url)
-    const q = searchParams.get("q") || ""
-    const city = searchParams.get("city") || "Governador Valadares"
+export const GET = withRoute("api.catalog.search-cached.GET", async (req) => {
+  const { searchParams } = new URL(req.url)
+  const q = searchParams.get("q") || ""
+  const city = searchParams.get("city") || "Governador Valadares"
 
-    const cacheKey = `catalog:${city.toLowerCase()}:${q.toLowerCase()}`
+  const cacheKey = `catalog:${city.toLowerCase()}:${q.toLowerCase()}`
 
-    // Executa via EdgeCache com TTL de 5 minutos e SWR de 1 hora
-    const result = await edgeCache.getOrFetch(cacheKey, () => searchServicesFromDb(q, city), {
-      ttlSeconds: 300,
-      swrSeconds: 3600,
-    })
+  // Executa via EdgeCache com TTL de 5 minutos e SWR de 1 hora
+  const result = await edgeCache.getOrFetch(cacheKey, () => searchServicesFromDb(q, city), {
+    ttlSeconds: 300,
+    swrSeconds: 3600,
+  })
 
-    const headers = buildEdgeCacheHeaders(300, 3600)
+  const headers = buildEdgeCacheHeaders(300, 3600)
 
-    return NextResponse.json(
-      {
-        success: true,
-        city,
-        query: q,
-        source: result.source,
-        total: result.data.length,
-        services: result.data,
-      },
-      {
-        status: 200,
-        headers,
-      },
-    )
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Erro na busca de catálogo"
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
+  return NextResponse.json(
+    {
+      success: true,
+      city,
+      query: q,
+      source: result.source,
+      total: result.data.length,
+      services: result.data,
+    },
+    {
+      status: 200,
+      headers,
+    },
+  )
+})

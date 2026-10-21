@@ -102,8 +102,8 @@ function requestPathname(request: Request): string {
 export function withRoute<P = Record<string, never>>(
   spanName: string,
   handler: RouteHandler<P>,
-): (request: Request, ctx?: { params?: Promise<P> }) => Promise<Response> {
-  return async function routeHandler(request, ctx) {
+): (request?: Request, ctx?: { params?: Promise<P> }) => Promise<Response> {
+  return async function routeHandler(request = new Request("http://localhost"), ctx) {
     return traceSpan(spanName, async (span) => {
       // Atributos OTel padronizados de TODA rota convertida — a rota não
       // precisa (e não deve) setar nada disto por conta própria:

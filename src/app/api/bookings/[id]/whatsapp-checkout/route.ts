@@ -1,9 +1,12 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
+import { withRoute } from "@/lib/api-route"
+import { badRequest } from "@/lib/api-server"
 import { generateWhatsAppPixCheckoutBundle } from "@/lib/whatsapp-pix-checkout"
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id: bookingId } = await params
+export const POST = withRoute<{ id: string }>(
+  "api.bookings.whatsapp-checkout.POST",
+  async (req, { params }) => {
+    const bookingId = params?.id
     const body = await req.json()
     const {
       clientName,
@@ -17,10 +20,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     } = body
 
     if (!bookingId || !clientName || !clientPhone || !amount || !pixCopyPaste) {
-      return NextResponse.json(
-        { error: "Dados incompletos para gerar checkout WhatsApp" },
-        { status: 400 },
-      )
+      throw badRequest("Dados incompletos para gerar checkout WhatsApp")
     }
 
     const bundle = generateWhatsAppPixCheckoutBundle({
@@ -39,8 +39,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       success: true,
       bundle,
     })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Erro ao gerar checkout WhatsApp"
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
-}
+  },
+)

@@ -10,7 +10,8 @@
  *   - Returns current verification status for the authenticated user
  */
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
+import { withRoute } from "@/lib/api-route"
 import { db } from "@/lib/db"
 import { getSession } from "@/lib/auth"
 import { uploadBuffer } from "@/lib/s3"
@@ -118,7 +119,7 @@ Retorne APENAS um objeto JSON válido, sem explicações.`
 // ---------------------------------------------------------------------------
 // GET — current verification status
 // ---------------------------------------------------------------------------
-export async function GET() {
+export const GET = withRoute("api.auth.identity.GET", async () => {
   const session = await getSession()
   if (!session?.userId) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
@@ -163,12 +164,12 @@ export async function GET() {
     rejectionReason,
     ocrData,
   })
-}
+})
 
 // ---------------------------------------------------------------------------
 // POST — upload documents + run OCR
 // ---------------------------------------------------------------------------
-export async function POST(request: NextRequest) {
+export const POST = withRoute("api.auth.identity.POST", async (request) => {
   const session = await getSession()
   if (!session?.userId) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
@@ -329,4 +330,4 @@ export async function POST(request: NextRequest) {
     log.error({ err }, "Failed to process identity verification")
     return NextResponse.json({ error: "Erro ao processar verificação." }, { status: 500 })
   }
-}
+})

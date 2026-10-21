@@ -1,7 +1,9 @@
 export const dynamic = "force-dynamic"
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
+import { withRoute } from "@/lib/api-route"
 import { getSession } from "@/lib/auth"
+import { badRequest, unauthorized } from "@/lib/api-server"
 import {
   dispatchProactiveAlert,
   getProactiveAlertHistory,
@@ -9,7 +11,7 @@ import {
   type AlertSeverity,
 } from "@/lib/proactive-alert-dispatcher"
 
-function isAuthorized(request: NextRequest, sessionUserRole?: string): boolean {
+function isAuthorized(request: Request, sessionUserRole?: string): boolean {
   if (sessionUserRole === "ADMIN") return true
 
   const adminKey = request.headers.get("x-admin-key")
@@ -23,10 +25,10 @@ function isAuthorized(request: NextRequest, sessionUserRole?: string): boolean {
   return false
 }
 
-export async function GET(request: NextRequest) {
+export const GET = withRoute("api.admin.alerts.proactive.GET", async (request) => {
   const session = await getSession()
   if (!isAuthorized(request, session?.role)) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
+    throw unauthorized("Não autorizado")
   }
 
   const history = getProactiveAlertHistory()
@@ -42,55 +44,47 @@ export async function GET(request: NextRequest) {
     recentAlerts: history,
     count: history.length,
   })
-}
+})
 
-export async function POST(request: NextRequest) {
+export const POST = withRoute("api.admin.alerts.proactive.POST", async (request) => {
   const session = await getSession()
   if (!isAuthorized(request, session?.role)) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
+    throw unauthorized("Não autorizado")
   }
 
-  try {
-    const body = await request.json()
-    const {
-      category = "CUSTOM",
-      severity = "INFO",
+  const body = await request.json()
+  const {
+    category = "CUSTOM",
+    severity = "INFO",
+    title,
+    message,
+    metric,
+    metadata,
+    recipientPhone,
+    recipientChatId,
+    force = false,
+  } = body
+
+  if (!title || !message) {
+    throw badRequest("Os campos 'title' e 'message' são obrigatórios")
+  }
+
+  const result = await dispatchProactiveAlert(
+    {
+      category: category as AlertCategory,
+      severity: severity as AlertSeverity,
       title,
       message,
       metric,
       metadata,
       recipientPhone,
       recipientChatId,
-      force = false,
-    } = body
+    },
+    { force },
+  )
 
-    if (!title || !message) {
-      return NextResponse.json(
-        { error: "Os campos 'title' e 'message' são obrigatórios" },
-        { status: 400 },
-      )
-    }
-
-    const result = await dispatchProactiveAlert(
-      {
-        category: category as AlertCategory,
-        severity: severity as AlertSeverity,
-        title,
-        message,
-        metric,
-        metadata,
-        recipientPhone,
-        recipientChatId,
-      },
-      { force },
-    )
-
-    return NextResponse.json({
-      success: result.dispatched,
-      result,
-    })
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Erro interno ao despachar alerta"
-    return NextResponse.json({ error: msg }, { status: 500 })
-  }
-}
+  return NextResponse.json({
+    success: result.dispatched,
+    result,
+  })
+})

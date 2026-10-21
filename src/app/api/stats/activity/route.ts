@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
+import { withRoute } from "@/lib/api-route"
 import { db } from "@/lib/db"
 import logger from "@/lib/logger"
 
@@ -46,7 +47,7 @@ interface RawActivity {
 // GET /api/stats/activity — recent platform activity feed (public, no auth)
 // ---------------------------------------------------------------------------
 
-export async function GET() {
+export const GET = withRoute("api.stats.activity.GET", async () => {
   try {
     // 1. Fetch latest records from each source in parallel
     const [bookings, reviews, signups, quotes] = await Promise.all([
@@ -222,4 +223,4 @@ export async function GET() {
       quotesToday: 0,
     })
   }
-}
+})
