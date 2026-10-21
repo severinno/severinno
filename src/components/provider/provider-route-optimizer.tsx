@@ -6,6 +6,7 @@ import { Navigation, MapPin, Compass, ExternalLink, Loader2 } from "lucide-react
 import { apiGet } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { triggerHaptic } from "@/lib/haptics"
 import type { OptimizedRoutePlan, RouteStop, TransportMode } from "@/lib/tsp-route-optimizer"
 import { ProviderTransitHud } from "@/components/provider/provider-transit-hud"
 
@@ -48,6 +49,7 @@ export function ProviderRouteOptimizer({ initialDate }: { initialDate?: string }
   })
 
   const handleModeChange = async (newMode: TransportMode) => {
+    triggerHaptic("selection")
     setMode(newMode)
     try {
       await fetch("/api/provider/preferences/transport", {
@@ -84,7 +86,7 @@ export function ProviderRouteOptimizer({ initialDate }: { initialDate?: string }
               <button
                 type="button"
                 onClick={() => handleModeChange("MOTO")}
-                className={`rounded px-2 py-1 font-medium transition-colors ${
+                className={`rounded px-2 py-1 font-medium transition-colors active:scale-95 ${
                   mode === "MOTO"
                     ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -95,7 +97,7 @@ export function ProviderRouteOptimizer({ initialDate }: { initialDate?: string }
               <button
                 type="button"
                 onClick={() => handleModeChange("CAR")}
-                className={`rounded px-2 py-1 font-medium transition-colors ${
+                className={`rounded px-2 py-1 font-medium transition-colors active:scale-95 ${
                   mode === "CAR"
                     ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -106,7 +108,7 @@ export function ProviderRouteOptimizer({ initialDate }: { initialDate?: string }
               <button
                 type="button"
                 onClick={() => handleModeChange("BICYCLE")}
-                className={`rounded px-2 py-1 font-medium transition-colors ${
+                className={`rounded px-2 py-1 font-medium transition-colors active:scale-95 ${
                   mode === "BICYCLE"
                     ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -204,7 +206,10 @@ export function ProviderRouteOptimizer({ initialDate }: { initialDate?: string }
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setSelectedTransitStop(stop)}
+                      onClick={() => {
+                        triggerHaptic("medium")
+                        setSelectedTransitStop(stop)
+                      }}
                       className="h-7 shrink-0 gap-1 border-sky-500/40 px-2 text-[11px] font-semibold text-sky-700 hover:bg-sky-50 dark:border-sky-700 dark:text-sky-300"
                       title={`Iniciar Modo Trânsito HUD para ${stop.title}`}
                       aria-label={`Iniciar Modo Trânsito HUD para ${stop.title}`}
@@ -222,7 +227,10 @@ export function ProviderRouteOptimizer({ initialDate }: { initialDate?: string }
               <Button
                 size="sm"
                 className="flex-1 gap-1.5 bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-700"
-                onClick={() => window.open(plan.googleMapsUrl, "_blank")}
+                onClick={() => {
+                  triggerHaptic("light")
+                  window.open(plan.googleMapsUrl, "_blank")
+                }}
               >
                 <Compass className="size-3.5" />
                 Navegar no Google Maps
@@ -232,7 +240,10 @@ export function ProviderRouteOptimizer({ initialDate }: { initialDate?: string }
                 variant="outline"
                 size="sm"
                 className="flex-1 gap-1.5 text-xs font-semibold"
-                onClick={() => window.open(plan.wazeUrl, "_blank")}
+                onClick={() => {
+                  triggerHaptic("light")
+                  window.open(plan.wazeUrl, "_blank")
+                }}
               >
                 <Navigation className="size-3.5 text-blue-500" />
                 Abrir no Waze

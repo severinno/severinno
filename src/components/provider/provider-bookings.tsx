@@ -88,6 +88,17 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useViewStore } from "@/store/view"
 import { cn } from "@/lib/utils"
+import { triggerHaptic } from "@/lib/haptics"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -163,6 +174,8 @@ export function ProviderBookings() {
   const [celebrationBooking, setCelebrationBooking] = React.useState<Booking | null>(null)
   const [mediationBooking, setMediationBooking] = React.useState<Booking | null>(null)
   const [actioningId, setActioningId] = React.useState<string | null>(null)
+  // Cancelamento é irreversível — exige confirmação explícita antes do PATCH
+  const [cancelTarget, setCancelTarget] = React.useState<Booking | null>(null)
 
   const openReport = (b: Booking) => {
     setReportBooking(b)
@@ -258,15 +271,22 @@ export function ProviderBookings() {
     setActioningId(booking.id)
     try {
       await apiPatch(`/api/bookings/${booking.id}`, { status: next })
+      triggerHaptic(next === "CANCELLED" ? "warning" : "success")
       toast.success(`Agendamento ${label.toLowerCase()}.`)
       qc.invalidateQueries({ queryKey: ["provider", "bookings"] })
       qc.invalidateQueries({ queryKey: ["provider", "dashboard"] })
     } catch (e) {
       const err = e as { message?: string }
+      triggerHaptic("error")
       toast.error(err?.message ?? "Erro ao atualizar agendamento.")
     } finally {
       setActioningId(null)
     }
+  }
+
+  const requestCancel = (b: Booking) => {
+    triggerHaptic("warning")
+    setCancelTarget(b)
   }
 
   const openDetail = (b: Booking) => {
@@ -317,9 +337,12 @@ export function ProviderBookings() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <button
           type="button"
-          onClick={() => setTab("PENDING")}
+          onClick={() => {
+            triggerHaptic("selection")
+            setTab("PENDING")
+          }}
           className={cn(
-            "hover:border-primary/40 focus-visible:ring-primary/40 flex flex-col gap-1 rounded-xl border p-3.5 text-left transition-all focus-visible:ring-2 focus-visible:outline-none",
+            "hover:border-primary/40 focus-visible:ring-primary/40 flex flex-col gap-1 rounded-xl border p-3.5 text-left transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-[0.98]",
             tab === "PENDING"
               ? "border-amber-500/60 bg-amber-500/5 shadow-xs ring-1 ring-amber-500/20"
               : "bg-card",
@@ -337,9 +360,12 @@ export function ProviderBookings() {
 
         <button
           type="button"
-          onClick={() => setTab("CONFIRMED")}
+          onClick={() => {
+            triggerHaptic("selection")
+            setTab("CONFIRMED")
+          }}
           className={cn(
-            "hover:border-primary/40 focus-visible:ring-primary/40 flex flex-col gap-1 rounded-xl border p-3.5 text-left transition-all focus-visible:ring-2 focus-visible:outline-none",
+            "hover:border-primary/40 focus-visible:ring-primary/40 flex flex-col gap-1 rounded-xl border p-3.5 text-left transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-[0.98]",
             tab === "CONFIRMED"
               ? "border-emerald-500/60 bg-emerald-500/5 shadow-xs ring-1 ring-emerald-500/20"
               : "bg-card",
@@ -357,9 +383,12 @@ export function ProviderBookings() {
 
         <button
           type="button"
-          onClick={() => setTab("IN_PROGRESS")}
+          onClick={() => {
+            triggerHaptic("selection")
+            setTab("IN_PROGRESS")
+          }}
           className={cn(
-            "hover:border-primary/40 focus-visible:ring-primary/40 flex flex-col gap-1 rounded-xl border p-3.5 text-left transition-all focus-visible:ring-2 focus-visible:outline-none",
+            "hover:border-primary/40 focus-visible:ring-primary/40 flex flex-col gap-1 rounded-xl border p-3.5 text-left transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-[0.98]",
             tab === "IN_PROGRESS"
               ? "border-sky-500/60 bg-sky-500/5 shadow-xs ring-1 ring-sky-500/20"
               : "bg-card",
@@ -377,9 +406,12 @@ export function ProviderBookings() {
 
         <button
           type="button"
-          onClick={() => setTab("COMPLETED")}
+          onClick={() => {
+            triggerHaptic("selection")
+            setTab("COMPLETED")
+          }}
           className={cn(
-            "hover:border-primary/40 focus-visible:ring-primary/40 flex flex-col gap-1 rounded-xl border p-3.5 text-left transition-all focus-visible:ring-2 focus-visible:outline-none",
+            "hover:border-primary/40 focus-visible:ring-primary/40 flex flex-col gap-1 rounded-xl border p-3.5 text-left transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-[0.98]",
             tab === "COMPLETED"
               ? "border-teal-500/60 bg-teal-500/5 shadow-xs ring-1 ring-teal-500/20"
               : "bg-card",
@@ -466,7 +498,10 @@ export function ProviderBookings() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setTab("all")}
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    setTab("all")
+                  }}
                   className="text-muted-foreground h-8 text-xs"
                 >
                   Ver todos ({counts.all})
@@ -621,7 +656,7 @@ export function ProviderBookings() {
                           onMessage={() => messageClient(b.clientId)}
                           onConfirm={() => updateStatus(b, "CONFIRMED", "Confirmado")}
                           onStart={() => updateStatus(b, "IN_PROGRESS", "Iniciado")}
-                          onCancel={() => updateStatus(b, "CANCELLED", "Cancelado")}
+                          onCancel={() => requestCancel(b)}
                           onReport={() => openReport(b)}
                           onTransitHud={() => openTransitHud(b)}
                           onMediate={() => openMediation(b)}
@@ -644,7 +679,7 @@ export function ProviderBookings() {
                   onMessage={() => messageClient(b.clientId)}
                   onConfirm={() => updateStatus(b, "CONFIRMED", "Confirmado")}
                   onStart={() => updateStatus(b, "IN_PROGRESS", "Iniciado")}
-                  onCancel={() => updateStatus(b, "CANCELLED", "Cancelado")}
+                  onCancel={() => requestCancel(b)}
                   onReport={() => openReport(b)}
                   onTransitHud={() => openTransitHud(b)}
                   onMediate={() => openMediation(b)}
@@ -679,6 +714,38 @@ export function ProviderBookings() {
           </PaginationContent>
         </Pagination>
       )}
+
+      <AlertDialog
+        open={cancelTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setCancelTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar este agendamento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {cancelTarget
+                ? `${cancelTarget.service.title} com ${cancelTarget.client.name} em ${formatDate(cancelTarget.scheduledAt)} às ${formatTime(cancelTarget.scheduledAt)}. `
+                : ""}
+              O cliente será notificado e esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Manter agendamento</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90 text-white"
+              onClick={() => {
+                const target = cancelTarget
+                setCancelTarget(null)
+                if (target) void updateStatus(target, "CANCELLED", "Cancelado")
+              }}
+            >
+              Sim, cancelar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <BookingDetailsDialog
         booking={detail}

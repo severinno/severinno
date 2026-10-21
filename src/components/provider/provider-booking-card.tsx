@@ -20,6 +20,7 @@ import {
 import { PAYMENT_STATUS_LABELS } from "@/lib/constants"
 import { formatBRL, formatDate, formatTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { triggerHaptic } from "@/lib/haptics"
 import { useLocationBroadcaster } from "@/hooks/use-location-broadcaster"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -46,7 +47,10 @@ export function LocationBroadcastButton({ bookingId }: { bookingId: string }) {
     <Button
       size="sm"
       variant={isBroadcasting ? "default" : "outline"}
-      onClick={toggle}
+      onClick={() => {
+        triggerHaptic("medium")
+        toggle()
+      }}
       className={cn(
         "h-8 gap-1.5 px-2.5 text-xs font-medium transition-colors",
         isBroadcasting && "animate-pulse bg-emerald-600 text-white hover:bg-emerald-700",
@@ -92,7 +96,10 @@ export function BookingActions({
       {booking.status === "PENDING" && (
         <Button
           size="sm"
-          onClick={onConfirm}
+          onClick={() => {
+            triggerHaptic("success")
+            onConfirm()
+          }}
           disabled={actioning}
           className="h-8 gap-1.5 px-3 text-xs font-semibold shadow-xs"
         >
@@ -105,7 +112,10 @@ export function BookingActions({
           <Button
             size="sm"
             variant="outline"
-            onClick={onStart}
+            onClick={() => {
+              triggerHaptic("light")
+              onStart()
+            }}
             disabled={actioning}
             className="border-primary/30 text-primary hover:bg-primary/5 h-8 gap-1.5 px-3 text-xs font-semibold shadow-xs"
           >
@@ -115,7 +125,11 @@ export function BookingActions({
             <Button
               size="sm"
               variant="outline"
-              onClick={onTransitHud}
+              onClick={() => {
+                triggerHaptic("medium")
+
+                onTransitHud?.()
+              }}
               className="h-8 gap-1.5 border-sky-500/40 px-2.5 text-xs font-medium text-sky-700 hover:bg-sky-50 dark:border-sky-700 dark:text-sky-300 dark:hover:bg-sky-950/30"
               title="Abrir Modo Trânsito HUD com GPS e Waze"
             >
@@ -132,7 +146,11 @@ export function BookingActions({
             <Button
               size="sm"
               variant="outline"
-              onClick={onTransitHud}
+              onClick={() => {
+                triggerHaptic("medium")
+
+                onTransitHud?.()
+              }}
               className="h-8 gap-1.5 border-sky-500/40 px-2.5 text-xs font-medium text-sky-700 hover:bg-sky-50 dark:border-sky-700 dark:text-sky-300 dark:hover:bg-sky-950/30"
             >
               <Navigation className="size-3.5 text-sky-500" /> Trânsito HUD
@@ -148,7 +166,11 @@ export function BookingActions({
           <Button
             size="sm"
             variant="outline"
-            onClick={onReport}
+            onClick={() => {
+              triggerHaptic("light")
+
+              onReport?.()
+            }}
             className="h-8 gap-1.5 border-emerald-500/40 px-2.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
           >
             <ClipboardCheck className="size-3.5" /> Laudo
@@ -174,12 +196,22 @@ export function BookingActions({
               </DropdownMenuItem>
             )}
           {booking.status === "IN_PROGRESS" && onTransitHud && (
-            <DropdownMenuItem onClick={onTransitHud}>
+            <DropdownMenuItem
+              onClick={() => {
+                triggerHaptic("medium")
+                onTransitHud?.()
+              }}
+            >
               <Navigation className="mr-2 size-4 text-sky-500" /> Modo Trânsito (HUD)
             </DropdownMenuItem>
           )}
           {onReport && (
-            <DropdownMenuItem onClick={onReport}>
+            <DropdownMenuItem
+              onClick={() => {
+                triggerHaptic("light")
+                onReport?.()
+              }}
+            >
               <ClipboardCheck className="mr-2 size-4 text-emerald-600" /> Laudo & Checklist
             </DropdownMenuItem>
           )}
@@ -334,12 +366,22 @@ export function BookingCard({
                 </DropdownMenuItem>
               )}
               {booking.status === "IN_PROGRESS" && onTransitHud && (
-                <DropdownMenuItem onClick={onTransitHud}>
+                <DropdownMenuItem
+                  onClick={() => {
+                    triggerHaptic("medium")
+                    onTransitHud?.()
+                  }}
+                >
                   <Navigation className="mr-2 size-4 text-sky-500" /> Modo Trânsito (HUD)
                 </DropdownMenuItem>
               )}
               {onReport && (
-                <DropdownMenuItem onClick={onReport}>
+                <DropdownMenuItem
+                  onClick={() => {
+                    triggerHaptic("light")
+                    onReport?.()
+                  }}
+                >
                   <ClipboardCheck className="mr-2 size-4 text-emerald-600" /> Laudo & Checklist
                 </DropdownMenuItem>
               )}
@@ -368,7 +410,10 @@ export function BookingCard({
         {booking.status === "PENDING" && (
           <Button
             size="sm"
-            onClick={onConfirm}
+            onClick={() => {
+              triggerHaptic("success")
+              onConfirm()
+            }}
             disabled={actioning}
             className="h-11 w-full gap-2 rounded-xl text-xs font-semibold shadow-xs sm:h-9.5"
           >
@@ -380,7 +425,10 @@ export function BookingCard({
           <>
             <Button
               size="sm"
-              onClick={onStart}
+              onClick={() => {
+                triggerHaptic("light")
+                onStart()
+              }}
               disabled={actioning}
               className="bg-primary text-primary-foreground hover:bg-primary/90 h-11 flex-1 gap-1.5 rounded-xl text-xs font-semibold shadow-xs sm:h-9.5"
             >
@@ -390,7 +438,11 @@ export function BookingCard({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={onTransitHud}
+                onClick={() => {
+                  triggerHaptic("medium")
+
+                  onTransitHud?.()
+                }}
                 className="h-11 flex-1 gap-1.5 rounded-xl border-sky-500/40 text-xs font-medium text-sky-700 hover:bg-sky-50 sm:h-9.5 dark:border-sky-700 dark:text-sky-300 dark:hover:bg-sky-950/30"
               >
                 <Navigation className="size-3.5 text-sky-500" /> Trânsito HUD
@@ -400,7 +452,11 @@ export function BookingCard({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={onReport}
+                onClick={() => {
+                  triggerHaptic("light")
+
+                  onReport?.()
+                }}
                 className="h-11 gap-1.5 rounded-xl border-emerald-500/40 px-3 text-xs font-medium text-emerald-700 hover:bg-emerald-50 sm:h-9.5 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
               >
                 <ClipboardCheck className="size-3.5" /> Laudo
@@ -418,7 +474,11 @@ export function BookingCard({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={onTransitHud}
+                onClick={() => {
+                  triggerHaptic("medium")
+
+                  onTransitHud?.()
+                }}
                 className="h-11 flex-1 gap-1.5 rounded-xl border-sky-500/40 text-xs font-medium text-sky-700 hover:bg-sky-50 sm:h-9.5 dark:border-sky-700 dark:text-sky-300 dark:hover:bg-sky-950/30"
               >
                 <Navigation className="size-3.5 text-sky-500" /> Trânsito HUD
@@ -428,7 +488,11 @@ export function BookingCard({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={onReport}
+                onClick={() => {
+                  triggerHaptic("light")
+
+                  onReport?.()
+                }}
                 className="h-11 gap-1.5 rounded-xl border-emerald-500/40 px-3 text-xs font-medium text-emerald-700 hover:bg-emerald-50 sm:h-9.5 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
               >
                 <ClipboardCheck className="size-3.5" /> Laudo
@@ -443,7 +507,11 @@ export function BookingCard({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={onReport}
+                onClick={() => {
+                  triggerHaptic("light")
+
+                  onReport?.()
+                }}
                 className="h-9.5 flex-1 gap-1.5 rounded-xl border-emerald-500/40 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
               >
                 <ClipboardCheck className="size-3.5" /> Ver Laudo & Fotos

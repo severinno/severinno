@@ -34,6 +34,7 @@ import { apiGet } from "@/lib/api"
 import { type BookingStatus } from "@/lib/constants"
 import { formatBRL, formatTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { triggerHaptic } from "@/lib/haptics"
 import { useViewStore } from "@/store/view"
 import { ProviderTransitHud } from "@/components/provider/provider-transit-hud"
 
@@ -149,9 +150,12 @@ function CalendarGrid({
             <button
               key={key}
               type="button"
-              onClick={() => onSelectDay(day)}
+              onClick={() => {
+                triggerHaptic("selection")
+                onSelectDay(day)
+              }}
               className={cn(
-                "group focus-visible:ring-primary/40 relative flex aspect-square flex-col items-center justify-between rounded-xl border p-1.5 text-sm transition-all focus-visible:ring-2 focus-visible:outline-none sm:aspect-[4/3] sm:p-2",
+                "group focus-visible:ring-primary/40 relative flex aspect-square flex-col items-center justify-between rounded-xl border p-1.5 text-sm transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-95 sm:aspect-[4/3] sm:p-2",
                 inMonth
                   ? "bg-card hover:bg-muted/40"
                   : "bg-muted/20 text-muted-foreground/60 border-dashed",
@@ -421,6 +425,7 @@ export function ProviderAgenda() {
   }, [bookings, cursor])
 
   const handleGoToToday = () => {
+    triggerHaptic("light")
     const today = new Date()
     setCursor(today)
     setSelectedDay(today)
@@ -513,6 +518,7 @@ export function ProviderAgenda() {
                 size="icon"
                 className="size-8"
                 onClick={() => {
+                  triggerHaptic("light")
                   const prev = subMonths(cursor, 1)
                   setCursor(prev)
                   setSelectedDay(prev)
@@ -529,6 +535,7 @@ export function ProviderAgenda() {
                 size="icon"
                 className="size-8"
                 onClick={() => {
+                  triggerHaptic("light")
                   const next = addMonths(cursor, 1)
                   setCursor(next)
                   setSelectedDay(next)
