@@ -27,7 +27,8 @@ import { parseEnvContent, validateEnvMap, CRITICAL_ENV_RULES } from "./verify-en
 
 interface PreflightCheck {
   name: string
-  category: "Docker" | "TypeScript" | "Ambiente" | "Disaster Recovery" | "Caddy"
+  category:
+    "Docker" | "TypeScript" | "Ambiente" | "Disaster Recovery" | "Caddy" | "Segurança / Go-Live"
   run: () => { pass: boolean; details?: string }
 }
 
@@ -135,6 +136,36 @@ const checks: PreflightCheck[] = [
         return { pass: false, details: "Headers críticos de segurança ausentes no Caddyfile.prod" }
       }
       return { pass: true, details: "HSTS, CSP, rate limiting e reverse proxy configurados" }
+    },
+  },
+  {
+    name: "Modo de Manutenção Preventiva Fail-Closed no Seed e Ambiente",
+    category: "Segurança / Go-Live",
+    run: () => {
+      const seedDataPath = resolve(process.cwd(), "prisma/seed-data.ts")
+      const envExamplePath = resolve(process.cwd(), ".env.production.example")
+      if (!existsSync(seedDataPath) || !existsSync(envExamplePath)) {
+        return { pass: false, details: "prisma/seed-data.ts ou .env.production.example ausentes" }
+      }
+      const seedContent = readFileSync(seedDataPath, "utf-8")
+      const envContent = readFileSync(envExamplePath, "utf-8")
+
+      if (!seedContent.includes('"maintenance_mode"') || !seedContent.includes('"true"')) {
+        return {
+          pass: false,
+          details: "maintenance_mode=true ausente em DEFAULT_SETTINGS no seed-data.ts",
+        }
+      }
+      if (!envContent.includes("MAINTENANCE_MODE=true")) {
+        return {
+          pass: false,
+          details: "MAINTENANCE_MODE=true ausente no .env.production.example",
+        }
+      }
+      return {
+        pass: true,
+        details: "Fail-closed por default: banco inicializa com manutenção ativada",
+      }
     },
   },
 ]

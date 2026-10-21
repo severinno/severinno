@@ -140,6 +140,14 @@ export async function isClientAllowedDuringMaintenance(clientIp?: string | null)
  * sequestrar o site numa falha de infra.
  */
 export async function isMaintenanceMode(): Promise<boolean> {
+  // ── Fail-safe imediato via variável de ambiente ──────────────────────────
+  // Ativa a manutenção ANTES de consultar o banco — funciona mesmo se o DB
+  // ainda não foi provisionado/seedado. Útil para o primeiro deploy, onde a
+  // tabela Setting pode não existir ainda.
+  //
+  // Uso: MAINTENANCE_MODE=true no .env.production / docker-compose environment.
+  if (toBool(process.env.MAINTENANCE_MODE)) return true
+
   const now = Date.now()
   if (cache && now - cache.at < CACHE_TTL_MS) return cache.value
 

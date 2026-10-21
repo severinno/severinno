@@ -109,10 +109,11 @@ describe("CATEGORY_SPEC", () => {
 })
 
 describe("DEFAULT_SETTINGS", () => {
-  it("contém 8 settings com keys únicas", () => {
-    expect(DEFAULT_SETTINGS.length).toBe(8)
+  it("contém 9 settings com keys únicas", () => {
+    expect(DEFAULT_SETTINGS.length).toBe(9)
     const keys = DEFAULT_SETTINGS.map((s) => s.key)
     expect(new Set(keys).size).toBe(keys.length)
+    expect(keys).toContain("maintenance_mode")
     expect(keys).toContain("site_name")
     expect(keys).toContain("payment_pix_key")
   })
@@ -173,14 +174,14 @@ describe("buildPatchedSpec", () => {
 })
 
 describe("buildSeedPlan", () => {
-  it("banco vazio → tudo create (129 categorias + 8 settings)", () => {
+  it("banco vazio → tudo create (129 categorias + 9 settings)", () => {
     const plan = buildSeedPlan([], [])
     expect(plan.categories).toHaveLength(129)
-    expect(plan.settings).toHaveLength(8)
+    expect(plan.settings).toHaveLength(9)
     expect(plan.summary.categoriesCreate).toBe(129)
     expect(plan.summary.categoriesUpdate).toBe(0)
     expect(plan.summary.categoriesUnchanged).toBe(0)
-    expect(plan.summary.settingsCreate).toBe(8)
+    expect(plan.summary.settingsCreate).toBe(9)
     expect(plan.summary.settingsUpdate).toBe(0)
     expect(plan.summary.settingsUnchanged).toBe(0)
     // todos os creates têm slug canônico
@@ -195,7 +196,7 @@ describe("buildSeedPlan", () => {
     expect(plan.summary.categoriesUnchanged).toBe(129)
     expect(plan.summary.settingsCreate).toBe(0)
     expect(plan.summary.settingsUpdate).toBe(0)
-    expect(plan.summary.settingsUnchanged).toBe(8)
+    expect(plan.summary.settingsUnchanged).toBe(9)
   })
 
   it("detecta update quando name/level/icon/order/parent divergem", () => {
@@ -232,7 +233,7 @@ describe("buildSeedPlan", () => {
     expect(plan.summary.categoriesUpdate).toBe(2)
     expect(plan.summary.settingsUpdate).toBe(1)
     expect(plan.summary.categoriesUnchanged).toBe(127)
-    expect(plan.summary.settingsUnchanged).toBe(7)
+    expect(plan.summary.settingsUnchanged).toBe(8)
   })
 
   it("create preserva parent/icon/order corretos para subcategorias", () => {

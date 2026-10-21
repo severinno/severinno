@@ -396,6 +396,14 @@ export function buildPatchedSpec(raw: string | undefined, enabled: boolean): Cat
 export type SettingSeedInput = { key: string; value: string }
 
 export const DEFAULT_SETTINGS: SettingSeedInput[] = [
+  /**
+   * Manutenção preventiva ATIVADA por default — o marketplace nasce INACESSÍVEL
+   * ao público até que um admin desative explicitamente via painel
+   * (POST /api/admin/maintenance-mode { enabled: false }).
+   *
+   * Segurança fail-closed: nenhum deploy novo expõe o site sem revisão humana.
+   */
+  { key: "maintenance_mode", value: "true" },
   { key: "site_name", value: "Severinno" },
   { key: "site_tagline", value: "Marketplace de serviços com geolocalização" },
   { key: "support_email", value: "suporte@severinno.com" },

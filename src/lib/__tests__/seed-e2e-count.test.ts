@@ -87,14 +87,14 @@ describe("countCountsTypeFields", () => {
 // ── dataLoopExpansions ───────────────────────────────────────────────────
 
 describe("dataLoopExpansions", () => {
-  it("prod: settings (7) + 1 loop de Object.entries sobre Counts de 3 campos (2) = 9", () => {
+  it("prod: settings (8) + 1 loop de Object.entries sobre Counts de 3 campos (2) = 10", () => {
     // O cenário 10 (SEED_SPEC_PATCH JSON quebrado) adicionou um loop
     // Object.entries sobre o Counts de 3 campos (categories/settings/users).
-    expect(dataLoopExpansions(PROD_SRC, "prod")).toBe(9)
+    expect(dataLoopExpansions(PROD_SRC, "prod")).toBe(10)
   })
 
-  it("dev: settings (7) + 3 loops de Object.entries × (10-1) = 27 → 34", () => {
-    expect(dataLoopExpansions(DEV_SRC, "dev")).toBe(34)
+  it("dev: settings (8) + 3 loops de Object.entries × (10-1) = 27 → 35", () => {
+    expect(dataLoopExpansions(DEV_SRC, "dev")).toBe(35)
   })
 
   it("fonte sem loops → 0", () => {
@@ -105,8 +105,8 @@ describe("dataLoopExpansions", () => {
 // ── Helpers compartilhados ───────────────────────────────────────────────
 
 describe("helpers compartilhados (validateTree/validateUsers/plan)", () => {
-  it("validateTreeCheckCount = 59 (1 + 3 levels + 27×2 + 1)", () => {
-    expect(validateTreeCheckCount()).toBe(59)
+  it("validateTreeCheckCount = 263 (1 + 3 levels + 129×2 + 1)", () => {
+    expect(validateTreeCheckCount()).toBe(263)
   })
 
   it("validateUsersCheckCount = 13 (1 + 9 emails + 3 roles)", () => {
@@ -183,7 +183,7 @@ describe("deriveExpectedChecks reproduz os counts documentados (fonte da verdade
     ).toBeGreaterThanOrEqual(6)
   })
 
-  it("sanidade: prod=127 e dev=161 no estado atual (anchor do valor)", () => {
+  it("sanidade: prod=332 e dev=366 no estado atual (anchor do valor)", () => {
     // Âncora explícita do valor ATUAL da derivação. NÃO é contra drift da
     // extração (isso é o piso acima) — é para forçar atualização COORDENADA:
     // se a derivação mudar legitimamente (novo cenário), os comentários dos
@@ -193,11 +193,11 @@ describe("deriveExpectedChecks reproduz os counts documentados (fonte da verdade
     expect(
       deriveExpectedChecks("prod"),
       "anchor prod desatualizado: atualize os comentários dos workflows e este anchor juntos (derivação legítima mudou)",
-    ).toBe(127)
+    ).toBe(332)
     expect(
       deriveExpectedChecks("dev"),
       "anchor dev desatualizado: atualize os comentários dos workflows e este anchor juntos (derivação legítima mudou)",
-    ).toBe(161)
+    ).toBe(366)
   })
 })
 

@@ -101,6 +101,23 @@ describe("isMaintenanceMode", () => {
     await isMaintenanceMode()
     expect(findUnique).toHaveBeenCalledTimes(2)
   })
+
+  it("MAINTENANCE_MODE=true no ambiente ativa imediatamente sem consultar DB", async () => {
+    const orig = process.env.MAINTENANCE_MODE
+    try {
+      process.env.MAINTENANCE_MODE = "true"
+      resetMaintenanceModeCache()
+      await expect(isMaintenanceMode()).resolves.toBe(true)
+      expect(findUnique).not.toHaveBeenCalled()
+    } finally {
+      if (orig !== undefined) {
+        process.env.MAINTENANCE_MODE = orig
+      } else {
+        delete process.env.MAINTENANCE_MODE
+      }
+      resetMaintenanceModeCache()
+    }
+  })
 })
 
 // ── requireMaintenanceAccessible ───────────────────────────────────────────

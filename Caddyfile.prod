@@ -67,8 +67,8 @@
   # NOTA (hardening 09/2026): a CSP AUTORITATIVA é a do proxy.ts (com nonce
   # por-request + strict-dynamic). O header aqui NÃO define script-src com
   # 'unsafe-inline' nem unpkg — quando este bloco define CSP, ele SOBRESCREVE
-  # a do app e destruiria os nonces. Portanto este header NÃO inclui CSP:
-  # o proxy.ts do Next.js é a fonte única (ver src/lib/csp.ts).
+  # a do app e destruiria os nonces. Portanto este header NÃO inclui Content-Security-Policy:
+  # o proxy.ts do Next.js é a fonte única para Content-Security-Policy (ver src/lib/csp.ts).
   # Se um dia for preciso mover a CSP para cá, o Caddy precisa repassar o
   # header x-nonce do upstream e montar o nonce dinâmico (não suportado
   # nativamente) — mantenha no proxy.ts.

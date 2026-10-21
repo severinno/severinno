@@ -130,6 +130,24 @@ check("8. Rastreamento e Alertas Proativos em Filas", () => {
   return "DLQ vinculada ao sendAlertWebhook"
 })
 
+// 9. Manutenção Preventiva Ativada por Default no Seed
+check("9. Modo de Manutenção Ativado no Seed de Produção", () => {
+  const seedDataPath = resolve(ROOT, "prisma/seed-data.ts")
+  if (!existsSync(seedDataPath)) throw new Error("prisma/seed-data.ts não encontrado")
+  const content = readFileSync(seedDataPath, "utf-8")
+  if (!content.includes('"maintenance_mode"')) {
+    throw new Error(
+      "maintenance_mode ausente em DEFAULT_SETTINGS — deploy exporia o site sem revisão",
+    )
+  }
+  // Verifica que o valor default é "true" (fail-closed)
+  const match = content.match(/key:\s*"maintenance_mode"\s*,\s*value:\s*"(\w+)"/)
+  if (!match || match[1] !== "true") {
+    throw new Error('maintenance_mode não está com value: "true" — o default deve ser fail-closed')
+  }
+  return "maintenance_mode=true no seed (fail-closed por default)"
+})
+
 // ── Resumo ─────────────────────────────────────────────────────────────────
 
 const failed = checks.filter((c) => !c.passed)
@@ -155,6 +173,6 @@ if (failed.length > 0) {
   console.error("❌ O ambiente possui pendências para o deploy de produção.")
   process.exit(1)
 } else {
-  console.log("🎉 Todos os 8 critérios vitais de prontidão para deploy estão 100% aprovados!\n")
+  console.log("🎉 Todos os 9 critérios vitais de prontidão para deploy estão 100% aprovados!\n")
   process.exit(0)
 }
