@@ -3,7 +3,7 @@ import Link from "next/link"
 import { ShieldCheck, Gift, Award, ArrowRight, CheckCircle2, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card"
-import { ConviteClientTracker } from "./convite-client-tracker"
+import { ConviteClientTracker, ConviteCodeCopyBadge } from "./convite-client-tracker"
 
 interface ConvitePageProps {
   params: Promise<{ code: string }>
@@ -97,15 +97,7 @@ export default async function ConvitePage({ params, searchParams }: ConvitePageP
               {isProvider ? "Seu Código de Acesso Especialista" : "Seu Código de Boas-Vindas"}
             </CardDescription>
             <div className="my-2 flex items-center justify-center">
-              <span
-                className={
-                  isProvider
-                    ? "rounded-xl border-2 border-dashed border-amber-500/40 bg-amber-500/5 px-6 py-2.5 font-mono text-2xl font-black tracking-widest text-amber-600 sm:text-3xl dark:text-amber-400"
-                    : "border-primary/40 bg-primary/5 text-primary rounded-xl border-2 border-dashed px-6 py-2.5 font-mono text-2xl font-black tracking-widest sm:text-3xl"
-                }
-              >
-                {cleanCode}
-              </span>
+              <ConviteCodeCopyBadge code={cleanCode} isProvider={isProvider} />
             </div>
             <p className="text-muted-foreground mt-1 text-xs">
               {isProvider

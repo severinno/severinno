@@ -511,7 +511,7 @@ export function AdminWhatsApp() {
               </label>
               <Input
                 id="test-phone-input"
-                placeholder="Ex.: 11999999999 ou 5511999999999"
+                placeholder="Ex.: 33999999999 ou 5533999999999"
                 value={testPhone}
                 onChange={(e) => setTestPhone(e.target.value)}
                 disabled={testMutation.isPending}

@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
-import { handleError, badRequest, notFound } from "@/lib/api-server"
+import { badRequest, notFound } from "@/lib/api-server"
 import logger from "@/lib/logger"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 

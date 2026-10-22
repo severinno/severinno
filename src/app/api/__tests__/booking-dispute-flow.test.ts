@@ -47,7 +47,7 @@ describe("POST /api/bookings/[id]/dispute with Evidence Photos", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockUser = { userId: "client-1", role: "CLIENT" }
-    mockTransaction.mockImplementation(async (ops) => {
+    mockTransaction.mockImplementation(async (_ops) => {
       // Return mocked array of results
       return [{ id: "disp-1", status: "OPEN" }, { id: "b-123" }]
     })

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET } from "../health/extended/route"
-import { db } from "@/lib/db"
 
 vi.mock("@/lib/db", () => ({
   db: {

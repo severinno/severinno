@@ -121,9 +121,15 @@ export async function POST(request: Request) {
 
     // ── Ler body BRUTO para validação HMAC e depois parsear ─────────────
     const rawBody = await request.text()
-    let body: any
+    type EvolutionWebhookBody = {
+      event?: string
+      instance?: string
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data?: any
+    }
+    let body: EvolutionWebhookBody
     try {
-      body = JSON.parse(rawBody)
+      body = JSON.parse(rawBody) as EvolutionWebhookBody
     } catch {
       evolutionLogger.warn("Webhook Evolution: corpo JSON inválido — descartando graciosamente")
       return NextResponse.json({ received: true })

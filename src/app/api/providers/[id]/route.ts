@@ -7,7 +7,6 @@ import {
   PUBLIC_PROVIDER_SELECT,
   cacheControlPrivate,
   exactShape,
-  handleError,
   notFound,
   toPublicProvider,
   type PublicProviderPayload,

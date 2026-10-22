@@ -3,7 +3,7 @@ import { lookupCnefeGV } from "../geo-cnefe"
 import { calculateRoute } from "../geo-osrm"
 import { KalmanFilter2D } from "../geo-kalman"
 import { snapToRoad } from "../map-matching"
-import { validateEscrowGeofence, GEOFENCE_TIERS } from "../escrow-geofence"
+import { validateEscrowGeofence } from "../escrow-geofence"
 import { validateGeoCheckin } from "../geo-checkin-escrow"
 import { FEE_RATE } from "../constants"
 import { haversineKm } from "../geo-shared"
@@ -12,7 +12,6 @@ import {
   getReferrerByCode,
   registerReferralInvite,
   processReferralFirstBookingConversion,
-  getReferralStats,
 } from "../referral"
 
 const memoryCache = new Map<string, any>()
@@ -120,7 +119,7 @@ describe("E2E Master: Jornada Completa Integrada (Cliente ↔ Prestador ↔ Escr
 
     // ── 4. Telemetria Kalman 2D & Map-Matching ───────────────────────────────
     const kalman = new KalmanFilter2D()
-    const p1 = kalman.update(-18.8415, -41.9484, 25.0, Date.now())
+    kalman.update(-18.8415, -41.9484, 25.0, Date.now())
     const p2 = kalman.update(-18.8505, -41.9436, 20.0, Date.now() + 10000)
     expect(p2.accuracyMeters).toBeLessThan(25.0)
 

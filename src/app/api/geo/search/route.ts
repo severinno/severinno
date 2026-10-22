@@ -1,9 +1,8 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
-import { ZodError } from "zod"
 import { geocodeSearch, geocodeSearchStructured } from "@/lib/geo"
-import { cacheControlPublic, handleError } from "@/lib/api-server"
+import { cacheControlPublic } from "@/lib/api-server"
 import { assertGeoRateLimit } from "@/lib/geo-rate-limit"
 import { geocodeSearchSchema, geocodeSearchStructuredSchema } from "@/lib/validators"
 

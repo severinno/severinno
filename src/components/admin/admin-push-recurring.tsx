@@ -683,7 +683,7 @@ export function AdminPushRecurring() {
                 Filtrar por cidade (opcional)
               </label>
               <Input
-                placeholder="Ex: São Paulo"
+                placeholder="Ex: Governador Valadares"
                 value={form.filterCity}
                 onChange={(e) => updateField("filterCity", e.target.value)}
               />

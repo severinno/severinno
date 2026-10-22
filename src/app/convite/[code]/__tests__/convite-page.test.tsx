@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen } from "@/__tests__/test-utils"
+import { describe, it, expect, beforeEach, afterEach } from "vitest"
+import { cleanup, fireEvent, render, screen } from "@/__tests__/test-utils"
 import ConvitePage, { generateMetadata } from "../page"
-import { ConviteClientTracker } from "../convite-client-tracker"
+import { ConviteClientTracker, ConviteCodeCopyBadge } from "../convite-client-tracker"
 
 describe("ConvitePage (/convite/[code])", () => {
   afterEach(cleanup)
@@ -66,5 +66,13 @@ describe("ConviteClientTracker", () => {
     expect(localStorage.getItem("severinno_referral_code")).toBe("SEVWINNER")
     expect(localStorage.getItem("severinno_referral_intent")).toBe("client")
     expect(document.cookie).toContain("severinno_referral_code=SEVWINNER")
+  })
+
+  it("copies referral code on badge click with accessible button", () => {
+    render(<ConviteCodeCopyBadge code="SEVCOPY01" isProvider={false} />)
+    const btn = screen.getByRole("button", { name: /Copiar código de convite SEVCOPY01/i })
+    expect(btn).toBeInTheDocument()
+    fireEvent.click(btn)
+    expect(screen.getByText("SEVCOPY01")).toBeInTheDocument()
   })
 })

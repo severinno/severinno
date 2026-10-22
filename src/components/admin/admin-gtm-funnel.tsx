@@ -36,7 +36,7 @@ export function AdminGTMFunnel() {
   const [newName, setNewName] = React.useState("")
   const [newProfession, setNewProfession] = React.useState("Eletricista")
   const [newPhone, setNewPhone] = React.useState("")
-  const [newCity, setNewCity] = React.useState("São Paulo")
+  const [newCity, setNewCity] = React.useState("Governador Valadares")
   const [newDistrict, setNewDistrict] = React.useState("")
   const [newNotes, setNewNotes] = React.useState("")
 
@@ -188,7 +188,7 @@ export function AdminGTMFunnel() {
                       WhatsApp (com DDD)
                     </label>
                     <Input
-                      placeholder="(11) 98765-4321"
+                      placeholder="(33) 98765-4321"
                       value={newPhone}
                       onChange={(e) => setNewPhone(e.target.value)}
                       required

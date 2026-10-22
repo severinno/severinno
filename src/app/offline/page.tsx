@@ -22,7 +22,6 @@ import {
   Sparkles,
   Calendar,
   KeyRound,
-  ShieldCheck,
   UserCheck,
 } from "lucide-react"
 import { toast } from "sonner"

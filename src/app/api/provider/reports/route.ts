@@ -183,7 +183,10 @@ export async function GET(request: NextRequest) {
         const amt = toMoneyNumber(b.amount)
         grossRevenue += amt
         platformFees += toMoneyNumber(feeOf(b.amount))
-        if (b.status === "COMPLETED" && (b as any).escrowReleasedAt) {
+        if (
+          b.status === "COMPLETED" &&
+          (b as { escrowReleasedAt?: Date | string | null }).escrowReleasedAt
+        ) {
           escrowReleased += amt
         } else {
           escrowInCustody += amt

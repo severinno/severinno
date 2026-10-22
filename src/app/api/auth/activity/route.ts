@@ -10,9 +10,6 @@ import { withRoute } from "@/lib/api-route"
 import { getSession } from "@/lib/auth"
 import { unauthorized } from "@/lib/api-server"
 import { getClient } from "@/lib/redis"
-import logger from "@/lib/logger"
-
-const log = logger.child({ module: "api-activity-log" })
 
 export type ActivityItem = {
   id: string

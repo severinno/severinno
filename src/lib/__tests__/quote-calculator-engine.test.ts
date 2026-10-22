@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { calculateSmartQuote, VEHICLE_PROFILES } from "../quote-calculator-engine"
+import { calculateSmartQuote } from "../quote-calculator-engine"
 
 describe("quote-calculator-engine", () => {
   it("calcula orçamento com deslocamento de moto e taxa de plataforma de 15%", () => {

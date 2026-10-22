@@ -4,7 +4,7 @@ import {
   resolveMultiCityAddress,
   calculateMultiCityRoute,
 } from "../geo-multi-city"
-import { detectCityFromCep, getCityConfig } from "../cities"
+import { detectCityFromCep } from "../cities"
 
 describe("Geo Multi-City & Expansão Territorial", () => {
   it("valida coordenadas dentro dos limites territoriais das cidades registradas", () => {

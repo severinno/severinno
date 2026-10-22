@@ -146,7 +146,7 @@ export async function getBookingsStatusText(
 
         let escrowStatus = "⚠️ Pagamento Pendente (PIX)"
         if (singleBooking.paymentStatus === "PAID") {
-          if ((singleBooking as any).escrowReleasedAt) {
+          if ((singleBooking as { escrowReleasedAt?: Date | string | null }).escrowReleasedAt) {
             escrowStatus = "✅ Pagamento Liberado ao Prestador"
           } else {
             escrowStatus = "🛡️ Protegido em Custódia Escrow (Fundos seguros até aprovação final)"
@@ -154,7 +154,10 @@ export async function getBookingsStatusText(
         }
 
         let actions = `Para detalhes, acesse: https://severinno.com.br/?view=client.bookings`
-        if (singleBooking.status === "COMPLETED" && !(singleBooking as any).escrowReleasedAt) {
+        if (
+          singleBooking.status === "COMPLETED" &&
+          !(singleBooking as { escrowReleasedAt?: Date | string | null }).escrowReleasedAt
+        ) {
           actions = `🎉 O serviço foi concluído!\n• Para liberar o repasse: digite *APROVAR ${idRef}*\n• Se houve algum problema: digite *CONTESTAR ${idRef}*`
         } else if (singleBooking.paymentStatus === "PENDING") {
           actions = `💳 Para pagar e garantir sua data, digite *PIX* ou acesse: https://severinno.com.br`
@@ -236,7 +239,7 @@ export async function getBookingsStatusText(
 
         const escrowBadge =
           b.paymentStatus === "PAID"
-            ? (b as any).escrowReleasedAt
+            ? (b as { escrowReleasedAt?: Date | string | null }).escrowReleasedAt
               ? "✅ Pago"
               : "🛡️ Escrow Ativo"
             : "⚠️ PIX Pendente"

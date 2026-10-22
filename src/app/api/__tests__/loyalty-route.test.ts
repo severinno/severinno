@@ -1,13 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET, POST } from "@/app/api/loyalty/route"
 import { requireUser } from "@/lib/auth"
-import {
-  getLoyaltyStats,
-  getLoyaltyTransactions,
-  getUserPerks,
-  redeemReward,
-  LOYALTY_REWARDS_CATALOG,
-} from "@/lib/loyalty"
+import { getLoyaltyStats, getLoyaltyTransactions, getUserPerks, redeemReward } from "@/lib/loyalty"
 
 vi.mock("@/lib/auth", () => ({
   requireUser: vi.fn(),

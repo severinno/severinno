@@ -644,7 +644,7 @@ export function ClientProfile() {
                 setWhatsapp(e.target.value)
                 markDirty()
               }}
-              placeholder="(11) 98888-7777"
+              placeholder="(33) 98888-7777"
               maxLength={20}
               className="h-8.5 text-xs"
             />
@@ -665,7 +665,7 @@ export function ClientProfile() {
                 setPhone(e.target.value)
                 markDirty()
               }}
-              placeholder="(11) 3000-0000"
+              placeholder="(33) 3271-0000"
               maxLength={20}
               className="h-8.5 text-xs"
             />

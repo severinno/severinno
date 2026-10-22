@@ -125,7 +125,7 @@ const SETTING_HELP: Record<string, string> = {
   SITE_URL: "URL pública do site (usada em links de e-mail).",
   SITE_LOGO_URL: "URL do logotipo principal.",
   SUPPORT_EMAIL: "E-mail de suporte ao cliente.",
-  SUPPORT_WHATSAPP: "WhatsApp de suporte (com DDI, ex.: 5511999999999).",
+  SUPPORT_WHATSAPP: "WhatsApp de suporte (com DDI, ex.: 5533991113030).",
   WEATHER_API_KEY: "Chave de API do serviço de previsão do tempo.",
   WEATHER_API_URL: "URL base da API de clima.",
   SERVER_PORT: "Porta em que o servidor Next.js escuta.",

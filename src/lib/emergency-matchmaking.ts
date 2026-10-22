@@ -167,7 +167,16 @@ export async function claimEmergencyDispatch(
 
   if (redis) {
     try {
-      const res = await (redis as any).set(lockKey, providerId, "EX", 3600, "NX")
+      const redisClient = redis as unknown as {
+        set: (
+          key: string,
+          val: string,
+          exMode: string,
+          ttl: number,
+          nxMode: string,
+        ) => Promise<string | null>
+      }
+      const res = await redisClient.set(lockKey, providerId, "EX", 3600, "NX")
       acquired = res === "OK"
     } catch (err) {
       logger.warn(
@@ -198,7 +207,8 @@ export async function claimEmergencyDispatch(
     let claimedBy: string | undefined
     try {
       if (redis) {
-        claimedBy = (await (redis as any).get(lockKey)) || undefined
+        const redisClient = redis as unknown as { get: (key: string) => Promise<string | null> }
+        claimedBy = (await redisClient.get(lockKey)) || undefined
       }
     } catch {}
 

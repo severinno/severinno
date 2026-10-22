@@ -9,7 +9,7 @@
 
 import crypto from "node:crypto"
 import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/redis"
-import { toMoneyNumber } from "./money"
+import { toMoneyNumber, type MoneyInput } from "./money"
 
 export const HIGH_VALUE_THRESHOLD = 250.0 // R$ 250,00
 export const OTP_TTL_SECONDS = 600 // 10 minutos
@@ -26,7 +26,7 @@ interface EscrowOtpRecord {
  * Avalia se o agendamento exige desafio OTP para liberação da custódia financeira.
  */
 export function requiresOtpForRelease(booking: {
-  amount: any
+  amount: MoneyInput
   geofenceVerified?: boolean
   isUrgent?: boolean
 }): boolean {

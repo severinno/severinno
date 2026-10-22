@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET, PUT } from "../notification-preferences/route"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { getClient } from "@/lib/redis"
 
 vi.mock("@/lib/auth", () => ({
   requireUser: vi.fn().mockResolvedValue({ userId: "u-123", role: "CLIENT" }),

@@ -5,7 +5,7 @@
  * Secured by CRON_SECRET header if configured.
  */
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { runAllWhatsAppFlows } from "@/lib/whatsapp-flows"
 import logger from "@/lib/logger"
 import { withRoute } from "@/lib/api-route"

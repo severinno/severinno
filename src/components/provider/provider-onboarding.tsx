@@ -896,7 +896,7 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
                         id="ob-whatsapp"
                         value={form.whatsapp}
                         onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
-                        placeholder="(11) 99999-9999"
+                        placeholder="(33) 99999-9999"
                       />
                     </div>
                   </div>

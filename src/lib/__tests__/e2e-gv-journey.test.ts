@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest"
 import { lookupCnefeGV } from "../geo-cnefe"
 import { calculateRoute } from "../geo-osrm"
 import { KalmanFilter2D } from "../geo-kalman"
-import { snapToRoad, calculateBearing } from "../map-matching"
+import { snapToRoad } from "../map-matching"
 import { validateEscrowGeofence, GEOFENCE_TIERS } from "../escrow-geofence"
 import {
   enqueueOfflinePing,
@@ -107,7 +107,7 @@ describe("E2E Simulation: Jornada Completa do Prestador em Governador Valadares 
     expect(geofenceAudit.distanceKm).toBeLessThan(GEOFENCE_TIERS.STRICT)
 
     // ── 7. Notificação WhatsApp de Chegada via Evolution API ─────────────────
-    const waPayload = await sendProviderArrivedNotification(
+    await sendProviderArrivedNotification(
       "5533999999999", // DDD 33 (Governador Valadares)
       "Carlos Cliente",
       "Marcos Prestador",

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest"
 import {
   maskOffPlatformData,
-  trackDisintermediationStrike,
   resetDisintermediationStrikes,
   processChatMessageWithSafety,
   MASK_BADGE,

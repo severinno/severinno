@@ -16,11 +16,7 @@ import crypto from "node:crypto"
 import { db } from "@/lib/db"
 import { cacheGet, cacheSet } from "@/lib/redis"
 import { getLocalAiUrl } from "@/lib/ai-client"
-import logger from "@/lib/logger"
 import { toMoneyNumber } from "@/lib/money"
-
-const log =
-  typeof logger?.child === "function" ? logger.child({ module: "ai-semantic-search" }) : logger
 
 export interface SemanticSearchResult {
   serviceId: string
@@ -259,7 +255,7 @@ export function generateDeterministicSemanticVector(text: string): number[] {
 
   // 1. Ponderação por âncoras semânticas de domínio (alta relevância)
   const anchorEntries = Object.entries(DOMAIN_SEMANTIC_ANCHORS)
-  anchorEntries.forEach(([category, terms], catIdx) => {
+  anchorEntries.forEach(([_category, terms], catIdx) => {
     let matchCount = 0
     for (const token of tokens) {
       if (terms.some((term) => token.includes(term) || term.includes(token))) {

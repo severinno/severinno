@@ -30,7 +30,6 @@ import {
   sendServiceCompletionRequest,
   sendReviewRequest,
   sendQuoteResponseNotification,
-  sendText,
 } from "../evolution"
 
 // ── Helpers ────────────────────────────────────────────────────────────────

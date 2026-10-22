@@ -870,7 +870,7 @@ function EditUserDialog({
                 id="u-whats"
                 value={whatsapp}
                 onChange={(e) => setWhatsapp(e.target.value)}
-                placeholder="(11) 99999-9999"
+                placeholder="(33) 99999-9999"
                 className="border-input/60 h-9 rounded-lg"
               />
             </div>
@@ -881,7 +881,7 @@ function EditUserDialog({
                 value={state}
                 onChange={(e) => setState(e.target.value.toUpperCase().slice(0, 2))}
                 maxLength={2}
-                placeholder="SP"
+                placeholder="MG"
                 className="border-input/60 h-9 rounded-lg"
               />
             </div>
@@ -892,7 +892,7 @@ function EditUserDialog({
               id="u-city"
               value={city}
               onChange={(e) => setCity(e.target.value)}
-              placeholder="São Paulo"
+              placeholder="Governador Valadares"
               className="border-input/60 h-9 rounded-lg"
             />
           </div>

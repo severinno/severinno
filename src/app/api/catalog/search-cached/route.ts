@@ -3,7 +3,7 @@ import { withRoute } from "@/lib/api-route"
 import { edgeCache, buildEdgeCacheHeaders } from "@/lib/edge-catalog-cache"
 
 // Simulação de busca no banco com fallback resiliente
-async function searchServicesFromDb(query: string, city: string) {
+async function searchServicesFromDb(query: string, _city: string) {
   // Dados de catálogo base
   const allServices = [
     { id: "srv-1", title: "Eletricista Residencial", category: "Eletricista", basePrice: 120 },
