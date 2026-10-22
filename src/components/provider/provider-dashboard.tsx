@@ -31,6 +31,7 @@ import {
   Share2,
   Star,
   Wallet,
+  Wrench,
 } from "lucide-react"
 import {
   eachDayOfInterval,
@@ -49,6 +50,7 @@ import { apiGet } from "@/lib/api"
 import { type BookingStatus } from "@/lib/constants"
 import { formatBRL, formatDateTime, formatTime } from "@/lib/format"
 import { triggerHaptic } from "@/lib/haptics"
+import { cn } from "@/lib/utils"
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 
@@ -180,9 +182,36 @@ export function ProviderDashboard() {
     staleTime: 30_000,
   })
 
+  type DashboardService = {
+    id: string
+    title: string
+    basePrice: number
+    unit?: string
+    active?: boolean
+    description?: string
+  }
+
+  const servicesQuery = useQuery<DashboardService[]>({
+    queryKey: ["provider", "dashboard", "services", user?.id],
+    queryFn: async () => {
+      if (!user) return []
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res = await apiGet<any>("/api/services", { providerId: user.id })
+      if (Array.isArray(res)) return res
+      if (res && Array.isArray(res.items)) return res.items
+      return []
+    },
+    enabled: !!user,
+  })
+
   const bookings = React.useMemo(() => bookingsQuery.data?.items ?? [], [bookingsQuery.data?.items])
   const quotes = React.useMemo(() => quotesQuery.data?.items ?? [], [quotesQuery.data?.items])
   const reviews = React.useMemo(() => reviewsQuery.data?.items ?? [], [reviewsQuery.data?.items])
+  const services = React.useMemo(() => {
+    const data = servicesQuery.data
+    if (Array.isArray(data)) return data
+    return []
+  }, [servicesQuery.data])
 
   // KPIs
   const today = React.useMemo(() => new Date(), [])
@@ -285,28 +314,31 @@ export function ProviderDashboard() {
   const loading = bookingsQuery.isLoading || quotesQuery.isLoading || reviewsQuery.isLoading
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-5">
       {/* Greeting & Header HUD (Nielsen #1: Visibilidade do estado do sistema) */}
-      <div className="flex flex-col gap-3 border-b pb-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="border-border/50 flex flex-col gap-3 border-b pb-3.5 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h2 className="text-foreground text-2xl font-bold tracking-tight">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-foreground text-xl font-bold tracking-tight sm:text-2xl">
               Olá, {user?.name?.split(" ")[0] ?? "Prestador"} <span className="ml-0.5">👋</span>
             </h2>
             <Badge
               variant="outline"
               className="inline-flex items-center gap-1.5 rounded-full border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400"
             >
-              <Radio className="size-3 animate-pulse text-emerald-500" />
+              <Radio className="size-2.5 animate-pulse text-emerald-500" />
               <span>Disponível em GV</span>
             </Badge>
             <button
               type="button"
-              onClick={() => navigate("provider.rewards")}
+              onClick={() => {
+                triggerHaptic("selection")
+                navigate("provider.rewards")
+              }}
               className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/80 bg-amber-50/70 px-2.5 py-0.5 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/50"
             >
               <Award className="size-3 text-amber-600 dark:text-amber-400" />
-              <span>
+              <span className="tabular-nums">
                 {loyaltyQuery.data?.stats?.points ?? 0} pts &middot;{" "}
                 {loyaltyQuery.data?.stats?.tierName ?? "Bronze"}
               </span>
@@ -318,8 +350,8 @@ export function ProviderDashboard() {
           </p>
         </div>
 
-        {/* Quick Action Toolbar */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Quick Action Toolbar — Clean & Minimalist */}
+        <div className="flex flex-wrap items-center gap-1.5">
           <Button
             variant="outline"
             size="sm"
@@ -327,9 +359,9 @@ export function ProviderDashboard() {
               triggerHaptic("selection")
               navigate("provider.quotes")
             }}
-            className="h-8 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95"
+            className="h-7.5 gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-all active:scale-95"
           >
-            <Send className="size-3.5 text-blue-500" /> Responder orçamentos
+            <Send className="size-3 text-blue-500" /> Responder orçamentos
           </Button>
           <Button
             variant="outline"
@@ -338,9 +370,9 @@ export function ProviderDashboard() {
               triggerHaptic("selection")
               navigate("provider.agenda")
             }}
-            className="h-8 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95"
+            className="h-7.5 gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-all active:scale-95"
           >
-            <CalendarDays className="text-primary size-3.5" /> Ver agenda
+            <CalendarDays className="text-primary size-3" /> Ver agenda
           </Button>
           <Button
             variant="outline"
@@ -349,9 +381,9 @@ export function ProviderDashboard() {
               triggerHaptic("selection")
               navigate("provider.routes")
             }}
-            className="h-8 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95"
+            className="h-7.5 gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-all active:scale-95"
           >
-            <Compass className="size-3.5 text-sky-500" /> Rotas do dia
+            <Compass className="size-3 text-sky-500" /> Rotas do dia
           </Button>
           <Button
             variant="outline"
@@ -360,9 +392,9 @@ export function ProviderDashboard() {
               triggerHaptic("selection")
               navigate("provider.rewards")
             }}
-            className="h-8 gap-1.5 rounded-xl border-amber-300/70 bg-amber-50/40 text-xs font-semibold text-amber-800 transition-all hover:bg-amber-100/50 active:scale-95 dark:border-amber-800/70 dark:bg-amber-950/30 dark:text-amber-300"
+            className="h-7.5 gap-1.5 rounded-lg border-amber-300/70 bg-amber-50/40 px-2.5 text-xs font-semibold text-amber-800 transition-all hover:bg-amber-100/50 active:scale-95 dark:border-amber-800/70 dark:bg-amber-950/30 dark:text-amber-300"
           >
-            <Award className="size-3.5 text-amber-600 dark:text-amber-400" /> Clube &amp; Pontos
+            <Award className="size-3 text-amber-600 dark:text-amber-400" /> Clube &amp; Pontos
           </Button>
           <Button
             variant="outline"
@@ -371,11 +403,10 @@ export function ProviderDashboard() {
               triggerHaptic("selection")
               setReputationCardOpen(true)
             }}
-            className="h-8 gap-1.5 rounded-xl border-emerald-300/70 bg-emerald-50/40 text-xs font-semibold text-emerald-800 transition-all hover:bg-emerald-100/50 active:scale-95 dark:border-emerald-800/70 dark:bg-emerald-950/30 dark:text-emerald-300"
+            className="h-7.5 gap-1.5 rounded-lg border-emerald-300/70 bg-emerald-50/40 px-2.5 text-xs font-semibold text-emerald-800 transition-all hover:bg-emerald-100/50 active:scale-95 dark:border-emerald-800/70 dark:bg-emerald-950/30 dark:text-emerald-300"
             title="Compartilhar prova social e reputação no WhatsApp"
           >
-            <Share2 className="size-3.5 text-emerald-600 dark:text-emerald-400" /> Cartão de
-            Reputação
+            <Share2 className="size-3 text-emerald-600 dark:text-emerald-400" /> Cartão de Reputação
           </Button>
           <Button
             variant="outline"
@@ -384,11 +415,10 @@ export function ProviderDashboard() {
               triggerHaptic("selection")
               setPriceEstimatorOpen(true)
             }}
-            className="h-8 gap-1.5 rounded-xl border-blue-300/70 bg-blue-50/40 text-xs font-semibold text-blue-800 transition-all hover:bg-blue-100/50 active:scale-95 dark:border-blue-800/70 dark:bg-blue-950/30 dark:text-blue-300"
+            className="h-7.5 gap-1.5 rounded-lg border-blue-300/70 bg-blue-50/40 px-2.5 text-xs font-semibold text-blue-800 transition-all hover:bg-blue-100/50 active:scale-95 dark:border-blue-800/70 dark:bg-blue-950/30 dark:text-blue-300"
             title="Calculadora rápida de mão de obra e deslocamento em GV"
           >
-            <Calculator className="size-3.5 text-blue-600 dark:text-blue-400" /> Calculadora de
-            Preço
+            <Calculator className="size-3 text-blue-600 dark:text-blue-400" /> Calculadora de Preço
           </Button>
           <Button
             size="sm"
@@ -396,57 +426,65 @@ export function ProviderDashboard() {
               triggerHaptic("selection")
               navigate("provider.services")
             }}
-            className="h-8 gap-1.5 rounded-xl text-xs font-semibold shadow-xs transition-all active:scale-95"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 h-7.5 gap-1.5 rounded-lg px-3 text-xs font-semibold shadow-2xs transition-all active:scale-95"
           >
-            <Plus className="size-3.5" /> Novo serviço
+            <Plus className="size-3" /> Novo serviço
           </Button>
         </div>
       </div>
 
       {/* Bento Grid: Saldo da Carteira + 4 KPIs */}
-      <div className="grid gap-4 md:grid-cols-12">
+      <div className="grid gap-3.5 md:grid-cols-12">
         {/* Wallet Balance Card */}
-        <div className="flex flex-col justify-between gap-4 rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/90 via-emerald-100/30 to-white p-5 shadow-xs md:col-span-5 lg:col-span-4 dark:border-emerald-800/50 dark:from-emerald-950/40 dark:via-emerald-900/20 dark:to-slate-900">
+        <div className="via-background to-background dark:via-background dark:to-background flex flex-col justify-between gap-3 rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-50/80 p-4 shadow-2xs md:col-span-5 lg:col-span-4 dark:border-emerald-800/40 dark:from-emerald-950/30">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold tracking-wider text-emerald-800 uppercase dark:text-emerald-300">
+              <p className="text-[11px] font-bold tracking-wider text-emerald-800 uppercase dark:text-emerald-300">
                 Saldo da Carteira
               </p>
-              <p className="mt-1 text-3xl font-bold tracking-tight text-emerald-950 tabular-nums dark:text-emerald-100">
+              <p className="text-foreground mt-1 text-2xl font-bold tracking-tight tabular-nums sm:text-3xl">
                 {walletQuery.isLoading ? (
-                  <span className="inline-block h-9 w-36 animate-pulse rounded bg-emerald-200 dark:bg-emerald-800" />
+                  <span className="inline-block h-8 w-32 animate-pulse rounded bg-emerald-200 dark:bg-emerald-800" />
                 ) : (
                   formatBRL(walletQuery.data?.balance ?? 0)
                 )}
               </p>
-              <p className="mt-1 text-xs text-emerald-700/90 dark:text-emerald-400">
-                {walletQuery.data?.totalBookings ?? 0} serviço
-                {(walletQuery.data?.totalBookings ?? 0) === 1 ? "" : "s"} realizado
+              <p className="text-muted-foreground mt-1 text-[11px]">
+                <span className="text-foreground font-semibold tabular-nums">
+                  {walletQuery.data?.totalBookings ?? 0}
+                </span>{" "}
+                serviço{(walletQuery.data?.totalBookings ?? 0) === 1 ? "" : "s"} realizado
                 {(walletQuery.data?.totalBookings ?? 0) === 1 ? "" : "s"}
                 {walletQuery.data && walletQuery.data.totalBookings > 0 && (
-                  <> &middot; Ticket médio {formatBRL(walletQuery.data.avgTicket)}</>
+                  <>
+                    {" "}
+                    &middot; Ticket médio{" "}
+                    <span className="text-foreground font-semibold tabular-nums">
+                      {formatBRL(walletQuery.data.avgTicket)}
+                    </span>
+                  </>
                 )}
               </p>
             </div>
-            <div className="flex size-11 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-md shadow-emerald-600/20">
-              <Banknote className="size-5.5" />
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-xs">
+              <Banknote className="size-5" />
             </div>
           </div>
           <Button
             variant="outline"
             size="sm"
-            className="w-full gap-1.5 rounded-xl border-emerald-300/80 bg-white/90 text-xs font-semibold text-emerald-800 shadow-xs transition-all hover:bg-emerald-50 active:scale-95 dark:border-emerald-800 dark:bg-slate-900 dark:text-emerald-200 dark:hover:bg-emerald-950/60"
+            className="bg-background text-foreground w-full gap-1.5 rounded-xl border-emerald-500/30 text-xs font-semibold shadow-2xs transition-all hover:bg-emerald-500/10 active:scale-95"
             onClick={() => {
               triggerHaptic("selection")
               navigate("provider.finance")
             }}
           >
-            <Wallet className="size-3.5" /> Ver financeiro
+            <Wallet className="size-3.5 text-emerald-600 dark:text-emerald-400" /> Ver financeiro
           </Button>
         </div>
 
         {/* 4 KPIs Cards */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:col-span-7 lg:col-span-8">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 md:col-span-7 lg:col-span-8">
           <StatCard
             index={0}
             label="Agendamentos hoje"
@@ -461,7 +499,7 @@ export function ProviderDashboard() {
             label="Orçamentos pendentes"
             value={pendingQuoteItems}
             icon={FileText}
-            tone="amber"
+            tone={pendingQuoteItems > 0 ? "amber" : "zinc"}
             compact={true}
           />
           <StatCard
@@ -493,6 +531,131 @@ export function ProviderDashboard() {
         onOpenMeiReport={() => setMeiReportOpen(true)}
       />
 
+      {/* Hiperfoco em Serviços do Prestador (Service Design Clean & Minimalista) */}
+      <Card className="bg-card border-border/60 rounded-2xl border shadow-xs">
+        <CardContent className="p-4 sm:p-5">
+          <div className="border-border/50 mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+            <div className="flex items-center gap-2">
+              <span className="flex size-7 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                <Wrench className="size-4" />
+              </span>
+              <div>
+                <h3 className="text-foreground text-xs font-bold tracking-wider uppercase">
+                  Meus Serviços &amp; Especialidades
+                </h3>
+                <p className="text-muted-foreground text-[11px]">
+                  {services.length}{" "}
+                  {services.length === 1 ? "serviço cadastrado" : "serviços cadastrados"} no
+                  catálogo de Governador Valadares
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  navigate("provider.services")
+                }}
+                className="h-7 gap-1 rounded-lg px-2.5 text-xs font-semibold"
+              >
+                Gerenciar catálogo <ArrowRight className="size-3" />
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  navigate("provider.services")
+                }}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 h-7 gap-1 rounded-lg px-2.5 text-xs font-semibold shadow-2xs"
+              >
+                <Plus className="size-3" /> Adicionar serviço
+              </Button>
+            </div>
+          </div>
+
+          {servicesQuery.isLoading ? (
+            <div className="text-muted-foreground flex items-center justify-center py-6 text-xs">
+              <Loader2 className="text-primary mr-2 size-4 animate-spin" /> Carregando serviços...
+            </div>
+          ) : services.length === 0 ? (
+            <div className="border-border/70 bg-muted/15 flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed py-7 text-center">
+              <div className="flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                <Wrench className="size-5" />
+              </div>
+              <div>
+                <p className="text-foreground text-xs font-semibold">
+                  Nenhum serviço cadastrado ainda
+                </p>
+                <p className="text-muted-foreground mt-0.5 max-w-sm text-[11px]">
+                  Cadastre os serviços que você realiza em Governador Valadares para receber pedidos
+                  e orçamentos de clientes do seu bairro.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  navigate("provider.services")
+                }}
+                className="mt-1 h-7.5 gap-1.5 rounded-lg text-xs font-semibold"
+              >
+                <Plus className="size-3.5" /> Cadastrar primeiro serviço
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+              {services.slice(0, 6).map((svc) => (
+                <div
+                  key={svc.id}
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    navigate("provider.services")
+                  }}
+                  className="group hover:border-primary/40 hover:bg-muted/30 border-border/50 bg-background/60 flex cursor-pointer flex-col justify-between rounded-xl border p-3 shadow-2xs transition-all hover:shadow-xs"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-foreground group-hover:text-primary truncate text-xs font-bold transition-colors">
+                        {svc.title}
+                      </p>
+                      {svc.description && (
+                        <p className="text-muted-foreground mt-0.5 line-clamp-1 text-[11px]">
+                          {svc.description}
+                        </p>
+                      )}
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "shrink-0 text-[10px] font-semibold",
+                        svc.active !== false
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                          : "border-border text-muted-foreground",
+                      )}
+                    >
+                      {svc.active !== false ? "Ativo" : "Pausado"}
+                    </Badge>
+                  </div>
+                  <div className="border-border/40 mt-2.5 flex items-center justify-between border-t pt-2 text-[11px]">
+                    <span className="text-foreground font-bold tabular-nums">
+                      {formatBRL(svc.basePrice)}{" "}
+                      <span className="text-muted-foreground text-[10px] font-normal">
+                        {svc.unit ? `/ ${svc.unit}` : ""}
+                      </span>
+                    </span>
+                    <span className="text-primary flex items-center gap-0.5 text-[10px] font-medium opacity-0 transition-opacity group-hover:opacity-100">
+                      Editar <ArrowRight className="size-2.5" />
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Demanda Regional / Geo Awareness */}
       <ProviderGeoAwarenessBadge />
 
@@ -502,137 +665,11 @@ export function ProviderDashboard() {
         </div>
       ) : (
         <>
-          {/* Gráficos com Curva de Gradiente Suave */}
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card className="bg-card rounded-2xl border shadow-xs">
-              <CardContent className="p-5">
-                <div className="mb-4 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="bg-primary/10 text-primary flex size-7 items-center justify-center rounded-lg">
-                      <CalendarCheck className="size-4" />
-                    </span>
-                    <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                      Agendamentos (últimos 7 dias)
-                    </p>
-                  </div>
-                </div>
-                <div className="h-56 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={bookingsPerDay}
-                      margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
-                    >
-                      <CartesianGrid
-                        stroke="var(--border)"
-                        strokeDasharray="3 3"
-                        vertical={false}
-                      />
-                      <XAxis
-                        dataKey="day"
-                        tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        allowDecimals={false}
-                        tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
-                        axisLine={false}
-                        tickLine={false}
-                        width={28}
-                      />
-                      <RTooltip
-                        cursor={{ fill: "var(--accent)", opacity: 0.5 }}
-                        contentStyle={CHART_TOOLTIP_STYLE}
-                        formatter={(v: number) => [v, "Agendamentos"]}
-                      />
-                      <Bar
-                        dataKey="agendamentos"
-                        fill="var(--primary)"
-                        radius={[6, 6, 0, 0]}
-                        barSize={26}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-card rounded-2xl border shadow-xs">
-              <CardContent className="p-5">
-                <div className="mb-4 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="flex size-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600">
-                      <Wallet className="size-4" />
-                    </span>
-                    <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-                      Receita por mês
-                    </p>
-                  </div>
-                </div>
-                <div className="h-56 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                      data={revenuePerMonth}
-                      margin={{ top: 8, right: 8, left: -8, bottom: 0 }}
-                    >
-                      <defs>
-                        <linearGradient id="grad-revenue" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.4} />
-                          <stop offset="95%" stopColor="var(--primary)" stopOpacity={0.0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid
-                        stroke="var(--border)"
-                        strokeDasharray="3 3"
-                        vertical={false}
-                      />
-                      <XAxis
-                        dataKey="month"
-                        tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
-                        axisLine={false}
-                        tickLine={false}
-                        width={48}
-                        tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
-                      />
-                      <RTooltip
-                        cursor={{
-                          stroke: "var(--primary)",
-                          strokeWidth: 1,
-                          strokeDasharray: "3 3",
-                        }}
-                        contentStyle={CHART_TOOLTIP_STYLE}
-                        formatter={(v: number) => [formatBRL(v), "Receita"]}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="receita"
-                        stroke="var(--primary)"
-                        strokeWidth={2.5}
-                        fill="url(#grad-revenue)"
-                        activeDot={{ r: 5, fill: "var(--primary)" }}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Painel Analytics de Conversão e Escrow */}
-          <div className="pt-1">
-            <ProviderAnalyticsPanel />
-          </div>
-
           {/* 3 Colunas Recentes: Agenda de Hoje / Orçamentos / Avaliações */}
           <div className="grid gap-4 lg:grid-cols-3">
             {/* Agenda do Dia */}
             <Card className="bg-card rounded-2xl border shadow-xs">
-              <CardContent className="p-5">
+              <CardContent className="p-4 sm:p-5">
                 <div className="mb-3.5 flex items-center justify-between gap-2 border-b pb-3">
                   <div className="min-w-0">
                     <p className="text-foreground text-xs font-semibold tracking-wide uppercase">
@@ -649,7 +686,10 @@ export function ProviderDashboard() {
                     variant="ghost"
                     size="sm"
                     className="text-primary hover:text-primary h-7 shrink-0 gap-1 px-2 text-xs font-semibold"
-                    onClick={() => navigate("provider.agenda")}
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      navigate("provider.agenda")
+                    }}
                   >
                     Ver agenda <ArrowRight className="size-3" />
                   </Button>
@@ -710,7 +750,7 @@ export function ProviderDashboard() {
 
             {/* Orçamentos Pendentes */}
             <Card className="bg-card rounded-2xl border shadow-xs">
-              <CardContent className="p-5">
+              <CardContent className="p-4 sm:p-5">
                 <div className="mb-3.5 flex items-center justify-between gap-2 border-b pb-3">
                   <p className="text-foreground text-xs font-semibold tracking-wide uppercase">
                     Orçamentos pendentes
@@ -719,7 +759,10 @@ export function ProviderDashboard() {
                     variant="ghost"
                     size="sm"
                     className="text-primary hover:text-primary h-7 shrink-0 gap-1 px-2 text-xs font-semibold"
-                    onClick={() => navigate("provider.quotes")}
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      navigate("provider.quotes")
+                    }}
                   >
                     Ver todos <ArrowRight className="size-3" />
                   </Button>
@@ -765,7 +808,10 @@ export function ProviderDashboard() {
                             size="sm"
                             variant="default"
                             className="h-7 shrink-0 gap-1 rounded-lg px-2 text-xs font-semibold"
-                            onClick={() => navigate("provider.quotes")}
+                            onClick={() => {
+                              triggerHaptic("selection")
+                              navigate("provider.quotes")
+                            }}
                           >
                             <Send className="size-3" /> Responder
                           </Button>
@@ -779,7 +825,7 @@ export function ProviderDashboard() {
 
             {/* Últimas Avaliações */}
             <Card className="bg-card rounded-2xl border shadow-xs">
-              <CardContent className="p-5">
+              <CardContent className="p-4 sm:p-5">
                 <div className="mb-3.5 flex items-center justify-between gap-2 border-b pb-3">
                   <p className="text-foreground text-xs font-semibold tracking-wide uppercase">
                     Últimas avaliações
@@ -788,7 +834,10 @@ export function ProviderDashboard() {
                     variant="ghost"
                     size="sm"
                     className="text-primary hover:text-primary h-7 shrink-0 gap-1 px-2 text-xs font-semibold"
-                    onClick={() => navigate("provider.reviews")}
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      navigate("provider.reviews")
+                    }}
                   >
                     Ver todas <ArrowRight className="size-3" />
                   </Button>
@@ -834,6 +883,132 @@ export function ProviderDashboard() {
                 )}
               </CardContent>
             </Card>
+          </div>
+
+          {/* Gráficos com Curva de Gradiente Suave */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card className="bg-card rounded-2xl border shadow-xs">
+              <CardContent className="p-4 sm:p-5">
+                <div className="mb-4 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-primary/10 text-primary flex size-7 items-center justify-center rounded-lg">
+                      <CalendarCheck className="size-4" />
+                    </span>
+                    <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                      Agendamentos (últimos 7 dias)
+                    </p>
+                  </div>
+                </div>
+                <div className="h-48 w-full min-w-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={bookingsPerDay}
+                      margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
+                    >
+                      <CartesianGrid
+                        stroke="var(--border)"
+                        strokeDasharray="3 3"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="day"
+                        tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        allowDecimals={false}
+                        tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={28}
+                      />
+                      <RTooltip
+                        cursor={{ fill: "var(--accent)", opacity: 0.5 }}
+                        contentStyle={CHART_TOOLTIP_STYLE}
+                        formatter={(v: number) => [v, "Agendamentos"]}
+                      />
+                      <Bar
+                        dataKey="agendamentos"
+                        fill="var(--primary)"
+                        radius={[6, 6, 0, 0]}
+                        barSize={24}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-card rounded-2xl border shadow-xs">
+              <CardContent className="p-4 sm:p-5">
+                <div className="mb-4 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex size-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600">
+                      <Wallet className="size-4" />
+                    </span>
+                    <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                      Receita por mês
+                    </p>
+                  </div>
+                </div>
+                <div className="h-48 w-full min-w-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={revenuePerMonth}
+                      margin={{ top: 8, right: 8, left: -8, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="grad-revenue" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="var(--primary)" stopOpacity={0.0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid
+                        stroke="var(--border)"
+                        strokeDasharray="3 3"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="month"
+                        tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={48}
+                        tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
+                      />
+                      <RTooltip
+                        cursor={{
+                          stroke: "var(--primary)",
+                          strokeWidth: 1,
+                          strokeDasharray: "3 3",
+                        }}
+                        contentStyle={CHART_TOOLTIP_STYLE}
+                        formatter={(v: number) => [formatBRL(v), "Receita"]}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="receita"
+                        stroke="var(--primary)"
+                        strokeWidth={2.5}
+                        fill="url(#grad-revenue)"
+                        activeDot={{ r: 5, fill: "var(--primary)" }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Painel Analytics de Conversão e Escrow */}
+          <div className="pt-1">
+            <ProviderAnalyticsPanel />
           </div>
 
           {/* Preferências do dispositivo */}
