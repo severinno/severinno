@@ -37,10 +37,12 @@ export const GET = withRoute("api.admin.gateway.invoices.GET", async (request) =
   const page = url.searchParams.get("page") ?? "1"
   const perPage = url.searchParams.get("perPage") ?? "20"
   const search = url.searchParams.get("search") ?? ""
+  const status = url.searchParams.get("status") ?? ""
 
   const token = await getToken()
   const params = new URLSearchParams({ page, perPage })
   if (search) params.set("search", search)
+  if (status && status !== "ALL") params.set("status", status)
 
   const res = await fetch(`${LY_BASE}/v2/invoices?${params}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -56,5 +58,13 @@ export const GET = withRoute("api.admin.gateway.invoices.GET", async (request) =
   }
 
   const data = await res.json()
+  if (status && status !== "ALL") {
+    if (Array.isArray(data.results)) {
+      data.results = data.results.filter((inv: { status?: string }) => inv.status === status)
+    }
+    if (Array.isArray(data.invoices)) {
+      data.invoices = data.invoices.filter((inv: { status?: string }) => inv.status === status)
+    }
+  }
   return NextResponse.json({ ok: true, ...data })
 })

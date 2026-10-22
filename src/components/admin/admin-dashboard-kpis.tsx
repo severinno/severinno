@@ -12,20 +12,42 @@ export function KpiCard({
   icon: Icon,
   label,
   value,
+  onClick,
 }: {
   icon: LucideIcon
   label: string
   value: string
+  onClick?: () => void
 }) {
+  const content = (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
+          {label}
+        </p>
+        <span className="bg-primary/8 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
+          <Icon className="size-4" />
+        </span>
+      </div>
+      <p className="mt-1.5 text-xl font-bold tracking-tight tabular-nums">{value}</p>
+    </>
+  )
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="border-border/50 bg-card hover:border-primary/30 hover:bg-accent/20 rounded-xl border px-3.5 py-3 text-left transition-all active:scale-95"
+      >
+        {content}
+      </button>
+    )
+  }
+
   return (
-    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
-      <span className="bg-primary/8 text-primary flex size-10 items-center justify-center rounded-lg">
-        <Icon className="size-5" />
-      </span>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-      <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
-        {label}
-      </p>
+    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border px-3.5 py-3 transition-colors">
+      {content}
     </div>
   )
 }

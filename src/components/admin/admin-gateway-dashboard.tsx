@@ -188,9 +188,9 @@ export function AdminGatewayDashboard() {
 
   if (isLoading || !data) {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-3.5">
         <div className="bg-muted h-8 w-48 animate-pulse rounded" />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="bg-muted h-28 animate-pulse rounded-xl" />
           ))}
@@ -224,7 +224,7 @@ export function AdminGatewayDashboard() {
   const statusChartData = byStatus.filter((s) => s.count > 0)
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       <Tabs
         value={activeTab}
         onValueChange={(v) => setActiveTab(v as "metrics" | "invoices")}
@@ -233,7 +233,7 @@ export function AdminGatewayDashboard() {
         {/* Header com Abas */}
         <div className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Gateway de Pagamento</h1>
+            <h1 className="text-base font-bold tracking-tight">Gateway de Pagamento</h1>
             <p className="text-muted-foreground mt-0.5 text-sm">
               Métricas agregadas do Lytex — receita, volume de transações e conversão
             </p>
@@ -251,7 +251,7 @@ export function AdminGatewayDashboard() {
           </TabsList>
         </div>
 
-        <TabsContent value="metrics" className="mt-4 flex flex-col gap-6">
+        <TabsContent value="metrics" className="mt-4 flex flex-col gap-3.5">
           <div className="flex items-center justify-end gap-2">
             {isFetching && <Loader2 className="text-muted-foreground size-4 animate-spin" />}
             <Button
@@ -288,7 +288,7 @@ export function AdminGatewayDashboard() {
           {/* Summary cards */}
           <section
             aria-label="Métricas do gateway"
-            className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+            className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4"
           >
             <StatCard
               icon={DollarSign}
@@ -321,7 +321,7 @@ export function AdminGatewayDashboard() {
           </section>
 
           {/* Charts row 1: Monthly volume + Status distribution */}
-          <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <section className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
             {/* Monthly volume bar chart */}
             <div className="border-border/50 bg-card rounded-xl border">
               <div className="border-b px-5 py-4">
@@ -350,7 +350,7 @@ export function AdminGatewayDashboard() {
           </section>
 
           {/* Charts row 2: Transaction volume + Conversion trend */}
-          <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <section className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
             {/* Transaction volume area chart */}
             <div className="border-border/50 bg-card rounded-xl border">
               <div className="border-b px-5 py-4">
@@ -379,7 +379,7 @@ export function AdminGatewayDashboard() {
           </section>
 
           {/* Payment method distribution + Detailed table */}
-          <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <section className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
             {/* Payment method bar chart */}
             <div className="border-border/50 bg-card rounded-xl border">
               <div className="border-b px-5 py-4">
@@ -418,7 +418,7 @@ export function AdminGatewayDashboard() {
                       const pct = totalVolume > 0 ? ((s.total / totalVolume) * 100).toFixed(1) : "0"
                       return (
                         <tr key={s.status} className="border-border/30 border-b last:border-0">
-                          <td className="py-2.5">
+                          <td className="py-2">
                             <div className="flex items-center gap-2">
                               <span
                                 className="size-2.5 shrink-0 rounded-full"
@@ -432,13 +432,13 @@ export function AdminGatewayDashboard() {
                               </span>
                             </div>
                           </td>
-                          <td className="text-muted-foreground py-2.5 text-right tabular-nums">
+                          <td className="text-muted-foreground py-2 text-right tabular-nums">
                             {s.count}
                           </td>
-                          <td className="py-2.5 text-right font-semibold tabular-nums">
+                          <td className="py-2 text-right font-semibold tabular-nums">
                             {formatCompactBRL(s.total)}
                           </td>
-                          <td className="text-muted-foreground py-2.5 text-right tabular-nums">
+                          <td className="text-muted-foreground py-2 text-right tabular-nums">
                             {pct}%
                           </td>
                         </tr>
@@ -446,12 +446,12 @@ export function AdminGatewayDashboard() {
                     })}
                     {/* Total row */}
                     <tr className="font-semibold">
-                      <td className="text-foreground pt-2.5">Total</td>
-                      <td className="pt-2.5 text-right tabular-nums">{totalCount}</td>
-                      <td className="text-foreground pt-2.5 text-right tabular-nums">
+                      <td className="text-foreground pt-2">Total</td>
+                      <td className="pt-2 text-right tabular-nums">{totalCount}</td>
+                      <td className="text-foreground pt-2 text-right tabular-nums">
                         {formatCompactBRL(totalVolume)}
                       </td>
-                      <td className="pt-2.5 text-right tabular-nums">100%</td>
+                      <td className="pt-2 text-right tabular-nums">100%</td>
                     </tr>
                   </tbody>
                 </table>
@@ -460,7 +460,7 @@ export function AdminGatewayDashboard() {
           </section>
 
           {/* Summary quick stats */}
-          <div className="border-border/50 from-primary/5 rounded-xl border bg-gradient-to-r to-emerald-500/5 p-4">
+          <div className="border-border/50 from-primary/5 rounded-xl border bg-gradient-to-r to-emerald-500/5 px-3.5 py-2">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="text-muted-foreground flex items-center gap-2 text-sm">
                 <Banknote className="text-primary size-5" />
@@ -531,22 +531,19 @@ function StatCard({
   }
 
   return (
-    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
+    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-3 transition-colors">
       <div className="flex items-center justify-between">
         <span
-          className={cn(
-            "flex size-10 items-center justify-center rounded-lg",
-            accentStyles[accent],
-          )}
+          className={cn("flex size-8 items-center justify-center rounded-lg", accentStyles[accent])}
         >
-          <Icon className="size-5" />
+          <Icon className="size-4" />
         </span>
       </div>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+      <p className="mt-1.5 text-xl font-bold tracking-tight tabular-nums">{value}</p>
       <p className="text-muted-foreground mt-0.5 text-xs font-medium tracking-wider uppercase">
         {label}
       </p>
-      <p className="text-muted-foreground/70 mt-0.5 text-[10px]">{sub}</p>
+      <p className="text-muted-foreground/70 mt-0.5 text-[10px] tabular-nums">{sub}</p>
     </div>
   )
 }

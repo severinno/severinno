@@ -35,7 +35,7 @@ import { useQuery } from "@tanstack/react-query"
 import { apiGet } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { DashboardHeader, ErrorState, MetricCard } from "./_shared"
+import { DashboardHeader, ErrorState, KpiCard, MetricCard } from "./_shared"
 
 import type { DetailedHealthResponse } from "@/app/api/health/detailed/route"
 
@@ -99,7 +99,7 @@ export function AdminHealthDashboard() {
   const statusCfg = getStatusConfig(data.status)
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       <DashboardHeader
         title="Saúde do Sistema"
         description="Monitoramento em tempo real de todos os serviços"
@@ -125,7 +125,7 @@ export function AdminHealthDashboard() {
       <section aria-label="Status geral do sistema">
         <div
           className={cn(
-            "relative overflow-hidden rounded-2xl border p-6 transition-colors",
+            "relative overflow-hidden rounded-2xl border px-4 py-3 transition-colors",
             data.status === "healthy"
               ? "to-background border-emerald-200 bg-gradient-to-br from-emerald-50/60 dark:border-emerald-900/30 dark:from-emerald-950/10"
               : data.status === "degraded"
@@ -133,18 +133,18 @@ export function AdminHealthDashboard() {
                 : "to-background border-red-200 bg-gradient-to-br from-red-50/60 dark:border-red-900/30 dark:from-red-950/10",
           )}
         >
-          <div className="flex items-start gap-4">
+          <div className="flex items-start gap-3">
             <span
               className={cn(
-                "flex size-14 shrink-0 items-center justify-center rounded-2xl",
+                "flex size-10 shrink-0 items-center justify-center rounded-xl",
                 statusCfg.bg,
               )}
             >
-              <statusCfg.icon className={cn("size-7", statusCfg.fg)} />
+              <statusCfg.icon className={cn("size-5", statusCfg.fg)} />
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h2 className="text-foreground text-lg font-bold">{statusCfg.label}</h2>
+                <h2 className="text-foreground text-base font-bold">{statusCfg.label}</h2>
                 <span
                   className={cn(
                     "rounded-full px-2 py-0.5 text-[10px] font-medium",
@@ -155,7 +155,7 @@ export function AdminHealthDashboard() {
                   v{data.version}
                 </span>
               </div>
-              <p className="text-muted-foreground mt-0.5 text-sm">
+              <p className="text-muted-foreground mt-0.5 text-xs">
                 {data.summary.healthy}/{data.summary.total} serviços operacionais
                 {data.summary.degraded > 0 && ` · ${data.summary.degraded} degradados`}
                 {data.summary.unhealthy > 0 && ` · ${data.summary.unhealthy} críticos`}
@@ -164,7 +164,7 @@ export function AdminHealthDashboard() {
           </div>
 
           {/* Summary bars */}
-          <div className="bg-muted mt-4 flex h-2 gap-0.5 overflow-hidden rounded-full">
+          <div className="bg-muted mt-3 flex h-2 gap-0.5 overflow-hidden rounded-full">
             <div
               className="bg-emerald-500 transition-all duration-500"
               style={{ width: `${(data.summary.healthy / data.summary.total) * 100}%` }}
@@ -215,7 +215,7 @@ export function AdminHealthDashboard() {
 
       {/* ── Service Cards Grid ───────────────────────────────────────── */}
       <section>
-        <div className="mb-4 flex items-center gap-2">
+        <div className="mb-3 flex items-center gap-2">
           <Wifi className="text-primary size-4" />
           <h2 className="text-foreground text-sm font-semibold">Serviços</h2>
         </div>
@@ -227,7 +227,7 @@ export function AdminHealthDashboard() {
       </section>
 
       {/* ── Cache Stats + Process Info ───────────────────────────────── */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <section className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         {/* Cache */}
         <MetricCard icon={Database} title="Cache Stats">
           <div className="space-y-3">
@@ -293,7 +293,7 @@ export function AdminHealthDashboard() {
       </section>
 
       {/* ── RabbitMQ + Workers ────────────────────────────────────────── */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <section className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         {/* RabbitMQ */}
         <MetricCard icon={Rabbit} title="RabbitMQ — Filas">
           {renderRabbitMQDetails(data)}
@@ -306,7 +306,7 @@ export function AdminHealthDashboard() {
       </section>
 
       {/* ── Resiliência de Busca & Cache Multi-nível ────────────────── */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <section className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         {/* OpenSearch Outbox + DLQ */}
         <MetricCard icon={Search} title="OpenSearch — Resiliência & DLQ">
           {renderOpenSearchDetails(data)}
@@ -329,49 +329,13 @@ export function AdminHealthDashboard() {
 
 // ── Sub-components ────────────────────────────────────────────────────────
 
-function KpiCard({
-  icon: Icon,
-  label,
-  value,
-  subtitle,
-  trend,
-}: {
-  icon: LucideIcon
-  label: string
-  value: string
-  subtitle?: string
-  trend?: "up" | "down"
-}) {
-  return (
-    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
-      <div className="flex items-start justify-between">
-        <span className="bg-primary/8 text-primary flex size-10 items-center justify-center rounded-lg">
-          <Icon className="size-5" />
-        </span>
-        {trend ? (
-          trend === "up" ? (
-            <AlertTriangle className="size-4 text-amber-500" />
-          ) : (
-            <CheckCircle2 className="size-4 text-emerald-500" />
-          )
-        ) : null}
-      </div>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-      <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
-        {label}
-      </p>
-      {subtitle ? <p className="text-muted-foreground mt-0.5 text-[10px]">{subtitle}</p> : null}
-    </div>
-  )
-}
-
 function ServiceCard({ service }: { service: DetailedHealthResponse["services"][number] }) {
   const cfg = getStatusConfig(service.status)
 
   return (
     <div
       className={cn(
-        "bg-card rounded-xl border p-4 transition-all hover:shadow-sm",
+        "bg-card rounded-xl border p-3.5 transition-all hover:shadow-sm",
         service.status === "unhealthy" && "border-red-200 dark:border-red-900/30",
         service.status === "degraded" && "border-amber-200 dark:border-amber-900/30",
       )}

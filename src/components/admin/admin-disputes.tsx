@@ -215,65 +215,75 @@ export function AdminDisputes() {
   const meta = data?.meta || { total: 0, open: 0, totalAmountInDispute: 0 }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3.5">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-            <Scale className="text-primary size-7" /> Mediação & Disputas de Escrow
+          <h2 className="flex items-center gap-2 text-base font-bold tracking-tight">
+            <Scale className="text-primary size-5" /> Mediação & Disputas de Escrow
           </h2>
           <p className="text-muted-foreground text-sm">
             Arbitragem de conflitos, retenção de custódia e garantia de serviço Severinno.
           </p>
         </div>
 
-        <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+        <Tabs
+          value={filter}
+          onValueChange={(v) => {
+            triggerHaptic("selection")
+            setFilter(v as typeof filter)
+          }}
+        >
           <TabsList>
             <TabsTrigger value="OPEN" className="gap-1.5">
               Em Aberto
               {meta.open > 0 && (
-                <span className="bg-destructive text-destructive-foreground py-0.2 ml-1 rounded-full px-1.5 text-[10px] font-bold">
+                <span className="bg-destructive text-destructive-foreground py-0.2 ml-1 rounded-full px-1.5 text-[10px] font-bold tabular-nums">
                   {meta.open}
                 </span>
               )}
             </TabsTrigger>
             <TabsTrigger value="RESOLVED">Resolvidas</TabsTrigger>
-            <TabsTrigger value="ALL">Todas ({meta.total})</TabsTrigger>
+            <TabsTrigger value="ALL" className="tabular-nums">
+              Todas ({meta.total})
+            </TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-3.5 sm:grid-cols-3">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardHeader className="flex flex-row items-center justify-between p-3 pb-1.5">
             <CardTitle className="text-sm font-medium">Casos em Aberto</CardTitle>
             <AlertTriangle className="size-4 text-amber-500" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{meta.open}</div>
+          <CardContent className="p-3 pt-0">
+            <div className="text-xl font-bold tabular-nums">{meta.open}</div>
             <p className="text-muted-foreground text-xs">Aguardando parecer de mediação</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardHeader className="flex flex-row items-center justify-between p-3 pb-1.5">
             <CardTitle className="text-sm font-medium">Saldo Retido em Custódia</CardTitle>
             <DollarSign className="size-4 text-emerald-500" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatBRL(meta.totalAmountInDispute)}</div>
+          <CardContent className="p-3 pt-0">
+            <div className="text-xl font-bold tabular-nums">
+              {formatBRL(meta.totalAmountInDispute)}
+            </div>
             <p className="text-muted-foreground text-xs">Bloqueado para liberação após disputa</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardHeader className="flex flex-row items-center justify-between p-3 pb-1.5">
             <CardTitle className="text-sm font-medium">Taxa de Resolução</CardTitle>
             <ShieldCheck className="text-primary size-4" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
+          <CardContent className="p-3 pt-0">
+            <div className="text-xl font-bold tabular-nums">
               {meta.total > 0
                 ? `${(((meta.total - meta.open) / meta.total) * 100).toFixed(0)}%`
                 : "100%"}
@@ -299,11 +309,11 @@ export function AdminDisputes() {
           </p>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3.5">
           {items.map((dispute) => (
             <Card key={dispute.id} className="transition-all hover:shadow-md">
-              <CardContent className="p-5">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <CardContent className="p-3.5">
+                <div className="flex flex-col gap-3.5 lg:flex-row lg:items-center lg:justify-between">
                   {/* Informações Centrais */}
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
@@ -311,11 +321,14 @@ export function AdminDisputes() {
                         {dispute.booking.service.title}
                       </span>
                       <span className="text-muted-foreground text-xs">•</span>
-                      <span className="text-muted-foreground text-xs">
+                      <span className="text-muted-foreground text-xs tabular-nums">
                         Agendamento #{dispute.bookingId.slice(-6)}
                       </span>
                       {dispute.status === "OPEN" ? (
-                        <Badge variant="destructive" className="gap-1 text-[10px] font-semibold">
+                        <Badge
+                          variant="destructive"
+                          className="gap-1 text-[10px] font-semibold tabular-nums"
+                        >
                           <Clock className="size-3" /> Em Aberto ({dispute.openDays}d)
                         </Badge>
                       ) : (
@@ -323,22 +336,32 @@ export function AdminDisputes() {
                           <CheckCircle2 className="mr-1 size-3" /> Resolvido
                         </Badge>
                       )}
-                      <span className="bg-primary/10 text-primary rounded-md px-2 py-0.5 text-xs font-bold">
+                      <span className="bg-primary/10 text-primary rounded-md px-2 py-0.5 text-xs font-bold tabular-nums">
                         {formatBRL(dispute.booking.amount)}
                       </span>
                     </div>
 
                     {/* Queixa */}
-                    <div className="bg-muted/40 rounded-lg p-3 text-sm">
+                    <div className="bg-muted/40 rounded-lg p-2.5 text-sm">
                       <p className="text-muted-foreground mb-1 text-xs font-semibold tracking-wider uppercase">
                         Motivo da Contestação pelo Cliente:
                       </p>
                       <p className="text-foreground italic">"{dispute.reason}"</p>
                     </div>
 
+                    {/* Nota de conclusão do prestador */}
+                    {dispute.booking.completionNote && (
+                      <div className="bg-muted/30 rounded-lg px-2.5 py-2 text-xs">
+                        <span className="text-muted-foreground font-semibold">
+                          Nota do Prestador:
+                        </span>{" "}
+                        <span className="text-foreground">{dispute.booking.completionNote}</span>
+                      </div>
+                    )}
+
                     {/* Parecer se já resolvido */}
                     {dispute.resolution && (
-                      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-800 dark:text-emerald-300">
+                      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2.5 text-xs text-emerald-800 dark:text-emerald-300">
                         <span className="font-semibold">Parecer do Mediador:</span>{" "}
                         {dispute.resolution}
                       </div>
@@ -401,16 +424,29 @@ export function AdminDisputes() {
             </DialogTitle>
             <DialogDescription>
               Selecione o veredito para liberar a custódia ou estornar o valor de{" "}
-              <strong>{selectedDispute ? formatBRL(selectedDispute.booking.amount) : ""}</strong>.
+              <strong className="tabular-nums">
+                {selectedDispute ? formatBRL(selectedDispute.booking.amount) : ""}
+              </strong>
+              .
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <div className="space-y-3.5 py-2">
+            {selectedDispute?.booking.completionNote && (
+              <div className="bg-muted/40 rounded-lg px-3 py-2 text-xs">
+                <span className="text-muted-foreground font-semibold">Nota do Prestador:</span>{" "}
+                <span className="text-foreground">{selectedDispute.booking.completionNote}</span>
+              </div>
+            )}
+
             {/* Escolha da Decisão */}
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
-                onClick={() => setDecision("FULL_REFUND")}
+                onClick={() => {
+                  triggerHaptic("selection")
+                  setDecision("FULL_REFUND")
+                }}
                 className={`rounded-xl border p-3 text-center transition ${
                   decision === "FULL_REFUND"
                     ? "border-destructive bg-destructive/10 text-destructive font-semibold"
@@ -423,7 +459,10 @@ export function AdminDisputes() {
 
               <button
                 type="button"
-                onClick={() => setDecision("RELEASE_TO_PROVIDER")}
+                onClick={() => {
+                  triggerHaptic("selection")
+                  setDecision("RELEASE_TO_PROVIDER")
+                }}
                 className={`rounded-xl border p-3 text-center transition ${
                   decision === "RELEASE_TO_PROVIDER"
                     ? "border-emerald-500 bg-emerald-500/10 font-semibold text-emerald-600"
@@ -436,7 +475,10 @@ export function AdminDisputes() {
 
               <button
                 type="button"
-                onClick={() => setDecision("SPLIT")}
+                onClick={() => {
+                  triggerHaptic("selection")
+                  setDecision("SPLIT")
+                }}
                 className={`rounded-xl border p-3 text-center transition ${
                   decision === "SPLIT"
                     ? "border-amber-500 bg-amber-500/10 font-semibold text-amber-600"
@@ -451,7 +493,7 @@ export function AdminDisputes() {
             {/* Slider de Split se aplicável */}
             {decision === "SPLIT" && selectedDispute && (
               <div className="bg-muted/40 space-y-2 rounded-xl p-3">
-                <div className="flex justify-between text-xs">
+                <div className="flex justify-between text-xs tabular-nums">
                   <span>
                     Cliente: <strong>{splitPct}%</strong> (
                     {formatBRL((selectedDispute.booking.amount * splitPct) / 100)})

@@ -9,6 +9,7 @@
 
 import * as React from "react"
 import { ShieldCheck, Eye, Loader2, CheckCircle2, XCircle, Bot } from "lucide-react"
+import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
 import { Card, CardContent } from "@/components/ui/card"
@@ -22,6 +23,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
+import { triggerHaptic } from "@/lib/haptics"
 import { cn } from "@/lib/utils"
 import { PageTransition } from "@/components/shared/page-transition"
 
@@ -52,10 +54,18 @@ type Verification = {
   createdAt: string
 }
 
+const QUICK_REJECT_REASONS = [
+  "Documento ilegível",
+  "Selfie borrada",
+  "Documento vencido",
+  "Rosto não confere",
+] as const
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 export function AdminIdentityReview() {
+  const queryClient = useQueryClient()
   const [verifications, setVerifications] = React.useState<Verification[]>([])
   const [loading, setLoading] = React.useState(true)
   const [processingId, setProcessingId] = React.useState<string | null>(null)
@@ -97,6 +107,8 @@ export function AdminIdentityReview() {
           body: JSON.stringify({ userId, action, reason }),
         })
         if (res.ok) {
+          triggerHaptic(action === "approve" ? "success" : "warning")
+          void queryClient.invalidateQueries({ queryKey: ["admin", "badges"] })
           toast.success(
             action === "approve" ? "Identidade aprovada com sucesso!" : "Verificação rejeitada.",
           )
@@ -112,11 +124,11 @@ export function AdminIdentityReview() {
         setProcessingId(null)
       }
     },
-    [],
+    [queryClient],
   )
 
   return (
-    <PageTransition className="space-y-6 p-6">
+    <PageTransition className="space-y-3.5">
       {/* Header + filters */}
       <div className="flex items-center justify-between">
         <div>
@@ -144,12 +156,12 @@ export function AdminIdentityReview() {
 
       {/* Loading */}
       {loading && (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3.5 md:grid-cols-2">
           {Array.from({ length: 4 }).map((_, i) => (
             <Card key={i}>
-              <CardContent className="p-5">
+              <CardContent className="p-3.5">
                 <div className="flex items-center gap-3">
-                  <Skeleton className="size-12 rounded-full" />
+                  <Skeleton className="size-10 rounded-full" />
                   <div className="space-y-2">
                     <Skeleton className="h-4 w-32" />
                     <Skeleton className="h-3 w-24" />
@@ -163,12 +175,18 @@ export function AdminIdentityReview() {
 
       {/* Empty state */}
       {!loading && verifications.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="bg-primary/10 flex size-16 items-center justify-center rounded-full">
-            <ShieldCheck className="text-primary size-7" />
+        <div className="flex flex-col items-center justify-center py-8 text-center">
+          <div className="bg-primary/10 flex size-14 items-center justify-center rounded-full">
+            <ShieldCheck className="text-primary size-6" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">Nenhuma verificação pendente</h3>
-          <p className="text-muted-foreground mt-2 text-sm">
+          <h3 className="mt-3 text-base font-semibold">
+            {statusFilter === "pending"
+              ? "Nenhuma verificação pendente"
+              : statusFilter === "approved"
+                ? "Nenhuma verificação aprovada"
+                : "Nenhuma verificação rejeitada"}
+          </h3>
+          <p className="text-muted-foreground mt-1 text-sm">
             Todas as verificações de identidade foram processadas.
           </p>
         </div>
@@ -176,7 +194,7 @@ export function AdminIdentityReview() {
 
       {/* Verification cards */}
       {!loading && verifications.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3.5 md:grid-cols-2">
           {verifications.map((v) => {
             const initials = v.name
               ? v.name
@@ -190,10 +208,10 @@ export function AdminIdentityReview() {
 
             return (
               <Card key={v.id} className="overflow-hidden">
-                <CardContent className="space-y-4 p-5">
+                <CardContent className="space-y-2.5 p-3.5">
                   {/* User info */}
                   <div className="flex items-center gap-3">
-                    <Avatar className="size-12">
+                    <Avatar className="size-10">
                       <AvatarImage src={v.avatarUrl ?? undefined} alt={v.name} />
                       <AvatarFallback>{initials}</AvatarFallback>
                     </Avatar>
@@ -222,14 +240,14 @@ export function AdminIdentityReview() {
                   {ocr && (
                     <div className="bg-muted/30 space-y-1 rounded-lg border p-2.5">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
+                        <span className="flex items-center gap-1 font-medium text-emerald-600 tabular-nums dark:text-emerald-400">
                           <Bot className="size-3" />
                           OCR: {ocr.documentType} ({Math.round(ocr.confidence * 100)}%)
                         </span>
                         {ocr.faceMatchConfidence !== undefined && (
                           <span
                             className={cn(
-                              "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                              "rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
                               ocr.faceMatchConfidence > 0.8
                                 ? "bg-emerald-500/10 text-emerald-600"
                                 : "bg-destructive/10 text-destructive",
@@ -368,6 +386,20 @@ export function AdminIdentityReview() {
               Informe o motivo da rejeição. O usuário será notificado.
             </DialogDescription>
           </DialogHeader>
+          <div className="flex flex-wrap gap-1.5">
+            {QUICK_REJECT_REASONS.map((reason) => (
+              <Button
+                key={reason}
+                type="button"
+                variant={rejectReason === reason ? "default" : "outline"}
+                size="sm"
+                onClick={() => setRejectReason(reason)}
+                className="h-7 rounded-full text-xs"
+              >
+                {reason}
+              </Button>
+            ))}
+          </div>
           <textarea
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}

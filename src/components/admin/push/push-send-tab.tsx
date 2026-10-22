@@ -113,6 +113,21 @@ export function PushSendTab({ onScheduleSuccess }: { onScheduleSuccess?: () => v
   })
 
   const handleSendOrSchedule = () => {
+    const ids =
+      selectAll && usersData?.items ? usersData.items.map((u) => u.id) : Array.from(selectedIds)
+    if (ids.length === 0) {
+      toast.error("Selecione pelo menos um usuário.")
+      return
+    }
+    if (!title.trim()) {
+      toast.error("O título é obrigatório.")
+      return
+    }
+    if (!body.trim()) {
+      toast.error("O corpo da mensagem é obrigatório.")
+      return
+    }
+
     if (scheduleMode === "schedule") {
       if (!scheduledDate || !scheduledTime) {
         toast.error("Selecione data e hora.")
@@ -127,16 +142,6 @@ export function PushSendTab({ onScheduleSuccess }: { onScheduleSuccess?: () => v
       return
     }
 
-    const ids =
-      selectAll && usersData?.items ? usersData.items.map((u) => u.id) : Array.from(selectedIds)
-    if (ids.length === 0) {
-      toast.error("Selecione pelo menos um usuário.")
-      return
-    }
-    if (!title.trim()) {
-      toast.error("O título é obrigatório.")
-      return
-    }
     setConfirmSendOpen(true)
   }
 

@@ -206,14 +206,14 @@ export function AdminPushAudit() {
   const typeOptions = data.availableTypes ?? []
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-3.5">
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-foreground text-xl font-bold tracking-tight">
+          <h1 className="text-foreground text-base font-bold tracking-tight">
             Log de Auditoria — Push
           </h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">
+          <p className="text-muted-foreground mt-0.5 text-sm tabular-nums">
             {data.pagination.total} operaçōes registradas — página {data.pagination.page} de{" "}
             {data.pagination.totalPages}
           </p>
@@ -221,7 +221,7 @@ export function AdminPushAudit() {
 
         <div className="flex items-center gap-3">
           {dataUpdatedAt ? (
-            <span className="text-muted-foreground text-xs">
+            <span className="text-muted-foreground text-xs tabular-nums">
               Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
             </span>
           ) : null}
@@ -338,7 +338,7 @@ export function AdminPushAudit() {
                 </thead>
                 <tbody className="divide-y">
                   {data.items.map((record) => (
-                    <tr key={record.id} className="hover:bg-muted/20 h-11 transition-colors">
+                    <tr key={record.id} className="hover:bg-muted/20 h-9 transition-colors">
                       {/* Action */}
                       <td className="px-3">
                         <ActionBadge action={record.action} />
@@ -451,14 +451,14 @@ export function AdminPushAudit() {
                             {record.errorCount}
                           </span>
                         ) : (
-                          <span className="text-muted-foreground text-xs">0</span>
+                          <span className="text-muted-foreground text-xs tabular-nums">0</span>
                         )}
                       </td>
 
                       {/* Direct push fallback */}
                       <td className="px-3">
                         {record.directPushCount > 0 ? (
-                          <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                          <span className="text-[10px] text-amber-600 tabular-nums dark:text-amber-400">
                             {record.directPushCount} direto
                           </span>
                         ) : (
@@ -489,7 +489,7 @@ export function AdminPushAudit() {
       {/* ── Pagination ───────────────────────────────────────────────── */}
       {data.pagination.totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-xs tabular-nums">
             {data.pagination.total} registro(s) — página {data.pagination.page} de{" "}
             {data.pagination.totalPages}
           </p>
@@ -517,7 +517,7 @@ export function AdminPushAudit() {
       )}
 
       {/* ── Footer stats ──────────────────────────────────────────────── */}
-      <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 dark:border-blue-800/30 dark:bg-blue-950/20 dark:text-blue-300">
+      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-800/30 dark:bg-blue-950/20 dark:text-blue-300">
         <p className="font-medium">📋 Log de Auditoria</p>
         <p className="mt-1">
           Este log registra <strong>todas as operações</strong> de push realizadas por
@@ -536,7 +536,7 @@ export function AdminPushAudit() {
 
 function AuditSkeleton() {
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-3.5">
       <div className="flex items-center justify-between">
         <div className="space-y-2">
           <Skeleton className="h-6 w-56" />

@@ -26,8 +26,6 @@ import {
   Search,
   Server,
   Timer,
-  TrendingDown,
-  TrendingUp,
   List,
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
@@ -48,7 +46,7 @@ import {
 import { apiGet } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { DashboardHeader, ErrorState, MetricCard } from "./_shared"
+import { DashboardHeader, ErrorState, KpiCard, LatencyBar, MetricCard } from "./_shared"
 import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 import type { GeoCacheDiagnosticsResponse } from "@/app/api/admin/geo-cache-diagnostics/route"
@@ -75,10 +73,6 @@ const SERVICE_ICONS: Record<string, React.ElementType> = {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
-
-function formatMs(ms: number): string {
-  return ms < 1 ? "<1ms" : `${Math.round(ms)}ms`
-}
 
 function formatSeconds(sec: number | null): string {
   if (sec == null) return "—"
@@ -141,7 +135,7 @@ export function AdminGeoCacheDashboard() {
   const totalCalls = Object.values(geoMetrics.services).reduce((a, s) => a + s.count, 0)
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       <DashboardHeader
         title="Diagnóstico do Cache Geo"
         description="Hit/miss ratio, queries mais frequentes, e heatmap de uso do Redis"
@@ -179,8 +173,8 @@ export function AdminGeoCacheDashboard() {
           trend={
             cacheStats.total > 0
               ? cacheStats.hitRatio != null && cacheStats.hitRatio > 0.7
-                ? "down"
-                : "up"
+                ? "up"
+                : "down"
               : undefined
           }
         />
@@ -211,7 +205,7 @@ export function AdminGeoCacheDashboard() {
         />
       </section>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         {/* ── Hit/Miss Donut Chart ──────────────────────────────────── */}
         <MetricCard icon={BarChart3} title="Hit / Miss Ratio">
           <div className="flex items-center gap-6">
@@ -345,7 +339,7 @@ export function AdminGeoCacheDashboard() {
       </div>
 
       {/* ── Top Queries ─────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         {/* Top Searches */}
         <MetricCard icon={Search} title="Top 10 Buscas (Nominatim)">
           {topSearches.length === 0 ? (
@@ -436,7 +430,7 @@ export function AdminGeoCacheDashboard() {
       )}
 
       {/* ── Service Detail Cards ────────────────────────────────────── */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <section className="grid grid-cols-1 gap-3.5 lg:grid-cols-3">
         {heatmap.map((entry) => {
           const Icon = SERVICE_ICONS[entry.service] ?? Globe
           return (
@@ -494,7 +488,7 @@ export function AdminGeoCacheDashboard() {
 
       {/* ── Configuration ───────────────────────────────────────────── */}
       <MetricCard icon={Server} title="Configuração do Cache Warming">
-        <div className="grid grid-cols-2 gap-6 text-xs lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3.5 text-xs lg:grid-cols-4">
           <div>
             <p className="text-muted-foreground font-medium">Cidades no warm</p>
             <p className="mt-1 font-bold tabular-nums">{warmConfig.cities}</p>
@@ -527,71 +521,11 @@ export function AdminGeoCacheDashboard() {
   )
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────
-
-function KpiCard({
-  icon: Icon,
-  label,
-  value,
-  subtitle,
-  trend,
-}: {
-  icon: React.ElementType
-  label: string
-  value: string
-  subtitle?: string
-  trend?: "up" | "down"
-}) {
-  return (
-    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
-      <div className="flex items-start justify-between">
-        <span className="bg-primary/8 text-primary flex size-10 items-center justify-center rounded-lg">
-          <Icon className="size-5" />
-        </span>
-        {trend ? (
-          trend === "up" ? (
-            <TrendingUp className="size-4 text-red-500" />
-          ) : (
-            <TrendingDown className="size-4 text-emerald-500" />
-          )
-        ) : null}
-      </div>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-      <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
-        {label}
-      </p>
-      {subtitle ? <p className="text-muted-foreground mt-0.5 text-[10px]">{subtitle}</p> : null}
-    </div>
-  )
-}
-
-function LatencyBar({ label, value, max }: { label: string; value: number; max: number }) {
-  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0
-  const color = value > 1000 ? COLORS.p99 : value > 200 ? COLORS.p95 : COLORS.p50
-  return (
-    <div className="flex items-center gap-3">
-      <span className="text-muted-foreground w-8 text-right text-xs font-medium">{label}</span>
-      <div className="bg-muted h-1.5 flex-1 overflow-hidden rounded-full">
-        <div
-          className="h-full rounded-full transition-all duration-300"
-          style={{
-            width: `${pct}%`,
-            backgroundColor: color,
-          }}
-        />
-      </div>
-      <span className="w-14 text-right text-xs font-medium tabular-nums" style={{ color }}>
-        {formatMs(value)}
-      </span>
-    </div>
-  )
-}
-
 // ── Skeleton ──────────────────────────────────────────────────────────────
 
 function CacheDiagnosticsSkeleton() {
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       <div className="flex items-center justify-between">
         <div className="space-y-2">
           <Skeleton className="h-6 w-64" />
@@ -608,7 +542,7 @@ function CacheDiagnosticsSkeleton() {
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         {Array.from({ length: 2 }).map((_, i) => (
           <div key={i} className="bg-card rounded-xl border">
             <div className="border-b px-5 py-4">

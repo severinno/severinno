@@ -472,7 +472,7 @@ export function AdminTaxonomy() {
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-3">
       {/* Cabeçalho da Seção com Ação Canônica */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <PageSectionHeader
@@ -590,8 +590,10 @@ export function AdminTaxonomy() {
             <span className="text-xs font-medium">Total Geral</span>
             <FolderTree className="size-4 text-emerald-600 dark:text-emerald-400" />
           </div>
-          <p className="text-foreground mt-1 text-2xl font-bold tracking-tight">{stats.total}</p>
-          <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+          <p className="text-foreground mt-1 text-2xl font-bold tracking-tight tabular-nums">
+            {stats.total}
+          </p>
+          <span className="text-[11px] font-medium text-emerald-600 tabular-nums dark:text-emerald-400">
             {stats.active} ativas no catálogo
           </span>
         </div>
@@ -601,7 +603,7 @@ export function AdminTaxonomy() {
             <span className="text-xs font-medium">Macro-Domínios</span>
             <span className="size-2 rounded-full bg-sky-500" />
           </div>
-          <p className="mt-1 text-2xl font-bold tracking-tight text-sky-700 dark:text-sky-300">
+          <p className="mt-1 text-2xl font-bold tracking-tight text-sky-700 tabular-nums dark:text-sky-300">
             {stats.level0Count}
           </p>
           <span className="text-muted-foreground text-[11px]">Nível 0 (Raízes da Vitrine)</span>
@@ -612,7 +614,7 @@ export function AdminTaxonomy() {
             <span className="text-xs font-medium">Subcategorias</span>
             <span className="size-2 rounded-full bg-teal-500" />
           </div>
-          <p className="mt-1 text-2xl font-bold tracking-tight text-teal-700 dark:text-teal-300">
+          <p className="mt-1 text-2xl font-bold tracking-tight text-teal-700 tabular-nums dark:text-teal-300">
             {stats.level1Count}
           </p>
           <span className="text-muted-foreground text-[11px]">Nível 1 (Ramos Diretos)</span>
@@ -623,7 +625,7 @@ export function AdminTaxonomy() {
             <span className="text-xs font-medium">Especialidades</span>
             <span className="size-2 rounded-full bg-zinc-400" />
           </div>
-          <p className="text-foreground mt-1 text-2xl font-bold tracking-tight">
+          <p className="text-foreground mt-1 text-2xl font-bold tracking-tight tabular-nums">
             {stats.level2Count}
           </p>
           <span className="text-muted-foreground text-[11px]">Nível 2 (Profissionais)</span>
@@ -634,7 +636,7 @@ export function AdminTaxonomy() {
             <span className="text-xs font-medium">Serviços Vinculados</span>
             <Wrench className="size-4 text-amber-600 dark:text-amber-400" />
           </div>
-          <p className="mt-1 text-2xl font-bold tracking-tight text-amber-700 dark:text-amber-300">
+          <p className="mt-1 text-2xl font-bold tracking-tight text-amber-700 tabular-nums dark:text-amber-300">
             {stats.totalServices}
           </p>
           <span className="text-muted-foreground text-[11px]">Ofertas cadastradas</span>
@@ -650,10 +652,10 @@ export function AdminTaxonomy() {
               aria-label="Alternar exibição de inativas"
             />
           </div>
-          <p className="text-foreground mt-1 text-sm font-semibold">
+          <p className="text-foreground mt-1 text-sm font-semibold tabular-nums">
             {showAllStatus ? "Todas (c/ Inativas)" : "Apenas Ativas"}
           </p>
-          <span className="text-muted-foreground text-[11px]">
+          <span className="text-muted-foreground text-[11px] tabular-nums">
             {stats.inactive > 0 ? `${stats.inactive} inativas ocultas` : "0 inativas"}
           </span>
         </div>
@@ -735,6 +737,7 @@ export function AdminTaxonomy() {
               <SelectItem value="ALL">Todos os Níveis</SelectItem>
               <SelectItem value="0">Nível 0 (Macro)</SelectItem>
               <SelectItem value="1">Nível 1 (Subcategoria)</SelectItem>
+              <SelectItem value="2">Nível 2 (Especialidade)</SelectItem>
             </SelectContent>
           </Select>
 
@@ -937,7 +940,7 @@ function TreeNode({
     <li role="treeitem" aria-expanded={hasChildren ? isOpen : undefined} aria-selected={false}>
       <div
         className={cn(
-          "group hover:bg-muted/30 relative flex min-h-[50px] items-center gap-2 px-3 py-2 transition-colors",
+          "group hover:bg-muted/30 relative flex min-h-[38px] items-center gap-2 px-3 py-1 transition-colors",
           meta.rowAccent,
           !node.active && "opacity-50 grayscale-20",
           level === 0 && "font-medium",

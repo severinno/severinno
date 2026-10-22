@@ -273,7 +273,7 @@ export function AdminBookings() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/30 h-10">
+                  <TableRow className="bg-muted/30 h-8">
                     <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
                       Cliente
                     </TableHead>
@@ -303,9 +303,9 @@ export function AdminBookings() {
                       <TooltipTrigger asChild>
                         <TableRow
                           onClick={() => setDetail(b)}
-                          className="border-border/50 hover:bg-muted/20 focus-visible:bg-muted/20 h-12 cursor-pointer border-b transition-colors focus-visible:outline-none"
+                          className="border-border/50 hover:bg-muted/20 focus-visible:bg-muted/20 h-9 cursor-pointer border-b transition-colors focus-visible:outline-none"
                         >
-                          <TableCell className="px-4 py-3">
+                          <TableCell className="px-4 py-1.5">
                             <div className="flex items-center gap-2.5">
                               <Avatar className="size-8 shrink-0">
                                 {b.client?.avatarUrl ? (
@@ -320,7 +320,7 @@ export function AdminBookings() {
                               </span>
                             </div>
                           </TableCell>
-                          <TableCell className="px-4 py-3">
+                          <TableCell className="px-4 py-1.5">
                             <div className="flex items-center gap-2.5">
                               <Avatar className="size-8 shrink-0">
                                 {b.provider?.avatarUrl ? (
@@ -336,25 +336,25 @@ export function AdminBookings() {
                               <span className="truncate text-sm">{b.provider?.name ?? "—"}</span>
                             </div>
                           </TableCell>
-                          <TableCell className="hidden px-4 py-3 text-sm md:table-cell">
+                          <TableCell className="hidden px-4 py-1.5 text-sm md:table-cell">
                             {b.service?.title ?? <span className="text-muted-foreground">—</span>}
                           </TableCell>
-                          <TableCell className="hidden px-4 py-3 lg:table-cell">
+                          <TableCell className="hidden px-4 py-1.5 lg:table-cell">
                             <div className="text-foreground flex items-center gap-1.5 text-sm font-medium">
                               <CalendarDays className="text-muted-foreground size-3.5" />
                               <span className="tabular-nums">{formatDateTime(b.scheduledAt)}</span>
                             </div>
                           </TableCell>
-                          <TableCell className="px-4 py-3 text-right">
+                          <TableCell className="px-4 py-1.5 text-right">
                             <span className="text-foreground text-sm font-semibold tabular-nums">
                               {formatBRL(b.amount)}
                             </span>
                           </TableCell>
-                          <TableCell className="px-4 py-3">
+                          <TableCell className="px-4 py-1.5">
                             {/* H4 — UMA source of truth: BookingStatusBadge */}
                             <BookingStatusBadge status={b.status} />
                           </TableCell>
-                          <TableCell className="hidden px-4 py-3 sm:table-cell">
+                          <TableCell className="hidden px-4 py-1.5 sm:table-cell">
                             <div className="flex flex-col gap-0.5">
                               <PaymentStatusBadge status={b.paymentStatus} />
                               <span className="text-muted-foreground text-[10px]">

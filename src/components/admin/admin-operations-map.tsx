@@ -404,15 +404,15 @@ export function AdminOperationsMap() {
       : 0
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Cabeçalho e Ações */}
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h2 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-            <Navigation className="h-6 w-6 text-emerald-600" />
+          <h2 className="flex items-center gap-2 text-base font-bold tracking-tight">
+            <Navigation className="h-5 w-5 text-emerald-600" />
             Torre de Controle Operacional — Governador Valadares (MG)
           </h2>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-xs">
             Monitoramento em tempo real de prestadores em campo, roteamento viário e liberação de
             custódia.
           </p>
@@ -438,76 +438,86 @@ export function AdminOperationsMap() {
       </div>
 
       {/* Cards de KPIs */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Atendimentos Ativos em GV</CardTitle>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card
+          onClick={() => {
+            triggerHaptic("selection")
+            setStatusFilter("TODOS")
+          }}
+          className="cursor-pointer transition-all hover:border-emerald-500/40"
+        >
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 pb-1">
+            <CardTitle className="text-xs font-medium">Atendimentos Ativos em GV</CardTitle>
             <Activity className="h-4 w-4 text-emerald-600" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-3 pt-0">
             {isLoading ? (
-              <Skeleton className="h-8 w-24" />
+              <Skeleton className="h-7 w-20" />
             ) : (
-              <div className="text-2xl font-bold">{data?.kpis.activeBookings ?? 0}</div>
+              <div className="text-xl font-bold tabular-nums">{data?.kpis.activeBookings ?? 0}</div>
             )}
-            <p className="text-muted-foreground mt-1 text-xs">Em execução ou confirmados</p>
+            <p className="text-muted-foreground mt-0.5 text-xs">Em execução ou confirmados</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Prestadores na Região</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 pb-1">
+            <CardTitle className="text-xs font-medium">Prestadores na Região</CardTitle>
             <Users className="h-4 w-4 text-indigo-600" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-3 pt-0">
             {isLoading ? (
-              <Skeleton className="h-8 w-24" />
+              <Skeleton className="h-7 w-20" />
             ) : (
-              <div className="text-2xl font-bold">{data?.kpis.onlineProviders ?? 0}</div>
+              <div className="text-xl font-bold tabular-nums">
+                {data?.kpis.onlineProviders ?? 0}
+              </div>
             )}
-            <p className="text-muted-foreground mt-1 text-xs">Profissionais ativos cadastrados</p>
+            <p className="text-muted-foreground mt-0.5 text-xs">Profissionais ativos cadastrados</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Custódia Retida (Escrow HELD)</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 pb-1">
+            <CardTitle className="text-xs font-medium">Custódia Retida (Escrow HELD)</CardTitle>
             <Banknote className="h-4 w-4 text-amber-600" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-3 pt-0">
             {isLoading ? (
-              <Skeleton className="h-8 w-24" />
+              <Skeleton className="h-7 w-20" />
             ) : (
-              <div className="text-2xl font-bold text-amber-600">
+              <div className="text-xl font-bold text-amber-600 tabular-nums">
                 R$ {(data?.kpis.escrowHeldAmount ?? 0).toFixed(2)}
               </div>
             )}
-            <p className="text-muted-foreground mt-1 text-xs">
+            <p className="text-muted-foreground mt-0.5 text-xs tabular-nums">
               {data?.kpis.escrowHeldCount ?? 0} agendamento(s) aguardando 24h
             </p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Custódia Liquidada Hoje</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3 pb-1">
+            <CardTitle className="text-xs font-medium">Custódia Liquidada Hoje</CardTitle>
             <ShieldCheck className="h-4 w-4 text-emerald-600" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-3 pt-0">
             {isLoading ? (
-              <Skeleton className="h-8 w-24" />
+              <Skeleton className="h-7 w-20" />
             ) : (
-              <div className="text-2xl font-bold text-emerald-600">
+              <div className="text-xl font-bold text-emerald-600 tabular-nums">
                 R$ {(data?.kpis.escrowReleasedToday ?? 0).toFixed(2)}
               </div>
             )}
-            <p className="text-muted-foreground mt-1 text-xs">Repasses liberados após validação</p>
+            <p className="text-muted-foreground mt-0.5 text-xs">
+              Repasses liberados após validação
+            </p>
           </CardContent>
         </Card>
       </div>
 
       {/* Visual Analytics: Balanço de Custódia Escrow & Ranking Operacional dos Bairros */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         {/* Balanço de Custódia Escrow */}
         <Card className="lg:col-span-1">
           <CardHeader className="pb-2">
@@ -519,7 +529,7 @@ export function AdminOperationsMap() {
               Distribuição proporcional de fundos
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 pt-1">
+          <CardContent className="space-y-3 pt-1">
             <div className="space-y-2">
               <div className="flex justify-between text-xs font-medium">
                 <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
@@ -558,13 +568,13 @@ export function AdminOperationsMap() {
             <div className="border-muted bg-muted/30 space-y-1 rounded-lg border p-2.5 text-xs">
               <div className="text-muted-foreground flex justify-between text-[11px]">
                 <span>Volume Total em Operação:</span>
-                <span className="text-foreground font-semibold">
+                <span className="text-foreground font-semibold tabular-nums">
                   R$ {totalEscrowVolume.toFixed(2)}
                 </span>
               </div>
               <div className="text-muted-foreground flex justify-between text-[11px]">
                 <span>Taxa de Liquidação:</span>
-                <span className="font-semibold text-emerald-600">
+                <span className="font-semibold text-emerald-600 tabular-nums">
                   {releasedPercentage}% aprovado
                 </span>
               </div>
@@ -588,47 +598,49 @@ export function AdminOperationsMap() {
               Densidade de chamados e volume financeiro em Governador Valadares
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2 pt-1">
+          <CardContent className="pt-1">
             {topNeighborhoods.length === 0 ? (
               <p className="text-muted-foreground py-4 text-center text-xs">
                 Nenhum dado por bairro disponível no momento.
               </p>
             ) : (
-              topNeighborhoods.map((b) => {
-                const pct = Math.max(8, Math.round((b.total / maxNeighborhoodTotal) * 100))
-                const isSelected = selectedNeighborhood === b.name
-                return (
-                  <button
-                    key={b.name}
-                    type="button"
-                    onClick={() => handleSelectNeighborhood(b.name)}
-                    className={`w-full rounded-lg p-1.5 text-left transition-all active:scale-[0.98] ${
-                      isSelected
-                        ? "border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30"
-                        : "hover:bg-muted/50"
-                    }`}
-                  >
-                    <div className="mb-1 flex justify-between text-xs">
-                      <span className="text-foreground flex items-center gap-1.5 font-medium">
-                        <MapPin className="h-3 w-3 text-emerald-600" />
-                        {b.name}
-                      </span>
-                      <span className="text-muted-foreground text-[11px] tabular-nums">
-                        {b.total} chamado(s){" "}
-                        {b.heldAmount > 0 ? `· R$ ${b.heldAmount.toFixed(0)} retido` : ""}
-                      </span>
-                    </div>
-                    <div className="bg-muted h-2 w-full overflow-hidden rounded-full">
-                      <div
-                        style={{ width: `${pct}%` }}
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          b.inProgress > 0 ? "bg-amber-500" : "bg-emerald-600"
-                        }`}
-                      />
-                    </div>
-                  </button>
-                )
-              })
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {topNeighborhoods.map((b) => {
+                  const pct = Math.max(8, Math.round((b.total / maxNeighborhoodTotal) * 100))
+                  const isSelected = selectedNeighborhood === b.name
+                  return (
+                    <button
+                      key={b.name}
+                      type="button"
+                      onClick={() => handleSelectNeighborhood(isSelected ? "TODOS" : b.name)}
+                      className={`w-full rounded-lg p-1.5 text-left transition-all active:scale-[0.98] ${
+                        isSelected
+                          ? "border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30"
+                          : "hover:bg-muted/50"
+                      }`}
+                    >
+                      <div className="mb-1 flex justify-between text-xs">
+                        <span className="text-foreground flex items-center gap-1.5 font-medium">
+                          <MapPin className="h-3 w-3 text-emerald-600" />
+                          {b.name}
+                        </span>
+                        <span className="text-muted-foreground text-[11px] tabular-nums">
+                          {b.total} chamado(s){" "}
+                          {b.heldAmount > 0 ? `· R$ ${b.heldAmount.toFixed(0)} retido` : ""}
+                        </span>
+                      </div>
+                      <div className="bg-muted h-2 w-full overflow-hidden rounded-full">
+                        <div
+                          style={{ width: `${pct}%` }}
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            b.inProgress > 0 ? "bg-amber-500" : "bg-emerald-600"
+                          }`}
+                        />
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
             )}
           </CardContent>
         </Card>
@@ -649,7 +661,7 @@ export function AdminOperationsMap() {
           >
             {bairro}
             {bairro !== "TODOS" && data?.neighborhoods[bairro]?.total ? (
-              <span className="ml-1 font-bold text-amber-500">
+              <span className="ml-1 font-bold text-amber-500 tabular-nums">
                 ({data.neighborhoods[bairro].total})
               </span>
             ) : null}
@@ -686,7 +698,7 @@ export function AdminOperationsMap() {
 
       {/* Mapa Tático MapLibre */}
       <Card className="overflow-hidden border-2">
-        <CardHeader className="bg-muted/40 flex flex-row items-center justify-between border-b px-4 py-3">
+        <CardHeader className="bg-muted/40 flex flex-row items-center justify-between border-b px-4 py-2.5">
           <div className="flex items-center gap-2 text-sm font-medium">
             <MapPin className="h-4 w-4 text-emerald-600" />
             Mapa Operacional de Governador Valadares
@@ -704,14 +716,14 @@ export function AdminOperationsMap() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div ref={mapContainerRef} className="bg-muted/20 h-[460px] w-full" />
+          <div ref={mapContainerRef} className="bg-muted/20 h-[340px] w-full" />
         </CardContent>
       </Card>
 
       {/* Tabela de Agendamentos e Gestão de Custódia */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex items-center gap-2 text-base tabular-nums">
             <Clock className="text-muted-foreground h-4 w-4" />
             Agendamentos na Região de Valadares ({filteredBookings.length})
           </CardTitle>
@@ -729,29 +741,31 @@ export function AdminOperationsMap() {
               <table className="w-full text-left text-xs">
                 <thead className="bg-muted/50 text-muted-foreground border-b">
                   <tr>
-                    <th className="px-3 py-2.5">Agendamento</th>
-                    <th className="px-3 py-2.5">Serviço</th>
-                    <th className="px-3 py-2.5">Bairro / Local</th>
-                    <th className="px-3 py-2.5">Cliente</th>
-                    <th className="px-3 py-2.5">Prestador</th>
-                    <th className="px-3 py-2.5">Status</th>
-                    <th className="px-3 py-2.5">Custódia</th>
-                    <th className="px-3 py-2.5 text-right">Ação</th>
+                    <th className="px-3 py-2">Agendamento</th>
+                    <th className="px-3 py-2">Serviço</th>
+                    <th className="px-3 py-2">Bairro / Local</th>
+                    <th className="px-3 py-2">Cliente</th>
+                    <th className="px-3 py-2">Prestador</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Custódia</th>
+                    <th className="px-3 py-2 text-right">Ação</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {filteredBookings.map((b) => (
                     <tr key={b.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-3 py-2.5 font-mono font-medium">#{b.id.slice(0, 8)}</td>
-                      <td className="px-3 py-2.5 font-medium">{b.serviceTitle}</td>
-                      <td className="text-muted-foreground px-3 py-2.5">
+                      <td className="px-3 py-2 font-mono font-medium tabular-nums">
+                        #{b.id.slice(0, 8)}
+                      </td>
+                      <td className="px-3 py-2 font-medium">{b.serviceTitle}</td>
+                      <td className="text-muted-foreground px-3 py-2">
                         <span className="text-foreground font-medium">{b.neighborhood}</span>
                         <br />
-                        {b.address.slice(0, 30)}...
+                        {b.address.length > 32 ? `${b.address.slice(0, 32)}...` : b.address}
                       </td>
-                      <td className="px-3 py-2.5">{b.clientName}</td>
-                      <td className="px-3 py-2.5">{b.providerName}</td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-3 py-2">{b.clientName}</td>
+                      <td className="px-3 py-2">{b.providerName}</td>
+                      <td className="px-3 py-2">
                         <Badge
                           variant="outline"
                           className={
@@ -765,8 +779,8 @@ export function AdminOperationsMap() {
                           {b.status}
                         </Badge>
                       </td>
-                      <td className="px-3 py-2.5">
-                        <span className="font-semibold">R$ {b.amount.toFixed(2)}</span>
+                      <td className="px-3 py-2">
+                        <span className="font-semibold tabular-nums">R$ {b.amount.toFixed(2)}</span>
                         <br />
                         <Badge
                           variant="outline"
@@ -781,7 +795,7 @@ export function AdminOperationsMap() {
                           {b.paymentStatus}
                         </Badge>
                       </td>
-                      <td className="px-3 py-2.5 text-right">
+                      <td className="px-3 py-2 text-right">
                         {b.paymentStatus === "HELD" ? (
                           <Button
                             size="sm"

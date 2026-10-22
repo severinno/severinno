@@ -19,6 +19,7 @@ import { useQuery } from "@tanstack/react-query"
 
 import { apiGet } from "@/lib/api"
 import { formatBRL } from "@/lib/format"
+import { triggerHaptic } from "@/lib/haptics"
 import { BOOKING_STATUS_LABELS, PAYMENT_STATUS_LABELS, type PaymentStatus } from "@/lib/constants"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -103,37 +104,43 @@ export function AdminDashboard({ onNavigate }: { onNavigate: (view: string) => v
   const freshnessDate = dataUpdatedAt ? new Date(dataUpdatedAt) : null
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       {/* Page header with period selector + freshness + refresh */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 border-b pb-2.5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-foreground text-xl font-bold tracking-tight">Visão geral</h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">Resumo da atividade da plataforma</p>
+          <h1 className="text-foreground text-base font-bold tracking-tight">Visão geral</h1>
+          <p className="text-muted-foreground text-xs">Resumo da atividade da plataforma</p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <FreshnessLabel updatedAt={freshnessDate} />
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="size-8"
-            onClick={() => void refetch()}
+            className="size-7 transition-all active:scale-95"
+            onClick={() => {
+              triggerHaptic("selection")
+              void refetch()
+            }}
             disabled={isFetching}
             aria-label="Atualizar dados"
           >
-            <RotateCw className={cn("size-4", isFetching && "animate-spin")} />
+            <RotateCw className={cn("size-3.5", isFetching && "animate-spin")} />
           </Button>
 
           {/* Segmented period selector */}
-          <div className="bg-muted/50 inline-flex h-8 items-center rounded-lg border p-0.5">
+          <div className="bg-muted/50 inline-flex h-7 items-center rounded-lg border p-0.5">
             {DATE_RANGE_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
-                onClick={() => setRange(opt.value)}
+                onClick={() => {
+                  triggerHaptic("selection")
+                  setRange(opt.value)
+                }}
                 className={cn(
-                  "h-7 rounded-md px-3 text-xs font-medium transition-colors",
+                  "h-6 rounded-md px-2.5 text-xs font-medium transition-all active:scale-95",
                   range === opt.value
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground",
@@ -152,45 +159,73 @@ export function AdminDashboard({ onNavigate }: { onNavigate: (view: string) => v
       {/* KPI Cards */}
       <section
         aria-label="Indicadores principais"
-        className="grid grid-cols-2 gap-4 lg:grid-cols-4"
+        className="grid grid-cols-2 gap-3 lg:grid-cols-4"
       >
-        <KpiCard icon={Users} label="Usuários" value={totalUsers.toLocaleString("pt-BR")} />
-        <KpiCard icon={Wrench} label="Prestadores" value={data.providers.toLocaleString("pt-BR")} />
+        <KpiCard
+          icon={Users}
+          label="Usuários"
+          value={totalUsers.toLocaleString("pt-BR")}
+          onClick={() => {
+            triggerHaptic("selection")
+            onNavigate("admin.users")
+          }}
+        />
+        <KpiCard
+          icon={Wrench}
+          label="Prestadores"
+          value={data.providers.toLocaleString("pt-BR")}
+          onClick={() => {
+            triggerHaptic("selection")
+            onNavigate("admin.providers")
+          }}
+        />
         <KpiCard
           icon={CalendarCheck}
           label="Serviços ativos"
           value={data.services.toLocaleString("pt-BR")}
+          onClick={() => {
+            triggerHaptic("selection")
+            onNavigate("admin.services")
+          }}
         />
-        <KpiCard icon={DollarSign} label="Receita" value={formatBRL(data.revenue.total)} />
+        <KpiCard
+          icon={DollarSign}
+          label="Receita"
+          value={formatBRL(data.revenue.total)}
+          onClick={() => {
+            triggerHaptic("selection")
+            onNavigate("admin.finance")
+          }}
+        />
       </section>
 
       {/* Charts */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Bar chart — Bookings by status */}
         <div className="border-border/50 bg-card rounded-xl border">
-          <div className="border-b px-5 py-4">
-            <h2 className="text-foreground text-sm font-semibold">Agendamentos por status</h2>
+          <div className="border-b px-4 py-2.5">
+            <h2 className="text-foreground text-xs font-semibold">Agendamentos por status</h2>
           </div>
-          <div className="p-4">
+          <div className="p-3">
             <BarChartSection data={barData} />
           </div>
         </div>
 
         {/* Pie chart — Revenue by payment status */}
         <div className="border-border/50 bg-card rounded-xl border">
-          <div className="border-b px-5 py-4">
-            <h2 className="text-foreground text-sm font-semibold">
+          <div className="border-b px-4 py-2.5">
+            <h2 className="text-foreground text-xs font-semibold">
               Receita por status de pagamento
             </h2>
           </div>
-          <div className="p-4">
+          <div className="p-3">
             <PieChartSection data={pieData} />
           </div>
         </div>
       </section>
 
       {/* Recent bookings table + Top providers list */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <div className="lg:col-span-3">
           <RecentBookingsTable bookings={data.recentBookings} onNavigate={onNavigate} />
         </div>

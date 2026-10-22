@@ -288,7 +288,7 @@ export function AdminBenchmarkEvolution() {
 
   if (!hasGeoData) {
     return (
-      <div className="mx-auto flex max-w-7xl flex-col gap-8">
+      <div className="mx-auto flex max-w-7xl flex-col gap-4">
         <HeaderSection
           isFetching={isFetching}
           dataUpdatedAt={dataUpdatedAt}
@@ -315,7 +315,7 @@ export function AdminBenchmarkEvolution() {
   const ratioData = buildRatioData(runs)
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       {/* ── Header ──────────────────────────────────────────────────── */}
       <HeaderSection
         isFetching={isFetching}
@@ -402,14 +402,14 @@ export function AdminBenchmarkEvolution() {
 
       {/* ── Evolution Charts ────────────────────────────────────────── */}
       {evolutionData.length > 0 && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {/* Haversine Evolution */}
           <ChartCard
             icon={Zap}
             title={`Haversine JS — ${METRIC_LABELS[metric]}`}
             subtitle="Evolução do algoritmo Haversine em 3 escalas de provedores"
           >
-            <div className="h-[280px]">
+            <div className="h-[210px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={evolutionData} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
@@ -473,7 +473,7 @@ export function AdminBenchmarkEvolution() {
             title={`PostGIS [model] — ${METRIC_LABELS[metric]}`}
             subtitle="Evolução do modelo PostGIS em 3 escalas de provedores"
           >
-            <div className="h-[280px]">
+            <div className="h-[210px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={evolutionData} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
@@ -540,7 +540,7 @@ export function AdminBenchmarkEvolution() {
           title="Razão PostGIS / Haversine"
           subtitle="Quantas vezes o PostGIS é mais lento que o Haversine em cada escala. < 70× = GiST filtering compensou."
         >
-          <div className="h-[280px]">
+          <div className="h-[210px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={ratioData} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
@@ -681,19 +681,19 @@ function HeaderSection({
   onRefresh: () => void
 }) {
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 className="text-foreground text-xl font-bold tracking-tight">
+        <h1 className="text-foreground text-base font-bold tracking-tight">
           Evolução dos Benchmarks Geo
         </h1>
-        <p className="text-muted-foreground mt-0.5 text-sm">
+        <p className="text-muted-foreground mt-0.5 text-xs">
           Visualização temporal dos 6 benchmarks de geolocalização ao longo de todas as execuções
         </p>
       </div>
 
       <div className="flex items-center gap-3">
         {dataUpdatedAt ? (
-          <span className="text-muted-foreground text-xs">
+          <span className="text-muted-foreground text-xs tabular-nums">
             Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
           </span>
         ) : null}
@@ -730,7 +730,7 @@ function ChartCard({
 
 function EvolutionSkeleton() {
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       <div className="flex items-center justify-between">
         <div className="space-y-2">
           <Skeleton className="h-6 w-56" />
@@ -748,14 +748,14 @@ function EvolutionSkeleton() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {Array.from({ length: 2 }).map((_, i) => (
           <div key={i} className="bg-card rounded-xl border">
             <div className="border-b px-5 py-4">
               <Skeleton className="h-4 w-48" />
             </div>
             <div className="p-4">
-              <Skeleton className="h-[280px] w-full rounded-md" />
+              <Skeleton className="h-[210px] w-full rounded-md" />
             </div>
           </div>
         ))}
@@ -766,7 +766,7 @@ function EvolutionSkeleton() {
           <Skeleton className="h-4 w-40" />
         </div>
         <div className="p-4">
-          <Skeleton className="h-[280px] w-full rounded-md" />
+          <Skeleton className="h-[210px] w-full rounded-md" />
         </div>
       </div>
     </div>

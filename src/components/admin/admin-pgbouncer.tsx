@@ -207,16 +207,18 @@ function StatCard({
   return (
     <div
       className={cn(
-        "border-border/50 bg-card hover:border-primary/20 rounded-xl border p-4 transition-colors",
+        "border-border/50 bg-card hover:border-primary/20 rounded-xl border px-3.5 py-3 transition-colors",
         className,
       )}
     >
       <div className="flex items-start justify-between">
-        <span className="bg-primary/8 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
-          <Icon className="size-4.5" />
+        <span className="bg-primary/8 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
+          <Icon className="size-4" />
         </span>
       </div>
-      <p className="text-foreground mt-3 text-xl font-bold tracking-tight tabular-nums">{value}</p>
+      <p className="text-foreground mt-1.5 text-xl font-bold tracking-tight tabular-nums">
+        {value}
+      </p>
       <p className="text-muted-foreground mt-0.5 text-xs font-medium tracking-wider uppercase">
         {label}
       </p>
@@ -245,7 +247,7 @@ function ConfigRow({ key: cfgKey, value, changeable }: PgBouncerConfig) {
 
 function PgBouncerSkeleton() {
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       <div className="flex items-center justify-between">
         <div className="space-y-2">
           <Skeleton className="h-6 w-48" />
@@ -256,15 +258,15 @@ function PgBouncerSkeleton() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="rounded-xl border p-4">
-            <Skeleton className="size-9 rounded-lg" />
-            <Skeleton className="mt-3 h-6 w-20" />
+          <div key={i} className="rounded-xl border px-3.5 py-3">
+            <Skeleton className="size-8 rounded-lg" />
+            <Skeleton className="mt-2 h-6 w-20" />
             <Skeleton className="mt-0.5 h-3 w-16" />
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {Array.from({ length: 2 }).map((_, i) => (
           <div key={i} className="rounded-xl border">
             <div className="border-b px-5 py-4">
@@ -298,7 +300,7 @@ export function AdminPgBouncer() {
 
   if (!data || !data.available) {
     return (
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-7xl">
         <ErrorState
           title="PgBouncer não disponível"
           description={
@@ -339,9 +341,9 @@ export function AdminPgBouncer() {
   const otherConfigKeys = ["max_prepared_statements", "pool_mode", "pkt_buf", "max_packet_size"]
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       {/* ── Header ──────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div
             className={cn(
@@ -354,10 +356,10 @@ export function AdminPgBouncer() {
             {statusMeta.label}
           </div>
           <div>
-            <h1 className="text-foreground text-xl font-bold tracking-tight">
+            <h1 className="text-foreground text-base font-bold tracking-tight">
               PgBouncer — Pool de Conexões
             </h1>
-            <p className="text-muted-foreground mt-0.5 text-sm">
+            <p className="text-muted-foreground mt-0.5 text-xs">
               {mainPool?.database ?? "—"} · {mainPool?.poolMode ?? "—"} mode
               {mainPool ? ` · ${mainPool.svActive}/${mainPool.svIdle} servidores` : ""}
             </p>
@@ -422,7 +424,7 @@ export function AdminPgBouncer() {
       </section>
 
       {/* ── Pool Utilization Gauges + PG Context ────────────────── */}
-      <section aria-label="Utilização do pool" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <section aria-label="Utilização do pool" className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Gauges */}
         <div className="border-border/50 bg-card rounded-xl border">
           <div className="border-b px-5 py-4">
@@ -517,7 +519,7 @@ export function AdminPgBouncer() {
       {mainStat && (
         <section
           aria-label="Estatísticas de queries"
-          className="grid grid-cols-1 gap-6 lg:grid-cols-2"
+          className="grid grid-cols-1 gap-4 lg:grid-cols-2"
         >
           {/* Stats */}
           <div className="border-border/50 bg-card rounded-xl border">
@@ -634,14 +636,6 @@ export function AdminPgBouncer() {
             </div>
           </div>
         </section>
-      )}
-
-      {/* ── Unavailable notice at bottom ────────────────────────── */}
-      {!data.available && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
-          <p className="font-medium">PgBouncer indisponível</p>
-          <p className="mt-1 text-amber-600 dark:text-amber-400">{data.error}</p>
-        </div>
       )}
     </div>
   )

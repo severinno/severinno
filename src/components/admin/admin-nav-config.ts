@@ -439,6 +439,11 @@ export const VIEW_META: Record<
     subtitle: "Latência P50/P95/P99 dos serviços de geocoding (Nominatim, ViaCEP) e PostGIS.",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Geo Metrics" }],
   },
+  "admin.geo-debug": {
+    title: "Geo Debug",
+    subtitle: "Circuit breakers, fallbacks e diagnóstico em tempo real de geocodificação.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Geo Debug" }],
+  },
   "admin.benchmarks": {
     title: "Monitoramento de Benchmarks",
     subtitle:

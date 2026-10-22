@@ -27,8 +27,8 @@ export function RecentBookingsTable({
 
   return (
     <div className="border-border/50 bg-card overflow-hidden rounded-xl border">
-      <div className="flex items-center justify-between border-b px-5 py-4">
-        <h2 className="text-foreground text-sm font-semibold">Agendamentos recentes</h2>
+      <div className="flex items-center justify-between border-b px-4 py-2.5">
+        <h2 className="text-foreground text-xs font-semibold">Agendamentos recentes</h2>
         <button
           type="button"
           onClick={() => onNavigate("admin.bookings")}
@@ -40,28 +40,28 @@ export function RecentBookingsTable({
       </div>
 
       {rows.length === 0 ? (
-        <div className="text-muted-foreground px-5 py-12 text-center text-sm">
+        <div className="text-muted-foreground px-4 py-8 text-center text-xs">
           Nenhum agendamento encontrado.
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="bg-muted/30 text-muted-foreground h-10 border-b text-xs font-medium">
-                <th className="px-4 font-medium">Cliente</th>
-                <th className="px-4 font-medium">Prestador</th>
-                <th className="px-4 font-medium">Serviço</th>
-                <th className="px-4 text-right font-medium">Valor</th>
-                <th className="px-4 font-medium">Status</th>
+              <tr className="bg-muted/30 text-muted-foreground h-8 border-b text-[11px] font-medium">
+                <th className="px-3 font-medium">Cliente</th>
+                <th className="px-3 font-medium">Prestador</th>
+                <th className="px-3 font-medium">Serviço</th>
+                <th className="px-3 text-right font-medium">Valor</th>
+                <th className="px-3 font-medium">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {rows.map((b) => {
                 const status = b.status as BookingStatus
                 return (
-                  <tr key={b.id} className="hover:bg-muted/20 h-12 transition-colors">
+                  <tr key={b.id} className="hover:bg-muted/20 h-9 transition-colors">
                     {/* Client */}
-                    <td className="px-4">
+                    <td className="px-3">
                       <div className="flex items-center gap-2">
                         <Avatar className="size-6 shrink-0">
                           {b.client?.avatarUrl ? (
@@ -156,8 +156,8 @@ export function TopProvidersList({
 
   return (
     <div className="border-border/50 bg-card overflow-hidden rounded-xl border">
-      <div className="flex items-center justify-between border-b px-5 py-4">
-        <h2 className="text-foreground text-sm font-semibold">Prestadores em destaque</h2>
+      <div className="flex items-center justify-between border-b px-4 py-2.5">
+        <h2 className="text-foreground text-xs font-semibold">Prestadores em destaque</h2>
         <button
           type="button"
           onClick={() => onNavigate("admin.providers")}
@@ -169,7 +169,7 @@ export function TopProvidersList({
       </div>
 
       {items.length === 0 ? (
-        <div className="text-muted-foreground px-5 py-12 text-center text-sm">
+        <div className="text-muted-foreground px-4 py-8 text-center text-xs">
           Nenhum prestador encontrado.
         </div>
       ) : (
@@ -186,25 +186,25 @@ export function TopProvidersList({
                     openProvider(p.id)
                   }
                 }}
-                className="hover:bg-muted/30 group flex cursor-pointer items-center gap-3 px-5 py-3 outline-hidden transition-colors"
+                className="hover:bg-muted/30 group flex cursor-pointer items-center gap-2.5 px-4 py-2 outline-hidden transition-colors"
                 aria-label={`Ver perfil de ${p.name}`}
               >
-                <Avatar className="size-9 shrink-0 transition-transform group-hover:scale-105">
+                <Avatar className="size-7 shrink-0 transition-transform group-hover:scale-105">
                   {p.avatarUrl ? <AvatarImage src={p.avatarUrl} alt={p.name} /> : null}
-                  <AvatarFallback className="bg-primary/8 text-primary text-[11px] font-semibold">
+                  <AvatarFallback className="bg-primary/8 text-primary text-[10px] font-semibold">
                     {initials(p.name)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
-                  <p className="text-foreground group-hover:text-primary truncate text-sm font-medium transition-colors">
+                  <p className="text-foreground group-hover:text-primary truncate text-xs font-medium transition-colors">
                     {p.name}
                   </p>
-                  <div className="mt-0.5 flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
                     <Star className="size-3 fill-amber-400 text-amber-400" />
-                    <span className="text-foreground text-xs font-medium tabular-nums">
+                    <span className="text-foreground text-[11px] font-medium tabular-nums">
                       {p.rating.toFixed(1)}
                     </span>
-                    <span className="text-muted-foreground text-xs">({p.reviewCount})</span>
+                    <span className="text-muted-foreground text-[11px]">({p.reviewCount})</span>
                   </div>
                 </div>
                 {p.city ? (

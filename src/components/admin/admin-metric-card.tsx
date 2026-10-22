@@ -77,27 +77,42 @@ export interface KpiCardProps {
   trend?: "up" | "down"
   /** Optional trend label text. */
   trendLabel?: string
+  /** When true, "up" is colored red (negative) and "down" is colored emerald (positive). */
+  invertTrend?: boolean
 }
 
-export function KpiCard({ icon: Icon, label, value, subtitle, trend, trendLabel }: KpiCardProps) {
+export function KpiCard({
+  icon: Icon,
+  label,
+  value,
+  subtitle,
+  trend,
+  trendLabel,
+  invertTrend,
+}: KpiCardProps) {
+  const isPositive = trend ? (invertTrend ? trend === "down" : trend === "up") : false
   return (
-    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
+    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border px-3.5 py-3 transition-colors">
       <div className="flex items-start justify-between">
-        <span className="bg-primary/8 text-primary flex size-10 items-center justify-center rounded-lg">
-          {renderMetricIcon(Icon, "size-5")}
+        <span className="bg-primary/8 text-primary flex size-8 items-center justify-center rounded-lg">
+          {renderMetricIcon(Icon, "size-4")}
         </span>
         {trend ? (
           <div className="flex items-center gap-1">
             {trend === "up" ? (
-              <TrendingUp className="size-4 text-emerald-500" />
+              <TrendingUp
+                className={cn("size-3.5", isPositive ? "text-emerald-500" : "text-red-500")}
+              />
             ) : (
-              <TrendingDown className="size-4 text-red-500" />
+              <TrendingDown
+                className={cn("size-3.5", isPositive ? "text-emerald-500" : "text-red-500")}
+              />
             )}
             {trendLabel ? (
               <span
                 className={cn(
                   "text-[10px] font-medium",
-                  trend === "up" ? "text-emerald-500" : "text-red-500",
+                  isPositive ? "text-emerald-500" : "text-red-500",
                 )}
               >
                 {trendLabel}
@@ -106,8 +121,8 @@ export function KpiCard({ icon: Icon, label, value, subtitle, trend, trendLabel 
           </div>
         ) : null}
       </div>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-      <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
+      <p className="mt-1.5 text-xl font-bold tracking-tight tabular-nums">{value}</p>
+      <p className="text-muted-foreground mt-0.5 text-[11px] font-medium tracking-wider uppercase">
         {label}
       </p>
       {subtitle ? <p className="text-muted-foreground mt-0.5 text-[10px]">{subtitle}</p> : null}

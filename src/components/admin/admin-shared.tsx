@@ -185,9 +185,13 @@ export function paymentTone(status: PaymentStatus): StatusTone {
   switch (status) {
     case "PAID":
       return "emerald"
+    case "HELD":
     case "PENDING":
       return "amber"
+    case "AUTHORIZED":
+      return "sky"
     case "REFUNDED":
+    case "FAILED":
       return "rose"
     default:
       return "zinc"
@@ -197,11 +201,16 @@ export function paymentTone(status: PaymentStatus): StatusTone {
 export function paymentIcon(status: PaymentStatus): LucideIcon {
   switch (status) {
     case "PAID":
+    case "AUTHORIZED":
       return CheckCircle2
+    case "HELD":
+      return ShieldCheck
     case "PENDING":
       return Clock
     case "REFUNDED":
       return RotateCcw
+    case "FAILED":
+      return XCircle
     default:
       return XCircle
   }
@@ -285,14 +294,14 @@ export function PageSectionHeader({
   return (
     <div
       className={cn(
-        "mb-6 flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-end sm:justify-between",
+        "mb-3 flex flex-col gap-2 border-b pb-2.5 sm:flex-row sm:items-center sm:justify-between",
         className,
       )}
     >
-      <div className="min-w-0 space-y-1">
-        <h2 className="text-foreground text-xl font-bold tracking-tight">{title}</h2>
+      <div className="min-w-0 space-y-0.5">
+        <h2 className="text-foreground text-base font-bold tracking-tight">{title}</h2>
         {description ? (
-          <p className="text-muted-foreground max-w-2xl text-sm">{description}</p>
+          <p className="text-muted-foreground max-w-2xl text-xs">{description}</p>
         ) : null}
       </div>
       {action ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
@@ -320,31 +329,33 @@ export function FilterBar({
   className?: string
 }) {
   return (
-    <div className={cn("mb-4", className)}>
-      <div className="bg-card/50 flex flex-col gap-3 rounded-xl border p-3 shadow-none sm:flex-row sm:items-center">
+    <div className={cn("mb-3", className)}>
+      <div className="bg-card/50 flex flex-col gap-2 rounded-lg border px-2.5 py-2 shadow-none sm:flex-row sm:items-center">
         <div className="flex flex-1 flex-wrap items-center gap-2">{children}</div>
-        {onClear && activeCount != null && activeCount > 0 ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={onClear}
-            className="text-muted-foreground hover:text-foreground h-8 shrink-0 gap-1.5"
-          >
-            <X className="size-3.5" />
-            Limpar filtros
-            <span className="bg-primary text-primary-foreground inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold">
-              {activeCount}
-            </span>
-          </Button>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-2 self-end sm:self-center">
+          {resultCount != null ? (
+            <p className="text-muted-foreground text-xs whitespace-nowrap">
+              <span className="text-foreground font-medium tabular-nums">{resultCount}</span>{" "}
+              {resultLabel}
+            </p>
+          ) : null}
+          {onClear && activeCount != null && activeCount > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onClear}
+              className="text-muted-foreground hover:text-foreground h-7 shrink-0 gap-1 px-2 text-xs transition-all active:scale-95"
+            >
+              <X className="size-3.5" />
+              Limpar filtros
+              <span className="bg-primary text-primary-foreground inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums">
+                {activeCount}
+              </span>
+            </Button>
+          ) : null}
+        </div>
       </div>
-      {resultCount != null ? (
-        <p className="text-muted-foreground mt-2 text-xs">
-          <span className="text-foreground font-medium tabular-nums">{resultCount}</span>{" "}
-          {resultLabel}
-        </p>
-      ) : null}
     </div>
   )
 }
@@ -362,13 +373,13 @@ export function SearchInput({
 }) {
   return (
     <div className={cn("relative", className)}>
-      <Search className="text-muted-foreground/60 absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+      <Search className="text-muted-foreground/60 absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="border-input/60 bg-background placeholder:text-muted-foreground/70 focus:border-primary focus:ring-primary/20 h-9 w-full rounded-lg border pr-3 pl-8 text-sm transition-all outline-none focus:ring-2"
+        className="border-input/60 bg-background placeholder:text-muted-foreground/70 focus:border-primary focus:ring-primary/20 h-8 w-full rounded-lg border pr-3 pl-8 text-xs transition-all outline-none focus:ring-2"
       />
     </div>
   )
@@ -433,18 +444,18 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "border-border/60 bg-muted/20 flex flex-col items-center justify-center rounded-xl border border-dashed px-6 py-16 text-center",
+        "border-border/60 bg-muted/20 flex flex-col items-center justify-center rounded-xl border border-dashed px-4 py-8 text-center",
         className,
       )}
     >
-      <div className="bg-primary/5 ring-primary/10 text-primary/60 flex size-12 items-center justify-center rounded-2xl ring-1">
-        <Icon className="size-6" />
+      <div className="bg-primary/5 ring-primary/10 text-primary/60 flex size-9 items-center justify-center rounded-xl ring-1">
+        <Icon className="size-4.5" />
       </div>
-      <h3 className="mt-4 text-base font-semibold tracking-tight">{title}</h3>
+      <h3 className="mt-2.5 text-sm font-semibold tracking-tight">{title}</h3>
       {description ? (
-        <p className="text-muted-foreground mt-1 max-w-sm text-sm">{description}</p>
+        <p className="text-muted-foreground mt-0.5 max-w-sm text-xs">{description}</p>
       ) : null}
-      {action ? <div className="mt-5">{action}</div> : null}
+      {action ? <div className="mt-3">{action}</div> : null}
     </div>
   )
 }
@@ -463,21 +474,21 @@ export function ErrorState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center rounded-xl border border-rose-200/60 bg-rose-50/50 px-6 py-16 text-center dark:border-rose-900/30 dark:bg-rose-950/20",
+        "flex flex-col items-center justify-center rounded-xl border border-rose-200/60 bg-rose-50/50 px-4 py-8 text-center dark:border-rose-900/30 dark:bg-rose-950/20",
         className,
       )}
     >
-      <div className="flex size-12 items-center justify-center rounded-2xl bg-rose-100/80 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
-        <AlertTriangle className="size-6" />
+      <div className="flex size-9 items-center justify-center rounded-xl bg-rose-100/80 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
+        <AlertTriangle className="size-4.5" />
       </div>
-      <h3 className="mt-4 text-base font-semibold tracking-tight">{title}</h3>
-      <p className="text-muted-foreground mt-1 max-w-sm text-sm">{description}</p>
+      <h3 className="mt-2.5 text-sm font-semibold tracking-tight">{title}</h3>
+      <p className="text-muted-foreground mt-0.5 max-w-sm text-xs">{description}</p>
       {onRetry ? (
         <Button
           variant="outline"
           size="sm"
           onClick={onRetry}
-          className="mt-5 gap-1.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-300"
+          className="mt-3 h-7 gap-1.5 text-xs text-rose-600 transition-all hover:bg-rose-50 hover:text-rose-700 active:scale-95 dark:text-rose-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-300"
         >
           <RotateCcw className="size-3.5" />
           Tentar novamente

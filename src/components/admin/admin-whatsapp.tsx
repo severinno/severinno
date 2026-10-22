@@ -249,9 +249,9 @@ export function AdminWhatsApp() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-3.5">
         <Skeleton className="h-32 w-full rounded-xl" />
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-3.5 md:grid-cols-2">
           <Skeleton className="h-80 w-full rounded-xl" />
           <Skeleton className="h-80 w-full rounded-xl" />
         </div>
@@ -260,12 +260,12 @@ export function AdminWhatsApp() {
   }
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-3.5 pb-6">
       {/* ── Header Card & Status ────────────────────────────────────────── */}
       <Card className="border-border/60 shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
+        <CardHeader className="flex flex-row items-center justify-between p-3.5 pb-2.5">
           <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-xl">
+            <CardTitle className="flex items-center gap-2 text-base">
               <MessageSquare className="h-5 w-5 text-emerald-500" />
               WhatsApp Business & Evolution API
             </CardTitle>
@@ -287,11 +287,11 @@ export function AdminWhatsApp() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="bg-muted/40 border-border/40 flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4">
+        <CardContent className="p-3.5 pt-0">
+          <div className="bg-muted/40 border-border/40 flex flex-wrap items-center justify-between gap-3.5 rounded-lg border p-3">
             <div className="flex items-center gap-3">
               <div
-                className={`flex h-11 w-11 items-center justify-center rounded-full ${
+                className={`flex h-10 w-10 items-center justify-center rounded-full ${
                   isConnected
                     ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
                     : isConnecting
@@ -300,11 +300,11 @@ export function AdminWhatsApp() {
                 }`}
               >
                 {isConnected ? (
-                  <CheckCircle2 className="h-6 w-6" />
+                  <CheckCircle2 className="h-5 w-5" />
                 ) : isConnecting ? (
-                  <Smartphone className="h-6 w-6 animate-pulse" />
+                  <Smartphone className="h-5 w-5 animate-pulse" />
                 ) : (
-                  <AlertTriangle className="h-6 w-6" />
+                  <AlertTriangle className="h-5 w-5" />
                 )}
               </div>
               <div>
@@ -337,7 +337,7 @@ export function AdminWhatsApp() {
                   {data?.instance?.number && (
                     <>
                       {" · "}Número:{" "}
-                      <span className="text-foreground font-mono font-medium">
+                      <span className="text-foreground font-mono font-medium tabular-nums">
                         +{data.instance.number}
                       </span>
                     </>
@@ -388,12 +388,12 @@ export function AdminWhatsApp() {
       </Card>
 
       {/* ── Grid Principal: QR Code ou Detalhes & Teste de Disparo ───────── */}
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-3.5 md:grid-cols-2">
         {/* Card Esquerdo: QR Code ou Perfil Conectado */}
         {!isConnected ? (
           <Card className="border-border/60 flex flex-col justify-between shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
+            <CardHeader className="p-3.5 pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
                 <QrCode className="text-primary h-5 w-5" />
                 Escaneie o QR Code com o WhatsApp
               </CardTitle>
@@ -402,9 +402,9 @@ export function AdminWhatsApp() {
                 aparelho.
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col items-center justify-center space-y-4 py-4">
+            <CardContent className="flex flex-col items-center justify-center space-y-3.5 p-3.5 pt-2">
               {data?.qrcode?.base64 ? (
-                <div className="border-primary/20 hover:border-primary/40 relative rounded-xl border-2 bg-white p-4 shadow-md transition-all">
+                <div className="border-primary/20 hover:border-primary/40 relative rounded-xl border-2 bg-white p-3.5 shadow-md transition-all">
                   {/* Imagem do QR Code Base64 */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -413,7 +413,7 @@ export function AdminWhatsApp() {
                     className="h-64 w-64 object-contain"
                   />
                   {data.qrcode.count !== undefined && (
-                    <div className="absolute top-2 right-2 rounded-full bg-slate-900/80 px-2 py-0.5 font-mono text-[10px] text-white">
+                    <div className="absolute top-2 right-2 rounded-full bg-slate-900/80 px-2 py-0.5 font-mono text-[10px] text-white tabular-nums">
                       #{data.qrcode.count}
                     </div>
                   )}
@@ -436,8 +436,8 @@ export function AdminWhatsApp() {
           </Card>
         ) : (
           <Card className="border-border/60 flex flex-col justify-between shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
+            <CardHeader className="p-3.5 pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
                 <Smartphone className="h-5 w-5 text-emerald-500" />
                 Aparelho Pareado com Sucesso
               </CardTitle>
@@ -445,16 +445,16 @@ export function AdminWhatsApp() {
                 A sessão Baileys está autenticada e os tokens estão salvos no PostgreSQL/Redis.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="border-border/40 bg-muted/20 flex items-center gap-4 rounded-lg border p-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600">
-                  <PhoneCall className="h-7 w-7" />
+            <CardContent className="space-y-3.5 p-3.5 pt-0">
+              <div className="border-border/40 bg-muted/20 flex items-center gap-3.5 rounded-lg border p-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600">
+                  <PhoneCall className="h-6 w-6" />
                 </div>
                 <div className="space-y-1">
                   <h4 className="text-foreground font-semibold">
                     {data?.instance?.profileName ?? "Severinno Marketplace"}
                   </h4>
-                  <p className="text-muted-foreground font-mono text-sm">
+                  <p className="text-muted-foreground font-mono text-sm tabular-nums">
                     +{data?.instance?.number ?? "55..."}
                   </p>
                   <Badge
@@ -467,21 +467,21 @@ export function AdminWhatsApp() {
               </div>
 
               <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="border-border/40 bg-muted/10 rounded-lg border p-3">
+                <div className="border-border/40 bg-muted/10 rounded-lg border p-2.5">
                   <span className="text-muted-foreground text-xs">Mensagens</span>
-                  <p className="text-foreground text-lg font-bold">
+                  <p className="text-foreground text-lg font-bold tabular-nums">
                     {data?.instance?.counts?.Message ?? 0}
                   </p>
                 </div>
-                <div className="border-border/40 bg-muted/10 rounded-lg border p-3">
+                <div className="border-border/40 bg-muted/10 rounded-lg border p-2.5">
                   <span className="text-muted-foreground text-xs">Contatos</span>
-                  <p className="text-foreground text-lg font-bold">
+                  <p className="text-foreground text-lg font-bold tabular-nums">
                     {data?.instance?.counts?.Contact ?? 0}
                   </p>
                 </div>
-                <div className="border-border/40 bg-muted/10 rounded-lg border p-3">
+                <div className="border-border/40 bg-muted/10 rounded-lg border p-2.5">
                   <span className="text-muted-foreground text-xs">Chats</span>
-                  <p className="text-foreground text-lg font-bold">
+                  <p className="text-foreground text-lg font-bold tabular-nums">
                     {data?.instance?.counts?.Chat ?? 0}
                   </p>
                 </div>
@@ -492,8 +492,8 @@ export function AdminWhatsApp() {
 
         {/* Card Direito: Disparo de Mensagem de Teste */}
         <Card className="border-border/60 flex flex-col justify-between shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
+          <CardHeader className="p-3.5 pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
               <Send className="text-primary h-5 w-5" />
               Disparo de Mensagem de Teste
             </CardTitle>
@@ -501,7 +501,7 @@ export function AdminWhatsApp() {
               Valide o envio em tempo real para um número de celular do Brasil (com DDD).
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3.5 p-3.5 pt-0">
             <div className="space-y-2">
               <label
                 htmlFor="test-phone-input"
@@ -566,14 +566,14 @@ export function AdminWhatsApp() {
 
       {/* ── Diagnóstico & Infraestrutura ─────────────────────────────────── */}
       <Card className="border-border/60 shadow-sm">
-        <CardHeader className="pb-3">
+        <CardHeader className="p-3.5 pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
             <Activity className="text-primary h-4 w-4" />
             Diagnósticos da Stack Evolution API
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <CardContent className="p-3.5 pt-0">
+          <div className="grid gap-3.5 text-sm sm:grid-cols-2 lg:grid-cols-4">
             <div className="border-border/40 bg-muted/20 space-y-1 rounded-lg border p-3">
               <span className="text-muted-foreground text-xs">Servidor Evolution API</span>
               <p className="text-foreground font-mono font-medium">{data?.server?.url}</p>
@@ -602,7 +602,7 @@ export function AdminWhatsApp() {
 
             <div className="border-border/40 bg-muted/20 space-y-1 rounded-lg border p-3">
               <span className="text-muted-foreground text-xs">Eventos Subscritos</span>
-              <p className="text-foreground font-mono text-xs">
+              <p className="text-foreground font-mono text-xs tabular-nums">
                 {data?.webhook?.events?.length ? `${data.webhook.events.length} eventos` : "Nenhum"}
               </p>
               <p className="text-muted-foreground text-[10px]">
@@ -626,7 +626,7 @@ export function AdminWhatsApp() {
 
       {/* ── Campanhas & Templates Padronizados ────────────────────────── */}
       <Card className="border-border/60 shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
+        <CardHeader className="flex flex-row items-center justify-between p-3.5 pb-2.5">
           <div className="space-y-1">
             <CardTitle className="flex items-center gap-2 text-base">
               <Megaphone className="text-primary h-4 w-4" />
@@ -648,7 +648,7 @@ export function AdminWhatsApp() {
                   : "Apenas Prestadores"}
           </Badge>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3.5 p-3.5 pt-0">
           {/* Seletor de Templates Rápidos */}
           <div className="space-y-2">
             <label className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
@@ -674,7 +674,7 @@ export function AdminWhatsApp() {
           </div>
 
           {/* Segmentação & Texto */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-3.5 md:grid-cols-3">
             <div className="space-y-2">
               <label className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
                 Público Alvo
@@ -806,7 +806,7 @@ export function AdminWhatsApp() {
 
       {/* ── Auditoria: Histórico de Disparos Recentes ───────────────────── */}
       <Card className="border-border/60 shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
+        <CardHeader className="flex flex-row items-center justify-between p-3.5 pb-2.5">
           <div className="space-y-1">
             <CardTitle className="flex items-center gap-2 text-base">
               <History className="text-primary h-4 w-4" />
@@ -817,11 +817,11 @@ export function AdminWhatsApp() {
               webhook da Evolution API.
             </CardDescription>
           </div>
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="text-xs tabular-nums">
             {data?.logs?.length ?? 0} registros
           </Badge>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-3.5 pt-0">
           {!data?.logs || data.logs.length === 0 ? (
             <div className="border-border bg-muted/10 flex flex-col items-center justify-center rounded-lg border border-dashed py-8 text-center">
               <MessageSquare className="text-muted-foreground mb-2 h-8 w-8 opacity-40" />
@@ -834,13 +834,13 @@ export function AdminWhatsApp() {
             <div className="border-border/40 overflow-x-auto rounded-lg border">
               <table className="w-full text-left text-xs">
                 <thead className="bg-muted/50 text-muted-foreground border-b uppercase">
-                  <tr>
-                    <th className="px-3 py-2.5 font-medium">Destinatário</th>
-                    <th className="px-3 py-2.5 font-medium">Contexto</th>
-                    <th className="px-3 py-2.5 font-medium">Status</th>
-                    <th className="px-3 py-2.5 font-medium">Mensagem</th>
-                    <th className="px-3 py-2.5 font-medium">Data / Envio</th>
-                    <th className="px-3 py-2.5 font-medium">Entrega / Leitura</th>
+                  <tr className="h-8">
+                    <th className="px-3 py-1.5 font-medium">Destinatário</th>
+                    <th className="px-3 py-1.5 font-medium">Contexto</th>
+                    <th className="px-3 py-1.5 font-medium">Status</th>
+                    <th className="px-3 py-1.5 font-medium">Mensagem</th>
+                    <th className="px-3 py-1.5 font-medium">Data / Envio</th>
+                    <th className="px-3 py-1.5 font-medium">Entrega / Leitura</th>
                   </tr>
                 </thead>
                 <tbody className="divide-border/40 divide-y">
@@ -880,8 +880,8 @@ export function AdminWhatsApp() {
                     const StatusIcon = statusConfig.icon
 
                     return (
-                      <tr key={log.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-3 py-2.5 font-mono font-medium">
+                      <tr key={log.id} className="hover:bg-muted/30 h-9 transition-colors">
+                        <td className="px-3 py-1.5 font-mono font-medium tabular-nums">
                           +{log.phone}
                           {log.user?.name && (
                             <div className="text-muted-foreground font-sans text-[11px]">
@@ -889,12 +889,12 @@ export function AdminWhatsApp() {
                             </div>
                           )}
                         </td>
-                        <td className="px-3 py-2.5">
+                        <td className="px-3 py-1.5">
                           <Badge variant="outline" className="font-mono text-[10px]">
                             {log.context}
                           </Badge>
                         </td>
-                        <td className="px-3 py-2.5">
+                        <td className="px-3 py-1.5">
                           <Badge
                             variant="outline"
                             className={`flex w-fit items-center gap-1 text-[10px] ${statusConfig.color}`}
@@ -903,7 +903,7 @@ export function AdminWhatsApp() {
                             {statusConfig.label}
                           </Badge>
                         </td>
-                        <td className="max-w-xs px-3 py-2.5">
+                        <td className="max-w-xs px-3 py-1.5">
                           <p className="text-foreground truncate text-[11px]" title={log.text}>
                             {log.text}
                           </p>
@@ -911,7 +911,7 @@ export function AdminWhatsApp() {
                             <p className="text-destructive text-[10px]">Erro: {log.errorMessage}</p>
                           )}
                         </td>
-                        <td className="text-muted-foreground px-3 py-2.5 text-[11px] whitespace-nowrap">
+                        <td className="text-muted-foreground px-3 py-1.5 text-[11px] whitespace-nowrap tabular-nums">
                           {new Date(log.createdAt).toLocaleString("pt-BR", {
                             day: "2-digit",
                             month: "2-digit",
@@ -920,7 +920,7 @@ export function AdminWhatsApp() {
                             second: "2-digit",
                           })}
                         </td>
-                        <td className="text-muted-foreground px-3 py-2.5 text-[10px] whitespace-nowrap">
+                        <td className="text-muted-foreground px-3 py-1.5 text-[10px] whitespace-nowrap tabular-nums">
                           {log.readAt ? (
                             <span className="font-medium text-emerald-600 dark:text-emerald-400">
                               Lido: {new Date(log.readAt).toLocaleTimeString("pt-BR")}

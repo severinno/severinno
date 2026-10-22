@@ -306,12 +306,12 @@ export function AdminPushHistory() {
   const actionOptions = data.availableActions ?? []
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-3.5">
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-foreground text-xl font-bold tracking-tight">Histórico de Push</h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">
+          <h1 className="text-foreground text-base font-bold tracking-tight">Histórico de Push</h1>
+          <p className="text-muted-foreground mt-0.5 text-sm tabular-nums">
             {data.pagination.total} notificação(ns) enviada(s) — página {data.pagination.page} de{" "}
             {data.pagination.totalPages}
           </p>
@@ -457,6 +457,7 @@ export function AdminPushHistory() {
                     setStatusFilter("all")
                     setTypeFilter("")
                     setSourceFilter("")
+                    setActionFilter("")
                     setSearch("")
                   }}
                 >
@@ -482,7 +483,7 @@ export function AdminPushHistory() {
                 </thead>
                 <tbody className="divide-y">
                   {data.items.map((record) => (
-                    <tr key={record.id} className="hover:bg-muted/20 h-11 transition-colors">
+                    <tr key={record.id} className="hover:bg-muted/20 h-9 transition-colors">
                       {/* Status */}
                       <td className="px-3">
                         <StatusBadge status={record.status} />
@@ -631,7 +632,7 @@ export function AdminPushHistory() {
       {/* ── Pagination ───────────────────────────────────────────────── */}
       {data.pagination.totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-xs tabular-nums">
             {data.pagination.total} registro(s) — página {data.pagination.page} de{" "}
             {data.pagination.totalPages}
           </p>
@@ -659,7 +660,7 @@ export function AdminPushHistory() {
       )}
 
       {/* ── Footer note ───────────────────────────────────────────────── */}
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-800/30 dark:bg-amber-950/20 dark:text-amber-300">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800/30 dark:bg-amber-950/20 dark:text-amber-300">
         <p className="font-medium">📊 Sobre os dados</p>
         <p className="mt-1">
           Os registros de push são criados automaticamente no banco de dados (PushAnalytics) a cada
@@ -678,7 +679,7 @@ export function AdminPushHistory() {
 
 function HistorySkeleton() {
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-3.5">
       <div className="flex items-center justify-between">
         <div className="space-y-2">
           <Skeleton className="h-6 w-48" />

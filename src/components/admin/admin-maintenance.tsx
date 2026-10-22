@@ -262,7 +262,7 @@ function IpWhitelistCard() {
   }
 
   return (
-    <Card className="mt-6 border-dashed">
+    <Card className="border-dashed">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <ShieldCheck
@@ -394,9 +394,13 @@ function IpWhitelistCard() {
 
 export function AdminMaintenance() {
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <ToggleCard />
-      <IpWhitelistCard />
+    <div className="mx-auto grid max-w-6xl grid-cols-1 items-start gap-4 lg:grid-cols-12">
+      <div className="lg:col-span-5">
+        <ToggleCard />
+      </div>
+      <div className="lg:col-span-7">
+        <IpWhitelistCard />
+      </div>
     </div>
   )
 }

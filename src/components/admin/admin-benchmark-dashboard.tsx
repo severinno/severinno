@@ -170,7 +170,7 @@ export function AdminBenchmarkDashboard() {
   }
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       <DashboardHeader
         title="Monitoramento de Benchmarks"
         description="Comparação contínua de desempenho dos benchmarks de geolocalização"
@@ -238,7 +238,7 @@ export function AdminBenchmarkDashboard() {
       ) : hasComparisons ? (
         <section
           aria-label="Status saudável"
-          className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 dark:border-emerald-900/30 dark:bg-emerald-950/10"
+          className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-3.5 py-2 dark:border-emerald-900/30 dark:bg-emerald-950/10"
         >
           <div className="flex items-start gap-3">
             <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-500" />
@@ -521,9 +521,9 @@ export function AdminBenchmarkDashboard() {
       {(gistCrossoverHistory.length > 0 ||
         benchmarkHistory.geo?.length > 0 ||
         benchmarkHistory.cache?.length > 0) && (
-        <>
+        <div className="border-border/50 bg-card overflow-hidden rounded-xl border">
           {/* Tab bar */}
-          <div className="border-border/50 bg-card flex items-center rounded-t-xl border border-b-0 px-5">
+          <div className="border-border/50 flex items-center border-b px-4">
             <button
               type="button"
               onClick={() => setTimelineTab("gist")}
@@ -604,7 +604,7 @@ export function AdminBenchmarkDashboard() {
               />
             )}
           </div>
-        </>
+        </div>
       )}
 
       {/* ── Comparisons ──────────────────────────────────────────────── */}

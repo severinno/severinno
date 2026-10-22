@@ -49,7 +49,7 @@ export function TierBanner({
   return (
     <div
       className={cn(
-        "rounded-xl border px-5 py-3 text-xs",
+        "rounded-lg border px-3.5 py-2 text-xs",
         state === "degraded"
           ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/30 dark:bg-amber-950/20 dark:text-amber-300"
           : "border-red-200 bg-red-50 text-red-800 dark:border-red-800/30 dark:bg-red-950/20 dark:text-red-300",

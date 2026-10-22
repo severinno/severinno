@@ -532,7 +532,7 @@ export function AdminUsers() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/30 hover:bg-muted/30 h-10">
+                  <TableRow className="bg-muted/30 hover:bg-muted/30 h-8">
                     <TableHead>{renderSortHeader("Usuário", "name")}</TableHead>
                     <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
                       Perfil
@@ -564,9 +564,9 @@ export function AdminUsers() {
                     return (
                       <TableRow
                         key={u.id}
-                        className="border-border/50 hover:bg-muted/20 h-12 border-b transition-colors last:border-0"
+                        className="border-border/50 hover:bg-muted/20 h-9 border-b transition-colors last:border-0"
                       >
-                        <TableCell className="px-4 py-3">
+                        <TableCell className="px-4 py-1.5">
                           <div className="flex items-center gap-2.5">
                             <Avatar className="size-8 shrink-0">
                               {u.avatarUrl ? <AvatarImage src={u.avatarUrl} alt={u.name} /> : null}
@@ -580,10 +580,10 @@ export function AdminUsers() {
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="px-4 py-3">
+                        <TableCell className="px-4 py-1.5">
                           <RoleBadge role={u.role} />
                         </TableCell>
-                        <TableCell className="hidden px-4 py-3 md:table-cell">
+                        <TableCell className="hidden px-4 py-1.5 md:table-cell">
                           <div className="flex flex-col text-xs">
                             {u.whatsapp ? (
                               <span className="text-foreground/80">{u.whatsapp}</span>
@@ -597,7 +597,7 @@ export function AdminUsers() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="text-muted-foreground hidden px-4 py-3 text-xs lg:table-cell">
+                        <TableCell className="text-muted-foreground hidden px-4 py-1.5 text-xs lg:table-cell">
                           {u.city ? (
                             <span className="text-foreground/80">
                               {u.city}
@@ -607,7 +607,7 @@ export function AdminUsers() {
                             <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-center">
+                        <TableCell className="px-4 py-1.5 text-center">
                           {patchingField === "verified" ? (
                             <SavingPill saving label="Salvando…" />
                           ) : (
@@ -636,17 +636,17 @@ export function AdminUsers() {
                             </Tooltip>
                           )}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-center">
+                        <TableCell className="px-4 py-1.5 text-center">
                           {patchingField === "active" ? (
                             <SavingPill saving label="Salvando…" />
                           ) : (
                             <ActiveBadge active={u.active} />
                           )}
                         </TableCell>
-                        <TableCell className="text-muted-foreground hidden px-4 py-3 text-xs tabular-nums sm:table-cell">
+                        <TableCell className="text-muted-foreground hidden px-4 py-1.5 text-xs tabular-nums sm:table-cell">
                           {formatDate(u.createdAt)}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-right">
+                        <TableCell className="px-4 py-1.5 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             {/* H6 — primary action visible */}
                             <Tooltip>

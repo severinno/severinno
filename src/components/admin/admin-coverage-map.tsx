@@ -327,19 +327,19 @@ export function AdminCoverageMap() {
   const gapPct = totalCells > 0 ? Math.round((gaps / totalCells) * 100) : 0
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6">
+    <div className="mx-auto flex max-w-7xl flex-col gap-3.5">
       {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-foreground text-xl font-bold tracking-tight">Mapa de Cobertura</h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">
+          <h1 className="text-foreground text-base font-bold tracking-tight">Mapa de Cobertura</h1>
+          <p className="text-muted-foreground mt-0.5 text-xs">
             Sobreposição dos raios de atendimento dos prestadores
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           {dataUpdatedAt ? (
-            <span className="text-muted-foreground text-xs">
+            <span className="text-muted-foreground text-xs tabular-nums">
               Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
             </span>
           ) : null}
@@ -354,7 +354,7 @@ export function AdminCoverageMap() {
       {/* ── KPI Cards ───────────────────────────────────────────────── */}
       <section
         aria-label="Indicadores de cobertura"
-        className="grid grid-cols-2 gap-4 lg:grid-cols-4"
+        className="grid grid-cols-2 gap-3.5 lg:grid-cols-4"
       >
         <KpiCard
           icon={Users}
@@ -384,7 +384,7 @@ export function AdminCoverageMap() {
       </section>
 
       {/* ── Legend ───────────────────────────────────────────────────── */}
-      <div className="bg-card flex flex-wrap items-center gap-4 rounded-lg border px-4 py-2.5 text-xs">
+      <div className="bg-card flex flex-wrap items-center gap-4 rounded-lg border px-3.5 py-2 text-xs">
         <span className="text-muted-foreground font-medium">Densidade:</span>
         {DENSITY_SWATCHES.map((s, i) => (
           <span key={i} className="flex items-center gap-1.5">
@@ -405,43 +405,45 @@ export function AdminCoverageMap() {
         <CoverageSkeleton />
       ) : (
         <div className="bg-card overflow-hidden rounded-xl border">
-          {/* Map container */}
-          <div ref={containerRef} className="h-[600px] w-full" />
+          <div className="relative h-[440px] overflow-hidden rounded-xl border">
+            {/* Map container */}
+            <div ref={containerRef} className="h-full w-full" />
 
-          {/* Map loading overlay */}
-          {!mapReady && !mapError && (
-            <div className="bg-muted/50 flex h-[600px] items-center justify-center">
-              <Loader2 className="text-muted-foreground size-6 animate-spin" />
-            </div>
-          )}
+            {/* Map loading overlay */}
+            {!mapReady && !mapError && (
+              <div className="bg-card absolute inset-0 z-10 flex items-center justify-center">
+                <Loader2 className="text-muted-foreground size-6 animate-spin" />
+              </div>
+            )}
 
-          {/* Map init error fallback */}
-          {mapError && (
-            <div className="bg-muted flex h-[600px] flex-col items-center justify-center gap-3 rounded-xl border">
-              <AlertTriangle className="size-8 text-amber-500" />
-              <p className="text-muted-foreground text-sm font-medium">
-                Mapa interativo indisponível
-              </p>
-              <p className="text-muted-foreground text-xs">
-                Verifique sua conexão e tente novamente.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setMapError(false)
-                  setMapReady(false)
-                  initRef.current = false
-                }}
-                className="bg-background text-foreground hover:bg-muted inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors"
-              >
-                <RefreshCw className="size-3.5" />
-                Tentar novamente
-              </button>
-            </div>
-          )}
+            {/* Map init error fallback */}
+            {mapError && (
+              <div className="bg-card absolute inset-0 z-10 flex flex-col items-center justify-center gap-3">
+                <AlertTriangle className="size-8 text-amber-500" />
+                <p className="text-muted-foreground text-sm font-medium">
+                  Mapa interativo indisponível
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  Verifique sua conexão e tente novamente.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMapError(false)
+                    setMapReady(false)
+                    initRef.current = false
+                  }}
+                  className="bg-background text-foreground hover:bg-muted inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors"
+                >
+                  <RefreshCw className="size-3.5" />
+                  Tentar novamente
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Footer meta */}
-          <div className="text-muted-foreground border-t px-4 py-2.5 text-[10px]">
+          <div className="text-muted-foreground border-t px-3.5 py-2 text-[10px]">
             {data.providers.length} prestadores com raio de atendimento configurado · {totalCells}{" "}
             células de grade analisadas
             {gaps > 0 && ` · ${gaps} células com baixa cobertura (< 2 prestadores)`}
@@ -468,10 +470,10 @@ function KpiCard({
   trend?: "up" | "down"
 }) {
   return (
-    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
+    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border px-3.5 py-2.5 transition-colors">
       <div className="flex items-start justify-between">
-        <span className="bg-primary/8 text-primary flex size-10 items-center justify-center rounded-lg">
-          <Icon className="size-5" />
+        <span className="bg-primary/8 text-primary flex size-8 items-center justify-center rounded-lg">
+          <Icon className="size-4" />
         </span>
         {trend ? (
           trend === "up" ? (
@@ -481,8 +483,8 @@ function KpiCard({
           )
         ) : null}
       </div>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-      <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
+      <p className="mt-1.5 text-xl font-bold tracking-tight tabular-nums">{value}</p>
+      <p className="text-muted-foreground mt-0.5 text-xs font-medium tracking-wider uppercase">
         {label}
       </p>
       {subtitle ? <p className="text-muted-foreground mt-0.5 text-[10px]">{subtitle}</p> : null}
@@ -494,17 +496,17 @@ function KpiCard({
 
 function CoverageSkeleton() {
   return (
-    <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="flex flex-col gap-3.5">
+      <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="bg-card rounded-xl border p-5">
-            <Skeleton className="size-10 rounded-lg" />
-            <Skeleton className="mt-3 h-7 w-20" />
+          <div key={i} className="bg-card rounded-xl border px-3.5 py-2.5">
+            <Skeleton className="size-8 rounded-lg" />
+            <Skeleton className="mt-2 h-6 w-20" />
             <Skeleton className="mt-1 h-3 w-16" />
           </div>
         ))}
       </div>
-      <Skeleton className="h-[600px] w-full rounded-xl" />
+      <Skeleton className="h-[440px] w-full rounded-xl" />
     </div>
   )
 }

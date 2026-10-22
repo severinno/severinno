@@ -439,38 +439,67 @@ export function AdminServices() {
 
       {/* Cards de Métricas — H1 Visibilidade */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card className="border-border/50 bg-card/60 backdrop-blur-xs">
+        <Card
+          onClick={() => {
+            setActive("ALL")
+            setPage(1)
+          }}
+          className={cn(
+            "border-border/50 bg-card/60 hover:border-primary/40 cursor-pointer backdrop-blur-xs transition-all",
+            active === "ALL" ? "ring-primary/30 ring-1" : "",
+          )}
+        >
           <CardContent className="flex items-center gap-3 p-3.5">
             <div className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
               <Briefcase className="size-4" />
             </div>
             <div className="min-w-0">
               <p className="text-muted-foreground text-xs">Total de Serviços</p>
-              <p className="text-foreground text-lg font-bold tracking-tight">{stats.total}</p>
+              <p className="text-foreground text-lg font-bold tracking-tight tabular-nums">
+                {stats.total}
+              </p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-border/50 bg-card/60 backdrop-blur-xs">
+        <Card
+          onClick={() => {
+            setActive("true")
+            setPage(1)
+          }}
+          className={cn(
+            "border-border/50 bg-card/60 cursor-pointer backdrop-blur-xs transition-all hover:border-emerald-500/40",
+            active === "true" ? "ring-1 ring-emerald-500/30" : "",
+          )}
+        >
           <CardContent className="flex items-center gap-3 p-3.5">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
               <CheckCircle2 className="size-4" />
             </div>
             <div className="min-w-0">
               <p className="text-muted-foreground text-xs">Serviços Ativos</p>
-              <p className="text-foreground text-lg font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
+              <p className="text-foreground text-lg font-bold tracking-tight text-emerald-600 tabular-nums dark:text-emerald-400">
                 {stats.active}
               </p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-border/50 bg-card/60 backdrop-blur-xs">
+        <Card
+          onClick={() => {
+            setActive("false")
+            setPage(1)
+          }}
+          className={cn(
+            "border-border/50 bg-card/60 cursor-pointer backdrop-blur-xs transition-all hover:border-amber-500/40",
+            active === "false" ? "ring-1 ring-amber-500/30" : "",
+          )}
+        >
           <CardContent className="flex items-center gap-3 p-3.5">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
               <XCircle className="size-4" />
             </div>
             <div className="min-w-0">
               <p className="text-muted-foreground text-xs">Serviços Inativos</p>
-              <p className="text-foreground text-lg font-bold tracking-tight text-amber-600 dark:text-amber-400">
+              <p className="text-foreground text-lg font-bold tracking-tight text-amber-600 tabular-nums dark:text-amber-400">
                 {stats.inactive}
               </p>
             </div>
@@ -483,7 +512,7 @@ export function AdminServices() {
             </div>
             <div className="min-w-0">
               <p className="text-muted-foreground text-xs">Preço Médio</p>
-              <p className="text-foreground text-lg font-bold tracking-tight">
+              <p className="text-foreground text-lg font-bold tracking-tight tabular-nums">
                 {formatBRL(stats.avgPrice)}
               </p>
             </div>
@@ -673,7 +702,7 @@ export function AdminServices() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/30 h-10">
+                  <TableRow className="bg-muted/30 h-8">
                     <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
                       Serviço
                     </TableHead>
@@ -708,11 +737,11 @@ export function AdminServices() {
                       <TableRow
                         key={s.id}
                         className={cn(
-                          "border-border/50 hover:bg-muted/20 h-12 border-b transition-colors last:border-0",
+                          "border-border/50 hover:bg-muted/20 h-9 border-b transition-colors last:border-0",
                           !s.active && "opacity-70",
                         )}
                       >
-                        <TableCell className="px-4 py-3">
+                        <TableCell className="px-4 py-1.5">
                           <div className="flex items-center gap-2.5">
                             <div className="bg-muted relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md border">
                               {photo ? (
@@ -736,7 +765,7 @@ export function AdminServices() {
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="px-4 py-3">
+                        <TableCell className="px-4 py-1.5">
                           <button
                             type="button"
                             onClick={() => openProvider(s.provider.id)}
@@ -762,7 +791,7 @@ export function AdminServices() {
                             </div>
                           </button>
                         </TableCell>
-                        <TableCell className="hidden px-4 py-3 md:table-cell">
+                        <TableCell className="hidden px-4 py-1.5 md:table-cell">
                           {leaf ? (
                             <div className="flex items-center gap-2">
                               {(() => {
@@ -793,7 +822,7 @@ export function AdminServices() {
                             <span className="text-muted-foreground text-xs">—</span>
                           )}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-right">
+                        <TableCell className="px-4 py-1.5 text-right">
                           <span className="text-foreground text-sm font-semibold tabular-nums">
                             {formatBRL(s.basePrice)}
                           </span>
@@ -801,7 +830,7 @@ export function AdminServices() {
                             /{SERVICE_UNIT_SHORT[s.unit]}
                           </span>
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-center">
+                        <TableCell className="px-4 py-1.5 text-center">
                           {isPatchingThis && pendingToggle?.field === "active" ? (
                             <SavingPill saving label="Salvando…" />
                           ) : (
@@ -830,10 +859,10 @@ export function AdminServices() {
                             </Tooltip>
                           )}
                         </TableCell>
-                        <TableCell className="text-muted-foreground hidden px-4 py-3 text-xs tabular-nums sm:table-cell">
+                        <TableCell className="text-muted-foreground hidden px-4 py-1.5 text-xs tabular-nums sm:table-cell">
                           {formatDate(s.createdAt)}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-right">
+                        <TableCell className="px-4 py-1.5 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             {/* H6 — primary action visible */}
                             <Tooltip>

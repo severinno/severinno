@@ -131,11 +131,11 @@ export function AdminCommissions() {
   const freshnessDate = dataUpdatedAt ? new Date(dataUpdatedAt) : null
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-foreground text-xl font-bold tracking-tight">Comissões</h1>
+          <h1 className="text-foreground text-base font-bold tracking-tight">Comissões</h1>
           <p className="text-muted-foreground mt-0.5 text-sm">
             Taxa da plataforma de {FEE_RATE * 100}% sobre serviços realizados
           </p>
@@ -357,10 +357,10 @@ export function AdminCommissions() {
               </thead>
               <tbody className="divide-y">
                 {data.providers.map((p) => (
-                  <tr key={p.id} className="hover:bg-muted/20 h-14 transition-colors">
+                  <tr key={p.id} className="hover:bg-muted/20 h-9 transition-colors">
                     <td className="px-4">
                       <div className="flex items-center gap-2.5">
-                        <Avatar className="size-8 shrink-0">
+                        <Avatar className="size-7 shrink-0">
                           {p.avatarUrl ? <AvatarImage src={p.avatarUrl} alt={p.name} /> : null}
                           <AvatarFallback className="bg-primary/8 text-primary text-[10px] font-semibold">
                             {initials(p.name)}
@@ -393,8 +393,8 @@ export function AdminCommissions() {
       </section>
 
       {/* Footer summary */}
-      <div className="border-border/50 bg-muted/20 flex flex-wrap items-center justify-between gap-4 rounded-xl border px-5 py-4">
-        <div className="text-muted-foreground flex items-center gap-2 text-sm">
+      <div className="border-border/50 bg-muted/20 flex flex-wrap items-center justify-between gap-4 rounded-xl border px-3.5 py-2">
+        <div className="text-muted-foreground flex items-center gap-2 text-xs">
           <Percent className="size-4" />
           <span>
             A plataforma retém <strong>{FEE_RATE * 100}%</strong> sobre cada serviço pago. O
@@ -437,11 +437,11 @@ function KpiCard({
   }[accent]
 
   return (
-    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
-      <span className={cn("flex size-10 items-center justify-center rounded-lg", accentBg)}>
-        <Icon className="size-5" />
+    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-3 transition-colors">
+      <span className={cn("flex size-8 items-center justify-center rounded-lg", accentBg)}>
+        <Icon className="size-4" />
       </span>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+      <p className="mt-2 text-xl font-bold tracking-tight tabular-nums">{value}</p>
       <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
         {label}
       </p>
@@ -465,7 +465,7 @@ function LegendItem({ color, label }: { color: string; label: string }) {
 
 function CommissionsSkeleton() {
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-2">
           <Skeleton className="h-6 w-36" />
@@ -478,9 +478,9 @@ function CommissionsSkeleton() {
       </div>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="border-border/50 bg-card rounded-xl border p-5">
-            <Skeleton className="size-10 rounded-lg" />
-            <Skeleton className="mt-3 h-7 w-28" />
+          <div key={i} className="border-border/50 bg-card rounded-xl border p-3">
+            <Skeleton className="size-8 rounded-lg" />
+            <Skeleton className="mt-2 h-7 w-28" />
             <Skeleton className="mt-1 h-3 w-20" />
             <Skeleton className="mt-0.5 h-2 w-16" />
           </div>

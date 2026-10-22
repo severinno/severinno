@@ -29,7 +29,9 @@ import {
   MapPin,
   Menu,
   Moon,
+  Search,
   Sun,
+  X,
   type LucideIcon,
 } from "lucide-react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
@@ -229,6 +231,27 @@ export function DashboardShell({
   const navigate = useViewStore((s) => s.navigate)
   const { resolvedTheme, setTheme } = useTheme()
   const [mobileOpen, setMobileOpen] = React.useState(false)
+  const [navSearch, setNavSearch] = React.useState("")
+  const [collapsedGroups, setCollapsedGroups] = React.useState<Record<string, boolean>>({})
+
+  const toggleGroup = (label: string) => {
+    triggerHaptic("selection")
+    setCollapsedGroups((prev) => ({ ...prev, [label]: !prev[label] }))
+  }
+
+  const filteredNavGroups = React.useMemo(() => {
+    if (!navGroups) return undefined
+    const q = navSearch.trim().toLowerCase()
+    if (!q) return navGroups
+    return navGroups
+      .map((g) => ({
+        ...g,
+        items: g.items.filter(
+          (it) => it.label.toLowerCase().includes(q) || g.label.toLowerCase().includes(q),
+        ),
+      }))
+      .filter((g) => g.items.length > 0)
+  }, [navGroups, navSearch])
 
   // ---- Notifications query (auto-refresh 30s) -------------------------------
   const notificationsQuery = useQuery<NotificationsResponse>({
@@ -455,50 +478,94 @@ export function DashboardShell({
   )
 
   // ---- Sidebar nav (desktop) -----------------------------------------------
-  const navList = navGroups ? (
-    <div className="flex flex-col gap-1 py-1">
-      {navGroups.map((group) => (
-        <SidebarGroup key={group.label} className="py-1">
-          <SidebarGroupLabel className="text-muted-foreground/70 h-7 px-3 text-[11px] font-semibold tracking-wider uppercase">
-            {group.label}
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5 px-2">
-              {group.items.map((item) => {
-                const Icon = item.icon
-                const active = currentView === item.view
-                return (
-                  <SidebarMenuItem key={item.view}>
-                    <SidebarMenuButton
-                      isActive={active}
-                      onClick={() => handleNav(item.view)}
-                      tooltip={item.label}
-                      size="default"
-                      className={cn(
-                        "relative h-9 rounded-lg text-sm font-normal transition-colors duration-150",
-                        active ? NAV_ITEM_ACTIVE : NAV_ITEM_INACTIVE,
-                      )}
-                    >
-                      <Icon
-                        className={cn(
-                          "!size-[16px] shrink-0 transition-colors duration-150",
-                          active ? NAV_ICON_ACTIVE : NAV_ICON_INACTIVE,
-                        )}
-                      />
-                      <span className="truncate text-[13px]">{item.label}</span>
-                      {item.badge != null && item.badge !== 0 ? (
-                        <span className="bg-primary text-primary-foreground ml-auto inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-semibold">
-                          {item.badge}
-                        </span>
-                      ) : null}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      ))}
+  const navList = filteredNavGroups ? (
+    <div className="flex flex-col gap-0.5 py-1">
+      {navGroups && navGroups.length > 2 ? (
+        <div className="px-2.5 pb-1.5">
+          <div className="relative">
+            <Search className="text-muted-foreground/60 pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
+            <input
+              type="text"
+              value={navSearch}
+              onChange={(e) => setNavSearch(e.target.value)}
+              placeholder="Filtrar menu…"
+              aria-label="Filtrar menu lateral"
+              className="border-border/60 bg-muted/30 placeholder:text-muted-foreground/60 focus:border-primary/50 focus:bg-background h-7 w-full rounded-lg border pr-6 pl-7 text-xs transition-colors outline-none"
+            />
+            {navSearch ? (
+              <button
+                type="button"
+                onClick={() => setNavSearch("")}
+                aria-label="Limpar busca do menu"
+                className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1.5 -translate-y-1/2 rounded p-0.5"
+              >
+                <X className="size-3" />
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+      {filteredNavGroups.map((group) => {
+        const hasActiveItem = group.items.some((it) => it.view === currentView)
+        const isCollapsed =
+          !navSearch.trim() && !hasActiveItem && Boolean(collapsedGroups[group.label])
+        return (
+          <SidebarGroup key={group.label} className="py-0.5">
+            <SidebarGroupLabel asChild>
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.label)}
+                className="text-muted-foreground/75 hover:text-foreground flex h-6 w-full items-center justify-between px-3 text-[10px] font-semibold tracking-wider uppercase transition-colors"
+              >
+                <span className="truncate">{group.label}</span>
+                <ChevronRight
+                  className={cn(
+                    "size-3 shrink-0 transition-transform duration-150",
+                    !isCollapsed && "rotate-90",
+                  )}
+                />
+              </button>
+            </SidebarGroupLabel>
+            {!isCollapsed ? (
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-0.5 px-2">
+                  {group.items.map((item) => {
+                    const Icon = item.icon
+                    const active = currentView === item.view
+                    return (
+                      <SidebarMenuItem key={item.view}>
+                        <SidebarMenuButton
+                          isActive={active}
+                          onClick={() => handleNav(item.view)}
+                          tooltip={item.label}
+                          size="default"
+                          className={cn(
+                            "relative h-8 rounded-lg text-sm font-normal transition-colors duration-150",
+                            active ? NAV_ITEM_ACTIVE : NAV_ITEM_INACTIVE,
+                          )}
+                        >
+                          <Icon
+                            className={cn(
+                              "!size-[15px] shrink-0 transition-colors duration-150",
+                              active ? NAV_ICON_ACTIVE : NAV_ICON_INACTIVE,
+                            )}
+                          />
+                          <span className="truncate text-[12.5px]">{item.label}</span>
+                          {item.badge != null && item.badge !== 0 ? (
+                            <span className="bg-primary text-primary-foreground ml-auto inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-semibold tabular-nums">
+                              {item.badge}
+                            </span>
+                          ) : null}
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    )
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            ) : null}
+          </SidebarGroup>
+        )
+      })}
     </div>
   ) : (
     <SidebarGroup>

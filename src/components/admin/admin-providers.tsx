@@ -357,7 +357,9 @@ export function AdminProviders() {
             </div>
             <div className="min-w-0">
               <p className="text-muted-foreground text-xs">Total de Prestadores</p>
-              <p className="text-foreground text-lg font-bold tracking-tight">{total}</p>
+              <p className="text-foreground text-lg font-bold tracking-tight tabular-nums">
+                {total}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -377,7 +379,7 @@ export function AdminProviders() {
             </div>
             <div className="min-w-0">
               <p className="text-muted-foreground text-xs">Verificados (KYC)</p>
-              <p className="text-foreground text-lg font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
+              <p className="text-foreground text-lg font-bold tracking-tight text-emerald-600 tabular-nums dark:text-emerald-400">
                 {verifiedCount}
               </p>
             </div>
@@ -399,7 +401,7 @@ export function AdminProviders() {
             </div>
             <div className="min-w-0">
               <p className="text-muted-foreground text-xs">Aguardando Verificação</p>
-              <p className="text-foreground text-lg font-bold tracking-tight text-amber-600 dark:text-amber-400">
+              <p className="text-foreground text-lg font-bold tracking-tight text-amber-600 tabular-nums dark:text-amber-400">
                 {pendingKycCount}
               </p>
             </div>
@@ -421,7 +423,7 @@ export function AdminProviders() {
             </div>
             <div className="min-w-0">
               <p className="text-muted-foreground text-xs">Prestadores Ativos</p>
-              <p className="text-foreground text-lg font-bold tracking-tight text-sky-600 dark:text-sky-400">
+              <p className="text-foreground text-lg font-bold tracking-tight text-sky-600 tabular-nums dark:text-sky-400">
                 {activeCount}
               </p>
             </div>
@@ -610,7 +612,7 @@ export function AdminProviders() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/30 hover:bg-muted/30 h-10">
+                  <TableRow className="bg-muted/30 hover:bg-muted/30 h-8">
                     <TableHead>{renderSortHeader("Prestador", "name")}</TableHead>
                     <TableHead className="text-muted-foreground hidden text-[11px] font-semibold tracking-wider uppercase md:table-cell">
                       Contato
@@ -644,9 +646,9 @@ export function AdminProviders() {
                     return (
                       <TableRow
                         key={p.id}
-                        className="border-border/50 hover:bg-muted/20 h-12 border-b transition-colors last:border-0"
+                        className="border-border/50 hover:bg-muted/20 h-9 border-b transition-colors last:border-0"
                       >
-                        <TableCell className="px-4 py-3">
+                        <TableCell className="px-4 py-1.5">
                           <button
                             type="button"
                             onClick={() => openProvider(p.id)}
@@ -667,7 +669,7 @@ export function AdminProviders() {
                             </div>
                           </button>
                         </TableCell>
-                        <TableCell className="hidden px-4 py-3 md:table-cell">
+                        <TableCell className="hidden px-4 py-1.5 md:table-cell">
                           <div className="flex flex-col text-xs">
                             {p.whatsapp ? (
                               <span className="text-foreground/80">{p.whatsapp}</span>
@@ -681,7 +683,7 @@ export function AdminProviders() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="hidden px-4 py-3 text-xs lg:table-cell">
+                        <TableCell className="hidden px-4 py-1.5 text-xs lg:table-cell">
                           {p.city ? (
                             <span className="text-foreground/80 inline-flex items-center gap-1">
                               <MapPin className="text-muted-foreground size-3" />
@@ -693,7 +695,7 @@ export function AdminProviders() {
                           )}
                         </TableCell>
                         {geoFilter.lat != null ? (
-                          <TableCell className="px-4 py-3 text-center">
+                          <TableCell className="px-4 py-1.5 text-center">
                             {p.distanceKm != null ? (
                               <span
                                 className={cn(
@@ -715,24 +717,24 @@ export function AdminProviders() {
                             )}
                           </TableCell>
                         ) : null}
-                        <TableCell className="px-4 py-3 text-center">
+                        <TableCell className="px-4 py-1.5 text-center">
                           {patchingField === "verified" ? (
                             <SavingPill saving label="Salvando…" />
                           ) : (
                             <VerifiedBadge verified={p.verified} />
                           )}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-center">
+                        <TableCell className="px-4 py-1.5 text-center">
                           {patchingField === "active" ? (
                             <SavingPill saving label="Salvando…" />
                           ) : (
                             <ActiveBadge active={p.active} />
                           )}
                         </TableCell>
-                        <TableCell className="text-muted-foreground hidden px-4 py-3 text-xs tabular-nums sm:table-cell">
+                        <TableCell className="text-muted-foreground hidden px-4 py-1.5 text-xs tabular-nums sm:table-cell">
                           {formatDate(p.createdAt)}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-right">
+                        <TableCell className="px-4 py-1.5 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             {/* H6 — primary action visible */}
                             <Tooltip>

@@ -49,7 +49,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { toast } from "sonner"
-import { ErrorState, EmptyState, PageSectionHeader, StatusBadge } from "./_shared"
+import { ErrorState, EmptyState, PageSectionHeader, StatusBadge, errMsg } from "./_shared"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -114,11 +114,6 @@ const PERIOD_TYPE_OPTIONS: { value: PeriodType; label: string }[] = [
   { value: "WEEKLY", label: "Semanal" },
 ]
 
-const _SETTLEMENT_STATUS_STYLES: Record<PeriodStatus, string> = {
-  PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-  FINALIZED: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
-}
-
 const PROVIDER_STATUS_STYLES: Record<ProviderSettStatus, string> = {
   PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
   PAID: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
@@ -156,8 +151,7 @@ export function AdminSettlements() {
       queryClient.invalidateQueries({ queryKey: ["admin", "settlements"] })
     },
     onError: (e: unknown) => {
-      const msg = e instanceof Error ? e.message : "Não foi possível gerar o período de repasse."
-      toast.error(msg)
+      toast.error(errMsg(e, "Não foi possível gerar o período de repasse."))
     },
   })
 
@@ -168,7 +162,7 @@ export function AdminSettlements() {
       toast.success("Período finalizado com sucesso!")
       queryClient.invalidateQueries({ queryKey: ["admin", "settlements"] })
     },
-    onError: (e: unknown) => toast.error(String(e)),
+    onError: (e: unknown) => toast.error(errMsg(e)),
   })
 
   const payMutation = useMutation({
@@ -181,7 +175,7 @@ export function AdminSettlements() {
       toast.success("Repasse marcado como pago!")
       queryClient.invalidateQueries({ queryKey: ["admin", "settlements"] })
     },
-    onError: (e: unknown) => toast.error(String(e)),
+    onError: (e: unknown) => toast.error(errMsg(e)),
   })
 
   if (isError) {
@@ -224,7 +218,7 @@ export function AdminSettlements() {
           }
         />
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3.5">
           {periods.map((period) => {
             const isExpanded = expandedPeriod === period.id
             const paidCount = period.providers.filter((p) => p.status === "PAID").length
@@ -236,28 +230,28 @@ export function AdminSettlements() {
                 <button
                   type="button"
                   onClick={() => setExpandedPeriod(isExpanded ? null : period.id)}
-                  className="hover:bg-muted/20 flex w-full items-center justify-between px-5 py-4 text-left transition-colors"
+                  className="hover:bg-muted/20 flex w-full items-center justify-between px-3.5 py-2.5 text-left transition-colors"
                 >
                   <div className="flex items-center gap-3">
                     <span
                       className={cn(
-                        "flex size-10 items-center justify-center rounded-lg",
+                        "flex size-8 items-center justify-center rounded-lg",
                         period.status === "FINALIZED"
                           ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
                           : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
                       )}
                     >
                       {period.status === "FINALIZED" ? (
-                        <CheckCircle2 className="size-5" />
+                        <CheckCircle2 className="size-4" />
                       ) : (
-                        <Wallet className="size-5" />
+                        <Wallet className="size-4" />
                       )}
                     </span>
                     <div>
                       <p className="text-sm font-semibold">
                         {formatPeriodLabel(period.startDate, period.endDate, period.type)}
                       </p>
-                      <p className="text-muted-foreground text-xs">
+                      <p className="text-muted-foreground text-xs tabular-nums">
                         {PERIOD_TYPE_LABELS[period.type]} · {period.providerCount} prestador
                         {period.providerCount !== 1 ? "es" : ""} · {period.transactionCount}{" "}
                         transação
@@ -281,9 +275,16 @@ export function AdminSettlements() {
                         </p>
                       </div>
                     </div>
-                    <StatusBadge tone={period.status === "FINALIZED" ? "emerald" : "amber"}>
-                      {period.status === "FINALIZED" ? "Finalizado" : "Pendente"}
-                    </StatusBadge>
+                    <div className="flex items-center gap-1.5">
+                      <StatusBadge tone={period.status === "FINALIZED" ? "emerald" : "amber"}>
+                        {period.status === "FINALIZED" ? "Finalizado" : "Pendente"}
+                      </StatusBadge>
+                      {pendingCount > 0 && period.status === "FINALIZED" && (
+                        <span className="text-muted-foreground text-[10px] tabular-nums">
+                          {paidCount}/{period.providers.length} pagos
+                        </span>
+                      )}
+                    </div>
                     {isExpanded ? (
                       <ChevronUp className="text-muted-foreground size-4" />
                     ) : (
@@ -295,52 +296,9 @@ export function AdminSettlements() {
                 {/* Expanded detail */}
                 {isExpanded && (
                   <div className="border-border/50 border-t">
-                    {/* Period summary bar */}
-                    <div className="border-border/30 bg-muted/20 grid grid-cols-2 gap-4 border-b px-5 py-3 sm:grid-cols-4">
-                      <div>
-                        <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
-                          Total recebido
-                        </p>
-                        <p className="text-sm font-semibold tabular-nums">
-                          {formatBRL(period.totalAmount)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
-                          Comissão
-                        </p>
-                        <p className="text-sm font-semibold text-amber-600 tabular-nums dark:text-amber-400">
-                          {formatBRL(period.totalCommission)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
-                          Repasse líquido
-                        </p>
-                        <p className="text-sm font-semibold text-emerald-600 tabular-nums dark:text-emerald-400">
-                          {formatBRL(period.totalNet)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
-                          Status
-                        </p>
-                        <div className="mt-0.5 flex items-center gap-1">
-                          <StatusBadge tone={period.status === "FINALIZED" ? "emerald" : "amber"}>
-                            {period.status === "FINALIZED" ? "Finalizado" : "Pendente"}
-                          </StatusBadge>
-                          {pendingCount > 0 && period.status === "FINALIZED" && (
-                            <span className="text-muted-foreground text-[10px]">
-                              {paidCount}/{period.providers.length} pagos
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
                     {/* Action buttons */}
                     {period.status === "PENDING" && (
-                      <div className="border-border/30 flex items-center justify-end gap-2 border-b px-5 py-2">
+                      <div className="border-border/30 flex items-center justify-end gap-2 border-b px-3.5 py-2">
                         <Button
                           variant="outline"
                           size="sm"
@@ -360,7 +318,7 @@ export function AdminSettlements() {
                     <div className="overflow-x-auto">
                       <Table>
                         <TableHeader>
-                          <TableRow className="bg-muted/30 hover:bg-muted/30 h-10">
+                          <TableRow className="bg-muted/30 hover:bg-muted/30 h-9">
                             <TableHead className="text-muted-foreground px-4 text-[10px] font-semibold tracking-wide uppercase">
                               Prestador
                             </TableHead>
@@ -390,12 +348,12 @@ export function AdminSettlements() {
                           {period.providers.map((ps) => (
                             <TableRow
                               key={ps.id}
-                              className="hover:bg-muted/20 h-12 transition-colors"
+                              className="hover:bg-muted/20 h-9 transition-colors"
                             >
                               <TableCell className="px-4">
                                 <div className="flex items-center gap-2">
-                                  <div className="bg-primary/10 text-primary flex size-7 shrink-0 items-center justify-center rounded-full">
-                                    <UserCircle className="size-4" />
+                                  <div className="bg-primary/10 text-primary flex size-6 shrink-0 items-center justify-center rounded-full">
+                                    <UserCircle className="size-3.5" />
                                   </div>
                                   <div className="min-w-0">
                                     <p className="truncate text-xs font-medium">
@@ -448,7 +406,7 @@ export function AdminSettlements() {
                                       Pagar
                                     </Button>
                                   ) : (
-                                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                                    <span className="text-[10px] text-emerald-600 tabular-nums dark:text-emerald-400">
                                       {ps.paidAt ? formatDateShort(ps.paidAt) : "Pago"}
                                     </span>
                                   )}

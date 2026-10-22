@@ -142,7 +142,7 @@ export function AdminGeoMetricsDashboard() {
   const hasExceeded = exceededServices.length > 0
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       {/* ── P95 Exceeded Alert Banner ────────────────────────────────── */}
       {hasExceeded && (
         <div
@@ -212,11 +212,11 @@ export function AdminGeoMetricsDashboard() {
       </section>
 
       {/* ── Latency Bar Chart ───────────────────────────────────────── */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <section className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         {/* P50 / P95 / P99 por serviço */}
         <MetricCard icon={BarChart3} title="Latência por Serviço (ms)">
-          <div className="h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[170px]">
+            <ResponsiveContainer width="100%" height={170}>
               <BarChart
                 data={sortedByP95}
                 layout="vertical"
@@ -275,8 +275,8 @@ export function AdminGeoMetricsDashboard() {
 
         {/* Percentile detail per service */}
         <MetricCard icon={BarChart3} title="P50 / P95 / P99 por Serviço">
-          <div className="h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[170px]">
+            <ResponsiveContainer width="100%" height={170}>
               <BarChart data={chartData} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
                 <CartesianGrid
                   vertical={false}
@@ -299,30 +299,9 @@ export function AdminGeoMetricsDashboard() {
                   contentStyle={TOOLTIP_STYLE}
                   formatter={(v: number) => [`${Math.round(v)}ms`]}
                 />
-                <Bar
-                  dataKey="p50"
-                  name="P50"
-                  stackId="a"
-                  fill={COLOR_P50}
-                  radius={[0, 0, 0, 0]}
-                  barSize={24}
-                />
-                <Bar
-                  dataKey="p95"
-                  name="P95"
-                  stackId="a"
-                  fill={COLOR_P95}
-                  radius={[0, 0, 0, 0]}
-                  barSize={24}
-                />
-                <Bar
-                  dataKey="p99"
-                  name="P99"
-                  stackId="a"
-                  fill={COLOR_P99}
-                  radius={[0, 3, 3, 0]}
-                  barSize={24}
-                />
+                <Bar dataKey="p50" name="P50" fill={COLOR_P50} radius={[3, 3, 0, 0]} barSize={16} />
+                <Bar dataKey="p95" name="P95" fill={COLOR_P95} radius={[3, 3, 0, 0]} barSize={16} />
+                <Bar dataKey="p99" name="P99" fill={COLOR_P99} radius={[3, 3, 0, 0]} barSize={16} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -330,7 +309,7 @@ export function AdminGeoMetricsDashboard() {
       </section>
 
       {/* ── Detailed service cards ──────────────────────────────────── */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <section className="grid grid-cols-1 gap-3.5 lg:grid-cols-3">
         {Object.entries(services).map(([key, metrics]) => {
           const Icon = SERVICE_ICONS[key] ?? Globe
           const isHealthy = metrics.errorRate < 0.05 && metrics.count > 0
@@ -494,7 +473,7 @@ export function AdminGeoMetricsDashboard() {
       )}
 
       {/* ── Info note ────────────────────────────────────────────────── */}
-      <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 dark:border-blue-800/30 dark:bg-blue-950/20 dark:text-blue-300">
+      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-800/30 dark:bg-blue-950/20 dark:text-blue-300">
         <p className="font-medium">📊 Janela deslizante de {windowSeconds / 60} minutos</p>
         <p className="mt-1">
           As métricas são coletadas em memória e resetam com cada restart do servidor. Para
