@@ -36,7 +36,6 @@ import {
   FolderTree,
   ChevronsDownUp,
   ChevronsUpDown,
-  Info,
   Search,
   RefreshCw,
   Sparkles,
@@ -79,16 +78,7 @@ import { apiGet, apiPost, apiPatch, apiDelete, type Category } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -109,20 +99,20 @@ import {
   StatusBadge,
   type StatusTone,
   errMsg,
-  slugify,
 } from "./_shared"
+import { CategoryDialog, type CategoryPayload } from "./admin-category-dialog"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-type CategoryRow = Category & {
+export type CategoryRow = Category & {
   active: boolean
   order: number
   serviceCount?: number
   description?: string | null
 }
 
-type CategoryNode = Omit<CategoryRow, "children"> & {
+export type CategoryNode = Omit<CategoryRow, "children"> & {
   children?: CategoryNode[]
 }
 
@@ -160,9 +150,9 @@ const LEVEL_META: Record<number, LevelMeta> = {
 // ---------------------------------------------------------------------------
 // Icon picker — H6 reconhecimento: catálogo visual com preview
 // ---------------------------------------------------------------------------
-type IconOption = { name: string; icon: LucideIcon; label: string }
+export type IconOption = { name: string; icon: LucideIcon; label: string }
 
-const ICON_OPTIONS: IconOption[] = [
+export const ICON_OPTIONS: IconOption[] = [
   { name: "Wrench", icon: Wrench, label: "Reparos / Ferramentas" },
   { name: "Zap", icon: Zap, label: "Elétrica / Energia" },
   { name: "Droplet", icon: Droplet, label: "Hidráulica / Água" },
@@ -193,9 +183,9 @@ const ICON_OPTIONS: IconOption[] = [
   { name: "HeartPulse", icon: HeartPulse, label: "Cuidados / Saúde" },
 ]
 
-const ICON_BY_NAME = new Map(ICON_OPTIONS.map((o) => [o.name, o.icon]))
+export const ICON_BY_NAME = new Map(ICON_OPTIONS.map((o) => [o.name, o.icon]))
 
-function CategoryIcon({ name, className }: { name?: string | null; className?: string }) {
+export function CategoryIcon({ name, className }: { name?: string | null; className?: string }) {
   const Icon = name ? ICON_BY_NAME.get(name) : null
   if (!Icon) return null
   return React.createElement(Icon, { className })
@@ -1131,325 +1121,5 @@ function TreeNode({
         </ul>
       )}
     </li>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// CategoryDialog — Formulário de Criação e Edição (H5, H6, H10)
-// ---------------------------------------------------------------------------
-type CategoryPayload = {
-  name: string
-  slug: string
-  parentId?: string | null
-  level: number
-  icon?: string
-  description?: string
-  order: number
-  active: boolean
-}
-
-function CategoryDialog({
-  open,
-  onOpenChange,
-  title,
-  description,
-  allCategories,
-  initial,
-  initialParent,
-  submitting,
-  onSubmit,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  title: string
-  description: string
-  allCategories: CategoryRow[]
-  initial?: CategoryNode
-  initialParent?: CategoryNode
-  submitting: boolean
-  onSubmit: (payload: CategoryPayload) => void
-}) {
-  const [name, setName] = React.useState("")
-  const [slug, setSlug] = React.useState("")
-  const [slugTouched, setSlugTouched] = React.useState(false)
-  const [parentId, setParentId] = React.useState<string>("__none__")
-  const [icon, setIcon] = React.useState<string>("__none__")
-  const [catDescription, setCatDescription] = React.useState("")
-  const [order, setOrder] = React.useState(0)
-  const [active, setActive] = React.useState(true)
-
-  // Sincroniza formulário na abertura sem efeito colateral cascata
-  const [prevKey, setPrevKey] = React.useState<string | null>(null)
-  const currentKey = open
-    ? initial
-      ? `edit-${initial.id}`
-      : initialParent
-        ? `new-${initialParent.id}`
-        : "new-root"
-    : null
-
-  if (open && prevKey !== currentKey) {
-    setPrevKey(currentKey)
-    if (initial) {
-      setName(initial.name)
-      setSlug(initial.slug)
-      setSlugTouched(true)
-      setParentId(initial.parentId ?? "__none__")
-      setIcon(initial.icon && initial.icon.length > 0 ? initial.icon : "__none__")
-      setCatDescription(initial.description ?? "")
-      setOrder(initial.order ?? 0)
-      setActive(initial.active)
-    } else {
-      setName("")
-      setSlug("")
-      setSlugTouched(false)
-      setParentId(initialParent ? initialParent.id : "__none__")
-      setIcon("__none__")
-      setCatDescription("")
-      setOrder(0)
-      setActive(true)
-    }
-  } else if (!open && prevKey !== null) {
-    setPrevKey(null)
-  }
-
-  // Slug derivado automaticamente até edição manual (H5)
-  const effectiveSlug = slugTouched ? slug : slugify(name)
-
-  // Nível calculado com base no pai selecionado
-  const selectedParentObj = allCategories.find((c) => c.id === parentId)
-  const computedLevel = selectedParentObj ? Math.min(2, selectedParentObj.level + 1) : 0
-
-  // Candidatos válidos para pai (nível < 2 e excluindo o próprio nó para evitar ciclos)
-  const parentCandidates = React.useMemo(() => {
-    return allCategories
-      .filter((c) => c.level < 2 && c.id !== initial?.id)
-      .sort(
-        (a, b) =>
-          a.level - b.level || (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name),
-      )
-  }, [allCategories, initial])
-
-  const canSubmit =
-    name.trim().length >= 2 &&
-    /^[a-z0-9-]+$/.test(effectiveSlug) &&
-    effectiveSlug.length >= 2 &&
-    !submitting
-
-  const currentIconName = icon === "__none__" ? "" : icon
-  const hasCurrentIcon = currentIconName.length > 0 && ICON_BY_NAME.has(currentIconName)
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!canSubmit) return
-    onSubmit({
-      name: name.trim(),
-      slug: effectiveSlug,
-      parentId: parentId === "__none__" ? null : parentId,
-      level: computedLevel,
-      icon: currentIconName,
-      description: catDescription.trim() || undefined,
-      order: Number.isFinite(order) ? order : 0,
-      active,
-    })
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="rounded-2xl sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="text-lg font-semibold">{title}</DialogTitle>
-          <DialogDescription className="text-xs">{description}</DialogDescription>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2">
-          {/* Nome e Slug */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cat-name" className="text-xs font-medium">
-                Nome do Serviço / Categoria <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="cat-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Ex.: Eletricista"
-                required
-                maxLength={80}
-                className="border-input/60 h-9 rounded-xl text-xs"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center gap-1">
-                <Label htmlFor="cat-slug" className="text-xs font-medium">
-                  Slug Canônico <span className="text-red-500">*</span>
-                </Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button type="button" className="text-muted-foreground hover:text-foreground">
-                      <Info className="size-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="max-w-xs text-xs">
-                    Identificador único nas URLs e rotas de busca de prestadores.
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <Input
-                id="cat-slug"
-                value={effectiveSlug}
-                onChange={(e) => {
-                  setSlug(e.target.value)
-                  setSlugTouched(true)
-                }}
-                placeholder="eletricista-eletrica"
-                required
-                maxLength={80}
-                className="border-input/60 h-9 rounded-xl font-mono text-xs"
-              />
-            </div>
-          </div>
-
-          {/* Categoria Pai e Nível Resultante */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cat-parent" className="text-xs font-medium">
-                Categoria Pai
-              </Label>
-              <Select value={parentId} onValueChange={setParentId}>
-                <SelectTrigger id="cat-parent" className="border-input/60 h-9 rounded-xl text-xs">
-                  <SelectValue placeholder="Nenhuma (Macro-Domínio)" />
-                </SelectTrigger>
-                <SelectContent className="max-h-60">
-                  <SelectItem value="__none__">Nenhuma (Macro-Domínio / Nível 0)</SelectItem>
-                  {parentCandidates.map((c) => (
-                    <SelectItem key={c.id} value={c.id} className="text-xs">
-                      {"—".repeat(c.level)} {c.name} ({LEVEL_META[c.level]?.label})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs font-medium">Nível Hierárquico</Label>
-              <div className="border-input/60 bg-muted/40 flex h-9 items-center gap-2 rounded-xl border px-3">
-                <StatusBadge tone={LEVEL_META[computedLevel]?.tone ?? "sky"}>
-                  <span
-                    className={cn(
-                      "size-1.5 rounded-full",
-                      LEVEL_META[computedLevel]?.dot ?? "bg-sky-500",
-                    )}
-                  />
-                  {LEVEL_META[computedLevel]?.label ?? "Macro-Domínio"}
-                </StatusBadge>
-                <span className="text-muted-foreground text-[11px]">Nível {computedLevel}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Slogan ou Descrição Curta */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="cat-desc" className="text-xs font-medium">
-              Slogan / Descrição Amigável (opcional)
-            </Label>
-            <Input
-              id="cat-desc"
-              value={catDescription}
-              onChange={(e) => setCatDescription(e.target.value)}
-              placeholder="Ex.: Do projeto à obra pronta"
-              maxLength={120}
-              className="border-input/60 h-9 rounded-xl text-xs"
-            />
-          </div>
-
-          {/* Seletor Visual de Ícones & Ordem */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cat-icon" className="text-xs font-medium">
-                Ícone Visual
-              </Label>
-              <div className="flex items-center gap-2">
-                <span className="border-input/60 bg-muted/40 flex size-9 shrink-0 items-center justify-center rounded-xl border">
-                  {hasCurrentIcon ? (
-                    <CategoryIcon name={currentIconName} className="text-primary size-4" />
-                  ) : (
-                    <span className="text-muted-foreground text-[10px]">—</span>
-                  )}
-                </span>
-                <Select value={icon} onValueChange={setIcon}>
-                  <SelectTrigger
-                    id="cat-icon"
-                    className="border-input/60 h-9 flex-1 rounded-xl text-xs"
-                  >
-                    <SelectValue placeholder="Sem ícone" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    <SelectItem value="__none__">Sem ícone</SelectItem>
-                    {ICON_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.name} value={opt.name} className="text-xs">
-                        <span className="inline-flex items-center gap-2">
-                          <CategoryIcon name={opt.name} className="text-primary size-3.5" />
-                          {opt.label}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cat-order" className="text-xs font-medium">
-                Ordem de Exibição
-              </Label>
-              <Input
-                id="cat-order"
-                type="number"
-                value={order}
-                onChange={(e) => setOrder(Number(e.target.value))}
-                min={0}
-                className="border-input/60 h-9 rounded-xl text-xs"
-              />
-            </div>
-          </div>
-
-          {/* Toggle de Categoria Ativa */}
-          <div className="border-border/60 flex items-center justify-between rounded-xl border p-3">
-            <div>
-              <Label htmlFor="cat-active" className="text-xs font-semibold">
-                Categoria Ativa
-              </Label>
-              <p className="text-muted-foreground text-[11px]">
-                Categorias ativas aparecem imediatamente na vitrine pública.
-              </p>
-            </div>
-            <Switch id="cat-active" checked={active} onCheckedChange={setActive} />
-          </div>
-
-          <DialogFooter className="gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={submitting}
-              className="rounded-xl text-xs"
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              disabled={!canSubmit}
-              className="gap-1.5 rounded-xl bg-emerald-600 text-xs text-white hover:bg-emerald-700"
-            >
-              {submitting ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Plus className="size-4" />
-              )}
-              {initial ? "Salvar Alterações" : "Criar Categoria"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   )
 }

@@ -1,11 +1,15 @@
-const CACHE = "severinno-v4"
+const CACHE = "severinno-v5"
 const ASSETS = [
   "/",
   "/offline",
   "/manifest.json",
   "/sw.js",
+  "/brand-icon.png",
+  "/brand-wordmark-black.png",
+  "/brand-wordmark-white.png",
   "/logo.svg",
   "/logo.png",
+  "/favicon.ico",
   "/favicon.svg",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
@@ -86,6 +90,7 @@ self.addEventListener("fetch", (event) => {
     url.pathname.startsWith("/api/wallet") ||
     url.pathname.startsWith("/api/webhooks/") ||
     url.pathname.startsWith("/api/payments/") ||
+    url.pathname.startsWith("/api/bookings/") ||
     url.pathname.startsWith("/api/cron/") ||
     url.pathname === "/api/notifications"
 
@@ -104,7 +109,11 @@ self.addEventListener("fetch", (event) => {
   if (
     url.pathname.startsWith("/icons/") ||
     url.pathname.startsWith("/fonts/") ||
-    url.pathname === "/logo.svg"
+    url.pathname === "/brand-icon.png" ||
+    url.pathname === "/brand-wordmark-black.png" ||
+    url.pathname === "/brand-wordmark-white.png" ||
+    url.pathname === "/logo.svg" ||
+    url.pathname === "/logo.png"
   ) {
     event.respondWith(cacheFirstStrategy(event.request))
     return

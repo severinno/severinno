@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Search, MapPin, Wrench, Sparkles, TrendingUp } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { triggerHaptic } from "@/lib/haptics"
 import { useRegionalContext } from "@/hooks/use-regional-context"
 
 interface PredictiveSearchDropdownProps {
@@ -144,7 +145,10 @@ export function PredictiveSearchDropdown({
               type="button"
               role="option"
               aria-selected={false}
-              onClick={() => onSelect(svc.label)}
+              onClick={() => {
+                triggerHaptic("selection")
+                onSelect(svc.label)
+              }}
               className="group hover:bg-primary/10 hover:text-primary focus-visible:bg-primary/10 flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left text-xs transition-colors focus-visible:outline-none"
             >
               <div className="flex items-center gap-2.5">
@@ -182,7 +186,10 @@ export function PredictiveSearchDropdown({
               <button
                 key={district}
                 type="button"
-                onClick={() => onSelect(district)}
+                onClick={() => {
+                  triggerHaptic("selection")
+                  onSelect(district)
+                }}
                 className="border-border/80 bg-muted/40 text-foreground hover:border-primary hover:bg-primary/10 hover:text-primary inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium transition-all"
               >
                 <MapPin className="text-muted-foreground size-2.5" />

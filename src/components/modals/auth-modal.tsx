@@ -191,8 +191,15 @@ export function AuthModal() {
             <div className="border-b border-slate-100 bg-white px-6 pt-6 pb-4 dark:border-slate-800/80 dark:bg-slate-900">
               <DialogHeader className="space-y-2.5 text-left">
                 <div className="flex items-center gap-3">
-                  <div className="bg-primary text-primary-foreground inline-flex size-10 items-center justify-center rounded-xl shadow-xs">
-                    <Wrench className="size-5" />
+                  <div className="ring-border/50 relative inline-flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-2xs ring-1">
+                    <Image
+                      src="/brand-icon.png"
+                      alt="Severinno"
+                      width={40}
+                      height={40}
+                      className="size-10 object-contain"
+                      priority
+                    />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
