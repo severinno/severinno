@@ -14,6 +14,14 @@ import { identifyDueServiceReminders } from "@/lib/smart-service-reminders"
 vi.mock("@/lib/smart-service-reminders", () => ({
   identifyDueServiceReminders: vi.fn().mockResolvedValue([]),
   formatRebookingInvitation: vi.fn().mockReturnValue("Mensagem teste de convite"),
+  dispatchServiceReminders: vi.fn().mockResolvedValue({
+    totalEligible: 0,
+    sentWhatsApp: 0,
+    sentPush: 0,
+    skippedDedup: 0,
+    failed: 0,
+    details: [],
+  }),
 }))
 
 vi.mock("@/lib/db", () => ({

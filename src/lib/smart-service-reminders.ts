@@ -1,4 +1,6 @@
 import { db } from "@/lib/db"
+import { getClient } from "@/lib/redis"
+import { notifyServiceReminder } from "@/lib/notifications"
 
 export interface ServiceRecurrenceRule {
   categoryMatch: string[]
@@ -20,7 +22,7 @@ export const SERVICE_RECURRENCE_RULES: ServiceRecurrenceRule[] = [
     couponCode: "ARPURO10",
   },
   {
-    categoryMatch: ["dedetizacao", "desinsetizacao", "pragas"],
+    categoryMatch: ["dedetizacao", "desinsetizacao", "pragas", "cupim"],
     intervalDays: 180,
     title: "Reforço Preventivo de Dedetização",
     friendlyReason:
@@ -29,7 +31,7 @@ export const SERVICE_RECURRENCE_RULES: ServiceRecurrenceRule[] = [
     couponCode: "PROTECAO10",
   },
   {
-    categoryMatch: ["eletrica", "quadro", "disjuntor", "fiacao"],
+    categoryMatch: ["eletrica", "quadro", "disjuntor", "fiacao", "eletricista"],
     intervalDays: 365,
     title: "Revisão Elétrica Preventiva",
     friendlyReason:
@@ -47,13 +49,103 @@ export const SERVICE_RECURRENCE_RULES: ServiceRecurrenceRule[] = [
     couponCode: "CASA10",
   },
   {
-    categoryMatch: ["calha", "telhado", "infiltracao"],
+    categoryMatch: ["calha", "telhado", "infiltracao", "calheiro"],
     intervalDays: 180,
     title: "Limpeza de Calhas e Telhados",
     friendlyReason:
       "Manter as calhas desobstruídas antes da temporada de chuvas em Governador Valadares evita vazamentos e goteiras.",
     couponDiscountPct: 10,
     couponCode: "TELHADO10",
+  },
+  {
+    categoryMatch: ["pintura", "pintor", "massa corrida", "textura"],
+    intervalDays: 365,
+    title: "Renovação e Retoque de Pintura",
+    friendlyReason:
+      "Faz 1 ano da sua última pintura. Que tal retocar rodapés, portas ou renovar um ambiente com seu profissional de confiança?",
+    couponDiscountPct: 10,
+    couponCode: "PINTURA10",
+  },
+  {
+    categoryMatch: ["marcenaria", "marceneiro", "armario", "gaveta"],
+    intervalDays: 180,
+    title: "Revisão de Marcenaria e Móveis Planejados",
+    friendlyReason:
+      "Revisão preventiva de dobradiças, trilhos telescópicos e ajustes de portas em armários e gavetas.",
+    couponDiscountPct: 10,
+    couponCode: "MOVEL10",
+  },
+  {
+    categoryMatch: ["vidro", "vidraceiro", "box", "espelho"],
+    intervalDays: 365,
+    title: "Manutenção Preventiva de Box e Vidros",
+    friendlyReason:
+      "Checagem de roldanas, guias e vedação de silicone para garantir a segurança da sua família no banheiro.",
+    couponDiscountPct: 10,
+    couponCode: "VIDRO10",
+  },
+  {
+    categoryMatch: ["serralheria", "serralheiro", "portao", "grade"],
+    intervalDays: 180,
+    title: "Lubrificação e Alinhamento de Portões",
+    friendlyReason:
+      "Manutenção preventiva de motores, trilhos e travas de segurança para evitar travamentos de portão.",
+    couponDiscountPct: 10,
+    couponCode: "PORTAO10",
+  },
+  {
+    categoryMatch: ["gesso", "gesseiro", "drywall", "sanca"],
+    intervalDays: 365,
+    title: "Inspeção de Gesso e Drywall",
+    friendlyReason:
+      "Inspeção anual preventiva de forros, sancas e iluminação embutida contra fissuras e trincas térmicas.",
+    couponDiscountPct: 10,
+    couponCode: "GESSO10",
+  },
+  {
+    categoryMatch: ["desentupidora", "desentupimento", "ralo", "esgoto"],
+    intervalDays: 180,
+    title: "Limpeza Preventiva de Encanamento e Ralos",
+    friendlyReason:
+      "Higienização e desobstrução preventiva de caixas de gordura e sifões para evitar mau cheiro e refluxo.",
+    couponDiscountPct: 10,
+    couponCode: "LIMPEZA10",
+  },
+  {
+    categoryMatch: ["estofado", "estofador", "sofa", "colchao", "impermeabilizacao"],
+    intervalDays: 90,
+    title: "Higienização Trimestral de Estofados",
+    friendlyReason:
+      "Higienização profunda para eliminação de ácaros, fungos e bactérias do seu sofá e colchão.",
+    couponDiscountPct: 10,
+    couponCode: "ESTOFADO10",
+  },
+  {
+    categoryMatch: ["encanador", "hidraulica", "vazamento", "tubulacao", "sifao"],
+    intervalDays: 180,
+    title: "Revisão Hidráulica Preventiva",
+    friendlyReason:
+      "Checagem de registros, sifões e torneiras para evitar desperdício de água e infiltrações silenciosas.",
+    couponDiscountPct: 10,
+    couponCode: "HIDRO10",
+  },
+  {
+    categoryMatch: ["marido de aluguel", "pequenos reparos", "reparos"],
+    intervalDays: 60,
+    title: "Check-up Residencial de Pequenos Reparos",
+    friendlyReason:
+      "Hora de resolver aqueles pequenos ajustes e instalações pendentes em casa com praticidade.",
+    couponDiscountPct: 10,
+    couponCode: "REPARO10",
+  },
+  {
+    categoryMatch: ["jardineiro", "jardinagem", "poda", "grama"],
+    intervalDays: 30,
+    title: "Manutenção Mensal de Jardim",
+    friendlyReason:
+      "Corte do gramado, poda ornamental e adubação para manter o jardim sempre verde e harmonioso.",
+    couponDiscountPct: 10,
+    couponCode: "JARDIM10",
   },
 ]
 
@@ -191,4 +283,134 @@ export async function identifyDueServiceReminders(
   }
 
   return candidates
+}
+
+export interface ServiceReminderDispatchOptions {
+  now?: Date
+  dryRun?: boolean
+  limit?: number
+}
+
+export interface ServiceReminderDispatchResult {
+  totalEligible: number
+  sentWhatsApp: number
+  sentPush: number
+  skippedDedup: number
+  failed: number
+  details: {
+    bookingId: string
+    clientId: string
+    clientName: string
+    serviceTitle: string
+    providerName: string
+    whatsAppSent: boolean
+    pushSent: boolean
+    skippedReason?: string
+  }[]
+}
+
+/**
+ * Dispara notificações ativas de retenção e retorno de serviços (WhatsApp + Push + In-App).
+ * Aplica deduplicação rigorosa via Redis com TTL de 30 dias para impedir qualquer disparo repetido.
+ */
+export async function dispatchServiceReminders(
+  options: ServiceReminderDispatchOptions = {},
+): Promise<ServiceReminderDispatchResult> {
+  const { now = new Date(), dryRun = false, limit = 50 } = options
+  const candidates = await identifyDueServiceReminders(now)
+  const sliced = candidates.slice(0, limit)
+
+  let sentWhatsApp = 0
+  let sentPush = 0
+  let skippedDedup = 0
+  let failed = 0
+
+  const details: ServiceReminderDispatchResult["details"] = []
+  const redisClient = getClient()
+
+  for (const candidate of sliced) {
+    if (dryRun) {
+      details.push({
+        bookingId: candidate.bookingId,
+        clientId: candidate.clientId,
+        clientName: candidate.clientName,
+        serviceTitle: candidate.serviceTitle,
+        providerName: candidate.providerName,
+        whatsAppSent: false,
+        pushSent: false,
+        skippedReason: "DRY_RUN",
+      })
+      continue
+    }
+
+    const dedupKey = `reminder:sent:${candidate.bookingId}:${candidate.rule.couponCode}`
+
+    if (redisClient) {
+      try {
+        const acquired = await redisClient.set(dedupKey, "1", "EX", 86400 * 30, "NX")
+        if (!acquired) {
+          skippedDedup++
+          details.push({
+            bookingId: candidate.bookingId,
+            clientId: candidate.clientId,
+            clientName: candidate.clientName,
+            serviceTitle: candidate.serviceTitle,
+            providerName: candidate.providerName,
+            whatsAppSent: false,
+            pushSent: false,
+            skippedReason: "DEDUPLICATED",
+          })
+          continue
+        }
+      } catch {
+        // Fallback se Redis indisponível: prossegue sem bloquear
+      }
+    }
+
+    try {
+      const { message, rebookingUrl } = formatRebookingInvitation(candidate)
+      const res = await notifyServiceReminder(
+        candidate.clientId,
+        candidate.serviceTitle,
+        candidate.providerName,
+        candidate.rule.friendlyReason,
+        message,
+        rebookingUrl,
+      )
+
+      if (res.whatsapp) sentWhatsApp++
+      if (res.push) sentPush++
+
+      details.push({
+        bookingId: candidate.bookingId,
+        clientId: candidate.clientId,
+        clientName: candidate.clientName,
+        serviceTitle: candidate.serviceTitle,
+        providerName: candidate.providerName,
+        whatsAppSent: res.whatsapp,
+        pushSent: res.push,
+      })
+    } catch {
+      failed++
+      details.push({
+        bookingId: candidate.bookingId,
+        clientId: candidate.clientId,
+        clientName: candidate.clientName,
+        serviceTitle: candidate.serviceTitle,
+        providerName: candidate.providerName,
+        whatsAppSent: false,
+        pushSent: false,
+        skippedReason: "ERROR",
+      })
+    }
+  }
+
+  return {
+    totalEligible: candidates.length,
+    sentWhatsApp,
+    sentPush,
+    skippedDedup,
+    failed,
+    details,
+  }
 }
