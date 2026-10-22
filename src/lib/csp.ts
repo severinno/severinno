@@ -132,3 +132,21 @@ export function buildCsp(options: {
 
 /** Header de request pelo qual o nonce viaja proxy → app (contrato Next.js). */
 export const CSP_NONCE_HEADER = "x-nonce"
+
+/**
+ * Decide se a CSP sai em modo observação (Report-Only) a partir do ambiente.
+ *
+ * REGRA (incidente 10/2026): **bloqueante por padrão**. A versão anterior
+ * devolvia Report-Only quando as duas envs estavam ausentes — ou seja, todo
+ * deploy de produção nascia sem bloquear nada, enquanto a documentação e o
+ * parecer de segurança descreviam uma “CSP estrita”.
+ *
+ *   - `CSP_REPORT_ONLY=1` → observação (opt-in explícito, para rollout).
+ *   - `CSP_ENFORCE=1`     → força bloqueio, mesmo com CSP_REPORT_ONLY=1
+ *                           herdado de ambiente antigo.
+ *
+ * Puro e testável: recebe o env (default `process.env`) em vez de ler global.
+ */
+export function isCspReportOnly(env: Record<string, string | undefined> = process.env): boolean {
+  return env.CSP_ENFORCE !== "1" && env.CSP_REPORT_ONLY === "1"
+}

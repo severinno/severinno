@@ -329,24 +329,24 @@ jobs:
   # ── MUTATION TEST — contrato de atualização COORDENADA dos counts ──
   # Prova que o seed-e2e-count.test.ts E o guard estático (check-e2e-counts)
   # pegam o cenário exato do bug histórico no TRIÂNGULO doc↔anchor↔código:
-  #   (A) atualizar SÓ os comentários dos workflows (128→N) sem tocar a
+  #   (A) atualizar SÓ os comentários dos workflows (332→N) sem tocar a
   #       âncora do teste → teste E guard falham pelo piso de sites;
-  #   (B) mutar SÓ a âncora do teste (.toBe(128)→.toBe(129)) sem tocar a
+  #   (B) mutar SÓ a âncora do teste (.toBe(332)→.toBe(333)) sem tocar a
   #       doc dos workflows → teste falha pela sanidade, guard PASSA (doc
   #       íntegra — causa isolada);
   #   (C) mutar a DERIVAÇÃO de verdade (comenta a 1ª asserção real do
-  #       scripts/test-seed-prod-e2e.ts → prod cai 128→127) com doc E âncora
+  #       scripts/test-seed-prod-e2e.ts → prod cai 332→331) com doc E âncora
   #       INTACTAS → teste falha com 'cada count documentado bate' E guard
   #       falha por DIVERGÊNCIA de count;
-  #   (D) PROVA DE INDEPENDÊNCIA: doc 128→N + piso do guard NEUTRALIZADO
+  #   (D) PROVA DE INDEPENDÊNCIA: doc 332→N + piso do guard NEUTRALIZADO
   #       (MIN_DOCUMENTED_SITES prod:8→0 via sed no check-e2e-counts.mjs) →
   #       o guard fica CEGO (exit 0 — sem piso e sem sites de prod para
   #       divergir) mas o vitest CONTINUA falhando ('piso prod violado' — o
   #       piso do TESTE é próprio, não herdado do guard): o teste de
   #       integração não depende do guard para pegar a regressão da doc;
-  #   (E) ESPELHO DEV: mutar SÓ a doc de dev (367→N: "366 checks" → "N
-  #       checks" + ternary '162' → 'N') com a doc de prod ("332 checks")
-  #       E a âncora dev (.toBe(162)) INTACTAS → teste falha com 'piso dev
+  #   (E) ESPELHO DEV: mutar SÓ a doc de dev (366→N: "366 checks" → "N
+  #       checks" + ternary '366' → 'N') com a doc de prod ("332 checks")
+  #       E a âncora dev (.toBe(366)) INTACTAS → teste falha com 'piso dev
   #       violado' (hardcoded ≥ 6 no seed-e2e-count.test.ts) E guard falha
   #       pelo piso de sites (dev 0 < 6) — o contrato vale para AMBOS os
   #       counts, não só prod.
@@ -398,10 +398,11 @@ jobs:
         run: bun install --frozen-lockfile
 
       # ── Mutation test ──────────────────────────────────────────────
-      # O script muta a doc dos workflows (A: 128→N), a âncora do teste
-      # (B: .toBe(128)→.toBe(129)), a derivação do código (C: comenta a 1ª  #      asserção real do test-seed-prod-e2e.ts → 128→127), ainda neutraliza
+      # O script muta a doc dos workflows (A: 332→N), a âncora do teste
+      # (B: .toBe(332)→.toBe(333)), a derivação do código (C: comenta a 1ª
+      #      asserção real do test-seed-prod-e2e.ts → 332→331), ainda neutraliza
       #      o piso do guard (D: MIN_DOCUMENTED_SITES prod:8→0) e espelha a
-      #      mutação da doc para o DEV (E: 367→N) em in-place com backup + trap,
+      #      mutação da doc para o DEV (E: 366→N) em in-place com backup + trap,
       #      roda o vitest real no seed-e2e-count.test.ts E o guard estático
       #      (check-e2e-counts) e exige que eles FALHEM pelo piso (A, 2 elos),
       #      pela sanidade (B, guard passa — doc íntegra), pela divergência
@@ -422,11 +423,11 @@ jobs:
             echo ''
             echo '| Check | Result |'
             echo '|---|---|'
-            echo "| Doc 128→N (A) detectada pelo teste | ${{ steps.mutation.conclusion == 'success' && '✅ contrato enforced' || '❌ guard CEGO' }} |"
-            echo "| Anchor 128→129 (B) detectada pelo teste | ${{ steps.mutation.conclusion == 'success' && '✅ contrato enforced' || '❌ guard CEGO' }} |"
-            echo "| Derivação 128→127 (C) detectada pelo teste | ${{ steps.mutation.conclusion == 'success' && '✅ contrato enforced' || '❌ guard CEGO' }} |"
+            echo "| Doc 332→N (A) detectada pelo teste | ${{ steps.mutation.conclusion == 'success' && '✅ contrato enforced' || '❌ guard CEGO' }} |"
+            echo "| Anchor 332→333 (B) detectada pelo teste | ${{ steps.mutation.conclusion == 'success' && '✅ contrato enforced' || '❌ guard CEGO' }} |"
+            echo "| Derivação 332→331 (C) detectada pelo teste | ${{ steps.mutation.conclusion == 'success' && '✅ contrato enforced' || '❌ guard CEGO' }} |"
             echo "| Independência (D): piso do guard neutralizado, teste segue pegando a doc | ${{ steps.mutation.conclusion == 'success' && '✅ teste independente do guard' || '❌ guard CEGO' }} |"
-            echo "| Doc dev 367→N (E) detectada pelo teste | ${{ steps.mutation.conclusion == 'success' && '✅ contrato enforced p/ prod E dev' || '❌ guard CEGO' }} |"
+            echo "| Doc dev 366→N (E) detectada pelo teste | ${{ steps.mutation.conclusion == 'success' && '✅ contrato enforced p/ prod E dev' || '❌ guard CEGO' }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── MUTATION TEST — espelhos do doctor (comparação de VALOR) ────────

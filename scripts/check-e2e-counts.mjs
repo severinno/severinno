@@ -9,7 +9,7 @@
 // total de checks de cada E2E a partir do CÓDIGO — sites de asserção +
 // loops dirigidos por dados + helpers compartilhados).
 //
-//   scripts/seed-e2e-count.ts  →  {"prod": 128, "dev": 162}  (bun --json)
+//   scripts/seed-e2e-count.ts  →  {"prod": 332, "dev": 366}  (bun --json)
 //
 // Por que derivação em vez de literal: antes o guard lia `EXPECTED_TOTAL =
 // 115` via regex no source do E2E. Agora os E2Es calculam o próprio total
@@ -32,7 +32,7 @@
 //
 // PISO de sites por alvo (MIN_DOCUMENTED_SITES, prod ≥ 8 / dev ≥ 6): além
 // de validar cada count ENCONTRADO, o guard falha se sites documentados
-// SOMEM da extração (ex.: reformatar o ternary, generalizar "127 checks" →
+// SOMEM da extração (ex.: reformatar o ternary, generalizar "332 checks" →
 // "N checks") — mesma proteção do piso do seed-e2e-count.test.ts, fechando
 // a brecha onde uma doc esvaziada passaria sem violações.
 //
@@ -70,7 +70,7 @@ export const SCAN_FILES = [
  *
  * Por quê: checkCounts só valida counts que a extração ENCONTRA. Se um site
  * for silenciosamente PERDIDO (ex.: reformatar o ternary da matrix, ou — o
- * cenário do mutation test — generalizar "127 checks" → "N checks"), a
+ * cenário do mutation test — generalizar "332 checks" → "N checks"), a
  * extração encolhe, zero violações são encontradas e o guard passaria com a
  * doc esvaziada. Este piso falha o guard quando um alvo fica com menos sites
  * do que o mínimo — fechando a mesma brecha que o piso do teste de
@@ -80,7 +80,7 @@ export const MIN_DOCUMENTED_SITES = { prod: 8, dev: 6 }
 
 /**
  * Padrões que ligam um count documentado ao SEU alvo (prod|dev). A dedupe
- * remove sobreposições (ex.: uma linha com "prod E2E (test-seed-prod-e2e.ts *   — 127 checks)" casa 2×, mas com o MESMO count → vira 1 registro).
+ * remove sobreposições (ex.: uma linha com "prod E2E (test-seed-prod-e2e.ts *   — 332 checks)" casa 2×, mas com o MESMO count → vira 1 registro).
  */
 const TARGET_PATTERNS = [
   // Filename explícito do source
@@ -92,8 +92,8 @@ const TARGET_PATTERNS = [
   // "prod: N checks" / "dev: N checks" (seed-guards.yml — linha do validator)
   { target: "prod", re: /\bprod:\s*(\d+)\s+checks?/g },
   { target: "dev", re: /\bdev:\s*(\d+)\s+checks?/g },
-  // Ternary da matrix (seed-guards.yml L205): seed == 'prod' && '127' || '161'
-  // ATENÇÃO: o padrão dev depende da formatação exata `'162' }} checks` — se
+  // Ternary da matrix (seed-guards.yml L205): seed == 'prod' && '332' || '366'
+  // ATENÇÃO: o padrão dev depende da formatação exata `'366' }} checks` — se
   // o echo for reformatado, o count dev deixa de ser validado (site perdido,
   // não violação). Mantenha o formato quando editar a linha do summary.
   { target: "prod", re: /'prod'\s*&&\s*'(\d+)'/g },
@@ -270,7 +270,7 @@ function main() {
 
   // Piso de sites por alvo: pega a PERDA de extração que o checkCounts não vê
   // (sites que SOMEM da doc — não divergem — como o cenário do mutation test
-  // "doc 128→N"). Mesmo piso do seed-e2e-count.test.ts (prod ≥ 8, dev ≥ 6).
+  // "doc 332→N"). Mesmo piso do seed-e2e-count.test.ts (prod ≥ 8, dev ≥ 6).
   const pisoViolations = checkSitePisos(allDocumented)
 
   if (pisoViolations.length > 0) {

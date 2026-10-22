@@ -371,15 +371,16 @@ model Booking {
   createdAt           DateTime                               @default(now())
   updatedAt           DateTime                               @updatedAt
 
-  client        User            @relation("BookingClient", fields: [clientId], references: [id], onDelete: Cascade)
-  provider      User            @relation("BookingProvider", fields: [providerId], references: [id], onDelete: Cascade)
-  service       Service         @relation(fields: [serviceId], references: [id], onDelete: Restrict)
-  quote         QuoteRequest?   @relation("BookingQuote", fields: [quoteId], references: [id], onDelete: SetNull)
-  reviews       Review[]
-  payment       Payment?
-  disputes      Dispute[]
-  pushAnalytics PushAnalytics[]
-  waypoints     Waypoint[]
+  client          User              @relation("BookingClient", fields: [clientId], references: [id], onDelete: Cascade)
+  provider        User              @relation("BookingProvider", fields: [providerId], references: [id], onDelete: Cascade)
+  service         Service           @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  quote           QuoteRequest?     @relation("BookingQuote", fields: [quoteId], references: [id], onDelete: SetNull)
+  reviews         Review[]
+  payment         Payment?
+  disputes        Dispute[]
+  pushAnalytics   PushAnalytics[]
+  waypoints       Waypoint[]
+  offlineEvidence OfflineEvidence[]
 
   @@index([clientId])
   @@index([providerId])
@@ -1045,6 +1046,38 @@ model WhatsAppMessageLog {
   @@index([status, createdAt])
   @@index([context])
   @@index([createdAt])
+}
+
+// ============================================================================
+// OFFLINE EVIDENCE — laudos e check-ins sincronizados do PWA offline
+//
+// O prestador trabalha sem sinal (subsolo, garagem, zona rural) e enfileira
+// evidências no IndexedDB. Ao reconectar, o lote sobe para
+// POST /api/sync/offline-batch e é gravado AQUI — antes a rota respondia
+// "SYNCED" sem persistir nada (perda silenciosa de prova de campo).
+//
+// `externalId` é o id gerado no cliente: chave de IDEMPOTÊNCIA do item. Retry
+// do mesmo lote não duplica evidência (unique + P2002 tratado como sucesso).
+// ============================================================================
+model OfflineEvidence {
+  id          String   @id @default(cuid())
+  externalId  String   @unique
+  bookingId   String
+  providerId  String
+  type        String // CHECKIN | BEFORE_PHOTO | AFTER_PHOTO | SIGNATURE
+  latitude    Float?
+  longitude   Float?
+  accuracy    Float?
+  photoUrl    String?
+  photoDigest String?
+  notes       String?
+  recordedAt  DateTime
+  createdAt   DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, recordedAt])
+  @@index([providerId, createdAt])
 }
 
 // ============================================================================

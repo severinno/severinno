@@ -75,12 +75,15 @@ antigo desta seção documentava a política legada). Na presença de nonce +
 `strict-dynamic`, browsers modernos ignoram `'unsafe-inline'` de style-src
 para scripts. Em dev, `'unsafe-eval'` permanece (HMR do Next).
 
-**Modo de rollout (produção):** o header enviado é
-`Content-Security-Policy-Report-Only` enquanto `CSP_REPORT_ONLY=1` (default
-no compose de produção). Enforce: `CSP_ENFORCE=1` (kill-switch reverso
-incluído) e, para estável, `CSP_REPORT_ONLY=0`. Plano completo, critério de
-avanço e monitoramento: **RUNBOOK.md § 6**. Violações: `POST /api/csp-report`
-(coleta) e `GET /api/csp-report` (painel ADMIN).
+**Modo de rollout (produção):** o header enviado é o **enforce**
+(`Content-Security-Policy`) por padrão — o deploy nasce bloqueando. Observação
+é opt-in explícito: `CSP_REPORT_ONLY=1` troca para
+`Content-Security-Policy-Report-Only` (só reporta, não bloqueia).
+`CSP_ENFORCE=1` força o enforce mesmo com `CSP_REPORT_ONLY=1` herdado
+(kill-switch de volta). Decisão pura em `isCspReportOnly` (`src/lib/csp.ts`),
+coberta por `src/lib/__tests__/csp.test.ts`. Plano completo e monitoramento:
+**RUNBOOK.md § 6**. Violações: `POST /api/csp-report` (coleta) e
+`GET /api/csp-report` (painel ADMIN).
 
 **Aplicado em:** `proxy.ts` (defense-in-depth, todas as respostas) + Caddy
 quando aplicável

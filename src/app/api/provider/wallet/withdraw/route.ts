@@ -8,7 +8,8 @@ import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import logger from "@/lib/logger"
 
 import { withRoute } from "@/lib/api-route"
-import { toDecimal, netOf, roundMoney } from "@/lib/money"
+import { roundMoney } from "@/lib/money"
+import { computeProviderBalance } from "@/lib/wallet"
 
 export const POST = withRoute("api.provider.wallet.withdraw.POST", async (request) => {
   const session = await requireUser()
@@ -47,27 +48,13 @@ export const POST = withRoute("api.provider.wallet.withdraw.POST", async (reques
   // are atomic to prevent double-spend race conditions.
   const { withdrawal, availableBalance } = await db.$transaction(
     async (tx) => {
-      // Compute balance via aggregation (no full table load)
-      const [bookingAgg, withdrawalAgg] = await Promise.all([
-        tx.booking.aggregate({
-          where: { providerId: session.userId, paymentStatus: "PAID", status: "COMPLETED" },
-          _sum: { amount: true },
-        }),
-        tx.walletTransaction.aggregate({
-          where: { providerId: session.userId, status: "completed" },
-          _sum: { amount: true },
-        }),
-      ])
-
-      // Decimal puro: soma dos líquidos por linha (netOf) menos os saques.
-      // Fórmula por LINHA — a mesma do wallet.ts — para o limite batido aqui
-      // ser idêntico ao exibido no extrato (fee sobre agregado pode divergir
-      // centavos da soma dos fees por transação).
-      const totalWithdrawn = toDecimal(withdrawalAgg._sum.amount)
-      const available = bookingAgg._sum.amount
-        ? netOf(bookingAgg._sum.amount).minus(totalWithdrawn)
-        : totalWithdrawn.neg()
-      const availableCapped = available.isNegative() ? toDecimal("0") : available
+      // MESMA função do extrato (GET /api/provider/wallet): comissão por
+      // LINHA, sem teto de linhas e descontando saques pendentes. Antes este
+      // caminho usava `netOf(soma)` enquanto o extrato usava `netOf(linha)` —
+      // os dois podiam divergir centavos, e o teto de 1.000 linhas do extrato
+      // subestimava o saldo de prestadores grandes.
+      const snapshot = await computeProviderBalance(session.userId, tx)
+      const availableCapped = snapshot.available
 
       if (withdrawAmount.gt(availableCapped)) {
         throw badRequest(`Saldo insuficiente. Disponível: R$ ${availableCapped.toFixed(2)}.`)

@@ -4,7 +4,7 @@ import { NextResponse } from "next/server"
 import { requireUser } from "@/lib/auth"
 
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { computeBaseBalance, getWithdrawals, FEE_RATE } from "@/lib/wallet"
+import { computeBaseBalance, computeProviderBalance, getWithdrawals, FEE_RATE } from "@/lib/wallet"
 
 import { withRoute } from "@/lib/api-route"
 
@@ -67,9 +67,10 @@ export const GET = withRoute("api.provider.wallet.history.export.GET", async (re
   const startDate = dateStart ? new Date(dateStart) : null
   const endDate = dateEnd ? new Date(dateEnd) : null
 
+  const snapshot = await computeProviderBalance(session.userId)
   const [base, withdrawals] = await Promise.all([
-    computeBaseBalance(session.userId),
-    getWithdrawals(session.userId),
+    computeBaseBalance(session.userId, snapshot),
+    getWithdrawals(session.userId, snapshot),
   ])
 
   // Merge and sort by date descending

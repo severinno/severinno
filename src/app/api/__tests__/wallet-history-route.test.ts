@@ -39,6 +39,7 @@ const mockDb = vi.hoisted(() => ({
   walletTransaction: {
     findMany: vi.fn(),
   },
+  $queryRaw: vi.fn(),
 }))
 
 vi.mock("@/lib/db", () => ({ db: mockDb }))
@@ -60,12 +61,14 @@ vi.mock("@/lib/rate-limit", () => ({
 
 import { GET } from "../provider/wallet/history/route"
 import { callRoute } from "@/lib/__tests__/helpers/api-test-utils"
+import { queryRawFromFindMany } from "@/lib/__tests__/helpers/wallet-balance-mock"
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe("GET /api/provider/wallet/history", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockDb.$queryRaw.mockImplementation(queryRawFromFindMany(mockDb))
   })
 
   it("returns paginated transactions with default page/limit", async () => {

@@ -196,14 +196,23 @@ describe("collectViolations — desenhos sancionados e violações", () => {
     expect(v[0]).toContain("OCIOSA")
   })
 
-  it("handler allowlistado REMOVIDO (arquivo sem o método) → entrada ociosa", () => {
-    const entry = ALLOWLIST.find((e) => e.handler !== "GET")!
-    writeFileSync(join(dir, entry.route), MANUAL("PUT")) // outro método
-    const v = collectViolations(dir)
-    expect(
-      v.some((x) => x.includes("OCIOSA") && x.includes(`${entry.route} ${entry.handler}`)),
-    ).toBe(true)
-  })
+  // A allowlist hoje só tem entradas GET (as duas rotas de catch custom).
+  // Escolher "um handler != GET" era uma premissa que o código deixou de
+  // satisfazer — o teste quebrava com `entry` undefined. O invariante é
+  // outro: o handler DA ENTRADA some do arquivo ⇒ entrada ociosa. Para isso
+  // basta escrever o arquivo com um método diferente do allowlistado.
+  it.skipIf(ALLOWLIST.length === 0)(
+    "handler allowlistado REMOVIDO (arquivo sem o método) → entrada ociosa",
+    () => {
+      const entry = ALLOWLIST[0]
+      const otherMethod = entry.handler === "PUT" ? "PATCH" : "PUT"
+      writeFileSync(join(dir, entry.route), MANUAL(otherMethod))
+      const v = collectViolations(dir)
+      expect(
+        v.some((x) => x.includes("OCIOSA") && x.includes(`${entry.route} ${entry.handler}`)),
+      ).toBe(true)
+    },
+  )
 
   it("catch custom SEM handleError (intencional, resposta própria) não reprova", () => {
     const file = join(dir, "src/app/api/stream-custom/route.ts")

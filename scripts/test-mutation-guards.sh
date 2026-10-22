@@ -671,9 +671,9 @@ CIRURGIA_NA_ARVORE=(
   # e nem o marcador nem uma contagem por arquivo cabem ali sem mudar o que a
   # mutação afirma. As outras DUAS trocas da mesma suíte (a âncora do teste e o
   # piso do guard) PASSAM pela régua: são pares literais de uma linha.
-  'scripts/test-mutation-coord-update.sh|.github/workflows/pr-check.yml|sed -i|a troca é o TEXTO CONTADO da doc (`127 checks` → `N checks`): o payload é o dado que a mutação mede, e o `s///g` não declara a contagem por arquivo que a régua exige'
-  'scripts/test-mutation-coord-update.sh|.github/workflows/seed-guards.yml|sed -i|a troca é o TEXTO CONTADO da doc (`127 checks` → `N checks`), pelo mesmo motivo de pr-check.yml'
-  'scripts/test-mutation-coord-update.sh|scripts/validate-seed-guards-matrix-local.sh|sed -i|a troca é o TEXTO CONTADO da doc (`127 checks` → `N checks`), pelo mesmo motivo de pr-check.yml'
+  'scripts/test-mutation-coord-update.sh|.github/workflows/pr-check.yml|sed -i|a troca é o TEXTO CONTADO da doc (`332 checks` → `N checks`): o payload é o dado que a mutação mede, e o `s///g` não declara a contagem por arquivo que a régua exige'
+  'scripts/test-mutation-coord-update.sh|.github/workflows/seed-guards.yml|sed -i|a troca é o TEXTO CONTADO da doc (`332 checks` → `N checks`), pelo mesmo motivo de pr-check.yml'
+  'scripts/test-mutation-coord-update.sh|scripts/validate-seed-guards-matrix-local.sh|sed -i|a troca é o TEXTO CONTADO da doc (`332 checks` → `N checks`), pelo mesmo motivo de pr-check.yml'
   'scripts/test-mutation-coord-update.sh|scripts/test-seed-prod-e2e.ts|sed -i|a troca é POSICIONAL (`0,/^[[:space:]]*expect(/s//`): o alvo é a PRIMEIRA asserção real do source, e o `expect(` não é literal único — a régua exige um alvo CIRÚRGICO'
   # O `doctor-ci` muta TRÊS fontes (o gate, a comparação compartilhada e o
   # doctor) por UMA função, `apply_mutation`, cuja escrita é uma EXPRESSÃO sed

@@ -175,9 +175,33 @@ export function useOfflineSync(): UseOfflineSyncReturn {
 
       const result: OfflineSyncBatchResult = await response.json()
 
+      // O contrato é o do servidor (src/lib/offline-evidence-sync.ts). Validar
+      // a forma evita o bug anterior: a resposta antiga não tinha `syncedIds`,
+      // o `for` estourava e o catch deixava a fila PENDING para sempre.
+      if (!Array.isArray(result?.syncedIds)) {
+        throw new Error("Resposta de sincronização inválida")
+      }
+
       // Remove itens sincronizados do armazenamento local
       for (const id of result.syncedIds) {
         await removeItemFromStorage(id)
+      }
+
+      // Itens que o servidor recusou (booking de outro prestador, upload
+      // falhou) voltam com erro: marca a tentativa em vez de reenviar cego.
+      if (Array.isArray(result.errors) && result.errors.length > 0) {
+        const errorById = new Map(result.errors.map((e) => [e.id, e.error]))
+        for (const item of currentItems) {
+          const error = errorById.get(item.id)
+          if (!error) continue
+          const attempts = item.attempts + 1
+          await saveItemToStorage({
+            ...item,
+            attempts,
+            status: attempts >= item.maxAttempts ? "FAILED" : "PENDING",
+            lastError: error,
+          })
+        }
       }
 
       setLastSyncAt(new Date())

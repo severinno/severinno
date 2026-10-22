@@ -1456,7 +1456,7 @@ uma linha cada): a troca passou a carregar o marcador `MUTACAO` no payload — q
 literal de três linhas do `env-mirror D` é o que dá o sítio único que o alvo
 repetido não dava). **Quatro ficaram DECLARADAS** no bloco
 `CIRURGIA_NA_ARVORE` do master, uma linha por (suíte, alvo, tipo): três são a
-prosa CONTADA (`127 checks` → `N checks`), cujo payload é o PRÓPRIO dado que a
+prosa CONTADA (`332 checks` → `N checks`), cujo payload é o PRÓPRIO dado que a
 mutação mede, e uma é a troca POSICIONAL (`0,/^[[:space:]]*expect(/s//`), cujo
 alvo é a primeira asserção real do source — nenhuma delas cabe numa régua que
 exige um alvo LITERAL e cirúrgico. A lista é conferida **nos DOIS sentidos**: uma

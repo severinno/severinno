@@ -13,6 +13,7 @@ const mockDb = vi.hoisted(() => {
       aggregate: vi.fn(),
       create: vi.fn(),
     },
+    $queryRaw: vi.fn(),
     $transaction: vi.fn() as ReturnType<typeof vi.fn>,
   }
   // $transaction: execute callback-style or array-style with the mock db as tx
@@ -51,6 +52,21 @@ import { POST } from "../provider/wallet/withdraw/route"
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+/** Linha única da agregação de saldo (computeProviderBalance). */
+function balanceRow(partial: Record<string, string | number> = {}) {
+  return {
+    earnedNet: "0",
+    grossReceived: "0",
+    grossCompleted: "0",
+    completedCount: 0,
+    pendingNet: "0",
+    totalWithdrawn: "0",
+    totalPending: "0",
+    pendingCount: 0,
+    ...partial,
+  }
+}
+
 function mockRequest(body?: unknown): Request {
   return new Request("http://localhost/api/provider/wallet/withdraw", {
     method: "POST",
@@ -67,9 +83,8 @@ describe("POST /api/provider/wallet/withdraw", () => {
   })
 
   it("creates a withdrawal and returns success", async () => {
-    // 2 COMPLETED bookings = balance 467.5
-    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 550 } })
-    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
+    // 2 COMPLETED bookings = balance 467.5 (agregação, sem teto de linhas)
+    mockDb.$queryRaw.mockResolvedValue([balanceRow({ earnedNet: "467.5", grossReceived: "550" })])
     mockDb.walletTransaction.create.mockResolvedValue({
       id: "wth-new-1",
       amount: 100,
@@ -87,8 +102,7 @@ describe("POST /api/provider/wallet/withdraw", () => {
   })
 
   it("rejects withdrawal exceeding available balance", async () => {
-    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 200 } })
-    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
+    mockDb.$queryRaw.mockResolvedValue([balanceRow({ earnedNet: "170" })])
 
     const res = await POST(mockRequest({ amount: 999 }), { params: Promise.resolve({}) })
     const data = await res.json()
@@ -130,10 +144,8 @@ describe("POST /api/provider/wallet/withdraw", () => {
   })
 
   it("subtracts from balance considering previous withdrawals", async () => {
-    // Balance from bookings: 200 * 0.85 = 170
-    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 200 } })
-    // Already withdrew 50
-    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: 50 } })
+    // Balance from bookings: 200 * 0.85 = 170; já sacou 50 → disponível 120
+    mockDb.$queryRaw.mockResolvedValue([balanceRow({ earnedNet: "170", totalWithdrawn: "50" })])
     mockDb.walletTransaction.create.mockResolvedValue({
       id: "wth-new-2",
       amount: 30,

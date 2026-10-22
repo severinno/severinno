@@ -4,7 +4,7 @@ import { NextResponse } from "next/server"
 import { requireUser } from "@/lib/auth"
 import { parsePagination } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { computeBaseBalance, getWithdrawals } from "@/lib/wallet"
+import { computeBaseBalance, computeProviderBalance, getWithdrawals } from "@/lib/wallet"
 
 import { withRoute } from "@/lib/api-route"
 
@@ -48,10 +48,11 @@ export const GET = withRoute("api.provider.wallet.history.GET", async (request) 
   const startDate = dateStart ? new Date(dateStart) : null
   const endDate = dateEnd ? new Date(dateEnd) : null
 
-  // Fetch all source data — for a provider's own data this is fast
+  // Um snapshot de saldo por request; as listas são páginas de exibição.
+  const snapshot = await computeProviderBalance(session.userId)
   const [base, withdrawals] = await Promise.all([
-    computeBaseBalance(session.userId),
-    getWithdrawals(session.userId),
+    computeBaseBalance(session.userId, snapshot),
+    getWithdrawals(session.userId, snapshot),
   ])
 
   // Merge and sort by date descending

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import {
   createLivenessChallenge,
   validateLivenessSubmission,
@@ -13,6 +13,15 @@ vi.mock("@/lib/redis", () => ({
 describe("biometric-liveness engine", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Relógio congelado (só Date): expiresAt/timestamps são comparados com
+    // Date.now(). Sem isso o teste depende do relógio de parede
+    // (guard check:clock-bombs).
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-01-05T15:00:00.000Z"))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it("cria desafio de vivacidade dinâmico com passos e expiração válida", async () => {

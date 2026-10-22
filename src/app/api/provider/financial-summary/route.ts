@@ -4,7 +4,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { forbidden } from "@/lib/api-server"
-import { toMoneyNumber } from "@/lib/money"
+import { feeOf, netOf, toDecimal, toMoneyNumber } from "@/lib/money"
 
 import { withRoute } from "@/lib/api-route"
 
@@ -51,12 +51,15 @@ export const GET = withRoute("api.provider.financial-summary.GET", async (_reque
     }),
   ])
 
-  const totalGross = Number(completedAgg._sum.amount ?? 0)
-  const totalPlatformFee = Math.round(totalGross * 0.1 * 100) / 100
-  const totalNet = Math.round((totalGross - totalPlatformFee) * 100) / 100
+  // Comissão SEMPRE de FEE_RATE (15%), nunca de um literal local: esta rota
+  // chegou a usar 10% fixo enquanto o extrato, o saque e o e-mail usavam 15%.
+  const totalGrossD = toDecimal(completedAgg._sum.amount)
+  const totalGross = toMoneyNumber(totalGrossD)
+  const totalPlatformFee = toMoneyNumber(feeOf(totalGrossD))
+  const totalNet = toMoneyNumber(netOf(totalGrossD))
   const custodyBalance = Number(custodyAgg._sum.amount ?? 0)
   // Available = released escrow (90% of PAID with escrowReleasedAt)
-  const availableBalance = Math.round(Number(escrowAgg._sum.amount ?? 0) * 0.9 * 100) / 100
+  const availableBalance = toMoneyNumber(netOf(escrowAgg._sum.amount))
 
   // 2. Recent transactions (paginated, not all 500)
   const recentBookings = await db.booking.findMany({
@@ -78,7 +81,7 @@ export const GET = withRoute("api.provider.financial-summary.GET", async (_reque
     serviceTitle: b.service.title,
     clientName: b.client.name,
     grossAmount: toMoneyNumber(b.amount),
-    netAmount: Math.round(toMoneyNumber(b.amount) * 0.9 * 100) / 100,
+    netAmount: toMoneyNumber(netOf(b.amount)),
     receiptUrl: `/api/bookings/${b.id}/receipt`,
   }))
 

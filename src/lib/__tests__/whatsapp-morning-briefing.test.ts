@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import {
   getDayBounds,
   formatCurrencyBrl,
@@ -43,6 +43,14 @@ vi.mock("@/lib/whatsapp", () => ({
 describe("whatsapp-morning-briefing — Resumo Matinal da Agenda", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Relógio congelado (só Date): getDayBounds depende do dia corrente.
+    // Sem isso o teste fica dependente de horário/fuso (check:clock-bombs).
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-01-05T15:00:00.000Z"))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it("calcula corretamente os limites de início e fim do dia", () => {

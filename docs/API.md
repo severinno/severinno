@@ -101,21 +101,22 @@ Content-Type: application/json
 
 ## Panorama da API (v0.4.0)
 
-A API totaliza **124 arquivos `route.ts` / 148 handlers HTTP** (GET 88 · POST 38 · PATCH 13 · DELETE 9), distribuídos em:
+A API totaliza **249 arquivos `route.ts` / 266 handlers HTTP** (GET 143 · POST 93 · PATCH 15 · PUT 3 · DELETE 12), distribuídos em:
 
-| Grupo                                                                                                        | Rotas | Cobertura abaixo                                  |
-| :----------------------------------------------------------------------------------------------------------- | :---: | :------------------------------------------------ |
-| `admin/*` (47: finance, settlements, push, geo-*, users, gateway…)                                           |  47   | Subconjunto nas seções 8–9                        |
-| `cron/*` (8)                                                                                                 |   8   | — (agendamentos internos)                         |
-| `provider/*` (8)                                                                                             |   8   | — (wallet, withdraw, history, export, onboarding) |
-| `auth` (7)                                                                                                   |   7   | Seção 1                                           |
-| `availability` (4)                                                                                           |   4   | —                                                 |
-| `quotes` (4)                                                                                                 |   4   | Trecho na seção 7                                 |
-| `push` (4)                                                                                                   |   4   | Seção 9                                           |
-| `geo` (4)                                                                                                    |   4   | Seção 6                                           |
-| `bookings` (3) / `search` (3) / `providers` (3) / `notifications` (3) / `webhooks` (3)                       |  15   | Seções 3, 5, 7, 10                                |
-| `stats` (2) / `users` (2) / `services` (2) / `categories` (2) / `reviews` (2) / `health` (2) / `metrics` (2) |  14   | Seções 2, 4, 7, 11                                |
-| Singles (`chat`, `messages`, `sentry`, `newsletter`, `monitor`, `tracking`, `upload`, `favorites`, raiz)     |   9   | Parcial (seção 7)                                 |
+| Grupo                                                                                                                                                                                                                                | Rotas | Cobertura abaixo           |
+| :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---: | :------------------------- |
+| `admin/*` (78: finance, settlements, push, geo-*, users, gateway…)                                                                                                                                                                   |  78   | Subconjunto nas seções 8–9 |
+| `provider/*` (25: wallet, withdraw, history, export, onboarding)                                                                                                                                                                     |  25   | —                          |
+| `cron/*` (16)                                                                                                                                                                                                                        |  16   | — (agendamentos internos)  |
+| `bookings` (16) / `auth` (16)                                                                                                                                                                                                        |  32   | Seções 1, 3                |
+| `geo` (10)                                                                                                                                                                                                                           |  10   | Seção 6                    |
+| `search` (7)                                                                                                                                                                                                                         |   7   | Seção 7                    |
+| `quotes` (6)                                                                                                                                                                                                                         |   6   | Trecho na seção 7          |
+| `users` (5) / `push` (5)                                                                                                                                                                                                             |  10   | Seções 2, 9                |
+| `providers` (4) / `health` (4) / `chat` (4) / `availability` (4)                                                                                                                                                                     |  16   | Seções 5, 11               |
+| `webhooks` (3) / `tracking` (3) / `services` (3) / `reviews` (3)                                                                                                                                                                     |  12   | Seções 4, 7, 10            |
+| `vitrine` / `subscriptions` / `stats` / `safety` / `referral` / `notifications` / `metrics` / `messages` / `categories` (2 cada)                                                                                                     |  18   | Seções 2, 4, 11            |
+| 18 singles (`web-vitals`, `upload`, `sync`, `stores`, `seo`, `sentry`, `rum`, `realtime`, `newsletter`, `monitor`, `loyalty`, `graphql`, `favorites`, `docs`, `csp-report`, `cities`, `catalog`, `calendar`) + a raiz `api/route.ts` |  19   | Parcial (seção 7)          |
 
 ### Rotas existentes não detalhadas neste documento
 
