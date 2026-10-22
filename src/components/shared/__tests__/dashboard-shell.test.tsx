@@ -61,40 +61,16 @@ vi.mock("@/components/ui/sidebar", () => ({
 }))
 
 // ---- lucide-react icons (dashboard-shell + subcomponentes) ---------------
-vi.mock("lucide-react", () => {
+vi.mock("lucide-react", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>()
   const MockIcon = (props: Record<string, unknown>) => (
     <svg aria-hidden="true" data-testid="mock-icon" {...props} />
   )
-  return {
-    Bell: MockIcon,
-    BellRing: MockIcon,
-    Calendar: MockIcon,
-    CalendarCheck: MockIcon,
-    CalendarDays: MockIcon,
-    Check: MockIcon,
-    CheckCheck: MockIcon,
-    ChevronRight: MockIcon,
-    FileText: MockIcon,
-    LayoutDashboard: MockIcon,
-    Loader2: MockIcon,
-    LogOut: MockIcon,
-    MapPin: MockIcon,
-    Menu: MockIcon,
-    MessageSquare: MockIcon,
-    Moon: MockIcon,
-    Radio: MockIcon,
-    Search: MockIcon,
-    Smartphone: MockIcon,
-    Sun: MockIcon,
-    User: MockIcon,
-    Users: MockIcon,
-    Volume2: MockIcon,
-    VolumeX: MockIcon,
-    Wallet: MockIcon,
-    Wrench: MockIcon,
-    X: MockIcon,
-    Zap: MockIcon,
+  const mocked: Record<string, unknown> = { ...actual }
+  for (const key of Object.keys(actual)) {
+    mocked[key] = MockIcon
   }
+  return mocked
 })
 
 // ---- framer-motion: motion.div renders as a plain div --------------------
@@ -217,7 +193,8 @@ vi.mock("@/components/ui/sheet", () => {
   const SheetContent = ({ children }: { children: React.ReactNode }) => <div>{children}</div>
   const SheetHeader = ({ children }: { children: React.ReactNode }) => <div>{children}</div>
   const SheetTitle = ({ children }: { children: React.ReactNode }) => <div>{children}</div>
-  return { Sheet, SheetContent, SheetHeader, SheetTitle }
+  const SheetDescription = ({ children }: { children: React.ReactNode }) => <p>{children}</p>
+  return { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription }
 })
 
 vi.mock("@/components/ui/tooltip", () => ({

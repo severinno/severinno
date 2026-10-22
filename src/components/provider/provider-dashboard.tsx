@@ -65,6 +65,7 @@ import { ProviderAnalyticsPanel } from "@/components/provider/provider-analytics
 import { ProviderSocialReputationCard } from "./provider-social-reputation-card"
 import { ProviderPriceEstimatorDialog } from "./provider-price-estimator-dialog"
 import { ProviderCommandHub } from "./provider-command-hub"
+import { ProviderMeiReportDialog } from "./provider-mei-report-dialog"
 
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 12,
@@ -133,6 +134,7 @@ export function ProviderDashboard() {
   const navigate = useViewStore((s) => s.navigate)
   const [reputationCardOpen, setReputationCardOpen] = React.useState(false)
   const [priceEstimatorOpen, setPriceEstimatorOpen] = React.useState(false)
+  const [meiReportOpen, setMeiReportOpen] = React.useState(false)
 
   const bookingsQuery = useQuery<{ items: Booking[]; total: number }>({
     queryKey: ["provider", "dashboard", "bookings", user?.id],
@@ -488,6 +490,7 @@ export function ProviderDashboard() {
         onNavigate={navigate}
         onOpenReputationCard={() => setReputationCardOpen(true)}
         onOpenPriceEstimator={() => setPriceEstimatorOpen(true)}
+        onOpenMeiReport={() => setMeiReportOpen(true)}
       />
 
       {/* Demanda Regional / Geo Awareness */}
@@ -867,6 +870,7 @@ export function ProviderDashboard() {
             open={priceEstimatorOpen}
             onOpenChange={setPriceEstimatorOpen}
           />
+          <ProviderMeiReportDialog open={meiReportOpen} onOpenChange={setMeiReportOpen} />
         </>
       )}
     </div>

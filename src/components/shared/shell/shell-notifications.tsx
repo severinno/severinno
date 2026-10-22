@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Bell, Check, CheckCheck, Loader2 } from "lucide-react"
+import { Bell, Check, CheckCheck, ChevronRight, Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { NOTIFICATION_TYPE_LABELS } from "@/lib/constants"
@@ -74,6 +74,7 @@ export function NotificationsBell({
   onMarkAllRead,
   markingAll,
   onNavigate,
+  onOpenDrawer,
 }: {
   items: NotificationItem[]
   unreadCount: number
@@ -82,6 +83,7 @@ export function NotificationsBell({
   onMarkAllRead: (ids: string[]) => void
   markingAll: boolean
   onNavigate: (view: string) => void
+  onOpenDrawer?: () => void
 }) {
   const [filter, setFilter] = React.useState<"all" | "unread">("all")
   const unreadIds = React.useMemo(() => items.filter((n) => !n.read).map((n) => n.id), [items])
@@ -296,6 +298,22 @@ export function NotificationsBell({
             </div>
           )}
         </ScrollArea>
+
+        {onOpenDrawer && (
+          <div className="bg-muted/20 border-t p-2 text-center">
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic("selection")
+                onOpenDrawer()
+              }}
+              className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs font-semibold hover:underline"
+            >
+              <span>Abrir central de notificações completa</span>
+              <ChevronRight className="size-3" />
+            </button>
+          </div>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

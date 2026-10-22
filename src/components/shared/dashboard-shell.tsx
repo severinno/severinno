@@ -89,6 +89,9 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 import { NotificationsBell, PushNotificationButton } from "./shell"
+import { GlobalCommandPalette, CommandPaletteTrigger } from "./global-command-palette"
+import { SpotlightOnboardingTour } from "./spotlight-onboarding-tour"
+import { NotificationsDrawer } from "./notifications-drawer"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -233,6 +236,9 @@ export function DashboardShell({
   const [mobileOpen, setMobileOpen] = React.useState(false)
   const [navSearch, setNavSearch] = React.useState("")
   const [collapsedGroups, setCollapsedGroups] = React.useState<Record<string, boolean>>({})
+  const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false)
+  const [notificationsDrawerOpen, setNotificationsDrawerOpen] = React.useState(false)
+  const [tourOpen, setTourOpen] = React.useState(false)
 
   const toggleGroup = (label: string) => {
     triggerHaptic("selection")
@@ -850,6 +856,10 @@ export function DashboardShell({
               {/* Right section */}
               <div className="flex items-center gap-1.5">
                 {headerActions}
+
+                {/* Command palette search trigger */}
+                <CommandPaletteTrigger onClick={() => setCommandPaletteOpen(true)} />
+
                 {/* Wallet balance — provider only */}
                 {user?.role === "PROVIDER" ? <WalletBalancePill /> : null}
 
@@ -887,6 +897,7 @@ export function DashboardShell({
                   onMarkAllRead={(ids) => markAllReadMutation.mutate(ids)}
                   markingAll={markAllReadMutation.isPending}
                   onNavigate={navigate}
+                  onOpenDrawer={() => setNotificationsDrawerOpen(true)}
                 />
 
                 {/* Divider before user avatar */}
@@ -939,6 +950,22 @@ export function DashboardShell({
                       <MapPin className="size-4" />
                       Voltar à vitrine
                     </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setCommandPaletteOpen(true)
+                      }}
+                    >
+                      <Search className="size-4" />
+                      Paleta de comandos (⌘K)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setTourOpen(true)
+                      }}
+                    >
+                      <LayoutDashboard className="size-4" />
+                      Tour guiado do sistema
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem variant="destructive" onSelect={() => logout()}>
                       <LogOut className="size-4" />
@@ -978,6 +1005,36 @@ export function DashboardShell({
         />
         <PushPromptBanner />
         <PwaInstallBanner />
+
+        {/* Global Command Palette (⌘K / Ctrl+K) */}
+        <GlobalCommandPalette
+          open={commandPaletteOpen}
+          onOpenChange={setCommandPaletteOpen}
+          role={user?.role}
+          onNavigate={navigate}
+          onOpenTour={() => setTourOpen(true)}
+          onLogout={() => logout()}
+        />
+
+        {/* Spotlight Onboarding Tour */}
+        <SpotlightOnboardingTour
+          open={tourOpen}
+          onClose={() => setTourOpen(false)}
+          role={user?.role}
+        />
+
+        {/* Unified Notifications Drawer */}
+        <NotificationsDrawer
+          open={notificationsDrawerOpen}
+          onOpenChange={setNotificationsDrawerOpen}
+          items={notifItems}
+          unreadCount={unreadCount}
+          isLoading={notificationsQuery.isLoading}
+          onMarkRead={(id) => markReadMutation.mutate(id)}
+          onMarkAllRead={(ids) => markAllReadMutation.mutate(ids)}
+          markingAll={markAllReadMutation.isPending}
+          onNavigate={navigate}
+        />
       </div>
     </SidebarProvider>
   )

@@ -15,6 +15,7 @@ import {
   CalendarDays,
   ChevronRight,
   Compass,
+  FileSpreadsheet,
   Send,
   Share2,
   Wallet,
@@ -37,6 +38,7 @@ export interface ProviderCommandOption {
     navigate: (view: string) => void
     openReputationCard: () => void
     openPriceEstimator: () => void
+    openMeiReport?: () => void
   }) => void
 }
 
@@ -113,6 +115,15 @@ export const PROVIDER_COMMAND_OPTIONS: ProviderCommandOption[] = [
     onClick: ({ openReputationCard }) => openReputationCard(),
   },
   {
+    id: "mei-report",
+    title: "Demonstrativo MEI & DRE",
+    subtitle: "Relatório contábil mensal com faturamento, taxas e repasses PIX",
+    badge: "Fiscal",
+    badgeTone: "purple",
+    icon: FileSpreadsheet,
+    onClick: ({ openMeiReport }) => openMeiReport?.(),
+  },
+  {
     id: "rewards",
     title: "Clube & Benefícios",
     subtitle: "Pontue a cada atendimento e resgate descontos em ferramentas",
@@ -127,12 +138,14 @@ interface ProviderCommandHubProps {
   onNavigate: (view: string) => void
   onOpenReputationCard: () => void
   onOpenPriceEstimator: () => void
+  onOpenMeiReport?: () => void
 }
 
 export function ProviderCommandHub({
   onNavigate,
   onOpenReputationCard,
   onOpenPriceEstimator,
+  onOpenMeiReport,
 }: ProviderCommandHubProps) {
   return (
     <section aria-label="Central de operações e produtividade" className="space-y-2.5">
@@ -160,6 +173,7 @@ export function ProviderCommandHub({
                   navigate: onNavigate,
                   openReputationCard: onOpenReputationCard,
                   openPriceEstimator: onOpenPriceEstimator,
+                  openMeiReport: onOpenMeiReport,
                 })
               }}
               className={cn(
