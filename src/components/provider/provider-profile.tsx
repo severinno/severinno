@@ -6,22 +6,27 @@ import { useForm, useWatch, type Resolver } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
 import {
+  ArrowRight,
   BadgeCheck,
   Bell,
   Calculator,
+  CheckCircle2,
   Eye,
   ImagePlus,
   Loader2,
   LocateFixed,
   MapPin,
   Navigation,
+  Pause,
   Play,
   Save,
   Share2,
   Smartphone,
   Sparkles,
+  Star,
   User,
   Volume2,
+  Wrench,
   X,
 } from "lucide-react"
 
@@ -33,6 +38,8 @@ import { playCoinSound, playCompletionSound, playReviewSound, tryVibrate } from 
 import { providerProfileSchema, type ProviderProfileInput } from "@/lib/validators"
 import { useAuthStore } from "@/store/auth"
 import { useUIStore } from "@/store/ui"
+import { useViewStore } from "@/store/view"
+import { formatBRL } from "@/lib/format"
 
 import { SafeImage } from "@/components/shared/safe-image"
 import { PushNotificationCard } from "@/components/shared/push-notification-card"
@@ -98,6 +105,20 @@ const UF_OPTIONS = [
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Decodifica entidades HTML escapadas (ex.: &amp; → &, &quot; → ") */
+function decodeEntities(str?: string | null): string {
+  if (!str) return ""
+  let decoded = str
+  while (decoded.includes("&amp;")) {
+    decoded = decoded.replace(/&amp;/g, "&")
+  }
+  return decoded
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+}
+
 function getGVCoverageDescription(radiusKm: number): string {
   if (radiusKm <= 5) {
     return "Raio focado: Centro, Ilha dos Araújos e Esplanada."
@@ -109,6 +130,35 @@ function getGVCoverageDescription(radiusKm: number): string {
     return "Cobertura total: Toda a área urbana de Governador Valadares e distritos próximos."
   }
   return "Cobertura regional: Governador Valadares e municípios vizinhos do Vale do Rio Doce."
+}
+
+/** Calcula % de completude do perfil (0-100) e retorna itens faltantes. */
+function computeProfileCompleteness(profile: {
+  name?: string | null
+  bio?: string | null
+  avatarUrl?: string | null
+  coverUrl?: string | null
+  whatsapp?: string | null
+  cep?: string | null
+  district?: string | null
+  lat?: number | null
+  radiusKm?: number | null
+}) {
+  const checks = [
+    { label: "Nome completo", done: !!profile.name && profile.name.length >= 3 },
+    { label: "Foto de perfil", done: !!profile.avatarUrl },
+    { label: "Capa de apresentação", done: !!profile.coverUrl },
+    { label: "Bio / Especialidades", done: !!profile.bio && profile.bio.length >= 20 },
+    { label: "WhatsApp", done: !!profile.whatsapp },
+    { label: "CEP / Endereço", done: !!profile.cep },
+    { label: "Bairro", done: !!profile.district },
+    { label: "Localização GPS", done: profile.lat != null },
+    { label: "Raio de atendimento", done: !!profile.radiusKm && profile.radiusKm > 0 },
+  ]
+  const done = checks.filter((c) => c.done).length
+  const pct = Math.round((done / checks.length) * 100)
+  const missing = checks.filter((c) => !c.done).map((c) => c.label)
+  return { pct, done, total: checks.length, missing }
 }
 
 // ---------------------------------------------------------------------------
@@ -156,36 +206,36 @@ function SinglePhoto({
 
   return (
     <div className="space-y-1.5">
-      <label className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+      <label className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">
         {label}
       </label>
       <div
         className={
           aspect === "square"
-            ? "bg-muted/40 relative size-24 overflow-hidden rounded-2xl border shadow-2xs"
-            : "bg-muted/40 relative h-32 w-full overflow-hidden rounded-2xl border shadow-2xs"
+            ? "bg-muted/30 relative size-20 overflow-hidden rounded-xl border shadow-2xs"
+            : "bg-muted/30 relative h-24 w-full overflow-hidden rounded-xl border shadow-2xs"
         }
       >
         {value ? (
           <SafeImage
             src={value}
             alt={label}
-            sizes={aspect === "square" ? "96px" : "640px"}
+            sizes={aspect === "square" ? "80px" : "640px"}
             className="size-full object-cover"
           />
         ) : (
           <div className="text-muted-foreground flex size-full items-center justify-center">
-            <ImagePlus className="size-6 opacity-60" />
+            <ImagePlus className="size-5 opacity-50" />
           </div>
         )}
         {value && (
           <button
             type="button"
             onClick={() => onChange(null)}
-            className="absolute top-1.5 right-1.5 inline-flex size-6 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
+            className="absolute top-1 right-1 inline-flex size-5 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
             aria-label="Remover imagem"
           >
-            <X className="size-3.5" />
+            <X className="size-3" />
           </button>
         )}
       </div>
@@ -206,16 +256,55 @@ function SinglePhoto({
         size="sm"
         onClick={() => inputRef.current?.click()}
         disabled={uploading}
-        className="h-8 gap-1.5 rounded-xl text-xs font-medium"
+        className="h-7 gap-1 rounded-lg px-2.5 text-[11px] font-medium"
       >
-        {uploading ? (
-          <Loader2 className="size-3.5 animate-spin" />
-        ) : (
-          <ImagePlus className="size-3.5" />
-        )}
-        {value ? "Trocar imagem" : "Selecionar foto"}
+        {uploading ? <Loader2 className="size-3 animate-spin" /> : <ImagePlus className="size-3" />}
+        {value ? "Trocar" : "Selecionar"}
       </Button>
       {max > 1 && <p className="text-muted-foreground text-[10px]">Aceita até {max} imagens.</p>}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Profile completeness bar
+// ---------------------------------------------------------------------------
+
+function ProfileCompletenessBar({
+  pct,
+  done,
+  total,
+  missing,
+}: {
+  pct: number
+  done: number
+  total: number
+  missing: string[]
+}) {
+  const colorClass = pct >= 90 ? "bg-emerald-500" : pct >= 60 ? "bg-amber-500" : "bg-rose-500"
+
+  if (pct >= 100) return null
+
+  return (
+    <div className="bg-muted/30 space-y-1.5 rounded-xl border px-3.5 py-2.5">
+      <div className="flex items-center justify-between">
+        <p className="text-foreground text-xs font-semibold">Perfil {pct}% completo</p>
+        <span className="text-muted-foreground text-[11px] tabular-nums">
+          {done}/{total}
+        </span>
+      </div>
+      <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${colorClass}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {missing.length > 0 && (
+        <p className="text-muted-foreground text-[10px] leading-relaxed">
+          Falta: {missing.slice(0, 3).join(", ")}
+          {missing.length > 3 ? ` +${missing.length - 3}` : ""}
+        </p>
+      )}
     </div>
   )
 }
@@ -229,6 +318,7 @@ export function ProviderProfile() {
   const user = useAuthStore((s) => s.user)
   const fetchMe = useAuthStore((s) => s.fetchMe)
   const openProvider = useUIStore((s) => s.openProvider)
+  const navigate = useViewStore((s) => s.navigate)
   const [activeTab, setActiveTab] = React.useState("identity")
   const [reputationCardOpen, setReputationCardOpen] = React.useState(false)
   const [priceEstimatorOpen, setPriceEstimatorOpen] = React.useState(false)
@@ -259,6 +349,8 @@ export function ProviderProfile() {
       verified: boolean
       soundEnabled?: boolean
       vibrateEnabled?: boolean
+      avgRating?: number | null
+      reviewCount?: number | null
     }
   }>({
     queryKey: ["provider", "profile", user?.id],
@@ -266,7 +358,25 @@ export function ProviderProfile() {
     enabled: !!user,
   })
 
+  // Query dos serviços do prestador
+  const servicesQuery = useQuery<{
+    services: Array<{
+      id: string
+      title: string
+      basePrice: number
+      active: boolean
+      unit?: string | null
+      category?: { name: string } | null
+    }>
+  }>({
+    queryKey: ["provider", "profile", "services", user?.id],
+    queryFn: async () => apiGet("/api/provider/services"),
+    enabled: !!user,
+  })
+
   const profile = profileQuery.data?.user
+  const services = servicesQuery.data?.services ?? []
+  const activeServices = services.filter((s) => s.active)
 
   const form = useForm<ProviderProfileInput>({
     resolver: zodResolver(providerProfileSchema) as unknown as Resolver<ProviderProfileInput>,
@@ -394,16 +504,22 @@ export function ProviderProfile() {
     setSaving(true)
     try {
       await apiPatch("/api/users/me", values)
+      triggerHaptic("success")
       toast.success("Perfil atualizado com sucesso.")
       qc.invalidateQueries({ queryKey: ["provider", "profile", user?.id] })
       await fetchMe()
     } catch (e) {
       const err = e as { message?: string }
+      triggerHaptic("warning")
       toast.error(err?.message ?? "Erro ao atualizar perfil.")
     } finally {
       setSaving(false)
     }
   })
+
+  const completeness = profile
+    ? computeProfileCompleteness(profile)
+    : { pct: 0, done: 0, total: 9, missing: [] }
 
   if (profileQuery.isLoading) {
     return (
@@ -423,153 +539,300 @@ export function ProviderProfile() {
 
   return (
     <Form {...form}>
-      <form onSubmit={submit} className="space-y-6">
-        {/* Top Header com Botão de Salvar Rápido */}
-        <div className="flex flex-col gap-2 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-foreground text-xl font-bold tracking-tight">
-                Perfil & Configurações
-              </h2>
+      <form onSubmit={submit} className="space-y-4">
+        {/* ─── Hero Card Compacto ─── */}
+        <div className="overflow-hidden rounded-2xl border shadow-xs">
+          {/* Cover */}
+          <div className="relative h-28 w-full bg-gradient-to-r from-emerald-600 to-teal-700 sm:h-36">
+            {coverUrl && (
+              <SafeImage
+                src={coverUrl}
+                alt="Capa do perfil"
+                sizes="(max-width: 640px) 100vw, 640px"
+                className="size-full object-cover"
+              />
+            )}
+          </div>
+
+          {/* Identity Strip */}
+          <div className="bg-card relative px-4 pt-0 pb-3.5">
+            {/* Avatar floating over the cover */}
+            <div className="-mt-10 flex items-end gap-3">
+              <Avatar className="border-background size-20 border-4 shadow-md">
+                {avatarUrl ? <AvatarImage src={avatarUrl} alt={profile.name} /> : null}
+                <AvatarFallback className="bg-primary text-primary-foreground text-lg font-bold">
+                  {profile.name
+                    ?.split(" ")
+                    .slice(0, 2)
+                    .map((s) => s[0]?.toUpperCase())
+                    .join("")}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1 pb-0.5">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-foreground truncate text-base font-bold tracking-tight">
+                    {decodeEntities(profile.name)}
+                  </h2>
+                  {profile.verified && (
+                    <BadgeCheck className="size-4.5 shrink-0 text-emerald-600" />
+                  )}
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  {profile.city || "Governador Valadares"}, {profile.state || "MG"} ·{" "}
+                  {profile.district || "Prestador Severinno"}
+                </p>
+              </div>
+            </div>
+
+            {/* KPIs Strip */}
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
+              {profile.avgRating != null && profile.avgRating > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                  <Star className="size-3 fill-amber-500 text-amber-500" />
+                  {profile.avgRating.toFixed(1)}
+                  <span className="text-muted-foreground font-normal">
+                    ({profile.reviewCount ?? 0})
+                  </span>
+                </span>
+              )}
+              <span className="text-muted-foreground inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] tabular-nums">
+                <Wrench className="size-3" />
+                {activeServices.length} serviço{activeServices.length !== 1 ? "s" : ""} ativo
+                {activeServices.length !== 1 ? "s" : ""}
+              </span>
               {profile.verified && (
-                <Badge className="inline-flex items-center gap-1 rounded-full border-emerald-300 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                  <BadgeCheck className="size-3.5 text-emerald-600" /> Prestador Verificado
-                </Badge>
+                <span className="inline-flex items-center gap-1 rounded-full border-emerald-200 bg-emerald-50/80 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400">
+                  <CheckCircle2 className="size-3" /> Verificado
+                </span>
+              )}
+              {lat != null && (
+                <span className="text-muted-foreground inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px]">
+                  <MapPin className="size-3" /> GPS ativo · {radiusKm} km
+                </span>
               )}
             </div>
-            <p className="text-muted-foreground text-xs">
-              Configure sua apresentação pública, endereço base em Governador Valadares e raio GPS.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                triggerHaptic("selection")
-                setReputationCardOpen(true)
-              }}
-              className="h-9 gap-1.5 rounded-xl border-emerald-500/30 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-50 active:scale-95 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
-              title="Compartilhar selo de confiança e avaliações no WhatsApp"
-            >
-              <Share2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-              Cartão de Reputação
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                triggerHaptic("selection")
-                setPriceEstimatorOpen(true)
-              }}
-              className="h-9 gap-1.5 rounded-xl border-blue-500/30 text-xs font-semibold text-blue-700 transition-all hover:bg-blue-50 active:scale-95 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950/30"
-              title="Calculadora expressa de mão de obra e deslocamento em GV"
-            >
-              <Calculator className="size-3.5 text-blue-600 dark:text-blue-400" />
-              Calculadora de Preço
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                triggerHaptic("selection")
-                if (user?.id) openProvider(user.id)
-              }}
-              className="border-border/70 hover:bg-muted/60 h-9 gap-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
-            >
-              <Eye className="text-primary size-3.5" />
-              Ver Perfil Público
-            </Button>
-            <Button
-              type="submit"
-              disabled={saving}
-              className="h-9 gap-1.5 rounded-xl px-4 text-xs font-semibold shadow-xs transition-all active:scale-95"
-            >
-              {saving ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Save className="size-3.5" />
-              )}
-              Salvar Alterações
-            </Button>
+
+            {/* Quick Actions */}
+            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  setReputationCardOpen(true)
+                }}
+                className="h-7.5 gap-1 rounded-lg border-emerald-500/30 px-2.5 text-[11px] font-semibold text-emerald-700 transition-all hover:bg-emerald-50 active:scale-95 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              >
+                <Share2 className="size-3 text-emerald-600 dark:text-emerald-400" />
+                Reputação
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  setPriceEstimatorOpen(true)
+                }}
+                className="h-7.5 gap-1 rounded-lg border-blue-500/30 px-2.5 text-[11px] font-semibold text-blue-700 transition-all hover:bg-blue-50 active:scale-95 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950/30"
+              >
+                <Calculator className="size-3 text-blue-600 dark:text-blue-400" />
+                Calculadora
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  if (user?.id) openProvider(user.id)
+                }}
+                className="border-border/70 hover:bg-muted/60 h-7.5 gap-1 rounded-lg px-2.5 text-[11px] font-semibold transition-all active:scale-95"
+              >
+                <Eye className="text-primary size-3" />
+                Ver Público
+              </Button>
+              <Button
+                type="submit"
+                disabled={saving}
+                size="sm"
+                className="ml-auto h-7.5 gap-1 rounded-lg px-3 text-[11px] font-semibold shadow-xs transition-all active:scale-95"
+              >
+                {saving ? <Loader2 className="size-3 animate-spin" /> : <Save className="size-3" />}
+                Salvar
+              </Button>
+            </div>
           </div>
         </div>
 
-        {/* 3 Abas Principais (Nielsen #6: Reconhecimento em vez de memorização) */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        {/* ─── Barra de Completude do Perfil ─── */}
+        <ProfileCompletenessBar {...completeness} />
+
+        {/* ─── Meus Serviços & Catálogo (Hiperfoco) ─── */}
+        <Card className="overflow-hidden rounded-2xl border shadow-xs">
+          <CardHeader className="flex flex-row items-center justify-between border-b px-4 py-2.5">
+            <div className="min-w-0">
+              <CardTitle className="text-sm font-semibold">Meus Serviços</CardTitle>
+              <CardDescription className="text-[11px]">
+                Serviços exibidos para clientes no catálogo de GV
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  navigate("provider.services")
+                }}
+                className="h-7 gap-1 rounded-lg px-2.5 text-[11px] font-semibold"
+              >
+                Gerenciar <ArrowRight className="size-3" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-3.5">
+            {servicesQuery.isLoading ? (
+              <div className="text-muted-foreground flex items-center justify-center py-4 text-xs">
+                <Loader2 className="text-primary mr-2 size-4 animate-spin" /> Carregando serviços…
+              </div>
+            ) : services.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-5 text-center">
+                <div className="flex size-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <Wrench className="size-4.5" />
+                </div>
+                <div>
+                  <p className="text-foreground text-xs font-semibold">Nenhum serviço cadastrado</p>
+                  <p className="text-muted-foreground mt-0.5 max-w-xs text-[11px]">
+                    Cadastre seus serviços para aparecer no catálogo de GV e receber pedidos.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    navigate("provider.services")
+                  }}
+                  className="mt-1 h-7.5 gap-1 rounded-lg text-xs font-semibold"
+                >
+                  <Wrench className="size-3" /> Cadastrar serviço
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {services.slice(0, 6).map((svc) => (
+                  <div
+                    key={svc.id}
+                    className="bg-muted/20 hover:bg-muted/40 flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors"
+                  >
+                    <div
+                      className={`flex size-7 shrink-0 items-center justify-center rounded-lg ${svc.active ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}
+                    >
+                      <Wrench className="size-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-foreground truncate text-xs font-semibold">
+                        {decodeEntities(svc.title)}
+                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-primary text-[11px] font-bold tabular-nums">
+                          {formatBRL(svc.basePrice)}
+                        </span>
+                        {svc.unit && (
+                          <span className="text-muted-foreground text-[10px]">/{svc.unit}</span>
+                        )}
+                        <span
+                          className={`ml-auto inline-flex items-center gap-0.5 text-[10px] font-medium ${svc.active ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}
+                        >
+                          {svc.active ? (
+                            <>
+                              <span className="size-1.5 rounded-full bg-emerald-500" /> Ativo
+                            </>
+                          ) : (
+                            <>
+                              <Pause className="size-2.5" /> Pausado
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {services.length > 6 && (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  navigate("provider.services")
+                }}
+                className="text-primary hover:text-primary/80 mt-2 w-full text-center text-[11px] font-semibold"
+              >
+                Ver todos os {services.length} serviços →
+              </button>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ─── 3 Abas Principais ─── */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
           <TabsList className="bg-muted/60 w-full justify-start overflow-x-auto p-1 sm:w-auto">
-            <TabsTrigger value="identity" className="gap-1.5 text-xs">
+            <TabsTrigger
+              value="identity"
+              className="gap-1.5 text-xs"
+              onClick={() => triggerHaptic("selection")}
+            >
               <User className="size-3.5" /> Identidade & Negócio
             </TabsTrigger>
-            <TabsTrigger value="coverage" className="gap-1.5 text-xs">
-              <MapPin className="size-3.5" /> Área de Atendimento & GPS
+            <TabsTrigger
+              value="coverage"
+              className="gap-1.5 text-xs"
+              onClick={() => triggerHaptic("selection")}
+            >
+              <MapPin className="size-3.5" /> Área & GPS
             </TabsTrigger>
-            <TabsTrigger value="notifications" className="gap-1.5 text-xs">
-              <Bell className="size-3.5" /> Notificações & Alertas
+            <TabsTrigger
+              value="notifications"
+              className="gap-1.5 text-xs"
+              onClick={() => triggerHaptic("selection")}
+            >
+              <Bell className="size-3.5" /> Alertas
             </TabsTrigger>
           </TabsList>
 
           {/* ABA 1: IDENTIDADE & NEGÓCIO */}
-          <TabsContent value="identity" className="space-y-4 pt-1">
-            {/* Cover + Avatar Hero */}
-            <Card className="overflow-hidden rounded-2xl border shadow-xs">
-              <CardContent className="space-y-6 p-4">
-                <div className="relative h-36 w-full overflow-hidden rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 shadow-xs sm:h-44">
-                  {coverUrl && (
-                    <SafeImage
-                      src={coverUrl}
-                      alt="Capa do perfil"
-                      sizes="(max-width: 640px) 100vw, 640px"
-                      className="size-full object-cover"
-                    />
-                  )}
-                  <div className="absolute -bottom-8 left-4 flex items-end gap-3.5">
-                    <Avatar className="border-background size-20 border-4 shadow-md sm:size-24">
-                      {avatarUrl ? <AvatarImage src={avatarUrl} alt={profile.name} /> : null}
-                      <AvatarFallback className="bg-primary text-primary-foreground text-xl font-bold">
-                        {profile.name
-                          ?.split(" ")
-                          .slice(0, 2)
-                          .map((s) => s[0]?.toUpperCase())
-                          .join("")}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="mb-2">
-                      <p className="text-base font-bold text-white drop-shadow-md">
-                        {profile.name}
-                      </p>
-                      <p className="text-xs text-white/90 drop-shadow">Prestador Severinno</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-8 grid gap-4 border-t pt-2 sm:grid-cols-2">
-                  <SinglePhoto
-                    label="Foto de Perfil (Avatar)"
-                    value={avatarUrl}
-                    onChange={(url) => form.setValue("avatarUrl", url ?? "", { shouldDirty: true })}
-                    aspect="square"
-                  />
-                  <SinglePhoto
-                    label="Capa de Apresentação"
-                    value={coverUrl}
-                    onChange={(url) => form.setValue("coverUrl", url ?? "", { shouldDirty: true })}
-                    aspect="wide"
-                  />
-                </div>
+          <TabsContent value="identity" className="space-y-3 pt-1">
+            {/* Photos */}
+            <Card className="rounded-2xl border shadow-xs">
+              <CardContent className="grid gap-4 p-4 sm:grid-cols-2">
+                <SinglePhoto
+                  label="Foto de Perfil (Avatar)"
+                  value={avatarUrl}
+                  onChange={(url) => form.setValue("avatarUrl", url ?? "", { shouldDirty: true })}
+                  aspect="square"
+                />
+                <SinglePhoto
+                  label="Capa de Apresentação"
+                  value={coverUrl}
+                  onChange={(url) => form.setValue("coverUrl", url ?? "", { shouldDirty: true })}
+                  aspect="wide"
+                />
               </CardContent>
             </Card>
 
-            {/* Informações Básicas & Contato */}
+            {/* Dados Profissionais */}
             <Card className="rounded-2xl border shadow-xs">
-              <CardHeader className="border-b px-5 py-3.5">
+              <CardHeader className="border-b px-4 py-2.5">
                 <CardTitle className="text-sm font-semibold">Dados Profissionais</CardTitle>
-                <CardDescription className="text-xs">
-                  Informações exibidas publicamente na vitrine para clientes em Governador
-                  Valadares.
+                <CardDescription className="text-[11px]">
+                  Informações exibidas publicamente para clientes em Governador Valadares.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-4 p-5">
+              <CardContent className="grid gap-3.5 p-4">
                 <FormField
                   control={form.control}
                   name="name"
@@ -592,7 +855,7 @@ export function ProviderProfile() {
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <FormLabel className="text-xs font-semibold">E-mail Cadastrado</FormLabel>
+                    <FormLabel className="text-xs font-semibold">E-mail</FormLabel>
                     <Input
                       value={profile.email}
                       disabled
@@ -616,9 +879,6 @@ export function ProviderProfile() {
                       disabled
                       className="bg-muted/40 h-9 rounded-xl text-xs"
                     />
-                    <p className="text-muted-foreground text-[10px]">
-                      Documento autenticado no ecossistema.
-                    </p>
                   </div>
                 </div>
 
@@ -632,7 +892,7 @@ export function ProviderProfile() {
                       </FormLabel>
                       <FormControl>
                         <Textarea
-                          rows={4}
+                          rows={3}
                           maxLength={600}
                           placeholder="Conte aos clientes sobre sua experiência, tempo de profissão e compromisso com qualidade…"
                           {...field}
@@ -694,15 +954,13 @@ export function ProviderProfile() {
           </TabsContent>
 
           {/* ABA 2: ÁREA DE ATENDIMENTO & GPS */}
-          <TabsContent value="coverage" className="space-y-4 pt-1">
+          <TabsContent value="coverage" className="space-y-3 pt-1">
             <Card className="rounded-2xl border shadow-xs">
-              <CardHeader className="flex flex-row items-center justify-between border-b px-5 py-3.5">
+              <CardHeader className="flex flex-row items-center justify-between border-b px-4 py-2.5">
                 <div>
-                  <CardTitle className="text-sm font-semibold">
-                    Base de Atendimento & Localização
-                  </CardTitle>
-                  <CardDescription className="text-xs">
-                    Define o ponto central para o cálculo de proximidade com clientes no mapa de GV.
+                  <CardTitle className="text-sm font-semibold">Base & Localização</CardTitle>
+                  <CardDescription className="text-[11px]">
+                    Ponto central para cálculo de proximidade com clientes no mapa de GV.
                   </CardDescription>
                 </div>
                 <Button
@@ -710,13 +968,13 @@ export function ProviderProfile() {
                   variant="outline"
                   size="sm"
                   onClick={useGPS}
-                  className="h-8 gap-1.5 rounded-xl text-xs font-medium"
+                  className="h-7.5 gap-1 rounded-lg px-2.5 text-[11px] font-medium"
                 >
-                  <LocateFixed className="text-primary size-3.5" /> Usar GPS Atual
+                  <LocateFixed className="text-primary size-3.5" /> GPS Atual
                 </Button>
               </CardHeader>
 
-              <CardContent className="grid gap-4 p-5">
+              <CardContent className="grid gap-3.5 p-4">
                 <div className="grid gap-3 sm:grid-cols-[1fr_2fr]">
                   <FormField
                     control={form.control}
@@ -850,20 +1108,20 @@ export function ProviderProfile() {
                 </div>
 
                 {/* Slider Interativo de Raio em GV */}
-                <div className="bg-muted/20 space-y-3 rounded-2xl border p-4">
+                <div className="bg-muted/15 space-y-2.5 rounded-xl border px-3.5 py-3">
                   <FormField
                     control={form.control}
                     name="radiusKm"
                     render={({ field }) => (
                       <FormItem className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <FormLabel className="flex items-center gap-2 text-xs font-semibold">
-                            <Navigation className="size-4 text-emerald-600" />
-                            <span>Raio de Atendimento em GV:</span>
+                          <FormLabel className="flex items-center gap-1.5 text-xs font-semibold">
+                            <Navigation className="size-3.5 text-emerald-600" />
+                            Raio de Atendimento:
                           </FormLabel>
                           <Badge
                             variant="outline"
-                            className="border-emerald-300 px-2 py-0.5 text-xs font-bold text-emerald-700 dark:text-emerald-300"
+                            className="border-emerald-300 px-2 py-0 text-xs font-bold text-emerald-700 tabular-nums dark:text-emerald-300"
                           >
                             {(field.value ?? 15).toFixed(0)} km
                           </Badge>
@@ -875,15 +1133,13 @@ export function ProviderProfile() {
                             step={1}
                             value={[field.value ?? 15]}
                             onValueChange={(v) => field.onChange(v[0])}
-                            className="py-2"
+                            className="py-1.5"
                           />
                         </FormControl>
-                        <div className="bg-background/80 flex items-start gap-2 rounded-xl border p-2.5 text-xs">
-                          <Sparkles className="text-primary mt-0.5 size-4 shrink-0" />
+                        <div className="bg-background/80 flex items-start gap-2 rounded-lg border p-2 text-[11px]">
+                          <Sparkles className="text-primary mt-0.5 size-3.5 shrink-0" />
                           <p className="text-muted-foreground leading-relaxed">
-                            <strong className="text-foreground font-semibold">
-                              Estimativa de Cobertura:
-                            </strong>{" "}
+                            <strong className="text-foreground font-semibold">Cobertura:</strong>{" "}
                             {getGVCoverageDescription(radiusKm)}
                           </p>
                         </div>
@@ -894,7 +1150,7 @@ export function ProviderProfile() {
                 </div>
 
                 {lat != null && lng != null && (
-                  <p className="text-muted-foreground text-[11px] tabular-nums">
+                  <p className="text-muted-foreground text-[10px] tabular-nums">
                     Coordenadas GPS ativas: {lat.toFixed(5)}, {lng.toFixed(5)}
                   </p>
                 )}
@@ -903,25 +1159,25 @@ export function ProviderProfile() {
           </TabsContent>
 
           {/* ABA 3: NOTIFICAÇÕES & EXPERIÊNCIA */}
-          <TabsContent value="notifications" className="space-y-4 pt-1">
+          <TabsContent value="notifications" className="space-y-3 pt-1">
             <PushNotificationCard />
 
             {/* Sound preference */}
             <Card className="bg-card rounded-2xl border shadow-xs">
-              <CardContent className="p-4">
+              <CardContent className="p-3.5">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-xl">
-                      <Volume2 className="size-4.5" />
+                  <div className="flex items-start gap-2.5">
+                    <div className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-xl">
+                      <Volume2 className="size-4" />
                     </div>
                     <div>
                       <p className="text-foreground text-sm font-semibold">Sons do painel</p>
-                      <p className="text-muted-foreground text-xs">
+                      <p className="text-muted-foreground text-[11px]">
                         Toque um som quando novas transações ou confirmações chegarem.
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => {
@@ -929,11 +1185,11 @@ export function ProviderProfile() {
                         setTimeout(playCompletionSound, 300)
                         setTimeout(playReviewSound, 750)
                       }}
-                      className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex size-8 items-center justify-center rounded-full border transition"
+                      className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex size-7 items-center justify-center rounded-full border transition"
                       title="Prévia dos sons (moeda → sino → estrela)"
                       aria-label="Ouvir prévia dos sons do painel"
                     >
-                      <Play className="size-3.5" />
+                      <Play className="size-3" />
                     </button>
                     <Switch
                       checked={soundEnabled}
@@ -956,30 +1212,30 @@ export function ProviderProfile() {
 
             {/* Vibration preference */}
             <Card className="bg-card rounded-2xl border shadow-xs">
-              <CardContent className="p-4">
+              <CardContent className="p-3.5">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-xl">
-                      <Smartphone className="size-4.5" />
+                  <div className="flex items-start gap-2.5">
+                    <div className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-xl">
+                      <Smartphone className="size-4" />
                     </div>
                     <div>
                       <p className="text-foreground text-sm font-semibold">Vibração</p>
-                      <p className="text-muted-foreground text-xs">
+                      <p className="text-muted-foreground text-[11px]">
                         Vibração sutil em dispositivos móveis quando notificações chegarem.
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => {
                         tryVibrate([30, 50, 30, 50, 30])
                       }}
-                      className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex size-8 items-center justify-center rounded-full border transition"
+                      className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex size-7 items-center justify-center rounded-full border transition"
                       title="Prévia da vibração"
                       aria-label="Ouvir prévia da vibração"
                     >
-                      <Play className="size-3.5" />
+                      <Play className="size-3" />
                     </button>
                     <Switch
                       checked={vibrateEnabled}
@@ -1003,13 +1259,13 @@ export function ProviderProfile() {
         </Tabs>
 
         {/* Botão de Salvar no Rodapé */}
-        <div className="flex justify-end pt-2">
+        <div className="flex justify-end pt-1">
           <Button
             type="submit"
             disabled={saving}
-            className="h-10 gap-1.5 rounded-xl px-6 text-xs font-semibold shadow-xs"
+            className="h-9 gap-1.5 rounded-xl px-5 text-xs font-semibold shadow-xs transition-all active:scale-95"
           >
-            {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
             Salvar alterações
           </Button>
         </div>
