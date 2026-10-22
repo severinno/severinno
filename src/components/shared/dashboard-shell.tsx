@@ -21,6 +21,7 @@
  */
 
 import * as React from "react"
+import Image from "next/image"
 import { useTheme } from "next-themes"
 import {
   ChevronRight,
@@ -222,7 +223,7 @@ export function DashboardShell({
   subtitle,
   breadcrumbs,
   panelLabel,
-  panelIcon: PanelIcon,
+  panelIcon: _PanelIcon,
   user,
   onNavigate,
   headerActions,
@@ -470,13 +471,40 @@ export function DashboardShell({
   // ---- Sidebar header -------------------------------------------------------
   const sidebarHeader = (
     <SidebarHeader className="pb-0">
-      <div className="flex items-center gap-3 px-3 pt-3 pb-4">
-        <span className="bg-primary text-primary-foreground flex size-9 shrink-0 items-center justify-center rounded-xl">
-          <PanelIcon className="size-[18px]" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-foreground truncate text-sm font-bold tracking-tight">{APP_NAME}</p>
-          <p className="text-muted-foreground/70 truncate text-[11px] font-medium">{panelLabel}</p>
+      <div className="flex items-center gap-2.5 px-3 pt-3 pb-4">
+        <div className="ring-border/50 relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-2xs ring-1">
+          <Image
+            src="/brand-icon.png"
+            alt="Severinno"
+            width={36}
+            height={36}
+            className="size-9 object-contain"
+            priority
+          />
+        </div>
+        <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+          <div className="flex items-center">
+            <Image
+              src="/brand-wordmark-black.png"
+              alt={APP_NAME}
+              width={88}
+              height={14}
+              className="h-3.5 w-auto object-contain dark:hidden"
+              priority
+            />
+            <Image
+              src="/brand-wordmark-white.png"
+              alt={APP_NAME}
+              width={88}
+              height={14}
+              className="hidden h-3.5 w-auto object-contain dark:block"
+              priority
+            />
+            <span className="sr-only">{APP_NAME}</span>
+          </div>
+          <p className="text-muted-foreground/75 mt-0.5 truncate text-[11px] font-medium tracking-tight">
+            {panelLabel}
+          </p>
         </div>
       </div>
       <SidebarSeparator className="mx-3 w-auto" />
@@ -745,15 +773,38 @@ export function DashboardShell({
               </SheetHeader>
               <div className="flex h-full flex-col">
                 {/* Mobile header — same design as desktop */}
-                <div className="border-border/50 flex items-center gap-3 border-b px-4 py-4">
-                  <span className="bg-primary text-primary-foreground flex size-9 shrink-0 items-center justify-center rounded-xl">
-                    <PanelIcon className="size-[18px]" />
-                  </span>
+                <div className="border-border/50 flex items-center gap-2.5 border-b px-4 py-4">
+                  <div className="ring-border/50 relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-2xs ring-1">
+                    <Image
+                      src="/brand-icon.png"
+                      alt="Severinno"
+                      width={36}
+                      height={36}
+                      className="size-9 object-contain"
+                      priority
+                    />
+                  </div>
                   <div className="min-w-0">
-                    <p className="text-foreground truncate text-sm font-bold tracking-tight">
-                      {APP_NAME}
-                    </p>
-                    <p className="text-muted-foreground/70 truncate text-[11px] font-medium">
+                    <div className="flex items-center">
+                      <Image
+                        src="/brand-wordmark-black.png"
+                        alt={APP_NAME}
+                        width={88}
+                        height={14}
+                        className="h-3.5 w-auto object-contain dark:hidden"
+                        priority
+                      />
+                      <Image
+                        src="/brand-wordmark-white.png"
+                        alt={APP_NAME}
+                        width={88}
+                        height={14}
+                        className="hidden h-3.5 w-auto object-contain dark:block"
+                        priority
+                      />
+                      <span className="sr-only">{APP_NAME}</span>
+                    </div>
+                    <p className="text-muted-foreground/75 mt-0.5 truncate text-[11px] font-medium tracking-tight">
                       {panelLabel}
                     </p>
                   </div>
