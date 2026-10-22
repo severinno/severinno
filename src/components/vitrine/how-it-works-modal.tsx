@@ -1,7 +1,7 @@
-import { SUPPORT_WHATSAPP } from "@/lib/constants"
-;("use client")
+"use client"
 
 import * as React from "react"
+import { SUPPORT_WHATSAPP } from "@/lib/constants"
 import {
   X,
   Search,

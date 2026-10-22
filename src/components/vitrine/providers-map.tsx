@@ -161,7 +161,10 @@ export default function ProvidersMap({
             },
           ],
         },
-        center: hasUserLocation ? [userLngRef.current!, userLatRef.current!] : GV_DEFAULT,
+        center:
+          typeof userLatRef.current === "number" && typeof userLngRef.current === "number"
+            ? [userLngRef.current, userLatRef.current]
+            : GV_DEFAULT,
         zoom: 12,
         attributionControl: { compact: true },
       })

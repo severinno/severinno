@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest"
+import { describe, it, expect } from "vitest"
 import * as React from "react"
 import { render, screen } from "@/__tests__/test-utils"
 import { QuotePricingHub } from "../quote-pricing-hub"

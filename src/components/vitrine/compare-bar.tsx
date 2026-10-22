@@ -31,7 +31,6 @@ export default function CompareBar() {
   } catch {
     qc = null
   }
-  const { lat, lng } = useGeoStore()
   const ids = useCompareStore((s) => s.ids)
   const clear = useCompareStore((s) => s.clear)
   const remove = useCompareStore((s) => s.remove)

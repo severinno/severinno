@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { getWhatsAppUrl } from "@/lib/constants"
 import { triggerHaptic } from "@/lib/haptics"
 import { playPopSound, playCopySuccessSound } from "@/lib/sounds"
 import { useGeoStore } from "@/store/geo"
@@ -204,6 +205,7 @@ export default function VitrineResults({
   const activeChips = buildChips(filters)
 
   const handleChipRemove = (key: keyof FiltersState) => {
+    triggerHaptic("selection")
     playPopSound()
     const next = { ...filters }
     if (key === "q") next.q = ""
@@ -461,7 +463,7 @@ export default function VitrineResults({
                       <button
                         type="button"
                         onClick={() => handleChipRemove(chip.key)}
-                        className="flex size-3.5 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                        className="flex size-3.5 cursor-pointer items-center justify-center rounded text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-700 active:scale-95 dark:hover:bg-slate-700 dark:hover:text-slate-200"
                         aria-label={`Remover filtro ${chip.label}`}
                       >
                         <X className="size-2.5" />
@@ -593,10 +595,11 @@ export default function VitrineResults({
                     variant="outline"
                     size="sm"
                     onClick={() => {
+                      triggerHaptic("selection")
                       playPopSound()
                       setAvailableToday(false)
                     }}
-                    className="mt-4 text-xs font-semibold"
+                    className="mt-4 text-xs font-semibold transition-all active:scale-95"
                   >
                     Exibir todos os {providers.length} prestadores
                   </Button>
@@ -821,7 +824,10 @@ function MapView({
               key={p.id}
               data-provider-id={p.id}
               data-selected={selectedId === p.id}
-              onClick={() => onSelect(p.id)}
+              onClick={() => {
+                triggerHaptic("selection")
+                onSelect(p.id)
+              }}
               className={cn(
                 "cursor-pointer rounded-2xl transition-all",
                 selectedId === p.id
@@ -938,12 +944,11 @@ function EmptyState({
           onSubmit={(e) => {
             e.preventDefault()
             if (!quickQuoteText.trim()) return
-            const text = encodeURIComponent(
-              `Olá! Preciso de um orçamento no Severinno (Governador Valadares):\n\n📝 Serviço solicitado: ${quickQuoteText.trim()}\n📍 Região/Bairro: ${userDistrict || "Governador Valadares"}`,
-            )
+            const rawMessage = `Olá! Preciso de um orçamento no Severinno (Governador Valadares):\n\n📝 Serviço solicitado: ${quickQuoteText.trim()}\n📍 Região/Bairro: ${userDistrict || "Governador Valadares"}`
+            triggerHaptic("success")
             playCopySuccessSound()
             toast.success("Redirecionando para o WhatsApp do atendimento...")
-            window.open(`https://wa.me/5533991113030?text=${text}`, "_blank", "noopener,noreferrer")
+            window.open(getWhatsAppUrl(rawMessage), "_blank", "noopener,noreferrer")
           }}
           className="mt-2.5 flex flex-col gap-2"
         >

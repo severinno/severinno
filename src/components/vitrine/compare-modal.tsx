@@ -49,6 +49,7 @@ import {
 
 import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
+import { triggerHaptic } from "@/lib/haptics"
 import { fetchProviderDetail, type ProviderDetail } from "@/lib/api"
 import { useCompareStore, MAX_COMPARE } from "@/store/compare"
 import { useGeoStore } from "@/store/geo"
@@ -215,6 +216,7 @@ export default function CompareModal() {
   // Share comparison on WhatsApp
   const handleShareWhatsApp = React.useCallback(() => {
     if (providers.length === 0 || typeof window === "undefined") return
+    triggerHaptic("selection")
     const idsParam = providers.map((p) => p.id).join(",")
     const shareUrl = `${window.location.origin}/?comparar=${idsParam}`
     const summaryLines = providers
@@ -235,6 +237,7 @@ export default function CompareModal() {
   // Copy comparison link
   const handleCopyLink = React.useCallback(() => {
     if (providers.length === 0 || typeof window === "undefined") return
+    triggerHaptic("success")
     const idsParam = providers.map((p) => p.id).join(",")
     const shareUrl = `${window.location.origin}/?comparar=${idsParam}`
     if (navigator.clipboard) {
@@ -532,9 +535,12 @@ export default function CompareModal() {
                 >
                   <button
                     type="button"
-                    onClick={() => setLayoutMode("columns")}
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      setLayoutMode("columns")
+                    }}
                     className={cn(
-                      "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all",
+                      "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all active:scale-95",
                       layoutMode === "columns"
                         ? "bg-background text-foreground font-bold shadow-xs"
                         : "text-muted-foreground hover:text-foreground",
@@ -548,9 +554,12 @@ export default function CompareModal() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setLayoutMode("vertical")}
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      setLayoutMode("vertical")
+                    }}
                     className={cn(
-                      "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all",
+                      "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-all active:scale-95",
                       layoutMode === "vertical"
                         ? "bg-background text-foreground font-bold shadow-xs"
                         : "text-muted-foreground hover:text-foreground",
@@ -577,7 +586,7 @@ export default function CompareModal() {
                     variant="outline"
                     size="sm"
                     onClick={handleShareWhatsApp}
-                    className="h-8 cursor-pointer gap-1.5 rounded-full border-emerald-500/30 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300"
+                    className="h-8 cursor-pointer gap-1.5 rounded-full border-emerald-500/30 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-100 active:scale-95 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300"
                     title="Compartilhar comparativo no WhatsApp"
                   >
                     <MessageCircle className="size-3.5" />
@@ -587,7 +596,7 @@ export default function CompareModal() {
                     variant="ghost"
                     size="sm"
                     onClick={handleCopyLink}
-                    className="text-muted-foreground hover:text-foreground h-8 cursor-pointer gap-1 rounded-full px-2 text-xs font-semibold"
+                    className="text-muted-foreground hover:text-foreground h-8 cursor-pointer gap-1 rounded-full px-2 text-xs font-semibold transition-all active:scale-95"
                     title="Copiar link compartilhável"
                   >
                     <Copy className="size-3.5" />
@@ -600,10 +609,11 @@ export default function CompareModal() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
+                    triggerHaptic("selection")
                     clear()
                     toast.success("Comparação limpa.")
                   }}
-                  className="text-muted-foreground hover:text-destructive h-8 rounded-full text-xs font-semibold"
+                  className="text-muted-foreground hover:text-destructive h-8 rounded-full text-xs font-semibold transition-all active:scale-95"
                 >
                   Limpar tudo
                 </Button>
@@ -703,10 +713,11 @@ export default function CompareModal() {
                               size="sm"
                               variant="outline"
                               onClick={() => {
+                                triggerHaptic("selection")
                                 closeCompare()
                                 openQuote({ providerId: p.id })
                               }}
-                              className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10 h-9 gap-1.5 rounded-xl text-xs font-semibold"
+                              className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10 h-9 gap-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
                             >
                               <FileText className="size-3.5" />
                               <span>Orçar</span>
@@ -714,20 +725,24 @@ export default function CompareModal() {
                             <Button
                               size="sm"
                               onClick={() => {
+                                triggerHaptic("selection")
                                 closeCompare()
                                 openBooking({ providerId: p.id })
                               }}
-                              className="h-9 gap-1.5 rounded-xl text-xs font-bold shadow-2xs"
+                              className="h-9 gap-1.5 rounded-xl text-xs font-bold shadow-2xs transition-all active:scale-95"
                             >
                               <Calendar className="size-3.5" />
                               <span>Agendar</span>
                             </Button>
                             <button
                               type="button"
-                              onClick={() => remove(p.id)}
+                              onClick={() => {
+                                triggerHaptic("selection")
+                                remove(p.id)
+                              }}
                               aria-label={`Remover ${p.name} da comparação`}
                               title={`Remover ${p.name}`}
-                              className="border-border/60 bg-background/80 text-muted-foreground hover:bg-destructive/10 hover:text-destructive flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition"
+                              className="border-border/60 bg-background/80 text-muted-foreground hover:bg-destructive/10 hover:text-destructive flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-all active:scale-95"
                             >
                               <X className="size-4" />
                             </button>
@@ -977,10 +992,13 @@ export default function CompareModal() {
                                   </div>
                                   <button
                                     type="button"
-                                    onClick={() => remove(p.id)}
+                                    onClick={() => {
+                                      triggerHaptic("selection")
+                                      remove(p.id)
+                                    }}
                                     aria-label={`Remover ${p.name} da comparação`}
                                     title={`Remover ${p.name}`}
-                                    className="border-border/60 bg-background/80 text-muted-foreground hover:bg-destructive/10 hover:text-destructive flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full border transition"
+                                    className="border-border/60 bg-background/80 text-muted-foreground hover:bg-destructive/10 hover:text-destructive flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-all active:scale-95"
                                   >
                                     <X className="size-3.5" />
                                   </button>
@@ -992,10 +1010,11 @@ export default function CompareModal() {
                                     size="sm"
                                     variant="outline"
                                     onClick={() => {
+                                      triggerHaptic("selection")
                                       closeCompare()
                                       openQuote({ providerId: p.id })
                                     }}
-                                    className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10 h-8 flex-1 gap-1 text-xs font-semibold"
+                                    className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10 h-8 flex-1 gap-1 text-xs font-semibold transition-all active:scale-95"
                                   >
                                     <FileText className="size-3.5" />
                                     Orçar
@@ -1003,10 +1022,11 @@ export default function CompareModal() {
                                   <Button
                                     size="sm"
                                     onClick={() => {
+                                      triggerHaptic("selection")
                                       closeCompare()
                                       openBooking({ providerId: p.id })
                                     }}
-                                    className="h-8 flex-1 gap-1 text-xs font-bold shadow-2xs"
+                                    className="h-8 flex-1 gap-1 text-xs font-bold shadow-2xs transition-all active:scale-95"
                                   >
                                     <Calendar className="size-3.5" />
                                     Agendar

@@ -4,11 +4,9 @@ import * as React from "react"
 import {
   Play,
   Pause,
-  Volume2,
   CheckCheck,
   Star,
   MapPin,
-  Sparkles,
   ArrowRight,
   ShieldCheck,
   MessageCircle,

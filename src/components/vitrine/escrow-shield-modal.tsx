@@ -3,15 +3,12 @@
 import * as React from "react"
 import {
   ShieldCheck,
-  ShieldAlert,
   Lock,
-  Camera,
   CheckCircle2,
   XCircle,
   ArrowRight,
   HelpCircle,
   Sparkles,
-  Zap,
 } from "lucide-react"
 
 import {

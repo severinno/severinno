@@ -1,7 +1,7 @@
-import { SUPPORT_WHATSAPP } from "@/lib/constants"
-;("use client")
+"use client"
 
 import * as React from "react"
+import { SUPPORT_WHATSAPP } from "@/lib/constants"
 import { Star, BadgeCheck, X, MessageCircle, Sparkles } from "lucide-react"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"

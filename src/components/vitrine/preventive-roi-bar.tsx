@@ -10,7 +10,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   ArrowRight,
-  ShieldCheck,
   PiggyBank,
 } from "lucide-react"
 import { cn } from "@/lib/utils"

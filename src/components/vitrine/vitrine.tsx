@@ -48,63 +48,25 @@ const RecentlyViewed = React.lazy(() =>
   import("./recently-viewed").then((m) => ({ default: m.RecentlyViewed })),
 )
 const NearbyProviders = React.lazy(() => import("./nearby-providers"))
-const ProviderSpotlightGeo = React.lazy(() => import("./provider-spotlight-geo"))
 const CompareBar = React.lazy(() => import("./compare-bar"))
 const BackToTop = React.lazy(() => import("./back-to-top"))
 const HowItWorks = React.lazy(() => import("./how-it-works"))
-const QuickQuoteCalculator = React.lazy(() => import("./quick-quote-calculator"))
 const PartnersTrust = React.lazy(() => import("./partners-trust"))
-const Testimonials = React.lazy(() => import("./testimonials"))
 const FAQ = React.lazy(() => import("./faq"))
-const WhySeverinno = React.lazy(() => import("./why-severinno"))
 const CtaBanner = React.lazy(() => import("./cta-banner"))
 const ProviderSpotlight = React.lazy(() => import("./provider-spotlight"))
 const CompareModal = React.lazy(() => import("./compare-modal"))
-const BeforeAfterShowcase = React.lazy(() => import("./before-after-showcase"))
-const CategoryGridSection = React.lazy(() => import("./category-grid-section"))
-const TrendingServices = React.lazy(() => import("./trending-services"))
 const TopProvidersShowcase = React.lazy(() => import("./top-providers-showcase"))
-const EscrowGuaranteeBanner = React.lazy(() => import("./escrow-guarantee-banner"))
 const LiveAvailabilityTicker = React.lazy(() => import("./live-availability-ticker"))
-const NeighborhoodPriceSimulator = React.lazy(() => import("./neighborhood-price-simulator"))
-const ProviderStoriesStrip = React.lazy(() => import("./provider-stories-strip"))
-const EmergencySosBanner = React.lazy(() =>
-  import("./emergency-sos-banner").then((m) => ({ default: m.EmergencySosBanner })),
-)
-const WhatsappAudioQuoteCard = React.lazy(() =>
-  import("./whatsapp-audio-quote-card").then((m) => ({ default: m.WhatsappAudioQuoteCard })),
-)
-const NeighborhoodFeedShowcase = React.lazy(() =>
-  import("./neighborhood-feed-showcase").then((m) => ({ default: m.NeighborhoodFeedShowcase })),
-)
-const TrustComparisonTable = React.lazy(() =>
-  import("./trust-comparison-table").then((m) => ({ default: m.TrustComparisonTable })),
-)
-const ProximityRadarTicker = React.lazy(() =>
-  import("./proximity-radar-ticker").then((m) => ({ default: m.ProximityRadarTicker })),
-)
-const FastBookingFilter = React.lazy(() =>
-  import("./fast-booking-filter").then((m) => ({ default: m.FastBookingFilter })),
-)
 const AiVisualSearchModal = React.lazy(() =>
   import("./ai-visual-search-modal").then((m) => ({ default: m.AiVisualSearchModal })),
-)
-const ServiceCombosSection = React.lazy(() =>
-  import("./service-combos-section").then((m) => ({ default: m.ServiceCombosSection })),
 )
 const PwaInstallBanner = React.lazy(() =>
   import("../shared/pwa-install-banner").then((m) => ({ default: m.PwaInstallBanner })),
 )
-const ProblemSolverWizard = React.lazy(() =>
-  import("./problem-solver-wizard").then((m) => ({ default: m.ProblemSolverWizard })),
-)
 const LiveSocialProofToast = React.lazy(() =>
   import("./live-social-proof-toast").then((m) => ({ default: m.LiveSocialProofToast })),
 )
-const TrustPaymentPills = React.lazy(() =>
-  import("./trust-payment-pills").then((m) => ({ default: m.TrustPaymentPills })),
-)
-import type { TrustPillId } from "./trust-payment-pills"
 const NeighborhoodSelectorBar = React.lazy(() =>
   import("./neighborhood-selector-bar").then((m) => ({ default: m.NeighborhoodSelectorBar })),
 )
@@ -113,15 +75,6 @@ const FloatingRecentDock = React.lazy(() =>
 )
 const EscrowShieldModal = React.lazy(() =>
   import("./escrow-shield-modal").then((m) => ({ default: m.EscrowShieldModal })),
-)
-const WhatsappAudioTestimonials = React.lazy(() =>
-  import("./whatsapp-audio-testimonials").then((m) => ({ default: m.WhatsappAudioTestimonials })),
-)
-const PreventiveRoiBar = React.lazy(() =>
-  import("./preventive-roi-bar").then((m) => ({ default: m.PreventiveRoiBar })),
-)
-const HomeHealthScoreQuiz = React.lazy(() =>
-  import("./home-health-score-quiz").then((m) => ({ default: m.HomeHealthScoreQuiz })),
 )
 const QuotePricingHub = React.lazy(() =>
   import("./quote-pricing-hub").then((m) => ({ default: m.QuotePricingHub })),
@@ -291,9 +244,6 @@ export default function Vitrine() {
   const [anchors, setAnchors] = React.useState<Map<number, string>>(new Map())
   const [sosOpen, setSosOpen] = React.useState(false)
   const [cameraModalOpen, setCameraModalOpen] = React.useState(false)
-  const [bookingSlot, setBookingSlot] = React.useState<string | null>("hoje-tarde")
-  const [activeTrustPills, setActiveTrustPills] = React.useState<TrustPillId[]>([])
-  const [selectedNeighborhood, setSelectedNeighborhood] = React.useState<string>("Centro")
   const [escrowModalOpen, setEscrowModalOpen] = React.useState(false)
   /** Walk em curso (página funda sem âncora) — isFetching sobe, UI segura. */
   const [walkActive, setWalkActive] = React.useState(false)

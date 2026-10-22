@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import Footer from "@/components/shared/footer"
+import { getWhatsAppUrl } from "@/lib/constants"
 
 export const revalidate = 3600 // ISR: revalidate every hour
 
@@ -23,8 +24,8 @@ export default function Contato() {
           <ContactCard
             title="WhatsApp"
             desc="Atendimento rápido"
-            value="(11) 99999-9999"
-            href="https://wa.me/5511999999999"
+            value="(33) 99111-3030"
+            href={getWhatsAppUrl()}
           />
         </div>
       </div>

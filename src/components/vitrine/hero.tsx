@@ -37,6 +37,7 @@ import {
 
 import { useGeoStore } from "@/store/geo"
 import { apiGet } from "@/lib/api"
+import { getWhatsAppUrl } from "@/lib/constants"
 import { triggerHaptic } from "@/lib/haptics"
 import AddressAutocomplete from "@/components/vitrine/address-autocomplete"
 import { PredictiveSearchDropdown } from "@/components/vitrine/predictive-search-dropdown"
@@ -280,6 +281,7 @@ export default function Hero({
   }, [isHovered])
 
   const handleCategorySelect = (idx: number) => {
+    triggerHaptic("selection")
     setSelectedCategoryIdx(idx)
     setProgress(0)
   }
@@ -311,11 +313,13 @@ export default function Hero({
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
+    triggerHaptic("selection")
     onSearchSubmit?.()
     scrollToResults()
   }
 
   const handlePopularClick = (label: string) => {
+    triggerHaptic("selection")
     onQueryChange(label)
     onSearchSubmit?.()
     scrollToResults()
@@ -480,7 +484,10 @@ export default function Hero({
                   {onCameraSearchClick && (
                     <button
                       type="button"
-                      onClick={onCameraSearchClick}
+                      onClick={() => {
+                        triggerHaptic("selection")
+                        onCameraSearchClick()
+                      }}
                       title="Diagnóstico visual por foto com IA"
                       aria-label="Buscar serviço por foto com IA"
                       className="text-muted-foreground hover:text-primary hover:bg-muted/60 mr-2 flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors active:scale-95 sm:size-8"
@@ -547,8 +554,11 @@ export default function Hero({
               {isNight && onEmergencyClick && (
                 <Button
                   size="lg"
-                  onClick={onEmergencyClick}
-                  className="h-11 rounded-full bg-rose-600 px-5 text-sm font-bold text-white shadow-lg ring-2 ring-rose-400/50 transition-all hover:scale-[1.02] hover:bg-rose-500"
+                  onClick={() => {
+                    triggerHaptic("warning")
+                    onEmergencyClick()
+                  }}
+                  className="h-11 rounded-full bg-rose-600 px-5 text-sm font-bold text-white shadow-lg ring-2 ring-rose-400/50 transition-all hover:scale-[1.02] hover:bg-rose-500 active:scale-95"
                 >
                   <Siren className="mr-1.5 size-4" />
                   Chamar Plantão Noturno
@@ -560,11 +570,7 @@ export default function Hero({
                   triggerHaptic("selection")
                   const text =
                     "Olá! Gostaria de pedir um orçamento rápido com garantia de custódia em Governador Valadares."
-                  window.open(
-                    `https://wa.me/5533991113030?text=${encodeURIComponent(text)}`,
-                    "_blank",
-                    "noopener,noreferrer",
-                  )
+                  window.open(getWhatsAppUrl(text), "_blank", "noopener,noreferrer")
                 }}
                 className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-full bg-emerald-500 px-5 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-500/20 transition-all hover:scale-[1.02] hover:bg-emerald-400 active:scale-[0.98]"
               >
@@ -664,7 +670,7 @@ export default function Hero({
                         type="button"
                         onClick={() => handleCategorySelect(idx)}
                         className={cn(
-                          "relative overflow-hidden rounded-full px-2.5 py-1 text-xs font-medium transition-all",
+                          "relative cursor-pointer overflow-hidden rounded-full px-2.5 py-1 text-xs font-medium transition-all active:scale-95",
                           selectedCategoryIdx === idx
                             ? "bg-emerald-500 font-bold text-slate-950 shadow-xs"
                             : "text-slate-400 hover:text-white",
@@ -758,12 +764,9 @@ export default function Hero({
                     <button
                       type="button"
                       onClick={() => {
+                        triggerHaptic("selection")
                         const text = `Olá! Vi o perfil do prestador ${currentFeatured.providerName} (${currentFeatured.name}) na Severinno e gostaria de solicitar um orçamento rápido sem compromisso em Governador Valadares.`
-                        window.open(
-                          `https://wa.me/5533991113030?text=${encodeURIComponent(text)}`,
-                          "_blank",
-                          "noopener,noreferrer",
-                        )
+                        window.open(getWhatsAppUrl(text), "_blank", "noopener,noreferrer")
                       }}
                       className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-2.5 text-xs font-bold text-slate-950 shadow-md shadow-emerald-500/20 transition-all hover:bg-emerald-400 active:scale-[0.98]"
                     >
@@ -773,7 +776,7 @@ export default function Hero({
                     <Button
                       type="button"
                       onClick={() => handlePopularClick(currentFeatured.name)}
-                      className="flex items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-xs font-semibold text-white transition-all hover:bg-white/20"
+                      className="flex items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-xs font-semibold text-white transition-all hover:bg-white/20 active:scale-95"
                     >
                       <span>Ver outros</span>
                       <ArrowRight className="size-3.5" />
