@@ -728,8 +728,8 @@ export function ClientBookings() {
           {trackingBooking && (
             <LiveTracking
               bookingId={trackingBooking.id}
-              destinationLat={-19.92}
-              destinationLng={-43.94}
+              destinationLat={trackingBooking.lat || -18.8548}
+              destinationLng={trackingBooking.lng || -41.9482}
               providerName={trackingBooking.provider.name}
             />
           )}

@@ -55,7 +55,7 @@ export interface ClientDashboardActivityProps {
   activeQuotes: DashboardQuoteItem[]
   recentActivity: DashboardActivityItem[]
   isLoading: boolean
-  onNavigate: (view: any) => void
+  onNavigate: (view: string) => void
   onOpenQuote: () => void
 }
 

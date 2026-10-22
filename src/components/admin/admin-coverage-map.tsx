@@ -167,7 +167,7 @@ export function AdminCoverageMap() {
               },
             ],
           },
-          center: [-46.6333, -23.5505], // São Paulo (fallback)
+          center: [-41.9482, -18.8548], // Governador Valadares (fallback)
           zoom: 4,
           attributionControl: { compact: true },
           scrollZoom: true,

@@ -1,18 +1,7 @@
 "use client"
 
 import * as React from "react"
-import {
-  Calculator,
-  Check,
-  Coins,
-  Copy,
-  Fuel,
-  Info,
-  MapPin,
-  ShieldCheck,
-  Sparkles,
-  Wrench,
-} from "lucide-react"
+import { Calculator, Check, Copy, Fuel, ShieldCheck, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
@@ -29,7 +18,6 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 
 export type ProviderPriceEstimatorDialogProps = {
   open: boolean

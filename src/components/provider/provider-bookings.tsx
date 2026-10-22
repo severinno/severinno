@@ -5,24 +5,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import {
   CalendarCheck,
-  Camera,
   CheckCircle2,
   Clock,
-  ExternalLink,
   Hourglass,
   Info,
-  Loader2,
   MapPin,
-  MessageSquare,
-  MoreVertical,
-  Navigation,
-  Play,
   Radio,
   Search,
   Sparkles,
-  X,
-  ClipboardCheck,
-  HelpCircle,
 } from "lucide-react"
 
 import { ServiceDeliveryReportModal } from "@/components/shared/service-delivery-report-modal"
@@ -30,7 +20,6 @@ import { ServiceCompletionCelebrationDialog } from "@/components/shared/service-
 import { QuickMediationModal } from "@/components/shared/quick-mediation-modal"
 import { PullToRefresh } from "@/components/shared/pull-to-refresh"
 import { ProviderTransitHud } from "@/components/provider/provider-transit-hud"
-import { useLocationBroadcaster } from "@/hooks/use-location-broadcaster"
 import { apiGet, apiPatch } from "@/lib/api"
 import { cacheOfflineBookings, getCachedOfflineBookings } from "@/lib/offline-bookings-cache"
 import { OfflineSimulationToggle } from "@/components/provider/offline-simulation-toggle"
@@ -43,32 +32,16 @@ import { BookingActions, BookingCard } from "@/components/provider/provider-book
 import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
-  SERVICE_UNIT_SHORT,
   type BookingStatus,
   type PaymentMethod,
   type PaymentStatus,
 } from "@/lib/constants"
-import { formatBRL, formatDate, formatDateTime, formatTime } from "@/lib/format"
+import { formatBRL, formatDate, formatTime } from "@/lib/format"
 import { BookingStatusBadge } from "@/components/admin/admin-shared"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
   Pagination,

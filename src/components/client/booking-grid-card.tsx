@@ -49,7 +49,7 @@ import {
   paymentIcon,
   paymentTone,
 } from "@/components/client/client-shared"
-import type { Booking, BookingCardProps } from "@/components/client/client-bookings"
+import type { BookingCardProps } from "@/components/client/client-bookings"
 
 function providerInitials(name?: string | null): string {
   if (!name) return "PR"

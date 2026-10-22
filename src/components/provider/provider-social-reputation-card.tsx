@@ -14,7 +14,6 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
-import { cn } from "@/lib/utils"
 import { triggerHaptic } from "@/lib/haptics"
 import { playCoinSound } from "@/lib/sounds"
 
@@ -27,7 +26,6 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
 
 export type ProviderSocialReputationCardProps = {
   open: boolean

@@ -59,8 +59,8 @@ export const POST = withRoute("api.provider.routes.slot-fit.POST", async (reques
   })
 
   const baseLocation = {
-    lat: provider?.lat ?? -23.5505,
-    lng: provider?.lng ?? -46.6333,
+    lat: provider?.lat ?? -18.8548,
+    lng: provider?.lng ?? -41.9482,
   }
 
   const existingBookings = await db.booking.findMany({

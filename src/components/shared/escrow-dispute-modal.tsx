@@ -238,7 +238,7 @@ export function EscrowDisputeModal({
                   type="button"
                   onClick={() => handleSelectCategory(item.id)}
                   className={cn(
-                    "flex items-start gap-2.5 rounded-lg border p-2.5 text-left transition-all",
+                    "flex items-start gap-2.5 rounded-lg border p-2.5 text-left transition-all active:scale-[0.98]",
                     isSelected
                       ? "border-amber-500 bg-amber-50/50 shadow-sm dark:bg-amber-950/20"
                       : "border-border hover:bg-muted/50",
@@ -352,8 +352,12 @@ export function EscrowDisputeModal({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => onOpenChange(false)}
+            onClick={() => {
+              triggerHaptic("selection")
+              onOpenChange(false)
+            }}
             disabled={submitting}
+            className="transition-all active:scale-95"
           >
             Cancelar
           </Button>
@@ -363,7 +367,7 @@ export function EscrowDisputeModal({
             size="sm"
             onClick={handleSubmit}
             disabled={submitting || reason.trim().length < 10}
-            className="gap-1.5 bg-amber-600 hover:bg-amber-700"
+            className="gap-1.5 bg-amber-600 transition-all hover:bg-amber-700 active:scale-95"
           >
             {submitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />

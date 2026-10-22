@@ -13,8 +13,6 @@ import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
   SERVICE_UNIT_SHORT,
-  type BookingStatus,
-  type PaymentMethod,
   type PaymentStatus,
 } from "@/lib/constants"
 import { formatBRL, formatDate, formatDateTime, formatTime } from "@/lib/format"

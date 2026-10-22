@@ -339,6 +339,7 @@ export function PixCheckout({
 
   // ── Retry do card de erro, conforme a ação do describePayError ──
   const handleRetry = React.useCallback(() => {
+    triggerHaptic("selection")
     if (errorAction === "wait_and_retry") {
       generatePix() // mesma chave: IN_FLIGHT resolve em replay/recuperação
       return
@@ -380,7 +381,13 @@ export function PixCheckout({
           <div className="text-2xl font-bold text-emerald-700 tabular-nums dark:text-emerald-400">
             {formatBRL(amount)}
           </div>
-          <Button onClick={generatePix} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+          <Button
+            onClick={() => {
+              triggerHaptic("selection")
+              generatePix()
+            }}
+            className="gap-2 bg-emerald-600 transition-all hover:bg-emerald-700 active:scale-95"
+          >
             <Smartphone className="size-4" />
             Gerar QR Code PIX
           </Button>
@@ -448,7 +455,7 @@ export function PixCheckout({
             type="button"
             onClick={handleCopy}
             className={cn(
-              "h-12 w-full gap-2.5 rounded-xl text-sm font-bold shadow-md transition-all active:scale-98",
+              "h-12 w-full gap-2.5 rounded-xl text-sm font-bold shadow-md transition-all active:scale-95",
               copied
                 ? "bg-emerald-700 text-white hover:bg-emerald-700"
                 : "bg-emerald-600 text-white hover:bg-emerald-700",
@@ -567,7 +574,14 @@ export function PixCheckout({
               O código PIX expirou. Gere um novo para continuar.
             </p>
           </div>
-          <Button onClick={generatePix} variant="outline" className="gap-2">
+          <Button
+            onClick={() => {
+              triggerHaptic("selection")
+              generatePix()
+            }}
+            variant="outline"
+            className="gap-2 transition-all active:scale-95"
+          >
             <RefreshCw className="size-4" />
             Gerar novo QR Code
           </Button>
@@ -590,7 +604,7 @@ export function PixCheckout({
             onClick={handleRetry}
             variant="outline"
             disabled={checkingPayment}
-            className="gap-2"
+            className="gap-2 transition-all active:scale-95"
           >
             {checkingPayment ? (
               <Loader2 className="size-4 animate-spin" />

@@ -68,6 +68,7 @@ export function ReceiptModal({ bookingId, open, onOpenChange }: ReceiptModalProp
   const receipt = data?.receipt
 
   const handlePrint = () => {
+    triggerHaptic("selection")
     window.open(`/api/bookings/${bookingId}/receipt?format=html`, "_blank")
   }
 
@@ -188,7 +189,7 @@ export function ReceiptModal({ bookingId, open, onOpenChange }: ReceiptModalProp
             <div className="flex flex-col items-stretch gap-2 pt-1 sm:flex-row sm:items-center">
               <Button
                 onClick={handleShare}
-                className="h-9.5 flex-1 gap-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-98 sm:h-9"
+                className="h-9.5 flex-1 gap-1.5 rounded-xl bg-emerald-600 text-xs font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-95 sm:h-9"
               >
                 <Share2 className="size-3.5" />
                 Compartilhar no WhatsApp
@@ -197,7 +198,7 @@ export function ReceiptModal({ bookingId, open, onOpenChange }: ReceiptModalProp
                 <Button
                   variant="outline"
                   onClick={handlePrint}
-                  className="h-9.5 flex-1 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-98 sm:h-9 sm:flex-initial"
+                  className="h-9.5 flex-1 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95 sm:h-9 sm:flex-initial"
                 >
                   <Printer className="size-3.5" />
                   PDF / Imprimir
@@ -205,7 +206,7 @@ export function ReceiptModal({ bookingId, open, onOpenChange }: ReceiptModalProp
                 <Button
                   variant="outline"
                   onClick={handleCopyAuth}
-                  className="h-9.5 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-98 sm:h-9"
+                  className="h-9.5 gap-1.5 rounded-xl text-xs font-medium transition-all active:scale-95 sm:h-9"
                 >
                   {copied ? (
                     <Check className="size-3.5 text-emerald-500" />

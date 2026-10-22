@@ -120,7 +120,7 @@ export interface ClientDashboardKpisProps {
   activeQuotesCount: number
   completedCount: number
   totalInvested: number
-  onNavigate: (view: any) => void
+  onNavigate: (view: string) => void
 }
 
 export function ClientDashboardKpis({

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, fireEvent, act } from "@/__tests__/test-utils"
+import { render, screen, fireEvent } from "@/__tests__/test-utils"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { axe } from "vitest-axe"
 import { ProviderReferral } from "../provider-referral"

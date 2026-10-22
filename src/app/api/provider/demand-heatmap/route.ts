@@ -50,8 +50,8 @@ export const GET = withRoute("api.provider.demand-heatmap.GET", async (request) 
     select: { id: true, lat: true, lng: true, radiusKm: true, city: true },
   })
 
-  const centerLat = provider?.lat ?? -23.5505
-  const centerLng = provider?.lng ?? -46.6333
+  const centerLat = provider?.lat ?? -18.8548
+  const centerLng = provider?.lng ?? -41.9482
   const radius = provider?.radiusKm ?? 25
 
   // 1. Fetch recent bookings with location
