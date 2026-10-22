@@ -66,11 +66,21 @@ describe("seo-programmatic-engine", () => {
 
   it("gera catálogo completo de slugs de sitemap", () => {
     const sitemap = generateProgrammaticSitemapSlugs()
-    expect(sitemap.length).toBeGreaterThanOrEqual(20)
+    expect(sitemap.length).toBeGreaterThanOrEqual(400)
 
     const hasCentroEletricista = sitemap.some(
       (item) => item.path === "/mg/governador-valadares/centro/eletricista",
     )
     expect(hasCentroEletricista).toBe(true)
+
+    const hasIlhaVidraceiro = sitemap.some(
+      (item) => item.path === "/mg/governador-valadares/ilha-dos-araujos/vidraceiro",
+    )
+    expect(hasIlhaVidraceiro).toBe(true)
+
+    const hasVilaIsaCalheiro = sitemap.some(
+      (item) => item.path === "/mg/governador-valadares/vila-isa/calheiro",
+    )
+    expect(hasVilaIsaCalheiro).toBe(true)
   })
 })

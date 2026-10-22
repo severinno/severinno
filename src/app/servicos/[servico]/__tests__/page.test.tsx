@@ -22,18 +22,25 @@ vi.mock("@/lib/db", () => ({
 describe("Programmatic SEO & Landing Pages (/servicos/[servico])", () => {
   it("gera lista completa de slugs para Governador Valadares e seus bairros", () => {
     const slugs = getAllLandingPageSlugs()
-    expect(slugs.length).toBeGreaterThan(50)
+    expect(slugs.length).toBe(420) // 20 serviços × (1 municipal + 20 bairros) = 420 páginas
 
     // Verifica páginas municipais
     expect(slugs).toContain("encanador-em-governador-valadares")
     expect(slugs).toContain("eletricista-em-governador-valadares")
     expect(slugs).toContain("diarista-em-governador-valadares")
+    expect(slugs).toContain("vidraceiro-em-governador-valadares")
+    expect(slugs).toContain("marceneiro-em-governador-valadares")
+    expect(slugs).toContain("serralheiro-em-governador-valadares")
 
     // Verifica páginas por bairro de GV
     expect(slugs).toContain("eletricista-em-ilha-dos-araujos")
     expect(slugs).toContain("diarista-em-vila-isa")
     expect(slugs).toContain("pintor-em-centro")
     expect(slugs).toContain("pedreiro-em-sao-pedro")
+    expect(slugs).toContain("vidraceiro-em-ilha-dos-araujos")
+    expect(slugs).toContain("calheiro-em-esplanada")
+    expect(slugs).toContain("marido-de-aluguel-em-lourdes")
+    expect(slugs).toContain("desentupidora-em-santa-rita")
   })
 
   it("resolve metadados corretos para slug estática", () => {
