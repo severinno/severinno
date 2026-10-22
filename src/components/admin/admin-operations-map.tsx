@@ -30,7 +30,18 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { triggerHaptic } from "@/lib/haptics"
+import { escapeHtml } from "@/lib/sanitize"
 import { playCoinSound } from "@/lib/sounds"
 
 type LiveOperationsData = {
@@ -103,16 +114,6 @@ export const GV_ALL_20_NEIGHBORHOODS: Array<{ name: string; lat: number; lng: nu
   { name: "Santos Dumont", lat: -18.874, lng: -41.94 },
 ]
 
-/** Escapa texto antes de interpolar em HTML de popups do MapLibre (anti-XSS). */
-function escapeHtml(value: unknown): string {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
-}
-
 /** Filtros operacionais rápidos por status do agendamento / custódia. */
 type StatusFilter = "TODOS" | "IN_PROGRESS" | "CONFIRMED" | "HELD"
 
@@ -140,6 +141,10 @@ export function AdminOperationsMap() {
 
   const [selectedNeighborhood, setSelectedNeighborhood] = React.useState<string>("TODOS")
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("TODOS")
+  // Liberação manual de custódia move dinheiro: exige confirmação explícita
+  const [releaseTarget, setReleaseTarget] = React.useState<
+    LiveOperationsData["bookings"][number] | null
+  >(null)
 
   const handleSelectNeighborhood = React.useCallback((bairro: string) => {
     triggerHaptic("selection")
@@ -186,6 +191,7 @@ export function AdminOperationsMap() {
       triggerHaptic("success")
       playCoinSound({ vibrate: true })
       toast.success("Custódia liberada com sucesso!")
+      setReleaseTarget(null)
       queryClient.invalidateQueries({ queryKey: ["admin-operations-live"] })
     },
     onError: () => {
@@ -782,7 +788,7 @@ export function AdminOperationsMap() {
                             variant="default"
                             onClick={() => {
                               triggerHaptic("medium")
-                              releaseEscrowMutation.mutate(b.id)
+                              setReleaseTarget(b)
                             }}
                             disabled={releaseEscrowMutation.isPending}
                             className="h-7 bg-emerald-600 text-xs transition-all hover:bg-emerald-700 active:scale-95"
@@ -802,6 +808,56 @@ export function AdminOperationsMap() {
           )}
         </CardContent>
       </Card>
+
+      {/* Confirmação de liberação manual de custódia (ação financeira irreversível) */}
+      <AlertDialog
+        open={!!releaseTarget}
+        onOpenChange={(open) => {
+          if (!open && !releaseEscrowMutation.isPending) setReleaseTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Liberar custódia manualmente?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                {releaseTarget ? (
+                  <p>
+                    <strong>R$ {Number(releaseTarget.amount).toFixed(2)}</strong> do agendamento{" "}
+                    <span className="font-mono">#{releaseTarget.id.slice(0, 8)}</span> (
+                    {releaseTarget.serviceTitle}) serão repassados a{" "}
+                    <strong>{releaseTarget.providerName}</strong>.
+                  </p>
+                ) : null}
+                <p className="font-medium text-amber-700 dark:text-amber-400">
+                  Esta ação é irreversível e ignora a janela de validação de 24h do cliente.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={releaseEscrowMutation.isPending}
+              className="transition-all active:scale-95"
+            >
+              Voltar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={releaseEscrowMutation.isPending}
+              onClick={(e) => {
+                // Mantém o modal aberto até a resposta do servidor
+                e.preventDefault()
+                if (!releaseTarget) return
+                triggerHaptic("warning")
+                releaseEscrowMutation.mutate(releaseTarget.id)
+              }}
+              className="bg-emerald-600 text-white transition-all hover:bg-emerald-700 active:scale-95"
+            >
+              {releaseEscrowMutation.isPending ? "Liberando…" : "Confirmar liberação"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

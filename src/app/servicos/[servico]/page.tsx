@@ -1,3 +1,4 @@
+import { serializeJsonLd } from "@/lib/sanitize"
 import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
@@ -396,15 +397,15 @@ export default async function ServicoPage({ params }: Props) {
     <main className="mx-auto max-w-4xl px-4 py-8">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdService) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLdService) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdBreadcrumbs) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLdBreadcrumbs) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdFaq) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLdFaq) }}
       />
 
       {/* Breadcrumb visual */}

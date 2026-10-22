@@ -12,6 +12,7 @@
  * The real work (view routing, auth, data fetching, interactivity)
  * happens inside the suspended client component.
  */
+import { serializeJsonLd } from "@/lib/sanitize"
 
 import { Suspense } from "react"
 import dynamic from "next/dynamic"
@@ -82,7 +83,7 @@ export default function Home() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(homeJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(homeJsonLd) }}
       />
       <Suspense fallback={<LoadingShell />}>
         <AppShell />

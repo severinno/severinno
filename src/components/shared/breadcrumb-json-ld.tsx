@@ -1,4 +1,4 @@
-import { sanitizeForJsonLd } from "@/lib/sanitize"
+import { sanitizeForJsonLd, serializeJsonLd } from "@/lib/sanitize"
 
 type Crumb = { name: string; url: string }
 
@@ -19,7 +19,7 @@ export function BreadcrumbJsonLd({ items }: { items: Crumb[] }) {
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      dangerouslySetInnerHTML={{ __html: serializeJsonLd(schema) }}
     />
   )
 }

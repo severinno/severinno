@@ -158,4 +158,70 @@ describe("AdminOperationsMap — Torre de Controle Operacional GV", () => {
       expect(screen.getByText(/Volume Total em Operação/)).toBeDefined()
     })
   })
+
+  it("exige confirmação antes de liberar custódia (nenhum POST no primeiro clique)", async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AdminOperationsMap />
+      </QueryClientProvider>,
+    )
+
+    const releaseBtn = await screen.findByRole("button", { name: /Liberar Custódia/i })
+    fireEvent.click(releaseBtn)
+
+    // Modal aberto, e nenhuma chamada POST ainda
+    expect(await screen.findByText("Liberar custódia manualmente?")).toBeDefined()
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>
+    const postsBefore = fetchMock.mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === "POST",
+    )
+    expect(postsBefore).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole("button", { name: /Confirmar liberação/i }))
+
+    await waitFor(() => {
+      const posts = fetchMock.mock.calls.filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST",
+      )
+      expect(posts).toHaveLength(1)
+      expect(JSON.parse(String((posts[0]![1] as RequestInit).body))).toEqual({
+        bookingId: "b-1",
+        action: "release_escrow",
+      })
+    })
+  })
+
+  it("cancelar a confirmação não dispara a liberação", async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AdminOperationsMap />
+      </QueryClientProvider>,
+    )
+
+    fireEvent.click(await screen.findByRole("button", { name: /Liberar Custódia/i }))
+    fireEvent.click(await screen.findByRole("button", { name: "Voltar" }))
+
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>
+    await waitFor(() => {
+      expect(screen.queryByText("Liberar custódia manualmente?")).toBeNull()
+    })
+    expect(
+      fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST"),
+    ).toBe(false)
+  })
+
+  it("filtro 'Aguardando check-in' oculta agendamentos em execução", async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AdminOperationsMap />
+      </QueryClientProvider>,
+    )
+
+    expect(await screen.findByText("Conserto Chuveiro")).toBeDefined()
+    fireEvent.click(screen.getByRole("button", { name: /Aguardando check-in/i }))
+
+    await waitFor(() => {
+      expect(screen.queryByText("Conserto Chuveiro")).toBeNull()
+    })
+  })
 })

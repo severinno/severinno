@@ -22,30 +22,21 @@
  */
 
 import * as React from "react"
-import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/react-query"
+import { useMutation, useQueryClient, useQueries } from "@tanstack/react-query"
 import {
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  ClipboardCheck,
-  CreditCard,
-  Eye,
-  FileText,
   LayoutGrid,
   LayoutList,
   Loader2,
   MapPin,
-  MessageSquare,
-  MoreHorizontal,
   Navigation,
   QrCode,
   Search,
-  ShieldAlert,
   ShieldCheck,
   Sparkles,
-  Star,
-  HelpCircle,
   X,
   XCircle,
 } from "lucide-react"
@@ -54,32 +45,21 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { apiGet, apiPatch } from "@/lib/api"
 import {
-  BOOKING_STATUS_LABELS,
-  PAYMENT_METHOD_LABELS,
-  PAYMENT_STATUS_LABELS,
-  SERVICE_UNIT_SHORT,
   type BookingStatus,
   type PaymentMethod,
   type PaymentStatus,
   type ServiceUnit,
 } from "@/lib/constants"
-import { formatBRL, formatDateTime } from "@/lib/format"
+import { formatBRL } from "@/lib/format"
 import { triggerHaptic } from "@/lib/haptics"
 import { playCoinSound } from "@/lib/sounds"
 import { useUIStore } from "@/store/ui"
 import { useViewStore } from "@/store/view"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
   Dialog,
   DialogContent,
@@ -90,7 +70,6 @@ import {
 } from "@/components/ui/dialog"
 import { EmptyState } from "@/components/shared/shell"
 import { ReviewDialog } from "@/components/client/review-dialog"
-import { BookingTimeline } from "@/components/shared/flow-timeline"
 import { PixCheckout } from "@/components/shared/pix-checkout"
 import { LiveTracking } from "@/components/shared/live-tracking"
 import { ReceiptModal } from "@/components/shared/receipt-modal"
@@ -105,13 +84,6 @@ import { BookingCard, type BookingCardProps } from "@/components/client/booking-
 export { BookingCard, type BookingCardProps }
 import { PullToRefresh } from "@/components/shared/pull-to-refresh"
 import { SafeImage } from "@/components/shared/safe-image"
-import {
-  StatusBadge,
-  bookingIcon,
-  bookingTone,
-  paymentIcon,
-  paymentTone,
-} from "@/components/client/client-shared"
 
 // ---------------------------------------------------------------------------
 // Types

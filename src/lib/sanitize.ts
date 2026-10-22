@@ -53,3 +53,22 @@ export function escapeHtml(input: unknown): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#x27;")
 }
+
+/**
+ * Serializa um objeto JSON-LD para uso seguro dentro de
+ * `<script type="application/ld+json">` via `dangerouslySetInnerHTML`.
+ *
+ * `JSON.stringify` NÃO escapa `<`, então um valor como `</script><script>…`
+ * em QUALQUER campo (cidade, estado, URL de avatar…) fecharia a tag e
+ * executaria script. Aqui o escape é feito no nível do JSON (`\u003c`), o que
+ * cobre todos os campos — inclusive os que alguém esquecer de sanitizar — e
+ * decodifica de volta para o caractere original nos parsers de JSON-LD.
+ */
+export function serializeJsonLd(data: unknown): string {
+  return JSON.stringify(data)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029")
+}

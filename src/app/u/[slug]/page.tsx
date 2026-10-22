@@ -3,7 +3,7 @@ import { notFound } from "next/navigation"
 import { db } from "@/lib/db"
 import { PublicProfilePage, type PublicProfileProvider } from "./public-profile-page"
 import { BreadcrumbJsonLd } from "@/components/shared/breadcrumb-json-ld"
-import { sanitizeForJsonLd } from "@/lib/sanitize"
+import { sanitizeForJsonLd, serializeJsonLd } from "@/lib/sanitize"
 import { exactShape } from "@/lib/api-server"
 import { toMoneyNumber } from "@/lib/money"
 import { isAmbassador } from "@/lib/referral"
@@ -156,7 +156,7 @@ export default async function Page({ params }: Props) {
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
       <PublicProfilePage provider={profile} />
     </>
