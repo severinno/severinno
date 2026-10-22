@@ -49,6 +49,7 @@ import { PageHeader } from "@/components/client/client-shared"
 import { ClientDashboardCharts } from "@/components/client/client-dashboard-charts"
 import { ClientDashboardKpis } from "@/components/client/client-dashboard-kpis"
 import { ClientDashboardActivity } from "@/components/client/client-dashboard-activity"
+import { ClientQuickActionsHub } from "@/components/client/client-quick-actions-hub"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -345,10 +346,13 @@ export function ClientDashboard() {
         </div>
       </Card>
 
-      {/* 3. Onboarding checklist — only shows if profile is incomplete */}
+      {/* 3. Central de Serviços & Acesso Rápido — Quick Action Command Hub */}
+      <ClientQuickActionsHub onNavigate={navigate} onOpenQuote={openQuote} />
+
+      {/* 4. Onboarding checklist — only shows if profile is incomplete */}
       <OnboardingChecklist />
 
-      {/* 4. Active service alert + Escrow reassurance + 4 Interactive KPI cards */}
+      {/* 5. Active service alert + Escrow reassurance + 4 Interactive KPI cards */}
       <ClientDashboardKpis
         inProgressBooking={inProgressBooking}
         upcomingCount={upcomingCount}

@@ -64,6 +64,7 @@ import { BookingStatusBadge } from "@/components/admin/admin-shared"
 import { ProviderAnalyticsPanel } from "@/components/provider/provider-analytics-panel"
 import { ProviderSocialReputationCard } from "./provider-social-reputation-card"
 import { ProviderPriceEstimatorDialog } from "./provider-price-estimator-dialog"
+import { ProviderCommandHub } from "./provider-command-hub"
 
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 12,
@@ -481,6 +482,13 @@ export function ProviderDashboard() {
           />
         </div>
       </div>
+
+      {/* Central de Operações & Produtividade — Quick Action Command Hub */}
+      <ProviderCommandHub
+        onNavigate={navigate}
+        onOpenReputationCard={() => setReputationCardOpen(true)}
+        onOpenPriceEstimator={() => setPriceEstimatorOpen(true)}
+      />
 
       {/* Demanda Regional / Geo Awareness */}
       <ProviderGeoAwarenessBadge />

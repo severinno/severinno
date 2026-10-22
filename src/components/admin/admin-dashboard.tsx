@@ -35,6 +35,7 @@ import {
 import { BarChartSection, PieChartSection } from "./admin-dashboard-charts"
 import { RecentBookingsTable, TopProvidersList } from "./admin-dashboard-tables"
 import { KpiCard, DashboardSkeleton } from "./admin-dashboard-kpis"
+import { AdminCommandHub } from "./admin-command-hub"
 
 export * from "./admin-dashboard-types"
 export * from "./admin-dashboard-charts"
@@ -198,6 +199,9 @@ export function AdminDashboard({ onNavigate }: { onNavigate: (view: string) => v
           }}
         />
       </section>
+
+      {/* Central de Operações & Acesso Rápido */}
+      <AdminCommandHub onNavigate={onNavigate} />
 
       {/* Charts */}
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
