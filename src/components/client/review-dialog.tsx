@@ -14,6 +14,8 @@ import { Loader2, Star, ShieldCheck, Camera, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiPost } from "@/lib/api"
+import { triggerHaptic } from "@/lib/haptics"
+import { playCoinSound } from "@/lib/sounds"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -79,6 +81,8 @@ export function ReviewDialog({ open, onOpenChange, booking, onSubmitted }: Revie
         afterPhotoUrl: afterPhotoUrl.trim() || undefined,
       }),
     onSuccess: () => {
+      triggerHaptic("success")
+      playCoinSound({ vibrate: true })
       toast.success("Avaliação enviada. Obrigado pelo seu feedback!")
       qc.invalidateQueries({ queryKey: ["bookings"] })
       qc.invalidateQueries({ queryKey: ["reviews"] })
@@ -102,6 +106,7 @@ export function ReviewDialog({ open, onOpenChange, booking, onSubmitted }: Revie
     .toUpperCase()
 
   const toggleCompliment = (item: string) => {
+    triggerHaptic("selection")
     setComment((prev) => {
       if (prev.includes(item)) {
         return prev
@@ -251,10 +256,22 @@ export function ReviewDialog({ open, onOpenChange, booking, onSubmitted }: Revie
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submit.isPending}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={submit.isPending}
+            className="transition-all active:scale-95"
+          >
             Cancelar
           </Button>
-          <Button onClick={() => submit.mutate()} disabled={!canSubmit} className="gap-2">
+          <Button
+            onClick={() => {
+              triggerHaptic("selection")
+              submit.mutate()
+            }}
+            disabled={!canSubmit}
+            className="gap-2 transition-all active:scale-95"
+          >
             {submit.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
             Enviar avaliação
           </Button>

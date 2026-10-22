@@ -32,6 +32,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { FilePhotos } from "@/components/modals/file-photos"
 import { SafeImage } from "@/components/shared/safe-image"
 import { cn } from "@/lib/utils"
+import { triggerHaptic } from "@/lib/haptics"
+import { playCoinSound } from "@/lib/sounds"
 import { toast } from "sonner"
 import { enqueueOfflineReport } from "@/lib/offline-reports-queue"
 
@@ -234,6 +236,7 @@ export function ServiceDeliveryReportModal({
   }, [bookingId, serviceTitle])
 
   const toggleChecklist = (id: string) => {
+    triggerHaptic("selection")
     setChecklist((prev) =>
       prev.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item)),
     )
@@ -351,6 +354,8 @@ export function ServiceDeliveryReportModal({
       }
 
       toast.success("Laudo de Entrega e Checklist emitidos com sucesso! Zero disputas.")
+      triggerHaptic("success")
+      playCoinSound({ vibrate: true })
       onSuccess?.()
       onOpenChange(false)
     } catch (err: unknown) {
@@ -799,9 +804,12 @@ export function ServiceDeliveryReportModal({
               </Button>
               <Button
                 type="button"
-                onClick={handleSaveComplete}
+                onClick={() => {
+                  triggerHaptic("selection")
+                  handleSaveComplete()
+                }}
                 disabled={isSaving || afterPhotos.length === 0}
-                className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
+                className="gap-2 bg-emerald-600 text-white transition-all hover:bg-emerald-700 active:scale-95"
               >
                 {isSaving ? (
                   <Loader2 className="size-4 animate-spin" />

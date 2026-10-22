@@ -30,6 +30,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
+import { triggerHaptic } from "@/lib/haptics"
+import { playCoinSound } from "@/lib/sounds"
 
 type LiveOperationsData = {
   city: string
@@ -101,6 +103,35 @@ export const GV_ALL_20_NEIGHBORHOODS: Array<{ name: string; lat: number; lng: nu
   { name: "Santos Dumont", lat: -18.874, lng: -41.94 },
 ]
 
+/** Escapa texto antes de interpolar em HTML de popups do MapLibre (anti-XSS). */
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+/** Filtros operacionais rápidos por status do agendamento / custódia. */
+type StatusFilter = "TODOS" | "IN_PROGRESS" | "CONFIRMED" | "HELD"
+
+const STATUS_FILTERS: Array<{ key: StatusFilter; label: string }> = [
+  { key: "TODOS", label: "Todos" },
+  { key: "IN_PROGRESS", label: "Em execução" },
+  { key: "CONFIRMED", label: "Aguardando check-in" },
+  { key: "HELD", label: "Custódia retida" },
+]
+
+function matchesStatusFilter(
+  b: { status: string; paymentStatus: string },
+  filter: StatusFilter,
+): boolean {
+  if (filter === "TODOS") return true
+  if (filter === "HELD") return b.paymentStatus === "HELD"
+  return b.status === filter
+}
+
 export function AdminOperationsMap() {
   const queryClient = useQueryClient()
   const mapContainerRef = React.useRef<HTMLDivElement>(null)
@@ -108,8 +139,10 @@ export function AdminOperationsMap() {
   const markersRef = React.useRef<unknown[]>([])
 
   const [selectedNeighborhood, setSelectedNeighborhood] = React.useState<string>("TODOS")
+  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("TODOS")
 
   const handleSelectNeighborhood = React.useCallback((bairro: string) => {
+    triggerHaptic("selection")
     setSelectedNeighborhood(bairro)
   }, [])
 
@@ -150,10 +183,13 @@ export function AdminOperationsMap() {
       return res.json()
     },
     onSuccess: () => {
+      triggerHaptic("success")
+      playCoinSound({ vibrate: true })
       toast.success("Custódia liberada com sucesso!")
       queryClient.invalidateQueries({ queryKey: ["admin-operations-live"] })
     },
     onError: () => {
+      triggerHaptic("error")
       toast.error("Erro ao liberar custódia")
     },
   })
@@ -217,9 +253,12 @@ export function AdminOperationsMap() {
   // Atualização dos Marcadores no Mapa
   React.useEffect(() => {
     if (!mapRef.current || !data) return
+    // Evita corrida: um render antigo (import assíncrono) não pode sobrescrever o atual
+    let stale = false
 
     const renderMarkers = async () => {
       const maplibregl = await import("maplibre-gl")
+      if (stale || !mapRef.current) return
       const map = mapRef.current as InstanceType<typeof maplibregl.Map>
 
       // Limpa marcadores anteriores
@@ -229,10 +268,11 @@ export function AdminOperationsMap() {
       markersRef.current = []
 
       // Filtra agendamentos pelo bairro selecionado
-      const filteredBookings =
-        selectedNeighborhood === "TODOS"
-          ? data.bookings
-          : data.bookings.filter((b) => b.neighborhood === selectedNeighborhood)
+      const filteredBookings = data.bookings.filter(
+        (b) =>
+          (selectedNeighborhood === "TODOS" || b.neighborhood === selectedNeighborhood) &&
+          matchesStatusFilter(b, statusFilter),
+      )
 
       // 1. Marcadores de Agendamentos / Serviços
       filteredBookings.forEach((b) => {
@@ -249,11 +289,11 @@ export function AdminOperationsMap() {
 
         const popup = new maplibregl.Popup({ offset: 25 }).setHTML(`
           <div class="p-2 text-xs">
-            <p class="font-bold text-sm text-foreground mb-1">${b.serviceTitle}</p>
-            <p class="text-muted-foreground mb-1">📍 ${b.address}</p>
-            <p class="text-muted-foreground mb-1">👤 Cliente: <b>${b.clientName}</b></p>
-            <p class="text-muted-foreground mb-1">🛠️ Prestador: <b>${b.providerName}</b></p>
-            <p class="mt-2 font-semibold">Valor: R$ ${b.amount.toFixed(2)} | Status: <span class="text-emerald-600">${b.status}</span></p>
+            <p class="font-bold text-sm text-foreground mb-1">${escapeHtml(b.serviceTitle)}</p>
+            <p class="text-muted-foreground mb-1">📍 ${escapeHtml(b.address)}</p>
+            <p class="text-muted-foreground mb-1">👤 Cliente: <b>${escapeHtml(b.clientName)}</b></p>
+            <p class="text-muted-foreground mb-1">🛠️ Prestador: <b>${escapeHtml(b.providerName)}</b></p>
+            <p class="mt-2 font-semibold">Valor: R$ ${Number(b.amount).toFixed(2)} | Status: <span class="text-emerald-600">${escapeHtml(b.status)}</span></p>
           </div>
         `)
 
@@ -274,7 +314,7 @@ export function AdminOperationsMap() {
 
         const popup = new maplibregl.Popup({ offset: 20 }).setHTML(`
           <div class="p-2 text-xs">
-            <p class="font-bold text-sm text-foreground mb-1">🛠️ ${p.name}</p>
+            <p class="font-bold text-sm text-foreground mb-1">🛠️ ${escapeHtml(p.name)}</p>
             <p class="text-muted-foreground">Prestador Ativo em Governador Valadares</p>
             <p class="text-emerald-600 font-medium mt-1">● Online em Campo</p>
           </div>
@@ -295,7 +335,7 @@ export function AdminOperationsMap() {
           const el = document.createElement("div")
           el.className =
             "flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-900/85 text-white text-[10px] font-bold border border-slate-600 shadow-lg pointer-events-none"
-          el.innerHTML = `<span>📍 ${n.name}</span> <span class="text-amber-400 font-extrabold">(${stat.total})</span>`
+          el.innerHTML = `<span>📍 ${escapeHtml(n.name)}</span> <span class="text-amber-400 font-extrabold">(${Number(stat.total)})</span>`
 
           const marker = new maplibregl.Marker({ element: el }).setLngLat([n.lng, n.lat]).addTo(map)
 
@@ -305,12 +345,30 @@ export function AdminOperationsMap() {
     }
 
     renderMarkers()
-  }, [data, selectedNeighborhood])
+    return () => {
+      stale = true
+    }
+  }, [data, selectedNeighborhood, statusFilter])
 
   const filteredBookings =
-    data?.bookings.filter((b) =>
-      selectedNeighborhood === "TODOS" ? true : b.neighborhood === selectedNeighborhood,
+    data?.bookings.filter(
+      (b) =>
+        (selectedNeighborhood === "TODOS" || b.neighborhood === selectedNeighborhood) &&
+        matchesStatusFilter(b, statusFilter),
     ) ?? []
+
+  const statusCounts = React.useMemo(() => {
+    const list = data?.bookings ?? []
+    const counts: Record<StatusFilter, number> = { TODOS: 0, IN_PROGRESS: 0, CONFIRMED: 0, HELD: 0 }
+    for (const b of list) {
+      if (selectedNeighborhood !== "TODOS" && b.neighborhood !== selectedNeighborhood) continue
+      counts.TODOS++
+      if (b.status === "IN_PROGRESS") counts.IN_PROGRESS++
+      if (b.status === "CONFIRMED") counts.CONFIRMED++
+      if (b.paymentStatus === "HELD") counts.HELD++
+    }
+    return counts
+  }, [data?.bookings, selectedNeighborhood])
 
   // Top bairros com atendimentos para o gráfico
   const neighborhoods = data?.neighborhoods
@@ -357,9 +415,12 @@ export function AdminOperationsMap() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => refetch()}
+            onClick={() => {
+              triggerHaptic("selection")
+              refetch()
+            }}
             disabled={isFetching}
-            className="flex items-center gap-1.5"
+            className="flex items-center gap-1.5 transition-all active:scale-95"
           >
             <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin text-emerald-600" : ""}`} />
             Atualizar
@@ -535,7 +596,7 @@ export function AdminOperationsMap() {
                     key={b.name}
                     type="button"
                     onClick={() => handleSelectNeighborhood(b.name)}
-                    className={`w-full rounded-lg p-1.5 text-left transition-colors ${
+                    className={`w-full rounded-lg p-1.5 text-left transition-all active:scale-[0.98] ${
                       isSelected
                         ? "border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-950/30"
                         : "hover:bg-muted/50"
@@ -578,7 +639,7 @@ export function AdminOperationsMap() {
             variant={selectedNeighborhood === bairro ? "default" : "outline"}
             size="sm"
             onClick={() => handleSelectNeighborhood(bairro)}
-            className="h-7 shrink-0 px-2.5 text-xs font-medium"
+            className="h-7 shrink-0 px-2.5 text-xs font-medium transition-all active:scale-95"
           >
             {bairro}
             {bairro !== "TODOS" && data?.neighborhoods[bairro]?.total ? (
@@ -586,6 +647,33 @@ export function AdminOperationsMap() {
                 ({data.neighborhoods[bairro].total})
               </span>
             ) : null}
+          </Button>
+        ))}
+      </div>
+
+      {/* Filtros operacionais rápidos por status */}
+      <div
+        className="flex scrollbar-thin items-center gap-1.5 overflow-x-auto pb-1.5"
+        role="group"
+        aria-label="Filtrar por status operacional"
+      >
+        <span className="text-muted-foreground mr-1 flex shrink-0 items-center gap-1 text-xs font-semibold uppercase">
+          <Activity className="h-3.5 w-3.5 text-emerald-600" /> Status:
+        </span>
+        {STATUS_FILTERS.map((f) => (
+          <Button
+            key={f.key}
+            variant={statusFilter === f.key ? "default" : "outline"}
+            size="sm"
+            aria-pressed={statusFilter === f.key}
+            onClick={() => {
+              triggerHaptic("selection")
+              setStatusFilter(f.key)
+            }}
+            className="h-7 shrink-0 px-2.5 text-xs font-medium transition-all active:scale-95"
+          >
+            {f.label}
+            <span className="ml-1 font-bold tabular-nums opacity-80">({statusCounts[f.key]})</span>
           </Button>
         ))}
       </div>
@@ -692,9 +780,12 @@ export function AdminOperationsMap() {
                           <Button
                             size="sm"
                             variant="default"
-                            onClick={() => releaseEscrowMutation.mutate(b.id)}
+                            onClick={() => {
+                              triggerHaptic("medium")
+                              releaseEscrowMutation.mutate(b.id)
+                            }}
                             disabled={releaseEscrowMutation.isPending}
-                            className="h-7 bg-emerald-600 text-xs hover:bg-emerald-700"
+                            className="h-7 bg-emerald-600 text-xs transition-all hover:bg-emerald-700 active:scale-95"
                           >
                             <ShieldCheck className="mr-1 h-3.5 w-3.5" />
                             Liberar Custódia

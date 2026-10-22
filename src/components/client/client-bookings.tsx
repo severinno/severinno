@@ -65,6 +65,7 @@ import {
 } from "@/lib/constants"
 import { formatBRL, formatDateTime } from "@/lib/format"
 import { triggerHaptic } from "@/lib/haptics"
+import { playCoinSound } from "@/lib/sounds"
 import { useUIStore } from "@/store/ui"
 import { useViewStore } from "@/store/view"
 
@@ -301,6 +302,7 @@ export function ClientBookings() {
   const cancelMutation = useMutation({
     mutationFn: (id: string) => apiPatch(`/api/bookings/${id}`, { status: "CANCELLED" }),
     onSuccess: () => {
+      triggerHaptic("warning")
       toast.success("Agendamento cancelado.")
       qc.invalidateQueries({ queryKey: ["bookings"] })
       qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
@@ -314,6 +316,8 @@ export function ClientBookings() {
   const completeMutation = useMutation({
     mutationFn: (id: string) => apiPatch(`/api/bookings/${id}`, { status: "COMPLETED" }),
     onSuccess: (_, id) => {
+      triggerHaptic("success")
+      playCoinSound({ vibrate: true })
       toast.success("Pagamento liberado e serviço concluído com sucesso!")
       qc.invalidateQueries({ queryKey: ["bookings"] })
       qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
@@ -679,16 +683,22 @@ export function ClientBookings() {
           <DialogFooter className="gap-2 sm:gap-0">
             <Button
               variant="outline"
-              onClick={() => setCancelBooking(null)}
+              onClick={() => {
+                triggerHaptic("selection")
+                setCancelBooking(null)
+              }}
               disabled={cancelMutation.isPending}
             >
               Manter agendamento
             </Button>
             <Button
               variant="destructive"
-              onClick={() => cancelBooking && cancelMutation.mutate(cancelBooking.id)}
+              onClick={() => {
+                triggerHaptic("warning")
+                if (cancelBooking) cancelMutation.mutate(cancelBooking.id)
+              }}
               disabled={cancelMutation.isPending}
-              className="gap-2"
+              className="gap-2 transition-all active:scale-95"
             >
               {cancelMutation.isPending ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -923,11 +933,12 @@ export function ClientBookings() {
             <Button
               onClick={() => {
                 if (escrowReleaseBooking) {
+                  triggerHaptic("selection")
                   completeMutation.mutate(escrowReleaseBooking.id)
                 }
               }}
               disabled={completeMutation.isPending}
-              className="h-9 gap-1.5 bg-emerald-600 font-semibold text-white shadow-xs hover:bg-emerald-700"
+              className="h-9 gap-1.5 bg-emerald-600 font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-95"
             >
               {completeMutation.isPending ? (
                 <Loader2 className="size-4 animate-spin" />
