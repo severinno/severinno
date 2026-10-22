@@ -45,8 +45,6 @@ import {
   WifiOff,
   Sparkles,
   FileText,
-  Copy,
-  QrCode,
   Zap,
 } from "lucide-react"
 import { toast } from "sonner"

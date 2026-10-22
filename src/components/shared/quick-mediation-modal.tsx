@@ -1,16 +1,7 @@
 "use client"
 
 import * as React from "react"
-import {
-  AlertCircle,
-  Calendar,
-  Clock,
-  HelpCircle,
-  Loader2,
-  Send,
-  Sparkles,
-  Wrench,
-} from "lucide-react"
+import { Calendar, Clock, HelpCircle, Loader2, Send, Sparkles, Wrench } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -22,7 +13,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
 import { triggerHaptic } from "@/lib/haptics"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"

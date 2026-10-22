@@ -408,7 +408,7 @@ export function DashboardShell({
         playCoin()
       } catch {}
 
-      const amountStr = evt.amount ? ` R\$ ${evt.amount.toFixed(2)}` : ""
+      const amountStr = evt.amount ? ` R$ ${evt.amount.toFixed(2)}` : ""
       const isProvider = user?.role === "PROVIDER"
 
       toast.success(isProvider ? "💰 Pagamento confirmado!" : "✅ Pagamento recebido!", {

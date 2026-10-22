@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react"
 import { describe, it, expect } from "vitest"
-import { render, screen, fireEvent } from "@/__tests__/test-utils"
+import { render, screen } from "@/__tests__/test-utils"
 import { VirtualList } from "../virtual-list"
 
 describe("<VirtualList />", () => {

@@ -7,23 +7,20 @@ import {
   CheckCircle2,
   Clock,
   Copy,
-  ExternalLink,
   Flame,
   Gift,
-  HelpCircle,
   History,
-  Info,
   Loader2,
   Percent,
   ShieldCheck,
   Sparkles,
   Ticket,
-  TrendingUp,
   Wrench,
-  Zap,
 } from "lucide-react"
 
 import { apiGet, apiPost } from "@/lib/api"
+import { triggerHaptic } from "@/lib/haptics"
+import { playCoinSound } from "@/lib/sounds"
 import { useAuthStore } from "@/store/auth"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -131,13 +128,27 @@ function getRewardIcon(category: string, sizeClass = "size-5") {
   }
 }
 
+const DEFAULT_STATS: LoyaltyStats = {
+  points: 0,
+  tier: "bronze",
+  tierName: "🥉 Bronze",
+  badges: [],
+  streak: 0,
+  totalBookings: 0,
+  totalReviews: 0,
+  nextTier: null,
+}
+
+const EMPTY_CATALOG: LoyaltyRewardItem[] = []
+const EMPTY_PERKS: RedeemedPerk[] = []
+
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 
 export function LoyaltyRewardsCenter({
-  role = "provider",
-  onNavigateToServices,
+  role: _role = "provider",
+  onNavigateToServices: _onNavigateToServices,
 }: {
   role?: "provider" | "client"
   onNavigateToServices?: () => void
@@ -158,31 +169,26 @@ export function LoyaltyRewardsCenter({
   })
 
   const redeemMutation = useMutation({
-    mutationFn: (rewardId: string) => apiPost("/api/loyalty", { rewardId }),
-    onSuccess: (res: any) => {
+    mutationFn: (rewardId: string) => apiPost<{ message?: string }>("/api/loyalty", { rewardId }),
+    onSuccess: (res) => {
+      triggerHaptic("success")
+      try {
+        playCoinSound({ vibrate: true })
+      } catch {}
       toast.success(res?.message ?? "Benefício resgatado com sucesso no Severinno Clube!")
       queryClient.invalidateQueries({ queryKey: ["loyalty", user?.id] })
       setConfirmOpen(false)
       setSelectedReward(null)
     },
-    onError: (err: any) => {
+    onError: (err: { message?: string }) => {
+      triggerHaptic("error")
       toast.error(err?.message ?? "Erro ao resgatar benefício. Tente novamente.")
     },
   })
 
-  const stats = data?.stats ?? {
-    points: 0,
-    tier: "bronze" as const,
-    tierName: "🥉 Bronze",
-    badges: [],
-    streak: 0,
-    totalBookings: 0,
-    totalReviews: 0,
-    nextTier: null,
-  }
-
-  const catalog = data?.catalog ?? []
-  const perks = data?.perks ?? []
+  const stats = data?.stats ?? DEFAULT_STATS
+  const catalog = data?.catalog ?? EMPTY_CATALOG
+  const perks = data?.perks ?? EMPTY_PERKS
   const transactions = data?.transactions ?? []
 
   const filteredCatalog = React.useMemo(() => {
@@ -195,6 +201,7 @@ export function LoyaltyRewardsCenter({
   }, [perks])
 
   const copyToClipboard = (code: string) => {
+    triggerHaptic("selection")
     navigator.clipboard.writeText(code)
     setCopiedCode(code)
     toast.success(`Código ${code} copiado para a área de transferência!`)

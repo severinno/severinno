@@ -54,7 +54,7 @@ const TOP_CITIES: string[] = [
   "Guarulhos, SP",
   "São Bernardo do Campo, SP",
   "Santo André, SP",
-  "Osasco, SP",
+  "Governador Valadares, MG",
   "Contagem, MG",
   "São José dos Campos, SP",
   "Ribeirão Preto, SP",
@@ -70,7 +70,7 @@ const TOP_CITIES: string[] = [
 /** Common CEPs from major streets and commercial areas. */
 const TOP_CEPS: string[] = [
   "01310100", // Av. Paulista, São Paulo
-  "01311000", // Av. Paulista, São Paulo
+  "35010000", // Centro, Governador Valadares, MG
   "01414001", // Faria Lima, São Paulo
   "04538133", // Berrini, São Paulo
   "20040002", // Centro, Rio de Janeiro
@@ -95,7 +95,7 @@ const TOP_COORDS: Array<{ lat: number; lng: number; label: string }> = [
   { lat: -12.9777, lng: -38.5016, label: "Salvador (centro)" },
   { lat: -3.7319, lng: -38.5267, label: "Fortaleza (centro)" },
   { lat: -25.429, lng: -49.2671, label: "Curitiba (centro)" },
-  { lat: -30.0346, lng: -51.2177, label: "Porto Alegre (centro)" },
+  { lat: -18.8548, lng: -41.9482, label: "Governador Valadares (centro)" },
 ]
 
 /**
@@ -107,7 +107,7 @@ const TOP_NEIGHBORHOODS: string[] = [
   "Copacabana, Rio de Janeiro, RJ",
   "Moema, São Paulo, SP",
   "Barra da Tijuca, Rio de Janeiro, RJ",
-  "Pinheiros, São Paulo, SP",
+  "Ilha dos Araújos, Governador Valadares, MG",
   "Savassi, Belo Horizonte, MG",
 ]
 

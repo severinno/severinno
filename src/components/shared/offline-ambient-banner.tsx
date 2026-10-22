@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Wifi, WifiOff, CheckCircle2 } from "lucide-react"
+import { WifiOff, CheckCircle2 } from "lucide-react"
 import { useOnlineStatus } from "@/hooks/use-online-status"
 import { triggerHaptic } from "@/lib/haptics"
 import { cn } from "@/lib/utils"

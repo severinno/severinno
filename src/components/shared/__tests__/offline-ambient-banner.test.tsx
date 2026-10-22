@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen, act } from "@/__tests__/test-utils"
+import { cleanup, render, screen } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 import { OfflineAmbientBanner } from "../offline-ambient-banner"
 

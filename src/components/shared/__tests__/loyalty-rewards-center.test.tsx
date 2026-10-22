@@ -4,7 +4,7 @@ import { render, screen, fireEvent, cleanup, waitFor } from "@/__tests__/test-ut
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { axe } from "vitest-axe"
 import { LoyaltyRewardsCenter } from "../loyalty-rewards-center"
-import { apiGet, apiPost } from "@/lib/api"
+import { apiGet } from "@/lib/api"
 
 vi.mock("@/lib/api", () => ({
   apiGet: vi.fn(),

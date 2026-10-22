@@ -1,22 +1,12 @@
 "use client"
 
 import * as React from "react"
-import {
-  Award,
-  CheckCircle2,
-  Clock,
-  ExternalLink,
-  MapPin,
-  ShieldCheck,
-  Sparkles,
-  Zap,
-} from "lucide-react"
+import { Award, CheckCircle2, MapPin, ShieldCheck, Sparkles } from "lucide-react"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"

@@ -1,5 +1,4 @@
 "use client"
-import Image from "next/image"
 
 /**
  * ProviderProfileModal — Uniform, widescreen-ready, clean & minimalist desktop modal
@@ -19,10 +18,8 @@ import {
   BadgeCheck,
   Calendar,
   CheckCircle2,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   Clock,
   GitCompare,
   Heart,
@@ -36,7 +33,6 @@ import {
   X,
 } from "lucide-react"
 import { toast } from "sonner"
-import { motion, AnimatePresence } from "framer-motion"
 
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet"
