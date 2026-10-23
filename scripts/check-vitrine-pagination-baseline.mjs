@@ -19,11 +19,12 @@
 //
 //   A. Clique quente — 1 clique de AQUECIMENTO (absorve a anomalia de rota
 //      fria do dev: 1ª request pós-recompilação falha silenciosa no client e
-//      o prefetch engole, forçando re-seek no clique) + `--samples` cliques
-//      em Próxima na cadência do botão. Prefetch dispara na chegada de cada
-//      página ⇒ os cliques amostrados nascem de cache. Mediana dos
-//      `vitrine:pagina:render` com `warm: true, inFlight: false` ≤ 250 ms;
-//      QUALQUER clique (frio/em voo) ≤ 800 ms.
+//      o prefetch engole, forçando re-seek no clique; ele NÃO entra no
+//      veredito) + `--samples` cliques em Próxima na cadência do botão.
+//      Prefetch dispara na chegada de cada página ⇒ os cliques amostrados
+//      nascem de cache. Mediana dos `vitrine:pagina:render` com
+//      `warm: true, inFlight: false` ≤ 250 ms; QUALQUER clique AMOSTRADO
+//      (frio/em voo) ≤ 800 ms.
 //   B. Deep-link seek — a URL de p3 capturada durante a caminhada reaberta
 //      em contexto JS frio (nova página): `vitrine:deeplink:render` com
 //      `walked: false` ≤ 800 ms. 3 amostras, mediana.
@@ -37,11 +38,14 @@
 // aplicação é que não entregou a observabilidade. Exit 2 fica para o ambiente
 // não respondendo (base-url inacessível, browser indisponível).
 //
-// OS LIMIARES MORAM AQUI (`THRESHOLDS`) e o doc os CITA — o teste
+// OS LIMIARES MORAM AQUI e o doc os CITA — o teste
 // `check-vitrine-pagination-baseline.test.ts` (simetria doc↔script) reprova
 // quando um dos dois lados muda sem o outro. Reajustar um limiar é ato
 // deliberado: mude o número, rode o teste, atualize a tabela do doc no mesmo
 // commit — a mensagem do teste diz onde.
+//
+// São DOIS perfis, escolhidos por `VITRINE_PROFILE`: `THRESHOLDS` (dev, o
+// default) e `CI_THRESHOLDS` (runner self-hosted, usado pelas pipelines).
 //
 // Requisitos do ambiente (verificado pelo guard, nunca presumido):
 //   - dev server respondendo em --base-url (default :3100, porta do doc)
@@ -95,6 +99,27 @@ export const THRESHOLDS = {
   deeplinkWalkMsPerPagina: 250,
   /** Mínimo de amostras quentes para a mediana valer (doc: ≥ 3). */
   minWarmSamples: 3,
+}
+
+/**
+ * Perfil de CI — os MESMOS regimes, calibrados no runner self-hosted.
+ *
+ * O limite absoluto de dev pressupõe o host onde a régua foi medida; no runner
+ * (2–4x mais lento no render de dev — a API responde em 25–65ms, o custo é o
+ * React development) o seek e o walk-interno passam dos limites de dev sem
+ * NENHUMA regressão: é a capacidade do host, não o código. O perfil `ci`
+ * (env VITRINE_PROFILE=ci, usado só nas pipelines) ancora nos números medidos
+ * ali em 22/10/2026 e guarda ~1,5–3x de folga: ainda pega uma piora de 2x, que
+ * é a que importa. Os limites de DEV não mudam — `VITRINE_PROFILE` ausente ou
+ * `dev` continua julgando pela régua de sempre.
+ */
+export const CI_THRESHOLDS = {
+  ...THRESHOLDS,
+  paginaWarmMedianMs: 500,
+  paginaSingleSampleMs: 1200,
+  walkMsPerPagina: 1000,
+  deeplinkSeekMs: 1800,
+  deeplinkWalkMsPerPagina: 1000,
 }
 
 export const DEFAULT_BASE_URL = "http://localhost:3100"
@@ -396,8 +421,8 @@ export async function runBaseline({ baseUrl, samples, log = () => {} }) {
     const next = page.locator(NEXT_BUTTON).first()
     await next.waitFor({ state: "visible", timeout: LOAD_TIMEOUT_MS })
 
-    // Aquecimento (não contabilizado): absorve a rota fria do dev — 1ª
-    // request pós-recompilação falha silenciosa e o clique re-seekaria.
+    // Aquecimento (não contabilizado NEM julgado): absorve a rota fria do dev
+    // — 1ª request pós-recompilação falha silenciosa e o clique re-seekaria.
     await waitForEnabled(next, LOAD_TIMEOUT_MS)
     await next.click()
     await waitForMeasure(page, {
@@ -426,7 +451,14 @@ export async function runBaseline({ baseUrl, samples, log = () => {} }) {
       // URL (com a âncora de cursor que o pushState registrou).
       if (i === SEEK_TARGET - 1) seekUrl = page.url()
     }
-    const paginaEntries = await collectMeasures(page)
+    // O clique de AQUECIMENTO (p1→p2) NÃO é amostra: ele existe para absorver
+    // a rota/fetch frios do dev. No runner self-hosted ele chegou a 1905ms com
+    // `inFlight: true` — a janela que o aquecimento deveria absorver virava
+    // reprovação do limite de clique único. O alvo 2 só aparece no aquecimento
+    // (a amostragem começa em p3).
+    const paginaEntries = (await collectMeasures(page)).filter(
+      (e) => !(e.name === MEASURES.pagina && e.detail?.target === 2),
+    )
     await page.close()
 
     // ── Fase B: deep-link seek em contexto JS frio (× SEEK_SAMPLES) ──
@@ -517,7 +549,8 @@ export function renderReport(result, { ambiente, resumo, thresholds = THRESHOLDS
     lines.push(`❌ Baseline de paginação REPROVADO — ${result.violations.length} violação(ões):`)
   }
   lines.push(
-    `   ambiente: ${ambiente.baseUrl} · cliques=${resumo.paginaCliques} (warm ${resumo.paginaWarm}) · ` +
+    `   ambiente: ${ambiente.baseUrl} · perfil ${ambiente.perfil ?? "dev"} · ` +
+      `cliques=${resumo.paginaCliques} (warm ${resumo.paginaWarm}) · ` +
       `mediana warm=${resumo.medianaWarmMs ?? "—"}ms · mediana seek=${resumo.medianaSeekMs ?? "—"}ms · ` +
       `walk=${resumo.walk} · walk-interno=${resumo.deeplinkWalkInterno}`,
   )
@@ -565,6 +598,11 @@ async function main() {
         "  --report-file <path> escreve o JSON do relatório no caminho (para artifact de CI)",
         "  -h, --help           esta ajuda",
         "",
+        "Env:",
+        "  VITRINE_BASE_URL     dev server da vitrine (default http://localhost:3100)",
+        "  VITRINE_PROFILE      `dev` (default) ou `ci` — o perfil `ci` aplica os",
+        "                       limiares calibrados no runner self-hosted",
+        "",
         "Exit codes:",
         "  0 — dentro dos limiares",
         "  1 — piora além do limiar OU regime sem dados (fail-closed)",
@@ -575,6 +613,17 @@ async function main() {
     process.exit(0)
   }
 
+  // Perfil por AMBIENTE, nunca por adivinhação: um valor desconhecido é erro de
+  // uso (exit 3) em vez de cair em silêncio no perfil de dev — um CI rodando
+  // com a régua errada é a pior das duas falhas.
+  const perfilEnv = process.env.VITRINE_PROFILE
+  if (perfilEnv !== undefined && perfilEnv !== "dev" && perfilEnv !== "ci") {
+    console.error(`check-vitrine-pagination-baseline: VITRINE_PROFILE inválido (${perfilEnv})`)
+    process.exit(3)
+  }
+  const perfil = perfilEnv === "ci" ? "ci" : "dev"
+  const limiares = perfil === "ci" ? CI_THRESHOLDS : THRESHOLDS
+
   const log = parsed.json ? () => {} : (s) => console.error(s)
   try {
     const { entries, ambiente } = await runBaseline({
@@ -582,11 +631,12 @@ async function main() {
       samples: parsed.samples,
       log,
     })
-    const result = evaluateBaseline(entries, THRESHOLDS, { samples: parsed.samples })
+    const result = evaluateBaseline(entries, limiares, { samples: parsed.samples })
     const reporte = {
       ...result,
-      ambiente,
-      limiares: THRESHOLDS,
+      perfil,
+      ambiente: { ...ambiente, perfil },
+      limiares,
       // As amostras cruas vão no JSON: o número auditável em vez de acreditado
       // (mesma disciplina do bench-guard-timing).
       medidas: entries,
@@ -598,7 +648,13 @@ async function main() {
     if (parsed.json) {
       console.log(JSON.stringify(reporte, null, 2))
     } else {
-      console.log(renderReport(result, { ambiente, resumo: result.resumo }))
+      console.log(
+        renderReport(result, {
+          ambiente: { ...ambiente, perfil },
+          resumo: result.resumo,
+          thresholds: limiares,
+        }),
+      )
     }
     process.exit(result.ok ? 0 : 1)
   } catch (err) {

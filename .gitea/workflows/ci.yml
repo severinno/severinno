@@ -891,6 +891,11 @@ jobs:
     # este valor e acusa divergência). Sem o teto, um dev server que não sobe
     # consome o runner até o limite da forja.
     timeout-minutes: 10
+    # O runner é 2–4x mais lento no render de dev que o host onde a régua de dev
+    # foi medida (a API responde em 25–65ms); o perfil `ci` aplica os MESMOS
+    # regimes com os limiares ancorados na capacidade medida no runner.
+    env:
+      VITRINE_PROFILE: ci
 
     services:
       postgres:

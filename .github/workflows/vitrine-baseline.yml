@@ -58,6 +58,10 @@ env:
   REDIS_URL: redis://localhost:6381
   SESSION_SECRET: ci-session-secret-vitrine-baseline-32-chars
   VITRINE_BASE_URL: http://localhost:3100
+  # O runner é 2–4x mais lento no render de dev que o host onde a régua de dev
+  # foi medida (a API responde em 25–65ms); o perfil `ci` aplica os MESMOS
+  # regimes com os limiares ancorados na capacidade medida no runner.
+  VITRINE_PROFILE: ci
 
 jobs:
   baseline:
