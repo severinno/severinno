@@ -430,15 +430,15 @@ describe("measureForge — a pipeline real, com o modelo real", () => {
     // O caminho crítico é a CADEIA MAIS LONGA do grafo. Desde 21/09/2026 quem o
     // fechava era o `guards` (a matriz de provas por mutação medida DENTRO do
     // job, 414.8s, contra a cadeia do build em 380.9s). RE-MEDIDO em 07/10/2026
-    // (pilha INTEIRA de 118 commits, 1233.2s): quem fecha agora é o
-    // `stack-per-commit` — o custo do job CRESCE com o tamanho da pilha, e a
-    // pilha desta branch cresceu 7× desde a última medição. Os DOIS lados
-    // ficam nomeados com o número, para o dia em que o custo mudar de lado o
-    // teste dizer QUEM passou na frente em vez de só acusar uma string
-    // diferente.
+    // (pilha INTEIRA de 118 commits, 1233.2s) o `stack-per-commit` passou na
+    // frente — e RE-MEDIDO de novo em 22/10/2026 o `guards` voltou a fechar: a
+    // matriz desceu para 997.7s e a pilha desta árvore (4 commits) custa 19.6s.
+    // Os DOIS lados ficam nomeados com o número, para o dia em que o custo
+    // mudar de lado o teste dizer QUEM passou na frente em vez de só acusar uma
+    // string diferente.
     const ms = (nome: string) => r.jobs.find((j) => j.name === nome)!.ms ?? 0
-    expect(r.criticalPath).toEqual(["stack-per-commit"])
-    expect(ms("stack-per-commit")).toBeGreaterThan(ms("guards"))
+    expect(r.criticalPath).toEqual(["guards"])
+    expect(ms("guards")).toBeGreaterThan(ms("stack-per-commit"))
   })
 
   it("a latência é maior que qualquer gate sozinho — e menor que a soma com paralelismo", () => {

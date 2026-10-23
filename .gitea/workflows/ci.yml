@@ -885,6 +885,12 @@ jobs:
   vitrine-baseline:
     name: Pagination baseline guard
     runs-on: ubuntu-latest
+    # O job exige PostGIS + Redis + seed + dev server: o custo não se mede de
+    # fora do runner, e o modelo de latência o declara por ESTE teto
+    # (`ci/merge-latency.json`, `ceiling: true` — o dono confronta a cópia com
+    # este valor e acusa divergência). Sem o teto, um dev server que não sobe
+    # consome o runner até o limite da forja.
+    timeout-minutes: 10
 
     services:
       postgres:
