@@ -1,11 +1,20 @@
 import { describe, it, expect } from "vitest"
+import { existsSync } from "node:fs"
 import path from "node:path"
 import { validateOsrmDataset, syncOsrmData } from "../../../scripts/sync-osrm-data"
 
 describe("OSRM Road Network Synchronization & Validation (scripts/sync-osrm-data.ts)", () => {
   const realDataDir = path.resolve(process.cwd(), "osrm-data")
 
-  it("validates the real compiled MLD dataset in osrm-data", () => {
+  // O dataset MLD compilado é um artefato LOCAL (~40MB, `osrm-data/*` ignorado
+  // no git): o checkout do CI nunca o tem, e estes três casos medem o DADO
+  // REAL, não a função. Onde o artefato não existe eles não podem julgar nada —
+  // então ficam `skipped` (com o motivo visível no relatório), em vez de
+  // reprovar o job por recurso ausente. O caso do diretório vazio roda sempre;
+  // o build/validação de verdade continua sendo exercitado onde o OSRM existe.
+  const datasetReal = existsSync(path.join(realDataDir, "governador-valadares.osrm.mldgr"))
+
+  it.skipIf(!datasetReal)("validates the real compiled MLD dataset in osrm-data", () => {
     const validation = validateOsrmDataset(realDataDir, "governador-valadares")
 
     expect(validation).toBeDefined()
@@ -28,7 +37,7 @@ describe("OSRM Road Network Synchronization & Validation (scripts/sync-osrm-data
     expect(validation.missingFiles.length).toBeGreaterThan(0)
   })
 
-  it("performs check-only sync without mutating disk", async () => {
+  it.skipIf(!datasetReal)("performs check-only sync without mutating disk", async () => {
     const result = await syncOsrmData({
       dataDir: realDataDir,
       region: "governador-valadares",
@@ -53,7 +62,7 @@ describe("OSRM Road Network Synchronization & Validation (scripts/sync-osrm-data
     expect(result.message).toContain("[DRY-RUN]")
   })
 
-  it("skips compilation when dataset is already fresh", async () => {
+  it.skipIf(!datasetReal)("skips compilation when dataset is already fresh", async () => {
     const result = await syncOsrmData({
       dataDir: realDataDir,
       region: "governador-valadares",
