@@ -2901,6 +2901,17 @@ jobs:
   vitrine-baseline:
     name: Pagination baseline guard
     runs-on: ubuntu-latest
+    # O job exige PostGIS + Redis + seed + dev server: o custo não se mede de
+    # fora do runner, e o modelo de latência o declara por ESTE teto
+    # (`ci/merge-latency.json`, `ceiling: true` — o dono confronta a cópia com
+    # este valor e acusa divergência). Sem o teto, um dev server que não sobe
+    # consome o runner até o limite da forja.
+    timeout-minutes: 10
+    # O runner é 2–4x mais lento no render de dev que o host onde a régua de dev
+    # foi medida (a API responde em 25–65ms); o perfil `ci` aplica os MESMOS
+    # regimes com os limiares ancorados na capacidade medida no runner.
+    env:
+      VITRINE_PROFILE: ci
 
     services:
       postgres:
@@ -2939,9 +2950,9 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bunx prisma generate
 
-      # O baseline é SENSÍVEL ao dataset: os limiares foram medidos com a seed
-      # de 415 prestadores (47 páginas de 9) — sem ela o guard reprova por
-      # dados insuficientes em vez de passar com prova vazia.
+      # O baseline é SENSÍVEL ao dataset: os limiares foram medidos com 415
+      # prestadores visíveis (47 páginas de 9). Os dois seeds abaixo garantem
+      # esse número (a seed base sozinha cria 6 ⇒ uma página).
       - name: Push Prisma schema to test database
         run: npx prisma db push --accept-data-loss --skip-generate
         env:
@@ -2953,6 +2964,15 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:55436/severinno_test
           REDIS_URL: redis://localhost:56383
           SESSION_SECRET: github-pr-vitrine-baseline-session-secret-32
+
+      # A seed base cria 6 prestadores (1 página de 9); o baseline foi medido
+      # com 415 visíveis (47 páginas). Este seed completa o catálogo de forma
+      # determinística e idempotente — sem ele o guard morre no locator
+      # `Próxima` e o job fica vermelho antes de medir qualquer coisa.
+      - name: Seed vitrine baseline dataset (415 visible providers)
+        run: bun scripts/seed-vitrine-baseline.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:55436/severinno_test
 
       # DEV, não produção: a régua do doc é de bundle de desenvolvimento. A
       # PRONTIDÃO é da API paginada que o guard exercita.
@@ -2978,8 +2998,18 @@ jobs:
             exit 1
           fi
 
+      # O runner self-hosted (hostinger-runner) NÃO tem sudo sem senha: o
+      # `--with-deps` morre em "sudo: a password is required" ANTES de baixar o
+      # browser, e o job nunca chega ao guard. As libs do sistema são
+      # responsabilidade da imagem do runner; aqui o binário (com cache em
+      # ~/.cache/ms-playwright). Onde o sudo funciona, mantém o caminho antigo.
       - name: Install Playwright Chromium
-        run: bunx playwright install chromium --with-deps
+        run: |
+          if sudo -n true 2>/dev/null; then
+            bunx playwright install chromium --with-deps
+          else
+            bunx playwright install chromium
+          fi
 
       # O comando canônico da invariante `vitrine-pagination-baseline` (o MESMO
       # das duas pipelines — check-forge-parity julga o literal).

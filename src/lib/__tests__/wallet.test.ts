@@ -15,6 +15,7 @@ import DecimalJS from "decimal.js"
 const mockDb = vi.hoisted(() => ({
   booking: { findMany: vi.fn() },
   walletTransaction: { findMany: vi.fn() },
+  $queryRaw: vi.fn(),
 }))
 
 vi.mock("@/lib/db", () => ({ db: mockDb }))
@@ -42,6 +43,30 @@ const PROVIDER_ID = "provider-1"
 function expectMoney(actual: { toString(): string }, expected: string | number) {
   // decimal.js direto: o namespace Prisma perde o Decimal sob o SSR do Vitest
   expect(DecimalJS(actual.toString()).equals(DecimalJS(expected))).toBe(true)
+}
+
+/**
+ * Linha da agregação (`computeProviderBalance`). O saldo vem de UMA query
+ * SQL; os testes abaixo alimentam essa linha e verificam o mapeamento.
+ */
+function balanceRow(partial: Record<string, string | number> = {}) {
+  return {
+    earnedNet: "0",
+    grossReceived: "0",
+    grossCompleted: "0",
+    completedCount: 0,
+    pendingNet: "0",
+    totalWithdrawn: "0",
+    totalPending: "0",
+    pendingCount: 0,
+    ...partial,
+  }
+}
+
+/** Texto SQL da chamada `$queryRaw` (TemplateStringsArray). */
+function lastSql(): string {
+  const call = mockDb.$queryRaw.mock.calls.at(-1)
+  return call ? Array.from(call[0] as TemplateStringsArray).join(" ? ") : ""
 }
 
 // ---------------------------------------------------------------------------
@@ -85,9 +110,18 @@ describe("computeBaseBalance", () => {
       },
     ])
 
+    mockDb.$queryRaw.mockResolvedValue([
+      balanceRow({
+        earnedNet: "467.5",
+        grossReceived: "550",
+        grossCompleted: "550",
+        completedCount: 2,
+      }),
+    ])
+
     const result = await computeBaseBalance(PROVIDER_ID)
 
-    // Balance: (200 + 350) * 0.85 = 467.5
+    // Balance: (200 + 350) * 0.85 = 467.5 (vem da agregação, não da página)
     expectMoney(result.balance, "467.5")
     expectMoney(result.totalReceived, "550")
     expect(result.completedCount).toBe(2)
@@ -115,6 +149,10 @@ describe("computeBaseBalance", () => {
       },
     ])
 
+    mockDb.$queryRaw.mockResolvedValue([
+      balanceRow({ earnedNet: "0", pendingNet: "212.5", grossReceived: "250" }),
+    ])
+
     const result = await computeBaseBalance(PROVIDER_ID)
 
     // (150 + 100) * 0.85 = 212.5
@@ -136,6 +174,8 @@ describe("computeBaseBalance", () => {
       },
     ])
 
+    mockDb.$queryRaw.mockResolvedValue([balanceRow()])
+
     const result = await computeBaseBalance(PROVIDER_ID)
 
     expectMoney(result.balance, "0")
@@ -146,6 +186,7 @@ describe("computeBaseBalance", () => {
 
   it("returns zero for empty bookings", async () => {
     mockDb.booking.findMany.mockResolvedValue([])
+    mockDb.$queryRaw.mockResolvedValue([balanceRow()])
 
     const result = await computeBaseBalance(PROVIDER_ID)
 
@@ -168,6 +209,8 @@ describe("computeBaseBalance", () => {
         client: { name: "Maria Silva" },
       },
     ])
+
+    mockDb.$queryRaw.mockResolvedValue([balanceRow({ earnedNet: "170", grossReceived: "200" })])
 
     const result = await computeBaseBalance(PROVIDER_ID)
 
@@ -192,8 +235,7 @@ describe("computeAvailableBalance", () => {
   })
 
   it("returns earned amount minus fee for COMPLETED bookings", async () => {
-    mockDb.booking.findMany.mockResolvedValue([{ amount: 200 }, { amount: 350 }])
-    mockDb.walletTransaction.findMany.mockResolvedValue([])
+    mockDb.$queryRaw.mockResolvedValue([balanceRow({ earnedNet: "467.5", grossReceived: "550" })])
 
     const balance = await computeAvailableBalance(PROVIDER_ID)
 
@@ -202,11 +244,7 @@ describe("computeAvailableBalance", () => {
   })
 
   it("subtracts previous withdrawals", async () => {
-    mockDb.booking.findMany.mockResolvedValue([{ amount: 200 }])
-    mockDb.walletTransaction.findMany.mockResolvedValue([
-      { amount: 50, status: "completed" },
-      { amount: 30, status: "completed" },
-    ])
+    mockDb.$queryRaw.mockResolvedValue([balanceRow({ earnedNet: "170", totalWithdrawn: "80" })])
 
     const balance = await computeAvailableBalance(PROVIDER_ID)
 
@@ -214,9 +252,19 @@ describe("computeAvailableBalance", () => {
     expectMoney(balance, "90")
   })
 
+  it("subtracts pending withdrawals (payout em andamento)", async () => {
+    mockDb.$queryRaw.mockResolvedValue([
+      balanceRow({ earnedNet: "100", totalWithdrawn: "10", totalPending: "5", pendingCount: 1 }),
+    ])
+
+    const balance = await computeAvailableBalance(PROVIDER_ID)
+
+    // 100 - 10 (concluído) - 5 (pendente) = 85
+    expectMoney(balance, "85")
+  })
+
   it("returns 0 when balance is negative (over-withdrawn)", async () => {
-    mockDb.booking.findMany.mockResolvedValue([{ amount: 100 }]) // 100 * 0.85 = 85
-    mockDb.walletTransaction.findMany.mockResolvedValue([{ amount: 200, status: "completed" }])
+    mockDb.$queryRaw.mockResolvedValue([balanceRow({ earnedNet: "85", totalWithdrawn: "200" })])
 
     const balance = await computeAvailableBalance(PROVIDER_ID)
 
@@ -224,12 +272,37 @@ describe("computeAvailableBalance", () => {
   })
 
   it("returns 0 when no bookings exist", async () => {
-    mockDb.booking.findMany.mockResolvedValue([])
-    mockDb.walletTransaction.findMany.mockResolvedValue([])
+    mockDb.$queryRaw.mockResolvedValue([balanceRow()])
 
     const balance = await computeAvailableBalance(PROVIDER_ID)
 
     expectMoney(balance, "0")
+  })
+
+  it("não trunca em 1000 linhas — agrega no banco em vez de paginar", async () => {
+    // 1.500 bookings de R$ 100: líquido 85 cada → 127.500.
+    // A versão com `take: 1000` devolveria 85.000 e nenhum erro.
+    mockDb.$queryRaw.mockResolvedValue([balanceRow({ earnedNet: "127500", completedCount: 1500 })])
+
+    const balance = await computeAvailableBalance(PROVIDER_ID)
+
+    expectMoney(balance, "127500")
+    expect(mockDb.$queryRaw).toHaveBeenCalledTimes(1)
+    // O saldo NÃO pode voltar a ser somado a partir de uma página de linhas.
+    expect(mockDb.booking.findMany).not.toHaveBeenCalled()
+    expect(mockDb.walletTransaction.findMany).not.toHaveBeenCalled()
+  })
+
+  it("a agregação respeita soft delete e não tem LIMIT", async () => {
+    mockDb.$queryRaw.mockResolvedValue([balanceRow()])
+
+    await computeAvailableBalance(PROVIDER_ID)
+
+    const sql = lastSql()
+    expect(sql).toContain('"deletedAt" IS NULL')
+    expect(sql).toMatch(/"status" = 'COMPLETED'/)
+    expect(sql).toMatch(/"paymentStatus" = 'PAID'/)
+    expect(sql).not.toMatch(/\bLIMIT\b/i)
   })
 })
 
@@ -248,6 +321,8 @@ describe("getWithdrawals", () => {
       { id: "w2", amount: 50, description: "Saque 2", createdAt: new Date("2025-03-15") },
     ])
 
+    mockDb.$queryRaw.mockResolvedValue([balanceRow({ totalWithdrawn: "150" })])
+
     const result = await getWithdrawals(PROVIDER_ID)
 
     expectMoney(result.totalWithdrawn, "150")
@@ -258,6 +333,7 @@ describe("getWithdrawals", () => {
 
   it("returns zero when no withdrawals", async () => {
     mockDb.walletTransaction.findMany.mockResolvedValue([])
+    mockDb.$queryRaw.mockResolvedValue([balanceRow()])
 
     const result = await getWithdrawals(PROVIDER_ID)
 

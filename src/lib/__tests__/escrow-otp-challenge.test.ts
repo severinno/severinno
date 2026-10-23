@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import {
   requiresOtpForRelease,
   generateEscrowOtp,
@@ -23,6 +23,14 @@ describe("escrow-otp-challenge — Desafio OTP Anti-Fraude e Anti-Acidente", () 
   beforeEach(() => {
     vi.restoreAllMocks()
     mockOtpStore.clear()
+    // Relógio congelado (só Date): o TTL do OTP é comparado com Date.now().
+    // Sem isso o teste depende do relógio de parede (guard check:clock-bombs).
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-01-05T15:00:00.000Z"))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it("determina quando o agendamento exige desafio OTP baseado no limiar e risco", () => {

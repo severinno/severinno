@@ -196,8 +196,19 @@ describe("Full Financial Flow E2E", () => {
 
     // Step 4: Provider withdraws (serializable tx)
     vi.mocked(requireUser).mockResolvedValue({ userId: "p1", role: "PROVIDER" } as any)
-    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 250 } })
-    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
+    // Saldo vem da agregação SQL (sem teto de linhas): R$250 brutos → R$212,50
+    mockDb.$queryRaw.mockResolvedValue([
+      {
+        earnedNet: "212.5",
+        grossReceived: "250",
+        grossCompleted: "250",
+        completedCount: 1,
+        pendingNet: "0",
+        totalWithdrawn: "0",
+        totalPending: "0",
+        pendingCount: 0,
+      },
+    ])
     mockDb.walletTransaction.create.mockResolvedValue({
       id: "w1",
       amount: 100,

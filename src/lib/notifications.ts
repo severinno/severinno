@@ -695,4 +695,47 @@ export async function notifyBookingReminder24h(
   )
 }
 
+/**
+ * Notificar cliente sobre manutenção preventiva / retorno de serviço (LTV Booster).
+ * Canais: in-app + WhatsApp + Push
+ */
+export async function notifyServiceReminder(
+  clientId: string,
+  serviceTitle: string,
+  providerName: string,
+  friendlyReason: string,
+  message: string,
+  rebookingUrl: string,
+): Promise<{ inApp: boolean; push: boolean; whatsapp: boolean }> {
+  const title = `💡 Lembrete Preventivo: ${serviceTitle}`
+  const body = `Faz tempo desde o seu atendimento com ${providerName}. ${friendlyReason}`
+
+  let inApp = false
+  let push = false
+  let whatsapp = false
+
+  try {
+    const notif = await createInAppNotification(clientId, "SERVICE_REMINDER", title, body)
+    if (notif) inApp = true
+  } catch {
+    // best-effort
+  }
+
+  try {
+    await sendPushNotification(clientId, title, body, rebookingUrl)
+    push = true
+  } catch {
+    // best-effort
+  }
+
+  try {
+    await sendWhatsApp(clientId, (to) => sendText(to, message), `reminder:service:${clientId}`)
+    whatsapp = true
+  } catch {
+    // best-effort
+  }
+
+  return { inApp, push, whatsapp }
+}
+
 export { notificationLogger }

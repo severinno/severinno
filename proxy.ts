@@ -37,7 +37,7 @@ import { checkRouteRateLimit, routeRateLimitHeaders } from "@/lib/route-rate-lim
 import { handleApiVersioning } from "@/lib/api-versioning"
 import { Redis } from "@upstash/redis/cloudflare"
 import { generateCsrfToken, verifyCsrfToken, CSRF_COOKIE, CSRF_HEADER, MAX_AGE } from "@/lib/csrf"
-import { buildCsp, generateCspNonce, CSP_NONCE_HEADER } from "@/lib/csp"
+import { buildCsp, generateCspNonce, isCspReportOnly, CSP_NONCE_HEADER } from "@/lib/csp"
 
 // ── Request ID generation (Edge-compatible) ──────────────────────────────
 
@@ -394,16 +394,11 @@ export async function proxy(request: NextRequest) {
     nonce: cspNonceEarly,
     origin: requestOrigin,
     isProduction,
-    // Rollout da CSP em 3 estágios (plano completo em docs/RUNBOOK.md § CSP):
-    //   1. Observação (default em produção): CSP_REPORT_ONLY=1 → header
-    //      Content-Security-Policy-Report-Only (não bloqueia nada, só reporta).
-    //   2. Enforce com kill-switch: CSP_ENFORCE=1 → CSP bloqueante;
-    //      remova CSP_ENFORCE para voltar à observação na hora (sem redeploys
-    //      de código, só recriar o container com o novo env).
-    //   3. Estável: CSP_REPORT_ONLY=0 (e sem CSP_ENFORCE) → CSP bloqueante
-    //      como estado permanente no compose.
-    // CSP_ENFORCE tem PRIORIDADE sobre CSP_REPORT_ONLY.
-    reportOnly: process.env.CSP_ENFORCE !== "1" && process.env.CSP_REPORT_ONLY !== "0",
+    // CSP BLOQUEANTE POR PADRÃO — deploy novo nasce protegido.
+    // Observação é OPT-IN explícito (CSP_REPORT_ONLY=1); CSP_ENFORCE=1 vence
+    // qualquer env herdada. A decisão (pura) vive em isCspReportOnly, testada
+    // em src/lib/__tests__/csp.test.ts. Plano: docs/RUNBOOK.md § 6.
+    reportOnly: isCspReportOnly(),
   })
   response.headers.set(cspHeader, cspDirectives)
 

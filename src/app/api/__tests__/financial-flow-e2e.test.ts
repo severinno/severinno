@@ -13,8 +13,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import DecimalJS from "decimal.js"
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
+
+/** Snapshot de saldo (agregação) — o saque consome `available`. */
+const mockComputeProviderBalance = vi.hoisted(() => vi.fn())
 
 const mockDb = vi.hoisted(() => {
   const db = {
@@ -145,6 +149,7 @@ vi.mock("@/lib/sentry", () => ({
 }))
 
 vi.mock("@/lib/wallet", () => ({
+  computeProviderBalance: mockComputeProviderBalance,
   computeAvailableBalance: vi.fn(),
   computeBaseBalance: vi.fn(),
   getWithdrawals: vi.fn(),
@@ -361,8 +366,7 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
     vi.mocked(requireUser).mockResolvedValue({ userId: PROVIDER_ID, role: "PROVIDER" } as any)
 
     // 1 completed booking at R$250 → earned R$212.50 (after 15% fee)
-    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 250 } })
-    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
+    mockComputeProviderBalance.mockResolvedValue({ available: new DecimalJS("212.5") })
     mockDb.walletTransaction.create.mockResolvedValue({
       id: "wth-001",
       providerId: PROVIDER_ID,
@@ -394,8 +398,7 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
     const { requireUser } = await import("@/lib/auth")
     vi.mocked(requireUser).mockResolvedValue({ userId: PROVIDER_ID, role: "PROVIDER" } as any)
 
-    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 250 } })
-    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
+    mockComputeProviderBalance.mockResolvedValue({ available: new DecimalJS("212.5") })
 
     const { POST } = await import("@/app/api/provider/wallet/withdraw/route")
     const req = new Request("http://localhost", {
@@ -415,8 +418,7 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
     vi.mocked(requireUser).mockResolvedValue({ userId: PROVIDER_ID, role: "PROVIDER" } as any)
 
     // Balance is R$212.50 — withdrawal of R$200 should succeed
-    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 250 } })
-    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
+    mockComputeProviderBalance.mockResolvedValue({ available: new DecimalJS("212.5") })
     mockDb.walletTransaction.create.mockResolvedValue({
       id: "wth-002",
       amount: 200,

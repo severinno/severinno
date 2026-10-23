@@ -6,20 +6,20 @@
 
 | Camada             | Ferramenta                       | Escopo                                  |
 | ------------------ | -------------------------------- | --------------------------------------- |
-| **Unitários**      | Vitest 3.x                       | API routes, libs, hooks                 |
+| **Unitários**      | Vitest 5.x                       | API routes, libs, hooks                 |
 | **Componentes**    | Vitest + jsdom + Testing Library | React components                        |
 | **E2E**            | Playwright                       | Fluxos críticos (cache, auth, bookings) |
 | **Acessibilidade** | `vitest-axe`                     | Componentes de UI                       |
 
 ```
-Total: 4.564 unitários | 207 E2E
+Total: 10.891 casos (medido em 22/10/2026) | 207 E2E
 ```
 
 ## Estrutura de Arquivos
 
 ```
 src/
-  app/api/__tests__/          ← 55 test files for 124 API route files (148 handlers)
+  app/api/__tests__/          ← 137 test files for 249 API route files (266 handlers)
   components/*/__tests__/      ← Co-located with components
   lib/__tests__/               ← Tests for utility modules
   lib/__tests__/helpers/       ← Shared test utilities (createMockRequest, parseResponse)
@@ -30,11 +30,16 @@ e2e/                           ← Playwright E2E specs
 
 ## ⚠️ Known Vitest Quirks
 
-### 1. `vi.clearAllMocks()` RESETA `mockResolvedValue`/`mockReturnValue`
+### 1. `vi.clearAllMocks()` e implementações de mock (histórico — re-verificado no Vitest 5)
 
-**Comportamento observado no `vitest@3.2.7`:** (versão atual do projeto — reavaliar após upgrade)
+**Já NÃO se reproduz no `vitest@5.0.4` (a versão atual do projeto).**
+Re-verificado em 22/10/2026: `vi.clearAllMocks()` limpa só a call history e
+`mockResolvedValue`/`mockReturnValue` **sobrevivem** — o `resetDbMocks()` deixou de
+ser obrigatório (os arquivos que o usam continuam corretos, porque reatribuir a prop
+do objeto mock compartilhado é uma forma válida de reset).
 
-A documentação do Vitest diz que `vi.clearAllMocks()` equivale a `mockClear()` (que só limpa call history, não implementações). **Na prática, ele também reseta `mockResolvedValue` e `mockReturnValue`**, fazendo os mocks retornarem `undefined`.
+O registro abaixo é do `vitest@3.2.7`, onde o comportamento DIVERGIA da doc: `clearAllMocks()`
+também resetava as implementações, fazendo os mocks retornarem `undefined`.
 
 ```typescript
 // ❌ NÃO funciona — mock retorna undefined após clearAllMocks:
@@ -48,7 +53,7 @@ it("test", async () => {
 })
 ```
 
-**Solução:** Recriar os mocks com `vi.fn()` fresco no `beforeEach`, em vez de usar `vi.clearAllMocks()`:
+**Solução (à época, no 3.x):** recriar os mocks com `vi.fn()` fresco no `beforeEach`, em vez de usar `vi.clearAllMocks()`:
 
 ```typescript
 // ✅ Funciona — substitui a prop no objeto mock compartilhado:
@@ -76,7 +81,7 @@ it("test", async () => {
 > Reatribuir `db.booking.findUnique = vi.fn()` no `beforeEach` é visto pela rota porque
 > é o mesmo objeto em memória.
 
-**Arquivos afetados no projeto:**
+**Arquivos que adotaram o padrão (histórico):**
 
 | Arquivo                                              | Padrão usado                                                                                  |
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------- |

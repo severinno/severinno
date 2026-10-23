@@ -57,6 +57,7 @@ const mockDb = vi.hoisted(() => ({
   walletTransaction: {
     findMany: vi.fn(),
   },
+  $queryRaw: vi.fn(),
 }))
 
 vi.mock("@/lib/db", () => ({ db: mockDb }))
@@ -73,12 +74,16 @@ vi.mock("@/lib/logger", () => ({
 
 import { GET } from "../provider/wallet/route"
 import { callRoute } from "@/lib/__tests__/helpers/api-test-utils"
+import { queryRawFromFindMany } from "@/lib/__tests__/helpers/wallet-balance-mock"
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe("GET /api/provider/wallet", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Saldo vem de agregação SQL: deriva a linha das fixtures de findMany
+    // para os testes seguirem verificando o PAYLOAD (não o SQL).
+    mockDb.$queryRaw.mockImplementation(queryRawFromFindMany(mockDb))
   })
 
   it("returns simulated wallet with correct balance from COMPLETED bookings", async () => {

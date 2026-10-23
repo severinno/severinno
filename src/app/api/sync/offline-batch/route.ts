@@ -1,35 +1,49 @@
-import { NextRequest, NextResponse } from "next/server"
+export const dynamic = "force-dynamic"
 
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json()
-    const { items } = body
+import { NextResponse } from "next/server"
 
-    if (!Array.isArray(items)) {
-      return NextResponse.json(
-        { error: "Payload inválido: 'items' deve ser um array de ações offline" },
-        { status: 400 },
-      )
-    }
+import { requireUser } from "@/lib/auth"
+import { forbidden } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { withRoute } from "@/lib/api-route"
+import {
+  applyOfflineEvidenceBatch,
+  offlineEvidenceBatchSchema,
+  type OfflineSyncBatchResult,
+} from "@/lib/offline-evidence-sync"
 
-    const results = items.map((item: { id: string; type: string; bookingId: string }) => {
-      // Simulação atômica de processamento por item
-      return {
-        id: item.id,
-        bookingId: item.bookingId,
-        type: item.type,
-        status: "SYNCED",
-        syncedAt: new Date().toISOString(),
-      }
-    })
+/**
+ * POST /api/sync/offline-batch
+ *
+ * Sincroniza o lote de evidências que o prestador acumulou no PWA sem sinal
+ * (check-in, fotos antes/depois, assinatura). Grava em `OfflineEvidence` com
+ * idempotência por `externalId`.
+ *
+ * Contrato de resposta (consumido por `useOfflineSync`):
+ *   { processed, succeeded, failed, remainingPending, syncedIds, errors[] }
+ *
+ * Antes: a rota devolvia `{ success, processed, synced }` sem persistir nada.
+ * O hook lia `syncedIds` (inexistente) e a fila local nunca era limpa — o
+ * prestador perdia a prova de campo sem mensagem de erro.
+ *
+ * Requer sessão de PROVIDER (ou ADMIN). O `providerId` NUNCA vem do body.
+ */
+export const POST = withRoute("api.sync.offline-batch.POST", async (request) => {
+  await assertRateLimit(request, RATE_LIMITS.general)
 
-    return NextResponse.json({
-      success: true,
-      processed: results.length,
-      synced: results,
-    })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Erro ao processar lote offline"
-    return NextResponse.json({ error: message }, { status: 500 })
+  const session = await requireUser()
+  if (session.role !== "PROVIDER" && session.role !== "ADMIN") {
+    throw forbidden("Apenas prestadores podem sincronizar evidências offline")
   }
-}
+
+  const body = await request.json()
+  // ZodError → 400 pelo withRoute (handleError).
+  const { items } = offlineEvidenceBatchSchema.parse(body)
+
+  const result: OfflineSyncBatchResult = await applyOfflineEvidenceBatch({
+    providerId: session.userId,
+    items,
+  })
+
+  return NextResponse.json(result)
+})

@@ -5,9 +5,13 @@ Instrumentação User Timing (Performance API) do clique de paginação
 detectar regressões futuras comparando medições como-como (mesmo ambiente,
 mesmo método — NÃO comparar com produção).
 
-Medido em: 2026-10-05 · ambiente: dev Next.js :3100 (bundle de desenvolvimento,
-não-minificado) · dataset: seed Governador Valadares, 415 prestadores, 47
-páginas de 9 · navegador Chromium via Playwright (guard de CI, 3 rodadas).
+Medido em: **2026-10-22** (re-ancoragem) · ambiente: dev Next.js :3100 (bundle de
+desenvolvimento, não-minificado) · dataset: `scripts/seed-vitrine-baseline.ts`,
+**415 prestadores visíveis**, 47 páginas de 9 (determinístico e idempotente) ·
+navegador Chromium via Playwright (guard de CI, 1 ato). O primeiro ato, de
+2026-10-05, usou a seed aleatória de Governador Valadares no mesmo total de 415
+visíveis e outro host (medianas menores: 80ms no clique, 217ms no seek); a régua
+compara **como-como** (mesmo ambiente e dataset), nunca com produção.
 
 ## O que é medido
 
@@ -51,14 +55,19 @@ performance
 
 ## Baseline medido
 
-| Regime                                                        | Nome da medida            | duração observada                                                                            | n   |
-| ------------------------------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------- | --- |
-| Clique, cache quente, nada em voo                             | `vitrine:pagina:render`   | **35.7 – 131.9 ms** (mediana ≈ 80 ms)                                                        | 15  |
-| Clique, cache quente + fetch em voo                           | `vitrine:pagina:render`   | ~204 ms observado (tail da rede; janela rara por design — 0 amostras nas 3 rodadas do guard) | 1   |
-| Caminhada rápida (6 cliques na cadência do botão, por rodada) | `vitrine:pagina:render`   | 27.5 – 131.9 ms por clique, 1 página por clique (o 1º absorve a rota fria do dev)            | 18  |
-| Walk reverso (Anterior, deep-link sem âncora de N-1; p1→p2)   | `vitrine:walk:render`     | **178.1 – 307.4 ms** (mediana ≈ 211 ms)                                                      | 3   |
-| Pouso do deep-link por seek direto (`?pagina=N&cursor=X`)     | `vitrine:deeplink:render` | **195.0 – 266.6 ms** (cold — inclui o seek; mediana ≈ 217 ms)                                | 9   |
-| Pouso do deep-link com walk interno (`?pagina=4`, 3 páginas)  | `vitrine:deeplink:render` | **365.0 – 409.1 ms** (mediana ≈ 374 ms)                                                      | 3   |
+Ato de 22/10/2026 — 2 rodadas do guard contra o dataset determinístico (seek
+327.6 / 339.0 ms). A tabela publica as amostras da rodada `--json`; o clique de
+AQUECIMENTO fica FORA: ele existe para absorver a rota/fetch frios do dev e não
+é amostra (no runner ele chegava a 1905ms e virava reprovação do limite de
+clique único — a janela que o aquecimento deveria absorver).
+
+| Regime                                                       | Nome da medida            | duração observada                                         | n   |
+| ------------------------------------------------------------ | ------------------------- | --------------------------------------------------------- | --- |
+| Clique, cache quente, nada em voo (5 amostras; aquec. fora)  | `vitrine:pagina:render`   | **44.3 – 158.0 ms** (mediana ≈ 134.8 ms)                  | 5   |
+| Clique, cache quente + fetch em voo                          | `vitrine:pagina:render`   | 0 amostras no ato (tail da rede; janela rara por design)  | 0   |
+| Walk reverso (Anterior no pouso do seek, sem âncora de N-1)  | `vitrine:walk:render`     | **283.0 ms** (1 página de walk)                           | 1   |
+| Pouso do deep-link por seek direto (`?pagina=N&cursor=X`)    | `vitrine:deeplink:render` | **326.9 – 354.2 ms** (contexto JS frio; mediana ≈ 328 ms) | 3   |
+| Pouso do deep-link com walk interno (`?pagina=4`, 3 páginas) | `vitrine:deeplink:render` | **529.8 ms** (≈ 176.6 ms/página de walk)                  | 1   |
 
 Por que o clique é quase sempre `warm`: o prefetch da página seguinte dispara
 na chegada de cada página (e o hover/focus/touch revalida o cache vencido
@@ -70,17 +79,46 @@ tail (`inFlight`) ou na revalidação pós-clique em background.
 Comparar SEMPRE em dev :3100, mesma seed, mediana de ≥ 3 amostras por
 regime:
 
+**Re-ancorados em 22/10/2026, os limiares NÃO mudaram.** O ato novo mediu
+dentro deles com folga (warm 113.5 ≤ 250; seek 328 ≤ 800; walk 283 ≤ 800;
+walk-interno 529.8 para 3 páginas ≤ 750), então apertá-los ou afrouxá-los com
+1 ato de um dataset novo seria trocar o gate por ruído de máquina — o gate mede
+REGRESSÃO relativa, não o absoluto do host.
+
 - `vitrine:pagina:render` warm mediana **> 250 ms** → investigar (o
-  observado é 35.7 – 131.9 ms, mediana ≈ 80 ms; pioras relativas importam
+  observado é 44.3 – 158.0 ms, mediana ≈ 134.8 ms; pioras relativas importam
   mais que absolutos)
 - `inFlight: true` ou cold **> 800 ms** → investigar (o fetch de uma página
   em dev responde em ~15–25 ms server-side; o tail é client)
 - `vitrine:walk:render` **> 800 ms** por página de walk (o observado é
-  ~211 ms/página, mediana de 3 rodadas; escala linearmente com o número de
-  páginas encadeadas)
+  283 ms para 1 página; escala linearmente com o número de páginas
+  encadeadas)
 - `vitrine:deeplink:render` seek **> 800 ms**; com walk interno **>
-  250 ms × páginas de walk** (o observado é ~125 ms/página: 365 – 409 ms
+  250 ms × páginas de walk** (o observado é ~176.6 ms/página: 529.8 ms
   para 3 páginas)
+
+### Perfil de CI (`VITRINE_PROFILE=ci`)
+
+O limite absoluto acima pressupõe o host onde a régua foi medida. O runner
+self-hosted é 2–4x mais lento no render de dev (a API responde em **25–65ms** —
+o custo é o React development, não o banco), e rodar os limites de dev lá
+reprova CAPACIDADE do host, não regressão: medido em 22/10/2026 (run
+39887356364), seek **833ms** (mediana) e walk-interno **1740ms para 3 páginas**
+sem nenhuma mudança de código. As pipelines usam o perfil `ci`, com os MESMOS
+regimes ancorados nessa medição e folga de 1,5–3x — o gate continua pegando uma
+piora de 2x, que é a que importa:
+
+| Regime                   |   Dev |     CI |
+| ------------------------ | ----: | -----: |
+| warm mediana             | 250ms |  500ms |
+| clique único             | 800ms | 1200ms |
+| walk reverso por página  | 800ms | 1000ms |
+| deep-link seek (mediana) | 800ms | 1800ms |
+| walk interno por página  | 250ms | 1000ms |
+
+O perfil é escolhido por `VITRINE_PROFILE` (`dev` é o default; valor
+desconhecido é erro de uso, exit 3). Rodar localmente continua julgando pela
+régua de dev; o `--json` publica `perfil` e os limiares aplicados.
 
 ## Guard de CI
 
@@ -91,11 +129,19 @@ script é a fonte canônica dos números, e o teste de simetria
 este doc e o script divergem: reajustar um limiar é mudar os DOIS lados no
 mesmo commit.
 
+O **dataset** do guard é versionado e determinístico:
+`scripts/seed-vitrine-baseline.ts` garante **415 prestadores visíveis** (47
+páginas de 9) — a seed base (`prisma/seed.ts`) cria 6 de demonstração, uma única
+página. O script é idempotente: apaga só os prestadores que ele mesmo criou
+(prefixo de e-mail reservado) e completa a diferença, então duas rodadas medem o
+mesmo catálogo. Sem ele o guard morre no locator `Próxima` antes de medir.
+
 O guard roda a rotina completa contra um dev server real e coleta as measures
 pelo mesmo caminho do DevTools (`performance.getEntriesByType("measure")`):
 
-- **Clique quente** — 1 clique de aquecimento (absorve a rota fria do dev) +
-  5 cliques em Próxima; mediana dos warm ≤ 250 ms, qualquer clique ≤ 800 ms.
+- **Clique quente** — 1 clique de aquecimento (absorve a rota fria do dev e
+  NÃO entra no veredito) + 5 cliques em Próxima; mediana dos warm ≤ 250 ms,
+  qualquer clique amostrado ≤ 800 ms.
 - **Deep-link seek** — a URL de p3 capturada durante a caminhada, reaberta em
   3 contextos JS frios; mediana ≤ 800 ms.
 - **Walk reverso** — Anterior no pouso do seek (sem âncora de p2): ≤ 800 ms ×
@@ -108,7 +154,8 @@ com exit 1; ambiente não respondendo (server fora do ar, browser
 indisponível) é exit 2. Local:
 
 ```sh
-# dev :3100 com a seed de 415 prestadores rodando + Chromium do Playwright
+# dev :3100 com o dataset de 415 visíveis (script acima) + Chromium do Playwright
+bun scripts/seed-vitrine-baseline.ts
 bun run check:vitrine-pagination-baseline
 ```
 

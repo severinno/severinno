@@ -9,6 +9,7 @@ const mockDb = vi.hoisted(() => ({
   walletTransaction: {
     findMany: vi.fn(),
   },
+  $queryRaw: vi.fn(),
 }))
 
 vi.mock("@/lib/db", () => ({ db: mockDb }))
@@ -24,6 +25,7 @@ vi.mock("@/lib/logger", () => ({
 // ── Imports ────────────────────────────────────────────────────────────────
 
 import { GET } from "../provider/wallet/history/export/route"
+import { queryRawFromFindMany } from "@/lib/__tests__/helpers/wallet-balance-mock"
 
 // ── Mock data ──────────────────────────────────────────────────────────────
 
@@ -72,6 +74,7 @@ const mockWithdrawals = [
 describe("GET /api/provider/wallet/history/export", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockDb.$queryRaw.mockImplementation(queryRawFromFindMany(mockDb))
   })
 
   it("returns CSV with correct Content-Type and Content-Disposition", async () => {

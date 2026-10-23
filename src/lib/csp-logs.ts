@@ -65,7 +65,7 @@ export function parseCspLogs(raw: string): Violation[] {
 function rolloutFor(directive: string, count: number): string {
   if (count === 0) return "ok"
   if (directive === "script-src")
-    return "blocker: violação de script-src vira execução bloqueada no enforce — investigar origem antes de remover CSP_REPORT_ONLY"
+    return "blocker: violação de script-src vira execução bloqueada no enforce — investigar a origem antes de sair da observação (CSP_REPORT_ONLY=1)"
   if (directive === "object-src" || directive === "base-uri" || directive === "frame-ancestors")
     return "blocker: diretriz bloqueante com violação — esperado apenas em tentativa de exploração; validar se origem é legítima"
   return "tolerável no enforce (diretriz não-bloqueante, ex. img/style/connect): avaliar allowlist antes de enforcar para não degradar UX"
@@ -193,9 +193,9 @@ export function aggregateCspViolations(
     blockingViolations: blocking,
     topBlockedSources: topEntries(byBlocked).map(([blockedUri, count]) => ({ blockedUri, count })),
     topDocuments: topEntries(byDocument).map(([documentUri, count]) => ({ documentUri, count })),
-    // Critério do plano de rollout: zero violações bloqueantes ⇒ pode tirar
-    // CSP_REPORT_ONLY (avançar para enforce). Qualquer blocker ⇒ permanecer
-    // em observação e investigar por diretriz/origem acima.
+    // Critério do plano de rollout: zero violações bloqueantes ⇒ pode MANTER
+    // o default (enforce). Qualquer blocker ⇒ voltar à observação
+    // (CSP_REPORT_ONLY=1) e investigar por diretriz/origem acima.
     rollout: {
       readyToEnforce: blocking.length === 0,
       blockingCount: blocking.reduce((acc, b) => acc + b.count, 0),

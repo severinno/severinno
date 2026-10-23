@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { join } from "node:path"
-import { buildCsp, generateCspNonce, CSP_NONCE_HEADER } from "@/lib/csp"
+import { buildCsp, generateCspNonce, isCspReportOnly, CSP_NONCE_HEADER } from "@/lib/csp"
 
 /** Hash pinnado na CSP para o <style> do global-error (style-src-elem). */
 const GLOBAL_ERROR_STYLE_HASH = "eqW5FnLZ2T07K7f5xhzEJOVJru1NKj1t3pH4q2urlAE="
@@ -80,6 +80,16 @@ describe("buildCsp", () => {
       isProduction: true,
     })
     expect(header).toBe("Content-Security-Policy")
+  })
+
+  it("regex de report-only: NÃO existe padrão de observação sem opt-in", () => {
+    // Regressão do parecer 10/2026: o default era Report-Only, então a CSP
+    // "estrita" não bloqueava nada em produção. O default agora é enforce.
+    expect(isCspReportOnly({})).toBe(false)
+    expect(isCspReportOnly({ CSP_REPORT_ONLY: "0" })).toBe(false)
+    expect(isCspReportOnly({ CSP_REPORT_ONLY: "1" })).toBe(true)
+    // CSP_ENFORCE vence qualquer env herdada.
+    expect(isCspReportOnly({ CSP_ENFORCE: "1", CSP_REPORT_ONLY: "1" })).toBe(false)
   })
 
   it("mantém diretrizes de endurecimento existentes", () => {

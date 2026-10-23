@@ -144,15 +144,15 @@ Lições da prova: o token precisa dos escopos **`write:user,write:issue,write:r
 
 ## 🔒 5. Segurança & Variáveis Críticas
 
-| Variável               | Descrição                                             | Importância |
-| ---------------------- | ----------------------------------------------------- | :---------: |
-| `DATABASE_URL`         | String de conexão via PgBouncer                       | 🔴 Crítico  |
-| `SESSION_SECRET`       | Chave de assinatura de cookies HMAC (32+ caracteres)  | 🔴 Crítico  |
-| `CRON_SECRET`          | Bearer token para execução de crons externas          | 🔴 Crítico  |
-| `LYTEX_API_TOKEN`      | Token da API de pagamentos Lytex                      | 🔴 Crítico  |
-| `LYTEX_WEBHOOK_SECRET` | Segredo de validação de assinatura do webhook         | 🔴 Crítico  |
-| `CSP_REPORT_ONLY`      | `1` (default) = CSP em modo observação; `0` = enforce | 🟡 Rollout  |
-| `CSP_ENFORCE`          | Kill-switch para enforce imediato (prioridade máxima) | 🟡 Rollout  |
+| Variável               | Descrição                                            | Importância |
+| ---------------------- | ---------------------------------------------------- | :---------: |
+| `DATABASE_URL`         | String de conexão via PgBouncer                      | 🔴 Crítico  |
+| `SESSION_SECRET`       | Chave de assinatura de cookies HMAC (32+ caracteres) | 🔴 Crítico  |
+| `CRON_SECRET`          | Bearer token para execução de crons externas         | 🔴 Crítico  |
+| `LYTEX_API_TOKEN`      | Token da API de pagamentos Lytex                     | 🔴 Crítico  |
+| `LYTEX_WEBHOOK_SECRET` | Segredo de validação de assinatura do webhook        | 🔴 Crítico  |
+| `CSP_REPORT_ONLY`      | Ausente/`0` (default) = enforce; `1` = observação    | 🟡 Rollout  |
+| `CSP_ENFORCE`          | Força enforce mesmo com `CSP_REPORT_ONLY=1`          | 🟡 Rollout  |
 
 ---
 
@@ -166,27 +166,28 @@ Lições da prova: o token precisa dos escopos **`write:user,write:issue,write:r
 
 ### 6.1 Os três estágios
 
-| Estágio                                 | Envs do container `app`                 | Efeito                                                                                                              |
-| --------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| **1. Observação** (default em produção) | `CSP_REPORT_ONLY=1` (ou ausente)        | Header `Content-Security-Policy-Report-Only`: violações são reportadas a `/api/csp-report` mas **nada é bloqueado** |
-| **2. Enforce com kill-switch**          | `CSP_ENFORCE=1`                         | Header `Content-Security-Policy`: bloqueia de verdade. Remover `CSP_ENFORCE` volta à observação na hora             |
-| **3. Estável**                          | `CSP_REPORT_ONLY=0` (sem `CSP_ENFORCE`) | Enforce como estado permanente no compose                                                                           |
+| Estágio                    | Envs do container `app`          | Efeito                                                                                                           |
+| -------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| **1. Enforce** (default)   | nenhuma (ou `CSP_REPORT_ONLY=0`) | Header `Content-Security-Policy`: **bloqueia** violações. O deploy nasce protegido                               |
+| **2. Observação** (opt-in) | `CSP_REPORT_ONLY=1`              | Header `Content-Security-Policy-Report-Only`: violações vão para `/api/csp-report` e **nada é bloqueado**        |
+| **3. Enforce forçado**     | `CSP_ENFORCE=1`                  | Bloqueia mesmo com `CSP_REPORT_ONLY=1` herdado — kill-switch de volta ao enforce sem depender de limpar o `.env` |
 
-`CSP_ENFORCE` tem **prioridade** sobre `CSP_REPORT_ONLY` (ver `proxy.ts`).
+`CSP_ENFORCE` tem **prioridade** sobre `CSP_REPORT_ONLY` (decisão em
+`isCspReportOnly`, `src/lib/csp.ts`, coberta por `csp.test.ts`).
 
 ### 6.2 Como trocar de estágio
 
 ```bash
 # Na VPS, no diretório do compose de produção:
 
-# → Estágio 2 (enforce com kill-switch):
-#   export CSP_ENFORCE=1 ANTES do compose up (o compose lê do shell/.env)
+# → Observação (opt-in, para investigar uma violação sem bloquear usuários):
+sudo bash -c 'export CSP_REPORT_ONLY=1 && docker compose -f docker-compose.prod.yml up -d app'
+
+# KILL-SWITCH (voltar ao enforce em segundos, sem novo deploy):
+#   CSP_ENFORCE=1 vence o CSP_REPORT_ONLY herdado do shell/.env
 sudo bash -c 'export CSP_ENFORCE=1 && docker compose -f docker-compose.prod.yml up -d app'
 
-# KILL-SWITCH (voltar à observação em segundos, sem novo deploy):
-sudo bash -c 'unset CSP_ENFORCE && docker compose -f docker-compose.prod.yml up -d app'
-
-# → Estágio 3 (estável): editar .env do host com CSP_REPORT_ONLY=0 e subir:
+# → Default (enforce): remover as duas variáveis do .env e subir:
 sudo docker compose -f docker-compose.prod.yml up -d app
 
 # Confirmar qual header está saindo:

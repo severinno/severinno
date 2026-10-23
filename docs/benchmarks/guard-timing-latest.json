@@ -3,98 +3,62 @@
     "tool": "bench-guard-timing",
     "version": 7,
     "anchor": "carrier",
-    "parentCommit": "ee3cde3d",
-    "commitDate": "2026-10-07 20:46:21 -0300",
-    "timestamp": "2026-10-07T23:47:01.149Z",
-    "act": "bench-guard-timing --only mutations --json",
-    "nodeVersion": "v20.20.2",
+    "parentCommit": "2ad99c83",
+    "commitDate": "2026-10-22 20:25:06 -0300",
+    "timestamp": "2026-10-22T23:25:23.473Z",
+    "act": "bench-guard-timing --json --baseline --merge",
+    "nodeVersion": "v24.11.0",
     "platform": "linux",
     "arch": "x64",
     "cpus": 16,
     "totalMemMb": 32011,
-    "reused": {
-      "lint": {
-        "source": "guard-timing-baseline.json",
-        "commit": "c03df7dd",
-        "commitDate": "2026-10-05 22:08:45 -0300",
-        "timestamp": "2026-10-06T03:01:51.444Z",
-        "missingInOrigin": null
-      },
-      "typecheck": {
-        "source": "guard-timing-baseline.json",
-        "commit": "c03df7dd",
-        "commitDate": "2026-10-05 22:08:45 -0300",
-        "timestamp": "2026-10-06T03:01:51.444Z",
-        "missingInOrigin": null
-      },
-      "tests": {
-        "source": "guard-timing-baseline.json",
-        "commit": "c03df7dd",
-        "commitDate": "2026-10-05 22:08:45 -0300",
-        "timestamp": "2026-10-06T03:01:51.444Z",
-        "missingInOrigin": null
-      },
-      "hook": {
-        "source": "guard-timing-baseline.json",
-        "commit": "c03df7dd",
-        "commitDate": "2026-10-05 22:08:45 -0300",
-        "timestamp": "2026-10-06T03:01:51.444Z",
-        "missingInOrigin": null
-      },
-      "battery": {
-        "source": "guard-timing-baseline.json",
-        "commit": "c03df7dd",
-        "commitDate": "2026-10-05 22:08:45 -0300",
-        "timestamp": "2026-10-06T03:01:51.444Z",
-        "missingInOrigin": null
-      }
-    },
+    "reused": {},
     "families": {
       "battery": {
-        "act": "reused",
-        "commit": "c03df7dd",
-        "commitDate": "2026-10-05 22:08:45 -0300",
-        "timestamp": "2026-10-06T03:01:51.444Z",
-        "source": "guard-timing-baseline.json",
-        "missingInOrigin": null
+        "act": "measured",
+        "commit": null,
+        "commitDate": "2026-10-22 20:25:06 -0300",
+        "timestamp": "2026-10-22T23:25:23.473Z",
+        "source": null,
+        "missingInOrigin": []
       },
       "lint": {
-        "act": "reused",
-        "commit": "c03df7dd",
-        "commitDate": "2026-10-05 22:08:45 -0300",
-        "timestamp": "2026-10-06T03:01:51.444Z",
-        "source": "guard-timing-baseline.json",
-        "missingInOrigin": null
+        "act": "measured",
+        "commit": null,
+        "commitDate": "2026-10-22 20:25:06 -0300",
+        "timestamp": "2026-10-22T23:25:23.473Z",
+        "source": null,
+        "missingInOrigin": []
       },
       "typecheck": {
-        "act": "reused",
-        "commit": "c03df7dd",
-        "commitDate": "2026-10-05 22:08:45 -0300",
-        "timestamp": "2026-10-06T03:01:51.444Z",
-        "source": "guard-timing-baseline.json",
-        "missingInOrigin": null
+        "act": "measured",
+        "commit": null,
+        "commitDate": "2026-10-22 20:25:06 -0300",
+        "timestamp": "2026-10-22T23:25:23.473Z",
+        "source": null,
+        "missingInOrigin": []
       },
       "tests": {
-        "act": "reused",
-        "commit": "c03df7dd",
-        "commitDate": "2026-10-05 22:08:45 -0300",
-        "timestamp": "2026-10-06T03:01:51.444Z",
-        "source": "guard-timing-baseline.json",
-        "missingInOrigin": null
+        "act": "measured",
+        "commit": null,
+        "commitDate": "2026-10-22 20:25:06 -0300",
+        "timestamp": "2026-10-22T23:25:23.473Z",
+        "source": null,
+        "missingInOrigin": []
       },
       "hook": {
-        "act": "reused",
-        "commit": "c03df7dd",
-        "commitDate": "2026-10-05 22:08:45 -0300",
-        "timestamp": "2026-10-06T03:01:51.444Z",
-        "source": "guard-timing-baseline.json",
-        "missingInOrigin": null
+        "act": "measured",
+        "commit": null,
+        "commitDate": "2026-10-22 20:25:06 -0300",
+        "timestamp": "2026-10-22T23:25:23.473Z",
+        "source": null,
+        "missingInOrigin": []
       },
       "mutations": {
         "act": "measured",
         "commit": null,
-        "commitDate": "2026-10-07 20:46:21 -0300",
-        "timestamp": "2026-10-07T23:47:01.149Z",
+        "commitDate": "2026-10-22 20:25:06 -0300",
+        "timestamp": "2026-10-22T23:25:23.473Z",
         "source": null,
         "missingInOrigin": []
       }
@@ -103,7 +67,7 @@
       "state": "measured",
       "clean": false,
       "staged": [],
-      "unstaged": ["deploy/Caddyfile", "scripts/check-workflow-run-syntax.mjs"],
+      "unstaged": ["docs/parecer-varredura-camadas-2026-10-22.md"],
       "declared": [
         {
           "path": ".forge-doctor/",
@@ -139,10 +103,15 @@
     "formOrigin": {
       "state": "measured",
       "judged": 49,
-      "notJudged": 0,
+      "notJudged": 32,
       "semResposta": 0,
       "missing": [],
       "families": {
+        "battery": [],
+        "lint": [],
+        "typecheck": [],
+        "tests": [],
+        "hook": [],
         "mutations": []
       },
       "reason": null
@@ -150,150 +119,150 @@
   },
   "summary": {
     "guardsCount": 18,
-    "guardsTotalMs": 26766,
-    "doctorMs": 4167,
+    "guardsTotalMs": 47435,
+    "doctorMs": 11336,
     "doctorExit": 2,
-    "totalMs": 30933,
-    "lintAddedPerSiteMs": 24622,
-    "lintAddedPerFanOutMs": 98488,
-    "typecheckMs": 27279,
-    "typecheckAddedPerFanOutMs": 1208,
-    "testsMs": 159481,
+    "totalMs": 58771,
+    "lintAddedPerSiteMs": 36382,
+    "lintAddedPerFanOutMs": 145528,
+    "typecheckMs": 37612,
+    "typecheckAddedPerFanOutMs": 18652,
+    "testsMs": 288440,
     "testsAddedPerFanOutMs": null,
-    "hookOfferComumMs": 1,
-    "hookEsperaMs": 0,
-    "hookOfferFalhaMs": 147,
-    "hookRevalidacaoMs": 68,
-    "hookDetectionMs": 318,
+    "hookOfferComumMs": 0,
+    "hookEsperaMs": -1,
+    "hookOfferFalhaMs": 150,
+    "hookRevalidacaoMs": 65,
+    "hookDetectionMs": 2471,
     "mutationSubtests": 49,
-    "mutationSubtestsMs": 1116781,
-    "mutationHarnessMs": 6396,
-    "mutationTotalMs": 1123177
+    "mutationSubtestsMs": 992307,
+    "mutationHarnessMs": 5345,
+    "mutationTotalMs": 997652
   },
   "guards": [
     {
       "label": "check:required-checks",
       "cmd": "bun run check:required-checks",
-      "ms": 43,
+      "ms": 41,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:script-headers",
       "cmd": "node scripts/check-script-headers.mjs",
-      "ms": 77,
+      "ms": 98,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:prove-docs",
       "cmd": "bun run check:prove-docs",
-      "ms": 15578,
+      "ms": 28525,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:registry-source",
       "cmd": "bun run check:registry-source",
-      "ms": 2036,
+      "ms": 2481,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:doctor-ci",
       "cmd": "bun scripts/check-doctor-ci.mjs",
-      "ms": 4033,
+      "ms": 11404,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:runner-base",
       "cmd": "bun run check:runner-base",
-      "ms": 1142,
+      "ms": 1022,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:workflow-refs",
       "cmd": "bun run check:workflow-refs:internal",
-      "ms": 107,
+      "ms": 106,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:ts-nocheck",
       "cmd": "bun run check:ts-nocheck",
-      "ms": 46,
+      "ms": 52,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:forge-workflow-scope",
       "cmd": "bun run check:forge-workflow-scope",
-      "ms": 139,
+      "ms": 158,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:forge-parity",
       "cmd": "bun run check:forge-parity",
-      "ms": 75,
+      "ms": 74,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:bun-audit",
       "cmd": "bun run check:bun-audit-baseline",
-      "ms": 363,
-      "exit": 0,
-      "ok": true
+      "ms": 490,
+      "exit": 1,
+      "ok": false
     },
     {
       "label": "check:secret-leaks",
       "cmd": "bun scripts/rotate-secrets.mjs --check",
-      "ms": 43,
+      "ms": 54,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:seed-hooks",
       "cmd": "bun run check:seed-hooks",
-      "ms": 73,
+      "ms": 68,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:sentinel-producer",
       "cmd": "bun run check:sentinel-producer",
-      "ms": 86,
+      "ms": 76,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:bun-mirror",
       "cmd": "bun run check:bun-mirror",
-      "ms": 257,
+      "ms": 274,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:no-setup-bun",
       "cmd": "bun run check:no-setup-bun",
-      "ms": 75,
+      "ms": 69,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:hooks-symmetry",
       "cmd": "bun scripts/check-hooks-symmetry.mjs",
-      "ms": 16,
+      "ms": 25,
       "exit": 0,
       "ok": true
     },
     {
       "label": "runner-image:prove",
       "cmd": "node scripts/prove-runner-image-gate.mjs",
-      "ms": 2577,
+      "ms": 2418,
       "exit": 0,
       "ok": true
     }
@@ -301,50 +270,50 @@
   "doctor": {
     "label": "doctor --ci",
     "cmd": "node scripts/forge-doctor.mjs --ci --json --expected 1.3.14 --expected-var IMAGE_REGISTRY=git.severinno.com --expected-var IMAGE_NAMESPACE=severinno",
-    "ms": 4167,
+    "ms": 11336,
     "exit": 2,
     "ok": true
   },
   "lint": {
     "canonicalCmd": "bun run lint",
     "legacyCmd": "bunx eslint .",
-    "prettierCmd": "bunx prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'",
+    "prettierCmd": "bunx prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' 'e2e/**' 'prisma/**' 'ci/**' 'deploy/**' 'monitoring/**' 'loadtest/**' 'agent-ctx/**' 'types/**' 'config/**' 'examples/**' 'k6/**' 'mini-services/**' 'public/**' 'secrets/**' 'osrm-data/**' '.github/**' '.gitea/**' '*.json' '*.ts' '*.mjs' '*.cjs' '*.js' '*.md' '*.yml' '.prettierrc'",
     "samplesPerForm": 2,
     "forms": [
       {
         "role": "current",
         "label": "lint (par completo — hoje)",
         "cmd": "bun run lint",
-        "ms": 57892,
-        "minMs": 57856,
-        "maxMs": 57892,
+        "ms": 84399,
+        "minMs": 81211,
+        "maxMs": 84399,
         "runs": [
           {
-            "ms": 57856,
-            "exit": 0
+            "ms": 84399,
+            "exit": 1
           },
           {
-            "ms": 57892,
-            "exit": 0
+            "ms": 81211,
+            "exit": 1
           }
         ],
-        "exit": 0,
-        "ok": true
+        "exit": 1,
+        "ok": false
       },
       {
         "role": "legacy",
         "label": "lint (regua anterior — contrafactual)",
         "cmd": "bunx eslint .",
-        "ms": 33270,
-        "minMs": 33244,
-        "maxMs": 33270,
+        "ms": 48017,
+        "minMs": 47491,
+        "maxMs": 48017,
         "runs": [
           {
-            "ms": 33270,
+            "ms": 47491,
             "exit": 0
           },
           {
-            "ms": 33244,
+            "ms": 48017,
             "exit": 0
           }
         ],
@@ -354,17 +323,17 @@
       {
         "role": "added-half",
         "label": "prettier --check (a metade nova)",
-        "cmd": "bunx prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'",
-        "ms": 24297,
-        "minMs": 24232,
-        "maxMs": 24297,
+        "cmd": "bunx prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' 'e2e/**' 'prisma/**' 'ci/**' 'deploy/**' 'monitoring/**' 'loadtest/**' 'agent-ctx/**' 'types/**' 'config/**' 'examples/**' 'k6/**' 'mini-services/**' 'public/**' 'secrets/**' 'osrm-data/**' '.github/**' '.gitea/**' '*.json' '*.ts' '*.mjs' '*.cjs' '*.js' '*.md' '*.yml' '.prettierrc'",
+        "ms": 44437,
+        "minMs": 36749,
+        "maxMs": 44437,
         "runs": [
           {
-            "ms": 24232,
+            "ms": 36749,
             "exit": 0
           },
           {
-            "ms": 24297,
+            "ms": 44437,
             "exit": 0
           }
         ],
@@ -411,11 +380,11 @@
       }
     ],
     "upgradedSites": 4,
-    "addedPerSiteMs": 24622,
-    "addedHalfMs": 24297,
-    "attributionPct": 0.0134,
-    "attributionMatches": true,
-    "addedPerFanOutMs": 98488,
+    "addedPerSiteMs": 36382,
+    "addedHalfMs": 44437,
+    "attributionPct": 0.1813,
+    "attributionMatches": false,
+    "addedPerFanOutMs": 145528,
     "violations": []
   },
   "rulers": {
@@ -433,12 +402,12 @@
           "role": "current",
           "label": "typecheck (script, hoje)",
           "cmd": "bun run typecheck",
-          "ms": 27279,
-          "minMs": 27279,
-          "maxMs": 27279,
+          "ms": 37612,
+          "minMs": 37612,
+          "maxMs": 37612,
           "runs": [
             {
-              "ms": 27279,
+              "ms": 37612,
               "exit": 0
             }
           ],
@@ -449,12 +418,12 @@
           "role": "legacy-inline",
           "label": "typecheck (heap inline — contrafactual)",
           "cmd": "NODE_OPTIONS=--max-old-space-size=4096 bunx tsc --noEmit",
-          "ms": 26977,
-          "minMs": 26977,
-          "maxMs": 26977,
+          "ms": 32949,
+          "minMs": 32949,
+          "maxMs": 32949,
           "runs": [
             {
-              "ms": 26977,
+              "ms": 32949,
               "exit": 0
             }
           ],
@@ -465,12 +434,12 @@
           "role": "legacy-bare",
           "label": "typecheck (SEM heap — a regua do hook)",
           "cmd": "bunx tsc --noEmit",
-          "ms": 27209,
-          "minMs": 27209,
-          "maxMs": 27209,
+          "ms": 32494,
+          "minMs": 32494,
+          "maxMs": 32494,
           "runs": [
             {
-              "ms": 27209,
+              "ms": 32494,
               "exit": 0
             }
           ],
@@ -478,7 +447,7 @@
           "ok": true
         }
       ],
-      "canonicalMs": 27279,
+      "canonicalMs": 37612,
       "sites": [
         {
           "file": ".github/workflows/ci.yml",
@@ -530,14 +499,14 @@
         "hasBare": false
       },
       "heapDeclaredOutside": [],
-      "nodeHeapLimitMb": 4144,
+      "nodeHeapLimitMb": 4288,
       "legacyBareExit": 0,
-      "legacyBareMs": 27209,
+      "legacyBareMs": 32494,
       "legacyBareCompleted": true,
-      "addedPerSiteMs": 302,
-      "addedPerFanOutMs": 1208,
+      "addedPerSiteMs": 4663,
+      "addedPerFanOutMs": 18652,
       "violations": [],
-      "whatItAdded": "+0.3s por call site (4 workflows) — o MESMO comando com o MESMO heap: a unificacao moveu o VALOR, nao o trabalho. No hook .husky/pre-push o acrescentado foi o HEAP: o heap default do node nesta maquina (4144MB) ja e >= os 4096MB do script, entao a regua SEM o heap completou aqui (exit 0): o 134 do runner NAO se reproduz nesta maquina — INDETERMINADO, nao \"nao existe\"."
+      "whatItAdded": "+4.7s por call site (4 workflows) de trabalho novo. No hook .husky/pre-push o acrescentado foi o HEAP: o heap default do node nesta maquina (4288MB) ja e >= os 4096MB do script, entao a regua SEM o heap completou aqui (exit 0): o 134 do runner NAO se reproduz nesta maquina — INDETERMINADO, nao \"nao existe\"."
     },
     "tests": {
       "invariant": "tests",
@@ -553,12 +522,12 @@
           "role": "current",
           "label": "suite completa (hoje: test:run)",
           "cmd": "bun run test:run",
-          "ms": 159481,
-          "minMs": 159481,
-          "maxMs": 159481,
+          "ms": 288440,
+          "minMs": 288440,
+          "maxMs": 288440,
           "runs": [
             {
-              "ms": 159481,
+              "ms": 288440,
               "exit": 1
             }
           ],
@@ -569,12 +538,12 @@
           "role": "added-half",
           "label": "suite de src/components (a metade nova)",
           "cmd": "bunx vitest run src/components",
-          "ms": 17531,
-          "minMs": 17531,
-          "maxMs": 17531,
+          "ms": 54335,
+          "minMs": 54335,
+          "maxMs": 54335,
           "runs": [
             {
-              "ms": 17531,
+              "ms": 54335,
               "exit": 0
             }
           ],
@@ -582,7 +551,7 @@
           "ok": true
         }
       ],
-      "canonicalMs": 159481,
+      "canonicalMs": 288440,
       "legacyMs": null,
       "sites": [
         {
@@ -612,12 +581,12 @@
       ],
       "upgradedSites": 1,
       "addedPerSiteMs": null,
-      "addedHalfMs": 17531,
+      "addedHalfMs": 54335,
       "attributionPct": null,
       "attributionMatches": null,
       "addedPerFanOutMs": null,
       "violations": [],
-      "whatItAdded": "a regua anterior NAO foi medida nesta rodada, entao o DELTA no call site que upgrade (1) fica INDETERMINADO. O que a unificacao acrescentou de ESCOPO esta medido: a suite `src/components/**`, que a regua anterior EXCLUIA, medida em +17.5s isolada."
+      "whatItAdded": "a regua anterior NAO foi medida nesta rodada, entao o DELTA no call site que upgrade (1) fica INDETERMINADO. O que a unificacao acrescentou de ESCOPO esta medido: a suite `src/components/**`, que a regua anterior EXCLUIA, medida em +54.3s isolada."
     }
   },
   "hook": {
@@ -636,20 +605,20 @@
         "fonte": "hoje",
         "label": "hoje — índice ok (o caminho comum)",
         "expect": "zero",
-        "ms": 77,
-        "minMs": 76,
-        "maxMs": 78,
+        "ms": 75,
+        "minMs": 75,
+        "maxMs": 76,
         "runs": [
           {
             "ms": 76,
             "exit": 0
           },
           {
-            "ms": 77,
+            "ms": 75,
             "exit": 0
           },
           {
-            "ms": 78,
+            "ms": 75,
             "exit": 0
           }
         ],
@@ -663,20 +632,20 @@
         "fonte": "sem-oferta",
         "label": "sem a oferta — índice ok (contrafactual)",
         "expect": "zero",
-        "ms": 76,
-        "minMs": 76,
-        "maxMs": 78,
+        "ms": 75,
+        "minMs": 74,
+        "maxMs": 76,
         "runs": [
           {
             "ms": 76,
             "exit": 0
           },
           {
-            "ms": 78,
+            "ms": 74,
             "exit": 0
           },
           {
-            "ms": 76,
+            "ms": 75,
             "exit": 0
           }
         ],
@@ -690,20 +659,20 @@
         "fonte": "agregada",
         "label": "sintaxe AGREGADA ao wait_all — índice ok (contrafactual)",
         "expect": "zero",
-        "ms": 77,
-        "minMs": 76,
-        "maxMs": 78,
+        "ms": 76,
+        "minMs": 75,
+        "maxMs": 81,
         "runs": [
           {
+            "ms": 75,
+            "exit": 0
+          },
+          {
+            "ms": 81,
+            "exit": 0
+          },
+          {
             "ms": 76,
-            "exit": 0
-          },
-          {
-            "ms": 77,
-            "exit": 0
-          },
-          {
-            "ms": 78,
             "exit": 0
           }
         ],
@@ -717,20 +686,20 @@
         "fonte": "hoje",
         "label": "hoje — defeito no índice (fail-closed, sem terminal)",
         "expect": "non-zero",
-        "ms": 221,
-        "minMs": 220,
-        "maxMs": 224,
+        "ms": 225,
+        "minMs": 224,
+        "maxMs": 230,
         "runs": [
           {
-            "ms": 220,
-            "exit": 1
-          },
-          {
-            "ms": 221,
+            "ms": 225,
             "exit": 1
           },
           {
             "ms": 224,
+            "exit": 1
+          },
+          {
+            "ms": 230,
             "exit": 1
           }
         ],
@@ -744,20 +713,20 @@
         "fonte": "sem-oferta",
         "label": "sem a oferta — defeito no índice (contrafactual)",
         "expect": "non-zero",
-        "ms": 74,
-        "minMs": 74,
-        "maxMs": 74,
+        "ms": 75,
+        "minMs": 72,
+        "maxMs": 76,
         "runs": [
           {
-            "ms": 74,
+            "ms": 76,
             "exit": 1
           },
           {
-            "ms": 74,
+            "ms": 72,
             "exit": 1
           },
           {
-            "ms": 74,
+            "ms": 75,
             "exit": 1
           }
         ],
@@ -774,12 +743,12 @@
         "env": {
           "REMEDY_STUB": "0"
         },
-        "ms": 142,
-        "minMs": 142,
-        "maxMs": 144,
+        "ms": 140,
+        "minMs": 139,
+        "maxMs": 142,
         "runs": [
           {
-            "ms": 144,
+            "ms": 139,
             "exit": 1
           },
           {
@@ -787,7 +756,7 @@
             "exit": 1
           },
           {
-            "ms": 142,
+            "ms": 140,
             "exit": 1
           }
         ],
@@ -797,15 +766,15 @@
       }
     ],
     "deltas": {
-      "ofertaComumMs": 1,
-      "esperaMs": 0,
-      "ofertaFalhaMs": 147,
-      "revalidacaoMs": 68
+      "ofertaComumMs": 0,
+      "esperaMs": -1,
+      "ofertaFalhaMs": 150,
+      "revalidacaoMs": 65
     },
     "detection": {
       "cmd": "node scripts/pre-commit-remedy.mjs",
       "promptOff": "PRE_COMMIT_REMEDY_NO_PROMPT=1",
-      "ms": 318,
+      "ms": 2471,
       "exit": 0,
       "completou": true,
       "veredito": "nada a remendar neste commit",
@@ -814,25 +783,25 @@
     },
     "violations": [],
     "whatItAdded": [
-      "caminho COMUM (as duas fases passam): +1ms por commit — a oferta NÃO é alcançada quando nada reprova (o `if` não abre)",
-      "espera SEPARADA do gate de sintaxe vs agregada no `wait_all`: 0ms — as duas esperam o MESMO conjunto, então a diferença é a estrutura da espera",
-      "caminho de FALHA (defeito no índice): a oferta custa +147ms — fail-closed, sem terminal ela não pergunta nem remenda",
-      "depois de um remédio VERDE, as fases que estavam VERMELHAS são rodadas de novo e custam +68ms (aqui só o gate de sintaxe estava vermelho: a fase A passa e a fase B é dublada no fixture)",
-      "detecção contra a ÁRVORE REAL: 318ms (\"nada a remendar neste commit\") — e não escreveu nada"
+      "caminho COMUM (as duas fases passam): 0ms por commit — a oferta NÃO é alcançada quando nada reprova (o `if` não abre)",
+      "espera SEPARADA do gate de sintaxe vs agregada no `wait_all`: -1ms — as duas esperam o MESMO conjunto, então a diferença é a estrutura da espera",
+      "caminho de FALHA (defeito no índice): a oferta custa +150ms — fail-closed, sem terminal ela não pergunta nem remenda",
+      "depois de um remédio VERDE, as fases que estavam VERMELHAS são rodadas de novo e custam +65ms (aqui só o gate de sintaxe estava vermelho: a fase A passa e a fase B é dublada no fixture)",
+      "detecção contra a ÁRVORE REAL: 2.5s (\"nada a remendar neste commit\") — e não escreveu nada"
     ]
   },
   "mutations": {
     "measured": true,
     "cmd": "bash scripts/test-mutation-guards.sh --json",
     "exit": 1,
-    "wallMs": 1123216,
+    "wallMs": 997707,
     "subtests": 49,
     "metades": 293,
     "forms": [
       {
         "role": "bun-literal",
         "label": "bun-literal",
-        "ms": 1983,
+        "ms": 1798,
         "exit": 0,
         "metades": 5,
         "ok": true,
@@ -841,12 +810,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 1983,
+        "ms1": 1798,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 1983,
+            "ms": 1798,
             "exit": 0,
             "ok": true
           }
@@ -855,7 +824,7 @@
       {
         "role": "bun-removal",
         "label": "bun-removal",
-        "ms": 124,
+        "ms": 115,
         "exit": 0,
         "metades": 1,
         "ok": true,
@@ -864,12 +833,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 124,
+        "ms1": 115,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 124,
+            "ms": 115,
             "exit": 0,
             "ok": true
           }
@@ -878,7 +847,7 @@
       {
         "role": "hooks-symmetry",
         "label": "hooks-symmetry",
-        "ms": 107,
+        "ms": 95,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -887,12 +856,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 107,
+        "ms1": 95,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 107,
+            "ms": 95,
             "exit": 0,
             "ok": true
           }
@@ -901,7 +870,7 @@
       {
         "role": "readme",
         "label": "readme",
-        "ms": 414,
+        "ms": 368,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -910,12 +879,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 414,
+        "ms1": 368,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 414,
+            "ms": 368,
             "exit": 0,
             "ok": true
           }
@@ -924,7 +893,7 @@
       {
         "role": "readme-reverse",
         "label": "readme-reverse",
-        "ms": 644,
+        "ms": 561,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -933,12 +902,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 644,
+        "ms1": 561,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 644,
+            "ms": 561,
             "exit": 0,
             "ok": true
           }
@@ -947,7 +916,7 @@
       {
         "role": "docs-anchor",
         "label": "docs-anchor",
-        "ms": 89,
+        "ms": 65,
         "exit": 0,
         "metades": 1,
         "ok": true,
@@ -956,12 +925,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 89,
+        "ms1": 65,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 89,
+            "ms": 65,
             "exit": 0,
             "ok": true
           }
@@ -970,7 +939,7 @@
       {
         "role": "producer-sent",
         "label": "producer-sent",
-        "ms": 121,
+        "ms": 112,
         "exit": 0,
         "metades": 1,
         "ok": true,
@@ -979,12 +948,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 121,
+        "ms1": 112,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 121,
+            "ms": 112,
             "exit": 0,
             "ok": true
           }
@@ -993,7 +962,7 @@
       {
         "role": "mutation-jobs",
         "label": "mutation-jobs",
-        "ms": 443,
+        "ms": 393,
         "exit": 0,
         "metades": 4,
         "ok": true,
@@ -1002,12 +971,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 443,
+        "ms1": 393,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 443,
+            "ms": 393,
             "exit": 0,
             "ok": true
           }
@@ -1016,7 +985,7 @@
       {
         "role": "workflow-refs",
         "label": "workflow-refs",
-        "ms": 535,
+        "ms": 460,
         "exit": 0,
         "metades": 4,
         "ok": true,
@@ -1025,12 +994,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 535,
+        "ms1": 460,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 535,
+            "ms": 460,
             "exit": 0,
             "ok": true
           }
@@ -1039,7 +1008,7 @@
       {
         "role": "utf8-scope",
         "label": "utf8-scope",
-        "ms": 124,
+        "ms": 106,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -1048,12 +1017,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 124,
+        "ms1": 106,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 124,
+            "ms": 106,
             "exit": 0,
             "ok": true
           }
@@ -1062,7 +1031,7 @@
       {
         "role": "timing-budget",
         "label": "timing-budget",
-        "ms": 733,
+        "ms": 662,
         "exit": 0,
         "metades": 5,
         "ok": true,
@@ -1071,12 +1040,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 733,
+        "ms1": 662,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 733,
+            "ms": 662,
             "exit": 0,
             "ok": true
           }
@@ -1085,7 +1054,7 @@
       {
         "role": "e2e-cache-budget",
         "label": "e2e-cache-budget",
-        "ms": 7,
+        "ms": 6,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -1094,12 +1063,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 7,
+        "ms1": 6,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 7,
+            "ms": 6,
             "exit": 0,
             "ok": true
           }
@@ -1108,7 +1077,7 @@
       {
         "role": "lint-guard",
         "label": "lint-guard",
-        "ms": 930,
+        "ms": 732,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1117,12 +1086,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 930,
+        "ms1": 732,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 930,
+            "ms": 732,
             "exit": 0,
             "ok": true
           }
@@ -1131,7 +1100,7 @@
       {
         "role": "mutation-count",
         "label": "mutation-count",
-        "ms": 14730,
+        "ms": 12481,
         "exit": 0,
         "metades": 19,
         "ok": true,
@@ -1140,12 +1109,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 14730,
+        "ms1": 12481,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 14730,
+            "ms": 12481,
             "exit": 0,
             "ok": true
           }
@@ -1154,7 +1123,7 @@
       {
         "role": "no-setup-bun",
         "label": "no-setup-bun",
-        "ms": 257,
+        "ms": 205,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -1163,12 +1132,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 257,
+        "ms1": 205,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 257,
+            "ms": 205,
             "exit": 0,
             "ok": true
           }
@@ -1177,7 +1146,7 @@
       {
         "role": "runner-base",
         "label": "runner-base",
-        "ms": 230,
+        "ms": 210,
         "exit": 0,
         "metades": 4,
         "ok": true,
@@ -1186,12 +1155,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 230,
+        "ms1": 210,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 230,
+            "ms": 210,
             "exit": 0,
             "ok": true
           }
@@ -1200,7 +1169,7 @@
       {
         "role": "runner-labels",
         "label": "runner-labels",
-        "ms": 5492,
+        "ms": 4453,
         "exit": 0,
         "metades": 1,
         "ok": true,
@@ -1209,12 +1178,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 5492,
+        "ms1": 4453,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 5492,
+            "ms": 4453,
             "exit": 0,
             "ok": true
           }
@@ -1223,7 +1192,7 @@
       {
         "role": "no-leaked-imports",
         "label": "no-leaked-imports",
-        "ms": 161,
+        "ms": 125,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1232,12 +1201,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 161,
+        "ms1": 125,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 161,
+            "ms": 125,
             "exit": 0,
             "ok": true
           }
@@ -1246,7 +1215,7 @@
       {
         "role": "reconciliation",
         "label": "reconciliation",
-        "ms": 10010,
+        "ms": 7072,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1255,12 +1224,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 10010,
+        "ms1": 7072,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 10010,
+            "ms": 7072,
             "exit": 0,
             "ok": true
           }
@@ -1269,7 +1238,7 @@
       {
         "role": "nested-guard",
         "label": "nested-guard",
-        "ms": 22061,
+        "ms": 19906,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -1278,12 +1247,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 22061,
+        "ms1": 19906,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 22061,
+            "ms": 19906,
             "exit": 0,
             "ok": true
           }
@@ -1292,7 +1261,7 @@
       {
         "role": "pipefail-sigpipe",
         "label": "pipefail-sigpipe",
-        "ms": 2437,
+        "ms": 2109,
         "exit": 0,
         "metades": 22,
         "ok": true,
@@ -1301,12 +1270,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 2437,
+        "ms1": 2109,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 2437,
+            "ms": 2109,
             "exit": 0,
             "ok": true
           }
@@ -1315,7 +1284,7 @@
       {
         "role": "hook-ci-parity",
         "label": "hook-ci-parity",
-        "ms": 4861,
+        "ms": 3638,
         "exit": 0,
         "metades": 9,
         "ok": true,
@@ -1324,12 +1293,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 4861,
+        "ms1": 3638,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 4861,
+            "ms": 3638,
             "exit": 0,
             "ok": true
           }
@@ -1338,7 +1307,7 @@
       {
         "role": "hook-commands",
         "label": "hook-commands",
-        "ms": 70147,
+        "ms": 58935,
         "exit": 0,
         "metades": 27,
         "ok": true,
@@ -1347,12 +1316,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 70147,
+        "ms1": 58935,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 70147,
+            "ms": 58935,
             "exit": 0,
             "ok": true
           }
@@ -1361,7 +1330,7 @@
       {
         "role": "workflow-defaults",
         "label": "workflow-defaults",
-        "ms": 1078,
+        "ms": 1069,
         "exit": 0,
         "metades": 7,
         "ok": true,
@@ -1370,12 +1339,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 1078,
+        "ms1": 1069,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 1078,
+            "ms": 1069,
             "exit": 0,
             "ok": true
           }
@@ -1384,7 +1353,7 @@
       {
         "role": "workflow-run-syntax",
         "label": "workflow-run-syntax",
-        "ms": 90668,
+        "ms": 100353,
         "exit": 0,
         "metades": 15,
         "ok": true,
@@ -1393,12 +1362,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 90668,
+        "ms1": 100353,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 90668,
+            "ms": 100353,
             "exit": 0,
             "ok": true
           }
@@ -1407,35 +1376,30 @@
       {
         "role": "merge-latency",
         "label": "merge-latency",
-        "ms": 1780,
-        "exit": 1,
+        "ms": 4333,
+        "exit": 0,
         "metades": 5,
-        "ok": false,
+        "ok": true,
         "infra": false,
         "script": "scripts/test-mutation-merge-latency.sh",
-        "tentativas": 2,
-        "exit1": 1,
-        "exit2": 1,
-        "ms1": 902,
-        "ms2": 878,
+        "tentativas": 1,
+        "exit1": 0,
+        "exit2": null,
+        "ms1": 4333,
+        "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 902,
-            "exit": 1,
-            "ok": false
-          },
-          {
-            "ms": 878,
-            "exit": 1,
-            "ok": false
+            "ms": 4333,
+            "exit": 0,
+            "ok": true
           }
         ]
       },
       {
         "role": "registry-defaults",
         "label": "registry-defaults",
-        "ms": 30306,
+        "ms": 27944,
         "exit": 0,
         "metades": 9,
         "ok": true,
@@ -1444,12 +1408,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 30306,
+        "ms1": 27944,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 30306,
+            "ms": 27944,
             "exit": 0,
             "ok": true
           }
@@ -1458,7 +1422,7 @@
       {
         "role": "job-deps",
         "label": "job-deps",
-        "ms": 223006,
+        "ms": 222964,
         "exit": 0,
         "metades": 12,
         "ok": true,
@@ -1467,12 +1431,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 223006,
+        "ms1": 222964,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 223006,
+            "ms": 222964,
             "exit": 0,
             "ok": true
           }
@@ -1481,7 +1445,7 @@
       {
         "role": "remedy-tty",
         "label": "remedy-tty",
-        "ms": 38827,
+        "ms": 36952,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -1490,12 +1454,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 38827,
+        "ms1": 36952,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 38827,
+            "ms": 36952,
             "exit": 0,
             "ok": true
           }
@@ -1504,7 +1468,7 @@
       {
         "role": "canal-fixers",
         "label": "canal-fixers",
-        "ms": 10247,
+        "ms": 7893,
         "exit": 0,
         "metades": 6,
         "ok": true,
@@ -1513,12 +1477,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 10247,
+        "ms1": 7893,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 10247,
+            "ms": 7893,
             "exit": 0,
             "ok": true
           }
@@ -1527,7 +1491,7 @@
       {
         "role": "required-applied",
         "label": "required-applied",
-        "ms": 22123,
+        "ms": 19301,
         "exit": 0,
         "metades": 10,
         "ok": true,
@@ -1536,12 +1500,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 22123,
+        "ms1": 19301,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 22123,
+            "ms": 19301,
             "exit": 0,
             "ok": true
           }
@@ -1550,7 +1514,7 @@
       {
         "role": "gate-registration",
         "label": "gate-registration",
-        "ms": 9246,
+        "ms": 8105,
         "exit": 0,
         "metades": 5,
         "ok": true,
@@ -1559,12 +1523,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 9246,
+        "ms1": 8105,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 9246,
+            "ms": 8105,
             "exit": 0,
             "ok": true
           }
@@ -1573,7 +1537,7 @@
       {
         "role": "archived-pipeline",
         "label": "archived-pipeline",
-        "ms": 953,
+        "ms": 731,
         "exit": 0,
         "metades": 6,
         "ok": true,
@@ -1582,12 +1546,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 953,
+        "ms1": 731,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 953,
+            "ms": 731,
             "exit": 0,
             "ok": true
           }
@@ -1596,7 +1560,7 @@
       {
         "role": "doc-hashes",
         "label": "doc-hashes",
-        "ms": 2624,
+        "ms": 2078,
         "exit": 0,
         "metades": 9,
         "ok": true,
@@ -1605,12 +1569,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 2624,
+        "ms1": 2078,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 2624,
+            "ms": 2078,
             "exit": 0,
             "ok": true
           }
@@ -1619,7 +1583,7 @@
       {
         "role": "github-deps",
         "label": "github-deps",
-        "ms": 15797,
+        "ms": 13912,
         "exit": 0,
         "metades": 9,
         "ok": true,
@@ -1628,12 +1592,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 15797,
+        "ms1": 13912,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 15797,
+            "ms": 13912,
             "exit": 0,
             "ok": true
           }
@@ -1642,7 +1606,7 @@
       {
         "role": "cut-stages",
         "label": "cut-stages",
-        "ms": 22499,
+        "ms": 18141,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1651,12 +1615,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 22499,
+        "ms1": 18141,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 22499,
+            "ms": 18141,
             "exit": 0,
             "ok": true
           }
@@ -1665,7 +1629,7 @@
       {
         "role": "mirror-coverage",
         "label": "mirror-coverage",
-        "ms": 14698,
+        "ms": 10418,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1674,12 +1638,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 14698,
+        "ms1": 10418,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 14698,
+            "ms": 10418,
             "exit": 0,
             "ok": true
           }
@@ -1688,7 +1652,7 @@
       {
         "role": "pre-commit-proof",
         "label": "pre-commit-proof",
-        "ms": 362713,
+        "ms": 292465,
         "exit": 0,
         "metades": 3,
         "ok": true,
@@ -1697,12 +1661,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 362713,
+        "ms1": 292465,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 362713,
+            "ms": 292465,
             "exit": 0,
             "ok": true
           }
@@ -1711,7 +1675,7 @@
       {
         "role": "bench-freshness",
         "label": "bench-freshness",
-        "ms": 2505,
+        "ms": 2398,
         "exit": 1,
         "metades": 12,
         "ok": false,
@@ -1720,17 +1684,17 @@
         "tentativas": 2,
         "exit1": 1,
         "exit2": 1,
-        "ms1": 1311,
-        "ms2": 1194,
+        "ms1": 1196,
+        "ms2": 1202,
         "flake": false,
         "runs": [
           {
-            "ms": 1311,
+            "ms": 1196,
             "exit": 1,
             "ok": false
           },
           {
-            "ms": 1194,
+            "ms": 1202,
             "exit": 1,
             "ok": false
           }
@@ -1739,7 +1703,7 @@
       {
         "role": "stack-per-commit",
         "label": "stack-per-commit",
-        "ms": 11389,
+        "ms": 8782,
         "exit": 0,
         "metades": 8,
         "ok": true,
@@ -1748,12 +1712,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 11389,
+        "ms1": 8782,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 11389,
+            "ms": 8782,
             "exit": 0,
             "ok": true
           }
@@ -1762,7 +1726,7 @@
       {
         "role": "lint-scope",
         "label": "lint-scope",
-        "ms": 11919,
+        "ms": 10705,
         "exit": 0,
         "metades": 6,
         "ok": true,
@@ -1771,12 +1735,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 11919,
+        "ms1": 10705,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 11919,
+            "ms": 10705,
             "exit": 0,
             "ok": true
           }
@@ -1785,7 +1749,7 @@
       {
         "role": "act-origin",
         "label": "act-origin",
-        "ms": 2496,
+        "ms": 2322,
         "exit": 0,
         "metades": 9,
         "ok": true,
@@ -1794,12 +1758,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 2496,
+        "ms1": 2322,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 2496,
+            "ms": 2322,
             "exit": 0,
             "ok": true
           }
@@ -1808,7 +1772,7 @@
       {
         "role": "commit-import-exports",
         "label": "commit-import-exports",
-        "ms": 599,
+        "ms": 540,
         "exit": 0,
         "metades": 5,
         "ok": true,
@@ -1817,12 +1781,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 599,
+        "ms1": 540,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 599,
+            "ms": 540,
             "exit": 0,
             "ok": true
           }
@@ -1831,7 +1795,7 @@
       {
         "role": "runner-tag",
         "label": "runner-tag",
-        "ms": 3286,
+        "ms": 2779,
         "exit": 0,
         "metades": 1,
         "ok": true,
@@ -1840,12 +1804,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 3286,
+        "ms1": 2779,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 3286,
+            "ms": 2779,
             "exit": 0,
             "ok": true
           }
@@ -1854,7 +1818,7 @@
       {
         "role": "local-image",
         "label": "local-image",
-        "ms": 52060,
+        "ms": 39378,
         "exit": 0,
         "metades": 4,
         "ok": true,
@@ -1863,12 +1827,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 52060,
+        "ms1": 39378,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 52060,
+            "ms": 39378,
             "exit": 0,
             "ok": true
           }
@@ -1877,7 +1841,7 @@
       {
         "role": "artefatos-do-hook",
         "label": "artefatos-do-hook",
-        "ms": 37584,
+        "ms": 33267,
         "exit": 0,
         "metades": 4,
         "ok": true,
@@ -1886,12 +1850,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 37584,
+        "ms1": 33267,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 37584,
+            "ms": 33267,
             "exit": 0,
             "ok": true
           }
@@ -1900,7 +1864,7 @@
       {
         "role": "caddy-validate",
         "label": "caddy-validate",
-        "ms": 5810,
+        "ms": 5868,
         "exit": 0,
         "metades": 2,
         "ok": true,
@@ -1909,12 +1873,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 5810,
+        "ms1": 5868,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 5810,
+            "ms": 5868,
             "exit": 0,
             "ok": true
           }
@@ -1923,7 +1887,7 @@
       {
         "role": "mutacao-prova",
         "label": "mutacao-prova",
-        "ms": 497,
+        "ms": 417,
         "exit": 0,
         "metades": 6,
         "ok": true,
@@ -1932,12 +1896,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 497,
+        "ms1": 417,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 497,
+            "ms": 417,
             "exit": 0,
             "ok": true
           }
@@ -1946,7 +1910,7 @@
       {
         "role": "unproven-skipped",
         "label": "unproven-skipped",
-        "ms": 5431,
+        "ms": 4585,
         "exit": 0,
         "metades": 4,
         "ok": true,
@@ -1955,12 +1919,12 @@
         "tentativas": 1,
         "exit1": 0,
         "exit2": null,
-        "ms1": 5431,
+        "ms1": 4585,
         "ms2": null,
         "flake": false,
         "runs": [
           {
-            "ms": 5431,
+            "ms": 4585,
             "exit": 0,
             "ok": true
           }
@@ -1968,26 +1932,26 @@
       }
     ],
     "deltas": {
-      "subtestsMs": 1116781,
-      "harnessMs": 6396,
-      "totalMs": 1123177,
-      "wallMs": 1123216,
-      "proximoSubtestProjetadoMs": 22922,
+      "subtestsMs": 992307,
+      "harnessMs": 5345,
+      "totalMs": 997652,
+      "wallMs": 997707,
+      "proximoSubtestProjetadoMs": 20360,
       "maisCaro": "pre-commit-proof",
-      "maisCaroMs": 362713,
-      "medianaMs": 2624
+      "maisCaroMs": 292465,
+      "medianaMs": 2779
     },
-    "tentativas": 51,
+    "tentativas": 50,
     "flakes": [],
     "infra": [],
     "violations": [
-      "sub-test(s) que NÃO passaram no master: merge-latency (exit 1), bench-freshness (exit 1) — o custo deles não julga nada (um sub-test que morre no meio tem o tempo do pedaço que rodou)"
+      "sub-test(s) que NÃO passaram no master: bench-freshness (exit 1) — o custo deles não julga nada (um sub-test que morre no meio tem o tempo do pedaço que rodou)"
     ],
     "whatItAdded": [
-      "MEDIDO, sub-test a sub-test: 49 sub-test(s) · 293 metade(s) · 1116.8s de sub-tests + 6.4s de harness = 1123.2s",
-      "o mais caro: pre-commit-proof (362.7s) · a mediana: 2.6s",
-      "o PRÓXIMO sub-test acrescenta ~22.9s (PROJEÇÃO: a média dos scripts medidos + o harness por sub-test) — e entra MEDIDO na primeira rodada que o tiver, sem conta à mão",
-      "↺ 2 forma(s) RE-MEDIDA(s): merge-latency, bench-freshness — o vermelho REPETIU na 2ª tentativa (é da árvore, não do ambiente), e o ms publicado soma as duas"
+      "MEDIDO, sub-test a sub-test: 49 sub-test(s) · 293 metade(s) · 992.3s de sub-tests + 5.3s de harness = 997.7s",
+      "o mais caro: pre-commit-proof (292.5s) · a mediana: 2.8s",
+      "o PRÓXIMO sub-test acrescenta ~20.4s (PROJEÇÃO: a média dos scripts medidos + o harness por sub-test) — e entra MEDIDO na primeira rodada que o tiver, sem conta à mão",
+      "↺ 1 forma(s) RE-MEDIDA(s): bench-freshness — o vermelho REPETIU na 2ª tentativa (é da árvore, não do ambiente), e o ms publicado soma as duas"
     ],
     "metadesDaMatriz": {
       "total": 293,

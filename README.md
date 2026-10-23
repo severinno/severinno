@@ -11,7 +11,7 @@
     <img src="https://github.com/severinno/severinno/actions/workflows/e2e-cache.yml/badge.svg" alt="E2E Cache">
   </a>
   <img src="https://img.shields.io/badge/utf8--check-837%20files%20%E2%9C%85-2ea44f" alt="UTF-8: 837 files">
-  <img src="https://img.shields.io/badge/tests-4.564%20unit%20%7C%20realtime%20e2e%204%2F4%20%E2%9C%85-2ea44f" alt="Tests: 4.564 unit | realtime E2E 4/4">
+  <img src="https://img.shields.io/badge/tests-10.891%20unit%20%7C%20realtime%20e2e%204%2F4%20%E2%9C%85-2ea44f" alt="Tests: 10.891 unit | realtime E2E 4/4">
   <img src="https://img.shields.io/badge/encoding%20guards-8%2F8%20active%20%E2%9C%85-2ea44f" alt="Encoding guards: 8/8 active">
 </p>
 
@@ -89,7 +89,7 @@ does not exist`). Ajustes locais vão em `.env.local` (gitignored).
 ```
 ┌─────────────┐     ┌──────────────┐     ┌──────────────┐
 │   Browser    │────▶│  Next.js 16  │────▶│  API Routes  │
-│  (React SPA) │     │  (Server)    │     │ (124 rotas)  │
+│  (React SPA) │     │  (Server)    │     │ (249 rotas)  │
 └─────────────┘     └──────┬───────┘     └──────┬───────┘
                            │                    │
                     ┌──────▼───────┐     ┌──────▼───────┐
@@ -195,7 +195,7 @@ Requer download de dados OSRM do Brasil (~600MB). Veja [documentação OSRM](htt
 | `provider.*` | Provider panel — services, agenda, finances, messages          |
 | `admin.*`    | Admin panel — users, services, taxonomy, settings              |
 
-## API Routes (124 rotas / 148 handlers)
+## API Routes (249 rotas / 266 handlers)
 
 ### Public
 
@@ -467,7 +467,7 @@ docker compose up -d app realtime postgis redis rabbitmq email-worker notificati
 
 | Documento                                                  | Descrição                                                       |
 | :--------------------------------------------------------- | :-------------------------------------------------------------- |
-| [`docs/API.md`](docs/API.md)                               | Referência completa da API REST (124 rotas / 148 handlers)      |
+| [`docs/API.md`](docs/API.md)                               | Referência completa da API REST (249 rotas / 266 handlers)      |
 | [`docs/CACHE_STRATEGY.md`](docs/CACHE_STRATEGY.md)         | Estratégia de cache em 3 camadas (Redis + HTTP + Browser)       |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)                 | Guia de deploy em produção com Docker + Caddy                   |
 | [`docs/PUSH_NOTIFICATIONS.md`](docs/PUSH_NOTIFICATIONS.md) | Sistema de push notifications (Web Push, agendamento, webhooks) |
@@ -1303,15 +1303,15 @@ depois: `escreveu: true` é violação da família, não um detalhe do log.
 **O custo do job mais caro do PR não é uma conta à mão** (família `mutations` do
 `bench-guard-timing`). O job `mutation-guards` roda 49 sub-tests, e o que CADA um
 custa é medido pelo próprio master (`--json`) e versionado sub-test a sub-test no
-registro: o ato de 08/10/2026, medido sobre `003c705d` — a âncora é o commit que CARREGA o
+registro: o ato de 22/10/2026, medido sobre `2ad99c83` — a âncora é o commit que CARREGA o
 registro, resolvida pela história —
-mediu **1101.7s** de sub-tests + **5.9s** de harness =
-**1107.6s**, com `pre-commit-proof` (326.5s, 30%), `job-deps` (221.5s, 20%), `workflow-run-syntax` (86.0s, 8%) e `hook-commands` (68.4s, 6%) no topo — antes disso
-ninguém sabia QUAL sub-test pagava a conta. A mediana é **4.0s**, dez sub-tests
-pagam **84%** da soma, e o registro guarda **293 metades**.
+mediu **992.3s** de sub-tests + **5.4s** de harness =
+**997.7s**, com `pre-commit-proof` (292.5s, 29%), `job-deps` (223.0s, 22%), `workflow-run-syntax` (100.4s, 10%) e `hook-commands` (58.9s, 6%) no topo — antes disso
+ninguém sabia QUAL sub-test pagava a conta. A mediana é **2.8s**, dez sub-tests
+pagam **86%** da soma, e o registro guarda **293 metades**.
 Quem entra com um sub-test novo não compõe nada: ele entra **MEDIDO** na rodada seguinte
-(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~22.6s**) é dita
-como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test. **LIMITE DECLARADO:** na rodada do ato, 1 sub-test(s) NÃO passaram (`doc-hashes`) — o custo deles não julga nada. E o vermelho foi RE-MEDIDO antes de virar veredito: `doc-hashes` REPETIU o vermelho na 2ª tentativa, então o ms dele é a SOMA das duas (o custo é o que o job pagou).
+(forma nova no relatório), e a projeção de quanto o PRÓXIMO acrescenta (**~20.4s**) é dita
+como **PROJEÇÃO** — a média dos scripts já medidos mais o harness por sub-test. **LIMITE DECLARADO:** na rodada do ato, 1 sub-test(s) NÃO passaram (`bench-freshness`) — o custo deles não julga nada. E o vermelho foi RE-MEDIDO antes de virar veredito: `bench-freshness` REPETIU o vermelho na 2ª tentativa, então o ms dele é a SOMA das duas (o custo é o que o job pagou).
 
 **E a régua única tem contagem, não estimativa**: das 49 suítes da matriz,
 30 **PROVAM** a aplicação — chamam `mutacao_aplicar`, a cópia única
@@ -1969,8 +1969,8 @@ o proxy local.
 
 **Overhead do job `mutation-coord-update` (seed-guards.yml, contrato coordenado)** —
 diferente do master `mutation-guards` (node-puro), este job roda o **vitest REAL
-6× (controle + 5 cenários A–E: doc prod 128→N, anchor 128→129, derivação 128→127,
-independência com piso do guard neutralizado e doc dev 162→N) + o guard estático
+6× (controle + 5 cenários A–E: doc prod 332→N, anchor 332→333, derivação 332→331,
+independência com piso do guard neutralizado e doc dev 366→N) + o guard estático
 6×**. ⚠️ A premissa antiga de "3 execuções de vitest (controle + 2 cenários)" está
 **OBSOLETA** desde o cenário E (08/2026): o contrato cresceu para 5 cenários = 6
 runs. Medido 08/2026:
@@ -2148,40 +2148,46 @@ catálogo de custos e convida a somar, mas o PR não paga a soma: ele paga o
 `bun run bench:merge-latency` mede as duas contas a partir da pipeline real
 (`.gitea/workflows/ci.yml`, `.github/workflows/pr-check.yml`) + o modelo
 `ci/merge-latency.json` (duração por job com fonte e data, confrontada contra o
-benchmark versionado). Medido em 17/09/2026:
+benchmark versionado). Medido em 22/10/2026:
 
-| Forja                                      | Soma dos gates |               Caminho crítico |                **Latência de merge** |        O que a concorrência economiza |
-| :----------------------------------------- | -------------: | ----------------------------: | -----------------------------------: | ------------------------------------: |
-| Gitea (dona do merge, **1** `act_runner`)  |         472.7s |       377.5s (`test → build`) |                           **472.7s** | 0s — com 1 runner a pipeline é SERIAL |
-| GitHub (espelho, **1** runner self-hosted) |     ≤ 11176.7s | 7200.0s (`seed-guards`, teto) | ≤ **11176.7s** (676.7s sem os TETOs) |             0s — SERIAL, como a forja |
+| Forja                                      | Soma dos gates |               Caminho crítico |                                                    **Latência de merge** |        O que a concorrência economiza |
+| :----------------------------------------- | -------------: | ----------------------------: | -----------------------------------------------------------------------: | ------------------------------------: |
+| Gitea (dona do merge, **1** `act_runner`)  |        1517.6s |             997.7s (`guards`) |                                 **1517.6s** — soma de medições, sem teto | 0s — com 1 runner a pipeline é SERIAL |
+| GitHub (espelho, **1** runner self-hosted) |     ≤ 12344.4s | 7200.0s (`seed-guards`, teto) | ≤ **12344.4s** (1844.4s sem os TETOs) — limite superior, 4 jobs por teto |             0s — SERIAL, como a forja |
 
-Ou seja: o PR da forja espera **7m52s**, e o **teto** do ganho com runners
-de sobra é **95.2s** (472.7 − 377.5) — o `build` (246s) e o `test` (131.5s)
-dominam a cadeia, e todo o resto (lint, guards, typecheck, bring-up-proof) roda
-**em paralelo a eles** quando há runner livre. Com 1 runner nada disso importa: a
-latência É a soma. É essa diferença que a tabela de custos não dizia.
+Ou seja: o PR da forja espera **25m17.6s**, e agora esse número é a soma de
+medições — o `vitrine-baseline` passou a ter duração própria (32.2s): o job
+morria no locator `Próxima` porque a seed base cria 6 prestadores (1 página) e o
+guard foi medido com 415 (47 páginas); o dataset ganhou seed versionado
+(`scripts/seed-vitrine-baseline.ts`, determinístico e idempotente) e o guard roda
+de verdade. O **teto** do ganho com runners de sobra é **519.9s**
+(1517.6 − 997.7), e quem domina a cadeia agora é o `guards` (997.7s) — a matriz
+de mutação medida dentro do job —, não mais o `build` (51.5s) nem o `test`. Com 1
+runner nada disso importa: a latência É a soma. É essa diferença que a tabela de
+custos não dizia.
 
-O espelho tem os 36 jobs do PR cobertos desde 17/09/2026 — 13 por **medição**
-neste repositório (com os comandos na fonte e a data), 2 por **PISO** (o passo
-de fora NOMEADO: `security-headers` faz requisições ao alvo do CI, que é produção;
-`benchmark-gist` depende do módulo de geo, que vive em outro branch) e 4 por
-**TETO** (`tier1-fastpath-guard`, `mutation-coord-timing-act-guard`,
-`seed-guards` e `mutation-coord-timing-guard`, cujo custo é dominado por `act`,
-PostGIS e matrix). O TETO é o `timeout-minutes` que a própria pipeline escreve no
-job: um LIMITE SUPERIOR, não uma medição — o relatório imprime os quatro
-nomeados, publica a **soma sem os tetos** ao lado e o veredito diz que a latência
-do espelho é um limite.
+O espelho cobre todos os jobs do PR no ato de 22/10/2026 — os **medidos** neste
+repositório (com os comandos na fonte e a data), os de **PISO** (o passo de fora
+NOMEADO: `security-headers` faz requisições ao alvo do CI, que é produção;
+`benchmark-gist` depende do módulo de geo; `stack-per-commit` cresce com a pilha;
+`pre-commit-in-runner-proof` soma o docker run) e os **4 TETO**
+(`tier1-fastpath-guard`, `mutation-coord-timing-act-guard`, `seed-guards` e
+`mutation-coord-timing-guard`, cujo custo é dominado por `act` e pela matrix do
+seed). O TETO é o `timeout-minutes` que a própria pipeline escreve no job: um
+LIMITE SUPERIOR, não uma medição — o relatório imprime os quatro nomeados,
+publica a **soma sem os tetos** ao lado e o veredito diz que a latência do
+espelho é um limite.
 
 **E um passo deixou de ter número próprio.** O `mutation-count-guard` do espelho é
 o primeiro job do repositório declarado por **PASSOS** (`steps`): o `setup-bun`
-(17.175s), o `install` (62ms), o `check-mutation-count` (93ms) e o `Summary`
-(98ms, um bloco) são MEDIDOS ali, e o passo da suíte —
-`bash scripts/test-mutation-mutation-count.sh` — **LÊ** a forma `mutation-count`
-da baseline versionada (3.897s, com o commit `2757e3a5` ao lado) em vez de repetir
-o número. Antes, os dois números do MESMO passo viviam separados: 3870ms no modelo
-contra 3897ms na baseline (e, na versão anterior da suíte, 155ms contra 447ms —
-**3x**), e nenhum dos dois era derivado do outro, então a divergência era
-invisível por construção. Ligado, o custo da suíte muda nos dois lugares ao mesmo
+(0ms — a camada PRE-INSTALLED da imagem, medida em 22/10), o `install` (96ms), o
+`check-mutation-count` (624ms) e o `Summary` (628ms, um bloco) são MEDIDOS ali, e
+o passo da suíte — `bash scripts/test-mutation-mutation-count.sh` — **LÊ** a forma
+`mutation-count` da baseline versionada (12.481s, com a âncora do ato `8defdfa0`
+ao lado) em vez de repetir o número. Antes, os dois números do MESMO passo viviam
+separados: 3870ms no modelo contra 3897ms na baseline (e, na versão anterior da
+suíte, 155ms contra 447ms — **3x**), e nenhum dos dois era derivado do outro,
+então a divergência era invisível por construção. Ligado, o custo da suíte muda nos dois lugares ao mesmo
 tempo (é o mesmo número), a procedência do passo nomeia a forma e o commit dela, e
 o `Summary` — que estava FORA do total declarado (21198ms = setup + install + suíte
 

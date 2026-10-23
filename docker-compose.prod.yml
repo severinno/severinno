@@ -259,10 +259,10 @@ services:
       NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-wss://severinno.com.br}
       SMTP_FROM: ${SMTP_FROM:-noreply@severinno.com.br}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@severinno.com.br}
-      # CSP: rollout começa em Report-Only (não bloqueia, só reporta para
-      # /api/csp-report). Avanço de estágio e kill-switch: docs/RUNBOOK.md § CSP.
-      # Defina CSP_REPORT_ONLY=0 no .env/shell do host quando pronto para enforce.
-      CSP_REPORT_ONLY: ${CSP_REPORT_ONLY:-1}
+      # CSP: ENFORCE por padrão (o deploy nasce bloqueando). Para observar sem
+      # bloquear durante um rollout/incidente, defina CSP_REPORT_ONLY=1 no
+      # .env/shell do host. Plano e kill-switch: docs/RUNBOOK.md § 6.
+      CSP_REPORT_ONLY: ${CSP_REPORT_ONLY:-0}
     logging: *default-logging
     deploy:
       resources:
