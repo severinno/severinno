@@ -73,8 +73,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # O LIMITE VAI NO BUILDER, NÃO NO DOCKERFILE: `NODE_OPTIONS` só limita o
+      # heap V8, e o build do Next 16 (Turbopack) aloca fora dele. Medido em
+      # 23/10/2026: o `npm run build` dentro do buildkit chegou a 14,3 GB de
+      # anon-rss num host de 15,62 GiB e o kernel disparou OOM GLOBAL
+      # (`constraint=CONSTRAINT_NONE`) matando o `next-build` — poderia ter
+      # escolhido a stack de produção. Com o buildkitd num cgroup de 8 GB, um
+      # build acima do teto morre DENTRO do próprio cgroup (exit não-zero, job
+      # vermelho, host de pé) em vez de virar OOM global.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            memory=8g
+            memory-swap=12g
 
       - name: Build image (load locally, no push)
         uses: docker/build-push-action@v6
@@ -161,6 +173,10 @@ jobs:
       # (:latest e :worker-latest) + sha para rollback.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            memory=8g
+            memory-swap=12g
 
       - name: Build app image (load no daemon da VPS)
         uses: docker/build-push-action@v6

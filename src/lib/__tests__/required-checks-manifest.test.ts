@@ -97,14 +97,20 @@ const EXPECTED_JOB_IDS: Record<string, string[]> = {
     "test",
     "vitrine-baseline",
     "build",
-    "deploy",
+    // Sem `deploy`: a entrega é do `deploy.yml` (build → fallback → migrate →
+    // deploy). O job antigo daqui rodava `docker compose` no arquivo default e
+    // morria em `no such service: realtime` em todo push na main (23/10/2026).
   ],
 }
 
 /** Jobs que de fato declaram `if:` (nível de job) em cada workflow. */
 const EXPECTED_CONDITIONAL_JOBS: Record<string, string[]> = {
   [PR_CHECK]: ["readme-reverse-strict-alert", "mutation-coord-timing-guard"],
-  [GITEA_CI]: ["deploy"],
+  // O `stack-per-commit` mede a PILHA do PR: num push para a main ela é vazia
+  // por construção e o script (fail-closed) sairia INDETERMINADO, reprovando
+  // todo push. A condição é explícita e NÃO é um contexto obrigatório — por
+  // isso ela não entra em `EXPECTED_CONTEXTS`.
+  [GITEA_CI]: ["stack-per-commit"],
 }
 
 /** Contextos de status esperados — o que o branch protection precisa exigir. */

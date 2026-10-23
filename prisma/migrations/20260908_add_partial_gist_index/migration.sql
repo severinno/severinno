@@ -5,9 +5,14 @@
 -- Este índice inclui apenas providers ativos com localização, reduzindo o
 -- tamanho do índice em ~60-80% e acelerando queries espaciais proporcionalmente.
 --
--- CONCURRENTLY evita lock de escrita na tabela durante a criação.
+-- SEM `CONCURRENTLY` (mesma razão de 20261016180000): o Prisma Migrate roda
+-- cada migration em UMA transação e `CREATE INDEX CONCURRENTLY` não roda em
+-- bloco de transação. Esta migration foi marcada como aplicada em produção SEM
+-- executar o índice (`applied_steps_count = 0`, e o índice não existe lá) — o
+-- arquivo nunca rodou de verdade; corrigi-lo é o que faz um banco zerado
+-- ganhar o índice, e é o que o guard de transação exige.
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_user_location_active_provider
+CREATE INDEX IF NOT EXISTS idx_user_location_active_provider
 ON "User" USING gist (location)
 WHERE role = 'PROVIDER'
   AND active = true
