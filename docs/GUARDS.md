@@ -4480,13 +4480,16 @@ do PR (os 19 que faltavam ganharam MEDIDO, PISO ou TETO, e a concorrência dele 
 PRONTO **com 4 jobs por TETO**: a latência publicada do espelho é um LIMITE
 SUPERIOR, e a soma sem os tetos aparece ao lado. O dono do merge, não: se ele não
 cobrir todos os jobs do PR, o número publicado mede menos pipeline do que existe.
-Cobertura é o que o dono não pode DEVER — um TETO ele pode ter, e desde 22/10/2026
-tem: o `vitrine-baseline` das DUAS forjas exige PostGIS + Redis + seed + dev
-server e não se mede de fora do runner, então entra pelo `timeout-minutes: 10`
-que a pipeline passou a declarar (limite superior NOMEADO, com a soma sem os
-tetos ao lado) em vez da estimativa de 180s que nunca se reproduziu — o job,
-medido, nem chega ao guard (a seed cria 6 prestadores e o guard exige ≥ 7
-páginas).
+Cobertura é o que o dono não pode DEVER. O `vitrine-baseline` chegou a entrar por
+TETO (`timeout-minutes: 10`) porque a medição mostrou que o job NÃO chegava ao
+guard: a seed base cria 6 prestadores (1 página de 9) e os limiares foram medidos
+com 415 (47 páginas) — o guard morria no locator `Próxima`. O teto era a válvula
+CERTA para aquele estado, e deixou de ser necessário quando o dataset ganhou seed
+versionado (`scripts/seed-vitrine-baseline.ts`, determinístico e idempotente): o
+job roda o guard de verdade e entra MEDIDO (32.2s, com as fatias medidas e o que
+ficou fora — download do Chromium, install — NOMEADO na fonte). Hoje o dono do
+merge não tem NENHUM teto: a latência publicada (1517.6s) é soma de medições; o
+espelho continua com 4.
 
 O primeiro job do repositório declarado por PASSOS é o `mutation-count-guard` do
 espelho: `setup-bun` (0ms — a camada PRE-INSTALLED da imagem do runner, medida em

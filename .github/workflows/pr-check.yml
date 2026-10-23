@@ -2945,9 +2945,9 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bunx prisma generate
 
-      # O baseline é SENSÍVEL ao dataset: os limiares foram medidos com a seed
-      # de 415 prestadores (47 páginas de 9) — sem ela o guard reprova por
-      # dados insuficientes em vez de passar com prova vazia.
+      # O baseline é SENSÍVEL ao dataset: os limiares foram medidos com 415
+      # prestadores visíveis (47 páginas de 9). Os dois seeds abaixo garantem
+      # esse número (a seed base sozinha cria 6 ⇒ uma página).
       - name: Push Prisma schema to test database
         run: npx prisma db push --accept-data-loss --skip-generate
         env:
@@ -2959,6 +2959,15 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:55436/severinno_test
           REDIS_URL: redis://localhost:56383
           SESSION_SECRET: github-pr-vitrine-baseline-session-secret-32
+
+      # A seed base cria 6 prestadores (1 página de 9); o baseline foi medido
+      # com 415 visíveis (47 páginas). Este seed completa o catálogo de forma
+      # determinística e idempotente — sem ele o guard morre no locator
+      # `Próxima` e o job fica vermelho antes de medir qualquer coisa.
+      - name: Seed vitrine baseline dataset (415 visible providers)
+        run: bun scripts/seed-vitrine-baseline.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:55436/severinno_test
 
       # DEV, não produção: a régua do doc é de bundle de desenvolvimento. A
       # PRONTIDÃO é da API paginada que o guard exercita.

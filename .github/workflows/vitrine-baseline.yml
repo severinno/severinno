@@ -9,8 +9,8 @@
 # scripts/check-vitrine-pagination-baseline.mjs (mesma fonte dos números do
 # doc — o teste de simetria doc↔script impede os dois lados de divergir).
 #
-# Por que `next dev`: o baseline medido (clique quente 40–120 ms, walk
-# ~240 ms/página, seek ~283 ms) é de DEV — React development, sem minificação.
+# Por que `next dev`: o baseline medido (clique quente 44–158 ms, walk
+# ~283 ms/página, seek ~328 ms) é de DEV — React development, sem minificação.
 # Um build de produção mediria outra coisa e o limiar de 250 ms seria ruído.
 #
 # Por que este workflow existe além do required check da Gitea: o guard é
@@ -38,6 +38,7 @@ on:
       - "src/app/api/providers/route.ts"
       - "src/lib/api.ts"
       - "prisma/seed.ts"
+      - "scripts/seed-vitrine-baseline.ts"
       - "scripts/check-vitrine-pagination-baseline.mjs"
       - "docs/vitrine-pagination-baseline.md"
       - ".github/workflows/vitrine-baseline.yml"
@@ -116,9 +117,9 @@ jobs:
         run: bunx prisma generate
 
       # O baseline é SENSÍVEL ao dataset: os limiares do doc foram medidos com
-      # a seed de 415 prestadores (47 páginas de 9). Sem ela o seek anda menos
-      # páginas e o walk reverso não acontece — o guard reprova por dados
-      # insuficientes em vez de passar com uma prova vazia.
+      # 415 prestadores visíveis (47 páginas de 9). Os dois seeds abaixo
+      # garantem esse número (a seed base sozinha cria 6 ⇒ uma página) — sem
+      # eles o seek anda menos páginas e o walk reverso não acontece.
       - name: Push Prisma schema to test database
         run: npx prisma db push --accept-data-loss --skip-generate
         env:
@@ -130,6 +131,15 @@ jobs:
           DATABASE_URL: ${{ env.DATABASE_URL }}
           SESSION_SECRET: ${{ env.SESSION_SECRET }}
           REDIS_URL: ${{ env.REDIS_URL }}
+
+      # A seed base cria 6 prestadores (1 página de 9); o baseline foi medido
+      # com 415 visíveis (47 páginas). Este seed completa o catálogo de forma
+      # determinística e idempotente — sem ele o guard morre no locator
+      # `Próxima` e o job fica vermelho antes de medir qualquer coisa.
+      - name: Seed vitrine baseline dataset (415 visible providers)
+        run: bun scripts/seed-vitrine-baseline.ts
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
 
       # DEV, não produção: a régua do doc é de bundle de desenvolvimento.
       # A PRONTIDÃO é da API paginada que o guard exercita (o /api/health pode

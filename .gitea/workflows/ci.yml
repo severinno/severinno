@@ -875,8 +875,8 @@ jobs:
 
   # ── Vitrine Pagination Baseline — required check do merge ─────────────
   # O guard de performance da paginação (scripts/check-vitrine-pagination-
-  # baseline.mjs) roda a rotina de navegação contra um next dev REAL com a
-  # seed de 415 prestadores e REPROVA piora além dos limiares de
+  # baseline.mjs) roda a rotina de navegação contra um next dev REAL com o
+  # dataset de 415 prestadores visíveis e REPROVA piora além dos limiares de
   # docs/vitrine-pagination-baseline.md (mediana do clique quente, walk
   # reverso, deep-link seek e walk-interno). Required check DE PROPÓSITO:
   # regressão de performance da vitrine bloqueia o merge — e esta é a forja
@@ -934,9 +934,9 @@ jobs:
       - run: bunx prisma generate
 
       # O baseline é SENSÍVEL ao dataset: os limiares do doc foram medidos com
-      # a seed de 415 prestadores (47 páginas de 9). Sem ela o seek anda menos
-      # páginas e o walk reverso não acontece — o guard reprova por dados
-      # insuficientes em vez de passar com uma prova vazia.
+      # 415 prestadores visíveis (47 páginas de 9). Os dois seeds abaixo
+      # garantem esse número (a seed base sozinha cria 6 ⇒ uma página) — sem
+      # eles o seek anda menos páginas e o walk reverso não acontece.
       - name: Push Prisma schema to test database
         # NESTA forja, job e services são containers SEPARADOS na rede do job
         # (runner com container.network): `localhost` dentro do container do job
@@ -967,6 +967,15 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@postgres:5432/severinno_test
           REDIS_URL: redis://redis:6379
           SESSION_SECRET: gitea-ci-vitrine-baseline-session-secret-32
+
+      # A seed base cria 6 prestadores (1 página de 9); o baseline foi medido
+      # com 415 visíveis (47 páginas). Este seed completa o catálogo de forma
+      # determinística e idempotente — sem ele o guard morre no locator
+      # `Próxima` e o job fica vermelho antes de medir qualquer coisa.
+      - name: Seed vitrine baseline dataset (415 visible providers)
+        run: bun scripts/seed-vitrine-baseline.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@postgres:5432/severinno_test
 
       # DEV, não produção: a régua do doc é de bundle de desenvolvimento. A
       # PRONTIDÃO é da API paginada que o guard exercita (o /api/health pode

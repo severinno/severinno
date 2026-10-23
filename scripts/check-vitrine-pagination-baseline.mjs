@@ -45,7 +45,8 @@
 //
 // Requisitos do ambiente (verificado pelo guard, nunca presumido):
 //   - dev server respondendo em --base-url (default :3100, porta do doc)
-//   - banco semeado (prisma/seed.ts — 415 prestadores, ≥ 7 páginas)
+//   - banco semeado com o dataset do baseline (scripts/seed-vitrine-baseline.ts:
+//     415 prestadores VISÍVEIS ⇒ 47 páginas de 9; a rotina navega até a p4)
 //   - Chromium do Playwright instalado (`bunx playwright install chromium`)
 //
 // Usage:
@@ -76,6 +77,10 @@ export const MEASURES = {
 }
 
 // ── Limiares (FONTE CANÔNICA — o doc os cita, o teste de simetria cobra) ────
+// Re-ancorados em 22/10/2026 contra o dataset determinístico (415 visíveis):
+// warm 113.5ms (limiar 250), seek 328ms (800), walk 283ms (800) e walk-interno
+// 176.6ms/página (250) — todos DENTRO dos limiares, que NÃO mudaram: o gate mede
+// regressão relativa, e mover a régua com 1 ato trocaria o gate por ruído.
 
 export const THRESHOLDS = {
   /** Clique quente: mediana das amostras warm&&!inFlight. */
