@@ -394,18 +394,19 @@ describe("familyFreshness — a régua do teto", () => {
       expect(f.origin).toBe("meta.commit")
       expect(f.commit).toBe("ato-inteiro")
     }
-    // Com a tabela do dono, a origem é a DA FAMÍLIA (e o ato aparece) — MENOS a
-    // família MEDIDA nesta rodada: ela não tem hash gravável e a procedência é a
-    // ÂNCORA v7 (o PORTADOR, resolvido pela história), não um verde por omissão.
+    // Com a tabela do dono, a origem é a DA FAMÍLIA quando ela traz o commit — e a
+    // ÂNCORA v7 (o PORTADOR, resolvido pela história) para quem foi MEDIDO nesta
+    // rodada, que não tem hash gravável. O conjunto NÃO é presumido: um ato
+    // PARCIAL (uma família medida, as outras herdadas) e um ato INTEIRO (todas
+    // medidas) são ambos válidos, e a régua tem de dizer a procedência de cada um
+    // sem transformar o herdado em verde por omissão.
     const comTabela = familyFreshness(bench(), {
       probe: () => ({ state: "ancestor", behind: 1 }),
     })
-    expect(comTabela.families.map((f: { origin: string }) => f.origin)).toContain("family")
-    expect(
-      comTabela.families
-        .filter((f: { origin: string }) => f.origin !== "family")
-        .map((f: { family: string }) => f.family),
-    ).toEqual(["mutations"])
+    for (const f of comTabela.families) {
+      const prov = REAL.meta.families[f.family] as { commit?: string | null } | undefined
+      expect(f.origin).toBe(prov?.commit ? "family" : "carrier")
+    }
     expect(comTabela.families.map((f) => f.act)).toContain("measured")
   })
 
