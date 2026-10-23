@@ -28,7 +28,7 @@ if (typeof (globalThis as Record<string, unknown>).Bun !== "undefined") {
   } catch {}
 }
 
-import { PrismaClient, Role, ServiceUnit, BookingStatus, PaymentStatus } from "@prisma/client"
+import { PrismaClient, Role, ServiceUnit } from "@prisma/client"
 import { backfillAvatars } from "./lib/backfill-avatars"
 
 const db = new PrismaClient()
@@ -776,7 +776,7 @@ async function seedFrotaPioneira() {
 
   // 2. Iterar e Fazer Upsert dos 20 Prestadores
   for (const [index, p] of PIONEER_PROVIDERS.entries()) {
-    const user = await db.user.upsert({
+    await db.user.upsert({
       where: { id: p.id },
       create: {
         id: p.id,

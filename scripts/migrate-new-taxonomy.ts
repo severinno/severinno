@@ -18,7 +18,6 @@ import {
   categorySlug,
   categoryOrder,
   assertValidCategorySpec,
-  type CategorySeedInput,
 } from "../prisma/seed-data"
 
 const db = new PrismaClient()

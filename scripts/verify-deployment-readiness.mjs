@@ -6,7 +6,6 @@
 // Usage:
 //   node scripts/verify-deployment-readiness.mjs
 //   node scripts/verify-deployment-readiness.mjs --json
-//   node scripts/verify-deployment-readiness.mjs --strict
 //
 // Exit codes:
 //   0 — pronto para deploy em staging/produção (todos os critérios vitais atendidos)
@@ -19,7 +18,6 @@ import { resolve } from "node:path"
 
 const args = process.argv.slice(2)
 const isJson = args.includes("--json")
-const isStrict = args.includes("--strict")
 
 const ROOT = process.cwd()
 
