@@ -210,7 +210,11 @@ describe("o gate ponta a ponta (checkout de fixture, sem rede)", () => {
     "valor DIVERGENTE do que o espelho declara → exit 1 (e o bloqueio nomeia a variável)",
     () => {
       const res = runGate({ ...VALUES, IMAGE_NAMESPACE: "outro" }, makeRepo())
-      expect(res.status).toBe(1)
+      // O relatório do gate entra na mensagem: um `status` inesperado sem ele
+      // obriga a reconstruir o veredito do doctor a partir do log da suíte
+      // inteira (medido na forja em 23/10/2026: `expected +0 to be 1`, e a
+      // causa não estava em lugar nenhum da saída do teste).
+      expect(res.status, `${res.stdout}\n${res.stderr}`).toBe(1)
       expect(res.stdout).toContain("IMAGE_NAMESPACE")
       expect(res.stdout).toContain("env.gitea.example")
       expect(res.stderr).toContain("BLOQUEOU")
