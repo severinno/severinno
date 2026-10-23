@@ -9,7 +9,7 @@ exports[`tier1-fastpath-guard.yml — sintaxe YAML + snapshot > parseia como YAM
   "env": {
     "BUN_VERSION": "\${{ vars.BUN_VERSION }}",
     "IMAGE_NAMESPACE": "\${{ vars.IMAGE_NAMESPACE || github.repository_owner }}",
-    "IMAGE_REGISTRY": "\${{ vars.IMAGE_REGISTRY || 'git.severinno.cloud' }}",
+    "IMAGE_REGISTRY": "\${{ vars.IMAGE_REGISTRY || 'git.severinno.com' }}",
   },
   "jobs": {
     "guard": {

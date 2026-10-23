@@ -2,10 +2,13 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { requireUser } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
+
 import { assertRateLimit } from "@/lib/rate-limit"
 import { uploadToS3 } from "@/lib/s3"
+import { validateFileSignature } from "@/lib/file-signature"
 import logger from "@/lib/logger"
+
+import { withRoute } from "@/lib/api-route"
 
 /**
  * POST /api/upload
@@ -16,13 +19,17 @@ import logger from "@/lib/logger"
  * Returns:
  *   { key: string, url: string, etag?: string }
  *
- * Headers:
- *   Content-Type: multipart/form-data
- *   Authorization: Bearer <session>
- *
  * Limits:
  *   Max file size: 10 MB (configurable via MAX_UPLOAD_SIZE env var)
- *   Allowed types: images (jpg, png, gif, webp, svg), PDF, DOC, DOCX
+ *   Allowed types: images (jpg, png, gif, webp), PDF, DOC, DOCX
+ *   ⚠️ SVG REMOVIDO (09/2026): XML ativo → XSS armazenado em bucket público.
+ *
+ * Validação em 3 camadas:
+ *   1. MIME declarado na allowlist (string controlada pelo cliente)
+ *   2. Extensão compatível com o MIME (anti MIME-spoofing básico)
+ *   3. Magic bytes do CONTEÚDO real (file-signature.ts) — a defesa de
+ *      verdade: os primeiros bytes do arquivo precisam bater com o MIME
+ *      declarado. Bloqueia SVG disfarçado, polyglots e payloads arbitrários.
  */
 
 const MAX_FILE_SIZE = parseInt(process.env.MAX_UPLOAD_SIZE || String(10 * 1024 * 1024), 10) // 10 MB
@@ -32,7 +39,6 @@ const ALLOWED_MIME_TYPES = new Set([
   "image/png",
   "image/gif",
   "image/webp",
-  "image/svg+xml",
   "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -45,7 +51,6 @@ const EXTENSION_MIME_MAP: Record<string, string> = {
   ".png": "image/png",
   ".gif": "image/gif",
   ".webp": "image/webp",
-  ".svg": "image/svg+xml",
   ".pdf": "application/pdf",
   ".doc": "application/msword",
   ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -53,8 +58,9 @@ const EXTENSION_MIME_MAP: Record<string, string> = {
 
 const ALLOWED_EXTENSIONS = new Set(Object.keys(EXTENSION_MIME_MAP))
 
-export async function POST(request: Request) {
-  try {
+export const POST = withRoute(
+  "api.upload.POST",
+  async (request) => {
     // 0. Rate limit (conservador — uploads são pesados)
     await assertRateLimit(request, { prefix: "upload", max: 10, windowMs: 60_000 })
 
@@ -83,11 +89,11 @@ export async function POST(request: Request) {
 
     // 4. Validate content type
     const contentType = file.type || "application/octet-stream"
-    if (!ALLOWED_MIME_TYPES.has(contentType) && contentType !== "application/octet-stream") {
+    if (!ALLOWED_MIME_TYPES.has(contentType)) {
       return NextResponse.json(
         {
           error:
-            "Tipo de arquivo não permitido. Envie imagens (JPG, PNG, GIF, WebP, SVG), PDF ou DOC.",
+            "Tipo de arquivo não permitido. Envie imagens (JPG, PNG, GIF, WebP), PDF ou DOC.",
         },
         { status: 415 },
       )
@@ -98,7 +104,7 @@ export async function POST(request: Request) {
     const ext = fileName.includes(".") ? "." + fileName.split(".").pop()?.toLowerCase() : ""
     if (ext && ALLOWED_EXTENSIONS.has(ext)) {
       const expectedMime = EXTENSION_MIME_MAP[ext]
-      if (expectedMime && contentType !== expectedMime && contentType !== "application/octet-stream") {
+      if (expectedMime && contentType !== expectedMime) {
         return NextResponse.json(
           {
             error: `Extensão ${ext} incompatível com o tipo de conteúdo. Envie o arquivo com o tipo correto.`,
@@ -109,26 +115,38 @@ export async function POST(request: Request) {
     } else if (ext && !ALLOWED_EXTENSIONS.has(ext)) {
       return NextResponse.json(
         {
-          error: `Extensão ${ext} não permitida. Envie imagens (JPG, PNG, GIF, WebP, SVG), PDF ou DOC.`,
+          error: `Extensão ${ext} não permitida. Envie imagens (JPG, PNG, GIF, WebP), PDF ou DOC.`,
         },
         { status: 415 },
       )
     }
 
-    // 5. Upload to S3/R2
+    // 5. Magic bytes: o CONTEÚDO real precisa bater com o MIME declarado.
+    //    Bloqueia SVG (mesmo renomeado para .jpg), polyglots e payloads.
     const buffer = Buffer.from(await file.arrayBuffer())
+    const signature = validateFileSignature(buffer, contentType)
+    if (!signature.ok) {
+      logger.warn(
+        { fileName, contentType, size: file.size, reason: signature.reason },
+        "upload rejected: file signature mismatch",
+      )
+      return NextResponse.json({ error: signature.reason }, { status: 415 })
+    }
+
+    // 6. Upload to S3/R2
     const result = await uploadToS3(buffer, file.name, {
       contentType,
       prefix: "uploads/",
     })
 
-    logger.info({ key: result.key, size: file.size, type: contentType }, "upload successful")
+    logger.info(
+      { key: result.key, size: file.size, type: contentType, detected: signature.detected },
+      "upload successful",
+    )
 
     return NextResponse.json(result, { status: 201 })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)
 
 /**
  * GET /api/upload

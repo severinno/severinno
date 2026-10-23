@@ -252,6 +252,9 @@ fi
           "run": "bun run db:generate",
         },
         {
+          "run": "bun run check:maplibre-worker",
+        },
+        {
           "name": "Type check",
           "run": "bun run typecheck",
         },

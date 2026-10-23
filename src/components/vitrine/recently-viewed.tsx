@@ -40,10 +40,10 @@ export function RecentlyViewed() {
   if (items.length === 0) return null
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <Card className="overflow-hidden border-slate-200 dark:border-slate-800">
-        <CardHeader className="flex flex-row items-center justify-between gap-3 py-4">
-          <div className="flex items-center gap-2">
+    <section className="mx-auto w-full max-w-[95%] px-4 py-4 sm:px-6 lg:px-8">
+      <Card className="overflow-hidden border-slate-200/80 shadow-xs dark:border-slate-800/80">
+        <CardHeader className="flex flex-row items-center justify-between gap-3 py-3.5">
+          <div className="flex items-center gap-2.5">
             <div className="flex size-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
               <History className="size-4" />
             </div>
@@ -57,7 +57,7 @@ export function RecentlyViewed() {
           </div>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="text-muted-foreground text-xs">
+              <Button variant="ghost" size="sm" className="text-muted-foreground h-8 text-xs">
                 <X className="size-3.5" />
                 Limpar
               </Button>
@@ -82,35 +82,40 @@ export function RecentlyViewed() {
             </AlertDialogContent>
           </AlertDialog>
         </CardHeader>
-        <CardContent className="pt-0">
-          {/* Horizontal scroll on mobile, grid on desktop */}
-          <div className="flex [scrollbar-width:thin] gap-3 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:overflow-visible sm:pb-0 lg:grid-cols-4">
+        <CardContent className="pt-0 pb-4">
+          {/* Horizontal scroll on mobile, 4-column grid on desktop */}
+          <div className="flex [scrollbar-width:thin] gap-3.5 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:overflow-visible sm:pb-0 lg:grid-cols-4">
             {items.map((p) => {
               const firstService = p.services?.[0]
               return (
                 <button
                   key={p.id}
                   type="button"
+                  data-provider-id={p.id}
+                  data-compare-name={p.name}
+                  data-compare-avatar={p.avatarUrl ?? ""}
                   onClick={() => openProvider(p.id)}
-                  className="group bg-card flex min-w-[220px] flex-col rounded-xl border border-slate-200 p-3 text-left transition-all hover:border-emerald-300 hover:shadow-md sm:min-w-0 dark:border-slate-800 dark:hover:border-emerald-800"
+                  className="group bg-card flex min-w-[220px] flex-col rounded-xl border border-slate-200/80 p-3.5 text-left transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md sm:min-w-0 dark:border-slate-800 dark:hover:border-slate-700"
                 >
                   {/* Header: avatar + name + rating */}
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-3">
                     {p.avatarUrl ? (
                       <Image
                         src={p.avatarUrl}
                         alt={p.name}
                         width={40}
                         height={40}
-                        className="size-10 rounded-full object-cover ring-2 ring-emerald-500/20"
+                        className="size-10 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700"
                       />
                     ) : (
-                      <div className="flex size-10 items-center justify-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700">
+                      <div className="flex size-10 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                         {p.name.charAt(0)}
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm leading-tight font-medium">{p.name}</p>
+                      <p className="truncate text-sm leading-tight font-semibold text-slate-900 transition-colors group-hover:text-emerald-700 dark:text-slate-100 dark:group-hover:text-emerald-400">
+                        {p.name}
+                      </p>
                       <div className="text-muted-foreground mt-0.5 flex items-center gap-1 text-xs">
                         <Star className="size-3 fill-amber-400 text-amber-400" />
                         <span className="text-foreground font-medium">{p.rating.toFixed(1)}</span>
@@ -121,31 +126,35 @@ export function RecentlyViewed() {
                   </div>
 
                   {/* Distance / city */}
-                  <div className="text-muted-foreground mt-2 flex items-center gap-1 text-xs">
-                    <MapPin className="size-3" />
+                  <div className="text-muted-foreground mt-2.5 flex items-center gap-1 text-xs">
+                    <MapPin className="size-3 shrink-0" />
                     <span className="truncate">
                       {p.distanceKm != null
-                        ? `${p.distanceKm.toFixed(1)} km · ${p.city || "São Paulo"}`
-                        : p.city || "São Paulo, SP"}
+                        ? `${p.distanceKm.toFixed(1)} km · ${p.city || "Governador Valadares"}`
+                        : p.city || "Governador Valadares, MG"}
                     </span>
                   </div>
 
-                  {/* First service price */}
-                  {firstService && (
-                    <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2 dark:border-slate-800">
-                      <span className="text-muted-foreground truncate text-xs">
-                        {firstService.title}
-                      </span>
-                      <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
-                        {formatBRL(firstService.basePrice)}
-                      </span>
-                    </div>
-                  )}
+                  {/* First service price + action hint */}
+                  <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2.5 dark:border-slate-800/80">
+                    {firstService ? (
+                      <>
+                        <span className="text-muted-foreground truncate pr-2 text-xs">
+                          {firstService.title}
+                        </span>
+                        <span className="shrink-0 text-sm font-bold text-slate-900 dark:text-slate-100">
+                          {formatBRL(firstService.basePrice)}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">Sob consulta</span>
+                    )}
+                  </div>
 
                   {/* Action hint */}
-                  <div className="mt-2 flex items-center gap-1 text-xs font-medium text-emerald-700 opacity-0 transition-opacity group-hover:opacity-100 dark:text-emerald-400">
-                    Ver perfil
-                    <ArrowRight className="size-3" />
+                  <div className="mt-2 flex items-center justify-between text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                    <span>Reabrir perfil</span>
+                    <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5" />
                   </div>
                 </button>
               )

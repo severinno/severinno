@@ -7,8 +7,8 @@
  * which re‑exports everything and adds the compound `<LoadingShell>` component.
  *
  * Exports:
- *   shimmerCSS          – CSS string with @keyframes shimmer / fadeSlideUp / fadeIn
- *   ShimmerStyle        – Component that renders <style>{shimmerCSS}</style>
+ *   shimmerCSS          – CSS string espelho do bloco .shimmer/@keyframes em globals.css
+ *   ShimmerStyle        – DEPRECATED no-op: não renderiza mais <style> (contrato CSP)
  *   S                   – Shimmer div helper (<div className="shimmer rounded …" />)
  *   createContainer     – Factory for stagger‑container Variants
  *   createItem          – Factory for stagger‑item Variants
@@ -44,9 +44,14 @@ export const shimmerCSS = `
   }
 `
 
-/** Render this once at the top of your loading component. */
+/**
+ * @deprecated Os estilos agora vivem em globals.css (.shimmer + @keyframes
+ * shimmer); este componente não renderiza mais <style> inline — a CSP saiu
+ * do 'unsafe-inline' em style-src (ver src/lib/csp.ts). Mantido como no-op
+ * para compatibilidade de imports; remover os usos.
+ */
 export function ShimmerStyle() {
-  return <style>{shimmerCSS}</style>
+  return null
 }
 
 // ── Shimmer div helper ────────────────────────────────────────────────────

@@ -3,10 +3,13 @@
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
+  Award,
   CalendarCheck,
   CalendarDays,
   Clock,
+  Compass,
   FileText,
+  Gift,
   LayoutDashboard,
   MessageSquare,
   Shield,
@@ -71,6 +74,21 @@ const ProviderOnboarding = dynamic(
 )
 const ClientSecurity = dynamic(
   () => import("@/components/client/client-security").then((m) => ({ default: m.ClientSecurity })),
+  { ssr: false },
+)
+const ProviderRouteOptimizer = dynamic(
+  () => import("./provider-route-optimizer").then((m) => ({ default: m.ProviderRouteOptimizer })),
+  { ssr: false },
+)
+const ProviderReferral = dynamic(
+  () => import("./provider-referral").then((m) => ({ default: m.ProviderReferral })),
+  { ssr: false },
+)
+const LoyaltyRewardsCenter = dynamic(
+  () =>
+    import("@/components/shared/loyalty-rewards-center").then((m) => ({
+      default: m.LoyaltyRewardsCenter,
+    })),
   { ssr: false },
 )
 
@@ -156,6 +174,27 @@ const VIEWS: ViewMeta[] = [
     icon: Shield,
     title: "Segurança",
     subtitle: "Senha e autenticação de dois fatores.",
+  },
+  {
+    view: "provider.routes",
+    label: "Rotas & Logística",
+    icon: Compass,
+    title: "Otimização de Rotas",
+    subtitle: "Roteirização inteligente e menor tempo de deslocamento no trânsito.",
+  },
+  {
+    view: "provider.referral",
+    label: "Indique e Ganhe",
+    icon: Gift,
+    title: "Programa de Indicação",
+    subtitle: "Indique colegas prestadores e clientes para acumular benefícios exclusivos.",
+  },
+  {
+    view: "provider.rewards",
+    label: "Clube & Benefícios",
+    icon: Award,
+    title: "Severinno Clube & Benefícios",
+    subtitle: "Central de resgate de pontos, cupons exclusivos e vantagens profissionais.",
   },
   {
     view: "provider.profile",
@@ -290,6 +329,14 @@ export function ProviderPanel() {
       {view === "provider.messages" && <ProviderMessages />}
       {view === "provider.reviews" && <ProviderReviews />}
       {view === "provider.security" && <ClientSecurity />}
+      {view === "provider.routes" && <ProviderRouteOptimizer />}
+      {view === "provider.referral" && <ProviderReferral />}
+      {view === "provider.rewards" && (
+        <LoyaltyRewardsCenter
+          role="provider"
+          onNavigateToServices={() => navigate("provider.services")}
+        />
+      )}
       {view === "provider.profile" && <ProviderProfile />}
     </DashboardShell>
   )

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
+import { withRoute } from "@/lib/api-route"
 import { db } from "@/lib/db"
 import logger from "@/lib/logger"
 
@@ -46,7 +47,7 @@ interface RawActivity {
 // GET /api/stats/activity — recent platform activity feed (public, no auth)
 // ---------------------------------------------------------------------------
 
-export async function GET() {
+export const GET = withRoute("api.stats.activity.GET", async () => {
   try {
     // 1. Fetch latest records from each source in parallel
     const [bookings, reviews, signups, quotes] = await Promise.all([
@@ -55,7 +56,7 @@ export async function GET() {
         orderBy: { createdAt: "desc" },
         include: {
           client: {
-            select: { name: true, avatarUrl: true, city: true },
+            select: { id: true, name: true, avatarUrl: true, city: true },
           },
           service: {
             select: {
@@ -69,7 +70,7 @@ export async function GET() {
         take: 10,
         orderBy: { createdAt: "desc" },
         include: {
-          client: { select: { name: true, avatarUrl: true } },
+          client: { select: { id: true, name: true, avatarUrl: true } },
           provider: { select: { name: true } },
           service: { select: { title: true } },
         },
@@ -79,6 +80,7 @@ export async function GET() {
         take: 10,
         orderBy: { createdAt: "desc" },
         select: {
+          id: true,
           name: true,
           avatarUrl: true,
           verified: true,
@@ -90,7 +92,7 @@ export async function GET() {
         orderBy: { createdAt: "desc" },
         include: {
           client: {
-            select: { name: true, avatarUrl: true, city: true },
+            select: { id: true, name: true, avatarUrl: true, city: true },
           },
           items: {
             take: 1,
@@ -109,6 +111,16 @@ export async function GET() {
 
     const activities: RawActivity[] = []
 
+    const resolveAvatar = (
+      avatarUrl: string | null | undefined,
+      id: string | undefined,
+      name: string,
+    ): string => {
+      if (avatarUrl && avatarUrl.trim().length > 0) return avatarUrl
+      if (id && id.trim().length > 0) return `https://i.pravatar.cc/150?u=${encodeURIComponent(id)}`
+      return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=059669&color=fff&bold=true`
+    }
+
     // 2a. Bookings → "agendou"
     for (const b of bookings) {
       const categoryName = b.service.category?.name ?? ""
@@ -116,7 +128,7 @@ export async function GET() {
       activities.push({
         type: "booking",
         userName: firstNameInitial(b.client.name),
-        userAvatar: b.client.avatarUrl,
+        userAvatar: resolveAvatar(b.client.avatarUrl, b.client.id, b.client.name),
         action: "agendou",
         target: categoryName
           ? `${categoryName.toLowerCase()}${location}`
@@ -133,7 +145,7 @@ export async function GET() {
       activities.push({
         type: "review",
         userName: firstNameInitial(r.client.name),
-        userAvatar: r.client.avatarUrl,
+        userAvatar: resolveAvatar(r.client.avatarUrl, r.client.id, r.client.name),
         action: "avaliou",
         target: firstNameInitial(r.provider.name),
         rating: r.rating,
@@ -149,7 +161,7 @@ export async function GET() {
       activities.push({
         type: "signup",
         userName: firstNameInitial(s.name),
-        userAvatar: s.avatarUrl,
+        userAvatar: resolveAvatar(s.avatarUrl, s.id, s.name),
         action: "se cadastrou como prestador",
         target: s.verified ? "verificado" : "pendente",
         timeAgo: timeAgo(s.createdAt),
@@ -166,7 +178,7 @@ export async function GET() {
       activities.push({
         type: "quote",
         userName: firstNameInitial(q.client.name),
-        userAvatar: q.client.avatarUrl,
+        userAvatar: resolveAvatar(q.client.avatarUrl, q.client.id, q.client.name),
         action: "pediu orçamento para",
         target: categoryName
           ? `${categoryName.toLowerCase()}${location}`
@@ -211,4 +223,4 @@ export async function GET() {
       quotesToday: 0,
     })
   }
-}
+})

@@ -9,7 +9,8 @@
  * - KPI cards: conversion rate, avg response time, avg ticket, volume
  * - Period filters: 7d / 30d / 90d
  *
- * Uses recharts via the existing `@/components/ui/chart` system.
+ * Uses recharts directly (the `@/components/ui/chart` wrapper was removed —
+ * no consumer ever used it; see docs/GUARDS.md §38 for the <style> policy).
  * Data comes from the analytics API: /api/admin/analytics
  */
 
@@ -128,20 +129,20 @@ export function AdminAnalyticsDashboard() {
 
   if (loading) {
     return (
-      <div className="space-y-6 p-6">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="space-y-3.5">
+        <div className="grid gap-3.5 md:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Card key={i}>
-              <CardContent className="p-5">
+              <CardContent className="p-3">
                 <Skeleton className="mb-2 h-4 w-24" />
-                <Skeleton className="h-8 w-16" />
+                <Skeleton className="h-7 w-16" />
                 <Skeleton className="mt-2 h-3 w-32" />
               </CardContent>
             </Card>
           ))}
         </div>
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4">
             <Skeleton className="mb-4 h-5 w-40" />
             <Skeleton className="h-64 w-full" />
           </CardContent>
@@ -174,7 +175,7 @@ export function AdminAnalyticsDashboard() {
     : []
 
   return (
-    <PageTransition className="space-y-6 p-6">
+    <PageTransition className="space-y-3.5">
       {/* Period filter */}
       <div className="flex items-center justify-between">
         <div>
@@ -197,7 +198,7 @@ export function AdminAnalyticsDashboard() {
       </div>
 
       {/* KPI Cards */}
-      <StaggerChildren className="grid gap-4 md:grid-cols-2 lg:grid-cols-4" staggerMs={80}>
+      <StaggerChildren className="grid gap-3.5 md:grid-cols-2 lg:grid-cols-4" staggerMs={80}>
         <KpiCard
           icon={TrendingUp}
           label="Conversão Global"
@@ -269,13 +270,13 @@ export function AdminAnalyticsDashboard() {
                     <span className="text-muted-foreground text-[10px]">
                       {STAGE_LABELS[r.from]}
                     </span>
-                    <span className="text-sm font-bold">{r.absolute}</span>
+                    <span className="text-sm font-bold tabular-nums">{r.absolute}</span>
                   </div>
                   <div className="flex flex-col items-center gap-0.5">
                     <ArrowRight className="text-muted-foreground size-3.5" />
                     <span
                       className={cn(
-                        "text-[10px] font-bold",
+                        "text-[10px] font-bold tabular-nums",
                         r.rate !== null && r.rate > 50
                           ? "text-emerald-600"
                           : r.rate !== null && r.rate > 20
@@ -294,7 +295,9 @@ export function AdminAnalyticsDashboard() {
                   <span className="text-muted-foreground text-[10px]">
                     {STAGE_LABELS[rates[rates.length - 1]!.to]}
                   </span>
-                  <span className="text-sm font-bold">{rates[rates.length - 1]!.absolute}</span>
+                  <span className="text-sm font-bold tabular-nums">
+                    {rates[rates.length - 1]!.absolute}
+                  </span>
                 </div>
               )}
             </div>
@@ -367,17 +370,17 @@ function KpiCard({
 }) {
   return (
     <Card>
-      <CardContent className="p-5">
+      <CardContent className="p-3">
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground text-sm font-medium">{label}</span>
+          <span className="text-muted-foreground text-xs font-medium">{label}</span>
           <Icon className="text-muted-foreground size-4" />
         </div>
-        <div className="mt-2 flex items-baseline gap-2">
-          <span className="text-2xl font-bold tracking-tight">{value}</span>
+        <div className="mt-1.5 flex items-baseline gap-2">
+          <span className="text-xl font-bold tracking-tight tabular-nums">{value}</span>
           {trend === "up" && <TrendingUp className="size-4 text-emerald-500" />}
           {trend === "down" && <TrendingDown className="size-4 text-red-500" />}
         </div>
-        <p className="text-muted-foreground mt-1 text-xs">{description}</p>
+        <p className="text-muted-foreground mt-0.5 text-xs">{description}</p>
       </CardContent>
     </Card>
   )

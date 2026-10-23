@@ -31,7 +31,7 @@
     "um histórico."
   ],
   "version": 1,
-  "appliedAt": "2026-09-20",
+  "appliedAt": "2026-10-06",
   "forges": {
     "github": {
       "workflow": ".github/workflows/pr-check.yml",
@@ -78,7 +78,8 @@
         "Pre-commit Proof (dentro da imagem do runner)",
         "TypeCheck",
         "Tests",
-        "Build"
+        "Build",
+        "Pagination baseline guard"
       ]
     }
   }

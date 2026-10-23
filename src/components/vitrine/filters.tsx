@@ -16,6 +16,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Search, SlidersHorizontal, Star, X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { triggerHaptic } from "@/lib/haptics"
 import { fetchCategories, type Category } from "@/lib/api"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -95,14 +96,20 @@ export default function Filters({
     staleTime: 5 * 60 * 1000,
   })
 
-  const setField = <K extends keyof FiltersState>(key: K, v: FiltersState[K]) =>
+  const setField = <K extends keyof FiltersState>(key: K, v: FiltersState[K]) => {
+    // Discrete choices get a selection haptic; the radius slider fires continuously while dragging.
+    if (key !== "radius") triggerHaptic("selection")
     onChange({ ...value, [key]: v })
+  }
 
   const l1Id = resolveL1Id(value.categoryId, categories)
   const l2Id = resolveL2Id(value.categoryId, categories, l1Children)
   const l3Id = resolveL3Id(value.categoryId, l2Children)
 
-  const handleClear = () => onChange({ ...DEFAULT_FILTERS, q: value.q })
+  const handleClear = () => {
+    triggerHaptic("light")
+    onChange({ ...DEFAULT_FILTERS, q: value.q })
+  }
 
   // Breadcrumb path of selected category
   const breadcrumb = React.useMemo(() => {
@@ -351,7 +358,7 @@ function SortOption({
       onClick={onClick}
       title={title}
       className={cn(
-        "focus-visible:ring-ring flex h-9 items-center justify-center rounded-lg border px-2 text-xs font-medium transition-all outline-none focus-visible:ring-2",
+        "focus-visible:ring-ring flex h-9 items-center justify-center rounded-lg border px-2 text-xs font-medium transition-all outline-none focus-visible:ring-2 active:scale-95",
         active
           ? "border-primary bg-primary/10 text-primary"
           : disabled

@@ -16,10 +16,12 @@ import { trackGeoLatency } from "@/lib/geo-metrics"
 import { rateLimitedNominatim } from "@/lib/nominatim-rate-limit"
 import { nominatimBreaker } from "@/lib/geo-circuit-breakers"
 import { getGeoSettings } from "@/lib/geo-settings"
-import { handleError } from "@/lib/api-server"
+
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { z } from "zod"
 import { parseBody } from "@/lib/api-middleware"
+
+import { withRoute } from "@/lib/api-route"
 
 const geoBatchSchema = z.object({
   addresses: z.array(z.string().min(1).max(500)).min(1).max(50),
@@ -104,91 +106,87 @@ async function geocodeNominatim(
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    // Batch is expensive (up to 50 Nominatim calls per request) — strict limit
-    await assertRateLimit(request, RATE_LIMITS.geoBatch)
-    const { addresses } = await parseBody(request, geoBatchSchema)
+export const POST = withRoute("api.geo.batch.POST", async (request) => {
+  // Batch is expensive (up to 50 Nominatim calls per request) — strict limit
+  await assertRateLimit(request, RATE_LIMITS.geoBatch)
+  const { addresses } = await parseBody(request, geoBatchSchema)
 
-    // Process sequentially with 1s delay between Nominatim calls
-    // (Nominatim rate limit: 1 req/s). Local DB hits are instant.
-    const results: BatchResult[] = []
-    let lastNominatimCall = 0
+  // Process sequentially with 1s delay between Nominatim calls
+  // (Nominatim rate limit: 1 req/s). Local DB hits are instant.
+  const results: BatchResult[] = []
+  let lastNominatimCall = 0
 
-    for (const address of addresses) {
-      const trimmed = address.trim()
-      if (!trimmed) {
-        results.push({
-          query: address,
-          lat: null,
-          lng: null,
-          displayName: null,
-          source: "not-found",
-        })
-        continue
-      }
-
-      // Try cache first
-      const cacheKey = `geo:batch:${trimmed.toLowerCase()}`
-      const cached = await withCache<{
-        lat: number
-        lng: number
-        displayName: string
-        source: string
-      } | null>(
-        cacheKey,
-        async () => {
-          // Try local DB first (fast, no rate limit)
-          const local = await geocodeLocal(trimmed)
-          if (local) return { ...local, source: "local-db" }
-
-          // Respect Nominatim 1 req/s rate limit
-          const now = Date.now()
-          const elapsed = now - lastNominatimCall
-          if (elapsed < 1000) {
-            await new Promise((r) => setTimeout(r, 1000 - elapsed))
-          }
-          lastNominatimCall = Date.now()
-
-          // Fall back to Nominatim
-          const result = await trackGeoLatency("nominatim", () =>
-            rateLimitedNominatim(() => geocodeNominatim(trimmed)),
-          )
-          return result ? { ...result, source: "nominatim" } : null
-        },
-        86400, // 24h cache
-      )
-
-      if (cached) {
-        results.push({
-          query: address,
-          lat: cached.lat,
-          lng: cached.lng,
-          displayName: cached.displayName,
-          source: cached.source as "local-db" | "nominatim",
-        })
-      } else {
-        results.push({
-          query: address,
-          lat: null,
-          lng: null,
-          displayName: null,
-          source: "not-found",
-        })
-      }
+  for (const address of addresses) {
+    const trimmed = address.trim()
+    if (!trimmed) {
+      results.push({
+        query: address,
+        lat: null,
+        lng: null,
+        displayName: null,
+        source: "not-found",
+      })
+      continue
     }
 
-    const found = results.filter((r) => r.lat !== null).length
+    // Try cache first
+    const cacheKey = `geo:batch:${trimmed.toLowerCase()}`
+    const cached = await withCache<{
+      lat: number
+      lng: number
+      displayName: string
+      source: string
+    } | null>(
+      cacheKey,
+      async () => {
+        // Try local DB first (fast, no rate limit)
+        const local = await geocodeLocal(trimmed)
+        if (local) return { ...local, source: "local-db" }
 
-    return NextResponse.json({
-      results,
-      stats: {
-        total: addresses.length,
-        found,
-        notFound: addresses.length - found,
+        // Respect Nominatim 1 req/s rate limit
+        const now = Date.now()
+        const elapsed = now - lastNominatimCall
+        if (elapsed < 1000) {
+          await new Promise((r) => setTimeout(r, 1000 - elapsed))
+        }
+        lastNominatimCall = Date.now()
+
+        // Fall back to Nominatim
+        const result = await trackGeoLatency("nominatim", () =>
+          rateLimitedNominatim(() => geocodeNominatim(trimmed)),
+        )
+        return result ? { ...result, source: "nominatim" } : null
       },
-    })
-  } catch (e) {
-    return handleError(e)
+      86400, // 24h cache
+    )
+
+    if (cached) {
+      results.push({
+        query: address,
+        lat: cached.lat,
+        lng: cached.lng,
+        displayName: cached.displayName,
+        source: cached.source as "local-db" | "nominatim",
+      })
+    } else {
+      results.push({
+        query: address,
+        lat: null,
+        lng: null,
+        displayName: null,
+        source: "not-found",
+      })
+    }
   }
-}
+
+  const found = results.filter((r) => r.lat !== null).length
+
+  return NextResponse.json({
+    results,
+    stats: {
+      total: addresses.length,
+      found,
+      notFound: addresses.length - found,
+    },
+  })
+})

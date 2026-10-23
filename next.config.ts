@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   generateEtags: true,
   compress: true,
+  devIndicators: false,
 
   // Skip TypeScript type-checking during build ONLY in Docker (CI always runs tsc --noEmit separately).
   // ⚠️ NEVER set this to true in CI/CD — it masks type errors that break production.
@@ -21,15 +22,89 @@ const nextConfig: NextConfig = {
       process.env.DOCKER_BUILD === "true" && process.env.SKIP_TYPESCRIPT_CHECK === "true",
   },
 
-  // Security headers are set by Caddy reverse proxy (HSTS, X-Frame-Options,
-  // X-Content-Type-Options, Referrer-Policy, Permissions-Policy, CSP).
-  // Only dynamic headers are set in proxy.ts (formerly middleware.ts).
+  // Edge caching and static asset performance headers.
+  // Security headers are handled in proxy.ts / Caddy.
   async headers() {
-    return []
+    return [
+      {
+        source: "/_next/static/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      {
+        source: "/_next/image/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400",
+          },
+          {
+            key: "CDN-Cache-Control",
+            value: "max-age=604800, stale-while-revalidate=86400",
+          },
+        ],
+      },
+      {
+        source: "/icons/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=604800, stale-while-revalidate=2592000",
+          },
+        ],
+      },
+      {
+        source: "/manifest.webmanifest",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400, stale-while-revalidate=604800",
+          },
+          {
+            key: "Content-Type",
+            value: "application/manifest+json",
+          },
+        ],
+      },
+      {
+        source: "/manifest.json",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400, stale-while-revalidate=604800",
+          },
+          {
+            key: "Content-Type",
+            value: "application/manifest+json",
+          },
+        ],
+      },
+      {
+        source: "/sw.js",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
+          {
+            key: "Service-Worker-Allowed",
+            value: "/",
+          },
+        ],
+      },
+    ]
   },
 
   // Image optimization
   images: {
+    // Dev-only: MinIO serves avatars from localhost:9000 (private IP) — Next 16's
+    // optimizer blocks private-IP upstreams unless this is on. Prod serves via
+    // https://severinno.com (public), so SSRF protection stays enabled there.
+    dangerouslyAllowLocalIP: process.env.NODE_ENV !== "production",
     formats: ["image/avif", "image/webp"],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920],
     remotePatterns: [
@@ -56,12 +131,21 @@ const nextConfig: NextConfig = {
     optimizePackageImports: [
       "lucide-react",
       "@radix-ui/react-icons",
+      "@radix-ui/react-avatar",
+      "@radix-ui/react-dialog",
+      "@radix-ui/react-dropdown-menu",
+      "@radix-ui/react-select",
+      "@radix-ui/react-tabs",
+      "@radix-ui/react-accordion",
+      "@radix-ui/react-tooltip",
+      "@radix-ui/react-popover",
       "recharts",
       "date-fns",
       "framer-motion",
       "zod",
       "sonner",
       "@tanstack/react-query",
+      "qrcode.react",
     ],
   },
 }

@@ -1,10 +1,16 @@
-const CACHE = "severinno-v4"
+const CACHE = "severinno-v5"
 const ASSETS = [
   "/",
   "/offline",
   "/manifest.json",
   "/sw.js",
+  "/brand-icon.png",
+  "/brand-wordmark-black.png",
+  "/brand-wordmark-white.png",
   "/logo.svg",
+  "/logo.png",
+  "/favicon.ico",
+  "/favicon.svg",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
 ]
@@ -13,12 +19,17 @@ const ASSETS = [
 const OSM_TILE_CACHE = "severinno-osm-tiles-v1"
 
 // API cache — stale-while-revalidate for public endpoints
-const API_CACHE = "severinno-api-v1"
+// v2: purges responses from private routes (/api/users/me, /api/client/*,
+// /api/provider/*, /api/wallet) cached before they were excluded.
+const API_CACHE = "severinno-api-v2"
+
+// Image cache — stale-while-revalidate for services, portfolio, and avatars
+const IMAGE_CACHE = "severinno-images-v1"
+const MAX_CACHED_IMAGES = 120
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE).then((cache) => {
-      // Cache each asset individually so a single failure doesn't block
       return Promise.allSettled(
         ASSETS.map((url) =>
           cache.add(url).catch(() => {
@@ -38,7 +49,9 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((k) => k !== CACHE && k !== OSM_TILE_CACHE && k !== API_CACHE)
+            .filter(
+              (k) => k !== CACHE && k !== OSM_TILE_CACHE && k !== API_CACHE && k !== IMAGE_CACHE,
+            )
             .map((k) => caches.delete(k)),
         ),
       )
@@ -49,6 +62,8 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting()
+  } else if (event.data && event.data.type === "TRIGGER_OFFLINE_SYNC") {
+    event.waitUntil(syncOfflineActions())
   }
 })
 
@@ -65,8 +80,21 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  // ---- API calls: network-first with stale fallback -------------------
-  if (url.pathname.startsWith("/api/") && url.pathname !== "/api/notifications") {
+  // ---- API calls: network-first with stale fallback (public endpoints only) --
+  const isExcludedApi =
+    url.pathname.startsWith("/api/auth/") ||
+    url.pathname.startsWith("/api/admin/") ||
+    url.pathname.startsWith("/api/users/me") ||
+    url.pathname.startsWith("/api/provider/") ||
+    url.pathname.startsWith("/api/client/") ||
+    url.pathname.startsWith("/api/wallet") ||
+    url.pathname.startsWith("/api/webhooks/") ||
+    url.pathname.startsWith("/api/payments/") ||
+    url.pathname.startsWith("/api/bookings/") ||
+    url.pathname.startsWith("/api/cron/") ||
+    url.pathname === "/api/notifications"
+
+  if (url.pathname.startsWith("/api/") && !isExcludedApi) {
     event.respondWith(apiStrategy(event.request))
     return
   }
@@ -81,9 +109,24 @@ self.addEventListener("fetch", (event) => {
   if (
     url.pathname.startsWith("/icons/") ||
     url.pathname.startsWith("/fonts/") ||
-    url.pathname === "/logo.svg"
+    url.pathname === "/brand-icon.png" ||
+    url.pathname === "/brand-wordmark-black.png" ||
+    url.pathname === "/brand-wordmark-white.png" ||
+    url.pathname === "/logo.svg" ||
+    url.pathname === "/logo.png"
   ) {
     event.respondWith(cacheFirstStrategy(event.request))
+    return
+  }
+
+  // ---- Dynamic Service & Portfolio Images: stale-while-revalidate -----
+  if (
+    event.request.destination === "image" ||
+    url.pathname.startsWith("/_next/image") ||
+    url.pathname.startsWith("/uploads/") ||
+    /\.(png|jpg|jpeg|webp|avif|gif|svg)$/i.test(url.pathname)
+  ) {
+    event.respondWith(imageStrategy(event.request, event))
     return
   }
 
@@ -168,6 +211,22 @@ async function apiStrategy(request) {
   }
 }
 
+const MAX_OSM_TILES = 100
+
+async function pruneTileCache(cache) {
+  try {
+    const keys = await cache.keys()
+    if (keys.length > MAX_OSM_TILES) {
+      const excess = keys.length - MAX_OSM_TILES
+      for (let i = 0; i < excess; i++) {
+        await cache.delete(keys[i])
+      }
+    }
+  } catch {
+    // Best-effort
+  }
+}
+
 async function osmTileStrategy(request) {
   const cache = await caches.open(OSM_TILE_CACHE)
   const cached = await cache.match(request)
@@ -178,14 +237,89 @@ async function osmTileStrategy(request) {
     if (response.ok) {
       // Clone before caching since response can only be consumed once
       const clone = response.clone()
-      // Store without time limit (tiles are immutable)
-      cache.put(request, clone).catch(() => {})
+      cache
+        .put(request, clone)
+        .then(() => pruneTileCache(cache))
+        .catch(() => {})
     }
     return response
   } catch {
     // Offline and not in cache — return a blank tile
     return new Response(null, { status: 204 })
   }
+}
+
+/**
+ * LRU cache pruning for images (max MAX_CACHED_IMAGES entries)
+ */
+async function pruneImageCache(cache) {
+  try {
+    const keys = await cache.keys()
+    if (keys.length > MAX_CACHED_IMAGES) {
+      const excess = keys.length - MAX_CACHED_IMAGES
+      for (let i = 0; i < excess; i++) {
+        await cache.delete(keys[i])
+      }
+    }
+  } catch {
+    // Best-effort
+  }
+}
+
+// Fallback offline SVG placeholder when network fails and image is not cached
+const OFFLINE_IMAGE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300" fill="none">
+  <rect width="400" height="300" fill="#f1f5f9"/>
+  <path d="M160 130a20 20 0 1 0 0-40 20 20 0 0 0 0 40zm-40 80h160l-50-65-35 45-25-30-50 50z" fill="#94a3b8"/>
+  <text x="200" y="240" font-family="-apple-system, sans-serif" font-size="13" fill="#64748b" text-anchor="middle" font-weight="500">Severinno (Modo Offline)</text>
+</svg>`
+
+/**
+ * Image strategy: Stale-While-Revalidate with offline fallback SVG.
+ * Returns cached image instantly (0ms) and updates cache in background.
+ */
+async function imageStrategy(request, event) {
+  const cache = await caches.open(IMAGE_CACHE)
+  const cached = await cache.match(request)
+
+  const fetchPromise = fetch(request)
+    .then((response) => {
+      if (response && response.status === 200) {
+        const clone = response.clone()
+        cache
+          .put(request, clone)
+          .then(() => pruneImageCache(cache))
+          .catch(() => {})
+      }
+      return response
+    })
+    .catch(() => {
+      // Network failed
+      return null
+    })
+
+  // Stale-While-Revalidate: Return cached response immediately if available,
+  // keeping the SW event alive to guarantee background revalidation completes.
+  if (cached) {
+    if (event && event.waitUntil) {
+      event.waitUntil(fetchPromise)
+    }
+    return cached
+  }
+
+  // If not in cache, wait for fetch
+  const networkResponse = await fetchPromise
+  if (networkResponse) {
+    return networkResponse
+  }
+
+  // If both network and cache failed, return the offline SVG placeholder
+  return new Response(OFFLINE_IMAGE_SVG, {
+    status: 200,
+    headers: {
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      "Cache-Control": "public, max-age=86400",
+    },
+  })
 }
 
 // ---- Push Notifications — rich payload with actions ---------------------
@@ -283,8 +417,8 @@ self.addEventListener("push", (event) => {
         // Fallback for plain text push messages
         await self.registration.showNotification("Severinno", {
           body: event.data.text(),
-          icon: "/icon-192.png",
-          badge: "/icon-192.png",
+          icon: "/icons/icon-192.png",
+          badge: "/icons/icon-192.png",
         })
       }
     })(),
@@ -301,22 +435,64 @@ function showNotificationFromPayload(data) {
     data.type === "message" ||
     data.notificationType === "message" ||
     !!(data.data && (data.data.peerId || data.data.senderId))
-  const actions =
-    data.actions && data.actions.length > 0
-      ? data.actions
-      : isMessage
-        ? [{ action: "open_chat", title: "💬 Responder" }]
-        : []
+
+  const isArrival =
+    data.type === "PROVIDER_ARRIVED" ||
+    data.notificationType === "PROVIDER_ARRIVED" ||
+    (data.data && data.data.notificationType === "PROVIDER_ARRIVED")
+
+  const isNewJob =
+    data.type === "NEW_BOOKING" ||
+    data.type === "NEW_JOB" ||
+    data.notificationType === "NEW_BOOKING" ||
+    data.notificationType === "NEW_JOB" ||
+    (data.data &&
+      (data.data.notificationType === "NEW_BOOKING" || data.data.notificationType === "NEW_JOB"))
+
+  const isCompletionReady =
+    data.type === "ESCROW_RELEASE" ||
+    data.type === "SERVICE_COMPLETED" ||
+    data.notificationType === "ESCROW_RELEASE" ||
+    data.notificationType === "SERVICE_COMPLETED" ||
+    (data.data &&
+      (data.data.notificationType === "ESCROW_RELEASE" ||
+        data.data.notificationType === "SERVICE_COMPLETED"))
+
+  let actions = []
+  if (data.actions && data.actions.length > 0) {
+    actions = data.actions
+  } else if (isArrival) {
+    actions = [
+      { action: "view_tracking", title: "📍 Ver Localização" },
+      { action: "open_chat", title: "💬 Mensagem" },
+    ]
+  } else if (isCompletionReady) {
+    actions = [
+      { action: "approve_escrow", title: "🛡️ Liberar Pagamento" },
+      { action: "view_report", title: "📷 Ver Laudo/Fotos" },
+    ]
+  } else if (isNewJob) {
+    actions = [
+      { action: "view_job", title: "⚡ Ver Chamado" },
+      { action: "view_route", title: "🗺️ Ver Rota" },
+    ]
+  } else if (isMessage) {
+    actions = [{ action: "open_chat", title: "💬 Responder" }]
+  }
 
   const options = {
-    body,
-    icon: data.icon || "/icon-192.png",
-    badge: data.badge || "/icon-192.png",
-    vibrate: [200, 100, 200],
+    body: data.body || "",
+    icon: data.icon || "/icons/icon-192.png",
+    badge: data.badge || "/icons/icon-192.png",
+    vibrate: isNewJob
+      ? [250, 100, 250, 100, 500]
+      : isArrival
+        ? [300, 100, 300, 100, 300]
+        : [200, 100, 200],
     data: data.data || { url: data.url || "/" },
     tag: data.tag,
     renotify: true,
-    requireInteraction: !!(actions.length > 0),
+    requireInteraction: isArrival || isNewJob || isCompletionReady || actions.length > 0,
     actions,
   }
 
@@ -355,8 +531,40 @@ self.addEventListener("notificationclick", (event) => {
   // ── Handle action buttons ────────────────────────────────────────────
   const peerId = data.peerId || data.senderId || (data.data && data.data.peerId)
 
+  if (action === "approve_escrow" && bookingId) {
+    const escrowUrl = `/client?view=client.bookings&bookingId=${bookingId}&action=approve_escrow`
+    event.waitUntil(openOrFocusUrl(escrowUrl))
+    return
+  }
+
+  if (action === "view_report" && bookingId) {
+    const reportUrl = `/client?view=client.bookings&bookingId=${bookingId}&action=view_report`
+    event.waitUntil(openOrFocusUrl(reportUrl))
+    return
+  }
+
+  if (action === "view_tracking" && bookingId) {
+    const trackUrl = `/client?view=client.bookings&bookingId=${bookingId}&action=track`
+    event.waitUntil(openOrFocusUrl(trackUrl))
+    return
+  }
+
+  if (action === "view_route" && bookingId) {
+    const routeUrl = `/provider?view=provider.routes&bookingId=${bookingId}`
+    event.waitUntil(openOrFocusUrl(routeUrl))
+    return
+  }
+
+  if (action === "view_job") {
+    const jobUrl = bookingId
+      ? `/provider?view=provider.bookings&bookingId=${bookingId}`
+      : "/provider?view=provider.bookings"
+    event.waitUntil(openOrFocusUrl(jobUrl))
+    return
+  }
+
   if (action === "open_chat" || (peerId && !bookingId && action !== "reject")) {
-    const chatUrl = `/dashboard?tab=messages&peer=${peerId}`
+    const chatUrl = `/dashboard?tab=messages&peer=${peerId || ""}`
     event.waitUntil(openOrFocusUrl(chatUrl))
     return
   }
@@ -401,7 +609,7 @@ async function openOrFocusUrl(url) {
 const SYNC_QUEUE = "severinno-sync-v1"
 
 self.addEventListener("sync", (event) => {
-  if (event.tag === "sync-offline-actions") {
+  if (event.tag === "sync-offline-actions" || event.tag === "sync-offline-batch") {
     event.waitUntil(syncOfflineActions())
   }
 })
@@ -409,6 +617,8 @@ self.addEventListener("sync", (event) => {
 async function syncOfflineActions() {
   const cache = await caches.open(SYNC_QUEUE)
   const keys = await cache.keys()
+  let syncedCount = 0
+
   for (const request of keys) {
     try {
       const body = await request.clone().text()
@@ -419,9 +629,20 @@ async function syncOfflineActions() {
       })
       if (response.ok) {
         await cache.delete(request)
+        syncedCount++
       }
     } catch {
-      // Will retry on next sync
+      // Will retry on next sync event
     }
+  }
+
+  // Notify active window clients that sync has completed
+  const clientsList = await clients.matchAll({ type: "window", includeUncontrolled: true })
+  for (const client of clientsList) {
+    client.postMessage({
+      type: "OFFLINE_SYNC_COMPLETED",
+      syncedCount,
+      timestamp: Date.now(),
+    })
   }
 }

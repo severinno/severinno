@@ -220,7 +220,7 @@ describe("GET /api/favorites — projeção de terceiros", () => {
       { provider: providerRowFromSelect(sensitiveFixture as unknown as Record<string, unknown>) },
     ])
 
-    await getFavorites(createMockRequest())
+    await getFavorites(createMockRequest(), { params: Promise.resolve({}) })
 
     const args = mockFavoriteFindMany.mock.calls[0][0] as {
       select?: { provider?: { select?: object; include?: object } }
@@ -244,7 +244,7 @@ describe("GET /api/favorites — projeção de terceiros", () => {
       { provider: providerRowFromSelect(sensitiveFixture as unknown as Record<string, unknown>) },
     ])
 
-    const res = await getFavorites(createMockRequest())
+    const res = await getFavorites(createMockRequest(), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
     const body = parsed.body as unknown as Array<Record<string, unknown>>
 

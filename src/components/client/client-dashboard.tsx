@@ -4,89 +4,52 @@
  * ClientDashboard — overview dashboard for the logged-in client.
  *
  * Sections:
- *  - 4 stat cards: Próximos agendamentos, Orçamentos ativos, Serviços
- *    concluídos, Total investido (sum of paid bookings)
- *  - Charts: bookings per month (bar), spending per category (pie)
- *  - Recent activity (latest 5 bookings/quotes)
- *  - Quick actions: "Pedir orçamento" / "Buscar prestadores"
+ *  - Header with warm greeting + quick actions ("Buscar prestadores" / "Pedir orçamento")
+ *  - Discovery & Search Dock: quick search input, popular category pills, and location radar
+ *  - High-trust Hero: In-progress service alert (if active) OR Escrow & 90-Day Protection Banner
+ *  - 4 Interactive Command KPI cards: Próximos agendamentos, Orçamentos ativos,
+ *    Serviços concluídos, Total investido (all clickable with haptics & status tags)
+ *  - Two-column operational center: Próximos agendamentos + Orçamentos ativos
+ *  - Recent activity timeline (latest bookings & quotes with status badges)
+ *  - Analytics: Monthly bookings (AreaChart) + Spending per category (PieChart donut)
+ *  - Preferences utility: Sound and vibration toggles
  */
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
-import {
-  CalendarDays,
-  CheckCircle2,
   ChevronRight,
-  FileText,
-  Loader2,
+  Hammer,
+  KeyRound,
   MapPin,
+  Paintbrush,
   Plus,
   Search,
-  TrendingUp,
-  Wallet,
+  Sparkles,
+  Wind,
+  Wrench,
+  Zap,
 } from "lucide-react"
 
+import { triggerHaptic } from "@/lib/haptics"
 import { apiGet } from "@/lib/api"
-import {
-  BOOKING_STATUS_LABELS,
-  QUOTE_STATUS_LABELS,
-  type BookingStatus,
-  type QuoteStatus,
-  type ServiceUnit,
-} from "@/lib/constants"
-import { formatBRL, formatDateTime, formatRelative } from "@/lib/format"
+import { type BookingStatus, type QuoteStatus, type ServiceUnit } from "@/lib/constants"
 import { useAuthStore } from "@/store/auth"
 import { useUIStore } from "@/store/ui"
 import { useViewStore } from "@/store/view"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { EmptyState, SectionTitle, StatCard } from "@/components/shared/dashboard-shell"
+import { Card } from "@/components/ui/card"
 import { OnboardingChecklist } from "@/components/client/onboarding-checklist"
 import GeoAwarenessBadge from "@/components/client/geo-awareness-badge"
 import { PreferenceToggles } from "@/components/shared/preference-toggles"
-import {
-  PageHeader,
-  StatusBadge,
-  bookingIcon,
-  bookingTone,
-  quoteIcon,
-  quoteTone,
-} from "@/components/client/client-shared"
-
-// Emerald family palette for the category donut.
-const PIE_COLORS = [
-  "var(--chart-1)", // emerald-600
-  "oklch(0.7 0.16 162)", // emerald-400
-  "oklch(0.62 0.12 184)", // teal-400
-  "oklch(0.6 0.13 200)", // teal-500
-  "oklch(0.78 0.18 130)", // lime-400
-  "oklch(0.65 0.15 145)", // emerald-500
-  "oklch(0.55 0.13 175)", // teal-600
-  "oklch(0.72 0.14 150)", // emerald-300
-] as const
-
-const CHART_TOOLTIP_STYLE = {
-  borderRadius: 8,
-  border: "1px solid var(--border)",
-  background: "var(--popover)",
-  color: "var(--popover-foreground)",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.15)",
-} as const
+import { ReferralCard } from "@/components/shared/referral-card"
+import { ReferralLeaderboard } from "@/components/shared/referral-leaderboard"
+import { PageHeader } from "@/components/client/client-shared"
+import { ClientDashboardCharts } from "@/components/client/client-dashboard-charts"
+import { ClientDashboardKpis } from "@/components/client/client-dashboard-kpis"
+import { ClientDashboardActivity } from "@/components/client/client-dashboard-activity"
+import { ClientQuickActionsHub } from "@/components/client/client-quick-actions-hub"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -149,90 +112,88 @@ const MONTH_LABELS = [
   "Dez",
 ]
 
+const POPULAR_CATEGORIES = [
+  { label: "Eletricista", q: "Eletricista", icon: Zap },
+  { label: "Pintor", q: "Pintor", icon: Paintbrush },
+  { label: "Ar-Condicionado", q: "Ar-Condicionado", icon: Wind },
+  { label: "Encanador", q: "Encanador", icon: Wrench },
+  { label: "Limpeza", q: "Limpeza", icon: Sparkles },
+  { label: "Chaveiro", q: "Chaveiro", icon: KeyRound },
+  { label: "Marcenaria", q: "Marcenaria", icon: Hammer },
+] as const
+
 // ---------------------------------------------------------------------------
-// Component
+// Main Dashboard Component
 // ---------------------------------------------------------------------------
 
 export function ClientDashboard() {
   const navigate = useViewStore((s) => s.navigate)
   const openQuote = useUIStore((s) => s.openQuote)
   const user = useAuthStore((s) => s.user)
+  const [searchQuery, setSearchQuery] = React.useState("")
 
-  const firstName = (user?.name ?? "").trim().split(/\s+/)[0]
-
-  // Pull all bookings + quotes for stats. Server paginates at 50 max.
-  const bookingsQuery = useQuery<BookingsResponse>({
-    queryKey: ["bookings", "CLIENT", "dashboard"],
-    queryFn: () =>
-      apiGet<BookingsResponse>("/api/bookings", {
-        role: "CLIENT",
-        page: 1,
-        limit: 50,
-      }),
-  })
-  const quotesQuery = useQuery<QuotesResponse>({
-    queryKey: ["quotes", "CLIENT", "dashboard"],
-    queryFn: () =>
-      apiGet<QuotesResponse>("/api/quotes", {
-        role: "CLIENT",
-        page: 1,
-        limit: 50,
-      }),
+  const { data: bookingsData, isLoading: bookingsLoading } = useQuery<BookingsResponse>({
+    queryKey: ["client", "bookings", "dashboard"],
+    queryFn: () => apiGet<BookingsResponse>("/api/bookings?limit=50"),
+    staleTime: 30 * 1000,
   })
 
-  const bookings = bookingsQuery.data?.items ?? []
-  const quotes = quotesQuery.data?.items ?? []
+  const { data: quotesData, isLoading: quotesLoading } = useQuery<QuotesResponse>({
+    queryKey: ["client", "quotes", "dashboard"],
+    queryFn: () => apiGet<QuotesResponse>("/api/quotes?limit=20"),
+    staleTime: 30 * 1000,
+  })
 
-  // ---- Derived stats ---------------------------------------------------------
+  const bookings = bookingsData?.items ?? []
+  const quotes = quotesData?.items ?? []
+  const isLoading = bookingsLoading || quotesLoading
+
+  // Active in-progress service if any (for real-time hero banner)
+  const inProgressBooking = bookings.find((b) => b.status === "IN_PROGRESS")
+
+  // KPIs
   const upcomingCount = bookings.filter((b) =>
     ["PENDING", "CONFIRMED", "IN_PROGRESS"].includes(b.status),
   ).length
-
-  const activeQuotesCount = quotes.filter((q) => ["PENDING", "RESPONDED"].includes(q.status)).length
-
+  const activeQuotesCount = quotes.filter((q) => ["PENDING", "SENT"].includes(q.status)).length
   const completedCount = bookings.filter((b) => b.status === "COMPLETED").length
-
   const totalInvested = bookings
     .filter((b) => b.paymentStatus === "PAID")
-    .reduce((acc, b) => acc + b.amount, 0)
+    .reduce((sum, b) => sum + (b.amount || 0), 0)
 
-  // ---- Monthly bookings chart (last 6 months) --------------------------------
-  // Note: computed without useMemo so the React Compiler can manage memoization.
+  // Monthly evolution of bookings (last 6 months)
   const monthlyData = (() => {
+    const months: Array<{ key: string; label: string; total: number }> = []
     const now = new Date()
-    const baseMonths: Array<{ key: string; label: string; total: number }> = []
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      baseMonths.push({
-        key: `${d.getFullYear()}-${d.getMonth()}`,
-        label: MONTH_LABELS[d.getMonth()]!,
-        total: 0,
-      })
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+      months.push({ key, label: MONTH_LABELS[d.getMonth()], total: 0 })
     }
-    const counts = bookings.reduce<Record<string, number>>((acc, b) => {
-      const d = new Date(b.scheduledAt)
-      const key = `${d.getFullYear()}-${d.getMonth()}`
-      acc[key] = (acc[key] ?? 0) + 1
-      return acc
-    }, {})
-    return baseMonths.map((m) => ({ ...m, total: counts[m.key] ?? 0 }))
+    for (const b of bookings) {
+      const bDate = new Date(b.scheduledAt)
+      const bKey = `${bDate.getFullYear()}-${String(bDate.getMonth() + 1).padStart(2, "0")}`
+      const m = months.find((x) => x.key === bKey)
+      if (m) m.total += 1
+    }
+    return months.map(({ label, total }) => ({ label, total }))
   })()
 
-  // ---- Spending per category pie --------------------------------------------
+  // Spending per category (for pie chart)
   const spendingByCategory = (() => {
-    const map = bookings
-      .filter((b) => b.paymentStatus === "PAID")
-      .reduce<Record<string, number>>((acc, b) => {
-        const cat = b.service.category?.name ?? "Outros"
-        acc[cat] = (acc[cat] ?? 0) + b.amount
-        return acc
-      }, {})
-    return Object.entries(map)
-      .map(([name, value]) => ({ name, value }))
+    const map = new Map<string, number>()
+    for (const b of bookings) {
+      if (b.paymentStatus === "PAID" && b.amount > 0) {
+        const cat = b.service?.category?.name || "Outros"
+        map.set(cat, (map.get(cat) || 0) + b.amount)
+      }
+    }
+    return Array.from(map.entries())
+      .map(([name, value]) => ({ name, value: Math.round(value) }))
       .sort((a, b) => b.value - a.value)
   })()
 
-  // ---- Recent activity (latest 5 bookings + 5 quotes, merged by date) --------
+  // Combined recent activity feed
   const recentActivity = (() => {
     const fromBookings = bookings.slice(0, 8).map((b) => ({
       type: "booking" as const,
@@ -250,6 +211,7 @@ export function ClientDashboard() {
       title: q.items[0]?.service?.title ?? "Orçamento",
       status: q.status,
       provider: q.provider,
+      amount: 0,
     }))
     return [...fromBookings, ...fromQuotes]
       .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
@@ -260,460 +222,171 @@ export function ClientDashboard() {
     .filter((b) => ["PENDING", "CONFIRMED", "IN_PROGRESS"].includes(b.status))
     .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
 
-  const activeQuotes = quotes
-    .filter((q) => ["PENDING", "RESPONDED"].includes(q.status))
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  const activeQuotes = quotes.filter((q) => ["PENDING", "SENT"].includes(q.status))
 
-  const isLoading = bookingsQuery.isLoading || quotesQuery.isLoading
+  const firstName = user?.name?.split(" ")[0] || "Cliente"
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!searchQuery.trim()) return
+    triggerHaptic("selection")
+    navigate("client.providers", { q: searchQuery.trim() })
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Greeting + quick actions */}
+    <div className="space-y-6 sm:space-y-7">
+      {/* 1. Header with greeting and primary action */}
       <PageHeader
-        title={`Olá${firstName ? ", " : ""}${firstName} 👋`}
-        subtitle="Acompanhe seus agendamentos, orçamentos e gastos em um só lugar."
+        title={`Olá, ${firstName}!`}
+        subtitle="Acompanhe seus agendamentos, orçamentos e encontre novos prestadores verificados."
         action={
-          <>
-            <Button variant="outline" onClick={() => navigate("vitrine")} className="h-10 gap-2">
-              <Search className="size-4" />
-              Buscar prestadores
-            </Button>
-            <Button onClick={() => openQuote()} className="h-10 gap-2">
-              <Plus className="size-4" />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                triggerHaptic("selection")
+                openQuote()
+              }}
+              className="border-border/70 hover:bg-muted/60 h-9 gap-1.5 rounded-xl px-3.5 text-xs font-semibold shadow-2xs"
+            >
+              <Plus className="size-3.5" />
               Pedir orçamento
             </Button>
-          </>
+            <Button
+              size="sm"
+              onClick={() => {
+                triggerHaptic("selection")
+                navigate("client.providers")
+              }}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 h-9 gap-1.5 rounded-xl px-4 text-xs font-semibold shadow-2xs"
+            >
+              <MapPin className="size-3.5" />
+              Buscar prestadores
+            </Button>
+          </div>
         }
       />
 
-      {/* Geo-awareness badge — shows provider count near user */}
-      <GeoAwarenessBadge />
+      {/* 2. Discovery & Search Dock — Quick Action Command Center */}
+      <Card className="border-border/70 bg-card/95 overflow-hidden rounded-2xl border p-4 shadow-2xs sm:p-5">
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-2.5">
+            <span className="bg-primary/10 text-primary border-primary/20 flex size-9 shrink-0 items-center justify-center rounded-xl border shadow-2xs">
+              <Search className="size-4.5" />
+            </span>
+            <div>
+              <p className="text-foreground text-sm font-bold tracking-tight">
+                Encontre o profissional ideal para hoje
+              </p>
+              <p className="text-muted-foreground text-xs">
+                Busque por especialidade, serviço ou profissão com geolocalização em tempo real.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => {
+              triggerHaptic("selection")
+              navigate("client.providers")
+            }}
+            className="border-border/70 hover:bg-muted/60 h-8.5 shrink-0 gap-1.5 self-start rounded-xl px-3.5 text-xs font-semibold shadow-2xs sm:self-auto"
+          >
+            Abrir busca completa
+            <ChevronRight className="size-3.5" />
+          </Button>
+        </div>
 
-      {/* Onboarding checklist — only shows if profile is incomplete */}
+        {/* Search input form */}
+        <form onSubmit={handleSearchSubmit} className="mt-3.5 flex gap-2">
+          <div className="relative flex-1">
+            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="O que você precisa? Ex: eletricista, encanador, pintura residencial, ar-condicionado..."
+              className="border-border/70 bg-background text-foreground placeholder:text-muted-foreground/70 focus:ring-primary h-10 w-full rounded-xl border pr-3 pl-9 text-xs shadow-2xs focus:ring-1 focus:outline-none"
+            />
+          </div>
+          <Button
+            type="submit"
+            size="sm"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 rounded-xl px-5 text-xs font-bold shadow-2xs"
+          >
+            Buscar
+          </Button>
+        </form>
+
+        {/* Popular category shortcut pills */}
+        <div className="border-border/40 mt-3.5 flex flex-wrap items-center gap-1.5 border-t pt-2.5">
+          <span className="text-muted-foreground mr-1 text-[11px] font-semibold">Populares:</span>
+          {POPULAR_CATEGORIES.map((cat) => {
+            const Icon = cat.icon
+            return (
+              <button
+                key={cat.label}
+                type="button"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  navigate("client.providers", { q: cat.q })
+                }}
+                className="border-border/50 bg-background/80 hover:bg-primary/10 hover:border-primary/30 text-muted-foreground hover:text-primary flex cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-semibold shadow-2xs transition-all"
+              >
+                <Icon className="text-primary/80 size-3" />
+                {cat.label}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Embedded Geo-awareness badge — localized coverage radar */}
+        <div className="border-border/40 mt-3.5 border-t pt-3">
+          <GeoAwarenessBadge />
+        </div>
+      </Card>
+
+      {/* 3. Central de Serviços & Acesso Rápido — Quick Action Command Hub */}
+      <ClientQuickActionsHub onNavigate={navigate} onOpenQuote={openQuote} />
+
+      {/* 4. Onboarding checklist — only shows if profile is incomplete */}
       <OnboardingChecklist />
 
-      {/* Stat cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          index={0}
-          icon={CalendarDays}
-          label="Próximos agendamentos"
-          value={upcomingCount}
-          tone="primary"
-          hint="Pendentes, confirmados e em andamento"
-        />
-        <StatCard
-          index={1}
-          icon={FileText}
-          label="Orçamentos ativos"
-          value={activeQuotesCount}
-          tone="amber"
-          hint="Aguardando resposta ou ação"
-        />
-        <StatCard
-          index={2}
-          icon={CheckCircle2}
-          label="Serviços concluídos"
-          value={completedCount}
-          tone="sky"
-          hint="Histórico de serviços"
-        />
-        <StatCard
-          index={3}
-          icon={Wallet}
-          label="Total investido"
-          value={formatBRL(totalInvested)}
-          tone="primary"
-          hint="Soma de pagamentos confirmados"
-        />
-      </div>
-
-      {/* Sound & vibration preferences */}
-      <PreferenceToggles
-        soundEnabled={user?.soundEnabled ?? true}
-        vibrateEnabled={user?.vibrateEnabled ?? true}
+      {/* 5. Active service alert + Escrow reassurance + 4 Interactive KPI cards */}
+      <ClientDashboardKpis
+        inProgressBooking={inProgressBooking}
+        upcomingCount={upcomingCount}
+        activeQuotesCount={activeQuotesCount}
+        completedCount={completedCount}
+        totalInvested={totalInvested}
+        onNavigate={navigate}
       />
 
-      {/* Charts */}
-      <div className="grid gap-4 lg:grid-cols-5">
-        {/* Monthly bookings */}
-        <Card className="rounded-xl shadow-sm lg:col-span-3">
-          <CardContent className="p-5">
-            <div className="mb-4 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="bg-primary/10 text-primary flex size-7 items-center justify-center rounded-md">
-                  <TrendingUp className="size-4" />
-                </span>
-                <p className="text-muted-foreground text-sm font-semibold tracking-wide uppercase">
-                  Agendamentos por mês
-                </p>
-              </div>
-            </div>
-            <div className="h-56 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={monthlyData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="grad-bookings" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.35} />
-                      <stop offset="95%" stopColor="var(--primary)" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
-                  <XAxis
-                    dataKey="label"
-                    tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={28}
-                    allowDecimals={false}
-                  />
-                  <Tooltip
-                    formatter={(v: number) => [`${v} agendamento${v !== 1 ? "s" : ""}`, "Total"]}
-                    cursor={{ stroke: "var(--primary)", strokeWidth: 1, strokeDasharray: "3 3" }}
-                    contentStyle={CHART_TOOLTIP_STYLE}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="total"
-                    stroke="var(--primary)"
-                    strokeWidth={2}
-                    fill="url(#grad-bookings)"
-                    activeDot={{ r: 4, fill: "var(--primary)" }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+      {/* 5. Operational Center: Upcoming bookings + Active quotes + Recent activity */}
+      <ClientDashboardActivity
+        upcomingBookings={upcomingBookings}
+        activeQuotes={activeQuotes}
+        recentActivity={recentActivity}
+        isLoading={isLoading}
+        onNavigate={navigate}
+        onOpenQuote={openQuote}
+      />
 
-        {/* Spending per category pie */}
-        <Card className="rounded-xl shadow-sm lg:col-span-2">
-          <CardContent className="p-5">
-            <div className="mb-4 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="bg-primary/10 text-primary flex size-7 items-center justify-center rounded-md">
-                  <Wallet className="size-4" />
-                </span>
-                <p className="text-muted-foreground text-sm font-semibold tracking-wide uppercase">
-                  Gastos por categoria
-                </p>
-              </div>
-            </div>
-            {spendingByCategory.length === 0 ? (
-              <div className="flex h-56 flex-col items-center justify-center gap-2 text-center">
-                <span className="bg-muted text-muted-foreground flex size-12 items-center justify-center rounded-full">
-                  <Wallet className="size-5" />
-                </span>
-                <p className="text-muted-foreground text-sm">Sem gastos confirmados ainda.</p>
-              </div>
-            ) : (
-              <div className="h-48 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={spendingByCategory}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={60}
-                      outerRadius={90}
-                      paddingAngle={2}
-                      stroke="var(--background)"
-                      strokeWidth={2}
-                    >
-                      {spendingByCategory.map((_, i) => (
-                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(v: number, n: string) => [formatBRL(v), n]}
-                      contentStyle={CHART_TOOLTIP_STYLE}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-            {spendingByCategory.length > 0 ? (
-              <ul className="mt-4 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {spendingByCategory.slice(0, 6).map((c, i) => (
-                  <li key={c.name} className="flex items-center gap-2 text-xs">
-                    <span
-                      className="size-2.5 shrink-0 rounded-full"
-                      style={{
-                        background: PIE_COLORS[i % PIE_COLORS.length],
-                      }}
-                    />
-                    <span className="text-muted-foreground truncate">{c.name}</span>
-                    <span className="ml-auto shrink-0 font-medium tabular-nums">
-                      {formatBRL(c.value)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </CardContent>
-        </Card>
+      {/* 6. Analytics Charts (AreaChart bookings evolution + PieChart spending distribution) */}
+      <ClientDashboardCharts monthlyData={monthlyData} spendingByCategory={spendingByCategory} />
+
+      {/* 7. Indique e Ganhe & Comunidade — Programa de Fidelidade */}
+      <div className="grid gap-5 lg:grid-cols-2">
+        <ReferralCard />
+        <ReferralLeaderboard />
       </div>
 
-      {/* Recent activity */}
-      <div className="space-y-3">
-        <SectionTitle
-          title="Atividade recente"
-          description="Seus últimos agendamentos e orçamentos."
-          action={
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate("client.bookings")}
-              className="text-primary hover:text-primary h-9 gap-1.5"
-            >
-              Ver tudo
-              <ChevronRight className="size-4" />
-            </Button>
-          }
+      {/* 8. Sound & vibration preferences utility */}
+      <div className="border-border/50 bg-card/60 rounded-2xl border p-4 shadow-2xs">
+        <PreferenceToggles
+          soundEnabled={user?.soundEnabled ?? true}
+          vibrateEnabled={user?.vibrateEnabled ?? true}
         />
-
-        {isLoading ? (
-          <div className="text-muted-foreground flex items-center justify-center gap-2 p-8 text-sm">
-            <Loader2 className="size-5 animate-spin" />
-            Carregando atividade…
-          </div>
-        ) : recentActivity.length === 0 ? (
-          <EmptyState
-            icon={CalendarDays}
-            title="Nenhuma atividade ainda"
-            description="Quando você começar a agendar ou solicitar orçamentos, suas atividades recentes aparecerão aqui."
-            action={
-              <Button onClick={() => navigate("vitrine")} className="mt-2 gap-2">
-                <MapPin className="size-4" />
-                Buscar prestadores
-              </Button>
-            }
-          />
-        ) : (
-          <Card className="overflow-hidden rounded-xl shadow-sm">
-            <CardContent className="divide-y p-0">
-              {recentActivity.map((a) => {
-                const provider = a.provider
-                const initials = (provider.name ?? "")
-                  .split(" ")
-                  .map((p) => p[0])
-                  .filter(Boolean)
-                  .slice(0, 2)
-                  .join("")
-                  .toUpperCase()
-                const isBooking = a.type === "booking"
-                const status = a.status as BookingStatus | QuoteStatus
-                const tone = isBooking
-                  ? bookingTone(status as BookingStatus)
-                  : quoteTone(status as QuoteStatus)
-                const Icon = isBooking
-                  ? bookingIcon(status as BookingStatus)
-                  : quoteIcon(status as QuoteStatus)
-                const label = isBooking
-                  ? BOOKING_STATUS_LABELS[status as BookingStatus]
-                  : QUOTE_STATUS_LABELS[status as QuoteStatus]
-                return (
-                  <button
-                    key={`${a.type}-${a.id}`}
-                    type="button"
-                    onClick={() => navigate(isBooking ? "client.bookings" : "client.quotes")}
-                    className="hover:bg-accent/40 focus-visible:bg-accent/40 flex w-full items-center gap-3 px-4 py-3 text-left transition-colors outline-none"
-                  >
-                    <Avatar className="size-9 shrink-0">
-                      {provider.avatarUrl ? (
-                        <AvatarImage src={provider.avatarUrl} alt={provider.name} />
-                      ) : null}
-                      <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-semibold">
-                        {initials || "P"}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{a.title}</p>
-                      <p className="text-muted-foreground truncate text-xs tabular-nums">
-                        {isBooking ? "Agendamento" : "Orçamento"} · {provider.name} ·{" "}
-                        {formatRelative(a.at)}
-                      </p>
-                    </div>
-                    {isBooking && a.type === "booking" ? (
-                      <span className="hidden text-sm font-semibold tabular-nums sm:block">
-                        {formatBRL(a.amount)}
-                      </span>
-                    ) : null}
-                    <StatusBadge tone={tone} icon={Icon}>
-                      {label}
-                    </StatusBadge>
-                  </button>
-                )
-              })}
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {/* Upcoming bookings + Active quotes side-by-side (mobile stacked) */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Upcoming bookings */}
-        <div className="space-y-3">
-          <SectionTitle
-            title="Próximos agendamentos"
-            description="Serviços agendados para os próximos dias."
-            action={
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate("client.bookings")}
-                className="text-primary hover:text-primary h-9 gap-1.5"
-              >
-                Ver tudo
-                <ChevronRight className="size-4" />
-              </Button>
-            }
-          />
-          {isLoading ? (
-            <div className="text-muted-foreground flex items-center justify-center gap-2 p-8 text-sm">
-              <Loader2 className="size-5 animate-spin" />
-              Carregando agendamentos…
-            </div>
-          ) : upcomingBookings.length === 0 ? (
-            <EmptyState
-              icon={CalendarDays}
-              title="Nenhum agendamento próximo"
-              description="Que tal agendar seu primeiro serviço? Explore prestadores verificados perto de você."
-              action={
-                <Button onClick={() => navigate("vitrine")} className="mt-2 gap-2">
-                  <MapPin className="size-4" />
-                  Buscar prestadores
-                </Button>
-              }
-            />
-          ) : (
-            <div className="space-y-2">
-              {upcomingBookings.slice(0, 3).map((b) => {
-                const initials = (b.provider.name ?? "")
-                  .split(" ")
-                  .map((p) => p[0])
-                  .filter(Boolean)
-                  .slice(0, 2)
-                  .join("")
-                  .toUpperCase()
-                return (
-                  <button
-                    key={b.id}
-                    type="button"
-                    onClick={() => navigate("client.bookings")}
-                    className="bg-card hover:border-primary/30 focus-visible:ring-ring flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-all outline-none hover:shadow-sm focus-visible:ring-2"
-                  >
-                    <Avatar className="size-10 shrink-0">
-                      {b.provider.avatarUrl ? (
-                        <AvatarImage src={b.provider.avatarUrl} alt={b.provider.name} />
-                      ) : null}
-                      <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-semibold">
-                        {initials || "P"}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{b.service.title}</p>
-                      <p className="text-muted-foreground truncate text-xs tabular-nums">
-                        {formatDateTime(b.scheduledAt)} · {b.provider.name}
-                      </p>
-                    </div>
-                    <StatusBadge
-                      tone={bookingTone(b.status as BookingStatus)}
-                      icon={bookingIcon(b.status as BookingStatus)}
-                    >
-                      {BOOKING_STATUS_LABELS[b.status as BookingStatus]}
-                    </StatusBadge>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Active quotes */}
-        <div className="space-y-3">
-          <SectionTitle
-            title="Orçamentos ativos"
-            description="Aguardando resposta do prestador ou sua ação."
-            action={
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate("client.quotes")}
-                className="text-primary hover:text-primary h-9 gap-1.5"
-              >
-                Ver tudo
-                <ChevronRight className="size-4" />
-              </Button>
-            }
-          />
-          {isLoading ? (
-            <div className="text-muted-foreground flex items-center justify-center gap-2 p-8 text-sm">
-              <Loader2 className="size-5 animate-spin" />
-              Carregando orçamentos…
-            </div>
-          ) : activeQuotes.length === 0 ? (
-            <EmptyState
-              icon={FileText}
-              title="Nenhum orçamento ativo"
-              description="Solicite um orçamento e acompanhe a resposta dos prestadores aqui."
-              action={
-                <Button onClick={() => openQuote()} className="mt-2 gap-2">
-                  <Plus className="size-4" />
-                  Pedir orçamento
-                </Button>
-              }
-            />
-          ) : (
-            <div className="space-y-2">
-              {activeQuotes.slice(0, 3).map((q) => {
-                const initials = (q.provider.name ?? "")
-                  .split(" ")
-                  .map((p) => p[0])
-                  .filter(Boolean)
-                  .slice(0, 2)
-                  .join("")
-                  .toUpperCase()
-                return (
-                  <button
-                    key={q.id}
-                    type="button"
-                    onClick={() => navigate("client.quotes")}
-                    className="bg-card hover:border-primary/30 focus-visible:ring-ring flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-all outline-none hover:shadow-sm focus-visible:ring-2"
-                  >
-                    <Avatar className="size-10 shrink-0">
-                      {q.provider.avatarUrl ? (
-                        <AvatarImage src={q.provider.avatarUrl} alt={q.provider.name} />
-                      ) : null}
-                      <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-semibold">
-                        {initials || "P"}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
-                        {q.items[0]?.service?.title ?? "Orçamento"}
-                      </p>
-                      <p className="text-muted-foreground truncate text-xs tabular-nums">
-                        {q.provider.name} · {formatRelative(q.createdAt)}
-                      </p>
-                    </div>
-                    <StatusBadge
-                      tone={quoteTone(q.status as QuoteStatus)}
-                      icon={quoteIcon(q.status as QuoteStatus)}
-                    >
-                      {QUOTE_STATUS_LABELS[q.status as QuoteStatus]}
-                    </StatusBadge>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   )

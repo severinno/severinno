@@ -135,7 +135,7 @@ describe("GET /api/providers — sort=distance & radius listing", () => {
     const req = createMockRequest({
       searchParams: { sort: "distance", radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
@@ -159,7 +159,7 @@ describe("GET /api/providers — sort=distance & radius listing", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10", sort: "distance" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -188,7 +188,7 @@ describe("GET /api/providers — sort=distance & radius listing", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10", sort: "rating" },
     })
-    await GET(req)
+    await GET(req, { params: Promise.resolve({}) })
 
     const idSql = (db.$queryRawUnsafe as any).mock.calls.find(
       ([sql]: [string]) => typeof sql === "string" && sql.includes("SELECT u.id"),
@@ -210,7 +210,7 @@ describe("GET /api/providers — sort=distance & radius listing", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10", sort: "bogus" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -238,7 +238,7 @@ describe("GET /api/providers — sort=distance & radius listing", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10", sort: "distance" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -262,7 +262,7 @@ describe("GET /api/providers — sort=distance & radius listing", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -282,7 +282,7 @@ describe("GET /api/providers — sort=distance & radius listing", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)

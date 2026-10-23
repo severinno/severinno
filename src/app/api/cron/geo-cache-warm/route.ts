@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 import { warmGeoCache, getWarmConfig } from "@/lib/geo-cache-warm"
 import { isCooldownElapsed, markCompleted } from "@/lib/cron-cooldown"
 import logger from "@/lib/logger"
-import { handleError } from "@/lib/api-server"
+
+import { withRoute } from "@/lib/api-route"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -62,64 +63,60 @@ const COOLDOWN_MS = 23 * 60 * 60 * 1000
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-export async function GET(request: Request) {
-  try {
-    // ── Auth ─────────────────────────────────────────────────────────
-    const auth = request.headers.get("authorization")
-    const cronSecret = process.env.CRON_SECRET
+export const GET = withRoute("api.cron.geo-cache-warm.GET", async (request) => {
+  // ── Auth ─────────────────────────────────────────────────────────
+  const auth = request.headers.get("authorization")
+  const cronSecret = process.env.CRON_SECRET
 
-    if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
-      return NextResponse.json(
-        { error: "Unauthorized — provide a valid Bearer token" },
-        { status: 401 },
-      )
-    }
-
-    // ── Cooldown check ───────────────────────────────────────────────
-    const cooldownElapsed = await isCooldownElapsed(CRON_NAME, COOLDOWN_MS)
-
-    if (!cooldownElapsed) {
-      const skipResponse = {
-        ok: true,
-        status: "skipped",
-        reason: "cooldown",
-        cooldownMs: COOLDOWN_MS,
-        timestamp: new Date().toISOString(),
-        message:
-          "Skipped — last successful run was less than 23 hours ago. " +
-          "Use POST /api/cron/geo-cache-warm/clear-cooldown to force a re-run.",
-      }
-      logger.info(skipResponse, "geo-cache-warm: skipped (cooldown)")
-      return NextResponse.json(skipResponse)
-    }
-
-    // ── Execute warming ──────────────────────────────────────────────
-    const config = getWarmConfig()
-    logger.info({ totalQueries: config.totalQueries }, "geo-cache-warm: starting")
-
-    const result = await warmGeoCache()
-
-    // ── Mark cooldown ─────────────────────────────────────────────────
-    await markCompleted(CRON_NAME, COOLDOWN_MS)
-
-    const response = {
-      ok: true,
-      status: "completed",
-      timestamp: new Date().toISOString(),
-      config,
-      result,
-      message:
-        result.total > 0
-          ? `Cache warmed: ${result.total} query(ies) fetched (${result.errors} error(s)). ${result.skipped} already cached.`
-          : result.skipped > 0
-            ? "All queries already cached — no warming needed."
-            : "No queries were warmed.",
-    }
-
-    logger.info(response, "geo-cache-warm: done")
-
-    return NextResponse.json(response)
-  } catch (e) {
-    return handleError(e)
+  if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
+    return NextResponse.json(
+      { error: "Unauthorized — provide a valid Bearer token" },
+      { status: 401 },
+    )
   }
-}
+
+  // ── Cooldown check ───────────────────────────────────────────────
+  const cooldownElapsed = await isCooldownElapsed(CRON_NAME, COOLDOWN_MS)
+
+  if (!cooldownElapsed) {
+    const skipResponse = {
+      ok: true,
+      status: "skipped",
+      reason: "cooldown",
+      cooldownMs: COOLDOWN_MS,
+      timestamp: new Date().toISOString(),
+      message:
+        "Skipped — last successful run was less than 23 hours ago. " +
+        "Use POST /api/cron/geo-cache-warm/clear-cooldown to force a re-run.",
+    }
+    logger.info(skipResponse, "geo-cache-warm: skipped (cooldown)")
+    return NextResponse.json(skipResponse)
+  }
+
+  // ── Execute warming ──────────────────────────────────────────────
+  const config = getWarmConfig()
+  logger.info({ totalQueries: config.totalQueries }, "geo-cache-warm: starting")
+
+  const result = await warmGeoCache()
+
+  // ── Mark cooldown ─────────────────────────────────────────────────
+  await markCompleted(CRON_NAME, COOLDOWN_MS)
+
+  const response = {
+    ok: true,
+    status: "completed",
+    timestamp: new Date().toISOString(),
+    config,
+    result,
+    message:
+      result.total > 0
+        ? `Cache warmed: ${result.total} query(ies) fetched (${result.errors} error(s)). ${result.skipped} already cached.`
+        : result.skipped > 0
+          ? "All queries already cached — no warming needed."
+          : "No queries were warmed.",
+  }
+
+  logger.info(response, "geo-cache-warm: done")
+
+  return NextResponse.json(response)
+})

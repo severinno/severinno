@@ -55,6 +55,7 @@ import { MASTER_DOS_SUBTESTS, comMetadesDaMatriz, metadesDaMatriz } from "./benc
 // `new URL`) e ela não via o `import("./x.mjs")` LITERAL — a aresta medida no
 // `ensure-runner-image.mjs` → `prove-runner-image-gate.mjs`.
 import { fechoDeImports } from "./fecho-imports.mjs"
+import { escreverJsonFormatado } from "./prettier-format.mjs"
 // OS ARTEFATOS do fixture são DERIVADOS do que os guards do hook LEEM (por
 // execução — ver `artefatos-do-hook.mjs`): o caminho do compose não mora aqui, e
 // sim na medição. Antes desta régua o fixture levava uma LISTA À MÃO que não sabia
@@ -587,7 +588,7 @@ export function runCommit(dir, extraEnv = {}, args = ["commit", "-m", "commit do
 function resumoCommit(res) {
   return {
     status: res.status,
-    output: (res.output ?? "").trim().split("\n").slice(0, 4).join(" | "),
+    output: (res.output ?? "").trim().split("\n").slice(-40).join(" | "),
   }
 }
 
@@ -1629,6 +1630,89 @@ export function ligaObjetosDoCheckout(copia, { root = REPO_ROOT } = {}) {
 }
 
 /**
+ * Espelha as REFS REMOTAS do checkout para dentro da cópia.
+ *
+ * A régua do membro da história não julga a prosa de mensagem de commits
+ * PUBLICADOS (`rev-list HEAD --not --remotes` — "a história publicada é
+ * imutável") — e a cópia nasce SEM refs remotas nenhuma (é um `git init` sobre
+ * uma árvore copiada): sem este espelho, a varredura julgaria TODA a história.
+ * MEDIDO na forja (30/09/2026): o job clone raso a branch publicada, o store da
+ * cópia vê os objetos da história por `alternates`, MAS o banco de objetos da
+ * forja só tem os commits das refs que foram pushadas — a varredura de mensagens
+ * refutou 69 citações cujos objetos nem existem lá, 75 refutadores de outros
+ * guards entraram no relatório do hook e a prova saiu `unavailable` ("o gate
+ * recusou, mas 75 OUTRO(S) guard(s) refutaram junto"), medindo o CLONE (o
+ * subconjunto de história que a forja carrega) em vez do hook.
+ *
+ * O espelho reproduz o MESMO universo de refs do checkout — heads, remotes e
+ * tags, cada uma com o nome COMPLETO (paridade de resolução de alias: um token
+ * curto tem de resolver para o MESMO objeto nos dois lugares, incluindo tags
+ * esdrúxulas que o clone carregue). Com isso, `--not --remotes` dentro da cópia
+ * exatamente o que é publicado — no job, TUDO que o checkout traz — sai do
+ * escopo de mensagens, e a prova volta a medir o hook. Num checkout sem
+ * remotos (fixture sintético), zero refs são publicadas e a prova segue.
+ *
+ * @param {string} copia
+ * @param {{root?: string, run?: typeof spawnSync}} [opts]
+ * @returns {{ok: boolean, refs: number, motivo: string|null}}
+ */
+export function publicaRefsRemotasNaCopia(copia, { root = REPO_ROOT, run = spawnSync } = {}) {
+  // Sem STORE, sem história para espelhar: o fixture sintético (sem `.git`) tem
+  // zero refs e a prova segue — é o MESMO pré-requisito do `alternates`
+  // (a cópia só enxerga objetos onde o checkout tem store). Um store que existe
+  // mas não responde `for-each-ref` é falha de verdade: o universo de refs não
+  // pode ser presumido vazio.
+  if (!existsSync(join(root, ".git", "objects"))) return { ok: true, refs: 0, motivo: null }
+  // TODAS as refs (heads, remotes, tags) — não só as remotes. O objetivo é a
+  // PARIDADE DO UNIVERSO de refs: qualquer guard da cópia que resolva um alias
+  // tem de ver o MESMO objeto que veria no checkout. Medido na forja
+  // (30/09/2026): o clone da forja carrega uma tag esdrúxula chamada
+  // `ref/heads`, e um alias curto `ref/heads` no checkout resolve para ela
+  // (objeto que existe mas não é commit) enquanto na cópia sem a tag o mesmo
+  // alias vira erro de resolução — os guards então se comportam DIFERENTE nos
+  // dois lugares e a recusa deixa de ser comparável. Espelhar tudo fecha isso
+  // por construção.
+  const listagem = run("git", ["for-each-ref", "--format=%(objectname) %(refname)"], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: 60_000,
+  })
+  if (listagem.status !== 0) {
+    return {
+      ok: false,
+      refs: 0,
+      motivo: `git for-each-ref no checkout saiu ${listagem.status}: ${(listagem.stderr ?? "").trim().split("\n")[0] ?? "sem saída"}`,
+    }
+  }
+  const linhas = String(listagem.stdout ?? "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "")
+  for (const linha of linhas) {
+    // `%(objectname) %(refname)`: o nome de ref não tem espaço — o corte é
+    // seguro no primeiro.
+    const corte = linha.indexOf(" ")
+    const sha = linha.slice(0, corte)
+    const ref = linha.slice(corte + 1)
+    // O nome vai COMPLETO (`refs/remotes/origin/main`): um alias curto é
+    // AMBÍGUO para o git e um update-ref por alias criaria a ref errada.
+    const r = run("git", ["update-ref", ref, sha], {
+      cwd: copia,
+      encoding: "utf8",
+      timeout: 60_000,
+    })
+    if (r.status !== 0) {
+      return {
+        ok: false,
+        refs: 0,
+        motivo: `git update-ref ${ref} na cópia saiu ${r.status}: ${(r.stderr ?? "").trim().split("\n")[0] ?? "sem saída"}`,
+      }
+    }
+  }
+  return { ok: true, refs: linhas.length, motivo: null }
+}
+
+/**
  * Quantos commits a cópia ACRESCENTOU ao commit de base (`git rev-list --count
  * <base>..HEAD`).
  *
@@ -1921,7 +2005,14 @@ export function versionaOAto(copia, { nNovo, ler = readFileSync }) {
     0,
   )
   bench.mutations = corrigida.metades === total ? corrigida : { ...corrigida, metades: total }
-  writeFileSync(caminhoBench, `${JSON.stringify(bench, null, 2)}\n`)
+  // A ESCRITA é a MESMA folha do ato real (`escreverJsonFormatado`): grava E
+  // passa pelo MESMO binário do prettier que o `lint` roda. Gravar o
+  // `JSON.stringify` cru nasce reprovando o estilo (medido em 30/09/2026: o
+  // prettier colapsa o que cabe na largura — a MESMA armadilha que o
+  // `check-generated-format` existe para fechar), a fase C da cópia recusa o
+  // CONTROLE do bump por estilo e a prova sai INDETERMINADO acusando o
+  // ambiente em vez de medir o que ela diz medir.
+  escreverJsonFormatado(caminhoBench, bench)
   // O ATO não é o registro sozinho: ele REESCREVE as duas prosas derivadas (é o
   // `escreverDocs` do `--baseline`, a MESMA folha que este fixture importa).
   // Versionar só o registro deixaria o índice com a prosa do ato ANTERIOR — o
@@ -2025,7 +2116,7 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
     `os SEIS guards de fase A e o gate (${GUARD}) têm de existir em scripts/: sem eles a fase A não roda, e o não-zero seria do ambiente`,
     `\`node_modules\` tem de existir no checkout (a fase C roda de verdade na cópia: \`lint-staged\` e \`typecheck\`)`,
     `a cópia precisa do \`git\` e do \`bash\` vivos (o commit é um \`git commit\` de verdade, e o hook é um script de shell)`,
-    `o checkout precisa da HISTÓRIA (\`fetch-depth: 0\`): a fase B tem um membro que pergunta pela história (\`${MEMBRO_DA_HISTORIA}\` exige que todo commit citado na prosa exista em HEAD), e a cópia a vê pelo \`alternates\` do \`.git/objects\` — sem um checkout PROFUNDO, esse membro recusa todo arquivo citado e a prova mediria o fixture`,
+    `o checkout precisa da HISTÓRIA (\`fetch-depth: 0\`) e das REFS DO PUBLICADO (a fase B tem um membro que pergunta pela história — \`${MEMBRO_DA_HISTORIA}\` exige que todo commit citado na prosa exista em HEAD, e NÃO julga a mensagem de commits publicados): a cópia enxerga os objetos pelo \`alternates\` do \`.git/objects\` e as refs remotas do checkout são ESPELHADAS nela — sem um checkout PROFUNDO o membro recusa todo arquivo citado, e sem o espelho de refs a varredura de mensagens julga TUDO (medido na forja: 69 citações refutadas de objetos que o clone nem tem)`,
   ]
   const faltando = []
   if (!existe(join(root, "node_modules"))) faltando.push("node_modules no checkout")
@@ -2121,6 +2212,19 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
     const objetos = ligaObjetosDoCheckout(copia, { root })
     const headDoCheckout = objetos.ok ? shaDoHead(root) : null
     if (objetos.ok && headDoCheckout) runGit(copia, ["update-ref", "HEAD", headDoCheckout])
+    // A HISTÓRIA PUBLICADA (ver `publicaRefsRemotasNaCopia`): a régua do membro
+    // da história não julga a mensagem de commits publicados, e a cópia nasce
+    // sem refs remotas — sem o espelho, a varredura julgaria TODA a história e
+    // refutaria citações de objetos que este host nem tem (medido na forja).
+    const refsPublicadas = publicaRefsRemotasNaCopia(copia, { root })
+    if (!refsPublicadas.ok) {
+      return {
+        state: "unavailable",
+        detail: `a cópia não herdou as refs do publicado: ${refsPublicadas.motivo}`,
+        evidence: null,
+        remedies,
+      }
+    }
     runGit(copia, ["add", "-A"])
     const base = runGit(copia, ["commit", "-q", "-m", "base da cópia"])
     if (base.status !== 0) {
@@ -2149,7 +2253,8 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
     const evidencia = {
       defeito: {
         status: bloqueio.status,
-        output: bloqueio.output.trim().split("\n").slice(0, 4).join(" | "),
+        output: bloqueio.output.trim().split("\n").slice(0, 60).join(" | "),
+        fim: bloqueio.output.trim().split("\n").slice(-40).join(" | "),
         objetosDeCommit: objetosDepois,
         headExiste: headExists(copia),
         objetosAntes: objetosBase,
@@ -2241,7 +2346,8 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
     const headControle = shaDoHead(copia)
     evidencia.controle = {
       status: controle.status,
-      output: controle.output.trim().split("\n").slice(0, 4).join(" | "),
+      output: controle.output.trim().split("\n").slice(0, 60).join(" | "),
+      fim: controle.output.trim().split("\n").slice(-40).join(" | "),
       objetosDeCommit: objetosControle,
       headAntes: headBase,
       headDepois: headControle,
@@ -2305,7 +2411,8 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
       const headDepoisB = shaDoHead(copia)
       entrada.defeito = {
         status: recusaB.status,
-        output: recusaB.output.trim().split("\n").slice(0, 4).join(" | "),
+        output: recusaB.output.trim().split("\n").slice(0, 60).join(" | "),
+        fim: recusaB.output.trim().split("\n").slice(-40).join(" | "),
         headAntes: headAntesB,
         headDepois: headDepoisB,
       }
@@ -2430,7 +2537,8 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
       const headControleB = shaDoHead(copia)
       entrada.controle = {
         status: controleB.status,
-        output: controleB.output.trim().split("\n").slice(0, 4).join(" | "),
+        output: controleB.output.trim().split("\n").slice(0, 60).join(" | "),
+        fim: controleB.output.trim().split("\n").slice(-40).join(" | "),
         headAntes: headAntesB,
         headDepois: headControleB,
       }
@@ -2517,7 +2625,8 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
     const headDepoisBump = shaDoHead(copia)
     entradaBump.defeito = {
       status: recusaBump.status,
-      output: recusaBump.output.trim().split("\n").slice(0, 6).join(" | "),
+      output: recusaBump.output.trim().split("\n").slice(0, 60).join(" | "),
+      fim: recusaBump.output.trim().split("\n").slice(-40).join(" | "),
       headAntes: headAntesBump,
       headDepois: headDepoisBump,
     }
@@ -2642,7 +2751,8 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
     const headControleBump = shaDoHead(copia)
     entradaBump.controle = {
       status: controleBump.status,
-      output: controleBump.output.trim().split("\n").slice(0, 6).join(" | "),
+      output: controleBump.output.trim().split("\n").slice(0, 60).join(" | "),
+      fim: controleBump.output.trim().split("\n").slice(-40).join(" | "),
       formas: ato.formas,
       headAntes: headDepoisBump,
       headDepois: headControleBump,

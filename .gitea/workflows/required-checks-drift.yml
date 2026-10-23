@@ -53,12 +53,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Mesmo contrato da ci.yml: script + cache, sem composite local.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Mesmo contrato da ci.yml: script por `run:` (sem composite local).
+      # Sem `actions/cache` nesta forja — ver ci.yml.
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
@@ -73,9 +69,9 @@ jobs:
       - name: Check drift (report only)
         id: drift
         env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-          GITEA_URL: ${{ secrets.GITEA_URL }}
-          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+          GITEA_TOKEN: ${{ secrets.FORJA_TOKEN || secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ github.server_url }}
+          GITEA_REPOSITORY: ${{ github.repository }}
         run: |
           set +e
           if [ -z "${GITEA_TOKEN:-}" ]; then
@@ -105,9 +101,9 @@ jobs:
       - name: Publish drift issue (Gitea)
         if: always() && steps.drift.outputs.publish == '1'
         env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-          GITEA_URL: ${{ secrets.GITEA_URL }}
-          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+          GITEA_TOKEN: ${{ secrets.FORJA_TOKEN || secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ github.server_url }}
+          GITEA_REPOSITORY: ${{ github.repository }}
         run: |
           bun scripts/required-checks-drift-issue.mjs \
             --report /tmp/required-checks-drift.json \

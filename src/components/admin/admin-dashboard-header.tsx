@@ -80,16 +80,16 @@ export function DashboardHeader({
 }: DashboardHeaderProps) {
   return (
     <>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 border-b pb-2.5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-foreground text-xl font-bold tracking-tight">{title}</h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">{description}</p>
+          <h1 className="text-foreground text-base font-bold tracking-tight">{title}</h1>
+          <p className="text-muted-foreground text-xs">{description}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {prefixContent}
 
           {dataUpdatedAt ? (
-            <span className="text-muted-foreground text-xs">
+            <span className="text-muted-foreground text-[11px] tabular-nums">
               Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
             </span>
           ) : null}

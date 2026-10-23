@@ -12,6 +12,10 @@ export type AuthUser = {
   email: string
   role: UserRole
   avatarUrl?: string | null
+  city?: string | null
+  state?: string | null
+  bio?: string | null
+  whatsapp?: string | null
   verified?: boolean
   identityStatus?: string | null
   soundEnabled?: boolean
@@ -21,7 +25,16 @@ export type AuthUser = {
 type AuthStatus = "idle" | "loading" | "authenticated" | "unauthenticated"
 
 type LoginPayload = { email: string; password: string }
-type RegisterPayload = Record<string, unknown>
+export type RegisterPayload = {
+  name: string
+  email: string
+  password?: string
+  role?: UserRole
+  phone?: string
+  city?: string
+  state?: string
+  [key: string]: unknown
+}
 
 type AuthState = {
   user: AuthUser | null

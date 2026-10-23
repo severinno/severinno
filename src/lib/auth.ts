@@ -1,5 +1,5 @@
 import { cookies } from "next/headers"
-import { createHmac, timingSafeEqual } from "crypto"
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto"
 import { db } from "@/lib/db"
 import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/redis"
 import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
@@ -20,8 +20,21 @@ function getSecret(): string {
   return secret
 }
 
-function sign(payload: string): string {
-  return createHmac("sha256", getSecret()).update(payload).digest("hex")
+function getAllVerificationSecrets(): string[] {
+  const primary = getSecret()
+  const fallback = process.env.SESSION_SECRETS_FALLBACK
+  if (fallback) {
+    const list = fallback
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+    return [primary, ...list]
+  }
+  return [primary]
+}
+
+function sign(payload: string, secret = getSecret()): string {
+  return createHmac("sha256", secret).update(payload).digest("hex")
 }
 
 export type SessionPayload = {
@@ -115,12 +128,25 @@ export async function getSession(): Promise<SessionPayload | null> {
         parts.length === 5
           ? `${userId}.${role}.${expiresAtStr}.${sessionVersion}`
           : `${userId}.${role}.${expiresAtStr}`
-      const expected = sign(payload)
-
+      let isValidSignature = false
       const a = Buffer.from(signature, "hex")
-      const b = Buffer.from(expected, "hex")
-      if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      for (const candidateSecret of getAllVerificationSecrets()) {
+        const expected = sign(payload, candidateSecret)
+        const b = Buffer.from(expected, "hex")
+        if (a.length === b.length && timingSafeEqual(a, b)) {
+          isValidSignature = true
+          break
+        }
+      }
+
+      if (!isValidSignature) {
         span.setAttribute("auth.session", "invalid_signature")
+        return null
+      }
+
+      // Check if this specific session token signature was blacklisted on logout
+      if (await isSessionRevoked(signature)) {
+        span.setAttribute("auth.session", "revoked")
         return null
       }
 
@@ -158,12 +184,129 @@ export async function getSession(): Promise<SessionPayload | null> {
   })
 }
 
+export const REVOKED_SESSION_PREFIX = "auth:revoked-session:"
+
+export function hashSessionSignature(signature: string): string {
+  return createHash("sha256").update(signature).digest("hex")
+}
+
 /**
- * Clear the session cookie (logout).
+ * Blacklist a specific session signature in Redis until its natural expiration.
  */
-export async function destroySession() {
-  const store = await cookies()
-  store.delete(COOKIE_NAME)
+export async function revokeSessionSignature(
+  signature: string,
+  ttlSeconds = COOKIE_MAX_AGE_SECONDS,
+): Promise<void> {
+  const hash = hashSessionSignature(signature)
+  await cacheSet(`${REVOKED_SESSION_PREFIX}${hash}`, { revokedAt: Date.now() }, ttlSeconds)
+}
+
+/**
+ * Check whether a session signature has been revoked.
+ */
+export async function isSessionRevoked(signature: string): Promise<boolean> {
+  const hash = hashSessionSignature(signature)
+  const cached = await cacheGet<{ revokedAt: number }>(`${REVOKED_SESSION_PREFIX}${hash}`)
+  return cached !== null
+}
+
+/**
+ * Revoke all sessions for a user by bumping sessionVersion in PostgreSQL
+ * and busting the Redis session cache.
+ */
+export async function revokeAllUserSessions(userId: string): Promise<void> {
+  await db.user.update({
+    where: { id: userId },
+    data: { sessionVersion: { increment: 1 } },
+  })
+  await invalidateSessionCache(userId)
+}
+
+/**
+ * Clear the session cookie and blacklists the token signature in Redis (instant logout).
+ */
+export async function destroySession(): Promise<void> {
+  try {
+    const store = await cookies()
+    const cookie = store.get(COOKIE_NAME)
+    if (cookie?.value) {
+      const parts = cookie.value.split(".")
+      const signature = parts[parts.length - 1]
+      const expiresAtStr = parts[2]
+      const expiresAt = Number(expiresAtStr)
+      if (signature) {
+        const remaining = Number.isFinite(expiresAt)
+          ? Math.max(1, expiresAt - Math.floor(Date.now() / 1000))
+          : COOKIE_MAX_AGE_SECONDS
+        await revokeSessionSignature(signature, remaining)
+      }
+    }
+    store.delete(COOKIE_NAME)
+  } catch {
+    try {
+      const store = await cookies()
+      store.delete(COOKIE_NAME)
+    } catch {
+      // ignore
+    }
+  }
+}
+
+// ── Ticket de socket (handshake autenticado do realtime) ────────────────────
+
+/** TTL do ticket de socket, em segundos. Single-use e curto: janela de replay mínima. */
+export const SOCKET_TICKET_TTL_SECONDS = 60
+
+/** Prefixo no Redis compartilhado — o mini-service consome com GETDEL. */
+export const SOCKET_TICKET_PREFIX = "auth:socket-ticket:"
+
+/** Prefixo do ponteiro de ticket ativo por usuário — garante no máximo 1 ticket ativo por usuário. */
+export const USER_ACTIVE_TICKET_PREFIX = "auth:user-active-ticket:"
+
+/**
+ * Emite um ticket de socket SINGLE-USE para autenticar o handshake do
+ * realtime. O app autentica a sessão (getSession — cookie HMAC + versão de
+ * sessão no banco) e grava a identidade no Redis TTL curto; o mini-service
+ * (outro processo, MESMO Redis da base do compose) consome o ticket no
+ * handshake com GETDEL e estampa socket.data.userId/role.
+ *
+ * Por que ticket e não o cookie direto: o cookie NÃO chega no websocket
+ * cross-origin do gateway (a URL `/?XTransformPort=3003` é mesma-origem, mas
+ * o dev/e2e conecta direto em NEXT_PUBLIC_REALTIME_URL — e o cliente não
+ * controla cookies httpOnly num handshake socket.io com transportes
+ * mistos). Confiar em payload do cliente (userId auto-declarado) é o buraco
+ * que fecha: qualquer um joinava em user:{id} de terceiros.
+ */
+export async function createSocketTicket(
+  /** Injetável para testes; produção usa o getSession real do módulo. */
+  getSessionFn: () => Promise<SessionPayload | null> = getSession,
+): Promise<{ ok: true; ticket: string; expiresIn: number } | { ok: false; error: string }> {
+  try {
+    const session = await getSessionFn()
+    if (!session) return { ok: false, error: "Não autenticado" }
+
+    // Limite de 1 ticket ativo por usuário: se já existe um pendente, invalida o anterior
+    // evitando exaustão de memória no Redis por flood de requisições autenticadas.
+    const userActiveKey = `${USER_ACTIVE_TICKET_PREFIX}${session.userId}`
+    const previousTicket = await cacheGet<string>(userActiveKey)
+    if (previousTicket) {
+      await cacheInvalidate(`${SOCKET_TICKET_PREFIX}${previousTicket}`)
+    }
+
+    const ticket = randomBytes(32).toString("hex")
+    await cacheSet(
+      `${SOCKET_TICKET_PREFIX}${ticket}`,
+      { userId: session.userId, role: session.role },
+      SOCKET_TICKET_TTL_SECONDS,
+    )
+    await cacheSet(userActiveKey, ticket, SOCKET_TICKET_TTL_SECONDS)
+
+    return { ok: true, ticket, expiresIn: SOCKET_TICKET_TTL_SECONDS }
+  } catch {
+    // getSession já engole erros internos como null; qualquer falha aqui é
+    // tratada como não-autenticado (sem vazar o motivo).
+    return { ok: false, error: "Não autenticado" }
+  }
 }
 
 /**

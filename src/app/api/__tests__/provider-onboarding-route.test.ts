@@ -38,7 +38,7 @@ describe("GET /api/provider/onboarding", () => {
     ;(vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
 
     const _req = createMockRequest({ method: "GET" })
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -52,7 +52,7 @@ describe("GET /api/provider/onboarding", () => {
       value: JSON.stringify({ step: 3, done: false }),
     })
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -66,7 +66,7 @@ describe("GET /api/provider/onboarding", () => {
       value: JSON.stringify({ step: 5, done: true }),
     })
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -83,12 +83,15 @@ describe("PATCH /api/provider/onboarding", () => {
 
   it("updates onboarding step", async () => {
     vi.mocked(db.setting.upsert).mockResolvedValue({} as any)
+    // Onboarding fresco: sem progresso anterior (a rota MESCLA com o salvo —
+    // sem este mock a implementação de um teste GET anterior vazaria para cá).
+    ;(vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
 
     const req = createMockRequest({
       method: "PATCH",
       body: { step: 2 },
     })
-    const res = await PATCH(req)
+    const res = await PATCH(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -107,7 +110,7 @@ describe("PATCH /api/provider/onboarding", () => {
       method: "PATCH",
       body: { step: 5, done: true },
     })
-    await PATCH(req)
+    await PATCH(req, { params: Promise.resolve({}) })
 
     expect(db.setting.upsert).toHaveBeenCalledWith({
       where: { key: "onboarding:user-1" },
@@ -118,12 +121,13 @@ describe("PATCH /api/provider/onboarding", () => {
 
   it("defaults step to 0 when not provided", async () => {
     vi.mocked(db.setting.upsert).mockResolvedValue({} as any)
+    ;(vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
 
     const req = createMockRequest({
       method: "PATCH",
       body: { done: true },
     })
-    await PATCH(req)
+    await PATCH(req, { params: Promise.resolve({}) })
 
     expect(db.setting.upsert).toHaveBeenCalledWith({
       where: { key: "onboarding:user-1" },

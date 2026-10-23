@@ -39,6 +39,8 @@
 
 import { spawnSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
+import { existsSync } from "node:fs"
+import { createConnection } from "node:net"
 
 export interface EphemeralGitea {
   /** URL base do Gitea (ex.: http://127.0.0.1:32789) */
@@ -56,7 +58,51 @@ export interface EphemeralGitea {
 const GITEA_IMAGE = "gitea/gitea:1.22"
 const CONTAINER_PREFIX = "gitea-ephemeral-test"
 
+/**
+ * A rede do container que roda ESTE processo (a do job, na forja).
+ *
+ * O env HOSTNAME de um container Docker é o próprio ID (curto); fora de
+ * container o env não existe e o retorno é vazio. É o MESMO critério do
+ * `dockerRun` — extraído para o endereço do efêmero (IP direto na rede) usar a
+ * MESMA fonte, nunca uma segunda implementação.
+ */
 function dockerRun(args: string[]): string {
+  // DENTRO de um JOB CONTAINER da forja (label `docker://`), o efêmero nasce em
+  // `--network container:<job>` — o MESMO namespace de rede do job — e o teste
+  // fala com ele em `127.0.0.1` (a porta INTERNA, 3000). Os dois caminhos
+  // anteriores foram medidos e NEGADOS no host da forja (30/09/2026):
+  //   - a porta publicada (`-p` + gateway do job): o DNAT do host não atravessa
+  //     para o job ('Gitea not ready' em gateway:porta);
+  //   - o IP DIRETO do efêmero na rede compartilhada (L2, mesma bridge): também
+  //     negado — 4/4 testes morreram em 90-120s contra 192.168.112.x:3000.
+  // Só o netns COMPARTILHADO passa: o loopback do job É o loopback do efêmero
+  // (medido: `wget http://127.0.0.1:3000/api/v1/version` responde DENTRO do job
+  // 75s após o run, sob a carga da forja — é o MESMO mecanismo dos services do
+  // act, que os testes já consomem em localhost:55432/localhost:56379).
+  // O env HOSTNAME de um container Docker é o próprio ID (curto) — a mesma
+  // referência que o `docker inspect` da rede já resolvia. `-p` é ILEGAL junto
+  // de `container:` (o netns não tem IP próprio para publicar): os pares são
+  // descartados — a porta interna já é a do endereço, nada a publicar.
+  const emContainer = process.env.HOSTNAME && existsSync("/.dockerenv")
+  if (emContainer) {
+    const filtrados: string[] = []
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === "-p") {
+        i += 1
+        continue
+      }
+      filtrados.push(args[i])
+    }
+    const res = spawnSync(
+      "docker",
+      ["run", "-d", "--network", `container:${process.env.HOSTNAME}`, ...filtrados],
+      { encoding: "utf8" },
+    )
+    if (res.status !== 0) throw new Error(`docker run failed: ${res.stderr}`)
+    return res.stdout.trim()
+  }
+  // FORA de container (GitHub runner, dev): o `docker run` cru — a porta
+  // publicada é alcançável por 127.0.0.1 do próprio host.
   const res = spawnSync("docker", ["run", "-d", ...args], { encoding: "utf8" })
   if (res.status !== 0) throw new Error(`docker run failed: ${res.stderr}`)
   return res.stdout.trim()
@@ -404,19 +450,100 @@ const HTTP_TIMEOUT_MS = 5_000
 const API_TIMEOUT_MS = 15_000
 
 async function waitForGitea(url: string, timeoutMs = 30_000): Promise<void> {
+  const alvo = new URL(url)
+  const portas = [alvo.port || "80"]
+  // Se o alvo foi escrito como ENDEREÇO DIRETO DO CONTAINER (a porta interna do
+  // Gitea, 3000), a porta PUBLICADA no host é o segundo caminho — é ela que
+  // chega no host direto e via gateway:porta-publicada. Medido em 30/09/2026 na
+  // forja: o caminho gateway:porta-publicada foi NEGADO entre bridges distintas
+  // (gateway da rede do job em 192.168.64.1, pool do 172.18 esgotado) enquanto o
+  // caminho L2 (IP do container direto, mesma rede) passa — daí a ordem.
+  if (alvo.port === "3000" && !portas.includes("80")) portas.push("80")
   const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${url}/api/v1/version`, {
-        signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
-      })
-      if (res.ok) return
-    } catch {
-      // not ready yet — inclui o abort do timeout acima
+  for (;;) {
+    if (Date.now() >= deadline) break
+    for (const p of portas) {
+      try {
+        alvo.port = p
+        const res = await fetch(`${alvo.toString().replace(/\/$/, "")}/api/v1/version`, {
+          signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+        })
+        if (res.ok) return
+      } catch {
+        // not ready yet — inclui o abort do timeout acima
+      }
     }
+    // Nenhuma porta respondeu: espera e tenta de novo (o `return` acima só
+    // acontece no sucesso, então este sono é o ritmo de TODA tentativa falha).
     await new Promise((r) => setTimeout(r, 500))
   }
   throw new Error(`Gitea not ready at ${url} after ${timeoutMs}ms`)
+}
+
+/**
+ * A porta está OCUPADA no netns onde o processo roda?
+ *
+ * `createConnection` em 127.0.0.1: a conexão aceita ⇒ ocupada; ECONNREFUSED ⇒
+ * livre. Qualquer OUTRO desfecho (outro errno, timeout de 1s) é tratado como
+ * OCUPADO — um falso "ocupado" custa uma porta a mais, um falso "livre" custa
+ * um efêmero em crash-loop.
+ */
+function portaOcupada(porta: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = createConnection({ host: "127.0.0.1", port: porta })
+    const decidir = (ocupada: boolean) => {
+      socket.destroy()
+      resolve(ocupada)
+    }
+    socket.once("connect", () => decidir(true))
+    socket.once("error", (err: NodeJS.ErrnoException) => decidir(err.code !== "ECONNREFUSED"))
+    socket.setTimeout(1_000, () => decidir(true))
+  })
+}
+
+/**
+ * Escolhe uma porta INTERNA LIVRE para o efêmero.
+ *
+ * DENTRO do job container (netns compartilhado, ver `dockerRun`) a porta 3000
+ * era um SINGLETON: N efêmeros nascidos em paralelo (o vitest roda os arquivos
+ * em paralelo) brigavam pelo bind — só um Gitea subia; os perdedores ficavam em
+ * crash-loop e o `admin user create` do vencedor recebia `database is locked`
+ * (o vermelho da rodada 2f80f372, com containers `Dead`/`Created` vistos na
+ * VPS). O processo de teste COMPARTILHA esse netns: sondear o próprio loopback
+ * é sondear o das máquinas — a porta sai LIVRE de verdade, por instância.
+ * FORA do job não se chama: o `-p 0:3000` já deixa o kernel escolher.
+ */
+async function escolherPortaInterna(): Promise<number> {
+  for (let tentativa = 0; tentativa < 20; tentativa++) {
+    const porta = 21000 + (randomBytes(2).readUInt16BE(0) % 30000)
+    if (!(await portaOcupada(porta))) return porta
+  }
+  throw new Error("nenhuma porta livre encontrada no netns do job (20 tentativas)")
+}
+
+/**
+ * O container está VIVO? Tri-estado — "morreu" e "não deu para perguntar" são
+ * fatos diferentes, e só o primeiro autoriza remover e re-subir.
+ *
+ * MEDIDO na forja em 23/10/2026: o `docker inspect` do liveness devolveu erro
+ * (daemon ocupado sob a carga da suíte inteira) e o helper tratou a FALHA da
+ * pergunta como morte: removeu um container que estava subindo e re-subiu por
+ * cima do mesmo orçamento de 240s — o vermelho saía como "Gitea not ready
+ * (re-subidas: 1)" com o container saudável já descartado. Um "não sei" que
+ * espera custa uma fatia de 30s; um "morto" falso custa o orçamento inteiro.
+ */
+function estadoDoContainer(container: string): "vivo" | "morto" | "indeterminado" {
+  const rodando = spawnSync("docker", ["inspect", "-f", "{{.State.Running}}", container], {
+    encoding: "utf8",
+  })
+  if (rodando.status === 0) return rodando.stdout.trim() === "true" ? "vivo" : "morto"
+  // A pergunta falhou: só é MORTE o que se SABE que não existe. "Existe mas o
+  // estado não foi lido" é vivo para efeito de decisão (não se remove o que
+  // pode estar bootando).
+  const existe = spawnSync("docker", ["inspect", container], { encoding: "utf8" })
+  if (existe.status === 0) return "vivo"
+  const motivo = `${rodando.stderr ?? ""}${existe.stderr ?? ""}`
+  return /No such (container|object)/i.test(motivo) ? "morto" : "indeterminado"
 }
 
 /**
@@ -444,81 +571,171 @@ export async function makeEphemeralGitea(
     )
   }
 
-  // Porta aleatória (o kernel escolhe)
-  const port = "0"
+  // ONDE O GITEA RESPONDE (ver `dockerRun`): DENTRO do job container, o efêmero
+  // compartilha o NETNS do job — o endereço é `127.0.0.1` e a porta é a INTERNA,
+  // escolhida LIVRE por instância (`escolherPortaInterna`); sem `-p` não há
+  // porta publicada para resolver. FORA, a porta publicada (`-p 0:3000`, o
+  // kernel escolhe) é o caminho (127.0.0.1 do próprio host).
+  const emContainer = existsSync("/.dockerenv") || existsSync("/run/.containerenv")
+  const portaInterna = emContainer ? await escolherPortaInterna() : 3000
 
-  // Sobe o Gitea
-  dockerRun([
-    "--name",
-    container,
-    "-e",
-    "GITEA__database__DB_TYPE=sqlite3",
-    "-e",
-    "GITEA__server__ROOT_URL=http://127.0.0.1:3000/",
-    "-e",
-    "GITEA__server__HTTP_PORT=3000",
-    "-e",
-    "GITEA__security__INSTALL_LOCK=true",
-    "-e",
-    "GITEA__service__DISABLE_REGISTRATION=false",
-    "-e",
-    "GITEA__service__REQUIRE_SIGNIN_VIEW=false",
-    "-e",
-    "GITEA__repository__DEFAULT_BRANCH=main",
-    "-e",
-    "USER_UID=1000",
-    "-e",
-    "USER_GID=1000",
-    "-p",
-    `${port}:3000`,
-    image,
-  ])
-  // A partir daqui o container EXISTE: registrar o sweep antes do 1º passo que
-  // pode falhar garante que um erro no meio do setup também não vaze.
+  // Sobe o Gitea (o mesmo `docker run` na subida e na RE-SUBIDA — ver abaixo)
+  const subirGitea = () =>
+    dockerRun([
+      "--name",
+      container,
+      "-e",
+      "GITEA__database__DB_TYPE=sqlite3",
+      "-e",
+      `GITEA__server__ROOT_URL=http://127.0.0.1:${portaInterna}/`,
+      "-e",
+      `GITEA__server__HTTP_PORT=${portaInterna}`,
+      "-e",
+      "GITEA__security__INSTALL_LOCK=true",
+      "-e",
+      "GITEA__service__DISABLE_REGISTRATION=false",
+      "-e",
+      "GITEA__service__REQUIRE_SIGNIN_VIEW=false",
+      "-e",
+      "GITEA__repository__DEFAULT_BRANCH=main",
+      "-e",
+      "USER_UID=1000",
+      "-e",
+      "USER_GID=1000",
+      ...(emContainer ? [] : ["-p", "0:3000"]),
+      image,
+    ])
+  // O REGISTRO vem ANTES do `docker run`, não depois dele.
+  //
+  // `dockerRun` é SÍNCRONO, mas o container fica VISÍVEL no daemon antes de o
+  // `spawnSync` voltar — e nessa janela o processo já podia ser morto por um
+  // sinal SEM NENHUM handler instalado: o kernel aplicava o default e o
+  // container ficava órfão, que é exatamente o vazamento que o sweep existe
+  // para impedir (medido na forja em 23/10/2026, o teste `gitea-ephemeral-signal`
+  // mata nessa janela: `expected 'SIGINT' to be null`). Registrar antes custa
+  // nada: o sweep de um nome que ainda não existe é "já não existia", e o
+  // sinal entregue durante o `spawnSync` fica pendente e é tratado pelo handler
+  // assim que a thread principal volta ao event loop.
   liveContainers.add(container)
   registrarSweepDeTeardown()
+  subirGitea()
 
-  // Resolve a porta real
-  const portRes = spawnSync("docker", ["port", container, "3000/tcp"], { encoding: "utf8" })
-  // docker port pode retornar múltiplas linhas; pegamos a primeira com IP:port
-  const portLine = portRes.stdout.trim().split("\n")[0] ?? ""
-  const match = portLine.match(/:(\d+)$/)
-  if (!match) {
-    liveContainers.delete(container)
-    removerRegistrandoFalha(container)
-    throw new Error(`Não conseguiu resolver a porta do container: ${portRes.stdout}`)
+  const host = "127.0.0.1"
+  let portaAlvo = String(portaInterna)
+  if (!emContainer) {
+    const portRes = spawnSync("docker", ["port", container, "3000/tcp"], { encoding: "utf8" })
+    // docker port pode retornar múltiplas linhas; pegamos a primeira com IP:port
+    const portLine = portRes.stdout.trim().split("\n")[0] ?? ""
+    const match = portLine.match(/:(\d+)$/)
+    if (!match) {
+      liveContainers.delete(container)
+      removerRegistrandoFalha(container)
+      throw new Error(`Não conseguiu resolver a porta do container: ${portRes.stdout}`)
+    }
+    portaAlvo = match[1]
   }
-  const hostPort = match[1]
-  const baseUrl = `http://127.0.0.1:${hostPort}`
+  // `let`: o RE-UP (espera em fatias, abaixo) re-sonda a porta e re-deriva a URL
+  let baseUrl = `http://${host}:${portaAlvo}`
 
   try {
-    // Espera o Gitea ficar pronto
-    await waitForGitea(baseUrl, opts.timeoutMs ?? 30_000)
+    // Espera o Gitea ficar pronto. O ORÇAMENTO de 240s: o cold start medido na
+    // forja foi de 75-99s SOB carga — e, com a porta por instância, N efêmeros
+    // bootam em PARALELO sobre 4 vCPU que TAMBÉM carregam o resto da suíte (e, no
+    // host da forja, o re-bench paralelo de outro agente): rodada 205d62e5 → 3
+    // dos 4 passaram de 150s; rodada dbcaeee1 → os 4 passaram de 165s com o
+    // container VIVO o tempo todo (re-subidas: 0 — o liveness nunca viu um
+    // morto): migração SQLite de 4 Giteas ao mesmo tempo num host disputado. A
+    // cauda medida é de minutos, não de dezenas de segundos.
+    //
+    // A espera roda em FATIAS com checagem de LIVENESS do container: o crash
+    // mais comum é o bind negado (porta tomada ENTRE a sondagem e o bind, ou o
+    // efêmero irmão que escolheu a mesma) — esperar o orçamento INTEIRO por um
+    // container já morto gasta o beforeAll inteiro (medido: 'not ready after
+    // 150000ms' com o container há muito tempo parado). Container morto ⇒
+    // RE-SUBIDA com nova porta sondada, dentro do MESMO orçamento; vivo ⇒ o
+    // que resta da fatia é o custo de boot, não de espera morta.
+    const inicioProntidao = Date.now()
+    const orcamentoProntidao = opts.timeoutMs ?? 240_000
+    let sobe = 0
+    for (;;) {
+      const restante = orcamentoProntidao - (Date.now() - inicioProntidao)
+      if (restante <= 0) {
+        // O orçamento estourou: o relatório carrega o ESTADO e a CAUDA do log do
+        // container. Sem eles, "not ready" não distingue boot lento de crash
+        // loop, e o diagnóstico vira arqueologia do log da suíte inteira.
+        const cauda = spawnSync("docker", ["logs", "--tail", "15", container], {
+          encoding: "utf8",
+        })
+        throw new Error(
+          `Gitea not ready at ${baseUrl} after ${orcamentoProntidao}ms (re-subidas: ${sobe})\n` +
+            `estado do container: ${estadoDoContainer(container)}\n` +
+            `últimas linhas:\n${`${cauda.stdout ?? ""}${cauda.stderr ?? ""}`.trim().slice(-1500)}`,
+        )
+      }
+      const fatia = Math.min(restante, 30_000)
+      try {
+        await waitForGitea(baseUrl, fatia)
+        break
+      } catch (erroDeFatia) {
+        // MORTE só com veredito. Um `docker inspect` que não RESPONDE (daemon
+        // ocupado sob a carga da suíte) não é um container morto: tratar a
+        // falha da pergunta como morte removeu containers SAUDÁVEIS no meio do
+        // boot e re-subiu por cima do mesmo orçamento — o vermelho saía como
+        // "Gitea lento" depois de o helper ter matado o que estava subindo.
+        const estado = estadoDoContainer(container)
+        if (estado === "morto") {
+          if (sobe >= 2) throw erroDeFatia
+          sobe += 1
+          removerRegistrandoFalha(container)
+          if (emContainer) {
+            portaAlvo = String(await escolherPortaInterna())
+            baseUrl = `http://${host}:${portaAlvo}`
+          }
+          subirGitea()
+          continue
+        }
+        // "vivo" e "indeterminado" seguem esperando: o laço reavalia o
+        // orçamento na próxima volta.
+      }
+    }
 
     // Cria o admin via CLI do container — como o user `git` (UID 1000),
-    // pois o gitea recusa rodar como root.
-    const createUser = spawnSync(
-      "docker",
-      [
-        "exec",
-        "-u",
-        "git",
-        container,
-        "gitea",
-        "admin",
-        "user",
-        "create",
-        "--username",
-        adminUser,
-        "--password",
-        adminPass,
-        "--email",
-        `${adminUser}@test.local`,
-        "--admin",
-        "--must-change-password=false",
-      ],
-      { encoding: "utf8" },
-    )
+    // pois o gitea recusa rodar como root. O RETRY com backoff (3 tiros, 2s/5s)
+    // cobre a contenção do SQLite logo após o boot: o create de usuário pode
+    // levar `CreateUser: database is locked` enquanto o Gitea ainda compacta o
+    // banco inicial (medido na forja em 30/09/2026, suíte inteira em paralelo
+    // sobre 4 vCPU — os fails vieram todos do primeiro tiro). "already exists"
+    // segue aceito como sucesso (idempotência).
+    const criarAdmin = () =>
+      spawnSync(
+        "docker",
+        [
+          "exec",
+          "-u",
+          "git",
+          container,
+          "gitea",
+          "admin",
+          "user",
+          "create",
+          "--username",
+          adminUser,
+          "--password",
+          adminPass,
+          "--email",
+          `${adminUser}@test.local`,
+          "--admin",
+          "--must-change-password=false",
+        ],
+        { encoding: "utf8" },
+      )
+    let createUser = criarAdmin()
+    for (const pausaMs of [2_000, 5_000]) {
+      if (createUser.status === 0 || createUser.stderr.includes("already exists")) break
+      if (!createUser.stderr.includes("database is locked")) break
+      await new Promise((r) => setTimeout(r, pausaMs))
+      createUser = criarAdmin()
+    }
     if (createUser.status !== 0 && !createUser.stderr.includes("already exists")) {
       throw new Error(`Falha ao criar admin: ${createUser.stderr}`)
     }

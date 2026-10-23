@@ -19,12 +19,15 @@ import { useLocationBroadcaster } from "@/hooks/use-location-broadcaster"
 import {
   syncRadiusCircle,
   removeRadiusCircle,
+  syncAccuracyCircle,
+  removeAccuracyCircle,
   syncRadiusHandle,
   removeRadiusHandle,
   makeRadiusEdgeDraggable,
   type EdgeDragMap,
   type MapLike,
 } from "@/lib/geo-circle"
+import { ensureMaplibreWorker } from "@/lib/maplibre-worker"
 import { Slider } from "@/components/ui/slider"
 import { apiPatch } from "@/lib/api"
 
@@ -58,15 +61,20 @@ type Props = {
   userLng?: number | null
   /** Provider's service radius in km (for drawing the radius circle on the map). */
   radiusKm?: number | null
+  /** Precisão da última fix do GPS do prestador (± m) — círculo pontilhado de incerteza. */
+  accuracyM?: number | null
   /** Called when the user adjusts the radius slider. */
   onRadiusChange?: (radiusKm: number) => void
   /** Enable interactive edge-dot dragging. Only meaningful for the provider's own profile. */
   interactive?: boolean
   /** Height in px. Default 200. */
   height?: number
-  className?: string
   /** Optional active booking ID for live GPS broadcasting to client. */
   activeBookingId?: string | null
+  /** Optional container class name */
+  className?: string
+  /** Whether to render the radius slider controls (default true). Set false for read-only view. */
+  showSlider?: boolean
 }
 
 // Static map fallback URL (OpenStreetMap static image via staticmap.openstreetmap.de)
@@ -81,11 +89,13 @@ export default function ProviderMiniMap({
   userLat,
   userLng,
   radiusKm,
+  accuracyM,
   onRadiusChange,
   interactive = false,
   height = 200,
   className,
   activeBookingId,
+  showSlider = true,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<unknown>(null)
@@ -180,6 +190,11 @@ export default function ProviderMiniMap({
         const maplibregl = maplibreModule as typeof import("maplibre-gl")
         if (cancelled || !containerRef.current) return
 
+        // Worker por URL ANTES da criação do mapa — o bundler quebra o worker
+        // blob do MapLibre (mapa em branco, zero tiles .pbf).
+        await ensureMaplibreWorker()
+        if (cancelled || !containerRef.current) return
+
         const map = new maplibregl.Map({
           container: containerRef.current,
           style: {
@@ -234,6 +249,11 @@ export default function ProviderMiniMap({
               )
             }
           }
+          // Círculo de incerteza da ÚLTIMA fix do GPS salva (± m) — aparece
+          // com a localização salva, sem nova fix; inválida não desenha.
+          if (accuracyM != null) {
+            syncAccuracyCircle(map as unknown as MapLike, providerLat, providerLng, accuracyM)
+          }
         })
 
         // Fallback: after 5s mark as ready anyway
@@ -256,6 +276,9 @@ export default function ProviderMiniMap({
                   },
                 )
               }
+            }
+            if (accuracyM != null && mapInstance) {
+              syncAccuracyCircle(map as unknown as MapLike, providerLat, providerLng, accuracyM)
             }
           }
         }, 5000)
@@ -311,11 +334,12 @@ export default function ProviderMiniMap({
       // Cleanup radius circle layers
       if (mapInstance) {
         removeRadiusCircle(mapInstance as unknown as MapLike)
+        removeAccuracyCircle(mapInstance as unknown as MapLike)
         removeRadiusHandle(mapInstance as unknown as MapLike)
       }
       cleanup?.()
     }
-  }, [providerLat, providerLng, providerName, userLat, userLng, radiusKm, interactive])
+  }, [providerLat, providerLng, providerName, userLat, userLng, radiusKm, accuracyM, interactive])
 
   // Update radius circle dynamically when slider changes (without recreating map)
   // NOTE: We do NOT call removeRadiusCircle/removeRadiusHandle here because
@@ -400,33 +424,35 @@ export default function ProviderMiniMap({
       </div>
 
       {/* Radius slider */}
-      <div className="mt-2 grid gap-1.5">
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground text-[11px] font-medium">Raio de busca</span>
-          <span className="flex items-center gap-2">
-            {saving && (
-              <span className="text-muted-foreground animate-pulse text-[9px]">Salvando…</span>
-            )}
-            <span className="text-xs font-semibold text-emerald-700 tabular-nums dark:text-emerald-400">
-              {radius} km
+      {showSlider && (
+        <div className="mt-2 grid gap-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground text-[11px] font-medium">Raio de busca</span>
+            <span className="flex items-center gap-2">
+              {saving && (
+                <span className="text-muted-foreground animate-pulse text-[9px]">Salvando…</span>
+              )}
+              <span className="text-xs font-semibold text-emerald-700 tabular-nums dark:text-emerald-400">
+                {radius} km
+              </span>
             </span>
-          </span>
+          </div>
+          <Slider
+            value={[radius]}
+            onValueChange={handleRadiusChange}
+            min={1}
+            max={100}
+            step={1}
+            className="[&>span:first-child]:h-1.5 [&>span:first-child]:bg-emerald-100 [&>span:first-child_span]:bg-emerald-600 [&>span:last-child]:size-3.5 [&>span:last-child]:border-emerald-600"
+            aria-label="Raio de busca em quilômetros"
+          />
+          <div className="text-muted-foreground flex justify-between text-[9px]">
+            <span>1 km</span>
+            <span>50 km</span>
+            <span>100 km</span>
+          </div>
         </div>
-        <Slider
-          value={[radius]}
-          onValueChange={handleRadiusChange}
-          min={1}
-          max={100}
-          step={1}
-          className="[&>span:first-child]:h-1.5 [&>span:first-child]:bg-emerald-100 [&>span:first-child_span]:bg-emerald-600 [&>span:last-child]:size-3.5 [&>span:last-child]:border-emerald-600"
-          aria-label="Raio de busca em quilômetros"
-        />
-        <div className="text-muted-foreground flex justify-between text-[9px]">
-          <span>1 km</span>
-          <span>50 km</span>
-          <span>100 km</span>
-        </div>
-      </div>
+      )}
 
       {activeBookingId ? (
         <div className="border-border/80 bg-muted/40 mt-2.5 flex items-center justify-between rounded-lg border p-2.5 text-xs">

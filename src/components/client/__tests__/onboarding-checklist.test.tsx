@@ -15,7 +15,7 @@ import { axe } from "vitest-axe"
 // ---- Hoisted shared state (avoids vi.mock hoisting TDZ) --------------------
 // vi.hoisted runs at the hoisted position and returns values that can be
 // captured by vi.mock factory closures.
-const { mockState, mockApiPatch } = vi.hoisted(() => {
+const { mockState, mockApiPatch, mockNavigate } = vi.hoisted(() => {
   const state: {
     user: { id: string; soundEnabled?: boolean; vibrateEnabled?: boolean } | null
     profile: Record<string, unknown> | null
@@ -34,8 +34,9 @@ const { mockState, mockApiPatch } = vi.hoisted(() => {
   }
 
   const apiPatch = vi.fn().mockResolvedValue({})
+  const navigate = vi.fn()
 
-  return { mockState: state, mockApiPatch: apiPatch }
+  return { mockState: state, mockApiPatch: apiPatch, mockNavigate: navigate }
 })
 
 vi.mock("@/store/auth", () => ({
@@ -53,7 +54,7 @@ vi.mock("@/store/auth", () => ({
 
 vi.mock("@/store/view", () => ({
   useViewStore: vi.fn((selector?: (s: { navigate: ReturnType<typeof vi.fn> }) => unknown) => {
-    const state = { navigate: vi.fn() }
+    const state = { navigate: mockNavigate }
     return selector ? selector(state) : state
   }),
 }))
@@ -84,6 +85,14 @@ vi.mock("lucide-react", () => ({
 vi.mock("@/lib/api", () => ({
   apiGet: vi.fn().mockResolvedValue(mockState.profile),
   apiPatch: mockApiPatch,
+}))
+
+vi.mock("framer-motion", () => ({
+  motion: {
+    div: ({ children }: any) => <div>{children}</div>,
+    span: ({ children }: any) => <span>{children}</span>,
+  },
+  AnimatePresence: ({ children }: any) => <>{children}</>,
 }))
 
 vi.mock("@/lib/sounds", () => ({
@@ -204,5 +213,111 @@ describe("OnboardingChecklist — preference toggles", () => {
     mockState.profile = null
     const { container } = render(<OnboardingChecklist />)
     expect(container.innerHTML).toBe("")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Stepper segmentado + resumo com foto (padrão do prestador)
+// ---------------------------------------------------------------------------
+
+describe("OnboardingChecklist — stepper segmentado + resumo", () => {
+  it("progressbar segmentada reflete as etapas concluídas (2 de 4)", () => {
+    render(<OnboardingChecklist />)
+
+    const progress = screen.getByRole("progressbar")
+    expect(progress.getAttribute("aria-valuenow")).toBe("2")
+    expect(progress.getAttribute("aria-label")).toBe("2 de 4 etapas concluídas")
+  })
+
+  it("segmentos concluídos são botões que reabrem o perfil para revisar", () => {
+    render(<OnboardingChecklist />)
+
+    // 2 etapas concluídas → 2 botões no stepper (nome + whatsapp)
+    const reviewButtons = screen.getAllByRole("button", { name: /Revisar/ })
+    expect(reviewButtons.length).toBe(2)
+    expect(screen.getByRole("button", { name: "Revisar nome completo no perfil" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Revisar whatsapp no perfil" })).toBeTruthy()
+
+    fireEvent.click(reviewButtons[0]!)
+    expect(mockNavigate).toHaveBeenCalledWith("client.profile")
+  })
+
+  it("resumo mostra iniciais quando não há foto e foto quando existe", () => {
+    const { unmount } = render(<OnboardingChecklist />)
+    expect(screen.getByText("João")).toBeDefined()
+    expect(screen.getByText("J")).toBeDefined() // iniciais de "João"
+    expect(screen.queryByAltText("Sua foto de perfil")).toBeNull()
+    unmount()
+
+    mockState.profile = { ...mockState.profile, avatarUrl: "https://example.com/eu.jpg" }
+    render(<OnboardingChecklist />)
+    expect(screen.getByAltText("Sua foto de perfil")).toBeDefined()
+    expect(screen.queryByText("J")).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Etapas visitadas mas não concluídas — borda tracejada no stepper
+// ---------------------------------------------------------------------------
+
+describe("OnboardingChecklist — etapas visitadas (borda tracejada)", () => {
+  const INCOMPLETE_PROFILE = {
+    name: "João",
+    avatarUrl: null,
+    whatsapp: "11988887777",
+    cep: null,
+    street: null,
+    number: null,
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockState.profile = { ...INCOMPLETE_PROFILE }
+    mockState.user = { id: "user-1" }
+    window.sessionStorage.clear()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it("wizard fresco: nenhum segmento marcado como visitado", () => {
+    render(<OnboardingChecklist />)
+
+    expect(document.querySelectorAll("[data-step-key]").length).toBeGreaterThan(0)
+    expect(document.querySelectorAll('[data-visited="true"]')).toHaveLength(0)
+  })
+
+  it("card clicado e não concluído ganha borda tracejada no stepper", () => {
+    render(<OnboardingChecklist />)
+
+    // "Foto de perfil" está incompleta (avatarUrl null) — abre o perfil
+    fireEvent.click(screen.getByRole("button", { name: /Foto de perfil/ }))
+    expect(mockNavigate).toHaveBeenCalledWith("client.profile")
+
+    const visited = document.querySelectorAll('[data-visited="true"]')
+    expect(visited).toHaveLength(1)
+    expect(visited[0]!.getAttribute("data-step-key")).toBe("avatarUrl")
+    expect(visited[0]!.className).toContain("border-dashed")
+  })
+
+  it("a visita persiste entre remounts (sessionStorage) — checklist desmonta ao navegar", () => {
+    const { unmount } = render(<OnboardingChecklist />)
+    fireEvent.click(screen.getByRole("button", { name: /Foto de perfil/ }))
+    unmount()
+
+    render(<OnboardingChecklist />)
+    const visited = document.querySelectorAll('[data-visited="true"]')
+    expect(visited).toHaveLength(1)
+    expect(visited[0]!.getAttribute("data-step-key")).toBe("avatarUrl")
+  })
+
+  it("etapa concluída nunca mostra a marcação de visitada (concluída vence)", () => {
+    render(<OnboardingChecklist />)
+
+    // clica num card JÁ concluído (nome) — visita registrada, mas o segmento
+    // é um botão "Revisar" verde; tracejado é só para não-concluídas
+    fireEvent.click(screen.getByRole("button", { name: /Nome completo/ }))
+    expect(document.querySelectorAll('[data-visited="true"]')).toHaveLength(0)
   })
 })

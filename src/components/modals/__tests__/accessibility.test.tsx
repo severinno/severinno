@@ -516,6 +516,7 @@ vi.mock("lucide-react", () => {
     AlertTriangle: Icon,
     Home: Icon,
     Bug: Icon,
+    Sparkles: Icon,
   }
 })
 
@@ -525,26 +526,8 @@ vi.mock("@/lib/utils", () => ({
   cn: (...c: any[]) => c.filter(Boolean).join(" "),
 }))
 
-vi.mock("zod", () => {
-  const chainable = (methods: Record<string, any> = {}) => {
-    const obj: Record<string, any> = { ...methods }
-    ;["min", "max", "default", "optional", "nullable", "refine", "describe"].forEach((m) => {
-      if (!obj[m]) obj[m] = () => obj
-    })
-    return obj
-  }
-  return {
-    z: {
-      object: () => chainable({ refine: () => chainable() }),
-      string: () => chainable(),
-      number: () => chainable(),
-      array: () => chainable(),
-      coerce: { number: () => chainable() },
-      enum: () => chainable(),
-      infer: () => ({}),
-    },
-  }
-})
+// NOTA: sem mock de "zod" — desde o upgrade para vitest 5 o zod real carrega
+// corretamente no runner Bun (issue vitest#10359 corrigida).
 
 // -----------------------------------------------------------------------
 // Mock data

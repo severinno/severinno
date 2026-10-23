@@ -27,6 +27,15 @@ export type CityConfig = {
   feeRate: number
   /** Categories available in this city */
   categories: string[]
+  /** Código oficial IBGE da cidade (7 dígitos) */
+  ibgeCode?: string
+  /** Limites geográficos (bounding box) da malha urbana */
+  boundingBox?: {
+    minLat: number
+    maxLat: number
+    minLng: number
+    maxLng: number
+  }
   /** Launch date */
   launchedAt: string
 }
@@ -42,9 +51,16 @@ const CITIES: CityConfig[] = [
     lng: -41.9455,
     timezone: "America/Sao_Paulo",
     active: true,
+    ibgeCode: "3127701",
+    boundingBox: {
+      minLat: -18.92,
+      maxLat: -18.79,
+      minLng: -42.02,
+      maxLng: -41.87,
+    },
     defaultRadiusKm: 15,
     minBookingAmount: 50,
-    feeRate: 0.1,
+    feeRate: 0.15,
     categories: [
       "Limpeza",
       "Manutenção",
@@ -57,35 +73,99 @@ const CITIES: CityConfig[] = [
     ],
     launchedAt: "2026-08-30",
   },
-  // Future cities:
-  // {
-  //   id: "ipatinga",
-  //   name: "Ipatinga",
-  //   state: "MG",
-  //   lat: -19.4683,
-  //   lng: -42.5369,
-  //   timezone: "America/Sao_Paulo",
-  //   active: false,
-  //   defaultRadiusKm: 10,
-  //   minBookingAmount: 50,
-  //   feeRate: 0.10,
-  //   categories: ["Limpeza", "Manutenção", "Reforma", "Jardim"],
-  //   launchedAt: "TBD",
-  // },
-  // {
-  //   id: "vitoria",
-  //   name: "Vitória",
-  //   state: "ES",
-  //   lat: -20.3155,
-  //   lng: -40.3128,
-  //   timezone: "America/Sao_Paulo",
-  //   active: false,
-  //   defaultRadiusKm: 20,
-  //   minBookingAmount: 60,
-  //   feeRate: 0.10,
-  //   categories: ["Limpeza", "Manutenção", "Reforma", "Jardim", "Saúde"],
-  //   launchedAt: "TBD",
-  // },
+  {
+    id: "ipatinga",
+    name: "Ipatinga",
+    state: "MG",
+    lat: -19.4683,
+    lng: -42.5369,
+    timezone: "America/Sao_Paulo",
+    active: true,
+    ibgeCode: "3131307",
+    boundingBox: {
+      minLat: -19.53,
+      maxLat: -19.41,
+      minLng: -42.61,
+      maxLng: -42.47,
+    },
+    defaultRadiusKm: 15,
+    minBookingAmount: 50,
+    feeRate: 0.15,
+    categories: ["Limpeza", "Manutenção", "Reforma", "Jardim", "Serviços", "Transporte"],
+    launchedAt: "2026-10-15",
+  },
+  {
+    id: "coronel-fabriciano",
+    name: "Coronel Fabriciano",
+    state: "MG",
+    lat: -19.5214,
+    lng: -42.6322,
+    timezone: "America/Sao_Paulo",
+    active: true,
+    ibgeCode: "3119401",
+    boundingBox: {
+      minLat: -19.58,
+      maxLat: -19.47,
+      minLng: -42.69,
+      maxLng: -42.58,
+    },
+    defaultRadiusKm: 12,
+    minBookingAmount: 50,
+    feeRate: 0.15,
+    categories: ["Limpeza", "Manutenção", "Reforma", "Jardim", "Serviços"],
+    launchedAt: "2026-10-15",
+  },
+  {
+    id: "teofilo-otoni",
+    name: "Teófilo Otoni",
+    state: "MG",
+    lat: -17.8575,
+    lng: -41.5056,
+    timezone: "America/Sao_Paulo",
+    active: true,
+    ibgeCode: "3168606",
+    boundingBox: {
+      minLat: -17.92,
+      maxLat: -17.8,
+      minLng: -41.57,
+      maxLng: -41.44,
+    },
+    defaultRadiusKm: 15,
+    minBookingAmount: 50,
+    feeRate: 0.15,
+    categories: ["Limpeza", "Manutenção", "Reforma", "Jardim", "Serviços"],
+    launchedAt: "2026-10-15",
+  },
+  {
+    id: "belo-horizonte",
+    name: "Belo Horizonte",
+    state: "MG",
+    lat: -19.9167,
+    lng: -43.9345,
+    timezone: "America/Sao_Paulo",
+    active: false,
+    ibgeCode: "3106200",
+    boundingBox: {
+      minLat: -20.06,
+      maxLat: -19.78,
+      minLng: -44.06,
+      maxLng: -43.85,
+    },
+    defaultRadiusKm: 25,
+    minBookingAmount: 60,
+    feeRate: 0.15,
+    categories: [
+      "Limpeza",
+      "Manutenção",
+      "Reforma",
+      "Jardim",
+      "Serviços",
+      "Transporte",
+      "Cuidados",
+      "Saúde",
+    ],
+    launchedAt: "TBD",
+  },
 ]
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -143,10 +223,26 @@ export async function detectCityFromCoords(lat: number, lng: number): Promise<Ci
  *   29000-29999 → Vitória region
  */
 export function detectCityFromCep(cep: string): CityConfig | null {
-  const prefix = parseInt(cep.replace(/\D/g, "").slice(0, 3), 10)
+  const digits = cep.replace(/\D/g, "")
+  if (digits.length < 5) return null
 
-  if (prefix >= 350 && prefix <= 359) return getCityConfig("governador-valadares") ?? null
-  // Future: if (prefix >= 290 && prefix <= 299) return getCityConfig("vitoria")
+  const prefix5 = parseInt(digits.slice(0, 5), 10)
+  const prefix3 = parseInt(digits.slice(0, 3), 10)
+
+  // Ipatinga: 35160-000 a 35164-999
+  if (prefix5 >= 35160 && prefix5 <= 35164) return getCityConfig("ipatinga") ?? null
+
+  // Coronel Fabriciano: 35170-000 a 35171-999
+  if (prefix5 >= 35170 && prefix5 <= 35171) return getCityConfig("coronel-fabriciano") ?? null
+
+  // Teófilo Otoni: 39800-000 a 39804-999
+  if (prefix5 >= 39800 && prefix5 <= 39804) return getCityConfig("teofilo-otoni") ?? null
+
+  // Belo Horizonte: 30000-000 a 31999-999
+  if (prefix3 >= 300 && prefix3 <= 319) return getCityConfig("belo-horizonte") ?? null
+
+  // Governador Valadares e região polo: 35000 a 35109
+  if (prefix3 >= 350 && prefix3 <= 359) return getCityConfig("governador-valadares") ?? null
 
   return null
 }
@@ -192,6 +288,7 @@ export async function getCityStats(cityId: string): Promise<{
 
   try {
     const { db } = await import("./db")
+    const { toMoneyNumber } = await import("./money")
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
     const [providers, clients, bookings] = await Promise.all([
@@ -210,7 +307,10 @@ export async function getCityStats(cityId: string): Promise<{
       providers,
       clients,
       bookings30d: bookings.length,
-      revenue30d: bookings.reduce((sum: number, b: { amount: number }) => sum + b.amount, 0),
+      revenue30d: bookings.reduce(
+        (sum: number, b: { amount: unknown }) => sum + toMoneyNumber(b.amount as number),
+        0,
+      ),
     }
   } catch {
     return null

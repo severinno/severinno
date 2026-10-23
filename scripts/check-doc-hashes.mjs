@@ -246,6 +246,36 @@ export const NAO_CITACOES = [
     porque:
       "head MORTO: a branch `feature/tres-classes-base` foi apagada em 25/09/2026 e este commit não pertence à história do HEAD POR CONSTRUÇÃO — a nota de auditoria de 26/09 o cita como o head que virou `startup_failure` (0 jobs). O MESMO patch vive em `30447a57`, que é ancestral, mas ele descreve OUTRO commit: trocar a citação pelo nome vivo apagaria do registro qual head morreu, e o registro dele é o RUN `35990702155`.",
   },
+  {
+    literal: "1cb6debe",
+    porque:
+      "last8 do GITEA_TOKEN da forja ROTACIONADO em 06/10/2026, citado na mensagem do commit `706ae2c3` como IDENTIFICAÇÃO do secret (não um commit). O valor completo está inerte (a API responde 401) e classificado no baseline do check-secret-leaks.",
+  },
+  {
+    literal: "8350028c3c45",
+    porque:
+      "ID (12 hex) da IMAGEM docker da app carregada no daemon da VPS em 06/10/2026, citado no relatório go-live como IDENTIFICAÇÃO do artefato em produção (não um commit).",
+  },
+  {
+    literal: "6a91c31d1c2b",
+    porque:
+      "ID (12 hex) da IMAGEM docker do worker carregada no daemon da VPS em 06/10/2026, citado no relatório go-live como IDENTIFICAÇÃO do artefato em produção (não um commit).",
+  },
+  {
+    literal: "6ac58147",
+    porque:
+      "prefixo (com reticências) do _id de INVOICE de teste da API Lytex v2 — PIX R$2, 1º ciclo create→get→cancel do E2E de 06/10/2026 — citado na mensagem do commit `0593c010` como EVIDÊNCIA do teste (não é um commit).",
+  },
+  {
+    literal: "6ac581a",
+    porque:
+      "prefixo (com reticências) do _id de INVOICE de teste da API Lytex v2 — 2º ciclo do E2E de 06/10/2026 — citado na mensagem do commit `0593c010` como EVIDÊNCIA do teste (não é um commit).",
+  },
+  {
+    literal: "6ac581da",
+    porque:
+      "prefixo (com reticências) do _id de INVOICE de teste da API Lytex v2 — 3º ciclo do E2E de 06/10/2026 — citado na mensagem do commit `0593c010` como EVIDÊNCIA do teste (não é um commit).",
+  },
 ]
 
 /** O token de um hash: 7 a 40 hexadecimais isolados (o `\b` protege de runs maiores). */

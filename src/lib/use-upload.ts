@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react"
 import { toast } from "sonner"
+import { compressImageFile } from "@/lib/client-image-compression"
 
 export function useUpload() {
   const [uploading, setUploading] = useState(false)
@@ -9,8 +10,21 @@ export function useUpload() {
   const upload = useCallback(async (file: File, type = "avatar"): Promise<string | null> => {
     setUploading(true)
     try {
+      let fileToUpload = file
+      if (file.type.startsWith("image/") && file.type !== "image/svg+xml") {
+        try {
+          fileToUpload = await compressImageFile(file, {
+            maxWidth: 1920,
+            maxHeight: 1080,
+            quality: 0.82,
+          })
+        } catch {
+          fileToUpload = file
+        }
+      }
+
       const form = new FormData()
-      form.append("file", file)
+      form.append("file", fileToUpload)
       form.append("type", type)
 
       const res = await fetch("/api/upload", {

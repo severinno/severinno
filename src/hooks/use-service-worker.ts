@@ -111,3 +111,149 @@ export function useServiceWorker(): SWState {
 
   return { isRegistered, updateAvailable, error, applyUpdate }
 }
+
+/**
+ * Converts a base64 string to a Uint8Array for VAPID applicationServerKey
+ */
+export function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/")
+  const rawData = typeof window !== "undefined" ? window.atob(base64) : ""
+  const outputArray = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i)
+  }
+  return outputArray
+}
+
+export function usePushSubscription() {
+  const [isSubscribed, setIsSubscribed] = useState(false)
+  const [isSupported] = useState(() => {
+    return typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window
+  })
+  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return "unsupported"
+    return Notification.permission
+  })
+  const [loading, setLoading] = useState(false)
+  const [testing, setTesting] = useState(false)
+
+  const updatePermissionState = useCallback(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setPermission(Notification.permission)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isSupported) return
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((sub) => {
+        setIsSubscribed(!!sub)
+      })
+      .catch(() => {})
+  }, [isSupported])
+
+  const subscribe = useCallback(async () => {
+    if (!isSupported) return false
+    setLoading(true)
+    try {
+      if (typeof window !== "undefined" && "Notification" in window) {
+        const perm = await Notification.requestPermission()
+        setPermission(perm)
+        if (perm !== "granted") {
+          return false
+        }
+      }
+
+      const res = await fetch("/api/push/subscribe")
+      const { publicKey } = (await res.json()) as { publicKey?: string }
+      if (!publicKey) throw new Error("VAPID public key not available")
+
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey) as unknown as BufferSource,
+      })
+
+      const rawKey = sub.getKey ? sub.getKey("p256dh") : null
+      const rawAuth = sub.getKey ? sub.getKey("auth") : null
+      const p256dh = rawKey ? btoa(String.fromCharCode(...new Uint8Array(rawKey))) : ""
+      const auth = rawAuth ? btoa(String.fromCharCode(...new Uint8Array(rawAuth))) : ""
+
+      const saveRes = await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: sub.endpoint,
+          p256dh,
+          auth,
+          userAgent: navigator.userAgent,
+        }),
+      })
+
+      if (saveRes.ok) {
+        setIsSubscribed(true)
+        updatePermissionState()
+        return true
+      }
+      return false
+    } catch {
+      return false
+    } finally {
+      setLoading(false)
+    }
+  }, [isSupported, updatePermissionState])
+
+  const unsubscribe = useCallback(async () => {
+    if (!isSupported) return false
+    setLoading(true)
+    try {
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.getSubscription()
+      if (sub) {
+        await fetch("/api/push/subscribe", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        })
+        await sub.unsubscribe()
+        setIsSubscribed(false)
+        updatePermissionState()
+        return true
+      }
+      return false
+    } catch {
+      return false
+    } finally {
+      setLoading(false)
+    }
+  }, [isSupported, updatePermissionState])
+
+  const sendTestNotification = useCallback(async (): Promise<{ ok: boolean; message?: string }> => {
+    setTesting(true)
+    try {
+      const res = await fetch("/api/push/send-test", { method: "POST" })
+      const data = (await res.json()) as { ok?: boolean; message?: string; error?: string }
+      if (res.ok && data.ok) {
+        return { ok: true, message: data.message || "Notificação enviada!" }
+      }
+      return { ok: false, message: data.error || "Erro ao enviar notificação de teste" }
+    } catch {
+      return { ok: false, message: "Falha de rede ao conectar com o servidor" }
+    } finally {
+      setTesting(false)
+    }
+  }, [])
+
+  return {
+    isSubscribed,
+    isSupported,
+    permission,
+    loading,
+    testing,
+    subscribe,
+    unsubscribe,
+    sendTestNotification,
+  }
+}

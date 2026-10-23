@@ -50,3 +50,18 @@ datasources:
             query: 'sum(rate(http_request_duration_ms_count{$$__tags,status=~"5.."}[5m])) by (operation_name)'
           - name: "Duration P95"
             query: "histogram_quantile(0.95, sum(rate(http_request_duration_ms_bucket{$$__tags}[5m])) by (le, operation_name))"
+
+  # ── PostgreSQL (Database & Business Operations) ──────────────────────────
+  - name: PostgreSQL
+    type: postgres
+    uid: postgresql
+    access: proxy
+    url: postgres:5432
+    user: severinno
+    secureJsonData:
+      password: "577aa871801f0e7e78c5cc9b1148aaf2c4cd27c0648f8d96"
+    jsonData:
+      database: severinno
+      sslmode: disable
+      postgresVersion: 1600
+    editable: true

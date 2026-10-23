@@ -14,7 +14,7 @@ export function LoadingShell() {
     <div className="bg-background flex min-h-screen flex-col">
       {/* Topbar skeleton */}
       <header className="bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 w-full border-b backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-16 w-full max-w-[95%] items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="bg-muted h-8 w-24 animate-pulse rounded" />
           <div className="bg-muted hidden h-10 w-64 animate-pulse rounded-full md:block" />
           <div className="flex items-center gap-3">
@@ -40,7 +40,7 @@ export function LoadingShell() {
         </section>
 
         {/* Results skeleton — approx 400px */}
-        <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <section className="mx-auto w-full max-w-[95%] px-4 py-8 sm:px-6 lg:px-8">
           <div className="lg:grid lg:grid-cols-[260px_1fr] lg:gap-8">
             <aside className="hidden lg:block">
               <div className="bg-muted h-[400px] animate-pulse rounded-xl" />
@@ -78,7 +78,7 @@ export function LoadingShell() {
 
       {/* Footer skeleton */}
       <footer className="bg-card border-t px-4 py-12">
-        <div className="mx-auto grid max-w-7xl grid-cols-2 gap-8 md:grid-cols-4">
+        <div className="mx-auto grid w-full max-w-[95%] grid-cols-2 gap-8 md:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="space-y-3">
               <div className="bg-muted h-5 w-24 animate-pulse rounded" />

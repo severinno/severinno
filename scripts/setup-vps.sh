@@ -243,7 +243,8 @@ setup_secrets() {
     info "Gerando senhas aleatórias..."
     local generated=0
     for secret in postgres_password session_secret rabbitmq_pass \
-        cron_secret glitchtip_db_password glitchtip_s3_secret_key; do
+        cron_secret glitchtip_db_password glitchtip_s3_secret_key \
+        admin_password; do
         local file="$secrets_dir/$secret.secret"
         if [ -f "$file" ] && [ ! -s "$file" ] || grep -q "MUDE_AQUI\|CHANGE_ME\|example" "$file" 2>/dev/null; then
             run openssl rand -base64 32 > "$file"
@@ -253,7 +254,7 @@ setup_secrets() {
     done
 
     # Secrets manuais (precisam de input externo)
-    for manual in s3_secret_key vapid_private_key smtp_pass \
+    for manual in admin_email s3_secret_key vapid_private_key smtp_pass \
         lytex_client_secret glitchtip_secret_key evolution_api_key; do
         local file="$secrets_dir/$manual.secret"
         if [ -f "$file" ] && [ ! -s "$file" ] || grep -q "MUDE_AQUI\|CHANGE_ME\|example" "$file" 2>/dev/null; then
@@ -363,6 +364,7 @@ main() {
     info "📋 PRÓXIMOS PASSOS:"
     echo ""
     echo "  1. Preencher secrets manuais:"
+    echo "     nano $PROJECT_DIR/secrets/admin_email.secret   # e-mail REAL do admin (login)"
     echo "     nano $PROJECT_DIR/secrets/s3_secret_key.secret"
     echo "     nano $PROJECT_DIR/secrets/vapid_private_key.secret"
     echo "     nano $PROJECT_DIR/secrets/smtp_pass.secret"

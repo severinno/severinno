@@ -1,9 +1,13 @@
 "use client"
 
-import { Star, MapPin, Award } from "lucide-react"
+import * as React from "react"
+import { Star, MapPin, Award, ShieldCheck, Crown, Share2, Check } from "lucide-react"
+import { toast } from "sonner"
+import { triggerHaptic } from "@/lib/haptics"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { SafeImage } from "@/components/shared/safe-image"
 import { formatBRL } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -17,6 +21,9 @@ type Props = {
     city: string | null
     state: string | null
     whatsapp: string | null
+    verified?: boolean
+    identityStatus?: string | null
+    isAmbassador?: boolean
     rating: number
     reviewCount: number
     completedBookings: number
@@ -31,6 +38,8 @@ type Props = {
       id: string
       rating: number
       comment: string | null
+      photos?: string[]
+      isVerified?: boolean
       createdAt: Date
       client: { name: string; avatarUrl: string | null }
     }>
@@ -47,6 +56,38 @@ export type PublicProfileProvider = Props["provider"]
 
 export function PublicProfilePage({ provider }: Props) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://severinno.com.br"
+  const [copied, setCopied] = React.useState(false)
+
+  const handleShare = async () => {
+    triggerHaptic("selection")
+    const profileUrl =
+      typeof window !== "undefined" && window.location.pathname.startsWith("/u/")
+        ? window.location.href
+        : `${appUrl}/u/${provider.id}`
+    const shareText = `Confira os serviços de ${provider.name} no Severinno: ${profileUrl}`
+
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({
+          title: `${provider.name} - Severinno`,
+          text: shareText,
+          url: profileUrl,
+        })
+        return
+      } catch {
+        // Fallback to clipboard if share was cancelled or failed
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(profileUrl)
+      setCopied(true)
+      toast.success("Link do perfil copiado!")
+      setTimeout(() => setCopied(false), 2500)
+    } catch {
+      toast.error("Não foi possível copiar o link")
+    }
+  }
 
   return (
     <div className="from-background to-muted/30 min-h-screen bg-gradient-to-b">
@@ -63,7 +104,21 @@ export function PublicProfilePage({ provider }: Props) {
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 text-center md:text-left">
-            <h1 className="text-2xl font-bold md:text-3xl">{provider.name}</h1>
+            <div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
+              <h1 className="text-2xl font-bold md:text-3xl">{provider.name}</h1>
+              {(provider.verified || provider.identityStatus === "approved") && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 dark:border-blue-800/40 dark:bg-blue-950/40 dark:text-blue-300">
+                  <ShieldCheck className="size-3.5 text-blue-600 dark:text-blue-400" />
+                  Identidade Verificada
+                </span>
+              )}
+              {provider.isAmbassador && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/40 dark:text-amber-300">
+                  <Crown className="size-3.5 text-amber-600 dark:text-amber-400" />
+                  Embaixador Severinno
+                </span>
+              )}
+            </div>
             {provider.city && (
               <p className="text-muted-foreground flex items-center justify-center gap-1 text-sm md:justify-start">
                 <MapPin className="size-3.5" />
@@ -97,7 +152,7 @@ export function PublicProfilePage({ provider }: Props) {
         {provider.availability && provider.availability.length > 0 && (
           <Card className="mt-6">
             <CardContent className="p-4">
-              <h3 className="mb-3 text-sm font-semibold">Horários de atendimento</h3>
+              <h2 className="mb-3 text-sm font-semibold">Horários de atendimento</h2>
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 {provider.availability
                   .filter((a) => a.active)
@@ -147,8 +202,8 @@ export function PublicProfilePage({ provider }: Props) {
           </section>
         )}
 
-        <div className="mt-8 flex justify-center">
-          <Button size="lg" asChild>
+        <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <Button size="lg" asChild className="w-full sm:w-auto">
             <a
               href={`${appUrl}/?provider=${provider.id}`}
               target="_blank"
@@ -156,6 +211,24 @@ export function PublicProfilePage({ provider }: Props) {
             >
               Agendar na plataforma
             </a>
+          </Button>
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={handleShare}
+            className="w-full gap-2 sm:w-auto"
+          >
+            {copied ? (
+              <>
+                <Check className="size-4 text-emerald-600 dark:text-emerald-400" />
+                Copiado!
+              </>
+            ) : (
+              <>
+                <Share2 className="size-4" />
+                Compartilhar perfil
+              </>
+            )}
           </Button>
         </div>
 
@@ -174,7 +247,7 @@ export function PublicProfilePage({ provider }: Props) {
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-medium">{r.client.name}</span>
                           <span className="inline-flex gap-0.5">
                             {Array.from({ length: 5 }).map((_, i) => (
@@ -189,9 +262,36 @@ export function PublicProfilePage({ provider }: Props) {
                               />
                             ))}
                           </span>
+                          {r.isVerified && (
+                            <span className="border-border/60 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300">
+                              <ShieldCheck className="size-3 text-emerald-500" />
+                              Serviço Verificado
+                            </span>
+                          )}
                         </div>
                         {r.comment && (
                           <p className="text-muted-foreground mt-1 text-sm">{r.comment}</p>
+                        )}
+                        {r.photos && r.photos.length > 0 && (
+                          <div className="mt-2.5 flex flex-wrap gap-2">
+                            {r.photos.map((photo, pIdx) => (
+                              <div
+                                key={pIdx}
+                                className="border-border/60 relative h-16 w-24 overflow-hidden rounded-md border"
+                              >
+                                <SafeImage
+                                  src={photo}
+                                  alt={`Foto ${pIdx + 1} do serviço`}
+                                  className="object-cover"
+                                />
+                                {r.photos!.length === 2 && (
+                                  <span className="absolute bottom-1 left-1 z-10 rounded bg-black/60 px-1 py-0.5 text-[9px] font-semibold text-white">
+                                    {pIdx === 0 ? "Antes" : "Depois"}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
                     </div>

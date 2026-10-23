@@ -25,9 +25,9 @@
  *   → 200 { daily: [...], weekly: [...], totals: {...} }
  */
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
+
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import {
   loadPersistedSnapshots,
@@ -39,6 +39,8 @@ import {
 } from "@/lib/geo-metrics-persist"
 import type { PersistedSnapshot } from "@/lib/geo-metrics-persist"
 import type { GeoServiceName } from "@/lib/geo-metrics"
+
+import { withRoute } from "@/lib/api-route"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -176,65 +178,59 @@ function aggregateByBucket(
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-export async function GET(request: NextRequest) {
-  try {
-    await requireRole("ADMIN")
-    await assertRateLimit(request, RATE_LIMITS.admin)
+export const GET = withRoute("api.admin.geo-snapshots-summary.GET", async (request) => {
+  await requireRole("ADMIN")
+  await assertRateLimit(request, RATE_LIMITS.admin)
 
-    const { searchParams } = request.nextUrl
-    const daysParam = searchParams.get("days")
+  const { searchParams } = new URL(request.url)
+  const daysParam = searchParams.get("days")
 
-    // Reset cache flags before this request's calls
-    resetCacheFlags()
+  // Reset cache flags before this request's calls
+  resetCacheFlags()
 
-    let snapshots = await loadPersistedSnapshots()
+  let snapshots = await loadPersistedSnapshots()
 
-    // Filter by recency if ?days=N is provided
-    if (daysParam) {
-      const days = Number(daysParam)
-      if (Number.isFinite(days) && days > 0) {
-        const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
-        snapshots = snapshots.filter((s) => s.timestamp >= cutoff)
-      }
+  // Filter by recency if ?days=N is provided
+  if (daysParam) {
+    const days = Number(daysParam)
+    if (Number.isFinite(days) && days > 0) {
+      const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+      snapshots = snapshots.filter((s) => s.timestamp >= cutoff)
     }
-
-    const daily = aggregateByBucket(snapshots, startOfDay)
-    const weekly = aggregateByBucket(snapshots, startOfWeek)
-
-    const from = snapshots.length > 0 ? new Date(snapshots[0]!.timestamp).toISOString() : null
-    const to =
-      snapshots.length > 0
-        ? new Date(snapshots[snapshots.length - 1]!.timestamp).toISOString()
-        : null
-
-    const totalSnapshots = await getSnapshotCount()
-
-    const response: SnapshotsSummaryResponse = {
-      daily,
-      weekly,
-      totals: {
-        totalSnapshots,
-        dailyBuckets: daily.length,
-        weeklyBuckets: weekly.length,
-        dateRange: { from, to },
-        snapshotDir: getSnapshotsDir(),
-      },
-    }
-
-    // Determine cache status for debug/monitoring
-    const snapCache = wasSnapshotCacheHit()
-    const cntCache = wasCountCacheHit()
-    const cacheLabel =
-      snapCache === null && cntCache === null
-        ? "MISS" // neither was called (shouldn't happen)
-        : snapCache === true && cntCache === true
-          ? "HIT"
-          : "PARTIAL"
-
-    const jsonResponse = NextResponse.json(response)
-    jsonResponse.headers.set("X-Snapshots-Cache", cacheLabel)
-    return jsonResponse
-  } catch (e) {
-    return handleError(e)
   }
-}
+
+  const daily = aggregateByBucket(snapshots, startOfDay)
+  const weekly = aggregateByBucket(snapshots, startOfWeek)
+
+  const from = snapshots.length > 0 ? new Date(snapshots[0]!.timestamp).toISOString() : null
+  const to =
+    snapshots.length > 0 ? new Date(snapshots[snapshots.length - 1]!.timestamp).toISOString() : null
+
+  const totalSnapshots = await getSnapshotCount()
+
+  const response: SnapshotsSummaryResponse = {
+    daily,
+    weekly,
+    totals: {
+      totalSnapshots,
+      dailyBuckets: daily.length,
+      weeklyBuckets: weekly.length,
+      dateRange: { from, to },
+      snapshotDir: getSnapshotsDir(),
+    },
+  }
+
+  // Determine cache status for debug/monitoring
+  const snapCache = wasSnapshotCacheHit()
+  const cntCache = wasCountCacheHit()
+  const cacheLabel =
+    snapCache === null && cntCache === null
+      ? "MISS" // neither was called (shouldn't happen)
+      : snapCache === true && cntCache === true
+        ? "HIT"
+        : "PARTIAL"
+
+  const jsonResponse = NextResponse.json(response)
+  jsonResponse.headers.set("X-Snapshots-Cache", cacheLabel)
+  return jsonResponse
+})

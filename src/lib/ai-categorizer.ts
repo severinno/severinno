@@ -1,8 +1,9 @@
 import { db } from "@/lib/db"
-import { chatCompletion, isLocalAiOnline } from "@/lib/ai-client"
+import { chatCompletionHybrid } from "@/lib/ai-client"
 import logger from "@/lib/logger"
 
-const aiLogger = logger.child({ module: "ai-categorizer" })
+const aiLogger =
+  typeof logger?.child === "function" ? logger.child({ module: "ai-categorizer" }) : logger
 
 export type AiCategorizationResult = {
   categoryId?: string
@@ -15,7 +16,7 @@ export type AiCategorizationResult = {
   }
   suggestedDescription: string
   confidenceScore: number
-  source: "local-llama" | "keyword-fallback"
+  source: "local-llama" | "keyword-fallback" | "hybrid-llm"
 }
 
 /**
@@ -34,10 +35,8 @@ export async function categorizeServiceRequest(
 
   const categoryNames = categories.map((c) => c.name).join(", ")
 
-  // 2. Check if LocalAI is reachable
-  const online = await isLocalAiOnline()
-
-  if (online) {
+  // 2. Attempt Hybrid AI (Cloud Groq or Local Ollama)
+  try {
     const prompt = `Você é o assistente inteligente do Severinno Marketplace de Serviços Residenciais e Comerciais no Brasil.
 Analise o pedido do cliente e categorize no formato JSON estrito.
 
@@ -58,46 +57,44 @@ Responda APENAS um objeto JSON com o seguinte formato, sem texto adicional:
   "confidence": 0.95
 }`
 
-    try {
-      const reply = await chatCompletion([
-        {
-          role: "system",
-          content: "Você é um assistente de orçamentos que responde apenas JSON válido.",
-        },
-        { role: "user", content: prompt },
-      ])
+    const hybridRes = await chatCompletionHybrid([
+      {
+        role: "system",
+        content: "Você é um assistente de orçamentos que responde apenas JSON válido.",
+      },
+      { role: "user", content: prompt },
+    ])
 
-      if (reply) {
-        // Extract JSON from reply
-        const jsonMatch = reply.match(/\{[\s\S]*\}/)
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0])
-          const matchedCategory = categories.find(
-            (c) =>
-              c.name.toLowerCase() === String(parsed.categoryName || "").toLowerCase() ||
-              description.toLowerCase().includes(c.name.toLowerCase()),
-          )
+    if (hybridRes.content) {
+      // Extract JSON from reply
+      const jsonMatch = hybridRes.content.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0])
+        const matchedCategory = categories.find(
+          (c) =>
+            c.name.toLowerCase() === String(parsed.categoryName || "").toLowerCase() ||
+            description.toLowerCase().includes(c.name.toLowerCase()),
+        )
 
-          return {
-            categoryId: matchedCategory?.id,
-            categoryName: matchedCategory?.name || parsed.categoryName || "Serviços Gerais",
-            suggestedTitle: parsed.suggestedTitle || "Solicitação de Serviço",
-            problemSeverity: ["LOW", "MEDIUM", "HIGH"].includes(parsed.problemSeverity)
-              ? parsed.problemSeverity
-              : "MEDIUM",
-            estimatedPriceRange: {
-              min: Number(parsed.estimatedMinPrice) || 80,
-              max: Number(parsed.estimatedMaxPrice) || 250,
-            },
-            suggestedDescription: parsed.suggestedDescription || description,
-            confidenceScore: Number(parsed.confidence) || 0.9,
-            source: "local-llama",
-          }
+        return {
+          categoryId: matchedCategory?.id,
+          categoryName: matchedCategory?.name || parsed.categoryName || "Serviços Gerais",
+          suggestedTitle: parsed.suggestedTitle || "Solicitação de Serviço",
+          problemSeverity: ["LOW", "MEDIUM", "HIGH"].includes(parsed.problemSeverity)
+            ? parsed.problemSeverity
+            : "MEDIUM",
+          estimatedPriceRange: {
+            min: Number(parsed.estimatedMinPrice) || 80,
+            max: Number(parsed.estimatedMaxPrice) || 250,
+          },
+          suggestedDescription: parsed.suggestedDescription || description,
+          confidenceScore: Number(parsed.confidence) || 0.9,
+          source: hybridRes.engine === "local_ollama" ? "local-llama" : "hybrid-llm",
         }
       }
-    } catch (e) {
-      aiLogger.warn({ err: (e as Error).message }, "Llama parsing failed, using fallback")
     }
+  } catch (e) {
+    aiLogger.warn({ err: (e as Error).message }, "LLM categorizer failed, using fallback")
   }
 
   // 3. Fallback: Intelligent Keyword Matching

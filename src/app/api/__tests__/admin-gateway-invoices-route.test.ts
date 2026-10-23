@@ -83,7 +83,7 @@ describe("GET /api/admin/gateway/invoices — success", () => {
   it("returns invoices list from Lytex API", async () => {
     const { GET } = await import("../admin/gateway/invoices/route")
     const req = new Request("http://localhost/api/admin/gateway/invoices")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)
@@ -115,7 +115,7 @@ describe("GET /api/admin/gateway/invoices — query params", () => {
 
     const { GET } = await import("../admin/gateway/invoices/route")
     const req = new Request("http://localhost/api/admin/gateway/invoices?search=50000")
-    await GET(req)
+    await GET(req, { params: Promise.resolve({}) })
 
     // With fresh module + reset, there should be 2 fetch calls
     const calls = vi.mocked(fetch).mock.calls
@@ -131,7 +131,7 @@ describe("GET /api/admin/gateway/invoices — query params", () => {
 
     const { GET } = await import("../admin/gateway/invoices/route")
     const req = new Request("http://localhost/api/admin/gateway/invoices?page=2&perPage=10")
-    await GET(req)
+    await GET(req, { params: Promise.resolve({}) })
 
     const calls = vi.mocked(fetch).mock.calls
     expect(String(calls[1][0])).toContain("page=2")
@@ -159,7 +159,7 @@ describe("GET /api/admin/gateway/invoices — errors", () => {
 
     const { GET } = await import("../admin/gateway/invoices/route")
     const req = new Request("http://localhost/api/admin/gateway/invoices")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     expect(res.status).toBe(500)
     const data = await res.json()
@@ -184,7 +184,7 @@ describe("GET /api/admin/gateway/invoices — auth", () => {
 
     const { GET } = await import("../admin/gateway/invoices/route")
     const req = new Request("http://localhost/api/admin/gateway/invoices")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     expect(res.status).toBe(403)
   })
@@ -195,7 +195,7 @@ describe("GET /api/admin/gateway/invoices — auth", () => {
 
     const { GET } = await import("../admin/gateway/invoices/route")
     const req = new Request("http://localhost/api/admin/gateway/invoices")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     expect(res.status).toBe(401)
   })

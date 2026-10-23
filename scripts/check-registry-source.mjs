@@ -229,6 +229,12 @@ export const THIRD_PARTY_ALLOWLIST = [
     reason:
       "OSRM (roteamento) — imagem comunitaria do proprio projeto, sem espelho nosso no registry: o backend de roteamento nao e construido por nos, entao ele nao segue o IMAGE_REGISTRY. Consumir do GHCR publico e a decisao; o que precisa ser revisto de tempo em tempo e ela, nao o consumo",
   },
+  {
+    prefix: "ghcr.io/gis-ops/docker-valhalla/valhalla",
+    addedAt: "2026-10-14",
+    reason:
+      "Valhalla (map matching e isócronas) — imagem comunitária mantida pelo GIS-OPS, sem espelho próprio no registry interno: motor de roteamento/snap-to-road consumido upstream do GHCR",
+  },
 ]
 
 /**
@@ -559,6 +565,18 @@ export const OUT_OF_SCOPE_ALLOWLIST = [
     addedAt: "2026-09-13",
     reason:
       "e ESTE guard: o arquivo contem o proprio matcher (`imageRefsIn`) e a prosa que explica o defeito que a invariante 8 fechou (o literal que vivia em scripts/). Nao e um site de resolucao — e onde a forma da referencia e DEFINIDA. Fica aqui para o guard nao se dar uma isencao implicita: ele passa pela mesma regra que exige dos outros",
+  },
+  {
+    path: "deploy/log-health.sh",
+    addedAt: "2026-10-01",
+    reason:
+      "script de CRON no HOST da forja (nao compoe stack): o probe do SQLite roda `docker run` com a MESMA imagem pinada do runner (`severinno/ubuntu-bun:<BUN_VERSION>`), cujo contrato vive no render do `deploy/docker-compose.gitea.yml` (invariante 6) — o literal espelha esse contrato de proposito, e `${IMAGE_REGISTRY:-...}` no cron do host seria cosmetica: a variavel nao existe no ambiente do cron, o default resolve sempre para o registry local. E monitor de leitura (volume gitea-data readonly), nao site de resolucao de imagem",
+  },
+  {
+    path: "deploy/runner-janitor.sh",
+    addedAt: "2026-10-02",
+    reason:
+      "script de CRON no HOST da forja (`17 * * * *`, nao compoe stack): a remocao cirurgica de orfaos roda um probe em batch `docker run` com a MESMA imagem pinada do runner (`severinno/ubuntu-bun:<BUN_VERSION>`), cujo contrato vive no render do `deploy/docker-compose.gitea.yml` (invariante 6) — o literal espelha esse contrato de proposito, e `${IMAGE_REGISTRY:-...}` no cron do host seria cosmetica: a variavel nao existe no ambiente do cron, o default resolveria sempre para o registry local. O container e efemero e so le o banco (volume gitea-data ro); a decisao de imagem permanece no compose",
   },
 ]
 

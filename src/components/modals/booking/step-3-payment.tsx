@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Check, CheckCircle2, CreditCard, QrCode, ShieldCheck, Wallet } from "lucide-react"
+import { CheckCircle2, CreditCard, QrCode, ShieldCheck, Wallet, Copy, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { RadioGroup } from "@/components/ui/radio-group"
 import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
+import { triggerHaptic } from "@/lib/haptics"
 import { StepHeader, InfoCard } from "../step-wizard"
 import { PaymentOption } from "./payment-option"
 import {
@@ -208,47 +209,115 @@ export function Step3Payment({ state, set, markTouched, touched, selectedService
           </p>
         </div>
       ) : (
-        <div className="bg-card grid gap-2.5 rounded-lg border px-3 py-3">
-          <p className="text-xs font-medium">Pague com PIX</p>
-          <div className="flex flex-col items-center gap-2 py-2">
-            <div className="rounded-lg bg-slate-100 p-5 text-center dark:bg-slate-800/50">
-              <QrCode className="size-16 text-slate-500 dark:text-slate-300" />
+        <div className="bg-card space-y-3 rounded-xl border p-4 shadow-xs">
+          {/* Escrow Guarantee Trust Banner */}
+          <div className="flex items-start gap-3 rounded-xl border border-emerald-300/60 bg-emerald-50/80 p-3.5 dark:border-emerald-800/50 dark:bg-emerald-950/40">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300">
+              <ShieldCheck className="size-5" />
             </div>
-            <p className="text-muted-foreground max-w-xs text-center text-[11px]">
-              Escaneie o QR code ou copie a chave para pagar
-            </p>
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-bold text-emerald-950 dark:text-emerald-100">
+                  Custódia PIX Protegida
+                </span>
+                <span className="rounded-full bg-emerald-600/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                  Garantia 90 Dias
+                </span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-emerald-800/90 dark:text-emerald-300/80">
+                O valor fica 100% protegido e só é liberado ao profissional após a conclusão do
+                serviço aprovada por você.
+              </p>
+            </div>
+          </div>
+
+          {/* QR Code Presentation */}
+          <div className="flex flex-col items-center gap-2.5 rounded-xl border border-dashed border-emerald-200 bg-emerald-50/30 py-4 dark:border-emerald-800/40 dark:bg-emerald-950/10">
+            <div className="rounded-2xl border-2 border-emerald-100 bg-white p-3 shadow-xs dark:border-emerald-900/40 dark:bg-slate-900">
+              <QrCode className="size-28 text-emerald-700 dark:text-emerald-400" />
+            </div>
+
+            <div className="space-y-0.5 text-center">
+              <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                Pague com qualquer app de banco
+              </p>
+              <p className="text-muted-foreground text-xs">
+                Escaneie o QR Code ou copie o código PIX Copia e Cola
+              </p>
+            </div>
+
             <Button
               type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs"
+              className="h-11 w-full gap-2 rounded-xl bg-emerald-600 text-sm font-bold text-white shadow-sm transition-all hover:bg-emerald-700 active:scale-98"
               onClick={() => {
-                navigator.clipboard.writeText("severinno@exemplo.com").catch((err) => {
-                  console.warn("[booking-modal] clipboard copy failed:", err)
-                })
-                toast.success("Chave PIX copiada!")
+                navigator.clipboard
+                  .writeText(
+                    "00020126580014br.gov.bcb.pix0136severinno@exemplo.com5204000053039865802BR",
+                  )
+                  .catch((err) => {
+                    console.warn("[booking-modal] clipboard copy failed:", err)
+                  })
+                triggerHaptic("success")
+                toast.success("Código PIX Copia e Cola copiado com sucesso!")
               }}
             >
-              Copiar chave PIX
+              <Copy className="size-4 shrink-0" />
+              Copiar código PIX (Copia e Cola)
             </Button>
           </div>
+
+          {/* Guia 1-2-3 simplificado para celulares e idosos */}
+          <div className="w-full space-y-1.5 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 text-xs dark:border-slate-800 dark:bg-slate-900/60">
+            <p className="font-semibold text-slate-800 dark:text-slate-200">
+              Passo a passo no celular:
+            </p>
+            <div className="grid gap-1.5 text-slate-600 dark:text-slate-400">
+              <div className="flex items-center gap-2">
+                <span className="flex size-4.5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  1
+                </span>
+                <span>Toque no botão verde acima para copiar o código.</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="flex size-4.5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  2
+                </span>
+                <span>
+                  Abra o app do seu banco e escolha <strong>PIX Copia e Cola</strong>.
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="flex size-4.5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  3
+                </span>
+                <span>Confirme e toque no botão abaixo para concluir.</span>
+              </div>
+            </div>
+          </div>
+
           <Button
             type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 border-emerald-500 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+            className={cn(
+              "h-11 w-full gap-2 rounded-xl text-sm font-semibold transition-all",
+              paid
+                ? "bg-emerald-600 text-white hover:bg-emerald-600"
+                : "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 active:scale-98",
+            )}
             onClick={() => {
+              triggerHaptic("success")
               setPaid(true)
-              toast.success("Pagamento confirmado. Conclua o agendamento.")
+              toast.success("Pagamento confirmado via PIX! Pode concluir o agendamento.")
             }}
             disabled={paid}
           >
             {paid ? (
               <>
-                <Check className="size-3.5" /> Pagamento confirmado
+                <CheckCircle2 className="size-4" /> Pagamento confirmado na custódia
               </>
             ) : (
-              "Já paguei"
+              <>
+                <Sparkles className="size-4" /> Já realizei o pagamento PIX
+              </>
             )}
           </Button>
         </div>

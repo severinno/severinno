@@ -85,6 +85,7 @@ const EXPECTED_JOB_IDS: Record<string, string[]> = {
     "typecheck",
     "check",
     "pii-allowlist-guard",
+    "vitrine-baseline",
   ],
   [GITEA_CI]: [
     "lint",
@@ -94,6 +95,7 @@ const EXPECTED_JOB_IDS: Record<string, string[]> = {
     "pre-commit-in-runner-proof",
     "typecheck",
     "test",
+    "vitrine-baseline",
     "build",
     "deploy",
   ],
@@ -164,6 +166,7 @@ const EXPECTED_CONTEXTS: Record<string, string[]> = {
     "TypeCheck",
     "Tests",
     "Build",
+    "Pagination baseline guard",
   ],
 }
 

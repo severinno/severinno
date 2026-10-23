@@ -2,8 +2,6 @@
 import * as React from "react"
 import Image from "next/image"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { useForm, useWatch, type Resolver } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
 import {
   ChevronRight,
@@ -13,14 +11,27 @@ import {
   Loader2,
   Trash2,
   Wrench,
-  AlertTriangle,
+  Camera,
+  X,
+  LayoutGrid,
+  List,
+  ArrowUpDown,
+  Tag,
 } from "lucide-react"
 
-import { apiDelete, apiGet, apiPatch, apiPost, type Category } from "@/lib/api"
-import { SERVICE_UNITS, SERVICE_UNIT_LABELS, type ServiceUnit } from "@/lib/constants"
-import { serviceSchema, type ServiceInput } from "@/lib/validators"
+import { apiDelete, apiGet, apiPatch, type Category } from "@/lib/api"
+import { SERVICE_UNIT_LABELS, SERVICE_UNIT_SHORT } from "@/lib/constants"
 import { formatBRL } from "@/lib/format"
 import { cn } from "@/lib/utils"
+
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
 import {
   AlertDialog,
@@ -34,23 +45,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -60,30 +54,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
-import { FilePhotos } from "@/components/modals/file-photos"
 import { useAuthStore } from "@/store/auth"
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type ServiceCategory = Category & { parentId?: string | null }
-
-type ProviderService = {
-  id: string
-  providerId: string
-  categoryId: string
-  title: string
-  description: string
-  basePrice: number
-  unit: ServiceUnit
-  photos: string[]
-  active: boolean
-  createdAt: string
-  updatedAt: string
-  category?: ServiceCategory | null
-}
+import {
+  ServiceFormDialog,
+  type ProviderService,
+  type ServiceCategory,
+} from "./service-form-dialog"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -106,372 +82,7 @@ function categoryPathChips(cat: ServiceCategory | null | undefined, all: Categor
 // Service form (create/edit)
 // ---------------------------------------------------------------------------
 
-function ServiceFormDialog({
-  open,
-  onOpenChange,
-  service,
-  categories,
-}: {
-  open: boolean
-  onOpenChange: (v: boolean) => void
-  service: ProviderService | null
-  categories: Category[]
-}) {
-  const isEdit = !!service
-  const qc = useQueryClient()
-
-  // 3-level cascade selection
-  const [parentCatId, setParentCatId] = React.useState<string>("")
-  const [childCatId, setChildCatId] = React.useState<string>("")
-  const [subCatId, setSubCatId] = React.useState<string>("")
-  const [photos, setPhotos] = React.useState<string[]>([])
-
-  // Level-0 categories (pais)
-  const level0 = React.useMemo(() => categories.filter((c) => c.level === 0), [categories])
-  // Level-1 (filhas) given selected pai
-  const level1 = React.useMemo(
-    () => categories.filter((c) => c.level === 1 && c.parentId === parentCatId),
-    [categories, parentCatId],
-  )
-  // Level-2 (subcategorias) given selected filha
-  const level2 = React.useMemo(
-    () => categories.filter((c) => c.level === 2 && c.parentId === childCatId),
-    [categories, childCatId],
-  )
-
-  const form = useForm<ServiceInput>({
-    resolver: zodResolver(serviceSchema) as unknown as Resolver<ServiceInput>,
-    defaultValues: {
-      title: "",
-      description: "",
-      categoryId: "",
-      basePrice: 0,
-      unit: "UNIDADE",
-      photos: [],
-      active: true,
-    },
-  })
-
-  // Hydrate form when editing (adjust state during render)
-  const [prevOpen, setPrevOpen] = React.useState(open)
-  const [prevService, setPrevService] = React.useState(service)
-  if (open && (prevOpen !== open || prevService !== service)) {
-    setPrevOpen(open)
-    setPrevService(service)
-    if (service) {
-      // Find category and walk up to determine pai → filha → sub
-      const sub = categories.find((c) => c.id === service.categoryId)
-      const filha = sub?.parentId ? categories.find((c) => c.id === sub?.parentId) : null
-      const pai = filha?.parentId ? categories.find((c) => c.id === filha?.parentId) : null
-
-      setParentCatId(pai?.id ?? "")
-      setChildCatId(filha?.id ?? "")
-      setSubCatId(sub?.id ?? service.categoryId)
-      setPhotos(service.photos ?? [])
-    } else {
-      setParentCatId("")
-      setChildCatId("")
-      setSubCatId("")
-      setPhotos([])
-    }
-  }
-
-  // form.reset stays in an effect: react-hook-form is an external store and
-  // its reset() must not run during the render phase.
-  React.useEffect(() => {
-    if (!open) return
-    form.reset(
-      service
-        ? {
-            title: service.title,
-            description: service.description,
-            categoryId: service.categoryId,
-            basePrice: service.basePrice,
-            unit: service.unit as ServiceUnit,
-            photos: service.photos ?? [],
-            active: service.active,
-          }
-        : {
-            title: "",
-            description: "",
-            categoryId: "",
-            basePrice: 0,
-            unit: "UNIDADE",
-            photos: [],
-            active: true,
-          },
-    )
-  }, [open, service, form])
-
-  // Keep form's categoryId in sync with subCatId
-  React.useEffect(() => {
-    form.setValue("categoryId", subCatId)
-  }, [subCatId, form])
-
-  // Keep form's photos in sync
-  React.useEffect(() => {
-    form.setValue("photos", photos)
-  }, [photos, form])
-
-  const submit = form.handleSubmit(async (values) => {
-    if (!subCatId) {
-      toast.error("Selecione a subcategoria do serviço.")
-      return
-    }
-    try {
-      const payload = {
-        ...values,
-        categoryId: subCatId,
-        photos,
-      }
-      if (isEdit && service) {
-        await apiPatch(`/api/services/${service.id}`, payload)
-        toast.success("Serviço atualizado com sucesso.")
-      } else {
-        await apiPost("/api/services", payload)
-        toast.success("Serviço criado com sucesso.")
-      }
-      qc.invalidateQueries({ queryKey: ["provider", "services"] })
-      onOpenChange(false)
-    } catch (e) {
-      const err = e as { message?: string }
-      toast.error(err?.message ?? "Erro ao salvar serviço.")
-    }
-  })
-
-  const watchedPrice = useWatch({ control: form.control, name: "basePrice" })
-  const currentPrice = service?.basePrice ?? 0
-  const priceLowerThanCurrent = isEdit && Number(watchedPrice) < currentPrice
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? "Editar serviço" : "Novo serviço"}</DialogTitle>
-          <DialogDescription>
-            {isEdit
-              ? "Atualize as informações do seu serviço."
-              : "Cadastre um novo serviço que você oferece aos clientes."}
-          </DialogDescription>
-        </DialogHeader>
-
-        <Form {...form}>
-          <form onSubmit={submit} className="grid gap-4 py-2">
-            {/* Category cascade */}
-            <div className="grid gap-3">
-              <div className="text-sm font-medium">Categoria</div>
-              <p className="text-muted-foreground text-xs">
-                Escolha pai → filha → subcategoria. A subcategoria é obrigatória.
-              </p>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <CategorySelect
-                  label="Categoria pai"
-                  placeholder="Selecione…"
-                  value={parentCatId}
-                  onChange={(v) => {
-                    setParentCatId(v)
-                    setChildCatId("")
-                    setSubCatId("")
-                  }}
-                  options={level0}
-                />
-                <CategorySelect
-                  label="Filha"
-                  placeholder={parentCatId ? "Selecione…" : "—"}
-                  value={childCatId}
-                  onChange={(v) => {
-                    setChildCatId(v)
-                    setSubCatId("")
-                  }}
-                  options={level1}
-                  disabled={!parentCatId}
-                />
-                <CategorySelect
-                  label="Subcategoria"
-                  placeholder={childCatId ? "Selecione…" : "—"}
-                  value={subCatId}
-                  onChange={setSubCatId}
-                  options={level2}
-                  disabled={!childCatId}
-                />
-              </div>
-            </div>
-
-            <FormField
-              control={form.control}
-              name="title"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Título</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Ex.: Instalação de tomadas" maxLength={80} {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Descrição</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Descreva o serviço, o que está incluso, condições…"
-                      rows={4}
-                      maxLength={1200}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormDescription>Mínimo 10 caracteres. Máximo 1200.</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="basePrice"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Preço base (R$)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min={0}
-                        {...field}
-                        value={field.value ?? 0}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    {isEdit ? (
-                      <FormDescription>
-                        Preço atual: {formatBRL(currentPrice)}. Só é permitido reajustar para cima.
-                      </FormDescription>
-                    ) : (
-                      <FormDescription>Preço mínimo sugerido para seus clientes.</FormDescription>
-                    )}
-                    {priceLowerThanCurrent && (
-                      <p className="text-destructive flex items-center gap-1 text-xs">
-                        <AlertTriangle className="size-3" />O novo preço é menor que o atual e será
-                        recusado pelo servidor.
-                      </p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="unit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unidade</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione…" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {SERVICE_UNITS.map((u) => (
-                          <SelectItem key={u} value={u}>
-                            {SERVICE_UNIT_LABELS[u]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <FormField
-              control={form.control}
-              name="active"
-              render={({ field }) => (
-                <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                  <div>
-                    <FormLabel className="m-0">Serviço ativo</FormLabel>
-                    <FormDescription className="mt-1">
-                      Serviços inativos não aparecem na vitrine.
-                    </FormDescription>
-                  </div>
-                  <FormControl>
-                    <Switch checked={field.value} onCheckedChange={field.onChange} />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-
-            <FilePhotos
-              value={photos}
-              onChange={setPhotos}
-              max={4}
-              label="Fotos do serviço"
-              hint="Até 4 fotos. JPG, PNG ou WEBP até 5MB cada."
-            />
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                disabled={!subCatId || priceLowerThanCurrent || form.formState.isSubmitting}
-              >
-                {form.formState.isSubmitting ? (
-                  <Loader2 className="mr-2 size-4 animate-spin" />
-                ) : null}
-                {isEdit ? "Salvar alterações" : "Criar serviço"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function CategorySelect({
-  label,
-  placeholder,
-  value,
-  onChange,
-  options,
-  disabled,
-}: {
-  label: string
-  placeholder: string
-  value: string
-  onChange: (v: string) => void
-  options: Category[]
-  disabled?: boolean
-}) {
-  return (
-    <div className="grid gap-1.5">
-      <label className="text-muted-foreground text-xs font-medium">{label}</label>
-      <Select value={value} onValueChange={onChange} disabled={disabled || options.length === 0}>
-        <SelectTrigger className="w-full">
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((c) => (
-            <SelectItem key={c.id} value={c.id}>
-              {c.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  )
-}
+// Service form (create/edit) is imported from ./service-form-dialog
 
 // ---------------------------------------------------------------------------
 // Delete confirm
@@ -537,7 +148,7 @@ function DeleteServiceDialog({
 }
 
 // ---------------------------------------------------------------------------
-// Service card
+// Service card (Grid View)
 // ---------------------------------------------------------------------------
 
 function ServiceCard({
@@ -557,90 +168,147 @@ function ServiceCard({
 }) {
   const photo = service.photos?.[0]
   const chips = categoryPathChips(service.category, categories)
+  const categoryName = chips.length > 0 ? chips[chips.length - 1].name : service.category?.name
+
   return (
-    <div className="bg-card flex flex-col overflow-hidden rounded-xl border shadow-sm transition-shadow hover:shadow-md">
-      <div className="bg-muted relative aspect-video w-full overflow-hidden">
+    <div className="bg-card group border-border/80 hover:border-primary/40 relative flex flex-col overflow-hidden rounded-2xl border shadow-xs transition-all hover:shadow-md">
+      {/* Photo Header or Clean Icon Banner */}
+      <div className="bg-muted/40 relative aspect-[16/10] w-full overflow-hidden">
         {photo ? (
           <Image
             src={photo}
             alt={service.title}
             fill
-            sizes="(max-width: 768px) 100vw, 33vw"
-            className="object-cover"
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            className="object-cover transition-transform duration-300 group-hover:scale-105"
             loading="lazy"
           />
         ) : (
-          <div className="bg-muted text-muted-foreground flex size-full items-center justify-center">
-            <Wrench className="size-8" />
+          <div className="flex size-full flex-col items-center justify-center bg-gradient-to-br from-slate-50 via-emerald-50/25 to-slate-100 p-4 text-center dark:from-slate-900/60 dark:via-emerald-950/20 dark:to-slate-900">
+            <div className="border-border/50 text-primary flex size-11 items-center justify-center rounded-2xl border bg-white shadow-xs dark:bg-slate-800">
+              <Wrench className="size-5" />
+            </div>
+            <span className="text-muted-foreground mt-1 text-[11px] font-medium">
+              Sem fotos cadastradas
+            </span>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="text-primary mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold hover:underline"
+            >
+              <Camera className="size-3" /> Adicionar fotos
+            </button>
           </div>
         )}
-        <div className="absolute top-2 right-2">
-          <Badge
+
+        {/* Floating Category Pill */}
+        {categoryName && (
+          <div className="absolute top-2.5 left-2.5">
+            <span className="border-border/60 bg-background/90 text-foreground inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold shadow-xs backdrop-blur-md">
+              <Tag className="text-primary size-2.5" />
+              {categoryName}
+            </span>
+          </div>
+        )}
+
+        {/* Floating Status Pill (Clickable Toggle) */}
+        <div className="absolute top-2.5 right-2.5">
+          <button
+            type="button"
+            onClick={onToggleActive}
+            disabled={toggling}
+            title="Clique para alternar visibilidade na vitrine"
             className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-medium shadow-xs backdrop-blur-md transition-all",
               service.active
-                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
-                : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300",
+                ? "bg-emerald-600/90 text-white hover:bg-emerald-700"
+                : "bg-zinc-800/80 text-zinc-200 hover:bg-zinc-900",
             )}
           >
+            <span
+              className={cn("size-1.5 rounded-full", service.active ? "bg-white" : "bg-zinc-400")}
+            />
             {service.active ? "Ativo" : "Inativo"}
-          </Badge>
+          </button>
         </div>
+
+        {/* Multiple photos counter */}
+        {service.photos && service.photos.length > 1 && (
+          <div className="absolute bottom-2 left-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-xs">
+            {service.photos.length} fotos
+          </div>
+        )}
       </div>
 
-      <div className="flex flex-1 flex-col gap-2 p-4">
-        <p className="line-clamp-2 text-sm leading-tight font-semibold">{service.title}</p>
+      {/* Card Content */}
+      <div className="flex flex-1 flex-col p-4">
+        <h3 className="text-foreground group-hover:text-primary line-clamp-1 text-base font-semibold transition-colors">
+          {service.title}
+        </h3>
 
-        {chips.length > 0 && (
-          <div className="text-muted-foreground flex flex-wrap items-center gap-1 text-[10px]">
+        {service.description ? (
+          <p className="text-muted-foreground mt-1 line-clamp-2 text-xs leading-relaxed">
+            {service.description}
+          </p>
+        ) : (
+          <p className="text-muted-foreground/60 mt-1 text-xs italic">Sem descrição detalhada</p>
+        )}
+
+        {chips.length > 1 && (
+          <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-1 text-[10px]">
             {chips.map((c, i) => (
               <span key={c.id} className="inline-flex items-center gap-1">
-                {i > 0 && <ChevronRight className="size-2.5" />}
-                <span className="bg-muted rounded px-1.5 py-0.5 font-medium">{c.name}</span>
+                {i > 0 && <ChevronRight className="text-muted-foreground/40 size-2.5" />}
+                <span className="bg-muted/60 rounded px-1.5 py-0.5 font-medium">{c.name}</span>
               </span>
             ))}
           </div>
         )}
 
-        <p className="mt-auto text-sm">
-          <span className="text-primary text-lg font-bold tabular-nums">
-            {formatBRL(service.basePrice)}
-          </span>
-          <span className="text-muted-foreground text-xs">
-            {" "}
-            / {SERVICE_UNIT_LABELS[service.unit]}
-          </span>
-        </p>
+        {/* Price & Unit */}
+        <div className="border-border/50 mt-auto flex items-baseline justify-between border-t pt-3">
+          <div>
+            <span className="text-foreground text-xl font-bold tracking-tight tabular-nums">
+              {formatBRL(service.basePrice)}
+            </span>
+            <span className="text-muted-foreground text-xs font-medium">
+              {" "}
+              / {SERVICE_UNIT_LABELS[service.unit]}
+            </span>
+          </div>
+        </div>
 
-        <div className="mt-2 flex items-center justify-between gap-2 border-t pt-3">
+        {/* Card Footer Actions */}
+        <div className="border-border/40 mt-3 flex items-center justify-between border-t pt-2.5">
           <div className="flex items-center gap-2">
             <Switch
               checked={service.active}
               onCheckedChange={onToggleActive}
               disabled={toggling}
-              aria-label="Ativar/desativar serviço"
+              aria-label="Visibilidade na vitrine"
             />
-            <span className="text-muted-foreground text-xs">
-              {service.active ? "Ativo" : "Inativo"}
+            <span className="text-muted-foreground text-xs font-medium">
+              {service.active ? "Visível" : "Oculto"}
             </span>
           </div>
+
           <div className="flex items-center gap-1">
             <Button
               variant="outline"
               size="sm"
               onClick={onEdit}
-              className="h-8 gap-1.5 px-2.5 text-xs"
+              className="h-8 gap-1.5 px-2.5 text-xs font-medium"
             >
               <Pencil className="size-3.5" /> Editar
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              className="text-destructive hover:text-destructive size-8"
+              className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive size-8"
               onClick={onDelete}
-              aria-label="Excluir"
+              aria-label="Excluir serviço"
             >
-              <Trash2 className="size-4" />
+              <Trash2 className="size-3.5" />
             </Button>
           </div>
         </div>
@@ -650,13 +318,142 @@ function ServiceCard({
 }
 
 // ---------------------------------------------------------------------------
+// Service table row (List View)
+// ---------------------------------------------------------------------------
+
+function ServiceTableRow({
+  service,
+  categories,
+  onEdit,
+  onDelete,
+  onToggleActive,
+  toggling,
+}: {
+  service: ProviderService
+  categories: Category[]
+  onEdit: () => void
+  onDelete: () => void
+  onToggleActive: () => void
+  toggling: boolean
+}) {
+  const photo = service.photos?.[0]
+  const chips = categoryPathChips(service.category, categories)
+  const categoryName = chips.length > 0 ? chips[chips.length - 1].name : service.category?.name
+
+  return (
+    <TableRow className="hover:bg-muted/30 transition-colors">
+      <TableCell className="py-3">
+        <div className="flex items-center gap-3">
+          <div className="bg-muted/40 relative size-12 shrink-0 overflow-hidden rounded-xl border">
+            {photo ? (
+              <Image
+                src={photo}
+                alt={service.title}
+                fill
+                sizes="48px"
+                className="object-cover"
+                loading="lazy"
+              />
+            ) : (
+              <div className="bg-muted/30 text-muted-foreground flex size-full items-center justify-center">
+                <Wrench className="size-5" />
+              </div>
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="text-foreground truncate text-sm font-semibold">{service.title}</p>
+            {service.description && (
+              <p className="text-muted-foreground line-clamp-1 text-xs">{service.description}</p>
+            )}
+          </div>
+        </div>
+      </TableCell>
+      <TableCell className="py-3">
+        {categoryName ? (
+          <span className="border-border/60 bg-muted/50 text-foreground inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium">
+            <Tag className="text-primary size-3" />
+            {categoryName}
+          </span>
+        ) : (
+          <span className="text-muted-foreground text-xs">—</span>
+        )}
+      </TableCell>
+      <TableCell className="py-3">
+        <div className="flex items-baseline gap-1">
+          <span className="text-foreground text-sm font-bold tabular-nums">
+            {formatBRL(service.basePrice)}
+          </span>
+          <span className="text-muted-foreground text-xs">
+            / {SERVICE_UNIT_SHORT[service.unit]}
+          </span>
+        </div>
+      </TableCell>
+      <TableCell className="py-3">
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={service.active}
+            onCheckedChange={onToggleActive}
+            disabled={toggling}
+            aria-label="Ativar/desativar serviço"
+          />
+          <Badge
+            className={cn(
+              "py-0.2 inline-flex items-center gap-1 rounded-full px-2 text-[10px] font-medium shadow-none",
+              service.active
+                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+                : "bg-muted text-muted-foreground",
+            )}
+          >
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                service.active ? "bg-emerald-600 dark:bg-emerald-400" : "bg-zinc-400",
+              )}
+            />
+            {service.active ? "Ativo" : "Inativo"}
+          </Badge>
+        </div>
+      </TableCell>
+      <TableCell className="py-3 text-right">
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onEdit}
+            className="h-8 gap-1 px-2.5 text-xs font-medium"
+          >
+            <Pencil className="size-3.5" /> Editar
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive size-8"
+            onClick={onDelete}
+            aria-label="Excluir"
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main view
 // ---------------------------------------------------------------------------
+
+type SortOption = "recent" | "price-asc" | "price-desc" | "name"
+type ViewMode = "grid" | "list"
 
 export function ProviderServices() {
   const user = useAuthStore((s) => s.user)
   const qc = useQueryClient()
   const [search, setSearch] = React.useState("")
+  const [statusFilter, setStatusFilter] = React.useState<"ALL" | "ACTIVE" | "INACTIVE">("ALL")
+  const [categoryFilter, setCategoryFilter] = React.useState<string>("ALL")
+  const [sortBy, setSortBy] = React.useState<SortOption>("recent")
+  const [viewMode, setViewMode] = React.useState<ViewMode>("grid")
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<ProviderService | null>(null)
   const [deleting, setDeleting] = React.useState<ProviderService | null>(null)
@@ -681,16 +478,74 @@ export function ProviderServices() {
   })
 
   const services = React.useMemo(() => servicesQuery.data ?? [], [servicesQuery.data])
-  const filtered = React.useMemo(() => {
-    if (!search.trim()) return services
-    const q = search.toLowerCase()
-    return services.filter(
-      (s) =>
+
+  // Business intelligence / Metrics
+  const stats = React.useMemo(() => {
+    const total = services.length
+    const active = services.filter((s) => s.active).length
+    const inactive = total - active
+    const visibilityPercent = total > 0 ? Math.round((active / total) * 100) : 0
+    const prices = services.map((s) => s.basePrice).filter((p) => p > 0)
+    const minPrice = prices.length > 0 ? Math.min(...prices) : 0
+    const maxPrice = prices.length > 0 ? Math.max(...prices) : 0
+    const avgPrice = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0
+
+    return { total, active, inactive, visibilityPercent, minPrice, maxPrice, avgPrice }
+  }, [services])
+
+  // Categories in use by provider's services
+  const categoriesInUse = React.useMemo(() => {
+    const map = new Map<string, string>()
+    for (const s of services) {
+      if (s.category?.id && s.category?.name) {
+        map.set(s.category.id, s.category.name)
+      } else if (s.categoryId) {
+        const found = categoriesQuery.data?.find((c) => c.id === s.categoryId)
+        if (found) {
+          map.set(found.id, found.name)
+        }
+      }
+    }
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }))
+  }, [services, categoriesQuery.data])
+
+  // Filtered & Sorted
+  const filteredAndSorted = React.useMemo(() => {
+    let list = services.filter((s) => {
+      if (statusFilter === "ACTIVE" && !s.active) return false
+      if (statusFilter === "INACTIVE" && s.active) return false
+      if (
+        categoryFilter !== "ALL" &&
+        s.categoryId !== categoryFilter &&
+        s.category?.id !== categoryFilter
+      ) {
+        return false
+      }
+      if (!search.trim()) return true
+      const q = search.toLowerCase()
+      return (
         s.title.toLowerCase().includes(q) ||
         s.description?.toLowerCase().includes(q) ||
-        s.category?.name?.toLowerCase().includes(q),
-    )
-  }, [services, search])
+        s.category?.name?.toLowerCase().includes(q)
+      )
+    })
+
+    list = [...list].sort((a, b) => {
+      switch (sortBy) {
+        case "price-asc":
+          return a.basePrice - b.basePrice
+        case "price-desc":
+          return b.basePrice - a.basePrice
+        case "name":
+          return a.title.localeCompare(b.title, "pt-BR")
+        case "recent":
+        default:
+          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      }
+    })
+
+    return list
+  }, [services, statusFilter, categoryFilter, search, sortBy])
 
   const openNew = () => {
     setEditing(null)
@@ -712,7 +567,7 @@ export function ProviderServices() {
     try {
       await apiPatch(`/api/services/${s.id}`, { active: !s.active })
       qc.invalidateQueries({ queryKey: ["provider", "services", user?.id] })
-      toast.success(s.active ? "Serviço desativado." : "Serviço ativado.")
+      toast.success(s.active ? "Serviço desativado." : "Serviço ativado na vitrine.")
     } catch (e) {
       const err = e as { message?: string }
       toast.error(err?.message ?? "Erro ao atualizar serviço.")
@@ -721,68 +576,252 @@ export function ProviderServices() {
     }
   }
 
-  const totalActive = services.filter((s) => s.active).length
-  const totalInactive = services.length - totalActive
+  const resetFilters = () => {
+    setSearch("")
+    setStatusFilter("ALL")
+    setCategoryFilter("ALL")
+  }
+
+  const hasActiveFilters =
+    search.trim() !== "" || statusFilter !== "ALL" || categoryFilter !== "ALL"
 
   return (
-    <div className="grid gap-6">
-      {/* Summary */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <SummaryCard label="Total" value={services.length} />
-        <SummaryCard label="Ativos" value={totalActive} accent="emerald" />
-        <SummaryCard label="Inativos" value={totalInactive} />
-      </div>
+    <div className="grid gap-5">
+      {/* Top Business Metrics Bar & Primary CTA - Nielsen #1 (Visibility of system status) */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-3">
+          <div className="bg-card/60 rounded-xl border px-3.5 py-2 backdrop-blur-xs">
+            <span className="text-muted-foreground text-[10px] font-medium tracking-wider uppercase">
+              Total de Serviços
+            </span>
+            <div className="mt-0.5 flex items-baseline gap-1.5">
+              <span className="text-foreground text-lg font-bold tracking-tight tabular-nums">
+                {stats.total}
+              </span>
+              <span className="text-muted-foreground text-xs">({stats.active} ativos)</span>
+            </div>
+          </div>
 
-      {/* Toolbar / filters bar */}
-      <div className="bg-card flex flex-wrap items-center gap-3 rounded-xl border p-3">
-        <div className="relative w-full sm:max-w-xs">
-          <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar serviço…"
-            className="pl-8"
-          />
+          <div className="bg-card/60 rounded-xl border px-3.5 py-2 backdrop-blur-xs">
+            <span className="text-muted-foreground text-[10px] font-medium tracking-wider uppercase">
+              Visibilidade Vitrine
+            </span>
+            <div className="mt-0.5 flex items-baseline gap-1.5">
+              <span className="text-lg font-bold tracking-tight text-emerald-600 tabular-nums dark:text-emerald-400">
+                {stats.visibilityPercent}%
+              </span>
+              <span className="text-muted-foreground text-xs">no ar</span>
+            </div>
+          </div>
+
+          {stats.total > 0 && stats.maxPrice > 0 && (
+            <div className="bg-card/60 col-span-2 rounded-xl border px-3.5 py-2 backdrop-blur-xs sm:col-span-1">
+              <span className="text-muted-foreground text-[10px] font-medium tracking-wider uppercase">
+                Ticket Médio
+              </span>
+              <div className="mt-0.5 flex items-baseline gap-1.5">
+                <span className="text-foreground text-lg font-bold tracking-tight tabular-nums">
+                  {formatBRL(stats.avgPrice)}
+                </span>
+                <span className="text-muted-foreground text-xs">(médio)</span>
+              </div>
+            </div>
+          )}
         </div>
-        <p className="text-muted-foreground text-xs tabular-nums">
-          {filtered.length} serviço{filtered.length === 1 ? "" : "s"}
-        </p>
-        <Button onClick={openNew} className="ml-auto gap-1.5">
+
+        <Button onClick={openNew} className="gap-1.5 shadow-sm sm:self-center">
           <Plus className="size-4" /> Novo serviço
         </Button>
       </div>
 
-      {/* Grid */}
-      {servicesQuery.isLoading ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-muted/30 h-64 animate-pulse rounded-xl border" />
-          ))}
+      {/* Unified Toolbar & Filter Bar - Nielsen #7 (Flexibility & efficiency of use) */}
+      <div className="bg-card/80 flex flex-col gap-2.5 rounded-xl border p-2.5 shadow-2xs backdrop-blur-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Status Pills */}
+          <div className="bg-muted/40 flex items-center gap-1 rounded-lg border p-1">
+            <button
+              type="button"
+              onClick={() => setStatusFilter("ALL")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all",
+                statusFilter === "ALL"
+                  ? "bg-background text-foreground font-semibold shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Todos
+              <span className="bg-muted py-0.2 rounded-full px-1.5 text-[10px] tabular-nums">
+                {stats.total}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter("ACTIVE")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all",
+                statusFilter === "ACTIVE"
+                  ? "bg-background text-foreground font-semibold shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <span className="size-1.5 rounded-full bg-emerald-500" />
+              Ativos
+              <span className="py-0.2 rounded-full bg-emerald-100 px-1.5 text-[10px] font-semibold text-emerald-800 tabular-nums dark:bg-emerald-950/60 dark:text-emerald-300">
+                {stats.active}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter("INACTIVE")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all",
+                statusFilter === "INACTIVE"
+                  ? "bg-background text-foreground font-semibold shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Inativos
+              <span className="bg-muted py-0.2 rounded-full px-1.5 text-[10px] tabular-nums">
+                {stats.inactive}
+              </span>
+            </button>
+          </div>
+
+          {/* Right side toolbar controls: Sort & View Mode Switcher */}
+          <div className="flex items-center gap-2">
+            {/* Sort Dropdown */}
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+              <SelectTrigger className="h-8 w-36 gap-1.5 text-xs">
+                <ArrowUpDown className="text-muted-foreground size-3.5" />
+                <SelectValue placeholder="Ordenar por" />
+              </SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value="recent">Mais recentes</SelectItem>
+                <SelectItem value="price-asc">Menor preço</SelectItem>
+                <SelectItem value="price-desc">Maior preço</SelectItem>
+                <SelectItem value="name">Nome (A-Z)</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* View Mode Toggle: Grid vs List */}
+            <div className="bg-muted/40 inline-flex items-center rounded-lg border p-0.5">
+              <button
+                type="button"
+                onClick={() => setViewMode("grid")}
+                aria-label="Visualização em grade"
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-md transition-all",
+                  viewMode === "grid"
+                    ? "bg-background text-foreground shadow-2xs"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <LayoutGrid className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                aria-label="Visualização em lista"
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-md transition-all",
+                  viewMode === "list"
+                    ? "bg-background text-foreground shadow-2xs"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <List className="size-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
-      ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center">
-          <div className="bg-primary/10 text-primary flex size-12 items-center justify-center rounded-full">
+
+        {/* Search & Category Filter Sub-row */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar serviço por título ou descrição..."
+              className="h-8 pr-8 pl-8 text-xs"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2"
+                aria-label="Limpar busca"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+
+          {categoriesInUse.length > 1 && (
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="h-8 w-full text-xs sm:w-52">
+                <Tag className="text-muted-foreground size-3.5" />
+                <SelectValue placeholder="Categoria" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas as categorias</SelectItem>
+                {categoriesInUse.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      {servicesQuery.isLoading ? (
+        viewMode === "grid" ? (
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-muted/30 h-72 animate-pulse rounded-2xl border" />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2 rounded-xl border p-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="bg-muted/30 h-12 animate-pulse rounded-lg" />
+            ))}
+          </div>
+        )
+      ) : filteredAndSorted.length === 0 ? (
+        /* Empty State - Nielsen #9 (Help recover) & #10 (Help and documentation) */
+        <div className="bg-card/40 flex flex-col items-center gap-3 rounded-2xl border border-dashed p-10 text-center">
+          <div className="bg-primary/10 text-primary flex size-12 items-center justify-center rounded-2xl">
             <Wrench className="size-6" />
           </div>
           <div>
-            <p className="text-sm font-semibold">
-              {search ? "Nenhum serviço encontrado" : "Você ainda não tem serviços cadastrados"}
+            <p className="text-foreground text-sm font-semibold">
+              {hasActiveFilters
+                ? "Nenhum serviço corresponde aos filtros selecionados"
+                : "Você ainda não tem serviços cadastrados"}
             </p>
-            <p className="text-muted-foreground mt-1 text-xs">
-              {search
-                ? "Tente outro termo de busca."
-                : "Cadastre seu primeiro serviço para aparecer na vitrine."}
+            <p className="text-muted-foreground mt-1 max-w-sm text-xs">
+              {hasActiveFilters
+                ? "Tente limpar os filtros de busca, status ou categoria para visualizar todos os serviços."
+                : "Cadastre seus serviços com preços transparentes e fotos de qualidade para atrair clientes em Governador Valadares."}
             </p>
           </div>
-          {!search && (
-            <Button onClick={openNew} className="gap-1.5">
-              <Plus className="size-4" /> Cadastrar serviço
+          {hasActiveFilters ? (
+            <Button variant="outline" size="sm" onClick={resetFilters} className="gap-1.5 text-xs">
+              <X className="size-3.5" /> Limpar filtros
+            </Button>
+          ) : (
+            <Button onClick={openNew} className="gap-1.5 shadow-sm">
+              <Plus className="size-4" /> Cadastrar primeiro serviço
             </Button>
           )}
         </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((s) => (
+      ) : viewMode === "grid" ? (
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredAndSorted.map((s) => (
             <ServiceCard
               key={s.id}
               service={s}
@@ -794,6 +833,33 @@ export function ProviderServices() {
             />
           ))}
         </div>
+      ) : (
+        <div className="bg-card overflow-x-auto rounded-xl border shadow-2xs">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/40 hover:bg-muted/40">
+                <TableHead className="w-[45%] text-xs font-semibold">Serviço</TableHead>
+                <TableHead className="text-xs font-semibold">Categoria</TableHead>
+                <TableHead className="text-xs font-semibold">Preço Base</TableHead>
+                <TableHead className="text-xs font-semibold">Status</TableHead>
+                <TableHead className="w-24 text-right text-xs font-semibold">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredAndSorted.map((s) => (
+                <ServiceTableRow
+                  key={s.id}
+                  service={s}
+                  categories={categoriesQuery.data ?? []}
+                  onEdit={() => openEdit(s)}
+                  onDelete={() => openDelete(s)}
+                  onToggleActive={() => toggleActive(s)}
+                  toggling={togglingId === s.id}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
 
       <ServiceFormDialog
@@ -804,30 +870,6 @@ export function ProviderServices() {
       />
 
       <DeleteServiceDialog service={deleting} open={deleteOpen} onOpenChange={setDeleteOpen} />
-    </div>
-  )
-}
-
-function SummaryCard({
-  label,
-  value,
-  accent,
-}: {
-  label: string
-  value: number
-  accent?: "emerald"
-}) {
-  return (
-    <div className="bg-card rounded-xl border p-4">
-      <p className="text-muted-foreground text-xs tracking-wider uppercase">{label}</p>
-      <p
-        className={cn(
-          "mt-1 text-2xl font-bold tabular-nums",
-          accent === "emerald" && "text-emerald-600 dark:text-emerald-400",
-        )}
-      >
-        {value}
-      </p>
     </div>
   )
 }

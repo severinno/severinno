@@ -1,6 +1,7 @@
 import { consume, close } from "../lib/queue"
 import { setupGracefulShutdown } from "../lib/graceful-shutdown"
 import { handleNotification } from "../lib/notification-queue"
+import { handleWhatsAppMessage } from "../lib/whatsapp-queue"
 import logger from "../lib/logger"
 
 async function main() {
@@ -13,7 +14,14 @@ async function main() {
     prefetch: 10,
   })
 
-  logger.info("listening on queue=notifications")
+  await consume({
+    queue: "whatsapp",
+    routingKey: "whatsapp.message",
+    handler: handleWhatsAppMessage,
+    prefetch: 5,
+  })
+
+  logger.info("listening on queue=notifications and queue=whatsapp")
 
   setupGracefulShutdown(async () => {
     logger.info("shutting down notification worker")

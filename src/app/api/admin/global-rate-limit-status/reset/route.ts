@@ -18,31 +18,28 @@ export const dynamic = "force-dynamic"
  * Requires admin authentication.
  */
 
-import { handleError } from "@/lib/api-server"
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { getGlobalRateLimitDiagnostics, resetGlobalRateLimiter } from "@/lib/global-rate-limit"
+
+import { withRoute } from "@/lib/api-route"
 
 // ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
 
-export async function POST() {
-  try {
-    await requireRole("ADMIN")
+export const POST = withRoute("api.admin.global-rate-limit-status.reset.POST", async (_request) => {
+  await requireRole("ADMIN")
 
-    // Snapshot before reset for the response
-    const before = getGlobalRateLimitDiagnostics()
+  // Snapshot before reset for the response
+  const before = getGlobalRateLimitDiagnostics()
 
-    resetGlobalRateLimiter()
+  resetGlobalRateLimiter()
 
-    return NextResponse.json({
-      success: true,
-      message: "Rate limiter global resetado com sucesso.",
-      before,
-      timestamp: Date.now(),
-    })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  return NextResponse.json({
+    success: true,
+    message: "Rate limiter global resetado com sucesso.",
+    before,
+    timestamp: Date.now(),
+  })
+})

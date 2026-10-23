@@ -529,7 +529,12 @@ describe("a prova sem dublê — as três metades no mesmo checkout", () => {
     expect(controle.status).toBe(0)
     expect(controle.headDepois).not.toBe(controle.headAntes)
     expect(controle.conteudoEmHead).toBe("igual ao corpo válido")
-  })
+    // O ORÇAMENTO: a prova roda o hook REAL (a fase C inteira: lint-staged +
+    // typecheck) DENTRO do processo de teste — e na forja, com a suíte INTEIRA
+    // em paralelo sobre poucas vCPUs, o commit do CONTROLE passa do teto de 30s
+    // do runner (medido em 30/09/2026: timeout nos DOIS testes que comitam;
+    // o job roda a prova sozinho em 5m11s). O teto do job é outro orçamento.
+  }, 180_000)
 
   it("um hook que recusa TAMBÉM o commit do CONTROLE: INDETERMINADO, nunca um verde", () => {
     // O PREDICADO do CONTROLE é a metade que separa "o hook recusou o defeito" de
@@ -545,7 +550,7 @@ describe("a prova sem dublê — as três metades no mesmo checkout", () => {
     // O defeito FOI recusado (é a metade 1): o que não foi medido é se o ambiente
     // sabe commitar — e a prova diz isso, em vez de virar verde.
     expect((r.evidence as any).defeito.headDepois).toBe((r.evidence as any).defeito.headAntes)
-  })
+  }, 180_000)
 
   it("um IRMÃO vermelho NÃO deixa a prova verde: ela sai INDETERMINADA nomeando o guard", () => {
     const r = proveRealHookBlocks({
@@ -560,7 +565,7 @@ describe("a prova sem dublê — as três metades no mesmo checkout", () => {
     // (`NÃO aprovaram o MESMO índice`) — e as duas são fail-closed. A segunda
     // existe justamente para o caso em que a linha do irmão se perde no pipe.
     expect(r.detail).toMatch(/refutaram junto|NÃO aprovaram o MESMO índice/)
-  })
+  }, 180_000)
 
   it("com um GATE CEGO o defeito ENTRA: é a MUTAÇÃO que torna a recusa load-bearing", () => {
     // A contraprova da metade 2. Aqui o gate do fixture aprova o corpo quebrado
@@ -576,7 +581,7 @@ describe("a prova sem dublê — as três metades no mesmo checkout", () => {
     // A evidência para ANTES da metade 2 (o commit entrou): o que ela registra é
     // o HEAD avançando, que é a medida do defeito que viajou.
     expect((r.evidence as any).defeito.headDepois).not.toBe((r.evidence as any).defeito.headAntes)
-  })
+  }, 180_000)
 
   it("hook SEM o bit de execução: INDETERMINADO (git o ignora em silêncio)", () => {
     const r = proveRealHookBlocks({ root: checkoutSintetico({ hookExecutavel: false }) })
@@ -585,7 +590,7 @@ describe("a prova sem dublê — as três metades no mesmo checkout", () => {
     expect(r.detail).toContain("NÃO é executável")
     expect(r.detail).toContain("SILÊNCIO")
     expect(r.evidence).toBeNull()
-  })
+  }, 180_000)
 
   it("o arquivo do defeito JÁ existindo no checkout: premissa caída é dita, não ignorada", () => {
     const r = proveRealHookBlocks({ root: checkoutSintetico({ defeitoJaExiste: true }) })
@@ -593,7 +598,7 @@ describe("a prova sem dublê — as três metades no mesmo checkout", () => {
     expect(r.state).toBe("unavailable")
     expect(r.detail).toContain("JÁ EXISTE")
     expect(r.detail).toContain("refutador ser único")
-  })
+  }, 180_000)
 
   it("o BUMP DE MATRIZ sem o ato é recusado pelo guard dono, e o CONTROLE (com o ato) ENTRA", () => {
     // A metade 6: o defeito que só o COMMIT LOCAL produz — a matriz num commit e
@@ -626,7 +631,9 @@ describe("a prova sem dublê — as três metades no mesmo checkout", () => {
     expect(bump.controle.status).toBe(0)
     expect(bump.controle.headDepois).not.toBe(bump.controle.headAntes)
     expect(bump.controle.formasEmHead).toBe(1)
-  })
+    // Mesmo orçamento do teste acima: a metade 6 comita TRES vezes com a fase C
+    // inteira dentro de cada commit (o defeito do bump, o CONTROLE e os da fase B).
+  }, 180_000)
 
   it("um guard da contagem CEGO para o bump: o defeito ENTRA e a prova fica VERMELHA", () => {
     // A contraprova da metade 6 — a mutação que a torna load-bearing: com o guard
@@ -639,7 +646,7 @@ describe("a prova sem dublê — as três metades no mesmo checkout", () => {
     expect(r.detail).toContain("bump da matriz SEM o ato")
     const bump = (r.evidence as any).bump
     expect(bump.defeito.headDepois).not.toBe(bump.defeito.headAntes)
-  })
+  }, 180_000)
 
   it("sem um dos guards de fase A: INDETERMINADO nomeando o que faltou", () => {
     // Um irmão ausente é a outra ponta do mesmo fail-closed: a fase A não roda
@@ -650,7 +657,7 @@ describe("a prova sem dublê — as três metades no mesmo checkout", () => {
     expect(r.state).toBe("unavailable")
     expect(r.detail).toContain(`scripts/${FASE_A_GUARDS[2]}`)
     expect(r.detail).toContain("faltou")
-  })
+  }, 180_000)
 })
 
 // ── a FASE B real, com o defeito NO ÍNDICE ─────────────────────────────
@@ -707,8 +714,13 @@ describe("a prova sem dublê — a FASE B real, com o defeito no índice", () =>
     expect(utf8.controle.headDepois).not.toBe(utf8.controle.headAntes)
     expect(utf8.controle.conteudoEmHead).toBe("igual ao arquivo remendado")
     expect(r.detail).toContain("encoding")
-  })
+  }, 180_000)
 
+  // Os ORÇAMENTOS dos três abaixo (180s cada, medido na forja em 30/09/2026):
+  // cada teste roda a prova INTEIRA (fases A+B+C) contra um checkout sintético —
+  // sob a suíte em paralelo sobre 4 vCPU, o defeito de LINK passou do teto de
+  // 30s do runner (35s na 1ª tentativa da mutation matrix) e os dois casos de
+  // refutador rodearam perto do teto. O teto do job é outro orçamento.
   it("o defeito de LINK é recusado e a recusa é atribuída ao guard NOMEADO", () => {
     const r = proveRealHookBlocks({ root: checkoutSintetico() })
     expect(r.state, r.detail).toBe("proven")
@@ -725,7 +737,7 @@ describe("a prova sem dublê — a FASE B real, com o defeito no índice", () =>
     )
     expect(link.controle.status).toBe(0)
     expect(link.controle.conteudoEmHead).toBe("igual ao arquivo remendado")
-  })
+  }, 180_000)
 
   it("MUTAÇÃO: sem a fase B no hook, o defeito de encoding ENTRA (a metade é load-bearing)", () => {
     const r = proveRealHookBlocks({ root: checkoutSintetico({ faseBCega: true }) })
@@ -735,7 +747,7 @@ describe("a prova sem dublê — a FASE B real, com o defeito no índice", () =>
     expect(r.detail).toContain("a fase B deixou passar")
     const utf8 = faseBDe(r, 0)
     expect(utf8.defeito.headDepois).not.toBe(utf8.defeito.headAntes)
-  })
+  }, 180_000)
 
   it("um refutador DECLARADO que fica verde (com o commit ainda recusado): INDETERMINADO nomeando o guard", () => {
     // O guard do encoding parou de pegar a classe (a mutação) e OUTRO membro da
@@ -751,7 +763,7 @@ describe("a prova sem dublê — a FASE B real, com o defeito no índice", () =>
     expect(r.state).toBe("unavailable")
     expect(r.detail).toContain("ficou(aram) verde(s)")
     expect(r.detail).toContain("encoding-runner")
-  })
+  }, 180_000)
 
   it("MUTAÇÃO: com o guard do encoding cego e nenhum outro refutador, o defeito ENTRA (o membro é load-bearing)", () => {
     // A contraprova do membro: sem o guard da classe e sem nenhum outro refutador
@@ -763,7 +775,7 @@ describe("a prova sem dublê — a FASE B real, com o defeito no índice", () =>
     expect(r.state).toBe("violated")
     expect(r.detail).toContain(FASE_B_DEFEITOS[0].id)
     expect(r.detail).toContain("a fase B deixou passar")
-  })
+  }, 180_000)
 
   it("um refutador NÃO declarado: INDETERMINADO nomeando o guard de mais", () => {
     const r = proveRealHookBlocks({
@@ -773,7 +785,7 @@ describe("a prova sem dublê — a FASE B real, com o defeito no índice", () =>
     expect(r.state).toBe("unavailable")
     expect(r.detail).toContain("NÃO declarado")
     expect(r.detail).toContain("barrel-lint")
-  })
+  }, 180_000)
 
   it("o runner sem os comandos declarados: premissa caída é dita, não ignorada", () => {
     const r = proveRealHookBlocks({ root: checkoutSintetico({ runnerSemComandos: true }) })
@@ -781,7 +793,7 @@ describe("a prova sem dublê — a FASE B real, com o defeito no índice", () =>
     expect(r.state).toBe("unavailable")
     expect(r.detail).toContain("não declara")
     expect(r.detail).toContain(RUNNER_ENCODING)
-  })
+  }, 180_000)
 })
 
 describe("a ATRIBUIÇÃO da recusa — a régua pura", () => {

@@ -53,6 +53,17 @@ O dashboard principal (`Severinno Marketplace — Overview`) inclui:
 | **Business Metrics**   | Bookings by Status, Revenue (24h), Active Providers |
 | **Distributed Traces** | Trace Search (Tempo)                                |
 
+### SRE & Resilience Dashboard
+
+O dashboard de resiliência (`Severinno Marketplace — SRE & Resilience`) inclui:
+
+| Seção                 | Métricas                                                          |
+| --------------------- | ----------------------------------------------------------------- |
+| **SRE Overview**      | Core Web Vitals SLA Score, Active Connections, RSS Memory, Uptime |
+| **Circuit Breakers**  | State Grid (Closed/Half-Open/Open), Failures, Uptime Ratio        |
+| **Core Web Vitals**   | P75 Latency (LCP, INP, CLS, FCP, TTFB) com limiares oficiais      |
+| **Process Telemetry** | Node.js RSS, Heap Usado, Heap Total                               |
+
 ### Métricas Disponíveis
 
 **HTTP Metrics:**

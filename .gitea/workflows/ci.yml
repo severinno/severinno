@@ -49,11 +49,11 @@ jobs:
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Sem `actions/cache` nesta forja: o artifactcache do runner respondeu
+      # timeout em TODAS as rodadas (12/12 logs auditados, issue #33) e o step
+      # virou ruído `::warning`; o tier-1 da imagem (`Usando Bun pré-instalado`)
+      # cobre o restore. O lado GitHub mantém o par canônico (contrato #5,
+      # classificado GitHub-only no check:forge-parity).
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
@@ -104,11 +104,11 @@ jobs:
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Sem `actions/cache` nesta forja: o artifactcache do runner respondeu
+      # timeout em TODAS as rodadas (12/12 logs auditados, issue #33) e o step
+      # virou ruído `::warning`; o tier-1 da imagem (`Usando Bun pré-instalado`)
+      # cobre o restore. O lado GitHub mantém o par canônico (contrato #5,
+      # classificado GitHub-only no check:forge-parity).
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
@@ -152,6 +152,38 @@ jobs:
       # literal, sem depender de `bun` no PATH).
       - name: Script header docs
         run: node scripts/check-script-headers.mjs
+
+      # O serviço realtime é fail-closed pela REALTIME_EMIT_API_KEY e os dois
+      # canais de produção (prod e deploy hostinger) dividem a declaração do
+      # serviço entre a base comum e overrides próprios — o incidente da chave
+      # faltando num canal ("metade do contrato em cada arquivo", comentário ⛳
+      # da base) é o defeito que este gate mede no MERGE. Compara o environment
+      # EFETIVO (base + override) do serviço nos dois canais: variável que só
+      # existe num lado, ou fonte diferente, reprova; defaults de valor
+      # documentados (.com vs .com.br) não são contrato e não sinalizam.
+      # node direto + js-yaml (dep do repo): node-puro, sem docker.
+      - name: Realtime env parity (prod ≡ hostinger)
+        run: node scripts/check-realtime-env-parity.mjs
+
+      # A REALTIME_EMIT_API_KEY é fail-closed: produção nem sobe sem ela. O
+      # VALOR da chave não pode voltar a transitar por `environment` de compose
+      # (docker inspect/compose config/shells) — entra como DOCKER SECRET
+      # realtime_emit_api_key, lido via REALTIME_EMIT_API_KEY_FILE. O guard
+      # prende o desenho nos 3 composes (base, prod, hostinger): sem valor em
+      # env, consumers (realtime, app, notification-worker) com o secret e o
+      # _FILE, declaração top-level, template .example e nenhum *.secret
+      # trackeado. node direto + js-yaml (dep do repo): node-puro, sem docker.
+      - name: Realtime emit key via Docker Secret (_FILE)
+        run: node scripts/check-realtime-emit-key-source.mjs
+
+      # O ESTILO dos route handlers: todo handler HTTP de route.ts usa o
+      # wrapper withRoute/withParams (tracing OTel + request-id + handleError
+      # num lugar só). Handler novo com try/catch + handleError MANUAL reprova;
+      # o legado congelado vive na ALLOWLIST com addedAt + reason (mesma régua
+      # do allowlist-review) e entrada OCIOSA (rota migrou) também reprova.
+      # node-puro, sem docker, ~100ms para 189 rotas.
+      - name: Route handler style (withRoute obrigatório)
+        run: node scripts/check-route-handler-style.mjs
 
       # A classe SIGPIPE: sob `set -o pipefail`, `algo | grep -q PADRAO` pode
       # passar a 141 MESMO com o padrão encontrado — `grep -q` fecha o stdin no
@@ -206,9 +238,9 @@ jobs:
       - name: Publicar o remendo como comentário no PR (todos os fixers do registro)
         if: always()
         env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-          GITEA_URL: ${{ secrets.GITEA_URL }}
-          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+          GITEA_TOKEN: ${{ secrets.FORJA_TOKEN || secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ github.server_url }}
+          GITEA_REPOSITORY: ${{ github.repository }}
           REMEDY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: node scripts/pr-remedy-comment.mjs --backend gitea --all
 
@@ -609,11 +641,11 @@ jobs:
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Sem `actions/cache` nesta forja: o artifactcache do runner respondeu
+      # timeout em TODAS as rodadas (12/12 logs auditados, issue #33) e o step
+      # virou ruído `::warning`; o tier-1 da imagem (`Usando Bun pré-instalado`)
+      # cobre o restore. O lado GitHub mantém o par canônico (contrato #5,
+      # classificado GitHub-only no check:forge-parity).
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
@@ -681,17 +713,24 @@ jobs:
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Sem `actions/cache` nesta forja: o artifactcache do runner respondeu
+      # timeout em TODAS as rodadas (12/12 logs auditados, issue #33) e o step
+      # virou ruído `::warning`; o tier-1 da imagem (`Usando Bun pré-instalado`)
+      # cobre o restore. O lado GitHub mantém o par canônico (contrato #5,
+      # classificado GitHub-only no check:forge-parity).
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       # `node_modules` é o que o fixture precisa (o guard importa o parser): o
       # job INSTALA em vez de contar com o cache do runner.
       - run: bun install --frozen-lockfile
+      # O CLIENT do Prisma tem de EXISTIR antes da prova: a fase C da cópia roda
+      # o typecheck DE VERDADE, e sem o `prisma generate` o `@prisma/client` não
+      # exporta `PrismaClient` — o CONTROLE da prova (o commit que tem de ENTRAR)
+      # morre em erro de tipo e a prova sai INDETERMINADO acusando o ambiente.
+      # Medido na forja (30/09/2026): TS2305 em scripts/*.ts, exit 1 no controle.
+      # Os jobs typecheck/test/build já geram; este job agora também.
+      - run: bun run db:generate
 
       - name: A prova do bloqueio do pre-commit (dentro da imagem do runner)
         env:
@@ -734,11 +773,11 @@ jobs:
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Sem `actions/cache` nesta forja: o artifactcache do runner respondeu
+      # timeout em TODAS as rodadas (12/12 logs auditados, issue #33) e o step
+      # virou ruído `::warning`; o tier-1 da imagem (`Usando Bun pré-instalado`)
+      # cobre o restore. O lado GitHub mantém o par canônico (contrato #5,
+      # classificado GitHub-only no check:forge-parity).
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
@@ -766,7 +805,12 @@ jobs:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: severinno_test
         ports:
-          - 5432:5432
+          # Portas de host ALTERNATIVAS (medido em 29/09): os services publicam
+          # 5432/6379 no HOST, e um container de serviço órfão de rodada anterior
+          # (runner morto no meio de um job) segura as portas e mata toda rodada
+          # seguinte de Tests com "driver failed programming external
+          # connectivity". 55432/56379 decolam de qualquer outro serviço do host.
+          - 55432:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -775,7 +819,7 @@ jobs:
       redis:
         image: redis:7-alpine
         ports:
-          - 6379:6379
+          - 56379:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
@@ -784,14 +828,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # História completa: os testes desta suíte percorrem a história do
+          # repo (check-doc-hashes, bench-freshness, check-commit-import-exports
+          # fazem git show/percorrem registros) — checkout raso os mata com
+          # "não reproduz" (a mesma classe do sub-test bench-freshness).
+          fetch-depth: 0
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Sem `actions/cache` nesta forja: o artifactcache do runner respondeu
+      # timeout em TODAS as rodadas (12/12 logs auditados, issue #33) e o step
+      # virou ruído `::warning`; o tier-1 da imagem (`Usando Bun pré-instalado`)
+      # cobre o restore. O lado GitHub mantém o par canônico (contrato #5,
+      # classificado GitHub-only no check:forge-parity).
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
@@ -809,9 +859,180 @@ jobs:
       - name: PII gate self-test
         run: bun run check:pii-gate
 
+      # O E2E do realtime sobe o mini-service REAL como processo bun — o serviço
+      # tem package.json/bun.lock PRÓPRIOS (mini-services/realtime/) e o checkout
+      # limpo do CI não traz o node_modules dele (o local, sim, por isso o teste
+      # passa fora da forja e morre nela com `Cannot find package 'engine.io'`).
+      # ANTES do test:run: o step que instala não pode vir depois de quem usa.
+      - name: Install realtime mini-service deps (E2E)
+        run: bun install --frozen-lockfile
+        working-directory: mini-services/realtime
+
+      # Os testes de integração de Docker REAL (`*-gitea-real`, o teardown do
+      # efêmero) exigem a imagem do Gitea no daemon do job: sem ela eles
+      # reprovam com "imagem ausente". Onde o `docker` não é alcançável eles
+      # pulam sozinhos (`isDockerAvailable`), então o pull é premissa, não gate.
+      - name: Provisiona a imagem dos testes de Docker real
+        shell: bash
+        run: docker pull gitea/gitea:1.22 || echo "::warning::docker inacessível no job — as suítes de Docker real vão pular"
+
       - run: bun run test:run
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:55432/severinno_test
+          DIRECT_URL: postgresql://postgres:postgres@localhost:55432/severinno_test
+
+  # ── Vitrine Pagination Baseline — required check do merge ─────────────
+  # O guard de performance da paginação (scripts/check-vitrine-pagination-
+  # baseline.mjs) roda a rotina de navegação contra um next dev REAL com o
+  # dataset de 415 prestadores visíveis e REPROVA piora além dos limiares de
+  # docs/vitrine-pagination-baseline.md (mediana do clique quente, walk
+  # reverso, deep-link seek e walk-interno). Required check DE PROPÓSITO:
+  # regressão de performance da vitrine bloqueia o merge — e esta é a forja
+  # dona do merge (o espelho do GitHub roda o MESMO guard POR PATHS em
+  # .github/workflows/vitrine-baseline.yml; a forja de lá não tem portão).
+  vitrine-baseline:
+    name: Pagination baseline guard
+    runs-on: ubuntu-latest
+    # O job exige PostGIS + Redis + seed + dev server: o custo não se mede de
+    # fora do runner, e o modelo de latência o declara por ESTE teto
+    # (`ci/merge-latency.json`, `ceiling: true` — o dono confronta a cópia com
+    # este valor e acusa divergência). Sem o teto, um dev server que não sobe
+    # consome o runner até o limite da forja.
+    timeout-minutes: 10
+    # O runner é 2–4x mais lento no render de dev que o host onde a régua de dev
+    # foi medida (a API responde em 25–65ms); o perfil `ci` aplica os MESMOS
+    # regimes com os limiares ancorados na capacidade medida no runner.
+    env:
+      VITRINE_PROFILE: ci
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: severinno_test
+        ports:
+          # Portas de host publicadas SÓ para diagnóstico humano (docker ps);
+          # o job NÃO as consome: nesta forja job e services são containers
+          # separados na rede do job e o alcance é pelo NOME do label
+          # (postgres:5432, redis:6379). No runner compartilhado o publish
+          # pode inclusive atrasar (P1001 de localhost medido em 08/10) — o
+          # caminho do job é o nome, nunca localhost.
+          - 55434:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 56381:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Script (não composite action): `run:` não passa pelo resolvedor de
+      # actions locais do runner — ver scripts/setup-bun-ci.sh.
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - run: bun install --frozen-lockfile
+      - run: bunx prisma generate
+
+      # O baseline é SENSÍVEL ao dataset: os limiares do doc foram medidos com
+      # 415 prestadores visíveis (47 páginas de 9). Os dois seeds abaixo
+      # garantem esse número (a seed base sozinha cria 6 ⇒ uma página) — sem
+      # eles o seek anda menos páginas e o walk reverso não acontece.
+      - name: Push Prisma schema to test database
+        # NESTA forja, job e services são containers SEPARADOS na rede do job
+        # (runner com container.network): `localhost` dentro do container do job
+        # é o loopback DELE — os services são alcançáveis pelo NOME do label
+        # (postgres:5432, redis:6379), não pela porta publicada no host. No
+        # GitHub (VM única) localhost funciona — por isso o espelho usa lá.
+        # A espera abaixo é de prudência: o healthcheck do service libera o step,
+        # mas o accept de conexão do Postgres pode atrasar 1 tick além dele.
+        run: |
+          for i in $(seq 1 30); do
+            if (echo > /dev/tcp/postgres/5432) 2>/dev/null; then
+              echo "postgres aceitou conexão após $((i * 2))s"
+              break
+            fi
+            sleep 2
+          done
+          npx prisma db push --accept-data-loss --skip-generate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@postgres:5432/severinno_test
+          # O schema declara `directUrl = env("DIRECT_URL")` (sessão de migrate
+          # fora do pgbouncer); sem a var o CLI reprova no P1012 ANTES de tocar
+          # o banco (prisma.config.ts não carrega .env no runner).
+          DIRECT_URL: postgresql://postgres:postgres@postgres:5432/severinno_test
+
+      - name: Seed test database (baseline measured against this dataset)
+        run: bun run db:seed
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@postgres:5432/severinno_test
+          REDIS_URL: redis://redis:6379
+          SESSION_SECRET: gitea-ci-vitrine-baseline-session-secret-32
+
+      # A seed base cria 6 prestadores (1 página de 9); o baseline foi medido
+      # com 415 visíveis (47 páginas). Este seed completa o catálogo de forma
+      # determinística e idempotente — sem ele o guard morre no locator
+      # `Próxima` e o job fica vermelho antes de medir qualquer coisa.
+      - name: Seed vitrine baseline dataset (415 visible providers)
+        run: bun scripts/seed-vitrine-baseline.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@postgres:5432/severinno_test
+
+      # DEV, não produção: a régua do doc é de bundle de desenvolvimento. A
+      # PRONTIDÃO é da API paginada que o guard exercita (o /api/health pode
+      # responder 503 num ambiente válido — ele depende de mais do que o app).
+      - name: Start Next.js dev server on :3100
+        run: |
+          DATABASE_URL="postgresql://postgres:postgres@postgres:5432/severinno_test" \
+          REDIS_URL="redis://redis:6379" \
+          SESSION_SECRET="gitea-ci-vitrine-baseline-session-secret-32" \
+          bunx next dev -p 3100 &>/tmp/vitrine-dev.log &
+          ready=0
+          for i in $(seq 1 60); do
+            sleep 2
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3100/api/providers?page=1&limit=9" 2>/dev/null || echo "000")
+            if [ "$code" = "200" ]; then
+              echo "dev ready (API paginada 200) após $((i * 2))s"
+              ready=1
+              break
+            fi
+          done
+          if [ "$ready" != "1" ]; then
+            echo "❌ dev server não serviu a API paginada em 120s"
+            tail -50 /tmp/vitrine-dev.log
+            exit 1
+          fi
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install chromium --with-deps
+
+      # O guard em si: a saída humana vai no log e, em falha, o JSON completo
+      # (amostras cruas para triagem) é impresso — a forja Gitea não tem
+      # upload-artifact em nenhum workflow; o log do job é o artifact.
+      - name: Run pagination baseline guard
+        run: node scripts/check-vitrine-pagination-baseline.mjs --json --report-file /tmp/vitrine-baseline-report.json
+
+      - name: Print guard report on failure
+        if: failure()
+        run: |
+          if [ -f /tmp/vitrine-baseline-report.json ]; then
+            echo "── vitrine-baseline-report.json ──"
+            cat /tmp/vitrine-baseline-report.json
+          fi
+          echo "── fim do dev server (últimas 50 linhas) ──"
+          tail -50 /tmp/vitrine-dev.log
 
   # ── Build ─────────────────────────────────────────────────────────────────
   build:
@@ -824,11 +1045,11 @@ jobs:
 
       # Script (não composite action): `run:` não passa pelo resolvedor de
       # actions locais do runner — ver scripts/setup-bun-ci.sh.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Sem `actions/cache` nesta forja: o artifactcache do runner respondeu
+      # timeout em TODAS as rodadas (12/12 logs auditados, issue #33) e o step
+      # virou ruído `::warning`; o tier-1 da imagem (`Usando Bun pré-instalado`)
+      # cobre o restore. O lado GitHub mantém o par canônico (contrato #5,
+      # classificado GitHub-only no check:forge-parity).
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"

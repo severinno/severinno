@@ -19,6 +19,7 @@
 11. [Webhook Security](#11-webhook-security)
 12. [Audit Trail](#12-audit-trail)
 13. [Seed Test Hooks (SEED_SPEC_PATCH)](#13-seed-test-hooks-seed_spec_patch)
+14. [Retenção LGPD de Identidade (cron de segurança)](#14-retenção-lgpd-de-identidade-cron-de-segurança)
 
 ---
 
@@ -46,10 +47,14 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 
 ## 2. Content Security Policy (CSP)
 
+CSP **estrita com nonce por-request** gerado no middleware Edge
+(`proxy.ts` → `src/lib/csp.ts`), propagado ao App Router do Next.js via
+header `x-nonce`:
+
 ```http
 Content-Security-Policy:
   default-src 'self';
-  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com;
+  script-src 'self' 'nonce-<por-request>' 'strict-dynamic' https://va.vercel-scripts.com https://vercel-insights.com;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com;
   img-src 'self' https://*.tile.openstreetmap.org data: blob: https://s3.severinno.com.br https://www.gravatar.com;
   font-src 'self' https://fonts.gstatic.com data:;
@@ -62,20 +67,37 @@ Content-Security-Policy:
   worker-src 'self' blob:;
   media-src 'self';
   manifest-src 'self';
+  report-uri /api/csp-report;
 ```
 
-**Aplicado em:** Caddyfile.prod (ver arquivo completo para diretivas atualizadas)
+`script-src` **sem `unsafe-inline`/`unsafe-eval` e sem unpkg** (o bloco
+antigo desta seção documentava a política legada). Na presença de nonce +
+`strict-dynamic`, browsers modernos ignoram `'unsafe-inline'` de style-src
+para scripts. Em dev, `'unsafe-eval'` permanece (HMR do Next).
+
+**Modo de rollout (produção):** o header enviado é o **enforce**
+(`Content-Security-Policy`) por padrão — o deploy nasce bloqueando. Observação
+é opt-in explícito: `CSP_REPORT_ONLY=1` troca para
+`Content-Security-Policy-Report-Only` (só reporta, não bloqueia).
+`CSP_ENFORCE=1` força o enforce mesmo com `CSP_REPORT_ONLY=1` herdado
+(kill-switch de volta). Decisão pura em `isCspReportOnly` (`src/lib/csp.ts`),
+coberta por `src/lib/__tests__/csp.test.ts`. Plano completo e monitoramento:
+**RUNBOOK.md § 6**. Violações: `POST /api/csp-report` (coleta) e
+`GET /api/csp-report` (painel ADMIN).
+
+**Aplicado em:** `proxy.ts` (defense-in-depth, todas as respostas) + Caddy
+quando aplicável
 
 ### Headers de Segurança Adicionais (Middleware + Caddy)
 
-| Header                   | Valor                                          |    Onde    |
-| ------------------------ | ---------------------------------------------- | :--------: |
-| `X-Content-Type-Options` | `nosniff`                                      |   Ambos    |
-| `X-Frame-Options`        | `DENY`                                         |   Ambos    |
-| `X-XSS-Protection`       | `1; mode=block`                                |   Caddy    |
-| `Referrer-Policy`        | `strict-origin-when-cross-origin`              |   Ambos    |
-| `Permissions-Policy`     | `camera=(), microphone=(), geolocation=(self)` |   Ambos    |
-| `X-DNS-Prefetch-Control` | `on`                                           | Middleware |
+| Header                   | Valor                                                                  |    Onde    |
+| ------------------------ | ---------------------------------------------------------------------- | :--------: |
+| `X-Content-Type-Options` | `nosniff`                                                              |   Ambos    |
+| `X-Frame-Options`        | `DENY`                                                                 |   Ambos    |
+| `X-XSS-Protection`       | `1; mode=block`                                                        |   Caddy    |
+| `Referrer-Policy`        | `strict-origin-when-cross-origin`                                      |   Ambos    |
+| `Permissions-Policy`     | `camera=(self), microphone=(self), geolocation=(self), payment=(self)` |   Ambos    |
+| `X-DNS-Prefetch-Control` | `on`                                                                   | Middleware |
 
 ---
 
@@ -90,6 +112,28 @@ Content-Security-Policy:
 - **SameSite:** Lax (protege contra CSRF)
 - **Secure:** true em produção
 - **Assinatura:** HMAC-SHA256 com `SESSION_SECRET`
+
+### Websocket (realtime) — ticket de handshake single-use
+
+O mini-service de realtime autentica o handshake por **ticket single-use** —
+fecha a lacuna do join auto-declarado (qualquer socket podia entrar em
+`user:{id}` de terceiros):
+
+1. Cliente com sessão válida chama `POST /api/realtime/ticket`; a identidade
+   (`userId`/`role`) vem SEMPRE da sessão (cookie HMAC + `sessionVersion` no
+   banco) — o corpo do request é ignorado;
+2. O app grava `{userId, role}` no Redis compartilhado sob
+   `auth:socket-ticket:<64 hex>` com **TTL de 60s**;
+3. O handshake do Socket.io envia o ticket em `auth.ticket` (opção `auth` do
+   cliente — roda a cada (re)conexão, renovando o ticket); o mini-service
+   consome com **GETDEL** (atômico: replay não funciona) e estampa
+   `socket.data.userId/role`;
+4. `join` passa a usar a identidade estampada — o payload do cliente é
+   **ignorado**; `message:send` força `fromId` = identidade; `booking:update`
+   e `quote:update` exigem que o remetente seja parte do booking/cotação;
+5. **Produção é fail-closed**: handshake sem ticket válido é rejeitado. Em
+   dev o socket conecta não autenticado (fallback para scripts e2e locais),
+   mas não recebe salas nem retransmite nada.
 
 ### Edge Runtime Verification
 
@@ -158,6 +202,33 @@ return timingSafeEqual(computed, hash)
 | **Webhook Lytex**   | **20** | **1 min**  | **⬆ Webhooks**    |
 | Admin Ops           |   30   |   1 min    | Operações admin   |
 
+### Rate Limit Progressivo por Fingerprint de Sessão (auth)
+
+Camada adicional em TODAS as rotas de autenticação (login, 2fa/verify,
+register, forgot-password, reset-password) via
+`src/lib/auth-rate-limit.ts`, ALÉM do limite fixo por IP da tabela acima:
+
+- **Identidade:** fingerprint composto IP + hash(user-agent/accept) —
+  `getCompositeFingerprint` (a mesma dos limiters global/rota), com escopo
+  por fluxo (`login:`, `register:`, …) — contadores independentes;
+- **Escada progressiva** (janela de 10 min): 3 tentativas sem atraso
+  (digitação errada, 2FA), depois **0.5s → 1s → 2s → 4s → teto 8s**
+  (dobra a cada tentativa);
+- **Limite duro:** acima de 12 tentativas na janela → 429 com `Retry-After`;
+- **Só falha satura:** `recordFailure()` é chamado apenas em credencial/
+  código inválido — login bem-sucedido não conta;
+- **Decaimento automático:** cada tentativa apodrece 10 min após feita
+  (sem reset manual);
+- **Por que delay e não lockout:** o fingerprint é fraco (IP/UA forjáveis);
+  um lockout por fingerprint permitiria DoS da vítima atrás de NAT
+  compartilhado. O delay encarece sem negar serviço; o lockout por e-mail
+  (5 falhas → 15 min) continua sendo a barreira por identidade atacada.
+  Juntas, as camadas fecham a rotação de IP: quem troca de IP para fugir do
+  limite por IP ainda bate no lockout da conta; quem martela uma origem só
+  espera cada vez mais.
+- **Armazenamento:** mesma camada de cache do lockout por e-mail
+  (`@/lib/redis`) — degrada junto, sem dependência nova.
+
 ### Fallback
 
 Se Redis estiver indisponível, o rate limiting fallback para um Map in-memory
@@ -211,6 +282,36 @@ const envSchema = z.object({
   // ... 50+ variáveis validadas
 })
 ```
+
+### Uploads — magic bytes e SVG bloqueado
+
+A rota `POST /api/upload` valida em **3 camadas** (ver `src/lib/file-signature.ts`):
+
+1. MIME declarado na allowlist (string controlada pelo cliente — só o primeiro filtro);
+2. extensão compatível com o MIME (anti MIME-spoofing);
+3. **magic bytes** do conteúdo real — a defesa definitiva.
+
+**SVG removido da allowlist (09/2026).** SVG é XML ativo: aceita `<script>`,
+`onload=`, `<foreignObject>` e event handlers que executam no contexto da
+origem que o serve. Como o bucket é público e servido na mesma origem do app
+(via Caddy), um SVG uploadado é **XSS armazenado**. Renomear `.svg` → `.jpg`
+não contorna: a assinatura textual é detectada e o arquivo é rejeitado com 415.
+
+**Remediação de legado** — arquivos enviados ANTES do bloqueio continuam no
+bucket e são reprocessados com `scripts/reprocess-svg-uploads.ts`:
+
+```bash
+bun scripts/reprocess-svg-uploads.ts              # dry-run (relatório, nada altera)
+bun scripts/reprocess-svg-uploads.ts --apply      # converte SVG → PNG
+bun scripts/reprocess-svg-uploads.ts --apply --delete   # só remove os SVGs
+```
+
+- Detecção **pelo conteúdo** (não pela extensão) — pega SVGs renomeados;
+- conversão via sharp (raster 1024px) com o original preservado em
+  `quarantine/svg-legacy/<chave>` antes de qualquer remoção;
+- idempotente: pode ser re-executado; objetos grandes (>15 MB) são pulados;
+- executar uma vez no rollout e, se necessário, como tarefa recorrente até
+  `svgFound: 0` no resumo final.
 
 ---
 
@@ -402,3 +503,68 @@ NODE_ENV=development PROD_SEED_ALLOW_DEV=1 bun prisma/seed-prod.ts
 - `scripts/test-seed-prod-e2e.ts` — cenários 7 (update) e 8 (rename)
 - `scripts/test-seed-dev-e2e.ts` — cenários 9 (update) e 10 (rename)
 - `src/lib/__tests__/seed-data.test.ts` — 5 testes unitários de `buildPatchedSpec`
+
+---
+
+## 14. Retenção LGPD de Identidade (cron de segurança)
+
+> A política completa (os 3 atos da retenção de biometria) vive no código:
+> `src/lib/identity-retention.ts`. Esta seção documenta a OPERAÇÃO do ato 2
+> (pendência expirada) e o seu gatilho automatizado — a parte que não pode
+> depender de alguém lembrar de executá-la.
+
+### 14.1 O que o cron faz
+
+Todo dia às **03:15** (depois do settlements 03:00; entrada em
+`scripts/setup-cron-push.sh`), o endpoint `GET /api/cron/identity-purge`
+executa `purgeStalePendingIdentities(30)` sobre os usuários com
+`identityStatus = "pending"` há mais de 30 dias:
+
+1. as URLs de biometria são nuladas no banco PRIMEIRO (o app para de expor
+   mesmo se o bucket falhar);
+2. documento e selfie saem do MinIO (best-effort por objeto);
+3. o status vira `rejected` com motivo gravado no Redis (30d de TTL) —
+   reenviar a verificação é um clique, não um caso de suporte.
+
+A operação é **idempotente**: rodada repetida devolve `purged: 0` e não
+muda nada. O estado saudável do cron diário é `purged` baixo ou zero.
+
+### 14.2 Os dois gatilhos do ato 2
+
+| Gatilho        | Rota                             | Autenticação                     | Quando               |
+| -------------- | -------------------------------- | -------------------------------- | -------------------- |
+| Manual (admin) | `POST /api/admin/identity/purge` | Sessão + `requireRole("ADMIN")`  | Sob demanda          |
+| Diário (cron)  | `GET /api/cron/identity-purge`   | `CRON_SECRET` Bearer fail-closed | 03:15, todos os dias |
+
+O cron existe porque compliance que depende de operador de plantão não
+roda no dia em que o plantão esquece: a janela de retenção só é garantida
+quando o gatilho é automático e a rota manual fica para a exceção
+(ex.: purgar antes do prazo após pedido do titular).
+
+### 14.3 Fail-closed e operação
+
+A autenticação é a mesma família dos demais crons: Bearer contra
+`CRON_SECRET`, **sem query param** (não vaza em log de access). Sem
+`CRON_SECRET` configurado no ambiente, nenhum Bearer passa — o endpoint
+não "consegue rodar de qualquer jeito".
+
+```bash
+# Execução manual (VPS, credenciais locais):
+curl -s -H "Authorization: Bearer $CRON_SECRET" \
+  https://severinno.com.br/api/cron/identity-purge | jq
+# Log do cron do host: ~/cron-logs/identity-purge.log (código HTTP por linha)
+```
+
+Leitura do log:
+
+- `200` com `purged: 0` — saudável (não havia pendências expiradas);
+- `401` no log do host — `CRON_SECRET` divergente entre host e app
+  (ver § 10 Docker Secrets) ou entrada do cron sem o header;
+- `5xx` — falha de banco/S3 na varredura; investigar antes de re-run
+  (a função é idempotente e best-effort POR usuário: uma falha pontual
+  não corrompe o lote nem duplica remoção).
+
+A execução registra `logger.info` estruturado (`purged`, por usuário em
+`identity-retention.ts`) — segue para o Loki como o resto do audit trail
+(§ 12). Os logs do próprio container nunca recebem o conteúdo da
+biometria: só contagens e `userId`.

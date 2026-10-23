@@ -8,24 +8,48 @@ import { categorySchema, categoryUpdateSchema } from "@/lib/validators"
 import { parseBody } from "@/lib/api-middleware"
 import {
   notFound,
-  handleError,
   noStoreJson,
   cacheControlPublic,
   syncEntitySearch,
   invalidateCategoryCache,
+  HttpError,
 } from "@/lib/api-server"
 import { withCache, cacheInvalidate } from "@/lib/redis"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { type Prisma } from "@prisma/client"
 
+import { withRoute } from "@/lib/api-route"
+
 type CategoryNode = Prisma.CategoryGetPayload<Record<string, never>> & {
   children: CategoryNode[]
 }
 
-// GET: list categories (public, cached)
+// GET: list categories (public, cached or flat for admin/selectors)
 export async function GET(request?: Request) {
   try {
     await assertRateLimit(request!, RATE_LIMITS.general)
+    const url = request ? new URL(request.url) : null
+    const isFlat = url?.searchParams.get("flat") === "true"
+    const includeAll = url?.searchParams.get("all") === "true"
+    const includeCount = url?.searchParams.get("includeCount") === "true"
+
+    if (isFlat) {
+      const all = await db.category.findMany({
+        where: includeAll ? {} : { active: true },
+        orderBy: [{ level: "asc" }, { order: "asc" }, { name: "asc" }],
+        include: includeCount ? { _count: { select: { services: true } } } : undefined,
+      })
+      const mapped = all.map((c) => ({
+        ...c,
+        serviceCount: (c as unknown as { _count?: { services?: number } })._count?.services ?? 0,
+      }))
+      return NextResponse.json(mapped, {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      })
+    }
+
     const categories = await withCache(
       "categories:all",
       async () => {
@@ -50,102 +74,94 @@ export async function GET(request?: Request) {
       60,
     )
     return cacheControlPublic(NextResponse.json(categories), 120, 600)
-  } catch {
+  } catch (err) {
+    if (err instanceof HttpError) {
+      return noStoreJson({ error: err.message }, { status: err.status, headers: err.headers })
+    }
+    logger.error({ err }, "Erro em GET /api/categories")
     return noStoreJson({ error: "Erro interno" }, { status: 500 })
   }
 }
 
 // POST: create a category (admin only)
-export async function POST(request: Request) {
-  try {
-    await requireRole("ADMIN")
-    const data = await parseBody(request, categorySchema)
+export const POST = withRoute("api.categories.POST", async (request) => {
+  await requireRole("ADMIN")
+  const data = await parseBody(request, categorySchema)
 
-    // Check slug uniqueness
-    const existing = await db.category.findUnique({ where: { slug: data.slug } })
-    if (existing) return NextResponse.json({ error: "Slug já existe" }, { status: 409 })
+  // Check slug uniqueness
+  const existing = await db.category.findUnique({ where: { slug: data.slug } })
+  if (existing) return NextResponse.json({ error: "Slug já existe" }, { status: 409 })
 
-    const created = await db.category.create({
-      data: {
-        name: data.name,
-        slug: data.slug,
-        parentId: data.parentId || null,
-        level: data.level ?? 0,
-        icon: data.icon || null,
-        order: data.order,
-        active: data.active,
-      },
-    })
+  const created = await db.category.create({
+    data: {
+      name: data.name,
+      slug: data.slug,
+      parentId: data.parentId || null,
+      level: data.level ?? 0,
+      icon: data.icon || null,
+      order: data.order,
+      active: data.active,
+    },
+  })
 
-    // Invalidate all cached category lists so fresh data is served
-    Promise.all([cacheInvalidate("categories:*"), invalidateCategoryCache()]).catch((err) =>
-      logger.warn({ err }, "category cache invalidation failed"),
-    )
-    // Queue search reindex (non-critical — don't fail the request)
-    syncEntitySearch("category", created).catch((err) =>
-      logger.warn({ err }, "category search reindex failed"),
-    )
-    return NextResponse.json({ category: created }, { status: 201 })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  // Invalidate all cached category lists so fresh data is served
+  Promise.all([cacheInvalidate("categories:*"), invalidateCategoryCache()]).catch((err) =>
+    logger.warn({ err }, "category cache invalidation failed"),
+  )
+  // Queue search reindex (non-critical — don't fail the request)
+  syncEntitySearch("category", created).catch((err) =>
+    logger.warn({ err }, "category search reindex failed"),
+  )
+  return NextResponse.json({ category: created }, { status: 201 })
+})
 
 // PUT: update a category (admin only)
-export async function PUT(request: Request) {
-  try {
-    await requireRole("ADMIN")
-    const { id, ...data } = await parseBody(request, categoryUpdateSchema)
+export const PUT = withRoute("api.categories.PUT", async (request) => {
+  await requireRole("ADMIN")
+  const { id, ...data } = await parseBody(request, categoryUpdateSchema)
 
-    const category = await db.category.findUnique({ where: { id } })
-    if (!category) throw notFound()
+  const category = await db.category.findUnique({ where: { id } })
+  if (!category) throw notFound()
 
-    const updated = await db.category.update({
-      where: { id },
-      data: {
-        ...(data.name !== undefined ? { name: data.name } : {}),
-        ...(data.slug !== undefined ? { slug: data.slug } : {}),
-        ...(data.parentId !== undefined ? { parentId: data.parentId } : {}),
-        ...(data.level !== undefined ? { level: data.level } : {}),
-        ...(data.icon !== undefined ? { icon: data.icon } : {}),
-        ...(data.order !== undefined ? { order: data.order } : {}),
-        ...(data.active !== undefined ? { active: data.active } : {}),
-      },
-    })
+  const updated = await db.category.update({
+    where: { id },
+    data: {
+      ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.slug !== undefined ? { slug: data.slug } : {}),
+      ...(data.parentId !== undefined ? { parentId: data.parentId } : {}),
+      ...(data.level !== undefined ? { level: data.level } : {}),
+      ...(data.icon !== undefined ? { icon: data.icon } : {}),
+      ...(data.order !== undefined ? { order: data.order } : {}),
+      ...(data.active !== undefined ? { active: data.active } : {}),
+    },
+  })
 
-    Promise.all([cacheInvalidate("categories:*"), invalidateCategoryCache()]).catch((err) =>
-      logger.warn({ err }, "category cache invalidation failed"),
-    )
-    syncEntitySearch("category", updated).catch((err) =>
-      logger.warn({ err }, "category search reindex failed"),
-    )
-    return NextResponse.json({ category: updated })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  Promise.all([cacheInvalidate("categories:*"), invalidateCategoryCache()]).catch((err) =>
+    logger.warn({ err }, "category cache invalidation failed"),
+  )
+  syncEntitySearch("category", updated).catch((err) =>
+    logger.warn({ err }, "category search reindex failed"),
+  )
+  return NextResponse.json({ category: updated })
+})
 
 // DELETE: soft-delete a category (admin only)
-export async function DELETE(request: Request) {
-  try {
-    await requireRole("ADMIN")
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get("id")
-    if (!id) return NextResponse.json({ error: "ID obrigatório" }, { status: 400 })
+export const DELETE = withRoute("api.categories.DELETE", async (request) => {
+  await requireRole("ADMIN")
+  const { searchParams } = new URL(request.url)
+  const id = searchParams.get("id")
+  if (!id) return NextResponse.json({ error: "ID obrigatório" }, { status: 400 })
 
-    const category = await db.category.findUnique({ where: { id } })
-    if (!category) throw notFound()
+  const category = await db.category.findUnique({ where: { id } })
+  if (!category) throw notFound()
 
-    await db.category.update({
-      where: { id },
-      data: { active: false },
-    })
+  await db.category.update({
+    where: { id },
+    data: { active: false },
+  })
 
-    cacheInvalidate("categories:*").catch((err) =>
-      logger.warn({ err }, "category cache invalidation failed"),
-    )
-    return NextResponse.json({ success: true })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  cacheInvalidate("categories:*").catch((err) =>
+    logger.warn({ err }, "category cache invalidation failed"),
+  )
+  return NextResponse.json({ success: true })
+})

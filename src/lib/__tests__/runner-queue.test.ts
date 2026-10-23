@@ -713,10 +713,13 @@ describe("readGiteaQueue — a fila e quem a puxaria, no banco da forja", () => 
     expect(chamadas[1]).toContain("status in (5)")
     expect(chamadas[2]).toContain("from action_runner")
     // O escopo dos runners: o do repo, o do dono e o global (system) — e o
-    // deletado fora.
+    // deletado fora. O COALESCE é a forma da régua: a coluna sai do sqlite3 do
+    // container como texto/NULL em linhas antigas, e o literal `deleted = 0`
+    // exclui o runner VIVO do mundo real (medido: vps-runner, deleted=NULL).
     expect(chamadas[2]).toContain("owner_id")
     expect(chamadas[2]).toContain("repo_id = 0 and owner_id = 0")
-    expect(chamadas[2]).toContain("deleted = 0")
+    expect(chamadas[2]).toContain("coalesce(deleted, 0) = 0")
+    expect(chamadas[2]).not.toContain("deleted = 0 and")
     expect(r.queue?.waiting).toBe(2)
     expect(r.queue?.oldestMs).toBe(3_600_000)
     // A forma dos "puxadores" é a MESMA das duas forjas (status/busy), com o

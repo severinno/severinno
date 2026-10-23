@@ -3,9 +3,11 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
-import { handleError, notFound } from "@/lib/api-server"
+import { notFound } from "@/lib/api-server"
 import logger from "@/lib/logger"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+
+import { withParams } from "@/lib/api-route"
 
 /**
  * PATCH /api/admin/push/schedule/[id]
@@ -16,8 +18,9 @@ import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
  * Body:
  *   action — "cancel" (unico suportado por enquanto)
  */
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
+export const PATCH = withParams<{ id: string }>(
+  "api.admin.push.schedule.:id.PATCH",
+  async (request, { params }) => {
     await requireRole("ADMIN")
     await assertRateLimit(request, RATE_LIMITS.admin)
     const { id } = await params
@@ -58,7 +61,5 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     logger.info({ scheduledId: id, title: scheduled.title }, "scheduled push cancelled")
 
     return NextResponse.json({ ok: true, message: "Agendamento cancelado com sucesso." })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

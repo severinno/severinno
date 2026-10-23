@@ -303,7 +303,27 @@ function git(cwd, args) {
  */
 export function worktreeTemporario(root) {
   const dir = mkdtempSync(join(tmpdir(), "mirror-coverage-"))
-  const pendente = git(root, ["stash", "create"]).trim()
+  // O `git stash create` toma o lock do índice — e o doctor roda os gates CONCORRENTE
+  // (a matriz de mutação leva ~18min no mesmo repositório; qualquer outro ator do
+  // índice, inclusive um segundo gate, derruba este com "index.lock exists" no
+  // primeiro try). Retentativa com ESPERA: 10× de 2s cobre os ~18s do lock mais
+  // longo medido; o stderr do último try vai no erro (antes, a causa morria dentro
+  // do execFileSync e a mensagem só dizia "Command failed").
+  const pendente = (() => {
+    const TENTATIVAS = 10
+    let ultimoErro
+    for (let i = 1; i <= TENTATIVAS; i++) {
+      try {
+        return git(root, ["stash", "create"]).trim()
+      } catch (err) {
+        ultimoErro = err
+        if (i < TENTATIVAS) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2000)
+      }
+    }
+    throw new Error(
+      `git stash create falhou após ${TENTATIVAS} tentativas (20s): ${ultimoErro?.stderr ?? ultimoErro?.message ?? ultimoErro}`,
+    )
+  })()
   git(root, ["worktree", "add", "-q", "--detach", dir, pendente === "" ? "HEAD" : pendente])
   const modulos = join(root, "node_modules")
   if (existsSync(modulos)) {

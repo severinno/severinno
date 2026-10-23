@@ -87,11 +87,36 @@ export function ActionToastListener() {
       }
     }
 
+    function handleCustomToast(
+      event: CustomEvent<{
+        type?: "success" | "error" | "warning" | "info" | "default"
+        title: string
+        description?: string
+        duration?: number
+      }>,
+    ) {
+      const { type = "default", title, description, duration } = event.detail || {}
+      if (!title) return
+      if (type === "success") {
+        toast.success(title, { description, duration })
+      } else if (type === "error") {
+        toast.error(title, { description, duration })
+      } else if (type === "warning") {
+        toast.warning(title, { description, duration })
+      } else if (type === "info") {
+        toast.info(title, { description, duration })
+      } else {
+        toast(title, { description, duration })
+      }
+    }
+
     // Listen for our custom realtime notification event
     window.addEventListener("severinno:notification", handleNotification as EventListener)
+    window.addEventListener("severinno:toast", handleCustomToast as EventListener)
 
     return () => {
       window.removeEventListener("severinno:notification", handleNotification as EventListener)
+      window.removeEventListener("severinno:toast", handleCustomToast as EventListener)
     }
   }, [router])
 

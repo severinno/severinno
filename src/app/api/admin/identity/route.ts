@@ -5,7 +5,8 @@
  * POST — Approve or reject a verification
  */
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
+import { withRoute } from "@/lib/api-route"
 import { db } from "@/lib/db"
 import { getSession } from "@/lib/auth"
 import logger from "@/lib/logger"
@@ -15,7 +16,7 @@ const log = logger.child({ module: "admin-identity" })
 // ---------------------------------------------------------------------------
 // GET — list pending verifications
 // ---------------------------------------------------------------------------
-export async function GET(request: NextRequest) {
+export const GET = withRoute("api.admin.identity.GET", async (request) => {
   const session = await getSession()
   if (!session?.userId) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Acesso negado" }, { status: 403 })
   }
 
-  const { searchParams } = request.nextUrl
+  const { searchParams } = new URL(request.url)
   const status = searchParams.get("status") || "pending"
 
   const users = await db.user.findMany({
@@ -50,41 +51,52 @@ export async function GET(request: NextRequest) {
     take: 50,
   })
 
-  // Fetch OCR data & rejection reasons from Redis
+  // Fetch OCR data & rejection reasons from Redis in a single batch roundtrip
   const { getClient } = await import("@/lib/redis")
   const redis = getClient()
 
-  const result = await Promise.all(
-    users.map(async (u) => {
-      let ocrData = null
-      let rejectionReason = null
-      if (redis) {
+  let ocrAndReasons: (string | null)[] = []
+  if (redis && users.length > 0) {
+    try {
+      const keys: string[] = []
+      for (const u of users) {
+        keys.push(`identity:ocr:${u.id}`, `identity:reason:${u.id}`)
+      }
+      ocrAndReasons = await redis.mget(...keys)
+    } catch {
+      // ignore Redis failure, fallback gracefully
+    }
+  }
+
+  const result = users.map((u, index) => {
+    let ocrData = null
+    let rejectionReason = null
+    if (ocrAndReasons.length > index * 2) {
+      const rawOcr = ocrAndReasons[index * 2]
+      const rawReason = ocrAndReasons[index * 2 + 1]
+      if (rawOcr) {
         try {
-          const [rawOcr, rawReason] = await Promise.all([
-            redis.get(`identity:ocr:${u.id}`),
-            redis.get(`identity:reason:${u.id}`),
-          ])
-          if (rawOcr) ocrData = JSON.parse(rawOcr)
-          if (rawReason) rejectionReason = rawReason
+          ocrData = JSON.parse(rawOcr)
         } catch {
-          // ignore
+          // ignore parse error
         }
       }
-      return {
-        ...u,
-        identityOcrData: ocrData,
-        identityRejectionReason: rejectionReason,
-      }
-    }),
-  )
+      if (rawReason) rejectionReason = rawReason
+    }
+    return {
+      ...u,
+      identityOcrData: ocrData,
+      identityRejectionReason: rejectionReason,
+    }
+  })
 
   return NextResponse.json({ verifications: result })
-}
+})
 
 // ---------------------------------------------------------------------------
 // POST — approve or reject
 // ---------------------------------------------------------------------------
-export async function POST(request: NextRequest) {
+export const POST = withRoute("api.admin.identity.POST", async (request) => {
   const session = await getSession()
   if (!session?.userId) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
@@ -157,4 +169,4 @@ export async function POST(request: NextRequest) {
     log.error({ err }, "Failed to process identity review")
     return NextResponse.json({ error: "Erro ao processar revisão." }, { status: 500 })
   }
-}
+})

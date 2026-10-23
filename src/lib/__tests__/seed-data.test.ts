@@ -55,37 +55,41 @@ describe("slugify", () => {
 
 describe("categorySlug", () => {
   it("pais usam apenas o próprio nome", () => {
-    expect(categorySlug({ name: "Reparos", level: 0 })).toBe("reparos")
+    expect(categorySlug({ name: "Reforma e Construção", level: 0 })).toBe("reforma-e-construcao")
   })
 
   it("filhos herdam o slug do pai", () => {
     const c: CategorySeedInput = {
-      name: "Tomadas e interruptores",
+      name: "Eletricista",
       parent: "Elétrica",
       level: 2,
     }
-    expect(categorySlug(c)).toBe("tomadas-e-interruptores-eletrica")
+    expect(categorySlug(c)).toBe("eletricista-eletrica")
   })
 })
 
 describe("categoryOrder", () => {
-  it("level 0 segue a ordem canônica Reparos=0, Limpeza=1, Reforma=2", () => {
-    expect(categoryOrder({ name: "Reparos", level: 0 })).toBe(0)
-    expect(categoryOrder({ name: "Limpeza", level: 0 })).toBe(1)
-    expect(categoryOrder({ name: "Reforma", level: 0 })).toBe(2)
+  it("level 0 segue a ordem canônica dos 7 macro-domínios", () => {
+    expect(categoryOrder({ name: "Reforma e Construção", level: 0 })).toBe(0)
+    expect(categoryOrder({ name: "Reparos e Instalações", level: 0 })).toBe(1)
+    expect(categoryOrder({ name: "Acabamento e Decoração", level: 0 })).toBe(2)
+    expect(categoryOrder({ name: "Limpeza e Casa", level: 0 })).toBe(3)
+    expect(categoryOrder({ name: "Jardim e Piscina", level: 0 })).toBe(4)
+    expect(categoryOrder({ name: "Mudança e Organização", level: 0 })).toBe(5)
+    expect(categoryOrder({ name: "Emergência 24h", level: 0 })).toBe(6)
   })
 
   it("níveis > 0 usam order 0", () => {
-    expect(categoryOrder({ name: "Elétrica", parent: "Reparos", level: 1 })).toBe(0)
+    expect(categoryOrder({ name: "Elétrica", parent: "Reparos e Instalações", level: 1 })).toBe(0)
   })
 })
 
 describe("CATEGORY_SPEC", () => {
-  it("contém 27 categorias (3+7+17)", () => {
-    expect(CATEGORY_SPEC.length).toBe(27)
-    expect(CATEGORY_SPEC.filter((c) => c.level === 0)).toHaveLength(3)
-    expect(CATEGORY_SPEC.filter((c) => c.level === 1)).toHaveLength(7)
-    expect(CATEGORY_SPEC.filter((c) => c.level === 2)).toHaveLength(17)
+  it("contém 129 categorias (7+36+86)", () => {
+    expect(CATEGORY_SPEC.length).toBe(129)
+    expect(CATEGORY_SPEC.filter((c) => c.level === 0)).toHaveLength(7)
+    expect(CATEGORY_SPEC.filter((c) => c.level === 1)).toHaveLength(36)
+    expect(CATEGORY_SPEC.filter((c) => c.level === 2)).toHaveLength(86)
   })
 
   it("todo pai existe no spec com level estritamente menor (ordenação estável)", () => {
@@ -105,10 +109,11 @@ describe("CATEGORY_SPEC", () => {
 })
 
 describe("DEFAULT_SETTINGS", () => {
-  it("contém 8 settings com keys únicas", () => {
-    expect(DEFAULT_SETTINGS.length).toBe(8)
+  it("contém 9 settings com keys únicas", () => {
+    expect(DEFAULT_SETTINGS.length).toBe(9)
     const keys = DEFAULT_SETTINGS.map((s) => s.key)
     expect(new Set(keys).size).toBe(keys.length)
+    expect(keys).toContain("maintenance_mode")
     expect(keys).toContain("site_name")
     expect(keys).toContain("payment_pix_key")
   })
@@ -121,7 +126,7 @@ describe("buildPatchedSpec", () => {
   })
 
   it("retorna CATEGORY_SPEC inalterado quando o patch está desabilitado (produção)", () => {
-    const raw = JSON.stringify([{ name: "Reparos", order: 5 }])
+    const raw = JSON.stringify([{ name: "Reparos e Instalações", order: 5 }])
     expect(buildPatchedSpec(raw, false)).toBe(CATEGORY_SPEC)
   })
 
@@ -129,21 +134,20 @@ describe("buildPatchedSpec", () => {
     const spec = buildPatchedSpec(
       JSON.stringify([
         { name: "Elétrica", icon: "bolt" },
-        { name: "Reparos", order: 5 },
+        { name: "Reparos e Instalações", order: 5 },
       ]),
       true,
     )
     expect(spec).toHaveLength(CATEGORY_SPEC.length)
     const eletrica = spec.find((c) => c.name === "Elétrica")!
     expect(eletrica.icon).toBe("bolt")
-    expect(categorySlug(eletrica)).toBe("eletrica-reparos")
-    const reparos = spec.find((c) => c.name === "Reparos")!
+    expect(categorySlug(eletrica)).toBe("eletrica-reparos-e-instalacoes")
+    const reparos = spec.find((c) => c.name === "Reparos e Instalações")!
     expect(reparos.order).toBe(5)
-    expect(categorySlug(reparos)).toBe("reparos")
+    expect(categorySlug(reparos)).toBe("reparos-e-instalacoes")
     // itens não patchados permanecem intactos
-    const limpeza = spec.find((c) => c.name === "Limpeza")!
+    const limpeza = spec.find((c) => c.name === "Limpeza e Casa")!
     expect(limpeza.icon).toBe("sparkles")
-    expect(limpeza.order).toBeUndefined()
   })
 
   it("renameTo renomeia o item e reparenta os filhos em cascata (um nível)", () => {
@@ -154,12 +158,12 @@ describe("buildPatchedSpec", () => {
     expect(spec).toHaveLength(CATEGORY_SPEC.length)
     // item renomeado — slug embute o pai
     const eletricidade = spec.find((c) => c.name === "Eletricidade")!
-    expect(eletricidade.parent).toBe("Reparos")
-    expect(categorySlug(eletricidade)).toBe("eletricidade-reparos")
+    expect(eletricidade.parent).toBe("Reparos e Instalações")
+    expect(categorySlug(eletricidade)).toBe("eletricidade-reparos-e-instalacoes")
     // filhos passam a referenciar o nome novo (cascata)
-    const tomadas = spec.find((c) => c.name === "Tomadas e interruptores")!
-    expect(tomadas.parent).toBe("Eletricidade")
-    expect(categorySlug(tomadas)).toBe("tomadas-e-interruptores-eletricidade")
+    const eletricista = spec.find((c) => c.name === "Eletricista")!
+    expect(eletricista.parent).toBe("Eletricidade")
+    expect(categorySlug(eletricista)).toBe("eletricista-eletricidade")
     // a árvore patchada continua estruturalmente válida (fail-fast não dispara)
     expect(() => assertValidCategorySpec(spec)).not.toThrow()
   })
@@ -170,14 +174,14 @@ describe("buildPatchedSpec", () => {
 })
 
 describe("buildSeedPlan", () => {
-  it("banco vazio → tudo create (27 categorias + 8 settings)", () => {
+  it("banco vazio → tudo create (129 categorias + 9 settings)", () => {
     const plan = buildSeedPlan([], [])
-    expect(plan.categories).toHaveLength(27)
-    expect(plan.settings).toHaveLength(8)
-    expect(plan.summary.categoriesCreate).toBe(27)
+    expect(plan.categories).toHaveLength(129)
+    expect(plan.settings).toHaveLength(9)
+    expect(plan.summary.categoriesCreate).toBe(129)
     expect(plan.summary.categoriesUpdate).toBe(0)
     expect(plan.summary.categoriesUnchanged).toBe(0)
-    expect(plan.summary.settingsCreate).toBe(8)
+    expect(plan.summary.settingsCreate).toBe(9)
     expect(plan.summary.settingsUpdate).toBe(0)
     expect(plan.summary.settingsUnchanged).toBe(0)
     // todos os creates têm slug canônico
@@ -189,31 +193,29 @@ describe("buildSeedPlan", () => {
     const plan = buildSeedPlan(current.categories, current.settings)
     expect(plan.summary.categoriesCreate).toBe(0)
     expect(plan.summary.categoriesUpdate).toBe(0)
-    expect(plan.summary.categoriesUnchanged).toBe(27)
+    expect(plan.summary.categoriesUnchanged).toBe(129)
     expect(plan.summary.settingsCreate).toBe(0)
     expect(plan.summary.settingsUpdate).toBe(0)
-    expect(plan.summary.settingsUnchanged).toBe(8)
+    expect(plan.summary.settingsUnchanged).toBe(9)
   })
 
   it("detecta update quando name/level/icon/order/parent divergem", () => {
     const current = canonicalCurrentState()
-    // Divergência: Reparos (level 0) — muda order e icon
-    const reparos = current.categories.find((c) => c.slug === "reparos")!
+    // Divergência: Reparos e Instalações (level 0) — muda order e icon
+    const reparos = current.categories.find((c) => c.slug === "reparos-e-instalacoes")!
     reparos.order = 99
     reparos.icon = "different-icon"
     // Divergência: Elétrica (level 1) — muda level e parent
-    // slug canônico: filhos herdam o slug do pai → "eletrica-reparos"
-    const eletrica = current.categories.find((c) => c.slug === "eletrica-reparos")!
+    const eletrica = current.categories.find((c) => c.slug === "eletrica-reparos-e-instalacoes")!
     eletrica.level = 3
-    eletrica.parentName = "Reforma"
+    eletrica.parentName = "Reforma e Construção"
     // Divergência: site_name — muda value
     const siteName = current.settings.find((s) => s.key === "site_name")!
     siteName.value = "Severinno 2.0"
 
     const plan = buildSeedPlan(current.categories, current.settings)
-    const reparosAction = plan.categories.find((a) => a.slug === "reparos")!
-    // slug canônico de "Elétrica" (level 1, parent Reparos) → "eletrica-reparos"
-    const eletricaAction = plan.categories.find((a) => a.slug === "eletrica-reparos")!
+    const reparosAction = plan.categories.find((a) => a.slug === "reparos-e-instalacoes")!
+    const eletricaAction = plan.categories.find((a) => a.slug === "eletrica-reparos-e-instalacoes")!
     const siteNameAction = plan.settings.find((a) => a.key === "site_name")!
 
     expect(reparosAction.action).toBe("update")
@@ -230,28 +232,28 @@ describe("buildSeedPlan", () => {
     }
     expect(plan.summary.categoriesUpdate).toBe(2)
     expect(plan.summary.settingsUpdate).toBe(1)
-    expect(plan.summary.categoriesUnchanged).toBe(25)
-    expect(plan.summary.settingsUnchanged).toBe(7)
+    expect(plan.summary.categoriesUnchanged).toBe(127)
+    expect(plan.summary.settingsUnchanged).toBe(8)
   })
 
   it("create preserva parent/icon/order corretos para subcategorias", () => {
     const plan = buildSeedPlan([], [])
-    const tomadas = plan.categories.find((a) => a.slug === "tomadas-e-interruptores-eletrica")!
-    expect(tomadas.action).toBe("create")
-    if (tomadas.action === "create") {
-      expect(tomadas.parent).toBe("Elétrica")
-      expect(tomadas.level).toBe(2)
-      expect(tomadas.icon).toBeNull()
-      expect(tomadas.order).toBe(0)
+    const eletricista = plan.categories.find((a) => a.slug === "eletricista-eletrica")!
+    expect(eletricista.action).toBe("create")
+    if (eletricista.action === "create") {
+      expect(eletricista.parent).toBe("Elétrica")
+      expect(eletricista.level).toBe(2)
+      expect(eletricista.icon).toBeNull()
+      expect(eletricista.order).toBe(0)
     }
   })
 
   it("categoria inativa no banco NÃO é marcada como update (active fora do reconcile)", () => {
     const current = canonicalCurrentState()
-    const limpeza = current.categories.find((c) => c.slug === "limpeza")!
+    const limpeza = current.categories.find((c) => c.slug === "limpeza-e-casa")!
     limpeza.active = false
     const plan = buildSeedPlan(current.categories, current.settings)
-    const limpezaAction = plan.categories.find((a) => a.slug === "limpeza")!
+    const limpezaAction = plan.categories.find((a) => a.slug === "limpeza-e-casa")!
     // active não é comparado — então continua unchanged (não há mudanças de estrutura)
     expect(limpezaAction.action).toBe("unchanged")
   })
@@ -371,18 +373,18 @@ describe("printPlan", () => {
     expect(out).not.toContain("categoria(s) extra(s)")
     expect(out).not.toContain("setting(s) extra(s)")
     expect(out).toContain("DRY-RUN — nenhuma escrita será feita no banco")
-    expect(out).toContain("27 inalteradas")
+    expect(out).toContain("129 inalteradas")
   })
 
   it("renomeação com um único filho mostra a contagem singular", () => {
     const current = canonicalCurrentState()
-    // "Pintura" (level 1, parent Reparos) tem 3 filhos no spec — remove 2
+    // "Pintura" (level 1, parent Acabamento e Decoração) tem 3 filhos no spec — remove 2
     // do estado atual para deixar apenas 1 apontando para ela.
     // (filtra por NAME: o slug canônico embute o slug do pai, então
-    // "pintura-interna-pintura" ≠ "pintura-interna-reparos".)
-    const pinturaKids = ["Pintura interna", "Pintura externa"]
+    // "pintura-residencial-pintura" ≠ "pintura-residencial-acabamento-e-decoracao".)
+    const pinturaKids = ["Pintura Residencial", "Pintura Predial"]
     current.categories = current.categories.filter((c) => !pinturaKids.includes(c.name))
-    const pintura = current.categories.find((c) => c.slug === "pintura-reparos")!
+    const pintura = current.categories.find((c) => c.slug === "pintura-acabamento-e-decoracao")!
     pintura.slug = "pintura-reforma" // renomeação: parent era "Reforma"
 
     const plan = buildSeedPlan(current.categories, current.settings)
@@ -390,27 +392,34 @@ describe("printPlan", () => {
     const out = lines.join("\n")
 
     expect(out).toContain(
-      "• 'Pintura': banco tem slug 'pintura-reforma', o spec quer 'pintura-reparos'",
+      "• 'Pintura': banco tem slug 'pintura-reforma', o spec quer 'pintura-acabamento-e-decoracao'",
     )
     expect(out).toContain("1 filho(s) no banco ainda aponta(m) para a linha antiga")
   })
 
   it.each([
     // Quantos filhos de "Elétrica" permanecem no estado atual apontando para a
-    // linha antiga — null (sem sufixo), 1, 2 e 3 (todos os filhos do spec).
+    // linha antiga — null (sem sufixo), 1, 2 e 3.
     { kids: 0, expected: null },
     { kids: 1, expected: "1 filho(s) no banco ainda aponta(m) para a linha antiga" },
     { kids: 2, expected: "2 filho(s) no banco ainda aponta(m) para a linha antiga" },
     { kids: 3, expected: "3 filho(s) no banco ainda aponta(m) para a linha antiga" },
   ])("renomeação com $kids filho(s) no banco → contagem correta no aviso", ({ kids, expected }) => {
     const current = canonicalCurrentState()
-    // Filhos do spec sob "Elétrica" (level 2) — controlam a contagem do aviso.
-    const eletricaKids = ["Tomadas e interruptores", "Curto-circuito", "Quadro elétrico"]
-    // Remove (3 - kids) filhos do estado atual; kids=3 mantém todos.
+    // Filhos do spec sob "Elétrica" (level 2) — pegamos 3 para controlar a contagem do teste
+    const eletricaKids = ["Eletricista", "Quadro de Energia", "Aumento de Carga"]
+    const otherEletricaKids = [
+      "Para-raios e Aterramento",
+      "Carregador para Carro Elétrico",
+      "Energia Solar",
+      "Gerador e Nobreak",
+    ]
+    current.categories = current.categories.filter((c) => !otherEletricaKids.includes(c.name))
+    // Remove (3 - kids) filhos do estado atual; kids=3 mantém todos os 3.
     const toRemove = eletricaKids.slice(0, eletricaKids.length - kids)
     current.categories = current.categories.filter((c) => !toRemove.includes(c.name))
     // Renomeação: "Elétrica" existe no banco sob um slug antigo.
-    const eletrica = current.categories.find((c) => c.slug === "eletrica-reparos")!
+    const eletrica = current.categories.find((c) => c.slug === "eletrica-reparos-e-instalacoes")!
     eletrica.slug = "eletrica-eletricidade"
 
     const plan = buildSeedPlan(current.categories, current.settings)
@@ -419,7 +428,7 @@ describe("printPlan", () => {
 
     expect(out).toContain("⚠️  POSSÍVEL RENOMEAÇÃO DETECTADA")
     expect(out).toContain(
-      "• 'Elétrica': banco tem slug 'eletrica-eletricidade', o spec quer 'eletrica-reparos'",
+      "• 'Elétrica': banco tem slug 'eletrica-eletricidade', o spec quer 'eletrica-reparos-e-instalacoes'",
     )
     // Aviso de órfã — emitido uma vez, fora do loop de renomeações (vale p/ todos os casos)
     expect(out).toContain("O upsert CRIARÁ a linha nova e DEIXARÁ a antiga órfã")
@@ -433,7 +442,7 @@ describe("printPlan", () => {
 
   it("categoria inativa no banco exibe o aviso 'O seed NÃO as reativa' sem marcar update no plano", () => {
     const current = canonicalCurrentState()
-    const limpeza = current.categories.find((c) => c.slug === "limpeza")!
+    const limpeza = current.categories.find((c) => c.slug === "limpeza-e-casa")!
     limpeza.active = false
 
     const plan = buildSeedPlan(current.categories, current.settings)
@@ -441,24 +450,24 @@ describe("printPlan", () => {
     const out = lines.join("\n")
 
     // active NÃO é comparado no reconcile → ação continua unchanged, nunca update
-    const limpezaAction = plan.categories.find((a) => a.slug === "limpeza")!
+    const limpezaAction = plan.categories.find((a) => a.slug === "limpeza-e-casa")!
     expect(limpezaAction.action).toBe("unchanged")
     expect(plan.summary.categoriesUpdate).toBe(0)
 
     // Bloco de inativas do printPlan (linhas 482-490 do seed-data.ts)
-    expect(out).toContain("1 categoria(s) inativa(s) no banco: Limpeza")
+    expect(out).toContain("1 categoria(s) inativa(s) no banco: Limpeza e Casa")
     expect(out).toContain(
       "O seed NÃO as reativa (reconcile seguro preserva a desativação do admin).",
     )
   })
 
-  it("2 categorias inativas (Limpeza + Pós-Obra) → contagem plural e join por vírgula no aviso", () => {
+  it("2 categorias inativas (Limpeza e Casa + Faxina Pós-Obra) → contagem plural e join por vírgula no aviso", () => {
     const current = canonicalCurrentState()
-    // Duas categorias de níveis diferentes (level 0 + level 1): Limpeza (pai)
-    // e Pós-Obra (filha de Limpeza — slug canônico "pos-obra-limpeza").
-    const limpeza = current.categories.find((c) => c.slug === "limpeza")!
+    // Duas categorias de níveis diferentes (level 0 + level 1): Limpeza e Casa (pai)
+    // e Faxina Pós-Obra (filha de Limpeza e Casa — slug canônico "faxina-pos-obra-limpeza-e-casa").
+    const limpeza = current.categories.find((c) => c.slug === "limpeza-e-casa")!
     limpeza.active = false
-    const posObra = current.categories.find((c) => c.slug === "pos-obra-limpeza")!
+    const posObra = current.categories.find((c) => c.slug === "faxina-pos-obra-limpeza-e-casa")!
     posObra.active = false
 
     const plan = buildSeedPlan(current.categories, current.settings)
@@ -466,25 +475,25 @@ describe("printPlan", () => {
     const out = lines.join("\n")
 
     // active NÃO é comparado no reconcile → ambas continuam unchanged, nunca update
-    const limpezaAction = plan.categories.find((a) => a.slug === "limpeza")!
+    const limpezaAction = plan.categories.find((a) => a.slug === "limpeza-e-casa")!
     expect(limpezaAction.action).toBe("unchanged")
     expect(plan.summary.categoriesUpdate).toBe(0)
 
     // Contagem PLURAL (2) + join por vírgula na ordem do estado atual
-    // (Limpeza vem antes de Pós-Obra na árvore canônica do spec)
-    expect(out).toContain("2 categoria(s) inativa(s) no banco: Limpeza, Pós-Obra")
+    // (Limpeza e Casa vem antes de Faxina Pós-Obra na árvore canônica do spec)
+    expect(out).toContain("2 categoria(s) inativa(s) no banco: Limpeza e Casa, Faxina Pós-Obra")
     expect(out).toContain(
       "O seed NÃO as reativa (reconcile seguro preserva a desativação do admin).",
     )
     // A contagem é derivada do filter (!active), não hardcoded — garante que
     // o join não lista categorias ATIVAS por engano.
-    expect(out).not.toContain("Limpeza, Pós-Obra, Reforma")
+    expect(out).not.toContain("Limpeza e Casa, Faxina Pós-Obra, Reforma e Construção")
   })
 
   it("categoria extra no banco com filhos ainda apontando exibe o sufixo 'possível pai renomeado'", () => {
     // Cenário PERIGOSO real: o spec renomeia "Elétrica" → "Eletricidade"
     // (SEED_SPEC_PATCH renameTo) mas o banco AINDA tem a linha antiga
-    // "Elétrica" (slug "eletrica-reparos") e os 3 filhos apontando para ela
+    // "Elétrica" (slug "eletrica-reparos-e-instalacoes") e os 7 filhos apontando para ela
     // via parentName. O nome antigo não existe mais no spec → cai em 'Fora do
     // spec'; como há filhos apontando, o printPlan deve anexar o sufixo.
     const patchedSpec = buildPatchedSpec(
@@ -497,15 +506,15 @@ describe("printPlan", () => {
     const lines = captureLog(() => printPlan(plan, current, patchedSpec))
     const out = lines.join("\n")
 
-    // "Elétrica" (nome antigo) está fora do spec E tem 3 filhos no banco
+    // "Elétrica" (nome antigo) está fora do spec E tem 7 filhos no banco
     // apontando para ela → sufixo com contagem plural + "possível pai renomeado".
     expect(out).toContain(
-      "1 categoria(s) extra(s): Elétrica (3 filho(s) no banco — possível pai renomeado)",
+      "1 categoria(s) extra(s): Elétrica (7 filho(s) no banco — possível pai renomeado)",
     )
-    // Os FILHOS (Tomadas etc.) têm nome no spec → são renomeações, NÃO extras:
+    // Os FILHOS (Eletricista etc.) têm nome no spec → são renomeações, NÃO extras:
     // o bloco de renomeação dispara e eles ficam fora da listagem de extras.
     expect(out).toContain("⚠️  POSSÍVEL RENOMEAÇÃO DETECTADA")
-    expect(out).not.toContain("Tomadas e interruptores (")
+    expect(out).not.toContain("Eletricista (")
     // Header do bloco de extras (casing real do printPlan)
     expect(out).toContain("Fora do spec (não serão tocadas pelo seed)")
   })

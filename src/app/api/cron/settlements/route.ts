@@ -2,13 +2,16 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { FEE_RATE } from "@/lib/constants"
+import logger from "@/lib/logger"
+import { pruneExpiredIdempotencyRecords } from "@/lib/idempotency"
+import { MoneySettlement } from "@/lib/money"
 
 /**
- * Cron job to auto-generate a settlement period.
+ * Cron job to auto-generate a settlement period + PODA de idempotência.
  *
- * Called by an external scheduler (cron-job.org, system cron, etc.)
- * at the end of each month (or week).
+ * Called by an external scheduler daily at 03:00 (scripts/setup-cron-push.sh).
+ * Além de gerar o período de repasse, TODA execução poda os IdempotencyRecords
+ * expirados (expiresAt <= agora) para a tabela não crescer indefinidamente.
  *
  * GET /api/cron/settlements?type=MONTHLY
  * Authorization: Bearer CRON_SECRET
@@ -24,10 +27,83 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const type = (searchParams.get("type") ?? "MONTHLY") as "WEEKLY" | "MONTHLY"
-    const ROUND2 = (v: number) => Math.round(v * 100) / 100
+    // ── Poda de IdempotencyRecord (manutenção do cron diário) ──
+    // Registros expirados (expiresAt no passado) saem da tabela a cada
+    // execução — o acquire só poda POR CHAVE, quando a chave volta a ser
+    // tocada. Trabalho SECUNDÁRIO: falha vira warning e o settlement segue
+    // (a resposta carrega idempotencyPruned: null para diagnosticar).
+    let idempotencyPruned: number | null = null
+    try {
+      idempotencyPruned = await pruneExpiredIdempotencyRecords()
+    } catch (pruneErr) {
+      logger.warn(
+        { err: pruneErr },
+        "cron settlements: poda de IdempotencyRecord falhou (settlement segue)",
+      )
+    }
 
     const now = new Date()
+
+    // ── Liquidação Automática de Custódia (Escrow Release) ──
+    // Libera fundos em custódia (paymentStatus: "HELD") para serviços concluídos (status: "COMPLETED")
+    // cuja janela de contestação (24h) tenha decorrido sem disputas em aberto.
+    let autoReleasedEscrows = 0
+    try {
+      const disputeDeadline = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+      const heldBookings = await db.booking.findMany({
+        where: {
+          status: "COMPLETED",
+          paymentStatus: "HELD",
+          updatedAt: { lte: disputeDeadline },
+          disputes: {
+            none: {
+              status: "OPEN",
+            },
+          },
+        },
+        select: {
+          id: true,
+          providerId: true,
+          amount: true,
+        },
+      })
+
+      for (const b of heldBookings) {
+        const [updateRes] = await db.$transaction([
+          db.booking.updateMany({
+            where: { id: b.id, paymentStatus: "HELD" },
+            data: {
+              paymentStatus: "PAID",
+              escrowReleasedAt: now,
+            },
+          }),
+          db.payment.updateMany({
+            where: { bookingId: b.id, status: { in: ["HELD", "PENDING"] } },
+            data: {
+              status: "PAID",
+              paidAt: now,
+            },
+          }),
+        ])
+        if (updateRes.count > 0) {
+          autoReleasedEscrows++
+        }
+      }
+
+      if (autoReleasedEscrows > 0) {
+        logger.info(
+          { count: autoReleasedEscrows },
+          "cron settlements: custódias HELD liberadas automaticamente após janela de 24h",
+        )
+      }
+    } catch (escrowErr) {
+      logger.warn(
+        { err: escrowErr },
+        "cron settlements: liberação automática de escrow falhou (settlement segue)",
+      )
+    }
+
+    const type = (searchParams.get("type") ?? "MONTHLY") as "WEEKLY" | "MONTHLY"
 
     // Determine period boundaries
     let startDate: Date
@@ -55,6 +131,8 @@ export async function GET(request: Request) {
       return NextResponse.json({
         message: "Período já existe.",
         periodId: existing.id,
+        idempotencyPruned,
+        autoReleasedEscrows,
       })
     }
 
@@ -78,49 +156,44 @@ export async function GET(request: Request) {
     if (payments.length === 0) {
       return NextResponse.json({
         message: "Nenhum pagamento no período. Nada a gerar.",
+        idempotencyPruned,
+        autoReleasedEscrows,
       })
     }
 
-    // Aggregate by provider (same logic as the manual generation route)
+    // Acumulação em Decimal puro: nenhum valor passa por number até a escrita
+    // no banco (os campos do settlement já são Decimal no schema).
     const providerMap = new Map<
       string,
       {
         name: string
         email: string
-        totalAmount: number
         count: number
-        commission: number
-        netAmount: number
+        totals: MoneySettlement
       }
     >()
     for (const p of payments) {
       const providerId = p.booking?.providerId
       if (!providerId) continue
-      const existing = providerMap.get(providerId) ?? {
-        name: p.booking!.provider.name,
-        email: p.booking!.provider.email,
-        totalAmount: 0,
-        count: 0,
-        commission: 0,
-        netAmount: 0,
+      const existing = providerMap.get(providerId)
+      if (existing) {
+        existing.totals.add(p.amount)
+        existing.count += 1
+      } else {
+        const totals = new MoneySettlement()
+        totals.add(p.amount)
+        providerMap.set(providerId, {
+          name: p.booking!.provider.name,
+          email: p.booking!.provider.email,
+          count: 1,
+          totals,
+        })
       }
-      existing.totalAmount += p.amount
-      existing.count += 1
-      const fee = Math.round(p.amount * FEE_RATE * 100) / 100
-      existing.commission += fee
-      existing.netAmount += p.amount - fee
-      providerMap.set(providerId, existing)
     }
 
-    let totalAmount = 0
-    let totalCommission = 0
-    let totalNet = 0
-    let transactionCount = 0
-    for (const [, ps] of providerMap) {
-      totalAmount += ps.totalAmount
-      totalCommission += ps.commission
-      totalNet += ps.netAmount
-      transactionCount += ps.count
+    const grand = new MoneySettlement()
+    for (const ps of providerMap.values()) {
+      grand.addLine({ ...ps.totals.totals, count: ps.count })
     }
 
     const period = await db.settlementPeriod.create({
@@ -129,18 +202,18 @@ export async function GET(request: Request) {
         status: "PENDING",
         startDate,
         endDate,
-        totalAmount: ROUND2(totalAmount),
-        totalCommission: ROUND2(totalCommission),
-        totalNet: ROUND2(totalNet),
+        totalAmount: grand.gross,
+        totalCommission: grand.fee,
+        totalNet: grand.net,
         providerCount: providerMap.size,
-        transactionCount,
+        transactionCount: grand.count,
         providers: {
           create: Array.from(providerMap.entries()).map(([providerId, ps]) => ({
             providerId,
             status: "PENDING",
-            totalAmount: ROUND2(ps.totalAmount),
-            commission: ROUND2(ps.commission),
-            netAmount: ROUND2(ps.netAmount),
+            totalAmount: ps.totals.gross,
+            commission: ps.totals.fee,
+            netAmount: ps.totals.net,
             transactionCount: ps.count,
           })),
         },
@@ -150,6 +223,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       message: "Período de repasse gerado automaticamente.",
       periodId: period.id,
+      idempotencyPruned,
+      autoReleasedEscrows,
       totalAmount: period.totalAmount,
       totalCommission: period.totalCommission,
       totalNet: period.totalNet,

@@ -31,93 +31,14 @@
     "importa, e o `export` entra de 1 a 3 commits ACIMA — cada motivo diz em qual).",
     "É a MESMA classe do 8dd4f5e5, não uma classe nova: o que muda é a base da série",
     "que o CI mede. O remédio de verdade continua sendo a reescrita (mover cada",
-    "`export` para dentro do commit que o importa), e é o operador quem a decide."
+    "`export` para dentro do commit que o importa), e é o operador quem a decide.",
+    "PURGA de 02/10/2026 — as 12 entradas saíram pela catraca (2): nenhuma",
+    "reproduz mais na série medida (37 commits, origin/main..HEAD) porque os",
+    "commits violadores (8dd4f5e5, f0650ba8, 1f9ac5ee, 136735bb) saíram do",
+    "recorte com o avanço da pilha — o caso previsto no parágrafo acima. A",
+    "lista volta a vazia; o registro histórico delas vive nesta prosa e na",
+    "re-medição de 27/09/2026."
   ],
   "version": 1,
-  "entradas": [
-    {
-      "commit": "8dd4f5e511da4186d9c93724beed6e24f2e84f76",
-      "arquivo": "scripts/pre-commit-proof.mjs",
-      "nome": "BENCH_PATH",
-      "alvo": "scripts/check-mutation-count.mjs",
-      "motivo": "o import nasceu neste commit e o `export const BENCH_PATH` só entrou no alvo num commit ACIMA dele — no commit, o módulo não carrega (ESM: 'does not provide an export named'). Medido em 26/09/2026 na régua nova: 43 commits, esta é a única violação da série. O remédio de verdade é mover o `export` para dentro deste commit (reescrita), não afrouxar a régua."
-    },
-    {
-      "commit": "f0650ba86c6c65f271689cda1242c8a1925b46b0",
-      "arquivo": "scripts/forge-doctor.mjs",
-      "nome": "createRegistryIdentityCache",
-      "alvo": "scripts/ensure-runner-image.mjs",
-      "motivo": "o `forge-doctor` passa a importar o helper da imagem quando o alvo ainda não o exportava: o `export` entra em `766dffb0` (3 commits ACIMA). Medido em 27/09/2026 na série larga (origin/main..HEAD, 195 commits): no commit, o módulo não carrega. O remédio de verdade é mover o `export` para dentro de `f0650ba8` (reescrita), não afrouxar a régua."
-    },
-    {
-      "commit": "f0650ba86c6c65f271689cda1242c8a1925b46b0",
-      "arquivo": "scripts/forge-doctor.mjs",
-      "nome": "PROOF_SCRIPT",
-      "alvo": "scripts/check-bun-mirror.mjs",
-      "motivo": "o `PROOF_SCRIPT` do espelho do Bun é importado pelo `forge-doctor` um commit antes de o alvo exportá-lo: o `export` entra em `766dffb0` (3 commits ACIMA). Medido em 27/09/2026 na série larga (195 commits): no commit, o módulo não carrega. O remédio de verdade é a reescrita de `f0650ba8`, não afrouxar a régua."
-    },
-    {
-      "commit": "f0650ba86c6c65f271689cda1242c8a1925b46b0",
-      "arquivo": "scripts/forge-doctor.mjs",
-      "nome": "describeGithubRead",
-      "alvo": "scripts/issue-publish.mjs",
-      "motivo": "o contrato de leitura do GitHub (`describeGithubRead`) só passa a ser exportado pelo canal de issues no commit SEGUINTE ao que o importa: o `export` entra em `1f9ac5ee` (2 commits ACIMA). Medido em 27/09/2026 na série larga (195 commits): no commit, o módulo não carrega. O remédio de verdade é a reescrita, não afrouxar a régua."
-    },
-    {
-      "commit": "f0650ba86c6c65f271689cda1242c8a1925b46b0",
-      "arquivo": "scripts/forge-doctor.mjs",
-      "nome": "githubReadConfig",
-      "alvo": "scripts/issue-publish.mjs",
-      "motivo": "idem `describeGithubRead` (mesma dupla importador/alvo do mesmo commit): o `export` entra em `1f9ac5ee` (2 commits ACIMA). Medido em 27/09/2026 na série larga (195 commits). O remédio de verdade é a reescrita, não afrouxar a régua."
-    },
-    {
-      "commit": "f0650ba86c6c65f271689cda1242c8a1925b46b0",
-      "arquivo": "scripts/forge-doctor.mjs",
-      "nome": "ENV_MIRROR_COSTS",
-      "alvo": "scripts/check-actrc-sync.mjs",
-      "motivo": "o custo declarado dos espelhos de env entra como import do doctor antes de o alvo exportá-lo: o `export` entra em `766dffb0` (3 commits ACIMA). Medido em 27/09/2026 na série larga (195 commits): no commit, o módulo não carrega. O remédio de verdade é a reescrita de `f0650ba8`, não afrouxar a régua."
-    },
-    {
-      "commit": "f0650ba86c6c65f271689cda1242c8a1925b46b0",
-      "arquivo": "scripts/forge-doctor.mjs",
-      "nome": "MIRROR_VARIABLES",
-      "alvo": "scripts/check-actrc-sync.mjs",
-      "motivo": "a tabela `MIRROR_VARIABLES` é importada pelo doctor um commit antes de existir no alvo: o `export` entra em `766dffb0` (3 commits ACIMA). Medido em 27/09/2026 na série larga (195 commits): no commit, o módulo não carrega. O remédio de verdade é a reescrita de `f0650ba8`, não afrouxar a régua."
-    },
-    {
-      "commit": "f0650ba86c6c65f271689cda1242c8a1925b46b0",
-      "arquivo": "scripts/forge-doctor.mjs",
-      "nome": "normalizeExpectedVars",
-      "alvo": "scripts/check-actrc-sync.mjs",
-      "motivo": "o normalizador do env de referência é importado pelo doctor antes de o alvo exportá-lo: o `export` entra em `766dffb0` (3 commits ACIMA). Medido em 27/09/2026 na série larga (195 commits): no commit, o módulo não carrega. O remédio de verdade é a reescrita de `f0650ba8`, não afrouxar a régua."
-    },
-    {
-      "commit": "f0650ba86c6c65f271689cda1242c8a1925b46b0",
-      "arquivo": "scripts/forge-doctor.mjs",
-      "nome": "readMirrorVariableValues",
-      "alvo": "scripts/check-actrc-sync.mjs",
-      "motivo": "a leitura dos valores das repository variables é importada pelo doctor antes de o alvo exportá-la: o `export` entra em `766dffb0` (3 commits ACIMA). Medido em 27/09/2026 na série larga (195 commits): no commit, o módulo não carrega. O remédio de verdade é a reescrita de `f0650ba8`, não afrouxar a régua."
-    },
-    {
-      "commit": "1f9ac5ee4aa6aeef14a6637953432b284514b835",
-      "arquivo": "scripts/actrc-sync-issue.mjs",
-      "nome": "MIRROR_VARIABLES",
-      "alvo": "scripts/check-actrc-sync.mjs",
-      "motivo": "este commit cria o publicador da issue de drift do `.actrc` importando `MIRROR_VARIABLES` do alvo, e o `export` só entra no commit SEGUINTE: `766dffb0` (1 commit ACIMA). Medido em 27/09/2026 na série larga (195 commits): no commit, o módulo não carrega. O remédio de verdade é mover o `export` para dentro de `1f9ac5ee` (reescrita), não afrouxar a régua."
-    },
-    {
-      "commit": "136735bbf14231684dec040be7041e30f7524943",
-      "arquivo": "scripts/pr-remedy-comment.mjs",
-      "nome": "giteaApi",
-      "alvo": "scripts/issue-publish.mjs",
-      "motivo": "o comentário de remédio no PR passa a usar a API da forja dona do merge antes de o canal de issues publicá-la: o `export` entra em `118f8736` (3 commits ACIMA). Medido em 27/09/2026 na série larga (195 commits): no commit, o módulo não carrega. O remédio de verdade é a reescrita de `136735bb`, não afrouxar a régua."
-    },
-    {
-      "commit": "136735bbf14231684dec040be7041e30f7524943",
-      "arquivo": "scripts/pr-remedy-comment.mjs",
-      "nome": "githubApi",
-      "alvo": "scripts/issue-publish.mjs",
-      "motivo": "idem `giteaApi` (mesma dupla importador/alvo do mesmo commit, o espelho do GitHub): o `export` entra em `118f8736` (3 commits ACIMA). Medido em 27/09/2026 na série larga (195 commits). O remédio de verdade é a reescrita de `136735bb`, não afrouxar a régua."
-    }
-  ]
+  "entradas": []
 }

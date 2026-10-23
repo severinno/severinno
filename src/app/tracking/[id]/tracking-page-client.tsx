@@ -73,6 +73,7 @@ export function TrackingPageClient({ booking }: { booking: BookingData }) {
   const isCancelled = booking.status === "CANCELLED"
 
   const [providerLocation, setProviderLocation] = useState<[number, number] | null>(null)
+  const [providerHeading, setProviderHeading] = useState<number>(0)
   const [routeCoords, setRouteCoords] = useState<[number, number][] | null>(null)
   const [etaInfo, setEtaInfo] = useState<{ distanceKm: number; durationMin: number } | null>(null)
   const [proximityAlerted, setProximityAlerted] = useState(false)
@@ -84,16 +85,21 @@ export function TrackingPageClient({ booking }: { booking: BookingData }) {
 
     join({ userId: booking.client.id, role: "client" })
 
-    const unsubscribe = on<TrackingPositionEvent>("tracking:position", (data) => {
+    const unsubscribe = on<TrackingPositionEvent>("tracking:position", async (data) => {
       if (data.bookingId === booking.id) {
-        setProviderLocation([data.lng, data.lat])
+        const { snapToRoad } = await import("@/lib/map-matching")
+        const match = snapToRoad([data.lng, data.lat], routeCoords)
+        setProviderLocation(match.isMatched ? match.snappedCoord : [data.lng, data.lat])
+        if (match.isMatched) {
+          setProviderHeading(match.bearing)
+        }
       }
     })
 
     return () => {
       unsubscribe()
     }
-  }, [isConnected, join, on, booking.id, booking.client.id])
+  }, [isConnected, join, on, booking.id, booking.client.id, routeCoords])
 
   useEffect(() => {
     if (!providerLocation) return
@@ -279,12 +285,17 @@ export function TrackingPageClient({ booking }: { booking: BookingData }) {
                     </div>
                   </Marker>
 
-                  {/* Provider Live Location Marker */}
+                  {/* Provider Live Location Marker (Snapped to Road) */}
                   {providerLocation && (
                     <Marker latitude={providerLocation[1]} longitude={providerLocation[0]}>
                       <div className="flex flex-col items-center">
-                        <div className="border-background flex size-8 animate-pulse items-center justify-center rounded-full border-2 bg-emerald-600 text-white shadow-lg">
-                          <Navigation className="size-4 rotate-45" />
+                        <div
+                          className="border-background flex size-8 items-center justify-center rounded-full border-2 bg-emerald-600 text-white shadow-lg transition-transform duration-300"
+                          style={{
+                            transform: `rotate(${providerHeading}deg)`,
+                          }}
+                        >
+                          <Navigation className="size-4" />
                         </div>
                         <span className="bg-background mt-0.5 max-w-[80px] truncate rounded px-1.5 py-0.5 text-[10px] font-semibold shadow">
                           {booking.provider.name}

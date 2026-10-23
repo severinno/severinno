@@ -109,12 +109,12 @@ export default function NearbyProviders() {
   }
 
   return (
-    <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <Card className="to-background overflow-hidden border-emerald-100 bg-gradient-to-br from-emerald-50/70 dark:border-emerald-900/30 dark:from-emerald-950/20">
+    <section className="mx-auto w-full max-w-[95%] px-4 sm:px-6 lg:px-8">
+      <Card className="overflow-hidden border-slate-200/80 bg-white shadow-xs dark:border-slate-800/80 dark:bg-slate-900">
         <div className="p-5 sm:p-6">
           {/* Header */}
           <div className="mb-4 flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200/50 dark:bg-emerald-900/40 dark:text-emerald-300 dark:ring-emerald-800/30">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-slate-100 text-emerald-700 ring-1 ring-slate-200/60 dark:bg-slate-800 dark:text-emerald-300 dark:ring-slate-700/60">
               <Navigation className="size-5" />
             </div>
             <div>
@@ -131,20 +131,20 @@ export default function NearbyProviders() {
           {isLoading ? (
             <div
               className={cn(
-                "gap-3",
+                "gap-3.5",
                 expanded
-                  ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-                  : "flex overflow-x-auto pb-2",
+                  ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
+                  : "flex overflow-x-auto pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-4",
               )}
             >
-              {Array.from({ length: expanded ? 6 : COLLAPSED_COUNT }).map((_, i) => (
+              {Array.from({ length: expanded ? 8 : COLLAPSED_COUNT }).map((_, i) => (
                 <NearbyCardSkeleton key={i} />
               ))}
             </div>
           ) : expanded ? (
-            /* === EXPANDED: responsive grid with infinite scroll === */
+            /* === EXPANDED: responsive 4-column grid with infinite scroll === */
             <div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
                 {providers.map((provider) => (
                   <NearbyCard key={provider.id} provider={provider} onSelect={openProvider} />
                 ))}
@@ -178,9 +178,14 @@ export default function NearbyProviders() {
               </div>
             </div>
           ) : (
-            /* === COLLAPSED: horizontal scroll === */
+            /* === COLLAPSED: horizontal scroll on mobile, 4-col grid on desktop === */
             <div>
-              <div className="flex [scrollbar-width:thin] gap-3 overflow-x-auto pb-2">
+              <div
+                className={cn(
+                  "flex [scrollbar-width:thin] gap-3.5 overflow-x-auto pb-2",
+                  !hasMore && "sm:grid sm:grid-cols-2 sm:overflow-visible sm:pb-0 lg:grid-cols-4",
+                )}
+              >
                 {visibleProviders.map((provider) => (
                   <NearbyCard key={provider.id} provider={provider} onSelect={openProvider} />
                 ))}
@@ -191,9 +196,9 @@ export default function NearbyProviders() {
                     type="button"
                     onClick={() => setExpanded(true)}
                     aria-label={`Mostrar mais ${providers.length - COLLAPSED_COUNT} prestadores`}
-                    className="group flex min-w-[160px] shrink-0 flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-emerald-200/50 bg-emerald-50/30 p-4 text-center transition-all hover:border-emerald-300 hover:bg-emerald-100/40 hover:shadow-sm dark:border-emerald-800/30 dark:bg-emerald-950/20 dark:hover:border-emerald-700 dark:hover:bg-emerald-950/40"
+                    className="group flex min-w-[160px] shrink-0 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-300 bg-slate-50/50 p-4 text-center transition-all hover:border-emerald-400 hover:bg-emerald-50/40 hover:shadow-sm dark:border-slate-700 dark:bg-slate-800/30 dark:hover:border-emerald-700"
                   >
-                    <span className="flex size-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 transition-colors group-hover:bg-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300 dark:group-hover:bg-emerald-800/50">
+                    <span className="flex size-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 transition-colors group-hover:bg-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300">
                       <ChevronDown className="size-5" />
                     </span>
                     <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
@@ -236,23 +241,26 @@ function NearbyCard({
   return (
     <button
       type="button"
+      data-provider-id={provider.id}
+      data-compare-name={provider.name}
+      data-compare-avatar={provider.avatarUrl ?? ""}
       onClick={() => onSelect(provider.id)}
       aria-label={`Ver perfil de ${provider.name}`}
-      className="group bg-card flex min-w-[200px] shrink-0 flex-col rounded-xl border border-emerald-200/60 p-3 text-left transition-all hover:border-emerald-300 hover:shadow-md dark:border-emerald-800/30 dark:hover:border-emerald-700"
+      className="group bg-card flex min-w-[210px] shrink-0 flex-col rounded-xl border border-slate-200/80 p-3.5 text-left transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md sm:min-w-0 dark:border-slate-800 dark:hover:border-slate-700"
     >
       {/* Avatar + name row */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-3">
         <div className="relative shrink-0">
           {provider.avatarUrl ? (
             <Image
               src={provider.avatarUrl}
               alt={provider.name}
-              width={36}
-              height={36}
-              className="size-9 rounded-full object-cover ring-2 ring-emerald-500/20"
+              width={40}
+              height={40}
+              className="size-10 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700"
             />
           ) : (
-            <div className="flex size-9 items-center justify-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+            <div className="flex size-10 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
               {provider.name.charAt(0).toUpperCase()}
             </div>
           )}

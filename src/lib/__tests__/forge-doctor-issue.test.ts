@@ -689,38 +689,54 @@ describe("forge-doctor-issue — o relatório REAL do doctor", () => {
     return { status: res.status ?? -1, stdout: res.stdout ?? "", stderr: res.stderr ?? "" }
   }
 
-  it("o doctor produz o relatório que o publicador consome (as chaves não divergiram)", () => {
-    const res = runDoctor()
-    const report = JSON.parse(res.stdout) as Record<string, any>
+  // 180s (medido na forja em 30/09/2026): o doctor inteiro roda os guards num
+  // container de 4 vCPU compartilhado com a suíte em paralelo — o default de 30s
+  // ficou atrás do custo real do ambiente (o teste levou >30s e morreu por
+  // timeout, não por regressão).
+  // 300s (medido na forja em 30/09/2026, rodada 205d62e5): o doctor inteiro
+  // sob a suíte em paralelo passou de 180s.
+  const DOCTOR_E2E_TIMEOUT = 300_000
 
-    expect(Object.keys(report).sort()).toEqual(["facts", "verdict"])
-    for (const key of ["verdict", "blockers", "unknowns", "unproven"]) {
-      expect(report.verdict, `o relatório perdeu 'verdict.${key}'`).toHaveProperty(key)
-    }
-    expect(Object.values(VERDICT)).toContain(report.verdict.verdict)
-    expect(isActionable(report)).toBe(true)
+  it(
+    "o doctor produz o relatório que o publicador consome (as chaves não divergiram)",
+    () => {
+      const res = runDoctor()
+      const report = JSON.parse(res.stdout) as Record<string, any>
 
-    // E o fato `nestedGuard` passou a existir em TODO relatório (a defesa
-    // declarada como fato próprio). A metade que isto prende: um relatório
-    // VERDADEIRO nunca pode ser lido como recursão — se algum dia o fato nascer
-    // com outro estado, o publicador abriria a issue de recursão em cima de um
-    // veredito comum, com o corpo e o título errados.
-    expect(report.facts.nestedGuard?.state).toBe("armed")
-    expect(isNestedGuardReport(report)).toBe(false)
-    expect(nestedGuardOf(report)).toBeNull()
-  })
+      expect(Object.keys(report).sort()).toEqual(["facts", "verdict"])
+      for (const key of ["verdict", "blockers", "unknowns", "unproven"]) {
+        expect(report.verdict, `o relatório perdeu 'verdict.${key}'`).toHaveProperty(key)
+      }
+      expect(Object.values(VERDICT)).toContain(report.verdict.verdict)
+      expect(isActionable(report)).toBe(true)
 
-  it("o CORPO da issue carrega os não-provados do relatório real", () => {
-    const report = JSON.parse(runDoctor().stdout)
-    const body = doctorIssueBody(report)
+      // E o fato `nestedGuard` passou a existir em TODO relatório (a defesa
+      // declarada como fato próprio). A metade que isto prende: um relatório
+      // VERDADEIRO nunca pode ser lido como recursão — se algum dia o fato nascer
+      // com outro estado, o publicador abriria a issue de recursão em cima de um
+      // veredito comum, com o corpo e o título errados.
+      expect(report.facts.nestedGuard?.state).toBe("armed")
+      expect(isNestedGuardReport(report)).toBe(false)
+      expect(nestedGuardOf(report)).toBeNull()
+    },
+    DOCTOR_E2E_TIMEOUT,
+  )
 
-    // O que o doctor não mediu tem de aparecer: é a única pista do leitor sobre
-    // onde o veredito termina.
-    for (const unknown of report.verdict.unknowns.slice(0, 3)) {
-      expect(body).toContain(unknown)
-    }
-    expect(body).toContain(markerOf(VERDICT_MARKER_ID, verdictSignatureOf(report)))
-  })
+  it(
+    "o CORPO da issue carrega os não-provados do relatório real",
+    () => {
+      const report = JSON.parse(runDoctor().stdout)
+      const body = doctorIssueBody(report)
+
+      // O que o doctor não mediu tem de aparecer: é a única pista do leitor sobre
+      // onde o veredito termina.
+      for (const unknown of report.verdict.unknowns.slice(0, 3)) {
+        expect(body).toContain(unknown)
+      }
+      expect(body).toContain(markerOf(VERDICT_MARKER_ID, verdictSignatureOf(report)))
+    },
+    DOCTOR_E2E_TIMEOUT,
+  )
 
   it("loadDoctorReport roda o doctor sem --report e devolve o JSON", () => {
     const seen: string[][] = []
@@ -1138,8 +1154,10 @@ describe("forge-doctor.yml — contrato do workflow agendado", () => {
     expect(publishStep.run).toContain("--report /tmp/forge-doctor.json")
     expect(publishStep.run).toContain("--backend gitea")
     // Sem token, a escrita falha — e falhar é o certo: um veredito que não pôde
-    // ser publicado é o silêncio de antes, só que parecendo verde.
-    expect(publishStep.env?.GITEA_TOKEN).toBe("${{ secrets.GITEA_TOKEN }}")
+    // ser publicado é o silêncio de antes, só que parecendo verde. O token
+    // primeiro é o de ADMIN da forja dona (FORJA_TOKEN), com fallback no do
+    // repo — mesmo contrato do canal de PR (pr-comment-channel).
+    expect(publishStep.env?.GITEA_TOKEN).toBe("${{ secrets.FORJA_TOKEN || secrets.GITEA_TOKEN }}")
   })
 
   it("dá ao cron o canal do board do GITHUB (as dívidas de README e de overhead vivem lá)", () => {
@@ -1261,15 +1279,31 @@ describe("forge-doctor.yml — o fechamento é ALCANÇÁVEL na run PRONTA", () =
       })
   }
 
-  /** Reescreve as expressões `${{ … }}` que ESTE workflow usa (vars e secrets). */
+  /** Reescreve as expressões `${{ … }}` que ESTE workflow usa (vars e secrets).
+   *  Suporta o fallback `A || B`: o runner resolve cada secret e o `||` bash
+   *  (e o próprio runner, para env) escolhe o primeiro não vazio — token de
+   *  admin da forja dona com fallback no token do repo.
+   */
   function resolveExpressions(value: string): string {
     const scope: Record<string, Record<string, string>> = {
       vars: { BUN_VERSION: "1.3.14", IMAGE_REGISTRY: "ghcr.io/acme", IMAGE_NAMESPACE: "acme" },
-      secrets: { GITEA_TOKEN: "token-de-teste", GITEA_URL: baseUrl, GITEA_REPOSITORY: REPO },
+      secrets: {
+        GITEA_TOKEN: "token-de-teste",
+        FORJA_TOKEN: "token-de-teste",
+        GITEA_URL: baseUrl,
+        GITEA_REPOSITORY: REPO,
+      },
+      github: { server_url: baseUrl, repository: REPO },
     }
-    return value.replace(/\$\{\{\s*(vars|secrets)\.([\w.-]+)\s*\}\}/g, (_all, kind, name) => {
-      return scope[kind as string][name as string] ?? ""
-    })
+    return value
+      .replace(
+        /\$\{\{\s*secrets\.([\w.-]+)\s*\|\|\s*secrets\.([\w.-]+)\s*\}\}/g,
+        (_all, first, second) =>
+          scope.secrets[first as string] || scope.secrets[second as string] || "",
+      )
+      .replace(/\$\{\{\s*(vars|secrets|github)\.([\w.-]+)\s*\}\}/g, (_all, kind, name) => {
+        return scope[kind as string][name as string] ?? ""
+      })
   }
 
   /**

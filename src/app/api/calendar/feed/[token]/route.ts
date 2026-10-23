@@ -1,30 +1,66 @@
 export const dynamic = "force-dynamic"
 
+import { createHmac, timingSafeEqual } from "crypto"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { generateIcsFeed, type CalendarEvent } from "@/lib/calendar-sync"
-import { notFound, handleError } from "@/lib/api-server"
+import { notFound } from "@/lib/api-server"
 import { addHours } from "date-fns"
 import { getTimezoneFromCoords } from "@/lib/geo-timezone"
+import { withParams } from "@/lib/api-route"
 
 /**
  * GET /api/calendar/feed/[token]
  * Serves live RFC 5545 iCalendar feed to external calendar clients (Google Calendar, Apple, Outlook).
  */
-export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
-  await assertRateLimit(_request, RATE_LIMITS.general)
-  try {
-    const { token } = await params
 
-    if (!token || token.length < 8) {
-      throw notFound("Token de calendário inválido")
+export function generateCalendarToken(providerId: string): string {
+  const secret =
+    process.env.AUTH_SECRET || process.env.SESSION_SECRET || "severinno-calendar-secret"
+  const sig = createHmac("sha256", secret).update(`cal:${providerId}`).digest("hex").slice(0, 24)
+  return `${providerId}_${sig}`
+}
+
+export function verifyCalendarToken(token: string): string | null {
+  if (!token || typeof token !== "string" || !token.includes("_")) return null
+
+  const [providerId, sig] = token.split("_")
+  if (!providerId || !sig) return null
+
+  const secret =
+    process.env.AUTH_SECRET || process.env.SESSION_SECRET || "severinno-calendar-secret"
+  const expected = createHmac("sha256", secret)
+    .update(`cal:${providerId}`)
+    .digest("hex")
+    .slice(0, 24)
+
+  if (sig.length === expected.length && timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+    return providerId
+  }
+
+  return null
+}
+
+/**
+ * GET /api/calendar/feed/[token]
+ * Serves live RFC 5545 iCalendar feed to external calendar clients (Google Calendar, Apple, Outlook).
+ */
+export const GET = withParams<{ token: string }>(
+  "api.calendar.feed.:token.GET",
+  async (request, { params }) => {
+    await assertRateLimit(request, RATE_LIMITS.general)
+
+    const { token } = await params
+    const providerId = verifyCalendarToken(token)
+
+    if (!providerId) {
+      throw notFound("Token de calendário inválido ou expirado")
     }
 
-    // Find provider by id or slug matching token prefix
     const provider = await db.user.findFirst({
       where: {
-        OR: [{ id: token }, { slug: token }],
+        id: providerId,
         role: "PROVIDER",
         active: true,
       },
@@ -61,15 +97,17 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
 
     const events: CalendarEvent[] = bookings.map((b) => {
       const start = new Date(b.scheduledAt)
-      const end = addHours(start, 2) // Default 2h duration
+      const end = addHours(start, 2)
+      const clientPhoneDisplay = b.client.phone || "Não informado"
+
       return {
         id: b.id,
         title: `${b.service.title} — ${b.client.name}`,
-        description: `Cliente: ${b.client.name}\\nTelefone: ${b.client.phone || "Não informado"}\\nStatus: ${b.status}`,
+        description: `Cliente: ${b.client.name}\nTelefone: ${clientPhoneDisplay}\nStatus: ${b.status}`,
         location: b.address,
         start,
         end,
-        status: b.status === "COMPLETED" ? "CONFIRMED" : "CONFIRMED",
+        status: "CONFIRMED",
         timezone: getTimezoneFromCoords(b.lat, b.lng),
       }
     })
@@ -84,7 +122,5 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
         "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
       },
     })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

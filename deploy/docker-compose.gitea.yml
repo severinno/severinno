@@ -18,8 +18,12 @@
 
 services:
   # ── Caddy (Reverse Proxy + SSL Automatico) ──────────────────────────────
+  # PINADO em 02/10/2026: o minor flutuante `2-alpine` entregava v2.11.4 (o
+  # `caddy version` do container do host confirmou) — o pin congela o que
+  # rodava; subir a versão daqui é decisão comitada, não efeito colateral de
+  # um pull no host.
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.11.4-alpine
     restart: unless-stopped
     ports:
       - "80:80"
@@ -45,7 +49,17 @@ services:
         condition: service_healthy
     healthcheck:
       start_period: 60s
-      test: ["CMD", "wget", "-s", "-q", "http://localhost:80/health"]
+      # `--spider` (não `-s`): o BusyBox do container não tem a forma curta —
+      # o probe morria com 'wget: unrecognized option: s' (FailingStreak 3035)
+      # enquanto o próprio Caddy estava sadio. A sonda na VPS mediu: localhost:80
+      # NÃO serve (o redirect para HTTPS com SNI próprio falha o handshake:
+      # 'tlsv1 alert internal error') — a sonda viva confere a URL PÚBLICA pelo
+      # edge, com --no-check-certificate (o container não tem a chain do forge).
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q --spider --no-check-certificate https://git.severinno.com/ -O /dev/null",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -57,7 +71,14 @@ services:
 
   # ── Gitea (Self-Hosted Git) ────────────────────────────────────────────
   gitea:
-    image: gitea/gitea:1.22
+    # 1.24-minor: curou a perda silenciosa de logs de job medida em 1.22.6
+    # (13/25 tasks das rodadas 21-25 com log_in_storage=0, sem arquivo e sem
+    # conteúdo no banco; família do go-gitea/gitea#33822). Migração de schema
+    # automática no primeiro boot (banco tem backup offsite diário às 05:15).
+    # PINADO em 02/10/2026: o minor flutuante `1.24` virou patch exato `1.24.7`
+    # — a versão que o binário da forja JÁ reportava em produção (o mesmo
+    # runtime; o recreate no host pega no próximo bring-up).
+    image: gitea/gitea:1.24.7
     container_name: gitea
     restart: unless-stopped
     environment:

@@ -3,6 +3,8 @@ import {
   calculateSubscriptionPrice,
   getNextOccurrenceDate,
   generateUpcomingDates,
+  formatCarePlanNotes,
+  parseCarePlanNotes,
 } from "@/lib/subscriptions"
 
 describe("Subscriptions & Recurring Services Tests (@/lib/subscriptions)", () => {
@@ -10,22 +12,44 @@ describe("Subscriptions & Recurring Services Tests (@/lib/subscriptions)", () =>
     vi.clearAllMocks()
   })
 
-  it("should calculate correct loyalty discount for weekly subscriptions (10% OFF)", () => {
+  it("should calculate correct loyalty discount for weekly subscriptions (15% OFF)", () => {
     const basePrice = 200.0 // R$ 200,00
     const result = calculateSubscriptionPrice(basePrice, "WEEKLY")
 
-    expect(result.discountPercent).toBe(10)
-    expect(result.savings).toBe(20.0)
-    expect(result.discountedPrice).toBe(180.0)
+    expect(result.discountPercent).toBe(15)
+    expect(result.savings).toBe(30.0)
+    expect(result.discountedPrice).toBe(170.0)
+    expect(result.annualSavings).toBe(1560.0) // 30 * 52
   })
 
-  it("should calculate correct loyalty discount for biweekly subscriptions (5% OFF)", () => {
+  it("should calculate correct loyalty discount for biweekly subscriptions (10% OFF)", () => {
     const basePrice = 150.0 // R$ 150,00
     const result = calculateSubscriptionPrice(basePrice, "BIWEEKLY")
 
+    expect(result.discountPercent).toBe(10)
+    expect(result.savings).toBe(15.0)
+    expect(result.discountedPrice).toBe(135.0)
+    expect(result.annualSavings).toBe(390.0) // 15 * 26
+  })
+
+  it("should calculate correct loyalty discount for monthly subscriptions (7% OFF)", () => {
+    const basePrice = 100.0 // R$ 100,00
+    const result = calculateSubscriptionPrice(basePrice, "MONTHLY")
+
+    expect(result.discountPercent).toBe(7)
+    expect(result.savings).toBe(7.0)
+    expect(result.discountedPrice).toBe(93.0)
+    expect(result.annualSavings).toBe(84.0) // 7 * 12
+  })
+
+  it("should calculate correct loyalty discount for quarterly subscriptions (5% OFF)", () => {
+    const basePrice = 300.0 // R$ 300,00
+    const result = calculateSubscriptionPrice(basePrice, "QUARTERLY")
+
     expect(result.discountPercent).toBe(5)
-    expect(result.savings).toBe(7.5)
-    expect(result.discountedPrice).toBe(142.5)
+    expect(result.savings).toBe(15.0)
+    expect(result.discountedPrice).toBe(285.0)
+    expect(result.annualSavings).toBe(60.0) // 15 * 4
   })
 
   it("should calculate next occurrence dates accurately for each frequency", () => {
@@ -39,6 +63,9 @@ describe("Subscriptions & Recurring Services Tests (@/lib/subscriptions)", () =>
 
     const monthlyNext = getNextOccurrenceDate(fromDate, "MONTHLY")
     expect(monthlyNext.getMonth()).toBe(9) // next month (October)
+
+    const quarterlyNext = getNextOccurrenceDate(fromDate, "QUARTERLY")
+    expect(quarterlyNext.getMonth()).toBe(11) // 3 months later (December)
   })
 
   it("should generate a series of upcoming booking dates", () => {
@@ -47,5 +74,27 @@ describe("Subscriptions & Recurring Services Tests (@/lib/subscriptions)", () =>
 
     expect(dates).toHaveLength(4)
     expect(dates[1].getTime()).toBeGreaterThan(dates[0].getTime())
+  })
+
+  it("should serialize and deserialize care plan metadata correctly in booking notes", () => {
+    const meta = {
+      subscriptionId: "sub_12345",
+      frequency: "WEEKLY" as const,
+      discountPercent: 15,
+      savingsPerVisit: 30,
+      annualSavings: 1560,
+      planLabel: "Semanal (4x / mês)",
+    }
+
+    const note = formatCarePlanNotes(meta, "Cliente tem cachorro dócil no quintal")
+    expect(note).toContain("[PLANO_CUIDADO:")
+    expect(note).toContain("Cliente tem cachorro dócil")
+
+    const parsed = parseCarePlanNotes(note)
+    expect(parsed).toEqual(meta)
+
+    // Fallback for notes without care plan
+    expect(parseCarePlanNotes("Nota normal sem plano")).toBeNull()
+    expect(parseCarePlanNotes(null)).toBeNull()
   })
 })

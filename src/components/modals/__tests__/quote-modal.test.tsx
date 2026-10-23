@@ -363,28 +363,8 @@ vi.mock("@hookform/resolvers/zod", () => ({
   zodResolver: () => ({}),
 }))
 
-vi.mock("zod", () => {
-  const chainable = (methods: Record<string, any> = {}) => {
-    const obj: Record<string, any> = { ...methods }
-    // Add default chainable methods that return the same object
-    ;["min", "max", "default", "optional", "nullable", "refine", "describe"].forEach((m) => {
-      if (!obj[m]) obj[m] = () => obj
-    })
-    return obj
-  }
-
-  return {
-    z: {
-      object: () => chainable({ refine: () => chainable() }),
-      string: () => chainable(),
-      number: () => chainable(),
-      array: () => chainable(),
-      coerce: { number: () => chainable() },
-      enum: () => chainable(),
-      infer: () => ({}),
-    },
-  }
-})
+// NOTA: sem mock de "zod" — desde o upgrade para vitest 5 o zod real carrega
+// corretamente no runner Bun (issue vitest#10359 corrigida).
 
 // -----------------------------------------------------------------------
 // Mock data

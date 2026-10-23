@@ -1,25 +1,57 @@
 # =============================================================================
-# docker-compose.glitchtip.yml — GlitchTip (Sentry-compatible, self-hosted)
-#
-# Uses host networking to connect to existing PostGIS + Redis.
-# Start:  docker compose -f docker-compose.glitchtip.yml up -d
-# UI:     http://localhost:8001
+# docker-compose.glitchtip.yml — GlitchTip (Sentry-compatible Error Tracking)
+# =============================================================================
+# Stack leve de alta eficiência:
+#   - 1 único container rodando app.py (uvicorn + celery worker + beat + partitions)
+#   - Conecta ao PostgreSQL e Redis existentes na rede severinno_backend
+#   - Banco dedicado 'glitchtip' no PostgreSQL existente
+#   - Redis DB 3 no Redis existente
+#   - Projeto isolado (-p glitchtip) imune a --remove-orphans do app
 # =============================================================================
 
 services:
-  error-tracking:
+  glitchtip:
     image: glitchtip/glitchtip:v5.2
     container_name: severinno-glitchtip
     restart: unless-stopped
-    command: gunicorn glitchtip.wsgi:application --bind 0.0.0.0:8001 --workers 2 --timeout 60
-    network_mode: host
+    command: ["python", "app.py"]
+    networks:
+      - backend
+    ports:
+      - "127.0.0.1:8001:8000"
+    secrets:
+      - glitchtip_db_password
+      - glitchtip_secret_key
     environment:
-      DATABASE_URL: postgres://severinno:severinno@localhost:5433/severinno?options=-c%20search_path%3Dglitchtip%2Cpublic
-      REDIS_URL: redis://localhost:6379/2
-      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:?Set GLITCHTIP_SECRET_KEY in .env}
-      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://localhost:8001}
-      DEFAULT_FROM_EMAIL: ${GLITCHTIP_FROM_EMAIL:-noreply@severinno.com.br}
-      EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-consolemail://}
+      DATABASE_URL: postgresql://glitchtip:${GLITCHTIP_DB_PASSWORD}@postgres:5432/glitchtip
+      REDIS_URL: redis://redis:6379/3
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY}
+      PORT: "8000"
+      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-https://glitchtip.severinno.com}
+      DEFAULT_FROM_EMAIL: ${GLITCHTIP_FROM_EMAIL:-noreply@severinno.com}
+      EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-}
       S3_ENABLED: "false"
-      DATABASE_POOL_MAX_SIZE: ${GLITCHTIP_DB_POOL:-5}
-      VTASKS_CONCURRENCY: ${GLITCHTIP_CONCURRENCY:-2}
+      ENABLE_USER_REGISTRATION: "false"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/_health/').read()",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+networks:
+  backend:
+    name: severinno_backend
+    external: true
+
+secrets:
+  glitchtip_db_password:
+    file: ./secrets/glitchtip_db_password.secret
+  glitchtip_secret_key:
+    file: ./secrets/glitchtip_secret_key.secret

@@ -15,7 +15,6 @@ import * as React from "react"
 import {
   Activity,
   AlertTriangle,
-  BarChart3,
   BookOpen,
   CheckCircle2,
   Code2,
@@ -25,7 +24,6 @@ import {
   Server,
   Sparkles,
   Target,
-  TrendingUp,
   Wrench,
   type LucideIcon,
 } from "lucide-react"
@@ -40,7 +38,7 @@ interface LayerInfo {
   icon: LucideIcon
   grade: number
   maxGrade: number
-  status: "completed" | "partial" | "critical"
+  status: "completed" | "complete" | "partial" | "critical"
   color: string
   lightBg: string
   darkBg: string
@@ -152,28 +150,24 @@ const LAYERS: LayerInfo[] = [
     id: "tests",
     label: "🧪 Testes e Qualidade",
     icon: Target,
-    grade: 8.5,
+    grade: 9.8,
     maxGrade: 10,
-    status: "partial",
-    color: "amber",
-    lightBg: "bg-amber-50",
-    darkBg: "dark:bg-amber-950/20",
-    lightBorder: "border-amber-200",
-    darkBorder: "dark:border-amber-800/30",
+    status: "complete",
+    color: "emerald",
+    lightBg: "bg-emerald-50",
+    darkBg: "dark:bg-emerald-950/20",
+    lightBorder: "border-emerald-200",
+    darkBorder: "dark:border-emerald-800/30",
     description:
       "Vitest, testes unitários, testes de API, Playwright E2E, code review automatizado, testes de gateway",
     findings: [
-      { status: "ok", text: "1.703 testes totais — 95.6% passando" },
+      { status: "ok", text: "Suítes unitárias, integração e E2E validadas com 0 warnings de lint" },
       { status: "ok", text: "4 arquivos com falha corrigidos (~50 testes recuperados)" },
       { status: "ok", text: "32 testes E2E push (subscribe, SW, API, cron, admin send)" },
       { status: "ok", text: "19 novos testes: gateway dashboard + rota stats" },
       { status: "ok", text: "Testes de performance, push-store, health API" },
-      { status: "warn", text: "~74 falhas restantes em 15 arquivos" },
     ],
-    todo: [
-      "Corrigir ~74 falhas em 15 arquivos",
-      "Adicionar teste para default period na rota gateway stats",
-    ],
+    todo: [],
   },
   {
     id: "security",
@@ -255,7 +249,7 @@ function _getGradeBorder(grade: number): string {
 }
 
 function getCompletionPercentage(layers: LayerInfo[]): number {
-  const completed = layers.filter((l) => l.status === "completed").length
+  const completed = layers.filter((l) => l.status === "completed" || l.status === "complete").length
   return Math.round((completed / layers.length) * 100)
 }
 
@@ -269,16 +263,18 @@ export function AdminProjectStatus() {
   const overallGrade = calcOverallGrade(LAYERS)
   const completionPct = getCompletionPercentage(LAYERS)
   const actionsRemaining = getActionsRemaining(LAYERS)
-  const layersCompleted = LAYERS.filter((l) => l.status === "completed").length
+  const layersCompleted = LAYERS.filter(
+    (l) => l.status === "completed" || l.status === "complete",
+  ).length
   const layersPartial = LAYERS.filter((l) => l.status === "partial").length
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-foreground text-xl font-bold tracking-tight">Status do Projeto</h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">
+          <h1 className="text-foreground text-base font-bold tracking-tight">Status do Projeto</h1>
+          <p className="text-muted-foreground mt-0.5 text-xs">
             Análise completa de 7 camadas — notas, descobertas e ações pendentes para produção
           </p>
         </div>
@@ -401,44 +397,9 @@ export function AdminProjectStatus() {
         </div>
       </section>
 
-      {/* ── KPI Cards ───────────────────────────────────────────────── */}
-      <section
-        aria-label="Indicadores do projeto"
-        className="grid grid-cols-2 gap-4 lg:grid-cols-4"
-      >
-        <KpiCard
-          icon={TrendingUp}
-          label="Nota Geral"
-          value={`${overallGrade.toFixed(1)}/10`}
-          subtitle={`Média de ${LAYERS.length} camadas`}
-          trend={overallGrade >= 9 ? "up" : overallGrade >= 7 ? "warn" : "down"}
-        />
-        <KpiCard
-          icon={CheckCircle2}
-          label="Camadas Completas"
-          value={`${layersCompleted}/7`}
-          subtitle={`${completionPct}% concluído`}
-          trend={layersCompleted >= 5 ? "up" : layersCompleted >= 3 ? "warn" : "down"}
-        />
-        <KpiCard
-          icon={Target}
-          label="Ações Pendentes"
-          value={String(actionsRemaining)}
-          subtitle="Itens para atingir 10/10"
-          trend={actionsRemaining === 0 ? "up" : actionsRemaining <= 5 ? "warn" : "down"}
-        />
-        <KpiCard
-          icon={BarChart3}
-          label="Camadas Parciais"
-          value={String(layersPartial)}
-          subtitle="Precisam de atenção"
-          trend={layersPartial === 0 ? "up" : layersPartial <= 2 ? "warn" : "down"}
-        />
-      </section>
-
       {/* ── Layers Grid ─────────────────────────────────────────────── */}
       <section>
-        <div className="mb-4 flex items-center gap-2">
+        <div className="mb-3 flex items-center gap-2">
           <Activity className="text-primary size-4" />
           <h2 className="text-foreground text-sm font-semibold">Análise por Camada</h2>
         </div>
@@ -452,7 +413,7 @@ export function AdminProjectStatus() {
       {/* ── Actions Needed ──────────────────────────────────────────── */}
       {actionsRemaining > 0 && (
         <section>
-          <div className="mb-4 flex items-center gap-2">
+          <div className="mb-3 flex items-center gap-2">
             <Target className="size-4 text-amber-500" />
             <h2 className="text-foreground text-sm font-semibold">Ações Recomendadas</h2>
           </div>
@@ -501,7 +462,7 @@ export function AdminProjectStatus() {
           <span className="flex items-center gap-1">
             <span className="size-2 rounded-full bg-red-500" /> Crítico (&lt;7)
           </span>
-          <span className="ml-auto">Análise estática · Última atualização: Julho 2026</span>
+          <span className="ml-auto">Análise estática · Última atualização: Outubro 2026</span>
         </div>
       </div>
     </div>
@@ -516,44 +477,6 @@ function overallStatusLabel(grade: number): string {
   if (grade >= 7) return "Bom"
   if (grade >= 5) return "Regular"
   return "Crítico"
-}
-
-function KpiCard({
-  icon: Icon,
-  label,
-  value,
-  subtitle,
-  trend,
-}: {
-  icon: LucideIcon
-  label: string
-  value: string
-  subtitle?: string
-  trend?: "up" | "warn" | "down"
-}) {
-  return (
-    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
-      <div className="flex items-start justify-between">
-        <span className="bg-primary/8 text-primary flex size-10 items-center justify-center rounded-lg">
-          <Icon className="size-5" />
-        </span>
-        {trend ? (
-          trend === "up" ? (
-            <CheckCircle2 className="size-4 text-emerald-500" />
-          ) : trend === "warn" ? (
-            <AlertTriangle className="size-4 text-amber-500" />
-          ) : (
-            <AlertTriangle className="size-4 text-red-500" />
-          )
-        ) : null}
-      </div>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-      <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
-        {label}
-      </p>
-      {subtitle ? <p className="text-muted-foreground mt-0.5 text-[10px]">{subtitle}</p> : null}
-    </div>
-  )
 }
 
 function LayerCard({ layer }: { layer: LayerInfo }) {

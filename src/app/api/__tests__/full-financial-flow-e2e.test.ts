@@ -8,6 +8,7 @@ const mockDb = vi.hoisted(() => {
       create: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       findMany: vi.fn(),
       aggregate: vi.fn(),
     },
@@ -16,6 +17,13 @@ const mockDb = vi.hoisted(() => {
     resetToken: { updateMany: vi.fn(), create: vi.fn() },
     pushSubscription: { upsert: vi.fn() },
     notification: { create: vi.fn() },
+    // webhook lytex importa @/lib/idempotency (lib real) — model precisa
+    // existir E resolver promise (a lib encadeia .catch no update)
+    idempotencyRecord: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({}),
+      update: vi.fn().mockResolvedValue({}),
+    },
     $queryRaw: vi.fn().mockResolvedValue([]),
     $transaction: vi.fn() as ReturnType<typeof vi.fn>,
   }
@@ -34,9 +42,16 @@ vi.mock("@/lib/auth", () => ({
   requireRole: vi.fn(),
   createSession: vi.fn(),
 }))
-vi.mock("@/lib/logger", () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}))
+vi.mock("@/lib/logger", () => {
+  const mockLogger = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    child: vi.fn(() => mockLogger),
+  }
+  return { default: mockLogger }
+})
 vi.mock("@/lib/rate-limit", () => ({
   assertRateLimit: vi.fn().mockResolvedValue(undefined),
   RATE_LIMITS: new Proxy({}, { get: () => ({ prefix: "t", max: 10000, windowMs: 60000 }) }),
@@ -135,17 +150,24 @@ describe("Full Financial Flow E2E", () => {
     mockDb.booking.findUnique.mockResolvedValue({
       id: "b1",
       paymentStatus: "PENDING",
+      amount: 250,
       payment: { id: "pay1", status: "PENDING" },
     })
+    const nowIso = new Date().toISOString()
     const { POST: lytexWebhook } = await import("@/app/api/webhooks/lytex/route")
     const r2 = await lytexWebhook(
       new Request("http://localhost", {
         method: "POST",
+        headers: {
+          "x-lytex-signature": "valid-sig",
+          "x-lytex-timestamp": nowIso,
+        },
         body: JSON.stringify({
           id: "lytex-1",
           status: "paid",
           externalReference: "booking:b1",
-          paidAt: new Date().toISOString(),
+          paidAmount: 25000,
+          paidAt: nowIso,
         }),
       }),
     )
@@ -162,6 +184,7 @@ describe("Full Financial Flow E2E", () => {
       service: { title: "Limpeza" },
     })
     mockDb.booking.update.mockResolvedValue({ id: "b1", status: "COMPLETED" })
+    mockDb.booking.updateMany.mockResolvedValue({ count: 1 })
     mockDb.payment.updateMany.mockResolvedValue({ count: 1 })
 
     const { POST: confirm } = await import("@/app/api/bookings/[id]/confirm-completion/route")
@@ -173,8 +196,19 @@ describe("Full Financial Flow E2E", () => {
 
     // Step 4: Provider withdraws (serializable tx)
     vi.mocked(requireUser).mockResolvedValue({ userId: "p1", role: "PROVIDER" } as any)
-    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 250 } })
-    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
+    // Saldo vem da agregação SQL (sem teto de linhas): R$250 brutos → R$212,50
+    mockDb.$queryRaw.mockResolvedValue([
+      {
+        earnedNet: "212.5",
+        grossReceived: "250",
+        grossCompleted: "250",
+        completedCount: 1,
+        pendingNet: "0",
+        totalWithdrawn: "0",
+        totalPending: "0",
+        pendingCount: 0,
+      },
+    ])
     mockDb.walletTransaction.create.mockResolvedValue({
       id: "w1",
       amount: 100,

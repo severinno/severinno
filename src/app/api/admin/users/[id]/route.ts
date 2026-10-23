@@ -2,12 +2,12 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { requireRole, invalidateUserCache } from "@/lib/auth"
-import { handleError, notFound, USER_PUBLIC_SELECT } from "@/lib/api-server"
+import { requireRole, invalidateUserCache, invalidateSessionCache } from "@/lib/auth"
+import { notFound, USER_PUBLIC_SELECT } from "@/lib/api-server"
 import { z } from "zod"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
-type Params = { params: Promise<{ id: string }> }
+import { withParams } from "@/lib/api-route"
 
 const adminUserUpdateSchema = z.object({
   verified: z.boolean().optional(),
@@ -22,8 +22,9 @@ const adminUserUpdateSchema = z.object({
 })
 
 // ADMIN: update user (toggle verified/active, change role, basic profile fields)
-export async function PATCH(request: Request, { params }: Params) {
-  try {
+export const PATCH = withParams<{ id: string }>(
+  "api.admin.users.:id.PATCH",
+  async (request, { params }) => {
     await requireRole("ADMIN")
     await assertRateLimit(request, RATE_LIMITS.admin)
     const { id } = await params
@@ -48,21 +49,28 @@ export async function PATCH(request: Request, { params }: Params) {
     if (body.city !== undefined) data.city = body.city
     if (body.state !== undefined) data.state = body.state
 
+    const shouldInvalidateSession = body.active === false || body.role !== undefined
+    if (shouldInvalidateSession) {
+      data.sessionVersion = { increment: 1 }
+    }
+
     const updated = await db.user.update({
       where: { id },
       data,
       select: USER_PUBLIC_SELECT,
     })
     await invalidateUserCache(id)
+    if (shouldInvalidateSession) {
+      await invalidateSessionCache(id)
+    }
     return NextResponse.json({ user: updated })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)
 
 // ADMIN: delete user (cascade per schema)
-export async function DELETE(_request: Request, { params }: Params) {
-  try {
+export const DELETE = withParams<{ id: string }>(
+  "api.admin.users.:id.DELETE",
+  async (_request, { params }) => {
     await requireRole("ADMIN")
     await assertRateLimit(_request, RATE_LIMITS.admin)
     const { id } = await params
@@ -73,10 +81,12 @@ export async function DELETE(_request: Request, { params }: Params) {
     })
     if (!user) throw notFound("Usuário não encontrado")
 
-    await db.user.update({ where: { id }, data: { deletedAt: new Date() } })
+    await db.user.update({
+      where: { id },
+      data: { deletedAt: new Date(), active: false, sessionVersion: { increment: 1 } },
+    })
     await invalidateUserCache(id)
+    await invalidateSessionCache(id)
     return NextResponse.json({ ok: true })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

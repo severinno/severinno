@@ -14,10 +14,13 @@ export const dynamic = "force-dynamic"
  * Ou configurar via painel Evolution no ambiente.
  */
 
+import crypto from "node:crypto"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { evolutionLogger } from "@/lib/evolution"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { processInteractiveCommand, processDemandSearch } from "@/lib/whatsapp-autoresponder"
+import { cacheSetNX } from "@/lib/redis"
 
 // ---------------------------------------------------------------------------
 // Helper: extrair número do JID (remoteJid)
@@ -36,7 +39,9 @@ function extractNumber(jid: string): string | null {
  * Buscar usuário pelo número de WhatsApp.
  * Tenta match exato e com/sem DDI 55.
  */
-async function findUserByPhone(phone: string): Promise<{ id: string; name: string } | null> {
+async function findUserByPhone(
+  phone: string,
+): Promise<{ id: string; name: string; role: string } | null> {
   const digits = phone.replace(/\D/g, "")
 
   // Tenta várias combinações
@@ -59,7 +64,7 @@ async function findUserByPhone(phone: string): Promise<{ id: string; name: strin
       whatsapp: { in: candidates },
       active: true,
     },
-    select: { id: true, name: true },
+    select: { id: true, name: true, role: true },
   })
 
   return user
@@ -70,26 +75,105 @@ async function findUserByPhone(phone: string): Promise<{ id: string; name: strin
 // ---------------------------------------------------------------------------
 
 /**
+ * Comparação em tempo constante para prevenir timing attacks.
+ */
+function safeCompare(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false
+  const bufA = Buffer.from(a)
+  const bufB = Buffer.from(b)
+  if (bufA.length !== bufB.length) return false
+  return crypto.timingSafeEqual(bufA, bufB)
+}
+
+/**
+ * Verifica assinatura HMAC-SHA256 da Evolution API.
+ * Suporta headers 'x-evolution-signature', 'x-hub-signature-256' ou 'x-webhook-signature'.
+ */
+function verifyEvolutionHmac(
+  rawBody: string,
+  signatureHeader: string | null,
+  secret: string,
+): boolean {
+  if (!signatureHeader || !secret) return false
+  const expectedSig = crypto.createHmac("sha256", secret).update(rawBody).digest("hex")
+  const rawSig = signatureHeader.replace(/^sha256=/, "").trim()
+  return safeCompare(rawSig, expectedSig)
+}
+
+/**
  * POST /api/webhooks/evolution
  *
  * Recebe eventos da Evolution API.
- * Sempre retorna 200 para evitar reenvios.
+ * Sempre retorna 200 para evitar reenvios quando autenticado.
  */
 export async function POST(request: Request) {
-  await assertRateLimit(request, RATE_LIMITS.webhookSentry)
   try {
-    // Verify Evolution API secret (api-key or bearer token)
-    const evolutionSecret = process.env.EVOLUTION_WEBHOOK_SECRET
+    // ── Autenticação Mandatória Fail-Closed da Evolution API ───────────────
+    const evolutionSecret = process.env.EVOLUTION_WEBHOOK_SECRET || process.env.EVOLUTION_API_KEY
+    const isProduction = process.env.NODE_ENV === "production"
+
+    if (isProduction && !evolutionSecret) {
+      evolutionLogger.error(
+        "Webhook Evolution: EVOLUTION_WEBHOOK_SECRET ou EVOLUTION_API_KEY não configurado — rejeitando fail-closed em produção",
+      )
+      return NextResponse.json({ error: "Webhook authentication unconfigured" }, { status: 500 })
+    }
+
+    // ── Ler body BRUTO para validação HMAC e depois parsear ─────────────
+    const rawBody = await request.text()
+    type EvolutionWebhookBody = {
+      event?: string
+      instance?: string
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data?: any
+    }
+    let body: EvolutionWebhookBody
+    try {
+      body = JSON.parse(rawBody) as EvolutionWebhookBody
+    } catch {
+      evolutionLogger.warn("Webhook Evolution: corpo JSON inválido — descartando graciosamente")
+      return NextResponse.json({ received: true })
+    }
+
     if (evolutionSecret) {
       const authHeader = request.headers.get("authorization")
       const apiKey = request.headers.get("apikey")
-      if (authHeader !== `Bearer ${evolutionSecret}` && apiKey !== evolutionSecret) {
-        evolutionLogger.warn("Webhook Evolution: autenticação inválida")
+      const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : apiKey || ""
+
+      const hmacHeader =
+        request.headers.get("x-evolution-signature") ||
+        request.headers.get("x-hub-signature-256") ||
+        request.headers.get("x-webhook-signature")
+
+      const isTokenValid = token ? safeCompare(token, evolutionSecret) : false
+      const isHmacValid = hmacHeader
+        ? verifyEvolutionHmac(rawBody, hmacHeader, evolutionSecret)
+        : false
+
+      if (!isTokenValid && !isHmacValid) {
+        evolutionLogger.warn(
+          "Webhook Evolution: autenticação inválida ou ausente (HMAC/Token falhou)",
+        )
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      }
+
+      // Prevenção contra replay attacks quando timestamp é fornecido
+      const timestampHeader =
+        request.headers.get("x-evolution-timestamp") || request.headers.get("x-webhook-timestamp")
+      if (timestampHeader) {
+        const ts = new Date(timestampHeader).getTime()
+        if (!isNaN(ts) && Math.abs(Date.now() - ts) > 10 * 60 * 1000) {
+          evolutionLogger.warn(
+            { timestampHeader },
+            "Webhook Evolution: timestamp expirado (> 10min)",
+          )
+          return NextResponse.json({ error: "Timestamp expirado" }, { status: 401 })
+        }
       }
     }
 
-    const body = await request.json()
+    // 🛡️ Rate limit dedicado para chamadas autenticadas da Evolution API (evita DoS de terceiros)
+    await assertRateLimit(request, RATE_LIMITS.webhookEvolution)
 
     evolutionLogger.debug(
       { event: body.event, instance: body.instance },
@@ -109,6 +193,27 @@ export async function POST(request: Request) {
           break
         }
 
+        // 🛡️ Deduplicação idempotente atômica de mensagens recebidas (evita double-reply em retries da Evolution)
+        const messageId = key.id
+        if (messageId) {
+          const dedupKey = `evo:msg:${messageId}`
+          try {
+            const isFresh = await cacheSetNX(dedupKey, 1, 3600)
+            if (!isFresh) {
+              evolutionLogger.info(
+                { messageId },
+                "Webhook Evolution: mensagem duplicada ignorada (dedup atômico)",
+              )
+              return NextResponse.json({ ok: true, deduplicated: true })
+            }
+          } catch (err) {
+            evolutionLogger.warn(
+              { err, messageId },
+              "Webhook Evolution: falha no check de dedup (prosseguindo)",
+            )
+          }
+        }
+
         const remoteJid = key.remoteJid
         if (!remoteJid) break
 
@@ -116,30 +221,230 @@ export async function POST(request: Request) {
         const senderNumber = extractNumber(remoteJid)
         if (!senderNumber) break
 
-        // Extrair texto da mensagem
+        // Ignora mídias sem legenda ou mensagens vazias antes de bater no banco de dados
+        const hasContent = Boolean(
+          message?.conversation ||
+          message?.extendedTextMessage?.text ||
+          message?.audioMessage ||
+          message?.voiceMessage ||
+          message?.locationMessage ||
+          message?.liveLocationMessage,
+        )
+        if (!hasContent) break
+
+        // Buscar usuário pelo número
+        const user = await findUserByPhone(senderNumber)
+        if (user) {
+          evolutionLogger.info(
+            { userId: user.id, event: "messages.upsert" },
+            "Webhook Evolution: mensagem recebida de usuário cadastrado",
+          )
+        }
+
+        // ── 0. Verificar se a mensagem é um compartilhamento de localização (Check-in GPS) ──
+        const isLive = Boolean(message?.liveLocationMessage)
+        const locMsg = message?.liveLocationMessage || message?.locationMessage
+        if (
+          user &&
+          locMsg &&
+          typeof locMsg.degreesLatitude === "number" &&
+          typeof locMsg.degreesLongitude === "number"
+        ) {
+          const { processLocationCheckin } = await import("@/lib/whatsapp-autoresponder")
+          const locResult = await processLocationCheckin({
+            phone: senderNumber,
+            lat: locMsg.degreesLatitude,
+            lng: locMsg.degreesLongitude,
+            accuracy: locMsg.accuracyInMeters ?? null,
+            isLiveLocation: isLive,
+            user: {
+              id: user.id,
+              name: user.name,
+              role: user.role,
+            },
+          })
+
+          if (locResult.handled) {
+            evolutionLogger.info(
+              { userId: user.id, lat: locMsg.degreesLatitude, lng: locMsg.degreesLongitude },
+              "Webhook Evolution: check-in por localização WhatsApp processado com sucesso",
+            )
+            break
+          }
+        }
+
+        // Extrair texto ou transcrição de áudio da mensagem
         let text = ""
+        const isAudio = Boolean(message?.audioMessage || message?.voiceMessage)
         if (message?.conversation) {
           text = message.conversation
         } else if (message?.extendedTextMessage?.text) {
           text = message.extendedTextMessage.text
+        } else if (isAudio) {
+          // Transcrição de áudio se disponível nos campos da Evolution API
+          text =
+            message.audioMessage?.text ||
+            message.audioMessage?.caption ||
+            message.voiceMessage?.text ||
+            ""
+
+          // Se o áudio já possui texto transcrito pela Evolution API, processa com Voice-to-Quote inteligente
+          if (text) {
+            try {
+              const { processVoiceQuote } = await import("@/lib/whatsapp-voice-quote")
+              const voiceResult = await processVoiceQuote(text, undefined, senderNumber)
+              const { enqueueWhatsApp } = await import("@/lib/whatsapp-queue")
+              await enqueueWhatsApp({
+                to: senderNumber,
+                text: voiceResult.formattedReply,
+                userId: user?.id,
+                context: "audio:smart-voice-quote",
+              })
+              break
+            } catch (err) {
+              evolutionLogger.warn(
+                { err: (err as Error).message },
+                "Webhook Evolution: falha no processamento smart voice quote",
+              )
+            }
+          } else {
+            // Se o áudio não tem transcrição de texto prévia, tenta transcrever o payload de áudio via Whisper
+            const base64Audio =
+              message.audioMessage?.base64 ||
+              message.voiceMessage?.base64 ||
+              data?.base64 ||
+              data?.message?.base64
+            const audioUrl = message.audioMessage?.url || message.voiceMessage?.url
+
+            if (
+              base64Audio ||
+              (audioUrl && typeof audioUrl === "string" && audioUrl.startsWith("http"))
+            ) {
+              try {
+                let buffer: Buffer | null = null
+                if (base64Audio) {
+                  buffer = Buffer.from(base64Audio, "base64")
+                } else if (audioUrl) {
+                  const audioRes = await fetch(audioUrl, { signal: AbortSignal.timeout(10_000) })
+                  if (audioRes.ok) {
+                    const arrBuf = await audioRes.arrayBuffer()
+                    buffer = Buffer.from(arrBuf)
+                  }
+                }
+
+                if (buffer && buffer.length > 0) {
+                  const { processVoiceQuote } = await import("@/lib/whatsapp-voice-quote")
+                  const voiceResult = await processVoiceQuote(buffer, undefined, senderNumber)
+                  const { enqueueWhatsApp } = await import("@/lib/whatsapp-queue")
+                  await enqueueWhatsApp({
+                    to: senderNumber,
+                    text: voiceResult.formattedReply,
+                    userId: user?.id,
+                    context: "audio:whisper-voice-quote",
+                  })
+                  break
+                }
+              } catch (audioErr) {
+                evolutionLogger.warn(
+                  { err: (audioErr as Error).message },
+                  "Webhook Evolution: falha na transcrição de áudio via Whisper, acionando fallback",
+                )
+              }
+            }
+          }
         }
 
-        if (!text) break // ignora mensagens sem texto (mídia, etc)
+        // Se for áudio sem transcrição direta de texto e sem sucesso no Whisper:
+        if (isAudio && !text) {
+          const { enqueueWhatsApp } = await import("@/lib/whatsapp-queue")
+          const audioReply =
+            `🎙️ *Áudio Recebido no Severinno!*\n\n` +
+            `Olá! Recebemos sua mensagem de voz.\n\n` +
+            `Para localizarmos o melhor profissional verificado em Governador Valadares (Eletricista, Encanador, Chaveiro 24h, Faxina ou Frete):\n\n` +
+            `1️⃣ Digite em poucas palavras o que precisa (ex: _"trocar chuveiro na Ilha"_, _"vazamento pia"_, _"chaveiro urgente"_)\n` +
+            `2️⃣ Digite *MENU* para ver as opções interativas\n` +
+            `3️⃣ Ou acesse a vitrine direta com garantia Escrow: https://severinno.com.br\n\n` +
+            `🚨 Para emergência imediata: https://severinno.com.br/?sos=1`
 
-        // Buscar usuário pelo número
-        const user = await findUserByPhone(senderNumber)
-        if (!user) {
+          await enqueueWhatsApp({
+            to: senderNumber,
+            text: audioReply,
+            userId: user?.id,
+            context: "audio:auto-guidance",
+          }).catch(() => {})
+          break
+        }
+
+        if (!text) break // ignora mensagens sem texto e sem localização tratada
+
+        // ── 1. Verificar se a mensagem é um comando interativo / autoresponder ──
+        // Comandos como APROVAR, CONTESTAR, MENU, AGENDAMENTOS, PIX etc.
+        const interactiveResult = await processInteractiveCommand({
+          phone: senderNumber,
+          text,
+          user: user ?? {
+            id: `anon-${senderNumber}`,
+            name: null,
+            role: "CLIENT",
+          },
+        })
+
+        if (interactiveResult.handled) {
           evolutionLogger.info(
-            { number: senderNumber.slice(0, 6) + "****" },
-            "Webhook Evolution: mensagem de número não cadastrado",
+            { userId: user?.id, phone: senderNumber.slice(0, 4) + "****" },
+            "Webhook Evolution: mensagem respondida automaticamente pelo autoresponder",
           )
           break
         }
 
-        evolutionLogger.info(
-          { userId: user.id, event: "messages.upsert" },
-          "Webhook Evolution: mensagem recebida de usuário cadastrado",
-        )
+        // ── 1b. Transcrição / Parsing de Demanda de Serviços (Sugestão 4) ──
+        // Mapeia termos cotidianos ("chuveiro queimado", "chaveiro urgente") para especialidades e bairros de GV
+        const demandResult = await processDemandSearch({
+          phone: senderNumber,
+          text,
+          userId: user?.id,
+          userName: user?.name,
+        })
+
+        if (demandResult.handled) {
+          evolutionLogger.info(
+            { userId: user?.id, phone: senderNumber.slice(0, 4) + "****" },
+            "Webhook Evolution: demanda de serviço identificada e atendida automaticamente",
+          )
+          break
+        }
+
+        // ── 1c. Triagem Inteligente de WhatsApp com IA Híbrida (Ollama Local / Groq / Fallback) ──
+        const { processAiTriage } = await import("@/lib/whatsapp-ai-triage")
+        const aiTriageResult = await processAiTriage({
+          phone: senderNumber,
+          text,
+          user: user ?? null,
+          remoteJid,
+        })
+
+        if (aiTriageResult.handled) {
+          evolutionLogger.info(
+            {
+              userId: user?.id,
+              phone: senderNumber.slice(0, 4) + "****",
+              intent: aiTriageResult.intent,
+              category: aiTriageResult.category,
+              engine: aiTriageResult.engineUsed,
+            },
+            "Webhook Evolution: mensagem triada e respondida com IA híbrida",
+          )
+          break
+        }
+
+        // Se o usuário não está cadastrado e a mensagem não foi tratada por comando, demanda ou IA:
+        if (!user) {
+          evolutionLogger.info(
+            { number: senderNumber.slice(0, 6) + "****" },
+            "Webhook Evolution: mensagem de número não cadastrado não tratada por autoresponder",
+          )
+          break
+        }
 
         // ── Roteamento para o destinatário apropriado ────────────────
         // Estratégia (4 níveis):
@@ -328,6 +633,69 @@ export async function POST(request: Request) {
           },
           "Webhook Evolution: mensagem roteada e persistida com sucesso",
         )
+
+        break
+      }
+
+      // ── Status de Entrega da Mensagem (Receipts / ACKs) ──
+      case "messages.update": {
+        // Formato Evolution v2:
+        // data pode ser array de updates ou objeto com key e status / ack
+        // status numérico ou string: 2 / "DELIVERY_ACK", 3 / 4 / "READ"
+        const updates = Array.isArray(data) ? data : [data]
+
+        for (const item of updates) {
+          const messageId = item?.key?.id ?? item?.id
+          const rawStatus = item?.status ?? item?.update?.status ?? item?.ack
+
+          if (!messageId) continue
+
+          let nextStatus: "SENT" | "DELIVERED" | "READ" | "FAILED" | null = null
+
+          if (
+            rawStatus === 2 ||
+            rawStatus === "DELIVERY_ACK" ||
+            rawStatus === "delivered" ||
+            rawStatus === "DELIVERED"
+          ) {
+            nextStatus = "DELIVERED"
+          } else if (
+            rawStatus === 3 ||
+            rawStatus === 4 ||
+            rawStatus === "READ" ||
+            rawStatus === "read" ||
+            rawStatus === "PLAYED"
+          ) {
+            nextStatus = "READ"
+          } else if (rawStatus === "FAILED" || rawStatus === "ERROR" || rawStatus === 0) {
+            nextStatus = "FAILED"
+          }
+
+          if (nextStatus) {
+            try {
+              const updated = await db.whatsAppMessageLog.updateMany({
+                where: { messageId },
+                data: {
+                  status: nextStatus,
+                  ...(nextStatus === "DELIVERED" ? { deliveredAt: new Date() } : {}),
+                  ...(nextStatus === "READ" ? { readAt: new Date() } : {}),
+                },
+              })
+
+              if (updated.count > 0) {
+                evolutionLogger.debug(
+                  { messageId, nextStatus, count: updated.count },
+                  "Webhook Evolution: status de mensagem atualizado no banco",
+                )
+              }
+            } catch (err) {
+              evolutionLogger.warn(
+                { err, messageId },
+                "Webhook Evolution: erro ao atualizar status do log no banco",
+              )
+            }
+          }
+        }
 
         break
       }

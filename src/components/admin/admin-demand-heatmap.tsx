@@ -79,9 +79,9 @@ export function AdminDemandHeatmap() {
   }, [fetchDemand])
 
   return (
-    <PageTransition className="space-y-6">
+    <PageTransition className="space-y-3.5">
       {/* Controls Bar */}
-      <div className="bg-card border-border/60 flex flex-col items-start justify-between gap-4 rounded-xl border p-4 shadow-xs sm:flex-row sm:items-center">
+      <div className="bg-card border-border/60 flex flex-col items-start justify-between gap-4 rounded-xl border p-3.5 shadow-xs sm:flex-row sm:items-center">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-bold tracking-tight">
             <Flame className="h-5 w-5 text-orange-500" />
@@ -133,12 +133,12 @@ export function AdminDemandHeatmap() {
       </div>
 
       {/* KPI Stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
         <Card className="border-border/60 shadow-xs">
-          <CardContent className="flex items-center justify-between p-4">
+          <CardContent className="flex items-center justify-between p-3">
             <div>
               <p className="text-muted-foreground text-xs font-medium">Eventos de Demanda</p>
-              <h3 className="mt-1 text-2xl font-bold">
+              <h3 className="mt-1 text-xl font-bold tabular-nums">
                 {loading ? (
                   <Skeleton className="h-7 w-20" />
                 ) : (
@@ -147,32 +147,32 @@ export function AdminDemandHeatmap() {
               </h3>
               <p className="text-muted-foreground mt-0.5 text-[11px]">Orçamentos + Agendamentos</p>
             </div>
-            <div className="rounded-xl bg-orange-500/10 p-3 text-orange-500">
+            <div className="rounded-xl bg-orange-500/10 p-2.5 text-orange-500">
               <Flame className="h-5 w-5" />
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-border/60 shadow-xs">
-          <CardContent className="flex items-center justify-between p-4">
+          <CardContent className="flex items-center justify-between p-3">
             <div>
               <p className="text-muted-foreground text-xs font-medium">Polos de Concentração</p>
-              <h3 className="mt-1 text-2xl font-bold">
+              <h3 className="mt-1 text-xl font-bold tabular-nums">
                 {loading ? <Skeleton className="h-7 w-16" /> : (data?.summary.totalClusters ?? 0)}
               </h3>
               <p className="text-muted-foreground mt-0.5 text-[11px]">Regiões com alta procura</p>
             </div>
-            <div className="rounded-xl bg-blue-500/10 p-3 text-blue-500">
+            <div className="rounded-xl bg-blue-500/10 p-2.5 text-blue-500">
               <Compass className="h-5 w-5" />
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-border/60 shadow-xs">
-          <CardContent className="flex items-center justify-between p-4">
+          <CardContent className="flex items-center justify-between p-3">
             <div>
               <p className="text-muted-foreground text-xs font-medium">Ticket Médio Estimado</p>
-              <h3 className="mt-1 text-2xl font-bold">
+              <h3 className="mt-1 text-xl font-bold tabular-nums">
                 {loading ? (
                   <Skeleton className="h-7 w-24" />
                 ) : (
@@ -184,7 +184,7 @@ export function AdminDemandHeatmap() {
               </h3>
               <p className="text-muted-foreground mt-0.5 text-[11px]">Por solicitação atendida</p>
             </div>
-            <div className="rounded-xl bg-emerald-500/10 p-3 text-emerald-500">
+            <div className="rounded-xl bg-emerald-500/10 p-2.5 text-emerald-500">
               <DollarSign className="h-5 w-5" />
             </div>
           </CardContent>
@@ -192,7 +192,7 @@ export function AdminDemandHeatmap() {
       </div>
 
       {/* Main Grid: Heatmap Clusters & Category Ranking */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Hotspot Clusters List */}
         <Card className="border-border/60 shadow-xs lg:col-span-2">
           <CardHeader className="pb-3">
@@ -208,7 +208,7 @@ export function AdminDemandHeatmap() {
             {loading ? (
               <div className="space-y-3 py-2">
                 {[1, 2, 3, 4, 5].map((i) => (
-                  <Skeleton key={i} className="h-16 w-full rounded-xl" />
+                  <Skeleton key={i} className="h-14 w-full rounded-xl" />
                 ))}
               </div>
             ) : !data?.points || data.points.length === 0 ? (
@@ -219,7 +219,7 @@ export function AdminDemandHeatmap() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {data.points.slice(0, 10).map((pt, idx) => {
                   // Color by intensity weight
                   const isHot = pt.weight > 60
@@ -228,11 +228,11 @@ export function AdminDemandHeatmap() {
                   return (
                     <div
                       key={idx}
-                      className="border-border/40 bg-muted/20 hover:bg-muted/40 flex items-center justify-between gap-4 rounded-xl border p-3.5 transition-colors"
+                      className="border-border/40 bg-muted/20 hover:bg-muted/40 flex items-center justify-between gap-4 rounded-xl border p-3 transition-colors"
                     >
                       <div className="flex items-center gap-3">
                         <div
-                          className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs font-bold ${
+                          className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs font-bold tabular-nums ${
                             isHot
                               ? "bg-red-500/15 text-red-600 dark:text-red-400"
                               : isMed
@@ -249,12 +249,12 @@ export function AdminDemandHeatmap() {
                             </span>
                             <Badge
                               variant={isHot ? "destructive" : isMed ? "secondary" : "outline"}
-                              className="px-1.5 py-0 text-[10px]"
+                              className="px-1.5 py-0 text-[10px] tabular-nums"
                             >
                               {pt.count} pedidos
                             </Badge>
                           </div>
-                          <p className="text-muted-foreground mt-0.5 flex items-center gap-1.5 font-mono text-xs">
+                          <p className="text-muted-foreground mt-0.5 flex items-center gap-1.5 font-mono text-xs tabular-nums">
                             <MapPin className="h-3 w-3" />
                             {pt.lat}, {pt.lng}
                           </p>
@@ -262,7 +262,7 @@ export function AdminDemandHeatmap() {
                       </div>
 
                       <div className="shrink-0 text-right">
-                        <div className="text-foreground text-xs font-semibold">
+                        <div className="text-foreground text-xs font-semibold tabular-nums">
                           R$ {pt.avgValue}
                         </div>
                         <span className="text-muted-foreground text-[11px]">ticket médio</span>
@@ -284,7 +284,7 @@ export function AdminDemandHeatmap() {
             </CardTitle>
             <CardDescription>Participação no volume total de solicitações.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-2.5">
             {loading ? (
               <div className="space-y-4 py-2">
                 {[1, 2, 3, 4].map((i) => (
@@ -299,17 +299,31 @@ export function AdminDemandHeatmap() {
                 Sem categorias registradas.
               </p>
             ) : (
-              data.categories.slice(0, 8).map((cat) => (
-                <div key={cat.name} className="space-y-1.5">
-                  <div className="flex justify-between text-xs font-medium">
-                    <span className="text-foreground max-w-[150px] truncate">{cat.name}</span>
-                    <span className="text-muted-foreground font-mono">
-                      {cat.count} ({cat.percentage}%)
-                    </span>
-                  </div>
-                  <Progress value={cat.percentage} className="h-1.5" />
-                </div>
-              ))
+              data.categories.slice(0, 8).map((cat) => {
+                const isSelected = selectedCategory === cat.name
+                return (
+                  <button
+                    key={cat.name}
+                    type="button"
+                    onClick={() =>
+                      setSelectedCategory(selectedCategory === cat.name ? "all" : cat.name)
+                    }
+                    className={`w-full space-y-1.5 rounded-lg p-1.5 text-left transition-colors ${
+                      isSelected
+                        ? "border border-emerald-500/30 bg-emerald-500/10"
+                        : "hover:bg-muted/50"
+                    }`}
+                  >
+                    <div className="flex justify-between text-xs font-medium">
+                      <span className="text-foreground max-w-[150px] truncate">{cat.name}</span>
+                      <span className="text-muted-foreground font-mono tabular-nums">
+                        {cat.count} ({cat.percentage}%)
+                      </span>
+                    </div>
+                    <Progress value={cat.percentage} className="h-1.5" />
+                  </button>
+                )
+              })
             )}
           </CardContent>
         </Card>

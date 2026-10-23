@@ -1,9 +1,8 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
-import { ZodError } from "zod"
 import { geocodeSearch, geocodeSearchStructured } from "@/lib/geo"
-import { cacheControlPublic, handleError } from "@/lib/api-server"
+import { cacheControlPublic } from "@/lib/api-server"
 import { assertGeoRateLimit } from "@/lib/geo-rate-limit"
 import { geocodeSearchSchema, geocodeSearchStructuredSchema } from "@/lib/validators"
 
@@ -30,68 +29,57 @@ import { geocodeSearchSchema, geocodeSearchStructuredSchema } from "@/lib/valida
  *   - `city`    – cidade ou localidade, ex.: "São Paulo"
  *   - `state`   – estado (sigla ou nome), ex.: "SP"
  *   - `country` – país (default inferido pelo Nominatim como Brasil)
- *   - `postcode`– CEP, ex.: "01310-100"
- *
  * Cache Redis de 24h. Rate limiting de 1 req/s para respeitar política OSM.
  */
-export async function GET(request: Request) {
-  try {
-    await assertGeoRateLimit(request, "search")
+import { withRoute } from "@/lib/api-route"
 
-    const { searchParams } = new URL(request.url)
+export const GET = withRoute("api.geo.search.GET", async (request: Request) => {
+  await assertGeoRateLimit(request, "search")
 
-    // Detect structured mode: if any of street/city/state is present, use structured
-    const street = searchParams.get("street")
-    const city = searchParams.get("city")
-    const state = searchParams.get("state")
-    const country = searchParams.get("country")
-    const postcode = searchParams.get("postcode")
-    const hasStructured = !!(street?.trim() || city?.trim() || state?.trim())
+  const { searchParams } = new URL(request.url)
 
-    if (hasStructured) {
-      const parsed = geocodeSearchStructuredSchema.parse({
-        street: street ?? undefined,
-        city: city ?? undefined,
-        state: state ?? undefined,
-        country: country ?? undefined,
-        postcode: postcode ?? undefined,
-        limit: searchParams.get("limit") ?? undefined,
-      })
-      // Convert undefined → null for handleStructured's nullable params
-      return await handleStructured({
-        street: parsed.street ?? null,
-        city: parsed.city ?? null,
-        state: parsed.state ?? null,
-        country: parsed.country ?? null,
-        postcode: parsed.postcode ?? null,
-        limit: parsed.limit,
-      })
-    }
+  // Detect structured mode: if any of street/city/state is present, use structured
+  const street = searchParams.get("street")
+  const city = searchParams.get("city")
+  const state = searchParams.get("state")
+  const country = searchParams.get("country")
+  const postcode = searchParams.get("postcode")
+  const hasStructured = !!(street?.trim() || city?.trim() || state?.trim())
 
-    // Free-form query with Zod validation
-    const raw = searchParams.get("q") || ""
-    if (!raw.trim()) {
-      return noStoreJson(
-        { error: 'Parâmetro "q" é obrigatório (endereço textual) ou informe street/city/state' },
-        400,
-      )
-    }
-    // `searchParams.get()` retorna null quando o param está ausente; o schema
-    // Zod usa `.optional()` (undefined, não null) e `coerce.number(null)` → 0
-    // quebraria o min(1). Converter null → undefined antes do parse.
-    const parsed = geocodeSearchSchema.parse({
-      q: raw,
+  if (hasStructured) {
+    const parsed = geocodeSearchStructuredSchema.parse({
+      street: street ?? undefined,
+      city: city ?? undefined,
+      state: state ?? undefined,
+      country: country ?? undefined,
+      postcode: postcode ?? undefined,
       limit: searchParams.get("limit") ?? undefined,
     })
-
-    return await handleFreeForm(parsed.q, parsed.limit)
-  } catch (e) {
-    if (e instanceof ZodError) {
-      return noStoreJson({ error: "Dados inválidos", details: e.issues }, 400)
-    }
-    return handleError(e)
+    return await handleStructured({
+      street: parsed.street ?? null,
+      city: parsed.city ?? null,
+      state: parsed.state ?? null,
+      country: parsed.country ?? null,
+      postcode: parsed.postcode ?? null,
+      limit: parsed.limit,
+    })
   }
-}
+
+  // Free-form query with Zod validation
+  const raw = searchParams.get("q") || ""
+  if (!raw.trim()) {
+    return noStoreJson(
+      { error: 'Parâmetro "q" é obrigatório (endereço textual) ou informe street/city/state' },
+      400,
+    )
+  }
+  const parsed = geocodeSearchSchema.parse({
+    q: raw,
+    limit: searchParams.get("limit") ?? undefined,
+  })
+
+  return await handleFreeForm(parsed.q, parsed.limit)
+})
 
 /**
  * JSON error response that must NEVER be cached (house rule: errors carry

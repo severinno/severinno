@@ -2,7 +2,17 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Loader2, Send } from "lucide-react"
+import {
+  CalendarDays,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Send,
+  QrCode,
+  CheckCircle2,
+  AlertTriangle,
+} from "lucide-react"
 import { toast } from "sonner"
 import { motion, AnimatePresence } from "framer-motion"
 
@@ -22,7 +32,9 @@ import {
 } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { apiGet, apiPost, type ProviderDetail, type ProviderService } from "@/lib/api"
+import { apiGet, apiPost, payBooking, type ProviderDetail, type ProviderService } from "@/lib/api"
+import { PixCheckout } from "@/components/shared/pix-checkout"
+import { formatBRL } from "@/lib/format"
 import { useUIStore } from "@/store/ui"
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
@@ -44,6 +56,16 @@ import {
   type BookingFormState,
 } from "./booking"
 
+import { validateBookingSubmit } from "@/lib/booking-submit"
+
+type CreatedBookingState = {
+  id: string
+  amount: number
+  method: "CARD" | "PIX"
+  cardPaid?: boolean
+  cardError?: string
+}
+
 export function BookingModal() {
   const open = useUIStore((s) => s.bookingModal.open)
   const providerIdPreset = useUIStore((s) => s.bookingModal.providerId)
@@ -58,6 +80,9 @@ export function BookingModal() {
   const [state, setState] = React.useState<BookingFormState>(initialState())
   const [submitting, setSubmitting] = React.useState(false)
   const [touched, setTouched] = React.useState<Set<string>>(new Set())
+  const [submitError, setSubmitError] = React.useState<string | null>(null)
+  const [createdBooking, setCreatedBooking] = React.useState<CreatedBookingState | null>(null)
+  const [pixPaid, setPixPaid] = React.useState(false)
 
   const [prevOpen, setPrevOpen] = React.useState(open)
   if (open && prevOpen !== open) {
@@ -65,6 +90,9 @@ export function BookingModal() {
     setStep(1)
     setState(initialState())
     setTouched(new Set())
+    setSubmitError(null)
+    setCreatedBooking(null)
+    setPixPaid(false)
   }
 
   const providerQuery = useQuery({
@@ -91,8 +119,11 @@ export function BookingModal() {
     if (selectedService) setState((s) => ({ ...s, quantity: 1 }))
   }
 
-  const set = <K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) =>
+  const set = <K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) => {
+    // Qualquer edição limpa o erro de submit anterior (banner inline).
+    setSubmitError((prev) => (prev === null ? prev : null))
     setState((s) => ({ ...s, [key]: value }))
+  }
 
   const markTouched = (field: string) => setTouched((prev) => new Set(prev).add(field))
 
@@ -167,9 +198,23 @@ export function BookingModal() {
     scheduledAt.setHours(h ?? 0, m ?? 0, 0, 0)
     const amount = (selectedService.basePrice || 0) * (state.quantity || 1)
 
+    const validation = validateBookingSubmit({
+      amount,
+      scheduledAt,
+      notes: state.notes,
+      quantity: state.quantity,
+      paymentMethod: state.paymentMethod,
+    })
+    if (!validation.ok) {
+      setSubmitError(validation.message)
+      toast.error(validation.message)
+      return
+    }
+    setSubmitError(null)
+
     setSubmitting(true)
     try {
-      await apiPost("/api/bookings", {
+      const res = await apiPost<{ booking: { id: string } }>("/api/bookings", {
         providerId: provider.id,
         serviceId: selectedService.id,
         scheduledAt: scheduledAt.toISOString(),
@@ -190,9 +235,54 @@ export function BookingModal() {
         quantity: state.quantity,
         unit: selectedService.unit,
       })
-      toast.success("Agendamento confirmado! Acompanhe em seus agendamentos.")
-      close()
-      navigate("client.bookings")
+
+      const bookingId = res?.booking?.id
+      if (!bookingId) {
+        throw new Error("Identificador do agendamento não retornado pelo servidor.")
+      }
+
+      if (state.paymentMethod === "PIX") {
+        setCreatedBooking({
+          id: bookingId,
+          amount,
+          method: "PIX",
+        })
+        toast.success("Agendamento criado! Realize o PIX para garantir sua vaga.")
+      } else {
+        try {
+          const [month = "01", rawYear = "30"] = state.cardExpiry.split("/").map((s) => s.trim())
+          const fullYear = rawYear.length === 2 ? `20${rawYear}` : rawYear
+          await payBooking(bookingId, {
+            card: {
+              number: state.cardNumber.replace(/\s/g, ""),
+              holderName: state.cardName,
+              expiryMonth: month,
+              expiryYear: fullYear,
+              cvv: state.cardCvv,
+              installments: 1,
+            },
+          })
+          setCreatedBooking({
+            id: bookingId,
+            amount,
+            method: "CARD",
+            cardPaid: true,
+          })
+          toast.success("Pagamento aprovado no cartão! Agendamento garantido.")
+        } catch (cardErr) {
+          const cardMsg =
+            (cardErr as { message?: string })?.message ??
+            "Não foi possível processar a cobrança no cartão."
+          setCreatedBooking({
+            id: bookingId,
+            amount,
+            method: "CARD",
+            cardPaid: false,
+            cardError: cardMsg,
+          })
+          toast.error(cardMsg)
+        }
+      }
     } catch (e) {
       const msg =
         (e as { message?: string })?.message ??
@@ -250,7 +340,155 @@ export function BookingModal() {
     }
   })()
 
-  const dialogSizeClass = step === 1 ? "sm:max-w-2xl" : "sm:max-w-lg"
+  const headerIcon = createdBooking ? (
+    createdBooking.method === "PIX" ? (
+      <QrCode className="size-4 text-emerald-600" />
+    ) : createdBooking.cardPaid ? (
+      <CheckCircle2 className="size-4 text-emerald-600" />
+    ) : (
+      <AlertTriangle className="size-4 text-amber-600" />
+    )
+  ) : (
+    <CalendarDays className="size-4 text-emerald-600" />
+  )
+
+  const headerTitle = createdBooking
+    ? createdBooking.method === "PIX"
+      ? pixPaid
+        ? "Pagamento Confirmado!"
+        : "Pagamento com PIX Instantâneo"
+      : createdBooking.cardPaid
+        ? "Agendamento Confirmado!"
+        : "Pagamento Pendente"
+    : "Agendar serviço"
+
+  const headerDescription = createdBooking
+    ? "Custódia Garantida: seu pagamento fica protegido até a conclusão do serviço."
+    : "Escolha data, detalhes e pagamento"
+
+  const dialogSizeClass = "w-[95vw] sm:max-w-3xl"
+
+  const checkoutContent = createdBooking ? (
+    <div className="flex flex-col gap-4 py-2">
+      {createdBooking.method === "PIX" ? (
+        pixPaid ? (
+          <div className="flex flex-col items-center justify-center py-6 text-center">
+            <div className="flex size-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
+              <CheckCircle2 className="animate-in zoom-in-75 size-8 duration-300" />
+            </div>
+            <h3 className="text-foreground mt-3 text-lg font-bold">Pagamento Confirmado!</h3>
+            <p className="text-muted-foreground mt-1.5 max-w-sm text-xs">
+              O valor de{" "}
+              <strong className="text-emerald-700 dark:text-emerald-400">
+                {formatBRL(createdBooking.amount)}
+              </strong>{" "}
+              está retido em custódia segura na plataforma. O prestador foi notificado e iniciará o
+              atendimento no horário agendado.
+            </p>
+            <div className="mt-6 flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
+              <Button
+                onClick={() => {
+                  close()
+                  navigate("client.bookings")
+                }}
+                className="h-10 bg-emerald-600 font-medium hover:bg-emerald-700"
+              >
+                Acompanhar em Meus Agendamentos
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <PixCheckout
+              bookingId={createdBooking.id}
+              amount={createdBooking.amount}
+              onPaymentConfirmed={() => setPixPaid(true)}
+            />
+            <div className="text-muted-foreground flex items-center justify-between border-t pt-3 text-xs">
+              <span>Prefere pagar mais tarde?</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  toast.info(
+                    "Você pode concluir o pagamento a qualquer momento em Meus Agendamentos.",
+                  )
+                  close()
+                  navigate("client.bookings")
+                }}
+                className="text-muted-foreground hover:text-foreground h-8 text-xs font-normal"
+              >
+                Pagar depois
+              </Button>
+            </div>
+          </div>
+        )
+      ) : createdBooking.cardPaid ? (
+        <div className="flex flex-col items-center justify-center py-6 text-center">
+          <div className="flex size-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
+            <CheckCircle2 className="animate-in zoom-in-75 size-8 duration-300" />
+          </div>
+          <h3 className="text-foreground mt-3 text-lg font-bold">Pagamento Aprovado!</h3>
+          <p className="text-muted-foreground mt-1.5 max-w-sm text-xs">
+            Cobrança de{" "}
+            <strong className="text-emerald-700 dark:text-emerald-400">
+              {formatBRL(createdBooking.amount)}
+            </strong>{" "}
+            aprovada no cartão final •••• {state.cardNumber.slice(-4) || "••••"}. Seu dinheiro fica
+            protegido em custódia até você validar o serviço.
+          </p>
+          <div className="mt-6 flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
+            <Button
+              onClick={() => {
+                close()
+                navigate("client.bookings")
+              }}
+              className="h-10 bg-emerald-600 font-medium hover:bg-emerald-700"
+            >
+              Acompanhar em Meus Agendamentos
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center py-6 text-center">
+          <div className="flex size-14 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-950/60 dark:text-red-400">
+            <AlertTriangle className="size-8" />
+          </div>
+          <h3 className="text-foreground mt-3 text-lg font-bold">
+            Não foi possível aprovar o cartão
+          </h3>
+          <p className="text-muted-foreground mt-1.5 max-w-sm text-xs">
+            {createdBooking.cardError ||
+              "Verifique os dados informados ou pague instantaneamente via PIX."}
+          </p>
+          <div className="mt-6 flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
+            <Button
+              onClick={() => {
+                setCreatedBooking({
+                  id: createdBooking.id,
+                  amount: createdBooking.amount,
+                  method: "PIX",
+                })
+              }}
+              className="h-10 bg-emerald-600 font-medium hover:bg-emerald-700"
+            >
+              Pagar com PIX
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                close()
+                navigate("client.bookings")
+              }}
+              className="h-10"
+            >
+              Ver Meus Agendamentos
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  ) : null
 
   const stepIndicator = (
     <div className="border-b px-4 py-3 sm:px-5">
@@ -383,6 +621,17 @@ export function BookingModal() {
     </StepWizard>
   )
 
+  const submitErrorBanner = submitError ? (
+    <div className="shrink-0 px-4 pb-2 sm:px-5">
+      <p
+        role="alert"
+        className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-400"
+      >
+        {submitError}
+      </p>
+    </div>
+  ) : null
+
   if (isMobile) {
     return (
       <Sheet open={open} onOpenChange={(o) => !o && close()}>
@@ -393,14 +642,15 @@ export function BookingModal() {
         >
           <SheetHeader className="shrink-0 px-4 pt-4 pb-2">
             <SheetTitle className="flex items-center gap-2 text-base">
-              <CalendarDays className="size-4 text-emerald-600" />
-              Agendar serviço
+              {headerIcon}
+              {headerTitle}
             </SheetTitle>
-            <SheetDescription className="text-xs">
-              Escolha data, detalhes e pagamento
-            </SheetDescription>
+            <SheetDescription className="text-xs">{headerDescription}</SheetDescription>
           </SheetHeader>
-          <div className="flex-1 overflow-hidden">{wizardBody}</div>
+          {submitErrorBanner}
+          <div className="flex-1 overflow-y-auto px-4">
+            {createdBooking ? checkoutContent : wizardBody}
+          </div>
         </SheetContent>
       </Sheet>
     )
@@ -410,38 +660,43 @@ export function BookingModal() {
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent
         className={cn(
-          "flex max-h-[90vh] flex-col gap-0 p-0 transition-[max-width] duration-300",
+          "flex h-[660px] max-h-[88vh] min-w-0 flex-col gap-0 overflow-hidden rounded-2xl p-0",
           dialogSizeClass,
         )}
         onInteractOutside={(e) => e.preventDefault()}
       >
-        <DialogHeader className="shrink-0 border-b px-5 pt-4 pb-2">
+        <DialogHeader className="shrink-0 border-b px-5 pt-4 pb-2.5 sm:px-6">
           <DialogTitle className="flex items-center gap-2 text-base">
-            <CalendarDays className="size-4 text-emerald-600" />
-            Agendar serviço
+            {headerIcon}
+            {headerTitle}
           </DialogTitle>
-          <DialogDescription className="text-xs">
-            Escolha data, detalhes e pagamento
-          </DialogDescription>
+          <DialogDescription className="text-xs">{headerDescription}</DialogDescription>
         </DialogHeader>
 
-        {stepIndicator}
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={step}
-              initial={{ opacity: 0, x: 12 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -12 }}
-              transition={{ duration: 0.18 }}
-            >
-              {stepContent}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-
-        {footerButtons}
+        {createdBooking ? (
+          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-5 py-4 sm:px-6">
+            {checkoutContent}
+          </div>
+        ) : (
+          <>
+            {stepIndicator}
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={step}
+                  initial={{ opacity: 0, x: 12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -12 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  {stepContent}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+            {submitErrorBanner}
+            {footerButtons}
+          </>
+        )}
       </DialogContent>
     </Dialog>
   )

@@ -18,6 +18,19 @@ export function SWRegister() {
     if (typeof window === "undefined") return
     if (!("serviceWorker" in navigator)) return
 
+    // Em dev o SW cacheia chunks/API e esconde HMR e deploys (o browser
+    // continua servindo o bundle velho mesmo após recompile). Em vez de
+    // registrar, REMOVEMOS registros e caches residuais de sessões antigas.
+    if (process.env.NODE_ENV !== "production") {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        for (const reg of regs) void reg.unregister()
+      })
+      void caches.keys().then((keys) => {
+        for (const key of keys) void caches.delete(key)
+      })
+      return
+    }
+
     navigator.serviceWorker
       .register("/sw.js")
       .then((reg) => {
@@ -35,9 +48,10 @@ export function SWRegister() {
           if (!newWorker) return
           newWorker.addEventListener("statechange", () => {
             if (newWorker.state === "activated") {
-              // SW updated — notify user or silently reload
-              // eslint-disable-next-line no-console -- dev visibility for SW lifecycle
-              console.log("[PWA] Service Worker updated")
+              if (process.env.NODE_ENV !== "production") {
+                // eslint-disable-next-line no-console -- dev visibility for SW lifecycle
+                console.log("[PWA] Service Worker updated")
+              }
             }
           })
         })

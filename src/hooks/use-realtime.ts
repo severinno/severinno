@@ -7,6 +7,13 @@
  *
  *   io("/?XTransformPort=3003")   <- NEVER put the port in the URL.
  *
+ * Autenticação do handshake: o cliente busca um ticket SINGLE-USE em
+ * POST /api/realtime/ticket (identidade vem da SESSÃO, via cookie httpOnly)
+ * e envia em `auth.ticket`. O servidor consome com GETDEL e estampa a
+ * identidade — o join NÃO é mais auto-declarado. A opção `auth` do socket.io
+ * roda a CADA tentativa de conexão (inicial e reconexões), então cada
+ * handshake busca um ticket novo (o antigo já foi consumido).
+ *
  * Usage:
  *   const { isConnected, join, sendMessage, ... } = useRealtime();
  *
@@ -19,14 +26,25 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { io, Socket } from "socket.io-client"
+import {
+  getPendingMessages,
+  enqueuePendingMessage,
+  removePendingMessage,
+  getPendingCount,
+} from "@/lib/realtime-offline-queue"
 
 // ---------- Types ----------
 export type ConnectionStatus =
   "connecting" | "connected" | "disconnected" | "reconnecting" | "error"
 
+/**
+ * DEPRECATED como declaração de identidade: o payload é IGNORADO pelo
+ * servidor — a identidade do join vem do ticket do handshake. Mantido na
+ * assinatura por compatibilidade com os chamadores.
+ */
 export interface JoinPayload {
-  userId: string
-  role: string
+  userId?: string
+  role?: string
 }
 
 export interface MessageSendPayload {
@@ -101,9 +119,42 @@ export interface TrackingPositionEvent {
   timestamp: string
 }
 
+export interface MessageDeliveredEvent {
+  messageId: string
+  toId: string
+  fromId: string
+  bookingId: string | null
+  deliveredAt: string
+}
+
+export interface MessageReadEvent {
+  messageId: string | null
+  readerId: string
+  fromId: string
+  bookingId: string | null
+  readAt: string
+}
+
 // ---------- Singleton socket ----------
 // Only build it in the browser. SSR returns null.
 let socketRef: Socket | null = null
+
+/**
+ * Busca um ticket de socket single-use (POST /api/realtime/ticket).
+ * Mesma origem: o fetch envia o cookie de sessão httpOnly por default.
+ * Retorna objeto vazio quando não autenticado/sem resposta — o servidor
+ * decide o que fazer com um handshake sem ticket (fail-closed em produção).
+ */
+async function fetchSocketTicket(): Promise<{ ticket?: string }> {
+  try {
+    const res = await fetch("/api/realtime/ticket", { method: "POST" })
+    if (!res.ok) return {}
+    const data = (await res.json()) as { ok?: boolean; ticket?: string }
+    return data.ok && data.ticket ? { ticket: data.ticket } : {}
+  } catch {
+    return {}
+  }
+}
 
 /**
  * Resolve the Socket.io server URL:
@@ -130,6 +181,11 @@ function getSocket(): Socket | null {
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
     timeout: 10000,
+    // A função `auth` roda em TODA tentativa de conexão — cada handshake
+    // busca um ticket NOVO (single-use: o anterior já foi consumido).
+    auth: async (cb) => {
+      cb(await fetchSocketTicket())
+    },
   })
   return socketRef
 }
@@ -138,9 +194,12 @@ function getSocket(): Socket | null {
 export interface UseRealtimeResult {
   isConnected: boolean
   status: ConnectionStatus
+  pendingMessagesCount: number
   // helpers
   join: (payload: JoinPayload) => Promise<boolean>
   sendMessage: (payload: MessageSendPayload) => void
+  confirmDelivery: (payload: { messageId: string; fromId: string; bookingId?: string }) => void
+  markMessageRead: (payload: { messageId?: string; fromId: string; bookingId?: string }) => void
   updateBooking: (payload: BookingUpdatePayload) => void
   updateQuote: (payload: QuoteUpdatePayload) => void
   sendTrackingPosition: (payload: TrackingPositionPayload) => void
@@ -155,14 +214,34 @@ export interface UseRealtimeResult {
 export function useRealtime(): UseRealtimeResult {
   const [isConnected, setIsConnected] = useState(false)
   const [status, setStatus] = useState<ConnectionStatus>("connecting")
+  const [pendingMessagesCount, setPendingMessagesCount] = useState<number>(() => {
+    return typeof window !== "undefined" ? getPendingCount() : 0
+  })
 
   useEffect(() => {
     const s = getSocket()
     if (!s) return // SSR guard
 
+    const flushPending = () => {
+      const pending = getPendingMessages()
+      if (pending.length > 0 && s.connected) {
+        for (const item of pending) {
+          s.emit("message:send", {
+            fromId: item.fromId,
+            toId: item.toId,
+            content: item.content,
+            bookingId: item.bookingId,
+          })
+          removePendingMessage(item.clientMessageId)
+        }
+        setPendingMessagesCount(0)
+      }
+    }
+
     const onConnect = () => {
       setIsConnected(true)
       setStatus("connected")
+      flushPending()
     }
     const onDisconnect = () => {
       setIsConnected(false)
@@ -178,6 +257,7 @@ export function useRealtime(): UseRealtimeResult {
     const onReconnect = () => {
       setIsConnected(true)
       setStatus("connected")
+      flushPending()
     }
     // Sync component state with the singleton socket's current status
     // (e.g. when reused across mounts / hot reload). Wrapped in a function so
@@ -186,6 +266,7 @@ export function useRealtime(): UseRealtimeResult {
       if (s.connected) {
         setIsConnected(true)
         setStatus("connected")
+        flushPending()
       } else if (!s.active) {
         setStatus("connecting")
       }
@@ -208,20 +289,81 @@ export function useRealtime(): UseRealtimeResult {
     }
   }, [])
 
+  // Heartbeat Watchdog: ping a cada 15s para detectar conexão zumbi (half-open TCP)
+  useEffect(() => {
+    if (!isConnected) return
+
+    let missedPings = 0
+    const interval = setInterval(() => {
+      const s = socketRef
+      if (!s || !s.connected) return
+
+      let answered = false
+      const timeoutId = setTimeout(() => {
+        if (!answered) {
+          missedPings++
+          if (missedPings >= 2) {
+            console.warn(
+              "[realtime-watchdog] Conexão zumbi detectada (2 pings sem ack). Forçando reconexão...",
+            )
+            s.disconnect()
+            s.connect()
+            missedPings = 0
+          }
+        }
+      }, 5000)
+
+      s.emit("ping", () => {
+        answered = true
+        clearTimeout(timeoutId)
+        missedPings = 0
+      })
+    }, 15000)
+
+    return () => clearInterval(interval)
+  }, [isConnected])
+
   // ---------- Helpers ----------
   const join = useMemo<UseRealtimeResult["join"]>(
     () => (payload: JoinPayload) =>
       new Promise<boolean>((resolve) => {
         const s = socketRef
         if (!s || !s.connected) return resolve(false)
-        s.emit("join", payload, (res: { ok: boolean }) => resolve(!!res?.ok))
+        // O payload é ignorado pelo servidor (identidade do handshake) — o
+        // ack carrega ok:false + reason quando o socket não autenticou.
+        s.emit("join", payload, (res: { ok: boolean; reason?: string }) => {
+          if (!res?.ok && res?.reason) {
+            console.warn("[use-realtime] join recusado:", res.reason)
+          }
+          resolve(!!res?.ok)
+        })
       }),
     [],
   )
 
   const sendMessage = useMemo<UseRealtimeResult["sendMessage"]>(
     () => (payload: MessageSendPayload) => {
+      const s = socketRef
+      if (!s || !s.connected) {
+        enqueuePendingMessage(payload)
+        setPendingMessagesCount(getPendingCount())
+        return
+      }
       socketRef?.emit("message:send", payload)
+    },
+    [],
+  )
+
+  const confirmDelivery = useMemo<UseRealtimeResult["confirmDelivery"]>(
+    () => (payload: { messageId: string; fromId: string; bookingId?: string }) => {
+      socketRef?.emit("message:delivered", payload)
+    },
+    [],
+  )
+
+  const markMessageRead = useMemo<UseRealtimeResult["markMessageRead"]>(
+    () => (payload: { messageId?: string; fromId: string; bookingId?: string }) => {
+      socketRef?.emit("message:read", payload)
     },
     [],
   )
@@ -299,20 +441,42 @@ export function useRealtime(): UseRealtimeResult {
     [],
   )
 
-  return {
-    isConnected,
-    status,
-    join,
-    sendMessage,
-    updateBooking,
-    updateQuote,
-    sendTrackingPosition,
-    ping,
-    emit,
-    on,
-    off,
-    disconnect,
-  }
+  return useMemo(
+    () => ({
+      isConnected,
+      status,
+      pendingMessagesCount,
+      join,
+      sendMessage,
+      confirmDelivery,
+      markMessageRead,
+      updateBooking,
+      updateQuote,
+      sendTrackingPosition,
+      ping,
+      emit,
+      on,
+      off,
+      disconnect,
+    }),
+    [
+      isConnected,
+      status,
+      pendingMessagesCount,
+      join,
+      sendMessage,
+      confirmDelivery,
+      markMessageRead,
+      updateBooking,
+      updateQuote,
+      sendTrackingPosition,
+      ping,
+      emit,
+      on,
+      off,
+      disconnect,
+    ],
+  )
 }
 
 export default useRealtime

@@ -25,13 +25,17 @@ import {
   AlertTriangle,
   RefreshCw,
   Smartphone,
+  ShieldCheck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
-import { apiGet, apiPost } from "@/lib/api"
+import { apiGet, payBooking, newIdempotencyKey, type PayResponse } from "@/lib/api"
+import { describePayError, type PayErrorAction } from "@/lib/idempotency-client"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { playCoinSound } from "@/lib/sounds"
+import { useRealtime } from "@/hooks/use-realtime"
+import { triggerHaptic } from "@/lib/haptics"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,16 +49,6 @@ type PixCheckoutProps = {
 }
 
 type PixCheckoutState = "idle" | "generating" | "awaiting" | "confirmed" | "expired" | "error"
-
-type PayResponse = {
-  paymentMethod: string
-  status: string
-  lytexStatus?: string
-  qrCode?: string
-  qrCodeImage?: string
-  lytexId?: string
-  expiresAt?: string
-}
 
 type StatusResponse = {
   paymentStatus: string
@@ -83,19 +77,87 @@ export function PixCheckout({
   const [timeLeft, setTimeLeft] = React.useState<string>("")
   const [progressPct, setProgressPct] = React.useState(100)
   const [copied, setCopied] = React.useState(false)
-  const [errorMsg, setErrorMsg] = React.useState<string | null>(null)
 
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
   const timerRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
   const confirmedRef = React.useRef(false)
+
+  // Recuperação de IDEMPOTENCY_IN_FLIGHT: a 1ª requisição pode ter criado a
+  // cobrança no Lytex e perdido a resposta (timeout/duplo-clique). O status
+  // endpoint devolve o QR existente — checamos em vez de mostrar erro.
+  const recoveryAttemptsRef = React.useRef(0)
+  const recoveryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Erro detalhado (título/mensagem/ação vêm de describePayError).
+  const [errorTitle, setErrorTitle] = React.useState<string>("Erro ao gerar PIX")
+  const [errorMsg, setErrorMsg] = React.useState<string | null>(null)
+  const [errorRetryLabel, setErrorRetryLabel] = React.useState<string>("Tentar novamente")
+  const [errorAction, setErrorAction] = React.useState<PayErrorAction>("wait_and_retry")
+  const [checkingPayment, setCheckingPayment] = React.useState(false)
+
+  // Idempotência: UMA chave por montagem do checkout. Todo POST /pay desta
+  // montagem (primeira emissão, "Gerar novo QR" após expirar, "Tentar
+  // novamente" após erro) reenvia a MESMA chave — um timeout/duplo-clique no
+  // servidor devolve replay/409 em vez de criar uma segunda cobrança no Lytex.
+  // Gerada lazy no 1º POST via newIdempotencyKey() (chamada impura não pode
+  // rodar durante o render — react-hooks/purity).
+  const idempotencyKeyRef = React.useRef<string | null>(null)
 
   // ── Cleanup ──
   React.useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
       if (timerRef.current) clearInterval(timerRef.current)
+      if (recoveryTimeoutRef.current) clearTimeout(recoveryTimeoutRef.current)
     }
   }, [])
+
+  const { on, emit, isConnected } = useRealtime()
+
+  // ⚡ Escuta WebSocket instantânea de confirmação de pagamento
+  React.useEffect(() => {
+    if (!bookingId) return
+
+    if (isConnected) {
+      emit("join:booking", { bookingId })
+    }
+
+    const unsubPayment = on<{ bookingId: string }>("payment:confirmed", (evt) => {
+      if (evt?.bookingId === bookingId && !confirmedRef.current) {
+        confirmedRef.current = true
+        setState("confirmed")
+        playCoinSound({ vibrate: true })
+        toast.success("Pagamento PIX confirmado instantaneamente via WebSocket! 🎉")
+        onPaymentConfirmed?.()
+        if (pollRef.current) clearInterval(pollRef.current)
+        if (timerRef.current) clearInterval(timerRef.current)
+      }
+    })
+
+    const unsubBooking = on<{ bookingId: string; status?: string; paymentStatus?: string }>(
+      "booking:updated",
+      (evt) => {
+        if (
+          evt?.bookingId === bookingId &&
+          (evt?.paymentStatus === "PAID" || evt?.status === "CONFIRMED") &&
+          !confirmedRef.current
+        ) {
+          confirmedRef.current = true
+          setState("confirmed")
+          playCoinSound({ vibrate: true })
+          toast.success("Pagamento PIX confirmado! 🎉")
+          onPaymentConfirmed?.()
+          if (pollRef.current) clearInterval(pollRef.current)
+          if (timerRef.current) clearInterval(timerRef.current)
+        }
+      },
+    )
+
+    return () => {
+      unsubPayment()
+      unsubBooking()
+    }
+  }, [isConnected, bookingId, on, emit, onPaymentConfirmed])
 
   // ── Polling for payment confirmation ──
   const startPolling = React.useCallback(() => {
@@ -164,14 +226,69 @@ export function PixCheckout({
     timerRef.current = setInterval(tick, 1000)
   }, [])
 
+  // ── Recuperação de IN_FLIGHT: a tentativa pode já ter criado a cobrança ──
+  // (função NOMEADA: a recursão via setTimeout referencia o próprio nome da
+  // função, não a const externa — react-hooks/immutability)
+  const tryRecoverInFlight = React.useCallback(
+    function tryRecoverInFlight(attempt: number): void {
+      if (attempt > 3) {
+        setErrorTitle("Pagamento ainda em andamento")
+        setErrorMsg(
+          "A cobrança anterior ainda está sendo processada. Aguarde um instante e toque em verificar novamente.",
+        )
+        setErrorRetryLabel("Verificar novamente")
+        setErrorAction("wait_and_retry")
+        setState("error")
+        return
+      }
+      setCheckingPayment(true)
+      apiGet<StatusResponse>(`/api/bookings/${bookingId}/pay/status`)
+        .then((status) => {
+          if (status.paymentStatus === "PAID") {
+            confirmedRef.current = true
+            setState("confirmed")
+            playCoinSound({ vibrate: true })
+            toast.success("Pagamento PIX confirmado! 🎉")
+            onPaymentConfirmed?.()
+            return
+          }
+          if (status.payment?.qrCode) {
+            // A cobrança original EXISTE: exibir o QR já criado e voltar a
+            // aguardar — sem criar cobrança nova.
+            setQrCode(status.payment.qrCode)
+            setQrCodeImage(status.payment.qrCodeImage ?? null)
+            setState("awaiting")
+            startPolling()
+            return
+          }
+          recoveryTimeoutRef.current = setTimeout(() => tryRecoverInFlight(attempt + 1), 2000)
+        })
+        .catch(() => {
+          recoveryTimeoutRef.current = setTimeout(() => tryRecoverInFlight(attempt + 1), 2000)
+        })
+        .finally(() => setCheckingPayment(false))
+    },
+    [bookingId, onPaymentConfirmed, startPolling],
+  )
+
   // ── Generate PIX charge ──
   const generatePix = React.useCallback(async () => {
     setState("generating")
     setErrorMsg(null)
     confirmedRef.current = false
+    recoveryAttemptsRef.current = 0
 
     try {
-      const res = await apiPost<PayResponse>(`/api/bookings/${bookingId}/pay`, {})
+      if (idempotencyKeyRef.current === null) {
+        idempotencyKeyRef.current = newIdempotencyKey()
+      }
+      const res = await payBooking<PayResponse>(
+        bookingId,
+        {},
+        {
+          idempotencyKey: idempotencyKeyRef.current,
+        },
+      )
 
       if (res.qrCode) {
         setQrCode(res.qrCode)
@@ -196,20 +313,50 @@ export function PixCheckout({
         throw new Error("QR Code não disponível")
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Erro ao gerar PIX"
-      setErrorMsg(msg)
+      const outcome = describePayError(e)
+
+      if (outcome.code === "IDEMPOTENCY_IN_FLIGHT") {
+        // A execução original pode ter criado a cobrança no Lytex e perdido a
+        // resposta (timeout/duplo-clique). Verificar o status endpoint antes
+        // de mostrar erro: se o QR existir, o checkout segue de onde parou.
+        tryRecoverInFlight(1)
+        return
+      }
+      if (outcome.action === "new_key_retry") {
+        // FAILED/CONFLICT: a chave atual não é reutilizável — a próxima
+        // tentativa gera uma chave nova (nova intenção de pagamento).
+        idempotencyKeyRef.current = null
+      }
+
+      setErrorTitle(outcome.title)
+      setErrorMsg(outcome.message)
+      setErrorRetryLabel(outcome.retryLabel)
+      setErrorAction(outcome.action)
+      toast.error(`${outcome.title}. ${outcome.message}`)
       setState("error")
-      toast.error(msg)
     }
-  }, [bookingId, onPaymentConfirmed, startCountdown, startPolling])
+  }, [bookingId, onPaymentConfirmed, startCountdown, startPolling, tryRecoverInFlight])
+
+  // ── Retry do card de erro, conforme a ação do describePayError ──
+  const handleRetry = React.useCallback(() => {
+    triggerHaptic("selection")
+    if (errorAction === "wait_and_retry") {
+      generatePix() // mesma chave: IN_FLIGHT resolve em replay/recuperação
+      return
+    }
+    // new_key_retry (FAILED/CONFLICT): nova chave = nova intenção.
+    idempotencyKeyRef.current = newIdempotencyKey()
+    generatePix()
+  }, [errorAction, generatePix])
 
   // ── Copy PIX code ──
   const handleCopy = React.useCallback(async () => {
     if (!qrCode) return
     try {
       await navigator.clipboard.writeText(qrCode)
+      triggerHaptic("success")
       setCopied(true)
-      toast.success("Código PIX copiado!")
+      toast.success("Código PIX copiado com sucesso!")
       setTimeout(() => setCopied(false), 3000)
     } catch {
       toast.error("Não foi possível copiar. Selecione o código manualmente.")
@@ -234,7 +381,13 @@ export function PixCheckout({
           <div className="text-2xl font-bold text-emerald-700 tabular-nums dark:text-emerald-400">
             {formatBRL(amount)}
           </div>
-          <Button onClick={generatePix} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+          <Button
+            onClick={() => {
+              triggerHaptic("selection")
+              generatePix()
+            }}
+            className="gap-2 bg-emerald-600 transition-all hover:bg-emerald-700 active:scale-95"
+          >
             <Smartphone className="size-4" />
             Gerar QR Code PIX
           </Button>
@@ -257,8 +410,25 @@ export function PixCheckout({
             <p className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
               Valor a pagar
             </p>
-            <p className="text-2xl font-bold text-emerald-700 tabular-nums dark:text-emerald-400">
+            <p className="text-2xl font-bold text-emerald-700 tabular-nums sm:text-3xl dark:text-emerald-400">
               {formatBRL(amount)}
+            </p>
+          </div>
+
+          {/* Escrow Guarantee Trust Banner */}
+          <div className="w-full rounded-xl border border-emerald-300/60 bg-emerald-100/40 p-3.5 text-left dark:border-emerald-800/50 dark:bg-emerald-950/50">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="size-4.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <span className="text-xs font-bold text-emerald-950 sm:text-sm dark:text-emerald-100">
+                Custódia Protegida com Escrow
+              </span>
+              <span className="ml-auto rounded-full bg-emerald-600/15 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                Garantia 90 dias
+              </span>
+            </div>
+            <p className="mt-1.5 text-xs leading-relaxed text-emerald-900/90 dark:text-emerald-200/90">
+              O valor fica retido com segurança na plataforma e só é transferido ao prestador após a
+              conclusão do serviço aprovada por você.
             </p>
           </div>
 
@@ -280,37 +450,58 @@ export function PixCheckout({
             </div>
           )}
 
-          {/* Instructions */}
-          <div className="flex items-start gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
-            <Smartphone className="mt-0.5 size-4 shrink-0" />
-            <span>
-              Abra o app do seu banco, selecione <strong>Pagar com PIX</strong> e escaneie o QR code
-              acima. Ou copie o código abaixo.
-            </span>
-          </div>
-
-          {/* Copy PIX code */}
+          {/* Copy PIX code — High contrast primary touch target for mobile & elderly */}
           <Button
-            variant="outline"
+            type="button"
             onClick={handleCopy}
             className={cn(
-              "w-full gap-2 transition-colors",
-              copied &&
-                "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+              "h-12 w-full gap-2.5 rounded-xl text-sm font-bold shadow-md transition-all active:scale-95",
+              copied
+                ? "bg-emerald-700 text-white hover:bg-emerald-700"
+                : "bg-emerald-600 text-white hover:bg-emerald-700",
             )}
           >
             {copied ? (
               <>
-                <Check className="size-4" />
-                Copiado!
+                <Check className="size-5 shrink-0" />
+                <span>Código PIX copiado com sucesso!</span>
               </>
             ) : (
               <>
-                <Copy className="size-4" />
-                Copiar código PIX
+                <Copy className="size-5 shrink-0" />
+                <span>Copiar código PIX (Copia e Cola)</span>
               </>
             )}
           </Button>
+
+          {/* Step-by-Step 1-2-3 Guide for all ages */}
+          <div className="w-full space-y-2 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 text-xs dark:border-slate-800 dark:bg-slate-900/60">
+            <p className="font-semibold text-slate-800 dark:text-slate-200">
+              Como pagar no seu celular:
+            </p>
+            <div className="grid gap-2 text-slate-600 dark:text-slate-400">
+              <div className="flex items-start gap-2">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  1
+                </span>
+                <span>Toque no botão verde acima para copiar o código PIX.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  2
+                </span>
+                <span>Abra o app do seu banco (Nubank, Caixa, Itaú, Bradesco, BB, etc.).</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  3
+                </span>
+                <span>
+                  Escolha a opção <strong>PIX Copia e Cola</strong> e confirme o pagamento.
+                </span>
+              </div>
+            </div>
+          </div>
 
           {/* Timer */}
           <div className="w-full space-y-1.5">
@@ -331,11 +522,20 @@ export function PixCheckout({
             </div>
           </div>
 
-          {/* Polling indicator */}
-          <p className="text-muted-foreground flex items-center gap-1.5 text-[11px]">
-            <Loader2 className="size-3 animate-spin" />
-            Aguardando confirmação automática…
-          </p>
+          {/* Polling & WebSocket indicator */}
+          <div className="text-muted-foreground flex w-full items-center justify-between pt-1 text-[11px]">
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="size-3 animate-spin" />
+              Aguardando confirmação…
+            </span>
+            <span className="flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex size-2 rounded-full bg-emerald-500"></span>
+              </span>
+              WebSocket Ativo
+            </span>
+          </div>
         </div>
       )}
 
@@ -374,7 +574,14 @@ export function PixCheckout({
               O código PIX expirou. Gere um novo para continuar.
             </p>
           </div>
-          <Button onClick={generatePix} variant="outline" className="gap-2">
+          <Button
+            onClick={() => {
+              triggerHaptic("selection")
+              generatePix()
+            }}
+            variant="outline"
+            className="gap-2 transition-all active:scale-95"
+          >
             <RefreshCw className="size-4" />
             Gerar novo QR Code
           </Button>
@@ -388,14 +595,23 @@ export function PixCheckout({
             <AlertTriangle className="size-7 text-red-600" />
           </div>
           <div className="text-center">
-            <p className="font-semibold text-red-800 dark:text-red-300">Erro ao gerar PIX</p>
+            <p className="font-semibold text-red-800 dark:text-red-300">{errorTitle}</p>
             <p className="text-muted-foreground mt-1 text-sm">
-              {errorMsg || "Tente novamente em alguns instantes."}
+              {errorMsg ?? "Tente novamente em alguns instantes."}
             </p>
           </div>
-          <Button onClick={generatePix} variant="outline" className="gap-2">
-            <RefreshCw className="size-4" />
-            Tentar novamente
+          <Button
+            onClick={handleRetry}
+            variant="outline"
+            disabled={checkingPayment}
+            className="gap-2 transition-all active:scale-95"
+          >
+            {checkingPayment ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <RefreshCw className="size-4" />
+            )}
+            {checkingPayment ? "Verificando pagamento…" : errorRetryLabel}
           </Button>
         </div>
       )}

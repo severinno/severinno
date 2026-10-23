@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { readFileSync, existsSync } from "node:fs"
 import { join } from "node:path"
-import { handleError } from "@/lib/api-server"
+
 import { requireRole } from "@/lib/auth"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { getP95Baselines } from "@/lib/geo-baselines"
@@ -14,6 +14,8 @@ import {
   type GeoServiceName,
 } from "@/lib/geo-metrics"
 import { getGeoMetricsSnapshot } from "@/lib/geo-observability"
+
+import { withRoute } from "@/lib/api-route"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -131,23 +133,19 @@ function loadBenchmarkData(): BenchmarkData | null {
 // Route
 // ---------------------------------------------------------------------------
 
-export async function GET(request: Request) {
-  try {
-    await assertRateLimit(request, RATE_LIMITS.admin)
-    await requireRole("ADMIN")
-    const snapshot = getGeoMetrics()
-    const benchmark = loadBenchmarkData()
-    const history = getGeoMetricsHistory()
+export const GET = withRoute("api.admin.geo-metrics.GET", async (request) => {
+  await assertRateLimit(request, RATE_LIMITS.admin)
+  await requireRole("ADMIN")
+  const snapshot = getGeoMetrics()
+  const benchmark = loadBenchmarkData()
+  const history = getGeoMetricsHistory()
 
-    return NextResponse.json({
-      ...snapshot,
-      labels: SERVICE_LABELS,
-      benchmark,
-      history,
-      baselines: getP95Baselines(),
-      observability: getGeoMetricsSnapshot(),
-    })
-  } catch (_e) {
-    return handleError(_e)
-  }
-}
+  return NextResponse.json({
+    ...snapshot,
+    labels: SERVICE_LABELS,
+    benchmark,
+    history,
+    baselines: getP95Baselines(),
+    observability: getGeoMetricsSnapshot(),
+  })
+})

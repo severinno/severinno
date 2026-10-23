@@ -56,6 +56,7 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import {
   apiGet,
@@ -110,7 +111,7 @@ const quoteFormSchema = z.object({
         serviceId: z.string().min(1, "Selecione um serviço"),
         description: z.string().min(10, "Descreva com ao menos 10 caracteres").max(400),
         quantity: z.coerce.number().min(0.01, "Quantidade inválida"),
-        unit: z.enum(["UNIDADE", "METRO_LINEAR", "METRO_QUADRADO", "METRO_CUBICO"]),
+        unit: z.enum(SERVICE_UNITS),
         photos: z.array(z.string()).max(4).default([]),
       }),
     )
@@ -182,7 +183,8 @@ export function QuoteModal() {
     mode: "onTouched",
   })
 
-  const [step, setStep] = React.useState<Step>(1)
+  const initialStep: Step = providerIdPreset && serviceIdPreset ? 3 : 1
+  const [step, setStep] = React.useState<Step>(initialStep)
   const [submitting, setSubmitting] = React.useState(false)
 
   // Reset when modal opens
@@ -201,7 +203,7 @@ export function QuoteModal() {
   ) {
     setPrevOpen(open)
     setPrevPresets(`${providerIdPreset}|${serviceIdPreset}|${initialDescriptionPreset || ""}`)
-    setStep(1)
+    setStep(providerIdPreset && serviceIdPreset ? 3 : 1)
   }
 
   React.useEffect(() => {
@@ -417,11 +419,11 @@ export function QuoteModal() {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent
-        className="gap-0 overflow-hidden p-0 sm:max-w-2xl"
+        className="flex h-[660px] max-h-[88vh] w-[95vw] min-w-0 flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-3xl"
         onInteractOutside={(e) => e.preventDefault()}
       >
         {/* Nielsen #3: User control — prevent accidental close during wizard */}
-        <DialogHeader className="shrink-0 border-b px-5 pt-5 pb-2">
+        <DialogHeader className="shrink-0 border-b px-5 pt-4 pb-2.5 sm:px-6">
           <DialogTitle className="flex items-center gap-2 text-base">
             <Wrench className="size-4 text-emerald-600" />
             Pedir orçamento
@@ -472,11 +474,25 @@ function Step1Provider({ form }: { form: UseFormReturn<QuoteFormValues> }) {
 }
 
 function SelectedProviderCard({ providerId }: { providerId: string }) {
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["providers-options", ""],
     queryFn: () => apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 50 }),
     staleTime: 30 * 1000,
   })
+
+  if (isLoading) {
+    return (
+      <InfoCard variant="emerald">
+        <div className="flex items-center gap-3">
+          <Skeleton className="size-10 rounded-md" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-20" />
+          </div>
+        </div>
+      </InfoCard>
+    )
+  }
 
   const provider = data?.items?.find((p) => p.id === providerId)
   if (!provider) return null
@@ -527,6 +543,8 @@ function Step2Service({ form }: { form: UseFormReturn<QuoteFormValues> }) {
         description="Escolha o tipo de serviço desejado deste prestador."
       />
 
+      {item?.providerId && <SelectedProviderCard providerId={item.providerId} />}
+
       <ServiceSelect
         providerId={item?.providerId ?? ""}
         value={item?.serviceId ?? ""}
@@ -553,12 +571,26 @@ function Step2Service({ form }: { form: UseFormReturn<QuoteFormValues> }) {
 }
 
 function ServiceInfoCard({ providerId, serviceId }: { providerId: string; serviceId: string }) {
-  const { data: services } = useQuery({
+  const { data: services, isLoading } = useQuery({
     queryKey: ["services-by-provider", providerId],
     queryFn: () => apiGet<ProviderService[]>("/api/services", { providerId }),
     enabled: !!providerId,
     staleTime: 30 * 1000,
   })
+
+  if (isLoading) {
+    return (
+      <InfoCard variant="emerald">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-48" />
+          </div>
+          <Skeleton className="h-5 w-20 rounded-md" />
+        </div>
+      </InfoCard>
+    )
+  }
 
   const selected = services?.find((s) => s.id === serviceId)
   if (!selected) return null
@@ -577,7 +609,7 @@ function ServiceInfoCard({ providerId, serviceId }: { providerId: string; servic
           )}
         </div>
         <Badge variant="outline" className="shrink-0 border-emerald-500 text-xs text-emerald-700">
-          {selected.basePrice.toLocaleString("pt-BR", {
+          {Number(selected.basePrice).toLocaleString("pt-BR", {
             style: "currency",
             currency: "BRL",
           })}
@@ -606,6 +638,10 @@ function Step3Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
         title="Descreva o serviço"
         description="Quanto mais detalhes, mais preciso será o orçamento."
       />
+
+      {item?.providerId && item?.serviceId && (
+        <ServiceInfoCard providerId={item.providerId} serviceId={item.serviceId} />
+      )}
 
       {/* Description — Nielsen #5: error prevention with counter */}
       <div className="grid gap-1.5">
@@ -748,21 +784,21 @@ function Step5Review({
   const item = useWatch({ control: form.control, name: "items.0" })
   const address = useWatch({ control: form.control, name: "address" })
 
-  const { data: providerData } = useQuery({
+  const { data: providerData, isLoading: isLoadingProviders } = useQuery({
     queryKey: ["providers-options", ""],
     queryFn: () => apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 50 }),
     staleTime: 30 * 1000,
   })
 
-  const { data: services } = useQuery({
+  const { data: services, isLoading: isLoadingServices } = useQuery({
     queryKey: ["services-by-provider", item?.providerId],
     queryFn: () => apiGet<ProviderService[]>("/api/services", { providerId: item?.providerId }),
     enabled: !!item?.providerId,
     staleTime: 30 * 1000,
   })
 
-  const providerName = providerData?.items?.find((p) => p.id === item?.providerId)?.name ?? "—"
-  const serviceTitle = services?.find((s) => s.id === item?.serviceId)?.title ?? "—"
+  const providerName = providerData?.items?.find((p) => p.id === item?.providerId)?.name
+  const serviceTitle = services?.find((s) => s.id === item?.serviceId)?.title
 
   return (
     <div className="grid gap-4">
@@ -774,12 +810,20 @@ function Step5Review({
 
       {/* Provider section */}
       <ReviewSection label="Prestador" onEdit={() => goToStep(1)}>
-        <p className="text-sm font-medium">{providerName}</p>
+        {isLoadingProviders && !providerName ? (
+          <Skeleton className="my-0.5 h-4 w-32" />
+        ) : (
+          <p className="text-sm font-medium">{providerName ?? "—"}</p>
+        )}
       </ReviewSection>
 
       {/* Service section */}
       <ReviewSection label="Serviço" onEdit={() => goToStep(2)}>
-        <p className="text-sm font-medium">{serviceTitle}</p>
+        {isLoadingServices && !serviceTitle ? (
+          <Skeleton className="my-0.5 h-4 w-40" />
+        ) : (
+          <p className="text-sm font-medium">{serviceTitle ?? "—"}</p>
+        )}
         <Badge variant="secondary" className="mt-1">
           {item?.quantity ?? 0} {item?.unit ? SERVICE_UNIT_SHORT[item.unit] : "un"}
         </Badge>

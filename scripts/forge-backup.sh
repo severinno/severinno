@@ -74,13 +74,20 @@ docker exec "$CONTAINER" rm -f /tmp/forge-dump.zip >> "$MANIFEST" 2>&1
 diz "gitea dump: $(du -h "$SAIDA/forge-dump.zip" | cut -f1) em forge-dump.zip"
 
 # ── 2. GIT BUNDLES (um por repo, verificáveis) ───────────────────────────
-REPOS_DIR="${MP:+$MP/repositories}"
+REPOS_DIR="${MP:+$MP/git/repositories}"
 BUNDLES=0
 if [ -n "$REPOS_DIR" ] && [ -d "$REPOS_DIR" ]; then
   shopt -s nullglob
   for repo in "$REPOS_DIR"/*/*.git; do
     nome="$(basename "$repo" .git)"
     dono="$(basename "$(dirname "$repo")")"
+    if [ -z "$(git -C "$repo" for-each-ref)" ]; then
+      diz "bundle: $dono/$nome vazio (0 refs — estado declarado, pulado)"
+      continue
+    fi
+    # bare repos são do usuário do container (uid 1000): sem isto, o git do host
+    # recusa com "dubious ownership" e o backup perde os bundles
+    git config --global safe.directory "*" >/dev/null 2>&1 || true
     alvo="$SAIDA/git-${dono}-${nome}.bundle"
     if git -C "$repo" bundle create "$alvo" --all >> "$MANIFEST" 2>&1 \
        && git -C "$repo" bundle verify "$alvo" >> "$MANIFEST" 2>&1; then

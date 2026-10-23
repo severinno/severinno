@@ -121,7 +121,7 @@ describe("GET /api/admin/geo-metrics", () => {
   it("returns 401 when not authenticated", async () => {
     vi.mocked(requireRole).mockRejectedValue(new AuthError("UNAUTHORIZED"))
 
-    const res = await GET(mockRequest())
+    const res = await GET(mockRequest(), { params: Promise.resolve({}) })
 
     expect(res.status).toBe(401)
   })
@@ -129,7 +129,7 @@ describe("GET /api/admin/geo-metrics", () => {
   it("returns 200 with correct shape when admin", async () => {
     vi.mocked(requireRole).mockResolvedValue({ userId: "admin-1", role: "ADMIN" } as any)
 
-    const res = await GET(mockRequest())
+    const res = await GET(mockRequest(), { params: Promise.resolve({}) })
     const json = await res.json()
 
     expect(res.status).toBe(200)
@@ -147,7 +147,7 @@ describe("GET /api/admin/geo-metrics", () => {
   it("includes observability snapshot data", async () => {
     vi.mocked(requireRole).mockResolvedValue({ userId: "admin-1", role: "ADMIN" } as any)
 
-    const res = await GET(mockRequest())
+    const res = await GET(mockRequest(), { params: Promise.resolve({}) })
     const json = await res.json()
 
     expect(json.observability).toBeDefined()
@@ -169,7 +169,7 @@ describe("GET /api/admin/geo-metrics", () => {
   it("includes snapshot count", async () => {
     vi.mocked(requireRole).mockResolvedValue({ userId: "admin-1", role: "ADMIN" } as any)
 
-    const res = await GET(mockRequest())
+    const res = await GET(mockRequest(), { params: Promise.resolve({}) })
     const json = await res.json()
 
     expect(json.services).toBeDefined()
@@ -181,7 +181,7 @@ describe("GET /api/admin/geo-metrics", () => {
   it("returns 401 when requireRole throws non-Error", async () => {
     vi.mocked(requireRole).mockRejectedValue(new Error("UNAUTHORIZED"))
 
-    const res = await GET(mockRequest())
+    const res = await GET(mockRequest(), { params: Promise.resolve({}) })
 
     expect(res.status).toBe(401)
   })
@@ -189,7 +189,7 @@ describe("GET /api/admin/geo-metrics", () => {
   it("returns 200 with correct observability uptime", async () => {
     vi.mocked(requireRole).mockResolvedValue({ userId: "admin-1", role: "ADMIN" } as any)
 
-    const res = await GET(mockRequest())
+    const res = await GET(mockRequest(), { params: Promise.resolve({}) })
     const json = await res.json()
 
     expect(json.observability.uptime).toBe(12345.6)

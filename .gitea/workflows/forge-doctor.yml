@@ -117,12 +117,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Mesmo contrato da ci.yml: script + cache, sem composite local.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Mesmo contrato da ci.yml: script por `run:` (sem composite local).
+      # Sem `actions/cache` nesta forja — ver ci.yml.
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
@@ -135,6 +131,18 @@ jobs:
       # ninguém lê. É o MESMO comando da ci.yml: o doctor mede o que o job mede.
       - name: Install dependencies (frozen)
         run: bun install --frozen-lockfile
+
+      # O .env.gitea do HOST é gitignored — sem ele o `check-env-mirror` da
+      # bateria do doctor sai BLOQUEADA por medição faltante (medido no task
+      # 306). A CÓPIA CANÔNICA do host da forja é materializada no caminho que
+      # a descoberta procura: o container lê a fonte por bind de CAMINHO do
+      # HOST (o daemon resolve; volumes do runner não atravessam o -v) e o
+      # arquivo nasce no workspace pelo stdout do `cat`.
+      - name: Materializar o env do HOST da forja (cópia canônica)
+        run: |
+          set -e
+          docker run --rm -v /opt/gitea/env-mirror/.env.gitea:/src:ro alpine cat /src > deploy/.env.gitea
+          test -s deploy/.env.gitea && echo "env do host materializado ($(wc -c < deploy/.env.gitea) bytes)"
 
       # ── O veredito (relatório JSON gravado, exit code guardado) ───────────
       # `bun <script>` direto (não `bun run doctor`): a entry do package.json
@@ -159,9 +167,9 @@ jobs:
       - name: Run doctor (report only)
         id: doctor
         env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-          GITEA_URL: ${{ secrets.GITEA_URL }}
-          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+          GITEA_TOKEN: ${{ secrets.FORJA_TOKEN || secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ github.server_url }}
+          GITEA_REPOSITORY: ${{ github.repository }}
           # O board do GitHub (a seção 6/7 lê as duas forjas). Ausentes, o doctor
           # DIZ que não conseguiu ler (e o veredito vira INDETERMINADA) — o que
           # ele nunca faz é tratar o board não lido como board vazio.
@@ -246,9 +254,9 @@ jobs:
       - name: Publish doctor verdict issue (Gitea)
         if: always() && steps.doctor.outputs.report == '1'
         env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-          GITEA_URL: ${{ secrets.GITEA_URL }}
-          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+          GITEA_TOKEN: ${{ secrets.FORJA_TOKEN || secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ github.server_url }}
+          GITEA_REPOSITORY: ${{ github.repository }}
         run: |
           bun scripts/forge-doctor-issue.mjs \
             --report /tmp/forge-doctor.json \

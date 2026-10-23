@@ -27,34 +27,70 @@ WORKDIR /app
 # ── Deps: install dependencies with Bun ──────────────────────────────────────
 FROM base AS deps
 COPY package.json bun.lock ./
+# o postinstall (sync-maplibre-worker) precisa do script no container
+COPY scripts ./scripts
 RUN bun install --frozen-lockfile
 
 # ── Builder: generate Prisma client + build Next.js standalone ───────────────
-FROM base AS builder
+# glibc (bookworm-slim), NÃO alpine/musl: em node:22-alpine o worker postcss do
+# Turbopack tarpitou (6+ GB RSS, CPU 100% por 20+ min) — bindings nativos do
+# Tailwind v4 em musl. ATENÇÃO: o tarpit também foi reproduzido em
+# bookworm-slim (3x local, 1x VPS) — `next build` dentro de buildkit segue
+# instável nesta stack; as imagens de produção vêm do pipeline host-artifacts
+# (build no host, montagem da imagem sobre .next/standalone). Este Dockerfile
+# permanece como fonte canônica das camadas de runtime.
+FROM node:22-bookworm-slim AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# Fechamento do migrate (dotenv + @prisma/config + transitivas) para o runner:
+# gerado AQUI, DEPOIS do `COPY . .` — é ele quem traz o script no builder
+# (ver o COPY do runner abaixo)
+RUN node scripts/stage-migrate-closure.mjs node_modules migrate-closure
 
 # Prisma needs DATABASE_URL at generate time (only needs schema, not a real DB)
 ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
 # Generate Prisma Client (needed by Next.js at build time)
-RUN bun run db:generate
+RUN npx prisma generate
 
 # Build Next.js with standalone output
 # BUILD_STANDALONE=true triggers output: "standalone" in next.config.ts
 # SKIP_TYPESCRIPT_CHECK: skip tsc in Docker build (CI runs tsc separately)
 # DOCKER_BUILD: tells next.config.ts to ignore build-time TS errors
+#
+# CAP DE HEAP MEDIDO (não é chuto): sem cap, o `next build` dentro do buildkit
+# da forja alcançou 15.2GB anon-rss (total-vm 58GB) num host de 15GiB e levou
+# o OOM GLOBAL do kernel junto (09/10/2026, 04:47, CONSTRAINT_NONE — não era
+# limite de cgroup nenhum: o build rodava SEM limite, então o kernel podia
+# escolher a stack de produção em vez dele). Com o cap, medido no host de
+# prova (mesmo env do builder): exit 0, pico de ~4.1GB na árvore de processos.
+# O cap faz o build estourar DENTRO do node (erro de heap nomeado) antes de
+# derrubar o host — e o MALLOC_ARENA_MAX corta a fragmentação do glibc que
+# infla o RSS com muitas threads.
+ENV NODE_OPTIONS="--max-old-space-size=8192" \
+    MALLOC_ARENA_MAX=2
 ENV BUILD_STANDALONE=true
 ENV SKIP_TYPESCRIPT_CHECK=true
 ENV DOCKER_BUILD=true
-RUN bun run build
+RUN npm run build
 
 # ── Runner: Node.js standalone server ────────────────────────────────────────
-FROM node:22-alpine AS runner
+# Mesma família glibc do builder: as engines do Prisma geradas em bookworm
+# (debian-openssl) não rodam em alpine/musl.
+FROM node:22-bookworm-slim AS runner
 ENV NODE_ENV=production
 
 RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+    adduser --system --uid 1001 --gid 1001 nextjs
+
+# openssl CLI: sem ele a detecção de runtime do Prisma falha nas imagens slim
+# e o client procura a engine errada (debian-openssl-1.1.x). /data é gravado
+# pelo app em runtime (geo-query-log).
+RUN apt-get update -qq && \
+    apt-get install -y -qq --no-install-recommends openssl && \
+    rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /data && chown nextjs:nodejs /data
 
 # Public assets (favicon, manifest, icons, etc.)
 COPY --from=builder /app/public ./public
@@ -68,6 +104,25 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Prisma engine binaries (needed at runtime for query engine)
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
+
+# Closure do MIGRATE (dotenv + @prisma/config + transitivas): o job migrate
+# roda `prisma migrate deploy` DENTRO desta imagem e o prisma.config.ts
+# importa `dotenv/config` e `@prisma/config` — resolvidos a partir de /app.
+# Sem esta closure, o CLI global não carrega o config (medido 08/10/2026:
+# "Cannot find module 'dotenv/config'"). O script caminha sobre os
+# `dependencies` declarados (nunca dev/peer/optional) pela regra de resolução
+# do node e copia SÓ a fechamento — não o node_modules inteiro.
+COPY --from=builder --chown=nextjs:nodejs /app/migrate-closure ./node_modules
+
+# Schema + migrations: o job migrate do pipeline roda `prisma migrate deploy`
+# DENTRO desta imagem (compose run app) — sem o diretório, o CLI não acha o
+# schema e o deploy do banco falha.
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+
+# CLI do Prisma global: versão resolvida dinamicamente a partir do package.json
+# para evitar drift entre o CLI global e o Prisma Client (@prisma/client) da aplicação.
+RUN PRISMA_VER=$(node -e "const pkg = require('./package.json'); const v = (pkg.dependencies?.prisma || pkg.devDependencies?.prisma || 'latest').replace(/^[^0-9]*/, ''); process.stdout.write(v);") && \
+    npm install -g "prisma@${PRISMA_VER}"
 
 USER nextjs
 EXPOSE 3000

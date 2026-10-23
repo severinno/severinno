@@ -27,13 +27,13 @@ import {
   Linkedin,
   Mail,
   Heart,
-  ArrowUp,
   Send,
   CheckCircle2,
   HelpCircle,
   Users,
   Briefcase,
   MessageCircle,
+  Smartphone,
   type LucideIcon,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -165,7 +165,7 @@ export default function Footer({ className }: { className?: string }) {
     >
       {/* ─── Newsletter bar ─── */}
       <div className="border-b border-slate-800 bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-700 dark:from-emerald-700 dark:via-emerald-800 dark:to-teal-800">
-        <div className="mx-auto flex max-w-7xl flex-col items-center gap-4 px-4 py-6 sm:flex-row sm:justify-between sm:px-6 lg:px-8">
+        <div className="mx-auto flex w-full max-w-[95%] flex-col items-center gap-4 px-4 py-6 sm:flex-row sm:justify-between sm:px-6 lg:px-8">
           <div className="text-center sm:text-left">
             <p className="text-sm font-semibold text-white">Receba novidades e dicas de serviços</p>
             <p className="mt-0.5 text-xs text-emerald-100">
@@ -214,17 +214,17 @@ export default function Footer({ className }: { className?: string }) {
         </div>
       </div>
 
-      {/* ─── Main footer content ─── 4-column grid */}
-      <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
+      {/* ─── Main footer content ─── 6-column grid on desktop */}
+      <div className="mx-auto w-full max-w-[95%] px-4 py-10 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
           {/* Column 1: Brand + Social */}
           <div className="space-y-4">
             <div className="flex items-center">
               <Image
-                src="/logo-dark.png"
+                src="/logo-severinno-white.png"
                 alt="Severinno"
-                width={140}
-                height={28}
+                width={1150}
+                height={204}
                 className="h-7 w-auto object-contain"
               />
             </div>
@@ -232,7 +232,7 @@ export default function Footer({ className }: { className?: string }) {
               Marketplace de serviços com geolocalização. Encontre prestadores verificados, próximos
               e bem avaliados.
             </p>
-            <ul className="flex items-center gap-2" aria-label="Redes sociais">
+            <ul className="flex flex-wrap items-center gap-2" aria-label="Redes sociais">
               <SocialIcon icon={Github} label="GitHub" href="https://github.com" />
               <SocialIcon icon={Twitter} label="Twitter" href="https://twitter.com" />
               <SocialIcon icon={Instagram} label="Instagram" href="https://instagram.com" />
@@ -283,7 +283,7 @@ export default function Footer({ className }: { className?: string }) {
             </nav>
           ))}
 
-          {/* Column 4: Contact — H10 */}
+          {/* Column 5: Contact — H10 */}
           <div className="space-y-3">
             <h3 className="flex items-center gap-2 text-xs font-semibold tracking-wider text-slate-500 uppercase">
               <Users className="size-4" />
@@ -301,7 +301,7 @@ export default function Footer({ className }: { className?: string }) {
               </li>
               <li className="flex items-center gap-2">
                 <MapPin className="size-3.5 shrink-0 text-slate-500" />
-                São Paulo, Brasil
+                Governador Valadares, MG — Brasil
               </li>
             </ul>
             <Button
@@ -316,6 +316,49 @@ export default function Footer({ className }: { className?: string }) {
               <MessageCircle className="size-3.5" />
               Fale conosco
             </Button>
+          </div>
+
+          {/* Column 6: App download — Chame o Severinno */}
+          <div className="space-y-3">
+            <h3 className="flex items-center gap-2 text-xs font-semibold tracking-wider text-slate-500 uppercase">
+              <Smartphone className="size-4" />
+              Chame o Severinno
+            </h3>
+            <p className="text-xs text-slate-400">
+              Disponível para Android e iOS. Baixe o app agora!
+            </p>
+            <div className="flex flex-col gap-2.5 pt-1">
+              <a
+                href="https://play.google.com"
+                target="_blank"
+                rel="noreferrer noopener"
+                aria-label="Disponível no Google Play"
+                className="inline-block rounded-lg transition-transform duration-200 hover:scale-105 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
+              >
+                <Image
+                  src="/images/google-play-badge.svg"
+                  alt="Disponível no Google Play"
+                  width={135}
+                  height={40}
+                  className="h-10 w-auto object-contain"
+                />
+              </a>
+              <a
+                href="https://www.apple.com/app-store/"
+                target="_blank"
+                rel="noreferrer noopener"
+                aria-label="Baixar na App Store"
+                className="inline-block rounded-lg transition-transform duration-200 hover:scale-105 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
+              >
+                <Image
+                  src="/images/app-store-badge.svg"
+                  alt="Baixar na App Store"
+                  width={135}
+                  height={40}
+                  className="h-10 w-auto object-contain"
+                />
+              </a>
+            </div>
           </div>
         </div>
 
@@ -348,9 +391,6 @@ export default function Footer({ className }: { className?: string }) {
           </p>
         </div>
       </div>
-
-      {/* ─── Back-to-top button ─── H3: user control */}
-      <BackToTopButton />
     </footer>
   )
 }
@@ -381,36 +421,5 @@ function SocialIcon({
         <Icon className="size-4" />
       </a>
     </li>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// BackToTopButton — H3: user control and freedom
-// ---------------------------------------------------------------------------
-
-function BackToTopButton() {
-  const [show, setShow] = React.useState(false)
-
-  React.useEffect(() => {
-    const onScroll = () => setShow(window.scrollY > 600)
-    window.addEventListener("scroll", onScroll, { passive: true })
-    return () => window.removeEventListener("scroll", onScroll)
-  }, [])
-
-  const handleClick = () => {
-    window.scrollTo({ top: 0, behavior: "smooth" })
-  }
-
-  if (!show) return null
-
-  return (
-    <button
-      type="button"
-      onClick={handleClick}
-      className="focus-visible:ring-ring fixed right-6 bottom-6 z-40 flex size-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-300 shadow-lg transition-all hover:border-emerald-500 hover:text-emerald-400 hover:shadow-xl focus-visible:ring-2 focus-visible:outline-none sm:right-8 sm:bottom-8 dark:border-slate-700 dark:bg-slate-950"
-      aria-label="Voltar ao topo"
-    >
-      <ArrowUp className="size-4" />
-    </button>
   )
 }

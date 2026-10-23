@@ -4,8 +4,10 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import logger from "@/lib/logger"
 import { sendMail, commissionReportHtml, type CommissionReportData } from "@/lib/mail"
-import { handleError } from "@/lib/api-server"
-import { FEE_RATE } from "@/lib/wallet"
+
+import { toMoneyNumber, feeOf, netOf, roundMoney } from "@/lib/money"
+
+import { withRoute } from "@/lib/api-route"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -63,7 +65,7 @@ async function getCommissionData(year: number, month: number): Promise<Commissio
   let completedCount = 0
 
   for (const b of bookings) {
-    grossRevenue += b.amount
+    grossRevenue += toMoneyNumber(b.amount)
     if (b.status === "COMPLETED") completedCount++
 
     // Per-provider
@@ -74,27 +76,33 @@ async function getCommissionData(year: number, month: number): Promise<Commissio
       commission: 0,
       netEarnings: 0,
     }
-    existing.grossRevenue += b.amount
+    existing.grossRevenue += toMoneyNumber(b.amount)
     providerMap.set(pid, existing)
   }
 
-  const platformCommission = Math.round(grossRevenue * FEE_RATE * 100) / 100
-  const providerEarnings = Math.round(grossRevenue * (1 - FEE_RATE) * 100) / 100
+  // Decimal puro: totais derivados do gross acumulado (por linha, embaixo);
+  // aqui no topo, fee/net do total vêm da MESMA base arredondada.
+  const grossTotalD = roundMoney(grossRevenue)
+  const platformCommission = feeOf(grossTotalD).toNumber()
+  const providerEarnings = netOf(grossTotalD).toNumber()
 
   const topProviders = Array.from(providerMap.entries())
-    .map(([id, p]) => ({
-      id,
-      name: p.name,
-      grossRevenue: Math.round(p.grossRevenue * 100) / 100,
-      commission: Math.round(p.grossRevenue * FEE_RATE * 100) / 100,
-      netEarnings: Math.round(p.grossRevenue * (1 - FEE_RATE) * 100) / 100,
-    }))
+    .map(([id, p]) => {
+      const grossD = roundMoney(p.grossRevenue)
+      return {
+        id,
+        name: p.name,
+        grossRevenue: grossD.toNumber(),
+        commission: feeOf(grossD).toNumber(),
+        netEarnings: netOf(grossD).toNumber(),
+      }
+    })
     .sort((a, b) => b.grossRevenue - a.grossRevenue)
 
   return {
     year,
     month: monthName(month),
-    grossRevenue: Math.round(grossRevenue * 100) / 100,
+    grossRevenue: grossTotalD.toNumber(),
     platformCommission,
     providerEarnings,
     bookingCount: bookings.length,
@@ -108,60 +116,56 @@ async function getCommissionData(year: number, month: number): Promise<Commissio
 // GET — triggered by cron scheduler
 // ---------------------------------------------------------------------------
 
-export async function GET(request: Request) {
-  try {
-    // ── Auth ─────────────────────────────────────────────────────────────
-    const auth = request.headers.get("authorization")
-    const cronSecret = process.env.CRON_SECRET
-    if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    // ── Determine previous month ─────────────────────────────────────────
-    const now = new Date()
-    const prevMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1
-    const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
-
-    // ── Fetch commission data ────────────────────────────────────────────
-    const data = await getCommissionData(prevYear, prevMonth)
-
-    if (data.bookingCount === 0) {
-      logger.info(
-        { year: prevYear, month: prevMonth },
-        "cron commissions-report: no data for period, skipping",
-      )
-      return NextResponse.json({ ok: true, sent: 0, reason: "no_data" })
-    }
-
-    // ── Find ADMIN users to notify ──────────────────────────────────────
-    const admins = await db.user.findMany({
-      where: { role: "ADMIN", active: true },
-      select: { id: true, name: true, email: true },
-    })
-
-    const adminEmails = admins.filter((a) => a.email).map((a) => a.email!)
-    if (adminEmails.length === 0) {
-      logger.info("cron commissions-report: no admin emails found")
-      return NextResponse.json({ ok: true, sent: 0, reason: "no_admins" })
-    }
-
-    // ── Send email to each admin ─────────────────────────────────────────
-    const html = commissionReportHtml(data)
-    const subject = `📊 Relatório de Comissões — ${data.month} de ${data.year} | Severinno`
-
-    let sent = 0
-    for (const email of adminEmails) {
-      await sendMail({ to: email, subject, html })
-      sent++
-    }
-
-    logger.info(
-      { sent, year: prevYear, month: prevMonth, grossRevenue: data.grossRevenue },
-      "cron commissions-report sent",
-    )
-
-    return NextResponse.json({ ok: true, sent })
-  } catch (e) {
-    return handleError(e)
+export const GET = withRoute("api.cron.commissions-report.GET", async (request) => {
+  // ── Auth ─────────────────────────────────────────────────────────────
+  const auth = request.headers.get("authorization")
+  const cronSecret = process.env.CRON_SECRET
+  if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
-}
+
+  // ── Determine previous month ─────────────────────────────────────────
+  const now = new Date()
+  const prevMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1
+  const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+
+  // ── Fetch commission data ────────────────────────────────────────────
+  const data = await getCommissionData(prevYear, prevMonth)
+
+  if (data.bookingCount === 0) {
+    logger.info(
+      { year: prevYear, month: prevMonth },
+      "cron commissions-report: no data for period, skipping",
+    )
+    return NextResponse.json({ ok: true, sent: 0, reason: "no_data" })
+  }
+
+  // ── Find ADMIN users to notify ──────────────────────────────────────
+  const admins = await db.user.findMany({
+    where: { role: "ADMIN", active: true },
+    select: { id: true, name: true, email: true },
+  })
+
+  const adminEmails = admins.filter((a) => a.email).map((a) => a.email!)
+  if (adminEmails.length === 0) {
+    logger.info("cron commissions-report: no admin emails found")
+    return NextResponse.json({ ok: true, sent: 0, reason: "no_admins" })
+  }
+
+  // ── Send email to each admin ─────────────────────────────────────────
+  const html = commissionReportHtml(data)
+  const subject = `📊 Relatório de Comissões — ${data.month} de ${data.year} | Severinno`
+
+  let sent = 0
+  for (const email of adminEmails) {
+    await sendMail({ to: email, subject, html })
+    sent++
+  }
+
+  logger.info(
+    { sent, year: prevYear, month: prevMonth, grossRevenue: data.grossRevenue },
+    "cron commissions-report sent",
+  )
+
+  return NextResponse.json({ ok: true, sent })
+})

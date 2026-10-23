@@ -58,4 +58,16 @@ describe("Dialog", () => {
     const content = document.querySelector("[data-slot='dialog-content']")
     expect(content?.className).toContain("custom-dialog")
   })
+
+  it("applies overlayClassName to overlay", () => {
+    render(
+      <Dialog open>
+        <DialogContent overlayClassName="custom-overlay">
+          <DialogTitle>X</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    )
+    const overlay = document.querySelector("[data-slot='dialog-overlay']")
+    expect(overlay?.className).toContain("custom-overlay")
+  })
 })

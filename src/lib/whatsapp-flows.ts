@@ -12,6 +12,7 @@
 
 import { db } from "@/lib/db"
 import { sendText, sendButtons, formatPhone, isValidWhatsApp } from "./evolution"
+import { enqueueWhatsApp } from "./whatsapp-queue"
 import { getClient } from "@/lib/redis"
 import { getTimezoneFromCoords } from "@/lib/geo-timezone"
 import logger from "@/lib/logger"
@@ -62,6 +63,7 @@ export async function runBookingReminders(): Promise<{ sent: number; errors: num
         provider: { select: { id: true, name: true, whatsapp: true } },
         service: { select: { title: true } },
       },
+      take: 100,
     })
 
     for (const booking of upcomingBookings) {
@@ -141,6 +143,7 @@ export async function runQuoteFollowups(): Promise<{ sent: number; errors: numbe
           },
         },
       },
+      take: 100,
     })
 
     for (const quote of pendingQuotes) {
@@ -199,6 +202,7 @@ export async function runReviewRequests(): Promise<{ sent: number; errors: numbe
         provider: { select: { name: true } },
         service: { select: { title: true } },
       },
+      take: 100,
     })
 
     for (const booking of completedBookings) {
@@ -229,17 +233,108 @@ export async function runReviewRequests(): Promise<{ sent: number; errors: numbe
 }
 
 /**
+ * 4. Send Inactive Client Reactivation (clients with no booking in the last 30+ days)
+ *
+ * Envia uma mensagem cordial lembrando dos serviços disponíveis e garantia de pagamento.
+ * Sem cupom ou desconto Pix, com controle estrito de deduplicação (TTL 30 dias).
+ */
+export async function runInactiveClientsReactivation(
+  daysInactive = 30,
+  maxBatch = 50,
+): Promise<{ sent: number; errors: number; eligible: number }> {
+  let sent = 0
+  let errors = 0
+
+  const cutoffDate = new Date(Date.now() - daysInactive * 24 * 60 * 60 * 1000)
+
+  try {
+    const candidateClients = await db.user.findMany({
+      where: {
+        role: "CLIENT",
+        active: true,
+        whatsapp: { not: null },
+        OR: [
+          // Clientes que já tiveram agendamentos, mas nenhum nos últimos X dias
+          {
+            bookingsAsClient: {
+              some: {},
+              none: {
+                createdAt: { gte: cutoffDate },
+              },
+            },
+          },
+          // Clientes cadastrados há mais de X dias sem nenhum agendamento
+          {
+            createdAt: { lte: cutoffDate },
+            bookingsAsClient: {
+              none: {},
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        whatsapp: true,
+      },
+      take: maxBatch,
+    })
+
+    const eligible = candidateClients.length
+
+    for (const client of candidateClients) {
+      if (!client.whatsapp) continue
+      const dedupeKey = `client-reactivation:${client.id}`
+      if (await hasFlowExecuted(dedupeKey)) continue
+
+      const phone = formatPhone(client.whatsapp)
+      if (!isValidWhatsApp(phone)) continue
+
+      const messageText =
+        `👋 *Olá, ${client.name}! Sentimos sua falta no Severinno.*\n\n` +
+        `Faz algum tempo desde seu último serviço conosco. Precisando de alguma manutenção, conserto, reforma ou diarista para sua casa ou empresa?\n\n` +
+        `Nossos profissionais verificados continuam prontos para te atender com agilidade e total garantia de pagamento em custódia (Escrow)!\n\n` +
+        `👉 Acesse para conferir os profissionais disponíveis na sua região: https://severinno.com\n\n` +
+        `Ou responda esta mensagem para tirar dúvidas ou solicitar um orçamento rápido. 🛠️`
+
+      try {
+        await enqueueWhatsApp({
+          to: phone,
+          text: messageText,
+          userId: client.id,
+          context: "flow:client_reactivation",
+        })
+        await markFlowExecuted(dedupeKey)
+        sent++
+      } catch (err) {
+        log.warn({ err, clientId: client.id }, "Failed to enqueue reactivation WhatsApp")
+        errors++
+      }
+    }
+
+    return { sent, errors, eligible }
+  } catch (err) {
+    log.error({ err }, "Error running inactive clients reactivation flow")
+    return { sent, errors, eligible: 0 }
+  }
+}
+
+/**
  * Master runner triggered by cron.
  */
 export async function runAllWhatsAppFlows() {
   log.info("Starting automated WhatsApp lifecycle flows...")
-  const [reminders, followups, reviews] = await Promise.all([
+  const [reminders, followups, reviews, reactivation] = await Promise.all([
     runBookingReminders(),
     runQuoteFollowups(),
     runReviewRequests(),
+    runInactiveClientsReactivation(),
   ])
 
-  log.info({ reminders, followups, reviews }, "Automated WhatsApp lifecycle flows completed")
+  log.info(
+    { reminders, followups, reviews, reactivation },
+    "Automated WhatsApp lifecycle flows completed",
+  )
 
-  return { reminders, followups, reviews }
+  return { reminders, followups, reviews, reactivation }
 }

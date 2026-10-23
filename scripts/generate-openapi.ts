@@ -33,7 +33,7 @@ function extractRouteInfo(filePath: string): RouteInfo {
   const methods: HttpMethod[] = []
 
   for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"]) {
-    if (new RegExp(`export\\s+async\\s+function\\s+${method}\\b`).test(content)) {
+    if (new RegExp(`export\\s+(?:async\\s+function|const)\\s+${method}\\b`).test(content)) {
       methods.push(method.toLowerCase() as HttpMethod)
     }
   }

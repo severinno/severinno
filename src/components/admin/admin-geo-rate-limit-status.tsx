@@ -151,7 +151,7 @@ export function AdminGeoRateLimitStatus() {
   }))
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       <DashboardHeader
         title="Status do Rate Limiter Geo"
         description={`${totalTrackedIPs} IPs trackeados em ${Object.keys(endpoints).length} endpoints`}
@@ -202,7 +202,7 @@ export function AdminGeoRateLimitStatus() {
       </section>
 
       {/* ── Allow/Block Ratio + Tracked IPs by Endpoint ────────────── */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         {/* Allow/Block Hit Ratio donut */}
         <MetricCard icon={Shield} title="Allow / Block Ratio">
           <div className="flex items-center gap-6">
@@ -347,9 +347,9 @@ export function AdminGeoRateLimitStatus() {
       </div>
 
       {/* ── Per-Endpoint Tables ──────────────────────────────────────── */}
-      <section aria-label="IPs mais ativos" className="space-y-6">
+      <section aria-label="IPs mais ativos" className="space-y-3.5">
         <h3 className="text-lg font-semibold tracking-tight">🔝 IPs mais ativos</h3>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-3">
           {Object.entries(endpoints).map(([ep, ed]) => {
             const Icon = ENDPOINT_ICONS[ep] ?? Globe
             return (
@@ -447,7 +447,7 @@ export function AdminGeoRateLimitStatus() {
       </section>
 
       {/* ── Info note ───────────────────────────────────────────────── */}
-      <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 dark:border-blue-800/30 dark:bg-blue-950/20 dark:text-blue-300">
+      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-800/30 dark:bg-blue-950/20 dark:text-blue-300">
         <p className="font-medium">🔍 Diagnóstico em tempo real</p>
         <p className="mt-1">
           Dados lidos <strong>apenas do cache in-memory</strong> — sem queries Redis, sem latência.
@@ -535,7 +535,7 @@ function RateLimitResetButton({ onReset }: { onReset: () => void }) {
 
 function RateLimitSkeleton() {
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       <div className="flex items-center justify-between">
         <div className="space-y-2">
           <Skeleton className="h-6 w-64" />
@@ -552,7 +552,7 @@ function RateLimitSkeleton() {
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         {Array.from({ length: 2 }).map((_, i) => (
           <div key={i} className="bg-card rounded-xl border">
             <div className="border-b px-5 py-4">
@@ -564,7 +564,7 @@ function RateLimitSkeleton() {
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-3 gap-3.5">
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="bg-card rounded-xl border">
             <div className="border-b px-5 py-4">

@@ -1,38 +1,43 @@
 "use client"
 
 /**
- * ClientBookings — list of all bookings for the logged-in client.
+ * ClientBookings — Clean, minimalist in-panel booking management.
  *
- * Polish (Nielsen + trust/transparency):
- *  - Page header with quick action (Buscar prestadores).
- *  - Status filter tabs with counts (Pendentes, Confirmados, Em andamento,
- *    Concluídos, Cancelados, Todos).
- *  - Card list (mobile-first) with: provider avatar+name, service title,
- *    prominent scheduled date/time, amount, status badge, payment badge.
- *  - Row actions (dropdown menu): Ver detalhes (opens dialog with
- *    BookingTimeline preserved), Cancelar, Marcar como concluído, Avaliar
- *    (opens ReviewDialog), Enviar mensagem, Ver prestador.
- *  - Inline quick actions (Detalhes / Concluir / Avaliar / Cancelar) for
- *    discoverability on mobile.
- *  - Pagination (client-side, 8/page).
+ * Allows clients to view, manage, track, pay and inspect all their service
+ * bookings with full Escrow protection, without ever leaving the dashboard.
+ *
+ * Capabilities:
+ *  - Modern Hero Banner with platform guarantee and quick search
+ *  - Segmented status tabs with live counts (Todos, Pendentes, Confirmados, Em andamento, Concluídos, Cancelados)
+ *  - Quick in-list search by provider or service title
+ *  - Service Design optimized cards:
+ *    - Strict round avatars (rounded-full)
+ *    - Contextual Escrow transparency banners (custody held, released, refunded)
+ *    - Fixed empty parentheses bug on service unit
+ *    - Fixed bug showing "Pagar PIX" on cancelled bookings
+ *    - Smart action buttons: Avaliar, Recibo, Laudo/Fotos, Rastrear, Liberar Custódia, Contratar Novamente
+ *    - Zero external WhatsApp leaks: strictly platform-secured messaging
+ *  - Full modal integrations: PixCheckout, LiveTracking, ReceiptModal,
+ *    ServiceDeliveryReportModal, CarePlanModal, ReviewDialog, BookingDetailsDialog
  */
 
 import * as React from "react"
-import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/react-query"
+import { useMutation, useQueryClient, useQueries } from "@tanstack/react-query"
 import {
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  CreditCard,
-  Eye,
+  LayoutGrid,
+  LayoutList,
   Loader2,
   MapPin,
-  MessageSquare,
-  MoreHorizontal,
   Navigation,
   QrCode,
-  Star,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  X,
   XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -40,30 +45,21 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { apiGet, apiPatch } from "@/lib/api"
 import {
-  BOOKING_STATUS_LABELS,
-  PAYMENT_METHOD_LABELS,
-  PAYMENT_STATUS_LABELS,
-  SERVICE_UNIT_SHORT,
   type BookingStatus,
   type PaymentMethod,
   type PaymentStatus,
   type ServiceUnit,
 } from "@/lib/constants"
-import { formatBRL, formatDateTime } from "@/lib/format"
+import { formatBRL } from "@/lib/format"
+import { triggerHaptic } from "@/lib/haptics"
+import { playCoinSound } from "@/lib/sounds"
 import { useUIStore } from "@/store/ui"
 import { useViewStore } from "@/store/view"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
 import {
   Dialog,
   DialogContent,
@@ -72,34 +68,44 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { EmptyState } from "@/components/shared/dashboard-shell"
+import { EmptyState } from "@/components/shared/shell"
 import { ReviewDialog } from "@/components/client/review-dialog"
-import { BookingTimeline } from "@/components/shared/flow-timeline"
 import { PixCheckout } from "@/components/shared/pix-checkout"
 import { LiveTracking } from "@/components/shared/live-tracking"
-import {
-  PageHeader,
-  StatusBadge,
-  bookingIcon,
-  bookingTone,
-  paymentIcon,
-  paymentTone,
-} from "@/components/client/client-shared"
+import { ReceiptModal } from "@/components/shared/receipt-modal"
+import { ServiceDeliveryReportModal } from "@/components/shared/service-delivery-report-modal"
+import { ServiceCompletionCelebrationDialog } from "@/components/shared/service-completion-celebration-dialog"
+import { QuickMediationModal } from "@/components/shared/quick-mediation-modal"
+import { EscrowDisputeModal } from "@/components/shared/escrow-dispute-modal"
+import { CarePlanModal } from "@/components/shared/care-plan-modal"
+import { BookingDetailsDialog } from "@/components/client/booking-details-dialog"
+import { BookingGridCard } from "@/components/client/booking-grid-card"
+import { BookingCard, type BookingCardProps } from "@/components/client/booking-list-card"
+export { BookingCard, type BookingCardProps }
+import { PullToRefresh } from "@/components/shared/pull-to-refresh"
+import { SafeImage } from "@/components/shared/safe-image"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type Booking = {
+export type Booking = {
   id: string
   status: BookingStatus
   scheduledAt: string
   amount: number
+  quantity: number
+  unit: ServiceUnit
   paymentMethod: PaymentMethod
   paymentStatus: PaymentStatus
   address: string
   cep: string
+  lat?: number | null
+  lng?: number | null
   notes?: string | null
+  beforePhotos?: string[] | null
+  afterPhotos?: string[] | null
+  completionNote?: string | null
   service: {
     id: string
     title: string
@@ -132,13 +138,13 @@ type BookingsResponse = {
 // Filter tabs (order: pending first, then progressing, then terminal, then all)
 // ---------------------------------------------------------------------------
 
-const TABS: Array<{ key: string; label: string }> = [
-  { key: "PENDING", label: "Pendentes" },
-  { key: "CONFIRMED", label: "Confirmados" },
-  { key: "IN_PROGRESS", label: "Em andamento" },
-  { key: "COMPLETED", label: "Concluídos" },
-  { key: "CANCELLED", label: "Cancelados" },
-  { key: "ALL", label: "Todos" },
+const TABS: Array<{ key: string; label: string; icon: React.ElementType }> = [
+  { key: "ALL", label: "Todos", icon: LayoutGrid },
+  { key: "PENDING", label: "Pendentes", icon: CalendarDays },
+  { key: "CONFIRMED", label: "Confirmados", icon: CheckCircle2 },
+  { key: "IN_PROGRESS", label: "Em andamento", icon: Navigation },
+  { key: "COMPLETED", label: "Concluídos", icon: Sparkles },
+  { key: "CANCELLED", label: "Cancelados", icon: XCircle },
 ]
 
 const PAGE_SIZE = 8
@@ -147,8 +153,8 @@ const PAGE_SIZE = 8
 // Helpers
 // ---------------------------------------------------------------------------
 
-function providerInitials(name?: string | null): string {
-  if (!name) return "P"
+export function providerInitials(name?: string | null): string {
+  if (!name) return "PR"
   return name
     .split(" ")
     .map((p) => p[0])
@@ -166,19 +172,29 @@ export function ClientBookings() {
   const qc = useQueryClient()
   const navigate = useViewStore((s) => s.navigate)
   const openProvider = useUIStore((s) => s.openProvider)
+  const openBooking = useUIStore((s) => s.openBooking)
 
   const [tab, setTab] = React.useState("ALL")
+  const [viewMode, setViewMode] = React.useState<"list" | "grid">("list")
+  const [filterText, setFilterText] = React.useState("")
   const [page, setPage] = React.useState(1)
   const [detailsId, setDetailsId] = React.useState<string | null>(null)
   const [reviewBooking, setReviewBooking] = React.useState<Booking | null>(null)
   const [cancelBooking, setCancelBooking] = React.useState<Booking | null>(null)
   const [pixBooking, setPixBooking] = React.useState<Booking | null>(null)
   const [trackingBooking, setTrackingBooking] = React.useState<Booking | null>(null)
+  const [receiptBookingId, setReceiptBookingId] = React.useState<string | null>(null)
+  const [reportBooking, setReportBooking] = React.useState<Booking | null>(null)
+  const [carePlanBooking, setCarePlanBooking] = React.useState<Booking | null>(null)
+  const [escrowReleaseBooking, setEscrowReleaseBooking] = React.useState<Booking | null>(null)
+  const [celebrationBooking, setCelebrationBooking] = React.useState<Booking | null>(null)
+  const [mediationBooking, setMediationBooking] = React.useState<Booking | null>(null)
+  const [disputeBooking, setDisputeBooking] = React.useState<Booking | null>(null)
 
-  // Reset page when tab changes
+  // Reset page when tab or search filter changes
   React.useEffect(() => {
     setPage(1)
-  }, [tab])
+  }, [tab, filterText])
 
   // Fetch up to 4 pages of 50 (= 200 max) so we can compute accurate counts
   // per status and paginate client-side. Mirrors client-finance pattern.
@@ -221,13 +237,25 @@ export function ClientBookings() {
     return map
   }, [allBookings])
 
-  // Filtered + paginated list
+  // Filtered list by status and search text
   const visible = React.useMemo(() => {
-    const filtered = tab === "ALL" ? allBookings : allBookings.filter((b) => b.status === tab)
+    let filtered = tab === "ALL" ? allBookings : allBookings.filter((b) => b.status === tab)
+
+    if (filterText.trim()) {
+      const q = filterText.toLowerCase().trim()
+      filtered = filtered.filter(
+        (b) =>
+          b.provider.name.toLowerCase().includes(q) ||
+          b.service.title.toLowerCase().includes(q) ||
+          b.address.toLowerCase().includes(q),
+      )
+    }
+
     // Sort: upcoming first (asc by date) for active statuses, recent first
     // (desc) for terminal statuses.
     const isActive = (s: BookingStatus) =>
       s === "PENDING" || s === "CONFIRMED" || s === "IN_PROGRESS"
+
     return [...filtered].sort((a, b) => {
       const ta = new Date(a.scheduledAt).getTime()
       const tb = new Date(b.scheduledAt).getTime()
@@ -237,7 +265,7 @@ export function ClientBookings() {
       if (!aActive && !bActive) return tb - ta
       return aActive ? -1 : 1
     })
-  }, [allBookings, tab])
+  }, [allBookings, tab, filterText])
 
   const total = visible.length
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -246,6 +274,7 @@ export function ClientBookings() {
   const cancelMutation = useMutation({
     mutationFn: (id: string) => apiPatch(`/api/bookings/${id}`, { status: "CANCELLED" }),
     onSuccess: () => {
+      triggerHaptic("warning")
       toast.success("Agendamento cancelado.")
       qc.invalidateQueries({ queryKey: ["bookings"] })
       qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
@@ -258,10 +287,19 @@ export function ClientBookings() {
 
   const completeMutation = useMutation({
     mutationFn: (id: string) => apiPatch(`/api/bookings/${id}`, { status: "COMPLETED" }),
-    onSuccess: () => {
-      toast.success("Serviço marcado como concluído. Já pode avaliar!")
+    onSuccess: (_, id) => {
+      triggerHaptic("success")
+      playCoinSound({ vibrate: true })
+      toast.success("Pagamento liberado e serviço concluído com sucesso!")
       qc.invalidateQueries({ queryKey: ["bookings"] })
       qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+      qc.invalidateQueries({ queryKey: ["loyalty"] })
+
+      const target = allBookings.find((b) => b.id === id) || escrowReleaseBooking
+      setEscrowReleaseBooking(null)
+      if (target) {
+        setCelebrationBooking(target)
+      }
     },
     onError: (e: { message?: string }) => {
       toast.error(e?.message || "Não foi possível concluir o agendamento.")
@@ -270,121 +308,323 @@ export function ClientBookings() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Agendamentos"
-        subtitle="Acompanhe e gerencie seus serviços agendados."
-        action={
-          <Button variant="outline" onClick={() => navigate("vitrine")} className="h-10 gap-2">
-            <MapPin className="size-4" />
-            Buscar prestadores
-          </Button>
-        }
-      />
+      {/* Search & Hero Banner — Compact Bento Header */}
+      <div className="border-border/60 from-card via-card/95 to-primary/5 relative overflow-hidden rounded-2xl border bg-gradient-to-br p-4 shadow-xs sm:p-5">
+        <div className="bg-primary/10 pointer-events-none absolute -top-24 -right-24 size-80 rounded-full blur-3xl" />
 
-      {/* Status tabs with counts */}
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1 sm:w-auto">
-          {TABS.map((t) => {
-            const count = counts[t.key] ?? 0
-            const active = tab === t.key
-            return (
-              <TabsTrigger key={t.key} value={t.key} className="h-8 flex-shrink-0 gap-1.5">
-                {t.label}
-                <span
-                  className={cn(
-                    "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums",
-                    active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {count}
-                </span>
-              </TabsTrigger>
-            )
-          })}
-        </TabsList>
-      </Tabs>
+        <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <div className="bg-primary/10 text-primary inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold">
+              <Sparkles className="size-3" />
+              <span>Gestão de Serviços & Custódia Escrow</span>
+            </div>
+            <h1 className="text-foreground text-xl font-bold tracking-tight sm:text-2xl">
+              Agendamentos
+            </h1>
+            <p className="text-muted-foreground text-xs sm:text-sm">
+              Acompanhe e gerencie seus serviços agendados com proteção de pagamento Severinno.
+            </p>
+          </div>
 
-      {/* Result count */}
-      <p className="text-muted-foreground text-xs">
-        {isLoading
-          ? "Carregando…"
-          : total === 0
-            ? "Nenhum agendamento nesta categoria."
-            : `Mostrando ${pageItems.length} de ${total} agendamento${total !== 1 ? "s" : ""}.`}
-      </p>
-
-      {/* Content */}
-      {isLoading ? (
-        <div className="text-muted-foreground flex items-center justify-center gap-2 p-10 text-sm">
-          <Loader2 className="size-5 animate-spin" />
-          Carregando agendamentos…
-        </div>
-      ) : pageItems.length === 0 ? (
-        <EmptyState
-          icon={CalendarDays}
-          title={tab === "ALL" ? "Nenhum agendamento ainda" : "Nenhum agendamento com este status"}
-          description={
-            tab === "ALL"
-              ? "Você ainda não agendou nenhum serviço. Explore prestadores verificados e agende seu primeiro serviço."
-              : "Não há agendamentos com este status no momento. Tente outra categoria."
-          }
-          action={
-            <Button onClick={() => navigate("vitrine")} className="mt-2 gap-2">
-              <MapPin className="size-4" />
+          <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                triggerHaptic("selection")
+                navigate("client.providers")
+              }}
+              className="border-border/60 hover:bg-muted/60 h-9 gap-1.5 rounded-xl px-3.5 text-xs font-semibold shadow-xs transition-all active:scale-95"
+            >
+              <MapPin className="text-primary size-3.5" />
               Buscar prestadores
             </Button>
-          }
-        />
-      ) : (
-        <div className="grid gap-3">
-          {pageItems.map((b) => (
-            <BookingCard
-              key={b.id}
-              booking={b}
-              onViewDetails={() => setDetailsId(b.id)}
-              onCancel={() => setCancelBooking(b)}
-              onComplete={() => completeMutation.mutate(b.id)}
-              onReview={() => setReviewBooking(b)}
-              onMessage={() => navigate("client.messages", { with: b.provider.id })}
-              onViewProvider={() => openProvider(b.provider.id)}
-              onTrack={() => setTrackingBooking(b)}
-              onPay={
-                b.paymentMethod === "PIX" && b.paymentStatus === "PENDING"
-                  ? () => setPixBooking(b)
-                  : undefined
-              }
-              isCompleting={completeMutation.isPending}
-            />
-          ))}
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* Prominent Search & View Mode Toolbar */}
+      <div className="bg-card border-border/60 flex flex-wrap items-center gap-2.5 rounded-xl border p-2.5 shadow-2xs sm:p-3">
+        {/* Prominent Search Input */}
+        <div className="relative min-w-[200px] flex-1">
+          <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+          <Input
+            type="text"
+            placeholder="Filtrar por prestador ou serviço..."
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            className="border-border/50 bg-background/60 focus:bg-background h-9 pr-8 pl-9 text-xs"
+          />
+          {filterText ? (
+            <button
+              type="button"
+              onClick={() => setFilterText("")}
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-0.5"
+              title="Limpar filtro"
+              aria-label="Limpar filtro"
+            >
+              <X className="size-3.5" />
+            </button>
+          ) : null}
+        </div>
+
+        {/* View Mode Toggle: Lista / Grade */}
+        <div className="border-border/60 bg-muted/30 flex shrink-0 items-center gap-0.5 rounded-xl border p-0.5">
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic("selection")
+              setViewMode("list")
+            }}
+            aria-label="Visualização em lista"
+            title="Visualização em lista"
+            className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-lg text-xs transition-all active:scale-95",
+              viewMode === "list"
+                ? "bg-card text-foreground ring-border/40 font-semibold shadow-xs ring-1"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <LayoutList className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic("selection")
+              setViewMode("grid")
+            }}
+            aria-label="Visualização em grade"
+            title="Visualização em grade"
+            className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-lg text-xs transition-all active:scale-95",
+              viewMode === "grid"
+                ? "bg-card text-foreground ring-border/40 font-semibold shadow-xs ring-1"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <LayoutGrid className="size-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Status Segmented Rail */}
+      <div className="-mx-1 flex scrollbar-none gap-1.5 overflow-x-auto px-1 pb-1">
+        {TABS.map((t) => {
+          const count = counts[t.key] ?? 0
+          const active = tab === t.key
+          const Icon = t.icon
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => {
+                triggerHaptic("selection")
+                setTab(t.key)
+              }}
+              className={cn(
+                "flex h-8.5 shrink-0 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-all active:scale-95",
+                active
+                  ? "bg-primary text-primary-foreground ring-primary/20 font-semibold shadow-xs ring-2"
+                  : "border-border/60 bg-card hover:bg-muted/70 text-muted-foreground hover:text-foreground border",
+              )}
+            >
+              <Icon
+                className={cn(
+                  "size-3.5",
+                  active ? "text-primary-foreground" : "text-muted-foreground",
+                )}
+              />
+              <span>{t.label}</span>
+              <span
+                className={cn(
+                  "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums",
+                  active
+                    ? "bg-primary-foreground/20 text-primary-foreground"
+                    : "bg-muted text-muted-foreground",
+                )}
+              >
+                {count}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Results Counter & Escrow Reassurance */}
+      <div className="text-muted-foreground flex flex-col justify-between gap-2 px-1 text-xs sm:flex-row sm:items-center">
+        <div>
+          {isLoading ? (
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="text-primary size-3.5 animate-spin" />
+              Carregando agendamentos...
+            </span>
+          ) : total === 0 ? (
+            <span>Nenhum agendamento encontrado nesta categoria.</span>
+          ) : (
+            <span>
+              Mostrando{" "}
+              <strong className="text-foreground font-semibold">{pageItems.length}</strong> de{" "}
+              <strong className="text-foreground font-semibold">{total}</strong>{" "}
+              {total === 1 ? "agendamento" : "agendamentos"}.
+            </span>
+          )}
+        </div>
+
+        <div className="hidden items-center gap-1.5 font-medium text-emerald-700 sm:flex dark:text-emerald-400">
+          <ShieldCheck className="size-3.5 text-emerald-600" />
+          <span>🛡️ Pagamento Seguro Escrow · Garantia 90D</span>
+        </div>
+      </div>
+
+      {/* Content */}
+      <PullToRefresh onRefresh={() => qc.invalidateQueries({ queryKey: ["bookings"] })}>
+        {isLoading ? (
+          <div className="grid gap-2.5">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Card key={i} className="border-border/60 rounded-xl p-4 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="bg-muted size-10 animate-pulse rounded-full" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="bg-muted h-3.5 w-40 rounded" />
+                    <div className="bg-muted h-2.5 w-28 rounded" />
+                  </div>
+                  <div className="bg-muted h-5 w-16 rounded" />
+                </div>
+              </Card>
+            ))}
+          </div>
+        ) : pageItems.length === 0 ? (
+          <EmptyState
+            icon={CalendarDays}
+            title={
+              tab === "ALL" ? "Nenhum agendamento ainda" : "Nenhum agendamento com este status"
+            }
+            description={
+              tab === "ALL"
+                ? "Você ainda não agendou nenhum serviço. Explore prestadores verificados e agende seu primeiro serviço com segurança."
+                : "Não há agendamentos com este status no momento. Tente outra categoria ou faça uma nova busca."
+            }
+            action={
+              <Button
+                onClick={() => {
+                  triggerHaptic("selection")
+                  navigate("client.providers")
+                }}
+                className="mt-2 gap-2 rounded-xl"
+              >
+                <MapPin className="size-4" />
+                Buscar prestadores
+              </Button>
+            }
+          />
+        ) : viewMode === "list" ? (
+          <div className="grid gap-2.5">
+            {pageItems.map((b) => (
+              <BookingCard
+                key={b.id}
+                booking={b}
+                onViewDetails={() => setDetailsId(b.id)}
+                onCancel={() => setCancelBooking(b)}
+                onComplete={() => setEscrowReleaseBooking(b)}
+                onReview={() => setReviewBooking(b)}
+                onMessage={() =>
+                  navigate("client.messages", {
+                    with: b.provider.id,
+                    peerId: b.provider.id,
+                    providerId: b.provider.id,
+                  })
+                }
+                onViewProvider={() => openProvider(b.provider.id)}
+                onRebook={() => openBooking({ providerId: b.provider.id, serviceId: b.service.id })}
+                onTrack={() => setTrackingBooking(b)}
+                onViewReceipt={() => setReceiptBookingId(b.id)}
+                onOpenReport={() => setReportBooking(b)}
+                onCarePlan={() => setCarePlanBooking(b)}
+                onMediate={() => setMediationBooking(b)}
+                onDispute={() => setDisputeBooking(b)}
+                onPay={
+                  (b.status === "PENDING" || b.status === "CONFIRMED") &&
+                  b.paymentMethod === "PIX" &&
+                  b.paymentStatus === "PENDING"
+                    ? () => setPixBooking(b)
+                    : undefined
+                }
+                isCompleting={completeMutation.isPending}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {pageItems.map((b) => (
+              <BookingGridCard
+                key={b.id}
+                booking={b}
+                onViewDetails={() => setDetailsId(b.id)}
+                onCancel={() => setCancelBooking(b)}
+                onComplete={() => setEscrowReleaseBooking(b)}
+                onReview={() => setReviewBooking(b)}
+                onMessage={() =>
+                  navigate("client.messages", {
+                    with: b.provider.id,
+                    peerId: b.provider.id,
+                    providerId: b.provider.id,
+                  })
+                }
+                onViewProvider={() => openProvider(b.provider.id)}
+                onRebook={() => openBooking({ providerId: b.provider.id, serviceId: b.service.id })}
+                onTrack={() => setTrackingBooking(b)}
+                onViewReceipt={() => setReceiptBookingId(b.id)}
+                onOpenReport={() => setReportBooking(b)}
+                onCarePlan={() => setCarePlanBooking(b)}
+                onMediate={() => setMediationBooking(b)}
+                onDispute={() => setDisputeBooking(b)}
+                onPay={
+                  (b.status === "PENDING" || b.status === "CONFIRMED") &&
+                  b.paymentMethod === "PIX" &&
+                  b.paymentStatus === "PENDING"
+                    ? () => setPixBooking(b)
+                    : undefined
+                }
+                isCompleting={completeMutation.isPending}
+              />
+            ))}
+          </div>
+        )}
+      </PullToRefresh>
 
       {/* Pagination */}
       {total > PAGE_SIZE ? (
-        <div className="flex flex-col items-center justify-between gap-2 border-t pt-3 sm:flex-row">
+        <div className="border-border/50 flex flex-col items-center justify-between gap-2 border-t pt-4 sm:flex-row">
           <p className="text-muted-foreground text-xs tabular-nums">
-            Página {page} de {totalPages} · {total} agendamentos
+            Página <strong className="text-foreground">{page}</strong> de{" "}
+            <strong className="text-foreground">{totalPages}</strong> · {total} agendamentos
           </p>
           <div className="flex items-center gap-1">
             <Button
               variant="outline"
               size="sm"
               disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="h-9 gap-1"
+              onClick={() => {
+                triggerHaptic("selection")
+                setPage((p) => Math.max(1, p - 1))
+              }}
+              className="h-9 gap-1 rounded-xl"
             >
               <ChevronLeft className="size-4" />
               Anterior
             </Button>
-            <span className="text-muted-foreground px-2 text-xs tabular-nums">
+            <span className="text-muted-foreground px-2 text-xs font-semibold tabular-nums">
               {page} / {totalPages}
             </span>
             <Button
               variant="outline"
               size="sm"
               disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-              className="h-9 gap-1"
+              onClick={() => {
+                triggerHaptic("selection")
+                setPage((p) => p + 1)
+              }}
+              className="h-9 gap-1 rounded-xl"
             >
               Próxima
               <ChevronRight className="size-4" />
@@ -408,23 +648,29 @@ export function ClientBookings() {
             <DialogDescription>
               Esta ação não pode ser desfeita.{" "}
               {cancelBooking?.paymentStatus === "PAID"
-                ? "Como o pagamento já foi confirmado, o valor será estornado."
+                ? "Como o pagamento já foi confirmado, o valor será estornado integralmente para sua conta."
                 : ""}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button
               variant="outline"
-              onClick={() => setCancelBooking(null)}
+              onClick={() => {
+                triggerHaptic("selection")
+                setCancelBooking(null)
+              }}
               disabled={cancelMutation.isPending}
             >
               Manter agendamento
             </Button>
             <Button
               variant="destructive"
-              onClick={() => cancelBooking && cancelMutation.mutate(cancelBooking.id)}
+              onClick={() => {
+                triggerHaptic("warning")
+                if (cancelBooking) cancelMutation.mutate(cancelBooking.id)
+              }}
               disabled={cancelMutation.isPending}
-              className="gap-2"
+              className="gap-2 transition-all active:scale-95"
             >
               {cancelMutation.isPending ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -446,9 +692,12 @@ export function ClientBookings() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <QrCode className="size-5 text-emerald-600" />
-              Pagamento PIX
+              Pagamento PIX Seguro
             </DialogTitle>
-            <DialogDescription>Escaneie o QR code ou copie o código para pagar.</DialogDescription>
+            <DialogDescription>
+              Escaneie o QR code ou copie a chave Pix. Seu dinheiro fica protegido em custódia até a
+              conclusão.
+            </DialogDescription>
           </DialogHeader>
           {pixBooking && (
             <PixCheckout
@@ -479,336 +728,250 @@ export function ClientBookings() {
           {trackingBooking && (
             <LiveTracking
               bookingId={trackingBooking.id}
-              destinationLat={-19.92} // Will be overridden by SSE
-              destinationLng={-43.94}
+              destinationLat={trackingBooking.lat || -18.8548}
+              destinationLng={trackingBooking.lng || -41.9482}
               providerName={trackingBooking.provider.name}
             />
           )}
         </DialogContent>
       </Dialog>
-    </div>
-  )
-}
 
-// ---------------------------------------------------------------------------
-// BookingCard
-// ---------------------------------------------------------------------------
+      {/* Receipt Modal */}
+      {receiptBookingId && (
+        <ReceiptModal
+          bookingId={receiptBookingId}
+          open={!!receiptBookingId}
+          onOpenChange={(o) => !o && setReceiptBookingId(null)}
+        />
+      )}
 
-function BookingCard({
-  booking,
-  onViewDetails,
-  onCancel,
-  onComplete,
-  onReview,
-  onMessage,
-  onViewProvider,
-  onTrack,
-  onPay,
-  isCompleting,
-}: {
-  booking: Booking
-  onViewDetails: () => void
-  onCancel: () => void
-  onComplete: () => void
-  onReview: () => void
-  onMessage: () => void
-  onViewProvider: () => void
-  onTrack?: () => void
-  onPay?: () => void
-  isCompleting: boolean
-}) {
-  const provider = booking.provider
-  const initials = providerInitials(provider.name)
+      {/* Service Delivery Report / Inspection Modal */}
+      {reportBooking && (
+        <ServiceDeliveryReportModal
+          open={!!reportBooking}
+          onOpenChange={(o) => !o && setReportBooking(null)}
+          bookingId={reportBooking.id}
+          serviceTitle={reportBooking.service.title}
+          serviceCategory={reportBooking.service.category?.name}
+          clientName="Você"
+          providerName={reportBooking.provider.name}
+          userRole="CLIENT"
+          initialBeforePhotos={reportBooking.beforePhotos || []}
+          initialAfterPhotos={reportBooking.afterPhotos || []}
+          initialNotes={reportBooking.completionNote || ""}
+          isCompleted={reportBooking.status === "COMPLETED"}
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["bookings"] })
+            qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+          }}
+        />
+      )}
 
-  const status = booking.status as BookingStatus
-  const canCancel = status === "PENDING" || status === "CONFIRMED" || status === "IN_PROGRESS"
-  const canComplete = status === "CONFIRMED" || status === "IN_PROGRESS"
-  const canTrack = status === "IN_PROGRESS"
-  const canPay = !!onPay
-  const hasReview = (booking.reviews?.length ?? 0) > 0
-  const canReview = status === "COMPLETED" && !hasReview
+      {/* Care Plan (Recurring Residential Subscription) Modal */}
+      {carePlanBooking && (
+        <CarePlanModal
+          isOpen={!!carePlanBooking}
+          onClose={() => setCarePlanBooking(null)}
+          service={{
+            id: carePlanBooking.service.id,
+            title: carePlanBooking.service.title,
+            basePrice: carePlanBooking.amount,
+            providerId: carePlanBooking.provider.id,
+            providerName: carePlanBooking.provider.name,
+          }}
+          defaultAddress={carePlanBooking.address}
+          defaultCep={carePlanBooking.cep}
+          defaultLat={carePlanBooking.lat ?? undefined}
+          defaultLng={carePlanBooking.lng ?? undefined}
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["bookings"] })
+            qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+          }}
+        />
+      )}
 
-  return (
-    <Card className="overflow-hidden rounded-xl shadow-sm transition-shadow hover:shadow-md">
-      <CardContent className="grid gap-3 py-4">
-        <div className="flex items-start gap-3">
-          <button
-            type="button"
-            onClick={onViewProvider}
-            className="focus-visible:ring-ring shrink-0 rounded-full outline-none focus-visible:ring-2"
-            aria-label={`Ver perfil de ${provider.name}`}
-          >
-            <Avatar className="size-11 border">
-              {provider.avatarUrl ? (
-                <AvatarImage src={provider.avatarUrl} alt={provider.name} />
-              ) : null}
-              <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
-                {initials || "P"}
-              </AvatarFallback>
-            </Avatar>
-          </button>
-
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={onViewProvider}
-                className="hover:text-primary truncate text-sm font-semibold focus-visible:underline"
-              >
-                {provider.name}
-              </button>
-              <StatusBadge tone={bookingTone(status)} icon={bookingIcon(status)}>
-                {BOOKING_STATUS_LABELS[status]}
-              </StatusBadge>
-              {hasReview ? (
-                <StatusBadge tone="amber" icon={Star}>
-                  Avaliado
-                </StatusBadge>
-              ) : null}
-            </div>
-            <p className="text-muted-foreground mt-0.5 truncate text-sm">
-              {booking.service.title}
-              <span className="ml-1 text-xs">({SERVICE_UNIT_SHORT[booking.service.unit]})</span>
-            </p>
-            <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-              <span className="text-foreground/80 inline-flex items-center gap-1 font-medium tabular-nums">
-                <CalendarDays className="text-primary size-3.5" />
-                {formatDateTime(booking.scheduledAt)}
+      {/* Escrow Release Dialog (One-Click Custody Release with Before/After Photos) */}
+      <Dialog
+        open={!!escrowReleaseBooking}
+        onOpenChange={(o) => !o && setEscrowReleaseBooking(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <span className="flex size-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                <ShieldCheck className="size-5" />
               </span>
-              <span className="inline-flex items-center gap-1">
-                <MapPin className="size-3.5" />
-                <span className="max-w-[14rem] truncate">{booking.address}</span>
-              </span>
+              <DialogTitle className="text-base font-semibold">
+                Liberar Pagamento em Custódia
+              </DialogTitle>
             </div>
-          </div>
+            <DialogDescription className="text-xs">
+              Garantia Severinno: Confirme que o serviço foi entregue com qualidade para liberar o
+              pagamento da custódia.
+            </DialogDescription>
+          </DialogHeader>
 
-          <div className="flex shrink-0 flex-col items-end gap-1">
-            <span className="text-sm font-semibold tabular-nums">{formatBRL(booking.amount)}</span>
-            <StatusBadge
-              tone={paymentTone(booking.paymentStatus as PaymentStatus)}
-              icon={paymentIcon(booking.paymentStatus as PaymentStatus)}
-              className="text-[10px]"
-            >
-              {PAYMENT_METHOD_LABELS[booking.paymentMethod as PaymentMethod]} ·{" "}
-              {PAYMENT_STATUS_LABELS[booking.paymentStatus as PaymentStatus]}
-            </StatusBadge>
-          </div>
+          {escrowReleaseBooking && (
+            <div className="space-y-4 pt-1">
+              {/* Service & Provider Summary */}
+              <div className="border-border/60 bg-muted/20 flex items-center gap-3 rounded-2xl border p-3.5">
+                <Avatar className="border-border/40 size-12 rounded-full border shadow-xs">
+                  {escrowReleaseBooking.provider.avatarUrl ? (
+                    <AvatarImage
+                      src={escrowReleaseBooking.provider.avatarUrl}
+                      alt={escrowReleaseBooking.provider.name}
+                      className="rounded-full object-cover"
+                    />
+                  ) : null}
+                  <AvatarFallback className="bg-primary/10 text-primary rounded-full text-xs font-bold">
+                    {providerInitials(escrowReleaseBooking.provider.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="text-foreground truncate text-sm font-bold">
+                    {escrowReleaseBooking.provider.name}
+                  </p>
+                  <p className="text-muted-foreground truncate text-xs">
+                    {escrowReleaseBooking.service.title}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                    {formatBRL(escrowReleaseBooking.amount)}
+                  </span>
+                  <p className="text-muted-foreground text-[10px]">Em custódia</p>
+                </div>
+              </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-9 shrink-0" aria-label="Ações">
-                <MoreHorizontal className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onSelect={onViewDetails}>
-                <Eye className="size-4" />
-                Ver detalhes
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onViewProvider}>
-                <MapPin className="size-4" />
-                Ver prestador
-              </DropdownMenuItem>
-              {canTrack ? (
-                <DropdownMenuItem onSelect={onTrack}>
-                  <Navigation className="size-4 text-emerald-600" />
-                  Rastrear ao vivo
-                </DropdownMenuItem>
+              {/* Before/After Photos (if present) */}
+              {escrowReleaseBooking.beforePhotos?.length ||
+              escrowReleaseBooking.afterPhotos?.length ? (
+                <div className="border-border/60 bg-card space-y-2 rounded-2xl border p-3">
+                  <p className="text-foreground text-xs font-semibold">
+                    Fotos do Serviço Realizado
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {escrowReleaseBooking.beforePhotos?.[0] && (
+                      <div className="border-border/40 bg-muted/40 relative aspect-video overflow-hidden rounded-xl border">
+                        <SafeImage
+                          src={escrowReleaseBooking.beforePhotos[0]}
+                          alt="Foto antes"
+                          className="h-full w-full object-cover"
+                        />
+                        <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-medium text-white">
+                          Antes
+                        </span>
+                      </div>
+                    )}
+                    {escrowReleaseBooking.afterPhotos?.[0] && (
+                      <div className="border-border/40 bg-muted/40 relative aspect-video overflow-hidden rounded-xl border">
+                        <SafeImage
+                          src={escrowReleaseBooking.afterPhotos[0]}
+                          alt="Foto depois"
+                          className="h-full w-full object-cover"
+                        />
+                        <span className="absolute bottom-1 left-1 rounded bg-emerald-600/90 px-1.5 py-0.5 text-[9px] font-medium text-white">
+                          Depois
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               ) : null}
-              {canPay ? (
-                <DropdownMenuItem onSelect={onPay}>
-                  <QrCode className="size-4 text-emerald-600" />
-                  Pagar com PIX
-                </DropdownMenuItem>
-              ) : null}
-              <DropdownMenuItem onSelect={onMessage}>
-                <MessageSquare className="size-4" />
-                Enviar mensagem
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {canComplete ? (
-                <DropdownMenuItem onSelect={onComplete} disabled={isCompleting}>
-                  <CheckCircle2 className="size-4 text-emerald-600" />
-                  Marcar como concluído
-                </DropdownMenuItem>
-              ) : null}
-              {canReview ? (
-                <DropdownMenuItem onSelect={onReview}>
-                  <Star className="size-4 text-amber-500" />
-                  Avaliar serviço
-                </DropdownMenuItem>
-              ) : null}
-              {canCancel ? (
-                <DropdownMenuItem variant="destructive" onSelect={onCancel}>
-                  <XCircle className="size-4" />
-                  Cancelar agendamento
-                </DropdownMenuItem>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>{" "}
-        {/* Quick action buttons (visible on mobile too) */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={onViewDetails} className="h-9 gap-1.5">
-            <Eye className="size-4" />
-            Detalhes
-          </Button>
-          {canTrack ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onTrack}
-              className="h-9 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
-            >
-              <Navigation className="size-4" />
-              Rastrear
+
+              {/* Completion note if provided */}
+              {escrowReleaseBooking.completionNote && (
+                <div className="border-border/50 bg-muted/20 text-muted-foreground rounded-xl border p-2.5 text-xs">
+                  <strong className="text-foreground">Nota do prestador: </strong>
+                  {escrowReleaseBooking.completionNote}
+                </div>
+              )}
+
+              {/* Security reassurance banner */}
+              <div className="flex items-start gap-2.5 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 p-3.5 text-xs text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200">
+                <ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <span>
+                  Ao confirmar, os <strong>{formatBRL(escrowReleaseBooking.amount)}</strong>{" "}
+                  mantidos sob custódia protegida serão liberados na hora para o prestador.
+                </span>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 pt-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setEscrowReleaseBooking(null)} className="h-9">
+              Cancelar
             </Button>
-          ) : null}
-          {canPay ? (
             <Button
-              variant="outline"
-              size="sm"
-              onClick={onPay}
-              className="h-9 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+              onClick={() => {
+                if (escrowReleaseBooking) {
+                  triggerHaptic("selection")
+                  completeMutation.mutate(escrowReleaseBooking.id)
+                }
+              }}
+              disabled={completeMutation.isPending}
+              className="h-9 gap-1.5 bg-emerald-600 font-semibold text-white shadow-xs transition-all hover:bg-emerald-700 active:scale-95"
             >
-              <CreditCard className="size-4" />
-              Pagar PIX
-            </Button>
-          ) : null}
-          {canComplete ? (
-            <Button size="sm" onClick={onComplete} disabled={isCompleting} className="h-9 gap-1.5">
-              {isCompleting ? (
+              {completeMutation.isPending ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
                 <CheckCircle2 className="size-4" />
               )}
-              Concluir
+              Confirmar e Liberar Pagamento
             </Button>
-          ) : null}
-          {canReview ? (
-            <Button size="sm" onClick={onReview} className="h-9 gap-1.5">
-              <Star className="size-4" />
-              Avaliar
-            </Button>
-          ) : null}
-          {canCancel ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onCancel}
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive h-9 gap-1.5"
-            >
-              <XCircle className="size-4" />
-              Cancelar
-            </Button>
-          ) : null}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-// ---------------------------------------------------------------------------
-// BookingDetailsDialog — fetches a single booking and shows full info
-// ---------------------------------------------------------------------------
+      <ServiceCompletionCelebrationDialog
+        open={Boolean(celebrationBooking)}
+        onOpenChange={(open) => {
+          if (!open) {
+            const finished = celebrationBooking
+            setCelebrationBooking(null)
+            if (finished) {
+              setReviewBooking(finished)
+            }
+          }
+        }}
+        bookingTitle={celebrationBooking?.service?.title}
+        amount={celebrationBooking?.amount}
+        pointsAwarded={10}
+        geofenceVerified={true}
+        role="CLIENT"
+      />
 
-function BookingDetailsDialog({
-  bookingId,
-  onOpenChange,
-}: {
-  bookingId: string | null
-  onOpenChange: (open: boolean) => void
-}) {
-  const query = useQuery<{
-    booking: Booking & { notes?: string | null }
-  }>({
-    queryKey: ["booking", bookingId],
-    queryFn: () => apiGet(`/api/bookings/${bookingId}`),
-    enabled: !!bookingId,
-  })
+      {mediationBooking && (
+        <QuickMediationModal
+          open={Boolean(mediationBooking)}
+          onOpenChange={(open) => {
+            if (!open) setMediationBooking(null)
+          }}
+          bookingId={mediationBooking.id}
+          serviceTitle={mediationBooking.service.title}
+          peerName={mediationBooking.provider.name}
+          userRole="CLIENT"
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["bookings"] })
+          }}
+        />
+      )}
 
-  const b = query.data?.booking
-
-  return (
-    <Dialog open={!!bookingId} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Detalhes do agendamento</DialogTitle>
-          <DialogDescription>Informações completas sobre este serviço.</DialogDescription>
-        </DialogHeader>
-
-        {query.isLoading ? (
-          <div className="text-muted-foreground flex items-center justify-center gap-2 p-6 text-sm">
-            <Loader2 className="size-4 animate-spin" />
-            Carregando…
-          </div>
-        ) : !b ? (
-          <p className="text-muted-foreground text-sm">Agendamento não encontrado.</p>
-        ) : (
-          <div className="space-y-3 text-sm">
-            <Row label="Prestador" value={b.provider.name} />
-            <Row label="Serviço" value={b.service.title} />
-            <Row
-              label="Agendado para"
-              value={<span className="tabular-nums">{formatDateTime(b.scheduledAt)}</span>}
-            />
-            <Row label="Endereço" value={b.address} />
-            <Row label="CEP" value={<span className="tabular-nums">{b.cep}</span>} />
-            <Row
-              label="Status"
-              value={
-                <StatusBadge
-                  tone={bookingTone(b.status as BookingStatus)}
-                  icon={bookingIcon(b.status as BookingStatus)}
-                >
-                  {BOOKING_STATUS_LABELS[b.status as BookingStatus]}
-                </StatusBadge>
-              }
-            />
-            <Row
-              label="Pagamento"
-              value={
-                <span className="inline-flex flex-wrap items-center gap-1.5">
-                  <span>{PAYMENT_METHOD_LABELS[b.paymentMethod as PaymentMethod]}</span>
-                  <span className="text-muted-foreground">·</span>
-                  <StatusBadge
-                    tone={paymentTone(b.paymentStatus as PaymentStatus)}
-                    icon={paymentIcon(b.paymentStatus as PaymentStatus)}
-                    className="text-[10px]"
-                  >
-                    {PAYMENT_STATUS_LABELS[b.paymentStatus as PaymentStatus]}
-                  </StatusBadge>
-                </span>
-              }
-            />
-            <Row
-              label="Valor"
-              value={<span className="font-semibold tabular-nums">{formatBRL(b.amount)}</span>}
-            />
-            {b.notes ? <Row label="Observações" value={b.notes} /> : null}
-
-            {/* Flow transparency — "what happens now" timeline */}
-            <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50/50 p-4 dark:border-emerald-900 dark:bg-emerald-950/20">
-              <BookingTimeline status={b.status} />
-            </div>
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Fechar
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-3 gap-2 border-b pb-2 last:border-b-0 last:pb-0">
-      <span className="text-muted-foreground text-xs">{label}</span>
-      <span className="col-span-2 text-sm break-words">{value}</span>
+      {disputeBooking && (
+        <EscrowDisputeModal
+          open={Boolean(disputeBooking)}
+          onOpenChange={(open) => {
+            if (!open) setDisputeBooking(null)
+          }}
+          bookingId={disputeBooking.id}
+          serviceTitle={disputeBooking.service.title}
+          providerName={disputeBooking.provider.name}
+          amount={Number(disputeBooking.amount)}
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["bookings"] })
+          }}
+        />
+      )}
     </div>
   )
 }

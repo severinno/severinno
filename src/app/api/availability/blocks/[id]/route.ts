@@ -3,14 +3,15 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { forbidden, notFound, handleError } from "@/lib/api-server"
+import { forbidden, notFound } from "@/lib/api-server"
 import logger from "@/lib/logger"
 
-type Params = { params: Promise<{ id: string }> }
+import { withParams } from "@/lib/api-route"
 
 // DELETE: remove a date block by id (owner or admin only)
-export async function DELETE(_request: Request, { params }: Params) {
-  try {
+export const DELETE = withParams<{ id: string }>(
+  "api.availability.blocks.:id.DELETE",
+  async (_request, { params }) => {
     const session = await requireUser()
     if (session.role !== "PROVIDER" && session.role !== "ADMIN") {
       throw forbidden("Apenas prestadores e administradores podem remover bloqueios")
@@ -29,7 +30,5 @@ export async function DELETE(_request: Request, { params }: Params) {
     logger.info({ blockId: id, providerId: session.userId }, "date block deleted")
 
     return NextResponse.json({ ok: true })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

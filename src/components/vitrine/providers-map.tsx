@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
 import { formatDistance } from "@/lib/geo-client"
 import { syncRadiusCircle, removeRadiusCircle, type MapLike } from "@/lib/geo-circle"
+import { ensureMaplibreWorker } from "@/lib/maplibre-worker"
 import { Slider } from "@/components/ui/slider"
 import { fitProvidersBounds, syncUserLocationMarker, escapeHtml } from "@/components/map/helpers"
 import type { ProviderCard } from "@/lib/api"
@@ -44,7 +45,7 @@ const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
 
-const SP_DEFAULT: [number, number] = [-46.6333, -23.5505]
+const GV_DEFAULT: [number, number] = [-41.9469, -18.8517] // Governador Valadares - MG
 
 const CLUSTER_MAX_ZOOM = 14
 const CLUSTER_RADIUS = 50
@@ -132,6 +133,11 @@ export default function ProvidersMap({
       if (cancelled || !containerRef.current) return
       maplibreglRef.current = maplibregl
 
+      // Worker por URL ANTES da criação do mapa — o bundler quebra o worker
+      // blob do MapLibre (mapa em branco, zero tiles .pbf).
+      await ensureMaplibreWorker()
+      if (cancelled || !containerRef.current) return
+
       const map = new maplibregl.Map({
         container: containerRef.current,
         trackResize: true,
@@ -155,7 +161,10 @@ export default function ProvidersMap({
             },
           ],
         },
-        center: SP_DEFAULT,
+        center:
+          typeof userLatRef.current === "number" && typeof userLngRef.current === "number"
+            ? [userLngRef.current, userLatRef.current]
+            : GV_DEFAULT,
         zoom: 12,
         attributionControl: { compact: true },
       })

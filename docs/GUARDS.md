@@ -363,6 +363,22 @@ ilegível e o repo real: os treze usos no valor declarado e UM número trocado
 derrubando o guard com arquivo e linha) e
 `src/lib/__tests__/bun-version.test.ts` (a cadeia de resolução do resolvedor:
 env → espelhos, e o LANÇAR em vez de um default).
+
+**A blindagem da interpolação do include da base (invariante 20).** Os canais
+de produção (prod, hostinger) incluem a `docker-compose.base.yml` e declaram
+`env_file: [compose-include.env]` — um arquivo VAZIO de propósito. Sem a
+declaração, o Compose carregaria o `.env` do DIRETÓRIO da base por conta
+própria: uma var de dev vazaria para o render de produção quando o
+`--env-file` do comando não define a variável (a armadilha de interpolação
+documentada nos headers dos canais). O guard julga os DOIS lados: a declaração
+no canal (ausente, em forma de string sem env_file possível, ou apontando para
+outro arquivo → violação; YAML inválido ou include que não referencia a base →
+fail-closed) e o próprio arquivo (qualquer atribuição `CHAVE=valor` nele →
+violação, alguém recriaria a fuga por outro caminho).
+`src/lib/__tests__/check-bun-mirror-include-env.test.ts` cobre as três formas
+de violação do canal, o arquivo vazio só com comentários, a atribuição
+infiltrada, o comentário com `=` dentro (não é atribuição) e o REPOSITÓRIO real
+(a regra tem sujeito: os dois canais declaram hoje).
 **Prova por mutação:** `scripts/test-mutation-bun-literal.sh` — cinco fases: (A)
 o literal de workflow, (B) o CONTROLE do guard limpo, (C) `M3`: um script do
 fixture com literal é reprovado, e a MESMA cópia do guard SEM a chamada da
@@ -1146,7 +1162,7 @@ remédio é a linha inteira com o número de agora — que sai na própria mensa
 **A mesma posição escrita POR EXTENSO entra na MESMA régua** — `a quadragésima
 entrada da matriz` é a 40.ª, e o número é conferido contra a ordem do `SUBTESTS`
 como qualquer outro: hoje a `stack-per-commit` é a quadragésima entrada da matriz,
-e a `mutacao-prova` a quadragésima sétima entrada da matriz. Escrever a posição em
+e a `mutacao-prova` a quadragésima oitava entrada da matriz. Escrever a posição em
 palavras não a torna estável — o dia em que uma entrada nascer ANTES delas a prosa
 fica vermelha do mesmo jeito —, e uma grafia que o guard não lesse seria
 exatamente o lugar por onde o número errado passaria. A janela do extenso são as
@@ -1384,7 +1400,7 @@ por ele (a **M5**) ou a mesma troca passaria sem justificativa nenhuma (a **M6**
 e é isso que as duas metades tiram do lugar, exigindo o ACEITE onde havia recusa.
 
 A biblioteca é mutada PELA PRÓPRIA régua (com a prova de que a escrita entrou) e
-restaurada por checksum entre as metades. **28 suítes** provam a aplicação pela
+restaurada por checksum entre as metades. **30 suítes** provam a aplicação pela
 régua única, e a lista viva delas é o bloco `PROVA_DE_APLICACAO` do master. As
 três últimas foram as **PENDENTE** do eixo da árvore: `reconciliation`
 (`issue-publish.mjs`), `nested-guard` (`forge-doctor.mjs`) e `hook-ci-parity` (os
@@ -1440,7 +1456,7 @@ uma linha cada): a troca passou a carregar o marcador `MUTACAO` no payload — q
 literal de três linhas do `env-mirror D` é o que dá o sítio único que o alvo
 repetido não dava). **Quatro ficaram DECLARADAS** no bloco
 `CIRURGIA_NA_ARVORE` do master, uma linha por (suíte, alvo, tipo): três são a
-prosa CONTADA (`127 checks` → `N checks`), cujo payload é o PRÓPRIO dado que a
+prosa CONTADA (`332 checks` → `N checks`), cujo payload é o PRÓPRIO dado que a
 mutação mede, e uma é a troca POSICIONAL (`0,/^[[:space:]]*expect(/s//`), cujo
 alvo é a primeira asserção real do source — nenhuma delas cabe numa régua que
 exige um alvo LITERAL e cirúrgico. A lista é conferida **nos DOIS sentidos**: uma
@@ -4098,66 +4114,68 @@ mesmo fato que a régua da idade lê no doctor):
 
 <!-- bench:mutations:tabela — DERIVADA do registro (`mutations` da baseline); não edite à mão: o ato a reescreve -->
 
-Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 29/09/2026, medido sobre `13eedba1` (a âncora é o commit que CARREGA este registro, resolvida pela história): **45/47 verdes**, **287 metades**. **2 sub-test(s) NÃO passaram** (`nested-guard`, `pre-commit-proof`): o custo deles não julga nada. ↺ 2 sub-test(s) RE-MEDIDO(s) (2 tentativas; o ms deles é a SOMA das duas, não um guard mais lento): `nested-guard`, `pre-commit-proof`.
+Cada sub-test do master, MEDIDO e VERSIONADO — o ato de 22/10/2026, medido sobre `2ad99c83` (a âncora é o commit que CARREGA este registro, resolvida pela história): **48/49 verdes**, **293 metades**. **1 sub-test(s) NÃO passaram** (`bench-freshness`): o custo deles não julga nada. ↺ 1 sub-test(s) RE-MEDIDO(s) (2 tentativas; o ms deles é a SOMA das duas, não um guard mais lento): `bench-freshness`.
 
 | sub-test                                                                  |  wall time | fatia | metades |           régua |
 | ------------------------------------------------------------------------- | ---------: | ----: | ------: | --------------: |
-| `job-deps`                                                                |     214.8s |   27% |      12 |           prova |
-| `workflow-run-syntax`                                                     |      83.9s |   11% |      15 |           prova |
-| `hook-commands`                                                           |      69.6s |    9% |      27 |           prova |
-| `local-image`                                                             |      50.4s |    6% |       4 |           prova |
-| `bench-freshness` (a régua da idade e o CONTEÚDO da origem)               |      48.3s |    6% |      12 |           prova |
-| `remedy-tty`                                                              |      38.4s |    5% |       2 |           prova |
-| `artefatos-do-hook`                                                       |      33.5s |    4% |       4 |           prova |
-| `pre-commit-proof` (a declaração dos recusadores, a descida e o CONTROLE) |    32.5s ↺ |    4% |       3 |           prova |
-| `registry-defaults`                                                       |      29.2s |    4% |       9 | prova·declarado |
-| `required-applied`                                                        |      23.8s |    3% |      10 |           prova |
-| `cut-stages` (as três invariantes duras do corte do GitHub)               |      19.0s |    2% |       3 |           prova |
-| `mutation-count`                                                          |      15.1s |    2% |      19 |           prova |
-| `github-deps` (a catraca do inventário do GitHub)                         |      13.9s |    2% |       9 |           prova |
-| `nested-guard`                                                            |    13.7s ↺ |    2% |       2 |           prova |
-| `mirror-coverage` (o CONTROLE, a soma por tabela e o pulo sem motivo)     |      12.1s |    2% |       3 |           prova |
-| `stack-per-commit` (a prova de cada commit da pilha passar sozinho)       |      11.7s |    1% |       8 |           prova |
-| `lint-scope` (o escopo do lint derivado do próprio comando)               |      11.4s |    1% |       6 |           prova |
-| `canal-fixers`                                                            |      10.0s |    1% |       6 |           prova |
-| `reconciliation`                                                          |       9.9s |    1% |       3 |           prova |
-| `gate-registration`                                                       |       8.3s |    1% |       5 |           prova |
-| `runner-labels`                                                           |       5.3s |    1% |       1 |           prova |
-| `merge-latency`                                                           |       4.7s |    1% |       5 |           prova |
-| `hook-ci-parity`                                                          |       4.0s |    1% |       9 | prova·declarado |
-| `runner-tag`                                                              |       3.3s |    0% |       1 |           prova |
-| `act-origin`                                                              |       2.4s |    0% |       9 |          isenta |
-| `pipefail-sigpipe`                                                        |       2.4s |    0% |      22 | prova·declarado |
-| `doc-hashes` (a régua do hash citado na prosa)                            |       2.2s |    0% |       9 |          isenta |
-| `bun-literal`                                                             |       2.1s |    0% |       5 |          isenta |
+| `pre-commit-proof` (a declaração dos recusadores, a descida e o CONTROLE) |     292.5s |   29% |       3 |           prova |
+| `job-deps`                                                                |     223.0s |   22% |      12 |           prova |
+| `workflow-run-syntax`                                                     |     100.4s |   10% |      15 |           prova |
+| `hook-commands`                                                           |      58.9s |    6% |      27 |           prova |
+| `local-image`                                                             |      39.4s |    4% |       4 |           prova |
+| `remedy-tty`                                                              |      37.0s |    4% |       2 |           prova |
+| `artefatos-do-hook`                                                       |      33.3s |    3% |       4 |           prova |
+| `registry-defaults`                                                       |      27.9s |    3% |       9 | prova·declarado |
+| `nested-guard`                                                            |      19.9s |    2% |       2 |           prova |
+| `required-applied`                                                        |      19.3s |    2% |      10 |           prova |
+| `cut-stages` (as três invariantes duras do corte do GitHub)               |      18.1s |    2% |       3 |           prova |
+| `github-deps` (a catraca do inventário do GitHub)                         |      13.9s |    1% |       9 |           prova |
+| `mutation-count`                                                          |      12.5s |    1% |      19 |           prova |
+| `lint-scope` (o escopo do lint derivado do próprio comando)               |      10.7s |    1% |       6 |           prova |
+| `mirror-coverage` (o CONTROLE, a soma por tabela e o pulo sem motivo)     |      10.4s |    1% |       3 |           prova |
+| `stack-per-commit` (a prova de cada commit da pilha passar sozinho)       |       8.8s |    1% |       8 |           prova |
+| `gate-registration`                                                       |       8.1s |    1% |       5 |           prova |
+| `canal-fixers`                                                            |       7.9s |    1% |       6 |           prova |
+| `reconciliation`                                                          |       7.1s |    1% |       3 |           prova |
+| `caddy-validate`                                                          |       5.9s |    1% |       2 |           prova |
+| `unproven-skipped`                                                        |       4.6s |    0% |       4 |           prova |
+| `runner-labels`                                                           |       4.5s |    0% |       1 |           prova |
+| `merge-latency`                                                           |       4.3s |    0% |       5 |           prova |
+| `hook-ci-parity`                                                          |       3.6s |    0% |       9 | prova·declarado |
+| `runner-tag`                                                              |       2.8s |    0% |       1 |           prova |
+| `bench-freshness` (a régua da idade e o CONTEÚDO da origem)               |     2.4s ↺ |    0% |      12 |           prova |
+| `act-origin`                                                              |       2.3s |    0% |       9 |          isenta |
+| `pipefail-sigpipe`                                                        |       2.1s |    0% |      22 | prova·declarado |
+| `doc-hashes` (a régua do hash citado na prosa)                            |       2.1s |    0% |       9 |          isenta |
+| `bun-literal`                                                             |       1.8s |    0% |       5 |          isenta |
 | `workflow-defaults`                                                       |       1.1s |    0% |       7 |           prova |
-| `lint-guard`                                                              |       1.0s |    0% |       3 |          isenta |
-| `timing-budget`                                                           |       0.8s |    0% |       5 |          isenta |
-| `archived-pipeline`                                                       |       0.8s |    0% |       6 |           prova |
-| `readme-reverse`                                                          |       0.7s |    0% |       3 |          isenta |
-| `commit-import-exports`                                                   |       0.6s |    0% |       5 |          isenta |
-| `workflow-refs`                                                           |       0.6s |    0% |       4 |           prova |
-| `mutation-jobs`                                                           |       0.5s |    0% |       4 |          isenta |
-| `readme`                                                                  |       0.4s |    0% |       3 |          isenta |
+| `lint-guard`                                                              |       0.7s |    0% |       3 |          isenta |
+| `archived-pipeline`                                                       |       0.7s |    0% |       6 |           prova |
+| `timing-budget`                                                           |       0.7s |    0% |       5 |          isenta |
+| `readme-reverse`                                                          |       0.6s |    0% |       3 |          isenta |
+| `commit-import-exports`                                                   |       0.5s |    0% |       5 |          isenta |
+| `workflow-refs`                                                           |       0.5s |    0% |       4 |           prova |
 | `mutacao-prova`                                                           |       0.4s |    0% |       6 |        gabarito |
-| `no-setup-bun`                                                            |       0.2s |    0% |       2 |          isenta |
+| `mutation-jobs`                                                           |       0.4s |    0% |       4 |          isenta |
+| `readme`                                                                  |       0.4s |    0% |       3 |          isenta |
 | `runner-base`                                                             |       0.2s |    0% |       4 |          isenta |
+| `no-setup-bun`                                                            |       0.2s |    0% |       2 |          isenta |
 | `no-leaked-imports`                                                       |       0.1s |    0% |       3 |          isenta |
-| `utf8-scope`                                                              |       0.1s |    0% |       2 |          isenta |
-| `producer-sent`                                                           |       0.1s |    0% |       1 |          isenta |
 | `bun-removal`                                                             |       0.1s |    0% |       1 |          isenta |
+| `producer-sent`                                                           |       0.1s |    0% |       1 |          isenta |
+| `utf8-scope`                                                              |       0.1s |    0% |       2 |          isenta |
 | `hooks-symmetry`                                                          |       0.1s |    0% |       2 |          isenta |
 | `docs-anchor`                                                             |       0.1s |    0% |       1 |          isenta |
 | `e2e-cache-budget`                                                        |       0.0s |    0% |       2 |          isenta |
-| **soma dos 47 sub-tests**                                                 | **784.0s** |  100% | **287** |                 |
-| harness (parse das metades, tabelas, subida do master)                    |       5.9s |       |         |                 |
-| **total do master**                                                       | **789.9s** |       |         |                 |
+| **soma dos 49 sub-tests**                                                 | **992.3s** |  100% | **293** |                 |
+| harness (parse das metades, tabelas, subida do master)                    |       5.4s |       |         |                 |
+| **total do master**                                                       | **997.7s** |       |         |                 |
 
-**Dez** sub-tests pagam **80%** da conta e a mediana é **3.3s**: a cauda é barata, e o harness sai da DIFERENÇA entre o total e a soma dos sub-tests, não de uma constante. O sub-test NOVO entra na rodada seguinte **MEDIDO**, e o PRÓXIMO acrescenta **~16.8s** (PROJEÇÃO: a média dos scripts medidos mais o harness por sub-test). A marca **↺** na linha é sub-test RE-MEDIDO (a régua é a REPETIÇÃO: o ms é a soma das tentativas), **🌀** é FLAKE (não vale verde nem reprovação) e **🚧** é NÃO MEDIDO (INFRA: o instrumento não respondeu — a linha não é verde nem vermelha, e o veredito do master vai a 2). A coluna de metades é DERIVADA da matriz (§ acima) — o ato a reescreve depois da herança e diz o que fez (`metadesDaMatriz`). Esta TABELA (e esta leitura) é **DERIVADA do registro**: quem a reescreve é o ATO, e o `check:mutation-count` recusa o commit em que ela divirja dele — a prosa não tem número próprio.
+**Dez** sub-tests pagam **86%** da conta e a mediana é **2.8s**: a cauda é barata, e o harness sai da DIFERENÇA entre o total e a soma dos sub-tests, não de uma constante. O sub-test NOVO entra na rodada seguinte **MEDIDO**, e o PRÓXIMO acrescenta **~20.4s** (PROJEÇÃO: a média dos scripts medidos mais o harness por sub-test). A marca **↺** na linha é sub-test RE-MEDIDO (a régua é a REPETIÇÃO: o ms é a soma das tentativas), **🌀** é FLAKE (não vale verde nem reprovação) e **🚧** é NÃO MEDIDO (INFRA: o instrumento não respondeu — a linha não é verde nem vermelha, e o veredito do master vai a 2). A coluna de metades é DERIVADA da matriz (§ acima) — o ato a reescreve depois da herança e diz o que fez (`metadesDaMatriz`). Esta TABELA (e esta leitura) é **DERIVADA do registro**: quem a reescreve é o ATO, e o `check:mutation-count` recusa o commit em que ela divirja dele — a prosa não tem número próprio.
 
-**A RÉGUA ÚNICA, sub-test a sub-test: 28 PROVAM a aplicação, 18 mutam por conta própria e o GABARITO (`mutacao-prova`) mede a régua.**
+**A RÉGUA ÚNICA, sub-test a sub-test: 30 PROVAM a aplicação, 18 mutam por conta própria e o GABARITO (`mutacao-prova`) mede a régua.**
 
-Os 28 que PROVAM chamam `mutacao_aplicar` (a cópia única, `scripts/mutacao-prova.sh`): a CIRURGIA (o alvo casa uma vez), o MARCADOR (o payload carrega `MUTACAO`) e o CONTEÚDO (o checksum mudou) vêm da MESMA régua — uma cópia privada que sumisse não deixaria rastro. 4 deles usam TAMBÉM o caminho DECLARADO (`mutacao_aplicar_sem_marcador`, para o payload que não comporta o marcador): `hook-ci-parity`, `mutacao-prova`, `pipefail-sigpipe`, `registry-defaults`. E o GABARITO é `mutacao-prova`: ele MUTA a régua para medir que as provas dela são load-bearing — não é isento nem conta como quem muta por conta própria. As três classes somam os 47 sub-tests da matriz.
+Os 30 que PROVAM chamam `mutacao_aplicar` (a cópia única, `scripts/mutacao-prova.sh`): a CIRURGIA (o alvo casa uma vez), o MARCADOR (o payload carrega `MUTACAO`) e o CONTEÚDO (o checksum mudou) vêm da MESMA régua — uma cópia privada que sumisse não deixaria rastro. 4 deles usam TAMBÉM o caminho DECLARADO (`mutacao_aplicar_sem_marcador`, para o payload que não comporta o marcador): `hook-ci-parity`, `mutacao-prova`, `pipefail-sigpipe`, `registry-defaults`. E o GABARITO é `mutacao-prova`: ele MUTA a régua para medir que as provas dela são load-bearing — não é isento nem conta como quem muta por conta própria. As três classes somam os 49 sub-tests da matriz.
 
 **Os 18 que mutam por conta própria — o PORQUÊ de cada um** (a linha do `FORA_DA_REGUA` no master, declarada lá e publicada aqui):
 
@@ -4462,13 +4480,24 @@ do PR (os 19 que faltavam ganharam MEDIDO, PISO ou TETO, e a concorrência dele 
 PRONTO **com 4 jobs por TETO**: a latência publicada do espelho é um LIMITE
 SUPERIOR, e a soma sem os tetos aparece ao lado. O dono do merge, não: se ele não
 cobrir todos os jobs do PR, o número publicado mede menos pipeline do que existe.
+Cobertura é o que o dono não pode DEVER. O `vitrine-baseline` chegou a entrar por
+TETO (`timeout-minutes: 10`) porque a medição mostrou que o job NÃO chegava ao
+guard: a seed base cria 6 prestadores (1 página de 9) e os limiares foram medidos
+com 415 (47 páginas) — o guard morria no locator `Próxima`. O teto era a válvula
+CERTA para aquele estado, e deixou de ser necessário quando o dataset ganhou seed
+versionado (`scripts/seed-vitrine-baseline.ts`, determinístico e idempotente): o
+job roda o guard de verdade e entra MEDIDO (32.2s, com as fatias medidas e o que
+ficou fora — download do Chromium, install — NOMEADO na fonte). Hoje o dono do
+merge não tem NENHUM teto: a latência publicada (1517.6s) é soma de medições; o
+espelho continua com 4.
 
 O primeiro job do repositório declarado por PASSOS é o `mutation-count-guard` do
-espelho: `setup-bun` (17.175s, 17/09), `install` (62ms), `check-mutation-count`
-(93ms) e o `Summary` (98ms, um bloco) são MEDIDOS, e o passo da suíte (3.897s) é
-LIDO da forma `mutation-count` da baseline — a mesma sub-test que o master mede,
-com o commit `2757e3a5` ao lado. O `Summary` estava FORA do total declarado antes
-(a conta antiga, 21198ms = setup + install + suíte + check, não o contava) e a
+espelho: `setup-bun` (0ms — a camada PRE-INSTALLED da imagem do runner, medida em
+22/10/2026), `install` (96ms), `check-mutation-count` (624ms) e o `Summary`
+(628ms, um bloco) são MEDIDOS, e o passo da suíte (12.481s) é LIDO da forma
+`mutation-count` da baseline — a mesma sub-test que o master mede, com a âncora
+do ato (`8defdfa0`) ao lado. O `Summary` estava FORA do total declarado antes (a
+conta antiga, 21198ms = setup + install + suíte + check, não o contava) e a
 cobertura exata o trouxe para dentro: é exatamente para isso que a regra existe.
 
 No dono, o job `guards` é o PISO declarado: o benchmark versionado não cobre
@@ -6709,9 +6738,9 @@ verdade (e não contra um `run` dublado). Exige docker e a imagem do runner.
 sem docker
 ```
 
-### `cenario: docker-ausente` — por que sete blocos o declaram
+### `cenario: docker-ausente` — por que seis blocos o declaram
 
-Sete provas da família exigem docker, imagem do runner ou um Gitea efêmero —
+Seis provas da família exigem docker, imagem do runner ou um Gitea efêmero —
 não são reproduzíveis num runner de PR. O guard **não finge** que são: ele as
 EXECUTA com um `docker` de mentira (exit 127) no começo do PATH e exige o
 desfecho `indeterminado` que elas declaram ter nesse cenário. A invariante
@@ -6719,8 +6748,7 @@ verificada é a que este repositório mais trata como regra: **ausência de prov
 NUNCA vira sucesso**. Um comando que passe a sair `0` sem ter provado nada é pego
 AQUI, de forma hermética e em ~1s. O caminho PROVADO dessas sete exige docker e
 é do operador (`bun run forge-runtime:prove`, `bun run smoke-render:prove`,
-`bun run image-contract:prove`, `bun run merge-gate:prove`,
-`bun run forge-smoke:prove`, `bun run pre-commit-in-runner:prove` e
+`bun run image-contract:prove`,`bun run merge-gate:prove`, `bun run forge-smoke:prove` e
 `bun run gitea-registry:prove`) — a doc de cada uma diz o que ele exige.
 O número não é decorativo: ele é o tamanho do conjunto que o `check:prove-docs`
 EXECUTA a cada PR, e um bloco que troque de cenário muda essa conta.
@@ -7815,8 +7843,8 @@ UNIÃO com a atribuição do filho, o `source` sem `export` e o `export VAR` soz
 de linha, `$( )`, `case`, função, continuação). E o repositório REAL é julgado com
 um **PISO de cobertura** (`comandos >= 200`, os três hooks e os scripts descidos nomeados): se a extração
 ou a descida pararem de funcionar, a contagem cai e o guard "passa" — o piso é o
-que impede o verde por vazio. Em produção: **274 comandos** (129 nos 3 hooks +
-145 dentro dos 5 scripts chamados), **268 resolvidos** e **6 indeterminados
+que impede o verde por vazio. Em produção: **273 comandos** (128 nos 3 hooks +
+145 dentro dos 5 scripts chamados), **267 resolvidos** e **6 indeterminados
 DECLARADOS** (as quatro decisões de caminho viraram prova; sobraram os payloads de
 `-c`).
 
@@ -8001,14 +8029,16 @@ checkout é rodado SOMADO ao dublê do simulador: os guards irmãos do defeito
 devolvem 0 (declarado), e quem roda de verdade é o guard do defeito
 (`check-workflow-run-syntax.mjs --staged`, com o `node` REAL do runtime) e o
 REMÉDIO — é a forma BARATA, e o fixture não tem o `package.json` do projeto (a
-fase C real, `lint-staged`/`typecheck`, não caberia nele).
+fase C real, `lint-staged`, não caberia nele).
 
 Com `--sem-duble`, o hook é o **REAL** sobre uma **CÓPIA do checkout**
 (`proveRealHookBlocks`): sem wrapper e sem dublê, as **DUAS fases** rodam de
 VERDADE — os seis guards de fase A, o gate e os **onze membros da fase B**
 (inclusive o runner de encoding, que a fase A nem toca) —, e a fase C
 (lint-staged, typecheck) roda real, porque a cópia tem o `package.json` e o
-`node_modules` (LINKADO, não copiado).
+`node_modules` (LINKADO, não copiado). O `typecheck` saiu da fase C do pre-commit
+(recorte declarado no próprio hook; o pre-push e o job `TypeCheck` das duas
+pipelines continuam cobrindo o invariante) — a fase C da cópia roda `lint-staged`.
 
 **A forma padrão mede DUAS metades**, e o exit code é o da PIOR delas
 (`combineStates`: `violated` vence `unavailable`, que vence `proven` — uma metade
@@ -8169,7 +8199,7 @@ sobre a árvore); a árvore é uma CÓPIA do
 checkout com commit base sintético (quem mede o commit do PR são as pipelines do
 merge); o REMÉDIO fica sem operador (`NO_PROMPT_ENV` do simulador — a prova mede
 o caminho NÃO interativo, e quem mede o interativo é o ensaio do pty); e o teto de
-tempo por comando do simulador (`runGit`, 60s) faz um controle mais lento que isso
+tempo por comando do simulador (`runGit`, 180s) faz um controle mais lento que isso
 sair como INDETERMINADO.
 
 **O que ela já pegou.** Na primeira medição de verdade o `--sem-duble` saiu
@@ -8224,21 +8254,37 @@ diretos (~2s) + o CONTROLE A (~25s, que é a fase C real: `lint-staged` +
 `typecheck`) + **o defeito e o controle de CADA classe da fase B** (dois defeitos
 curtos — a fase B recusa antes da fase C — e dois controles que rodam a fase C
 inteira; ~37s, medido aqui pelo delta de 36s para 73s na forma local). Ela RODA o
-typecheck do repositório de verdade — o que, na primeira
+typecheck do repositório de verdade (medido 09/2026, quando a fase C do pre-commit
+ainda o executava — após o recorte do typecheck no pre-commit, estes custos caem
+na mesma proporção) — o que, na primeira
 execução, reprovou o CONTROLE por um erro de tipo real introduzido no mesmo
 turno (JSDoc sem o campo novo), e o pegou antes de qualquer outra rede.
 
+**O bloco documenta os DOIS desfechos medidos do comando `--json` — um por
+ambiente, na lista do `exit:` (o mesmo precedente do bloco `doctor`, que admite
+`1|2`):** na FORJA, dona do merge, o job roda DENTRO da imagem do runner (os
+marcadores `/.dockerenv` + `/opt/acttoolcache` presentes, medido em 30/09/2026):
+a prova roda EM LUGAR e sai `exit 0` com `"state": "proven"` — um 'git commit'
+de verdade recusado e o CONTROLE entrando, medidos no runtime que julga o merge
+(node v24.19.0, git 2.55.0). Sem docker nem imagem (a máquina do operador), o
+comando RECUSA provar no lugar errado: `exit 2`, `"state": "unavailable"`
+(medido no mesmo dia, com o docker ausente do PATH). A cerca prende as linhas
+COMUNS aos dois ambientes — `"variante": "com-duble"` no JSON e
+`PROVA-VARIANTE=com-duble` na saída plana — para o confronto bater onde o
+comando é executado. E o bloco saiu do cenário `docker-ausente` (a conta do
+§18 passou de SETE para SEIS): esse cenário existe para as provas que NÃO têm
+runtime próprio de merge — esta tem, e é o job que o carrega.
+
 <!-- prove-doc: pre-commit-in-runner:prove
      run: --json
-     exit: 2
-     cenario: docker-ausente
-     desfecho: indeterminado
+     exit: 0|2
+     cenario: ambiente
+     desfecho: provado
 -->
 
 ```text
-"state": "unavailable"
-não dá para provar o bloqueio dentro do runtime do CI
-o docker não respondeu
+"variante": "com-duble"
+PROVA-VARIANTE=com-duble
 ```
 
 **`stack-per-commit:prove`** — cada commit da pilha passa SOZINHO? O PR mede o TOPO, e
@@ -8310,7 +8356,17 @@ das duas forjas e a suíte de mutação. No escopo SEMPRE o relatório escreve
 ```text
 "commits": 1
 "veredito": "ok"
+"escopo": "sempre"
 ```
+
+**REABERTO EM 07/10/2026 (`exit: 0`, desfecho `provado`) — a dívida de 05/10 foi paga:**
+o landing da pilha fechou o forge-parity do HEAD. O CONJUNTO SEMPRE do HEAD
+(`--only HEAD --sem-afetados`) mede RC=0: o `check-forge-parity.mjs` está
+verde NA ÁRVORE DO COMMIT (as invariantes `realtime-env-parity`,
+`realtime-emit-key-source` e o wiring de `route-handler-style`, que em 05/10
+tinham passos e scripts "EM VOO noutra thread", chegaram pela pilha até
+`722b36d2`). O registro da dívida declarada naquela data vive em
+`ci/unproven.json` (seção `pilha`, por assunto).
 
 **O que ele mediu na primeira subida** (a cadeia do `#25`, 16 commits entre a base da
 pilha e o topo): o gate achou **três commits que não passam sozinhos** — `4962399e`,
@@ -9434,6 +9490,302 @@ repositório é mutado: o que se muta é o GUARD, com backup e restauração
 conferida por checksum no `trap EXIT`. A suíte fecha com a INTEGRAÇÃO (o guard
 real na árvore real, o MESMO comando do CI) e com a testemunha unitária
 (`check-generated-format.test.ts`, 17 testes).
+
+---
+
+## 34. O environment do realtime é o MESMO nos dois canais de produção — `check:realtime-env-parity` (`scripts/check-realtime-env-parity.mjs`)
+
+**A invariante:** o `environment` EFETIVO do serviço `realtime` (base +
+override mesclados com a semântica do Compose) é IDÊNTICO entre
+`docker-compose.prod.yml` e `docker-compose.hostinger.yml` — variável que só
+existe num canal, ou fonte diferente (`\${VAR}` vs literal), reprova o merge.
+
+**O defeito que fecha:** o comentário ⛳ da base documenta o incidente — a
+`REALTIME_EMIT_API_KEY` faltava no `app` do canal hostinger: "metade do
+contrato em cada arquivo". O realtime é fail-closed (recusa o boot sem a
+chave), mas qualquer OUTRA variável pode divergir do mesmo jeito e só
+explodir no canal que ninguém olhou. Os dois canais fazem `include:` da MESMA
+base e podem adicionar/sobrescrever variáveis no arquivo próprio — exatamente
+o lugar onde o drift mora.
+
+**Como mede:** js-yaml sobre os DOIS canais + a base, merge base→override por
+canal e comparação do mapa resultante. Valores são normalizados pela FONTE:
+`\${VAR}` e `\${VAR:-default}` viram o nome da variável — o que se compara é
+o CONTRATO (quais variáveis, de onde vêm), não o valor interpolado de um
+`.env` que não está no repo. Consequência deliberada: defaults de valor
+DIFERENTES para a mesma variável (`.com.br` vs `.com` no `app`, documentados
+nos headers) NÃO sinalizam — é drift de valor documentado, não de contrato.
+
+**Escopo deliberado:** um serviço por execução (`--service`, default
+`realtime`); os serviços com divergência de domínio LEGÍTIMA (app,
+email-worker, notification-worker) não são comparados por default. Env de
+host vs template é do `check-env-mirror`; imagem/registry é do
+`check-registry-source`.
+
+**Como testar:** `src/lib/__tests__/check-realtime-env-parity.test.ts` —
+unitários das funções exportadas + a CLI real contra o REPO (exit 0 na
+paridade do realtime; `--service app` exit 1 prova o caminho do vermelho com
+a divergência real do rollout CSP) e contra FIXTURES tmp (exit 1 divergência,
+exit 2 infra). O gate é do CORE nas duas forjas (classificado no
+`check-forge-parity` como `realtime-env-parity`).
+
+---
+
+## 35. A chave do /emit entra por DOCKER SECRET, nunca por environment — `check:realtime-emit-key-source` (`scripts/check-realtime-emit-key-source.mjs`)
+
+**A invariante:** a `REALTIME_EMIT_API_KEY` (fail-closed: produção nem sobe
+sem ela) entra nos canais de produção como DOCKER SECRET
+`realtime_emit_api_key` (→ `/run/secrets/realtime_emit_api_key`) e é lida via
+`REALTIME_EMIT_API_KEY_FILE` — o VALOR nunca aparece em `environment` de
+compose comitado (nem via `\${VAR}`: interpolar do `.env` do host é a fuga
+que fecha; `docker inspect` e `docker compose config` mostrariam o segredo).
+Os consumers são `realtime`, `app` e `notification-worker` — cada um declara
+o secret em `secrets:` e o caminho `_FILE` canônico.
+
+**O defeito que fecha:** a classe do incidente ⛳ da seção 34, um estágio
+depois do pipe. A chave já é obrigatória nos três serviços e em paridade
+entre os canais — mas o VALOR ainda podia transitar por environment (a
+before: `REALTIME_EMIT_API_KEY: \${REALTIME_EMIT_API_KEY}`), visível em
+`docker inspect`, `docker compose config` e em qualquer shell que exporte o
+`.env` do host. A migração para secret + `_FILE` aconteceu junto com este
+guard: ele prende o desenho, não o permite regredir.
+
+**Como mede:** js-yaml sobre os TRÊS composes (base + prod + hostinger, os
+canais que fazem `include:` da base) e cinco regras: R1 nenhum
+`REALTIME_EMIT_API_KEY:` com valor em environment; R2 todo consumer menciona
+a chave E recebe o secret (e nenhum consumer órfão com secret sem leitor); R3
+todo compose que menciona a chave declara o secret no top-level `secrets:`;
+R4 `secrets/realtime_emit_api_key.secret.example` existe com placeholder e
+nenhum `*.secret` está TRACKED no git (`.secret` local de dev é o fluxo
+normal — o `.gitignore` de secrets/ o ignora); R5 o caminho de `_FILE` é o
+canônico. Exit 0 sancionado | 1 violação | 2 infra (compose ilegível) | 3 uso.
+
+**Escopo deliberado:** staging/dev são composes monolíticos de
+desenvolvimento e leem a chave por env direta do `.env` — não são varridos. A
+paridade base↔override POR SERVIÇO é da seção 34; aqui o contrato é a FONTE
+da chave. Os loaders (src/lib/realtime-emit-key.ts e a cópia no
+mini-services/realtime — a imagem não contém src/) tratam `_FILE` como
+precedente e NUNCA caem silenciosamente para a env quando o arquivo não pode
+ser lido: mount quebrado é falha declarada, não "serviço sem chave".
+
+**Como testar:** `src/lib/__tests__/check-realtime-emit-key-source.test.ts` —
+unitários das funções exportadas + a CLI real contra o REPO (exit 0 no desenho
+vigente) e contra FIXTURES tmp (cada regra violada, uma por caso). O gate é do
+CORE nas duas forjas (classificado no `check-forge-parity` como
+`realtime-emit-key-source`; fora do pre-commit por `HOOK_NOT_RUN`, junto com
+a seção 34).
+
+---
+
+## 36. Todo handler de rota usa withRoute/withParams — `check:route-handler-style` (`scripts/check-route-handler-style.mjs`)
+
+**A invariante:** todo handler HTTP exportado por um `route.ts` sob
+`src/app/api` (`GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS`) usa o wrapper
+`withRoute`/`withParams` (`src/lib/api-route.ts`) — tracing OTel,
+request-context e `handleError` num lugar só. O padrão MANUAL
+(`try { ... } catch (e) { return handleError(e) }` dentro do handler) reprova.
+
+**O defeito que fecha:** o boilerplate manual não é só repetição — cada cópia
+pula o span e o request-id (o `handleError` fica sem requestId nos logs e o
+trace fica sem o trecho da rota). Das 189 rotas, 142 já usam o wrapper; os 47
+arquivos sem wrapper são em grande parte rotas SEM try/catch (health,
+metrics, webhooks com resposta própria, SSE). Os que mantêm o padrão manual
+(19 pares rota×handler) ficaram CONGELADOS na ALLOWLIST com `addedAt` +
+`reason` — handler NOVO com o padrão manual reprova o merge; o congelamento
+encolhe conforme a migração anda.
+
+**Como mede:** scanner node-puro (sem parser TS), heurística declarada no
+cabeçalho do guard: strip de comentários, extração dos handlers exportados e
+corpo por brace-balance a partir da lista de parâmetros (pula anotação de
+tipo tipo `Promise<{ id: string }>` — região curta sem `return`);
+`= withRoute(`/`= withParams(` é WRAPPED e não é escaneado. Cinco regras:
+handler manual fora da ALLOWLIST é violação; entrada OCIOSA (a rota migrou ou
+o handler sumiu) é violação — allowlist que não encolhe é isenção eterna;
+`addedAt` ausente/malformado/no futuro é violação (a régua compartilhada de
+`scripts/allowlist-review.mjs`); decisão vencida (janela de
+`ROUTE_HANDLER_STYLE_REVIEW_DAYS`, 180 dias) é `::warning::` no run normal e
+VIOLAÇÃO com `--review`. Exit 0 sancionado | 1 violação | 2 infra (árvore
+de rotas sumiu) | 3 uso.
+
+**Escopo deliberado:** o alvo é o HANDLER (helpers locais com catch próprio
+não são escaneados por si — a região de um handler vai até o próximo handler;
+o remédio é o mesmo). Catch custom SEM `handleError` (resposta própria de
+webhook/stream/degradação) não reprova — é outra classe, de resposta, não de
+estilo de erro.
+
+**Como testar:** `src/lib/__tests__/check-route-handler-style.test.ts` —
+unitários do scanner (comentário não é chamada; anotação de tipo não engana;
+wrapped não escaneado) + a CLI real contra o REPO (exit 0; `--list` casa 1:1
+com a ALLOWLIST) + árvore sintética construída A PARTIR da ALLOWLIST (cobra
+que a lista cobre exatamente o que a varredura acha) e fixtures de cada regra.
+O gate é do CORE nas duas forjas (classificado no `check-forge-parity` como
+`route-handler-style`; fora do pre-commit por `HOOK_NOT_RUN`, junto com as
+seções 34 e 35).
+
+---
+
+## 37. O dinheiro é DECIMAL — e a migration que converte é AUTOSSUFICIENTE — `check-money-decimal` (`scripts/check-money-decimal.sh`)
+
+**A invariante:** as 11 colunas monetárias continuam `numeric(10,2)/(12,2)`
+(migration `20260930120000_money_decimal`), os objetos canônicos que ela
+derruba e recria (`mv_provider_stats`, `trg_refresh_mv_on_booking`,
+`trg_search_reindex_service`) existem, e o round-trip numérico é EXATO
+(`0.1 + 0.2 = 0.30` em numeric; a testemunha float8 imprime
+`0.30000000000000004` — a razão da conversão). Em `--ephemeral`, semeia a
+cadeia de FKs e escreve em TODAS as tabelas monetárias, provando gravação
+centavo a centavo e os triggers recriados funcionando (MV refletida + fila
+de reindexação enfileirada).
+
+**O defeito que fecha:** dinheiro em DOUBLE PRECISION erra representação
+(`0.1 + 0.2 ≠ 0.3`) — inaceitável para custódia, split, comissão e
+settlement. E a primeira versão da migration deixaria a produção QUEBRADA:
+dropava a MV no fim e nunca recriava — o primeiro write pós-deploy
+dispararia o trigger de refresh contra uma relação inexistente. A migration
+foi reescrita autossuficiente (ver o header dela); este guard prova o
+estado FINAL contra um banco real a cada mudança de schema — qualquer
+regressão que reintroduza float (ou esqueça os objetos canônicos) reprova
+no CI.
+
+**Como mede:** bash + psql no banco do job `prisma-migrations`
+(infra-guards.yml), passo "Money decimal guard" DEPOIS do
+`migrate deploy`. O transporte é o padrão do job: `psql` de DENTRO do
+service container (`PG_CONTAINER=${{ job.services.postgres.id }}` — o
+runner self-hosted não tem psql no host); sem `PG_CONTAINER`, usa
+`psql $DATABASE_URL` (local). `--ephemeral` só aceita banco de nome
+descartável (`severinno_test`/`*_test`) — intertravamento contra INSERTs no
+banco de desenvolvimento. Exit 0 sancionado | 1 violação (lista completa no
+veredito) | 2 uso/pré-requisito ausente.
+
+**Escopo deliberado:** é guard de CI com banco, na família de
+`check-prisma-migrations.sh` — não entra no pre-commit (não há banco lá) e
+não tem mutation test dedicado: o DML de prova É a mutação inversa — sem os
+tipos ou objetos certos, o próprio guard reprova. O arredondamento histórico
+da conversão (float 9.999999999 → numeric 10.00) é provado pelo caso
+dedicado do round-trip.
+
+**Como testar:**
+`src/lib/__tests__/check-money-decimal-guard.test.ts` — contrato estrutural
+(sintaxe bash, `set -euo pipefail`, cabeçalho com Usage/exit codes, e a
+fiação no workflow: o passo existe DEPOIS do guard de migrations). O
+guard em si foi validado contra Postgres 16 + PostGIS efêmero local no
+desenho exato do CI (db push + migrations canônicas + exit 0 nos dois
+modos; rerun idempotente; cura do estado quebrado que a v1 deixaria).
+
+---
+
+## 38. Nenhum .tsx do app renderiza `<style>` inline fora da allowlist — e o hash da CSP é o do global-error ATUAL — `check:inline-style` (`scripts/check-inline-style.mjs`)
+
+**A invariante:** a CSP continua estrita em estilos — `style-src` e
+`style-src-elem` SEM `'unsafe-inline'` (src/lib/csp.ts), o único `<style>`
+inline legítimo é o do `global-error.tsx`, cujo conteúdo é pinado por
+hash (`'sha256-eqW5FnLZ2T07K7f5xhzEJOVJru1NKj1t3pH4q2urlAE='` em
+`style-src-elem`), e NENHUM outro .tsx de `src/` (fora de testes e da
+allowlist) abre um elemento `<style`. O guard também prova
+criptograficamente que o hash pinado na CSP é o do `styles` ATUAL do
+global-error — a allowlist não é vaga, é verificada por sha256-base64.
+
+**O defeito que fecha:** `<style>` inline não falha o BUILD — compila,
+roda, e é o BROWSER que bloqueia o estilo em produção (página sem CSS,
+sem erro nenhum, invisível em dev com CSP observação). E o lado inverso
+também é silencioso: editar o `styles` do global-error sem recalcular o
+hash quebra a PINA atual — a página de erro raiz (última linha de defesa
+quando tudo mais falhou) fica sem estilo. Os `<style>` anteriores (ticker,
+skeletons, 404) já foram migrados para `globals.css`; este guard impede a
+reintrodução por engano.
+
+**Como mede:** máquina de estados char a char branca comentários (JSDoc,
+`//` e blocos JSX) e conteúdo de strings/template literals antes de casar
+`<style` em abertura de elemento — `<style>` CITADO em comentário (o repo
+tem vários, herança da migração) não é falso positivo. Allowlist com
+`{path, reason, addedAt}` (padrão do `check-route-handler-style`) —
+UM membro: global-error (pinado por hash, obrigatório — renderiza fora
+da árvore normal). O 2º membro original, o `chart.tsx` vendado do shadcn
+(ChartStyle só emitia com `color`/`theme`, e sem consumidores no app), foi
+REMOVIDO em 2026-10-02 e a allowlist encolheu junto. Exit 0 sancionado | 1
+violação (novo `<style>` ou hash dessincronizado, com mensagem acionável).
+
+**Escopo deliberado:** varre `src/**/*.tsx` (fonte do app — testes não
+dividem a CSP do runtime); um `<style>` injetado EXCLUSIVAMENTE via string
+(`__html: "<style>..."`) escapa da heurística, mesma classe de limitação
+documentada do check-clock-bombs. Passo "Inline <style> guard" no CORE
+(pr-check.yml), node puro e offline (~0,2s), sem imports de pacotes (lição
+do check-bun-mirror: a forja copia guards para /tmp sem node_modules).
+
+**Como testar:**
+`src/lib/__tests__/check-inline-style.test.ts` — 26 casos: funções puras
+(blanking, detecção, exclusões, allowlist com reason), prova do hash
+(casando/editado/pin removido/extrator quebrado/skip em fixtures) e CLI
+real contra repos fake (violação → exit 1; comentário → exit 0;
+global-error+hash → exit 0; hash quebrado → exit 1) e contra o repo REAL
+(com asserção de sujeito: o global-error renderiza `<style>` hoje e o
+hash casa).
+
+---
+
+## 39. O Caddyfile.prod PARSEIA em um Caddy real — sempre — `check:caddy-validate` (`scripts/check-caddy-validate.sh`)
+
+**A invariante:** o Caddyfile.prod é aceito por `caddy validate --adapter
+caddyfile` executado dentro de um CONTAINER (o binário que julga é um
+Caddy real, nunca um parser caseiro). O PR roda as DUAS passadas: `--stock`
+(imagem `caddy:2-alpine`, removendo ANTES da prova APENAS as diretivas
+que exigem plugins da imagem custom — `rate_limit`: 1 bloco,
+`format transform`: 2 linhas; a lista vive no script e o teste cobre que
+é exatamente a do Dockerfile.caddy) e `--full` (build do Dockerfile.caddy
+no PR + validação do arquivo INTEIRO, plugins inclusos — as diretivas de
+plugin deixam de ser confiança e viram sanção).
+
+**O defeito que fecha:** o Caddyfile.prod passou meses sem ser parseado
+por nenhum Caddy — o `storage file:///data/caddy` (módulo inexistente)
+crashava o parse INTEIRO no boot, e ninguém viu, porque nenhuma pipeline
+validava o arquivo (descoberto em 2026-10-02 ao validar o bloco `s3` da
+defesa SVG; provado com `caddy validate`). O modo stock pega qualquer
+regressão de parse (hosts, matchers, handlers, templates, sintaxe geral)
+sem exigir a imagem custom no runner de PR; o full sanciona também as
+diretivas de plugin.
+
+**Como mede:** bash + docker; exit 0 parse OK | 1 o Caddy REPROVA o
+arquivo (com o erro nomeando linha/diretiva) | 2 pré-requisito ausente
+(docker/imagem). Diretivas de plugin removidas no modo stock por script
+python embutido (bloco balanceado por chaves — não por regex de fim). As
+bases do Dockerfile.caddy (builder e runtime) e as do Dockerfile.worker
+(`oven/bun:${BUN_VERSION}`, 3 stages) são PINADAS POR DIGEST do índice
+multi-arch (`name:tag@sha256:…` — a tag vira leitura, o pull é imutável;
+digests resolvidos com `docker buildx imagetools inspect` em 2026-10-02):
+bump de base = tag nova E digest novo, juntos — e no worker o digest tem
+de ser o da BUN_VERSION declarada, ou o build usa um Bun que o repositório
+não declara em silêncio.
+
+**Prova por mutação (AUTOMATIZADA na matriz do master —
+`scripts/test-mutation-caddy-validate.sh`, 2 metades):** a **M1** desliga a
+RECUSA do veredito (o ramo `echo ❌` + `return 1`, texto idêntico nos ramos
+stock e full, UMA cirurgia com contagem 2) e exige o silêncio: com
+`diretriz_inexistente_mutada on` DENTRO do site principal, o guard íntegro
+sai 1 nomeando a diretiva (`unrecognized directive`) e o cego sai 0 — a
+classe do storage morto passaria no CI. A **M2** desliga a EXCLUSÃO do modo
+stock (as três linhas do python embutido, uma cirurgia) e a stock volta a
+reprovar o Caddyfile ÍNTEGRO — sem a exclusão o modo stock não sanciona
+nada, e a lista vira o contrato que o mantém útil. Lições da mutação mal
+feita, medidas quando a suíte nasceu: tokens soltos APÓS o último `}` viram
+"site-blocks vazios" VÁLIDOS para o parser do Caddyfile (dois
+"endereços") — a injeção é DENTRO do site principal; e neutralizar o
+`grep "Valid configuration"` NÃO muda nada (o `docker run` já reprova
+antes — o julgamento é o exit do container, não o grep).
+
+**Escopo deliberado:** não roda na forja (sem docker no job de guards —
+GITHUB_ONLY com razão escrita; o run-syntax de lá cobre o parse dos
+textos embutidos). O full do PR
+depende do daemon no runner self-hosted (o mesmo que builda as imagens
+do deploy) e do layer cache — build frio de xcaddy ~1–2 min, quente é
+quase grátis.
+
+**Como testar:**
+`src/lib/__tests__/check-caddy-validate.test.ts` — 9 casos: contrato do
+script (container real, modos, exit codes, lista de plugins casando com o
+Dockerfile), fiação (compose → Dockerfile.caddy; pr-check → modo stock;
+registro no forge-parity) e execução REAL no repo (stock, exit 0); e
+`scripts/test-mutation-caddy-validate.sh` — a entrada `caddy-validate` da
+matriz do master, com as duas metades da prova acima (exit 2 declarado sem
+docker/imagem, restauração por checksum entre as metades).
 
 ---
 

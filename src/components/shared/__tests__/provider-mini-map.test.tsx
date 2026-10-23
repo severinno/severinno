@@ -21,6 +21,8 @@ import { render, screen, cleanup, act, fireEvent } from "@/__tests__/test-utils"
 
 const mockSyncRadiusCircle = vi.hoisted(() => vi.fn())
 const mockRemoveRadiusCircle = vi.hoisted(() => vi.fn())
+const mockSyncAccuracyCircle = vi.hoisted(() => vi.fn())
+const mockRemoveAccuracyCircle = vi.hoisted(() => vi.fn())
 const mockSyncRadiusHandle = vi.hoisted(() => vi.fn())
 const mockRemoveRadiusHandle = vi.hoisted(() => vi.fn())
 const mockMakeRadiusEdgeDraggable = vi.hoisted(() => vi.fn(() => vi.fn()))
@@ -82,9 +84,17 @@ vi.mock("maplibre-gl", () => ({
 // Empty CSS import mock (the component imports maplibre-gl/dist/maplibre-gl.css dynamically)
 vi.mock("maplibre-gl/dist/maplibre-gl.css", () => ({}))
 
+// Worker por URL é no-op nos testes (o componente aguarda ensureMaplibreWorker()
+// antes de criar o mapa; sem o mock, faria fetch HEAD real ao servidor público).
+vi.mock("@/lib/maplibre-worker", () => ({
+  ensureMaplibreWorker: vi.fn(async () => true),
+}))
+
 vi.mock("@/lib/geo-circle", () => ({
   syncRadiusCircle: mockSyncRadiusCircle,
   removeRadiusCircle: mockRemoveRadiusCircle,
+  syncAccuracyCircle: mockSyncAccuracyCircle,
+  removeAccuracyCircle: mockRemoveAccuracyCircle,
   syncRadiusHandle: mockSyncRadiusHandle,
   removeRadiusHandle: mockRemoveRadiusHandle,
   makeRadiusEdgeDraggable: mockMakeRadiusEdgeDraggable,
@@ -491,5 +501,65 @@ describe("ProviderMiniMap — radius slider interaction", () => {
     const slider = screen.getByTestId("slider")
     expect(slider).toHaveAttribute("data-min", "1")
     expect(slider).toHaveAttribute("data-max", "100")
+  })
+})
+
+// ===========================================================================
+// Círculo de incerteza — accuracy da última fix salva (sem nova fix)
+// ===========================================================================
+
+describe("ProviderMiniMap — círculo de incerteza (accuracy salva)", () => {
+  it("desenha o círculo pontilhado com a accuracy salva", async () => {
+    render(
+      <ProviderMiniMap
+        providerLat={-23.5505}
+        providerLng={-46.6333}
+        providerName="Maria Silva"
+        radiusKm={50}
+        accuracyM={25}
+      />,
+    )
+
+    await triggerMapLoad()
+
+    expect(mockSyncAccuracyCircle).toHaveBeenCalledTimes(1)
+    expect(mockSyncAccuracyCircle).toHaveBeenCalledWith(
+      expect.objectContaining({ on: mockMapOn, remove: mockMapRemove }),
+      -23.5505,
+      -46.6333,
+      25,
+    )
+  })
+
+  it("não desenha sem accuracyM (localização sem fix conhecida)", async () => {
+    render(
+      <ProviderMiniMap
+        providerLat={-23.5505}
+        providerLng={-46.6333}
+        providerName="Maria Silva"
+        radiusKm={50}
+      />,
+    )
+
+    await triggerMapLoad()
+
+    expect(mockSyncAccuracyCircle).not.toHaveBeenCalled()
+  })
+
+  it("remove o círculo de incerteza no unmount", async () => {
+    const { unmount } = render(
+      <ProviderMiniMap
+        providerLat={-23.5505}
+        providerLng={-46.6333}
+        providerName="Maria Silva"
+        radiusKm={50}
+        accuracyM={25}
+      />,
+    )
+
+    await triggerMapLoad()
+    unmount()
+
+    expect(mockRemoveAccuracyCircle).toHaveBeenCalled()
   })
 })

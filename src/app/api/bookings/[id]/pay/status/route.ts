@@ -3,10 +3,11 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { handleError, notFound, forbidden } from "@/lib/api-server"
+import { notFound, forbidden } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
-type Params = { params: Promise<{ id: string }> }
+import { withParams } from "@/lib/api-route"
+import { toMoneyNumber } from "@/lib/money"
 
 /**
  * GET /api/bookings/[id]/pay/status
@@ -15,8 +16,9 @@ type Params = { params: Promise<{ id: string }> }
  * Returns the current payment status without triggering a new charge.
  * Designed for lightweight, frequent polling (every 5s).
  */
-export async function GET(request: Request, { params }: Params) {
-  try {
+export const GET = withParams<{ id: string }>(
+  "api.bookings.:id.pay.status.GET",
+  async (request, { params }) => {
     const session = await requireUser()
     const { id } = await params
 
@@ -57,7 +59,8 @@ export async function GET(request: Request, { params }: Params) {
       bookingId: id,
       paymentMethod: booking.paymentMethod,
       paymentStatus: booking.paymentStatus,
-      amount: booking.amount,
+      // money_decimal: Decimal → number na fronteira (cru serializa string)
+      amount: toMoneyNumber(booking.amount),
       payment: payment
         ? {
             status: payment.status,
@@ -69,7 +72,5 @@ export async function GET(request: Request, { params }: Params) {
           }
         : null,
     })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

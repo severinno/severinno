@@ -423,6 +423,8 @@ async function reverseGeocodeLocal(lat: number, lng: number): Promise<ReverseGeo
   )
 }
 
+import { lookupCnefeGV } from "./geo-cnefe"
+
 // ── Internal implementations ──────────────────────────────────────────────
 
 async function _geocodeSearch(query: string, limit: number = 5): Promise<GeoSearchResult[]> {
@@ -430,6 +432,26 @@ async function _geocodeSearch(query: string, limit: number = 5): Promise<GeoSear
   if (!trimmed) return []
 
   const clampedLimit = Math.max(1, Math.min(10, limit))
+
+  // 1. CNEFE IBGE High-Precision Local Rooftop Solver for Governador Valadares (MG)
+  const cnefeMatch = lookupCnefeGV({ street: trimmed })
+  if (cnefeMatch) {
+    return [
+      {
+        lat: cnefeMatch.lat,
+        lng: cnefeMatch.lng,
+        displayName: cnefeMatch.displayName,
+        street: cnefeMatch.street,
+        district: cnefeMatch.district,
+        city: cnefeMatch.city,
+        state: cnefeMatch.state,
+        cep: cnefeMatch.cep,
+        category: "place",
+        type: "house",
+        importance: cnefeMatch.confidence,
+      },
+    ]
+  }
 
   try {
     const settings = await getGeoSettings()
@@ -471,6 +493,33 @@ async function _geocodeSearchStructured(opts: {
 
   if (!street?.trim() && !city?.trim() && !state?.trim() && !country?.trim() && !postcode?.trim()) {
     return []
+  }
+
+  // 1. CNEFE IBGE High-Precision Local Rooftop Solver for Governador Valadares (MG)
+  const isGV =
+    city?.toLowerCase().includes("valadares") || postcode?.replace(/\D/g, "").startsWith("350")
+  if (isGV || street) {
+    const cnefeMatch = lookupCnefeGV({
+      street: street ?? undefined,
+      cep: postcode ?? undefined,
+    })
+    if (cnefeMatch) {
+      return [
+        {
+          lat: cnefeMatch.lat,
+          lng: cnefeMatch.lng,
+          displayName: cnefeMatch.displayName,
+          street: cnefeMatch.street,
+          district: cnefeMatch.district,
+          city: cnefeMatch.city,
+          state: cnefeMatch.state,
+          cep: cnefeMatch.cep,
+          category: "place",
+          type: "house",
+          importance: cnefeMatch.confidence,
+        },
+      ]
+    }
   }
 
   const clampedLimit = Math.max(1, Math.min(10, limit))

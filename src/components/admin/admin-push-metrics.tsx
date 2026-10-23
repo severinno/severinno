@@ -119,17 +119,17 @@ function MetricCard({
 }) {
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
+      <CardHeader className="flex flex-row items-center justify-between p-3.5 pb-1.5">
         <CardTitle className="text-muted-foreground text-sm font-medium">{label}</CardTitle>
         <Icon className={cn("size-4", color ?? "text-muted-foreground")} />
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-3.5 pt-0">
         <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-bold">{value}</span>
+          <span className="text-xl font-bold tabular-nums">{value}</span>
           {trend && (
             <span
               className={cn(
-                "inline-flex items-center gap-0.5 text-xs font-medium",
+                "inline-flex items-center gap-0.5 text-xs font-medium tabular-nums",
                 trend === "up" && "text-emerald-600",
                 trend === "down" && "text-red-600",
                 trend === "neutral" && "text-muted-foreground",
@@ -142,7 +142,7 @@ function MetricCard({
             </span>
           )}
         </div>
-        {sub && <p className="text-muted-foreground mt-1 text-xs">{sub}</p>}
+        {sub && <p className="text-muted-foreground mt-1 text-xs tabular-nums">{sub}</p>}
       </CardContent>
     </Card>
   )
@@ -248,12 +248,12 @@ export function AdminPushMetrics() {
   const clickedPct = overview.total > 0 ? (overview.clicked / overview.total) * 100 : 0
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-3.5">
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-foreground text-xl font-bold tracking-tight">Métricas de Push</h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">
+          <h1 className="text-foreground text-base font-bold tracking-tight">Métricas de Push</h1>
+          <p className="text-muted-foreground mt-0.5 text-sm tabular-nums">
             {overview.total} notificação(ns) nos últimos {days} dias
             {dataUpdatedAt && (
               <span className="ml-2 text-xs">
@@ -291,7 +291,7 @@ export function AdminPushMetrics() {
       </div>
 
       {/* ── Overview cards ──────────────────────────────────────────── */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           icon={Bell}
           label="Total enviados"
@@ -328,16 +328,16 @@ export function AdminPushMetrics() {
       </div>
 
       {/* ── Delivery quality bar + funnel ────────────────────────────── */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-3.5 lg:grid-cols-2">
         {/* Delivery quality */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
+          <CardHeader className="p-3.5 pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
               <BarChart3 className="size-4 text-emerald-500" />
               Qualidade de entrega
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3 p-3.5 pt-0">
             <ProgressBar
               value={overview.deliveryRate}
               label="Delivery rate (sent + clicked)"
@@ -363,18 +363,18 @@ export function AdminPushMetrics() {
 
         {/* Click funnel */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
+          <CardHeader className="p-3.5 pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
               <Activity className="size-4 text-blue-500" />
               Funil de clique
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-3">
+          <CardContent className="space-y-3 p-3.5 pt-0">
+            <div className="space-y-2.5">
               <div className="space-y-1">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">Enviados</span>
-                  <span className="font-medium">{overview.total}</span>
+                  <span className="font-medium tabular-nums">{overview.total}</span>
                 </div>
                 <div className="bg-muted h-3 w-full overflow-hidden rounded-full">
                   <div className="bg-primary h-full rounded-full" style={{ width: "100%" }} />
@@ -384,7 +384,7 @@ export function AdminPushMetrics() {
               <div className="space-y-1">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">Entregues</span>
-                  <span className="font-medium">{overview.sent}</span>
+                  <span className="font-medium tabular-nums">{overview.sent}</span>
                 </div>
                 <div className="bg-muted h-3 w-full overflow-hidden rounded-full">
                   <div
@@ -397,7 +397,7 @@ export function AdminPushMetrics() {
               <div className="space-y-1">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">Clicados</span>
-                  <span className="font-medium">{overview.clicked}</span>
+                  <span className="font-medium tabular-nums">{overview.clicked}</span>
                 </div>
                 <div className="bg-muted h-3 w-full overflow-hidden rounded-full">
                   <div
@@ -413,25 +413,25 @@ export function AdminPushMetrics() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <p className="text-muted-foreground">Delivery rate</p>
-                  <p className="text-lg font-bold text-emerald-600">
+                  <p className="text-lg font-bold text-emerald-600 tabular-nums">
                     {overview.deliveryRate.toFixed(1)}%
                   </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Click rate</p>
-                  <p className="text-lg font-bold text-blue-600">
+                  <p className="text-lg font-bold text-blue-600 tabular-nums">
                     {overview.clickRate.toFixed(1)}%
                   </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Bounce rate</p>
-                  <p className="text-lg font-bold text-amber-600">
+                  <p className="text-lg font-bold text-amber-600 tabular-nums">
                     {overview.bounceRate.toFixed(1)}%
                   </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Failure rate</p>
-                  <p className="text-lg font-bold text-red-600">
+                  <p className="text-lg font-bold text-red-600 tabular-nums">
                     {overview.failureRate.toFixed(1)}%
                   </p>
                 </div>
@@ -442,16 +442,16 @@ export function AdminPushMetrics() {
       </div>
 
       {/* ── Actions + Users + Averages ───────────────────────────────── */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-3.5 lg:grid-cols-3">
         {/* Action breakdown */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
+          <CardHeader className="p-3.5 pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
               <BellRing className="size-4 text-purple-500" />
               Ações executadas
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-2.5 p-3.5 pt-0">
             {actions.length === 0 ? (
               <p className="text-muted-foreground py-4 text-center text-xs">
                 Nenhuma ação registrada no período
@@ -483,7 +483,7 @@ export function AdminPushMetrics() {
             <div className="text-muted-foreground pt-2 text-xs">
               <p>
                 Taxa de ação:{" "}
-                <span className="text-foreground font-medium">
+                <span className="text-foreground font-medium tabular-nums">
                   {overview.actionRate.toFixed(1)}%
                 </span>
               </p>
@@ -493,13 +493,13 @@ export function AdminPushMetrics() {
 
         {/* Users + Subscriptions */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
+          <CardHeader className="p-3.5 pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
               <Users className="size-4 text-sky-500" />
               Usuários
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-2.5 p-3.5 pt-0">
             <div className="flex items-center justify-between rounded-lg border px-3 py-2 text-xs">
               <div className="flex items-center gap-2">
                 <Bell className="text-muted-foreground size-4" />
@@ -539,13 +539,13 @@ export function AdminPushMetrics() {
 
         {/* Top types */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
+          <CardHeader className="p-3.5 pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
               <BarChart3 className="size-4 text-orange-500" />
               Top tipos
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-2 p-3.5 pt-0">
             {topTypes.length === 0 ? (
               <p className="text-muted-foreground py-4 text-center text-xs">
                 Nenhum tipo registrado
@@ -575,7 +575,7 @@ export function AdminPushMetrics() {
 
             {topSources.length > 0 && (
               <>
-                <h4 className="text-muted-foreground mt-4 text-xs font-medium">Origens</h4>
+                <h4 className="text-muted-foreground mt-3 text-xs font-medium">Origens</h4>
                 {topSources.map((s) => (
                   <div key={s.source} className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground capitalize">{s.source}</span>
@@ -590,13 +590,13 @@ export function AdminPushMetrics() {
 
       {/* ── Timeline ─────────────────────────────────────────────────── */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
+        <CardHeader className="p-3.5 pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm">
             <Activity className="size-4 text-violet-500" />
             Timeline de envios
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-3.5 pt-0">
           {timeline.length === 0 ? (
             <p className="text-muted-foreground py-6 text-center text-xs">
               Nenhum envio no período
@@ -613,14 +613,14 @@ export function AdminPushMetrics() {
 
       {/* ── Health indicators ────────────────────────────────────────── */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
+        <CardHeader className="p-3.5 pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm">
             <Activity className="size-4 text-emerald-500" />
             Indicadores de saúde
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <CardContent className="p-3.5 pt-0">
+          <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
             <HealthIndicator
               label="Delivery rate"
               value={`${overview.deliveryRate.toFixed(1)}%`}
@@ -683,7 +683,7 @@ function HealthIndicator({
         <div className={cn("size-2.5 rounded-full", dotColor[status])} />
         <span className="text-muted-foreground text-xs">{label}</span>
       </div>
-      <p className="mt-1 text-lg font-bold">{value}</p>
+      <p className="mt-1 text-lg font-bold tabular-nums">{value}</p>
       <p
         className={cn(
           "text-[10px] font-medium",
@@ -702,7 +702,7 @@ function HealthIndicator({
 
 function MetricsSkeleton() {
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-3.5">
       <div className="flex items-center justify-between">
         <div className="space-y-2">
           <Skeleton className="h-6 w-48" />
@@ -711,7 +711,7 @@ function MetricsSkeleton() {
         <Skeleton className="h-8 w-24 rounded-lg" />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <Card key={i}>
             <CardHeader>

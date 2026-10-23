@@ -124,7 +124,7 @@ describe("GET /api/admin/finance", () => {
     setupBasicMocks()
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)
@@ -147,7 +147,7 @@ describe("GET /api/admin/finance", () => {
     mockDb.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([])
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.averageTicket).toBe(30000)
@@ -188,7 +188,7 @@ describe("GET /api/admin/finance", () => {
       .mockResolvedValueOnce([])
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.providerStats).toHaveLength(2)
@@ -206,7 +206,7 @@ describe("GET /api/admin/finance", () => {
     setupBasicMocks()
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.paymentMethods).toHaveLength(2)
@@ -219,7 +219,7 @@ describe("GET /api/admin/finance", () => {
     setupBasicMocks()
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.commissionPercent).toBe(15)
@@ -239,7 +239,7 @@ describe("GET /api/admin/finance", () => {
     mockDb.$queryRaw.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.commissionPercent).toBe(15)
@@ -249,7 +249,7 @@ describe("GET /api/admin/finance", () => {
     _mockRole = "PROVIDER"
 
     const req = new Request("http://localhost/api/admin/finance")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(403)
   })
 
@@ -265,7 +265,7 @@ describe("GET /api/admin/finance", () => {
     mockDb.$queryRaw.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)
@@ -304,7 +304,7 @@ describe("GET /api/admin/finance", () => {
     mockDb.$queryRaw.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.page).toBe(1)
@@ -324,10 +324,30 @@ describe("GET /api/admin/finance", () => {
     mockDb.$queryRaw.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/finance?period=7d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)
     expect(data.period).toBe("7d")
+  })
+
+  it("returns executive SaaS metrics (GMV, net revenue, take rate, ARR, gateway stats)", async () => {
+    setupBasicMocks()
+
+    const req = new Request("http://localhost/api/admin/finance?period=all")
+    const res = await GET(req, { params: Promise.resolve({}) })
+    const data = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(data.executive).toBeDefined()
+    expect(data.executive.gmv).toBe(95000)
+    expect(data.executive.platformNetRevenue).toBe(14250) // 15% of 95000
+    expect(data.executive.providerNetPayout).toBe(80750) // 85% of 95000
+    expect(data.executive.takeRatePercent).toBe(15)
+    expect(data.executive.annualRunRate).toBeDefined()
+    expect(data.executive.gateway.pixVolume).toBe(80000)
+    expect(data.executive.gateway.cardVolume).toBe(15000)
+    expect(data.executive.gateway.conversionRate).toBeDefined()
+    expect(data.executive.escrow).toBeDefined()
   })
 })

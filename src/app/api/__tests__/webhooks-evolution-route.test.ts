@@ -25,8 +25,31 @@ vi.mock("@/lib/evolution", () => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
-    user: { findFirst: vi.fn() },
+    user: { findFirst: vi.fn(), findUnique: vi.fn() },
+    booking: { findFirst: vi.fn() },
+    quoteRequest: { findFirst: vi.fn() },
+    message: { findFirst: vi.fn(), create: vi.fn() },
+    notification: { create: vi.fn() },
+    whatsAppMessageLog: { updateMany: vi.fn() },
   },
+}))
+
+const { testCache } = vi.hoisted(() => ({
+  testCache: new Map<string, unknown>(),
+}))
+
+vi.mock("@/lib/redis", () => ({
+  cacheGet: vi.fn(async (key: string) => testCache.get(key) ?? null),
+  cacheSet: vi.fn(async (key: string, val: unknown) => {
+    testCache.set(key, val)
+  }),
+  cacheSetNX: vi.fn(async (key: string, val: unknown) => {
+    if (testCache.has(key)) return false
+    testCache.set(key, val)
+    return true
+  }),
+  cacheInvalidate: vi.fn().mockResolvedValue(undefined),
+  withCache: vi.fn((_key: string, fn: () => Promise<unknown>) => fn()),
 }))
 
 // ── Imports ────────────────────────────────────────────────────────────────
@@ -38,6 +61,7 @@ import { db } from "@/lib/db"
 
 describe("POST /api/webhooks/evolution", () => {
   beforeEach(() => {
+    testCache.clear()
     vi.clearAllMocks()
   })
 
@@ -56,7 +80,36 @@ describe("POST /api/webhooks/evolution", () => {
           fromMe: false,
         },
         message: {
-          conversation: "Olá, gostaria de um orçamento",
+          conversation: "Qual o horário que você pode vir aqui amanhã para fazer o serviço?",
+        },
+      },
+    }
+
+    const req = createMockRequest({ method: "POST", body: payload })
+    const res = await evolutionWebhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect(parsed.body!.received).toBe(true)
+    expect(db.user.findFirst).toHaveBeenCalled()
+  })
+
+  it("handles interactive menu commands via autoresponder and returns 200", async () => {
+    ;(vi.mocked(db.user.findFirst) as any).mockResolvedValue({
+      id: "user-1",
+      name: "Test User",
+    })
+
+    const payload = {
+      event: "messages.upsert",
+      instance: "severinno-instance",
+      data: {
+        key: {
+          remoteJid: "5511999999999@s.whatsapp.net",
+          fromMe: false,
+        },
+        message: {
+          conversation: "MENU",
         },
       },
     }
@@ -207,5 +260,234 @@ describe("POST /api/webhooks/evolution", () => {
     expect(parsed.body!.received).toBe(true)
     // Should log and continue without error
     expect(db.user.findFirst).toHaveBeenCalled()
+  })
+
+  it("processes messages.update event and updates delivery status in WhatsAppMessageLog", async () => {
+    ;(vi.mocked(db.whatsAppMessageLog.updateMany) as any).mockResolvedValue({ count: 1 })
+
+    const payload = {
+      event: "messages.update",
+      instance: "severinno-instance",
+      data: [
+        {
+          key: { id: "msg-delivery-123" },
+          status: "DELIVERY_ACK",
+        },
+        {
+          key: { id: "msg-read-456" },
+          status: "READ",
+        },
+      ],
+    }
+
+    const req = createMockRequest({ method: "POST", body: payload })
+    const res = await evolutionWebhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect(parsed.body!.received).toBe(true)
+    expect(db.whatsAppMessageLog.updateMany).toHaveBeenCalledTimes(2)
+    expect(db.whatsAppMessageLog.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { messageId: "msg-delivery-123" },
+        data: expect.objectContaining({ status: "DELIVERED" }),
+      }),
+    )
+    expect(db.whatsAppMessageLog.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { messageId: "msg-read-456" },
+        data: expect.objectContaining({ status: "READ" }),
+      }),
+    )
+  })
+
+  it("processes conversational question via AI triage and returns 200", async () => {
+    ;(vi.mocked(db.user.findFirst) as any).mockResolvedValue(null)
+
+    const payload = {
+      event: "messages.upsert",
+      instance: "severinno-instance",
+      data: {
+        key: {
+          remoteJid: "5533991234567@s.whatsapp.net",
+          fromMe: false,
+        },
+        message: {
+          conversation: "Vocês atendem no bairro Vila Bretas conserto de ar condicionado?",
+        },
+      },
+    }
+
+    const req = createMockRequest({ method: "POST", body: payload })
+    const res = await evolutionWebhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect(parsed.body!.received).toBe(true)
+  })
+
+  it("processes audioMessage with base64 payload gracefully", async () => {
+    ;(vi.mocked(db.user.findFirst) as any).mockResolvedValue(null)
+
+    const payload = {
+      event: "messages.upsert",
+      instance: "severinno-instance",
+      data: {
+        key: {
+          remoteJid: "5533991234567@s.whatsapp.net",
+          fromMe: false,
+        },
+        message: {
+          audioMessage: {
+            base64: "T2dnUwACAAAAAAAAAAAAAAA",
+          },
+        },
+      },
+    }
+
+    const req = createMockRequest({ method: "POST", body: payload })
+    const res = await evolutionWebhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect(parsed.body!.received).toBe(true)
+  })
+
+  it("authenticates webhook using HMAC-SHA256 signature when secret is configured", async () => {
+    const crypto = await import("node:crypto")
+    const secret = "test-evolution-secret-key-12345"
+    process.env.EVOLUTION_WEBHOOK_SECRET = secret
+
+    try {
+      const payload = {
+        event: "connection.update",
+        instance: "severinno-instance",
+        data: { state: "open" },
+      }
+      const rawBody = JSON.stringify(payload)
+      const hmac = crypto.createHmac("sha256", secret).update(rawBody).digest("hex")
+
+      const req = new Request("http://localhost/api/webhooks/evolution", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-evolution-signature": `sha256=${hmac}`,
+        },
+        body: rawBody,
+      })
+
+      const res = await evolutionWebhookHandler(req)
+      const parsed = await parseResponse(res)
+
+      expect(parsed.status).toBe(200)
+      expect(parsed.body!.received).toBe(true)
+    } finally {
+      delete process.env.EVOLUTION_WEBHOOK_SECRET
+    }
+  })
+
+  it("rejects webhook when HMAC-SHA256 signature is invalid", async () => {
+    const secret = "test-evolution-secret-key-12345"
+    process.env.EVOLUTION_WEBHOOK_SECRET = secret
+
+    try {
+      const payload = {
+        event: "connection.update",
+        instance: "severinno-instance",
+        data: { state: "open" },
+      }
+      const rawBody = JSON.stringify(payload)
+
+      const req = new Request("http://localhost/api/webhooks/evolution", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-evolution-signature":
+            "sha256=invalid0000000000000000000000000000000000000000000000000000000000",
+        },
+        body: rawBody,
+      })
+
+      const res = await evolutionWebhookHandler(req)
+      const parsed = await parseResponse(res)
+
+      expect(parsed.status).toBe(401)
+      expect(parsed.body!.error).toBe("Unauthorized")
+    } finally {
+      delete process.env.EVOLUTION_WEBHOOK_SECRET
+    }
+  })
+
+  it("rejects webhook when timestamp is expired (> 10 minutes)", async () => {
+    const crypto = await import("node:crypto")
+    const secret = "test-evolution-secret-key-12345"
+    process.env.EVOLUTION_WEBHOOK_SECRET = secret
+
+    try {
+      const payload = {
+        event: "connection.update",
+        instance: "severinno-instance",
+        data: { state: "open" },
+      }
+      const rawBody = JSON.stringify(payload)
+      const hmac = crypto.createHmac("sha256", secret).update(rawBody).digest("hex")
+      const expiredTimestamp = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+
+      const req = new Request("http://localhost/api/webhooks/evolution", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-evolution-signature": hmac,
+          "x-evolution-timestamp": expiredTimestamp,
+        },
+        body: rawBody,
+      })
+
+      const res = await evolutionWebhookHandler(req)
+      const parsed = await parseResponse(res)
+
+      expect(parsed.status).toBe(401)
+      expect(parsed.body!.error).toBe("Timestamp expirado")
+    } finally {
+      delete process.env.EVOLUTION_WEBHOOK_SECRET
+    }
+  })
+
+  it("deduplicates messages with the same message id", async () => {
+    ;(vi.mocked(db.user.findFirst) as any).mockResolvedValue({
+      id: "user-1",
+      name: "Test User",
+    })
+
+    const payload = {
+      event: "messages.upsert",
+      instance: "severinno-instance",
+      data: {
+        key: {
+          id: "MSG_UNIQUE_DEDUP_123",
+          remoteJid: "5511999999999@s.whatsapp.net",
+          fromMe: false,
+        },
+        message: { conversation: "Olá!" },
+      },
+    }
+
+    const req1 = createMockRequest({
+      method: "POST",
+      body: payload,
+    })
+    const res1 = await evolutionWebhookHandler(req1)
+    const parsed1 = await parseResponse(res1)
+    expect(parsed1.status).toBe(200)
+
+    // Second request with same message ID
+    const req2 = createMockRequest({
+      method: "POST",
+      body: payload,
+    })
+    const res2 = await evolutionWebhookHandler(req2)
+    const parsed2 = await parseResponse(res2)
+    expect(parsed2.status).toBe(200)
+    expect(parsed2.body?.deduplicated).toBe(true)
   })
 })

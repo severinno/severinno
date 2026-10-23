@@ -115,10 +115,12 @@ vi.mock("@/lib/utils", () => ({
 // Mock lucide icons
 // ---------------------------------------------------------------------------
 
-vi.mock("lucide-react", () => {
+vi.mock("lucide-react", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, any>>()
   const Icon = () => <span data-testid="icon" />
   Icon.displayName = "Icon"
   return {
+    ...actual,
     MapPin: () => <span data-testid="icon-mappin" />,
     Mailbox: () => <span data-testid="icon-mailbox" />,
     LocateFixed: () => <span data-testid="icon-locate" />,
@@ -143,8 +145,28 @@ vi.mock("lucide-react", () => {
     XIcon: () => <span data-testid="icon-x" />,
     CheckIcon: () => <span data-testid="icon-check" />,
     ChevronDownIcon: () => <span data-testid="icon-chevron-down" />,
-    ChevronUpIcon: () => <span data-testid="icon-chevron-up" />,
     CircleIcon: () => <span data-testid="icon-circle" />,
+    Siren: Icon,
+    Wrench: Icon,
+    Sparkles: Icon,
+    HardHat: Icon,
+    PaintRoller: Icon,
+    Trees: Icon,
+    Truck: Icon,
+    Trophy: Icon,
+    BadgeCheck: Icon,
+    Star: Icon,
+    ShieldCheck: Icon,
+    CalendarCheck: Icon,
+    ArrowRight: Icon,
+    FileBadge: Icon,
+    Lock: Icon,
+    Camera: Icon,
+    Award: Icon,
+    ShieldAlert: Icon,
+    Clock: Icon,
+    Flame: Icon,
+    TrendingUp: Icon,
   }
 })
 

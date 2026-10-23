@@ -75,7 +75,7 @@ export default function ProviderSpotlightGeo({ onQuote, onBook, onView, classNam
 
   return (
     <section
-      className={cn("mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8", className)}
+      className={cn("mx-auto w-full max-w-[95%] px-4 py-4 sm:px-6 sm:py-6 lg:px-8", className)}
       aria-label="Prestadores próximos a você"
     >
       <div className="via-card relative overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-emerald-50/70 to-emerald-100/20 p-5 shadow-xs sm:p-6 dark:border-emerald-900/40 dark:from-emerald-950/20 dark:to-emerald-900/10">
@@ -218,6 +218,9 @@ function SpotlightCard({
 
   return (
     <div
+      data-provider-id={provider.id}
+      data-compare-name={provider.name}
+      data-compare-avatar={provider.avatarUrl ?? ""}
       className={cn(
         "group border-border/60 bg-card relative flex flex-col justify-between rounded-xl border p-4 shadow-xs transition-all duration-200",
         "hover:border-primary/40 hover:shadow-md",

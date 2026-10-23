@@ -388,33 +388,40 @@ async function checkMinIO(): Promise<ServiceHealth> {
 
 async function checkCaddy(): Promise<ServiceHealth> {
   const t0 = performance.now()
-  try {
-    // Caddy exposes an internal health endpoint on :8080 (see Caddyfile.prod)
-    const res = await fetch("http://caddy:8080/health", { signal: AbortSignal.timeout(5000) })
-    const latency = Math.round(performance.now() - t0)
-    if (res.ok) {
-      return {
-        name: "caddy",
-        status: "healthy",
-        latencyMs: latency,
-        message: `HTTP ${res.status} (${latency}ms)`,
+  const candidateUrls = [
+    process.env.CADDY_HEALTH_URL,
+    "http://gitea-caddy-1/health",
+    "http://caddy/health",
+    "http://caddy:8080/health",
+  ].filter(Boolean) as string[]
+
+  let lastError: Error | null = null
+  let latency = 0
+
+  for (const url of candidateUrls) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(3000) })
+      latency = Math.round(performance.now() - t0)
+      if (res.ok) {
+        return {
+          name: "caddy",
+          status: "healthy",
+          latencyMs: latency,
+          message: `HTTP ${res.status} (${latency}ms)`,
+        }
       }
+    } catch (err) {
+      lastError = err as Error
     }
-    return {
-      name: "caddy",
-      status: "degraded",
-      latencyMs: latency,
-      message: `HTTP ${res.status}`,
-    }
-  } catch (err) {
-    const latency = Math.round(performance.now() - t0)
-    return {
-      name: "caddy",
-      status: "degraded",
-      latencyMs: latency,
-      message: (err as Error).message,
-      details: { note: "Caddy may still be starting or not reachable from backend network" },
-    }
+  }
+
+  latency = Math.round(performance.now() - t0)
+  return {
+    name: "caddy",
+    status: "degraded",
+    latencyMs: latency,
+    message: lastError ? lastError.message : "Caddy healthcheck unreachable",
+    details: { note: "Caddy may still be starting or not reachable from backend network" },
   }
 }
 
@@ -458,16 +465,16 @@ async function checkWorkers(): Promise<ServiceHealth> {
     // Workers are checked indirectly via RabbitMQ queue consumer counts.
     // If a queue has at least 1 consumer, the respective worker is alive.
     const ch = await getChannel()
-    const emailQ = await ch.checkQueue("email")
-    const notifQ = await ch.checkQueue("notification")
-    const searchQ = await ch.checkQueue("search-index")
+    const notifQ = await ch.checkQueue("notifications")
+    const whatsappQ = await ch.checkQueue("whatsapp")
+    const emailsQ = await ch.checkQueue("emails")
 
     const latency = Math.round(performance.now() - t0)
 
     const workerStatuses = {
-      "email-worker": emailQ.consumerCount > 0 ? ("active" as const) : ("idle" as const),
       "notification-worker": notifQ.consumerCount > 0 ? ("active" as const) : ("idle" as const),
-      "search-index-worker": searchQ.consumerCount > 0 ? "active" : "idle",
+      "whatsapp-worker": whatsappQ.consumerCount > 0 ? ("active" as const) : ("idle" as const),
+      "email-worker": emailsQ.consumerCount > 0 ? ("active" as const) : ("idle" as const),
     }
 
     const activeCount = Object.values(workerStatuses).filter((s) => s === "active").length
@@ -481,9 +488,9 @@ async function checkWorkers(): Promise<ServiceHealth> {
       details: {
         workers: workerStatuses,
         queueDepths: {
-          email: emailQ.messageCount,
-          notification: notifQ.messageCount,
-          "search-index": searchQ.messageCount,
+          notifications: notifQ.messageCount,
+          whatsapp: whatsappQ.messageCount,
+          emails: emailsQ.messageCount,
         },
         note:
           activeCount === 0

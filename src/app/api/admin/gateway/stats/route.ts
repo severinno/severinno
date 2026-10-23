@@ -2,9 +2,12 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
+
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import logger from "@/lib/logger"
+import { toMoneyNumber } from "@/lib/money"
+
+import { withRoute } from "@/lib/api-route"
 
 const LY_BASE = process.env.LYTEX_BASE_URL ?? "https://api-pay.lytex.com.br"
 const MAX_INVOICES = 500 // safety limit per aggregation
@@ -99,184 +102,187 @@ async function fetchAllInvoices(token: string): Promise<LytexInvoice[]> {
  * - Monthly revenue history
  * - Conversion rate (paid / total)
  * - Volume count by status
- * - Average ticket
+ * - Average ticket (em REAIS; os demais valores monetários em centavos)
  * - Payment method distribution
  */
-export async function GET(request: Request) {
-  try {
-    await requireRole("ADMIN")
-    await assertRateLimit(request, RATE_LIMITS.admin)
+export const GET = withRoute("api.admin.gateway.stats.GET", async (request) => {
+  await requireRole("ADMIN")
+  await assertRateLimit(request, RATE_LIMITS.admin)
 
-    const { searchParams } = new URL(request.url)
-    const period = (searchParams.get("period") ?? "30d") as Period
-    const dateFilter = computeDateFilter(period)
+  const { searchParams } = new URL(request.url)
+  const period = (searchParams.get("period") ?? "30d") as Period
+  const dateFilter = computeDateFilter(period)
 
-    const token = await getToken()
-    const invoices = await fetchAllInvoices(token)
+  const token = await getToken()
+  const invoices = await fetchAllInvoices(token)
 
-    // Apply date filter locally
-    const filtered = dateFilter
-      ? invoices.filter((inv) => new Date(inv.createdAt) >= dateFilter!)
-      : invoices
+  // Apply date filter locally
+  const filtered = dateFilter
+    ? invoices.filter((inv) => new Date(inv.createdAt) >= dateFilter!)
+    : invoices
 
-    if (filtered.length === 0) {
-      return NextResponse.json({
-        period,
-        totalVolume: 0,
-        totalCount: 0,
-        conversionRate: 0,
-        averageTicket: 0,
-        byStatus: [],
-        monthly: [],
-        methodDistribution: [],
-        trend: [],
-      })
-    }
-
-    // --- Revenue by status ---
-    const statusMap = new Map<string, { total: number; count: number }>()
-    for (const inv of filtered) {
-      const s = inv.status || "unknown"
-      const prev = statusMap.get(s) ?? { total: 0, count: 0 }
-      prev.total += inv.totalValue
-      prev.count += 1
-      statusMap.set(s, prev)
-    }
-
-    const byStatus = Array.from(statusMap.entries())
-      .map(([status, data]) => ({
-        status,
-        total: data.total,
-        count: data.count,
-      }))
-      .sort((a, b) => b.total - a.total)
-
-    // --- Monthly aggregation ---
-    const monthMap = new Map<
-      string,
-      { total: number; count: number; paid: number; paidCount: number }
-    >()
-    const monthNames = [
-      "Jan",
-      "Fev",
-      "Mar",
-      "Abr",
-      "Mai",
-      "Jun",
-      "Jul",
-      "Ago",
-      "Set",
-      "Out",
-      "Nov",
-      "Dez",
-    ]
-
-    for (const inv of filtered) {
-      const d = new Date(inv.createdAt)
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
-      const prev = monthMap.get(key) ?? { total: 0, count: 0, paid: 0, paidCount: 0 }
-      prev.total += inv.totalValue
-      prev.count += 1
-      if (inv.status === "paid") {
-        prev.paid += inv.totalValue
-        prev.paidCount += 1
-      }
-      monthMap.set(key, prev)
-    }
-
-    // Build full month range
-    const monthly: Array<{
-      month: string
-      label: string
-      total: number
-      count: number
-      paid: number
-      paidCount: number
-    }> = []
-
-    if (dateFilter) {
-      const start = new Date(dateFilter)
-      start.setDate(1)
-      start.setHours(0, 0, 0, 0)
-      const end = new Date()
-      end.setDate(1)
-      end.setHours(0, 0, 0, 0)
-
-      const iter = new Date(start)
-      while (iter <= end) {
-        const key = `${iter.getFullYear()}-${String(iter.getMonth() + 1).padStart(2, "0")}`
-        const data = monthMap.get(key) ?? { total: 0, count: 0, paid: 0, paidCount: 0 }
-        monthly.push({
-          month: key,
-          label: `${monthNames[iter.getMonth()]!}/${String(iter.getFullYear()).slice(2)}`,
-          total: data.total,
-          count: data.count,
-          paid: data.paid,
-          paidCount: data.paidCount,
-        })
-        iter.setMonth(iter.getMonth() + 1)
-      }
-    } else {
-      // All time — only months with data
-      for (const [key, data] of monthMap) {
-        const [, m] = key.split("-")
-        monthly.push({
-          month: key,
-          label: `${monthNames[parseInt(m!) - 1]!}/${key.slice(2, 4)}`,
-          total: data.total,
-          count: data.count,
-          paid: data.paid,
-          paidCount: data.paidCount,
-        })
-      }
-      monthly.sort((a, b) => a.month.localeCompare(b.month))
-    }
-
-    // --- Conversion metrics ---
-    const paidCount = filtered.filter((i) => i.status === "paid").length
-    const totalCount = filtered.length
-    const conversionRate = totalCount > 0 ? Math.round((paidCount / totalCount) * 1000) / 10 : 0
-
-    const totalValueCents = filtered.reduce((s, i) => s + i.totalValue, 0)
-    const averageTicket = paidCount > 0 ? Math.round((totalValueCents / paidCount) * 100) / 100 : 0
-
-    // --- Payment method distribution ---
-    const methodMap = new Map<string, { total: number; count: number }>()
-    for (const inv of filtered) {
-      const methods = inv.paymentMethods?.list ?? ["unknown"]
-      for (const m of methods) {
-        const prev = methodMap.get(m) ?? { total: 0, count: 0 }
-        prev.total += inv.totalValue
-        prev.count += 1
-        methodMap.set(m, prev)
-      }
-    }
-    const methodDistribution = Array.from(methodMap.entries())
-      .map(([method, data]) => ({ method, total: data.total, count: data.count }))
-      .sort((a, b) => b.total - a.total)
-
-    // --- Trend (conversion rate over time) ---
-    const trend = monthly.map((m) => ({
-      month: m.month,
-      label: m.label,
-      conversion: m.count > 0 ? Math.round((m.paidCount / m.count) * 1000) / 10 : 0,
-      volume: m.total,
-      transactions: m.count,
-    }))
-
+  if (filtered.length === 0) {
     return NextResponse.json({
       period,
-      totalVolume: totalValueCents,
-      totalCount,
-      paidCount,
-      conversionRate,
-      averageTicket,
-      byStatus,
-      monthly,
-      methodDistribution,
-      trend,
+      totalVolume: 0,
+      totalCount: 0,
+      conversionRate: 0,
+      averageTicket: 0,
+      byStatus: [],
+      monthly: [],
+      methodDistribution: [],
+      trend: [],
     })
-  } catch (e) {
-    return handleError(e)
   }
-}
+
+  // --- Revenue by status ---
+  const statusMap = new Map<string, { total: number; count: number }>()
+  for (const inv of filtered) {
+    const s = inv.status || "unknown"
+    const prev = statusMap.get(s) ?? { total: 0, count: 0 }
+    prev.total += inv.totalValue
+    prev.count += 1
+    statusMap.set(s, prev)
+  }
+
+  const byStatus = Array.from(statusMap.entries())
+    .map(([status, data]) => ({
+      status,
+      total: data.total,
+      count: data.count,
+    }))
+    .sort((a, b) => b.total - a.total)
+
+  // --- Monthly aggregation ---
+  const monthMap = new Map<
+    string,
+    { total: number; count: number; paid: number; paidCount: number }
+  >()
+  const monthNames = [
+    "Jan",
+    "Fev",
+    "Mar",
+    "Abr",
+    "Mai",
+    "Jun",
+    "Jul",
+    "Ago",
+    "Set",
+    "Out",
+    "Nov",
+    "Dez",
+  ]
+
+  for (const inv of filtered) {
+    const d = new Date(inv.createdAt)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+    const prev = monthMap.get(key) ?? { total: 0, count: 0, paid: 0, paidCount: 0 }
+    prev.total += inv.totalValue
+    prev.count += 1
+    if (inv.status === "paid") {
+      prev.paid += inv.totalValue
+      prev.paidCount += 1
+    }
+    monthMap.set(key, prev)
+  }
+
+  // Build full month range
+  const monthly: Array<{
+    month: string
+    label: string
+    total: number
+    count: number
+    paid: number
+    paidCount: number
+  }> = []
+
+  if (dateFilter) {
+    const start = new Date(dateFilter)
+    start.setDate(1)
+    start.setHours(0, 0, 0, 0)
+    const end = new Date()
+    end.setDate(1)
+    end.setHours(0, 0, 0, 0)
+
+    const iter = new Date(start)
+    while (iter <= end) {
+      const key = `${iter.getFullYear()}-${String(iter.getMonth() + 1).padStart(2, "0")}`
+      const data = monthMap.get(key) ?? { total: 0, count: 0, paid: 0, paidCount: 0 }
+      monthly.push({
+        month: key,
+        label: `${monthNames[iter.getMonth()]!}/${String(iter.getFullYear()).slice(2)}`,
+        total: data.total,
+        count: data.count,
+        paid: data.paid,
+        paidCount: data.paidCount,
+      })
+      iter.setMonth(iter.getMonth() + 1)
+    }
+  } else {
+    // All time — only months with data
+    for (const [key, data] of monthMap) {
+      const [, m] = key.split("-")
+      monthly.push({
+        month: key,
+        label: `${monthNames[parseInt(m!) - 1]!}/${key.slice(2, 4)}`,
+        total: data.total,
+        count: data.count,
+        paid: data.paid,
+        paidCount: data.paidCount,
+      })
+    }
+    monthly.sort((a, b) => a.month.localeCompare(b.month))
+  }
+
+  // --- Conversion metrics ---
+  const paidCount = filtered.filter((i) => i.status === "paid").length
+  const totalCount = filtered.length
+  const conversionRate = totalCount > 0 ? Math.round((paidCount / totalCount) * 1000) / 10 : 0
+
+  const totalValueCents = filtered.reduce((s, i) => s + i.totalValue, 0)
+  // averageTicket em REAIS (unidade canônica da fronteira, via toMoneyNumber);
+  // os demais campos monetários da resposta permanecem em CENTAVOS (unidade
+  // bruta da API Lytex). A média é arredondada para o centavo inteiro antes da
+  // conversão — elimina o resíduo binário do float e a ambiguidade de unidade
+  // que fazia o dashboard formatar direto em um call site e multiplicar por
+  // 100 em outro.
+  const averageTicket =
+    paidCount > 0 ? toMoneyNumber(Math.round(totalValueCents / paidCount) / 100) : 0
+
+  // --- Payment method distribution ---
+  const methodMap = new Map<string, { total: number; count: number }>()
+  for (const inv of filtered) {
+    const methods = inv.paymentMethods?.list ?? ["unknown"]
+    for (const m of methods) {
+      const prev = methodMap.get(m) ?? { total: 0, count: 0 }
+      prev.total += inv.totalValue
+      prev.count += 1
+      methodMap.set(m, prev)
+    }
+  }
+  const methodDistribution = Array.from(methodMap.entries())
+    .map(([method, data]) => ({ method, total: data.total, count: data.count }))
+    .sort((a, b) => b.total - a.total)
+
+  // --- Trend (conversion rate over time) ---
+  const trend = monthly.map((m) => ({
+    month: m.month,
+    label: m.label,
+    conversion: m.count > 0 ? Math.round((m.paidCount / m.count) * 1000) / 10 : 0,
+    volume: m.total,
+    transactions: m.count,
+  }))
+
+  return NextResponse.json({
+    period,
+    totalVolume: totalValueCents,
+    totalCount,
+    paidCount,
+    conversionRate,
+    averageTicket,
+    byStatus,
+    monthly,
+    methodDistribution,
+    trend,
+  })
+})

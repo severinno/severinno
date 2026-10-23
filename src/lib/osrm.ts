@@ -26,7 +26,7 @@ type OsrmApiResponse = {
 }
 
 function getOsrmUrl(): string {
-  return process.env.OSRM_URL || "https://router.project-osrm.org"
+  return process.env.OSRM_URL || process.env.OSRM_BASE_URL || "http://127.0.0.1:5000"
 }
 
 /**
@@ -60,16 +60,19 @@ export async function calculateRouteAndEta(
 
         if (data.code === "Ok" && data.routes?.length > 0) {
           const route = data.routes[0]
-          const distanceKm = Math.round((route.distance / 1000) * 10) / 10
-          const durationMin = Math.max(1, Math.round(route.duration / 60))
+          const isSamePoint = originLat === destLat && originLng === destLng
+          if (route.distance > 0 || isSamePoint) {
+            const distanceKm = Math.round((route.distance / 1000) * 10) / 10
+            const durationMin = Math.max(1, Math.round(route.duration / 60))
 
-          return {
-            distanceKm,
-            durationMin,
-            origin: { lat: originLat, lng: originLng },
-            destination: { lat: destLat, lng: destLng },
-            geometry: route.geometry?.coordinates,
-            source: "osrm" as const,
+            return {
+              distanceKm,
+              durationMin,
+              origin: { lat: originLat, lng: originLng },
+              destination: { lat: destLat, lng: destLng },
+              geometry: route.geometry?.coordinates,
+              source: "osrm" as const,
+            }
           }
         }
       } catch (err) {

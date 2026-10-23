@@ -37,7 +37,17 @@ async function scanKeys(c: Redis | Cluster, pattern: string): Promise<string[]> 
     })
   }
 
-  return c.keys(pattern)
+  // Non-blocking iterative SCAN for standalone Redis/Valkey (avoids blocking single-threaded event loop)
+  const keys: string[] = []
+  let cursor = "0"
+  do {
+    const [nextCursor, batch] = await (c as Redis).scan(cursor, "MATCH", pattern, "COUNT", 200)
+    cursor = nextCursor
+    for (const k of batch) {
+      if (!keys.includes(k)) keys.push(k)
+    }
+  } while (cursor !== "0")
+  return keys
 }
 
 // ── Hit/miss counters ───────────────────────────────────────────────────
@@ -187,6 +197,55 @@ export async function cacheSet(key: string, value: unknown, ttl?: number): Promi
       degradeTier(activeTier)
     }
   }
+}
+
+/**
+ * Define uma chave no cache apenas se ela NÃO existir previamente (SET NX atômico).
+ * Retorna true se a chave foi adquirida/definida, ou false se já existia.
+ */
+export async function cacheSetNX(
+  key: string,
+  value: unknown,
+  ttlSeconds: number,
+): Promise<boolean> {
+  const serialized = JSON.stringify(value)
+  const now = Date.now()
+  const expiresAt = now + ttlSeconds * 1000
+
+  if (activeTier !== "memory") {
+    try {
+      const c = await ensureConnected()
+      if (c) {
+        const res = await (
+          c as unknown as {
+            set: (
+              k: string,
+              v: string,
+              mode: string,
+              duration: number,
+              condition: string,
+            ) => Promise<string | null>
+          }
+        ).set(key, serialized, "EX", ttlSeconds, "NX")
+
+        if (res === "OK") {
+          memoryStore.set(key, { value: serialized, expiresAt })
+          return true
+        }
+        return false
+      }
+    } catch {
+      degradeTier(activeTier)
+    }
+  }
+
+  // Fallback atômico em memória
+  const existing = memoryStore.get(key)
+  if (existing && (existing.expiresAt === null || existing.expiresAt > now)) {
+    return false
+  }
+  memoryStore.set(key, { value: serialized, expiresAt })
+  return true
 }
 
 export async function cacheInvalidate(pattern: string): Promise<void> {

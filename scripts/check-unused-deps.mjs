@@ -158,7 +158,7 @@ export const ALLOWLIST = [
     match: "sharp",
     type: "exact",
     addedAt: "2026-09-13",
-    why: "uso implícito do Next.js image optimization (runtime, sem import)",
+    why: "image optimization do Next.js (runtime, sem import no app) + scripts/reprocess-svg-uploads.ts (rasterização de SVG legado)",
   },
   {
     match: "husky",

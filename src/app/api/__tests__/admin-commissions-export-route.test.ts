@@ -73,7 +73,7 @@ describe("GET /api/admin/commissions/export", () => {
     mockDb.booking.findMany.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/commissions/export?year=2025")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     expect(res.status).toBe(200)
     expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8")
@@ -84,7 +84,7 @@ describe("GET /api/admin/commissions/export", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
 
     const req = new Request("http://localhost/api/admin/commissions/export?year=2025")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const csv = await res.text()
 
     expect(csv).toContain("=== RESUMO ===")
@@ -101,7 +101,7 @@ describe("GET /api/admin/commissions/export", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
 
     const req = new Request("http://localhost/api/admin/commissions/export?year=2025")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const csv = await res.text()
 
     expect(csv).toContain("=== RECEITA MENSAL ===")
@@ -116,7 +116,7 @@ describe("GET /api/admin/commissions/export", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
 
     const req = new Request("http://localhost/api/admin/commissions/export?year=2025")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const csv = await res.text()
 
     expect(csv).toContain("=== REPASSES POR PRESTADOR ===")
@@ -132,7 +132,7 @@ describe("GET /api/admin/commissions/export", () => {
     mockDb.booking.findMany.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/commissions/export?year=2025")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const csv = await res.text()
 
     expect(csv).toContain("=== RESUMO ===")
@@ -159,7 +159,7 @@ describe("GET /api/admin/commissions/export", () => {
     mockDb.booking.findMany.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/commissions/export?year=2025")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     expect(res.status).toBe(403)
   })

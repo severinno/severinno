@@ -39,6 +39,9 @@ export const USER_PUBLIC_SELECT = {
   lat: true,
   lng: true,
   radiusKm: true,
+  // Precisão da última fix do GPS (± m) — público: desenha o círculo de
+  // incerteza no mapa do prestador (não é dado pessoal sensível).
+  gpsAccuracyM: true,
   cep: true,
   slug: true,
   verified: true,
@@ -57,6 +60,9 @@ export const USER_FULL_SELECT = {
   district: true,
   city: true,
   state: true,
+  // Preferências de UI do painel (o dono da conta pode ler e gravar as suas)
+  soundEnabled: true,
+  vibrateEnabled: true,
 } as const
 
 // ---------------------------------------------------------------------------
@@ -122,6 +128,7 @@ export const PUBLIC_PROVIDER_SELECT = {
   lat: true,
   lng: true,
   radiusKm: true,
+  gpsAccuracyM: true,
   avgRating: true,
   reviewCount: true,
   favoriteCount: true,
@@ -338,6 +345,25 @@ export function handleError(e: unknown) {
       return noStoreJson({ error: "Acesso proibido" }, { status: 403 })
     }
   }
+
+  // Duck-type Prisma known request errors (P2002, P2025, P2003)
+  const prismaErr = e as { code?: string; clientVersion?: string; meta?: Record<string, unknown> }
+  if (prismaErr?.code === "P2002") {
+    return noStoreJson(
+      { error: "Conflito: registro duplicado já existente", code: "P2002" },
+      { status: 409 },
+    )
+  }
+  if (prismaErr?.code === "P2025") {
+    return noStoreJson({ error: "Recurso não encontrado", code: "P2025" }, { status: 404 })
+  }
+  if (prismaErr?.code === "P2003") {
+    return noStoreJson(
+      { error: "Restrição de integridade referencial violada", code: "P2003" },
+      { status: 400 },
+    )
+  }
+
   logger.error({ err: e, requestId: getRequestId() }, "unhandled api error")
   return noStoreJson(
     { error: "Erro interno do servidor", requestId: getRequestId() },
@@ -414,7 +440,15 @@ export function cacheControlPublic(
   staleWhileRevalidate?: number,
 ): NextResponse {
   const swr = staleWhileRevalidate ?? maxAge
-  response.headers.set("Cache-Control", `public, max-age=${maxAge}, s-maxage=${swr}`)
+  response.headers.set(
+    "Cache-Control",
+    `public, max-age=${maxAge}, s-maxage=${swr}, stale-while-revalidate=${swr}`,
+  )
+  response.headers.set("CDN-Cache-Control", `max-age=${swr}, stale-while-revalidate=${swr}`)
+  response.headers.set(
+    "Cloudflare-CDN-Cache-Control",
+    `max-age=${swr}, stale-while-revalidate=${swr}`,
+  )
   // Set Vary to prevent CDN cache collisions for encoding, format, and origin variants
   response.headers.set("Vary", "Accept-Encoding, Accept, Origin")
   return response

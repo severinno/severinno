@@ -4,13 +4,13 @@ import logger from "@/lib/logger"
 
 // Lazy accessors so vi.stubEnv works in tests (module-level consts are cached at import time)
 function getApiUrl(): string {
-  return process.env.WHATSAPP_API_URL ?? "http://localhost:8080"
+  return process.env.WHATSAPP_API_URL ?? process.env.EVOLUTION_API_URL ?? "http://localhost:8080"
 }
 function getApiKey(): string {
-  return process.env.WHATSAPP_API_KEY ?? ""
+  return process.env.WHATSAPP_API_KEY ?? process.env.EVOLUTION_API_KEY ?? ""
 }
 function getInstance(): string {
-  return process.env.WHATSAPP_INSTANCE ?? "severinno"
+  return process.env.WHATSAPP_INSTANCE ?? process.env.EVOLUTION_INSTANCE ?? "severinno"
 }
 
 export type WhatsAppPayload = {
@@ -67,9 +67,12 @@ export async function sendWhatsApp(payload: WhatsAppPayload): Promise<void> {
   const text = messageParts.join("\n\n")
 
   const instance = getInstance()
+  const sendPath = apiUrl.includes("whatsapp.severinno.com")
+    ? `/message/sendText/${instance}`
+    : `/message/send/${instance}`
 
   try {
-    const response = await fetch(`${apiUrl}/message/send/${instance}`, {
+    const response = await fetch(`${apiUrl.replace(/\/$/, "")}${sendPath}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

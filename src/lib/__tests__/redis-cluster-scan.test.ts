@@ -99,6 +99,7 @@ vi.mock("ioredis", () => {
       set = vi.fn().mockResolvedValue("OK")
       setex = vi.fn().mockResolvedValue("OK")
       keys = vi.fn().mockResolvedValue([])
+      scan = vi.fn().mockResolvedValue(["0", []])
       on = vi.fn()
       quit = vi.fn().mockResolvedValue(undefined)
       disconnect = vi.fn()

@@ -10,6 +10,11 @@ vi.mock("@/lib/search", () => ({
   searchServices: vi.fn(),
 }))
 
+vi.mock("@/lib/redis", () => ({
+  cacheGet: vi.fn().mockResolvedValue(null),
+  cacheSet: vi.fn().mockResolvedValue(true),
+}))
+
 describe("Search API Routes (/api/search, /api/search/providers, /api/search/services)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -88,5 +93,47 @@ describe("Search API Routes (/api/search, /api/search/providers, /api/search/ser
     const res = await searchServicesRoute(req)
 
     expect(res.status).toBe(400)
+  })
+
+  it("returns cached service search results when present in Redis", async () => {
+    const { cacheGet } = await import("@/lib/redis")
+    vi.mocked(cacheGet).mockResolvedValueOnce({
+      items: [{ id: "cached-1", title: "Serviço em Cache" }],
+      total: 1,
+      page: 1,
+      limit: 20,
+      took: 1,
+      engine: "opensearch",
+    } as any)
+
+    const req = new Request("http://localhost:3000/api/search/services?q=pintura")
+    const res = await searchServicesRoute(req)
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(json.items[0].id).toBe("cached-1")
+    expect(json.engine).toBe("opensearch-cached")
+    expect(searchServices).not.toHaveBeenCalled()
+  })
+
+  it("returns cached provider search results when present in Redis", async () => {
+    const { cacheGet } = await import("@/lib/redis")
+    vi.mocked(cacheGet).mockResolvedValueOnce({
+      items: [{ id: "cached-p1", name: "Prestador em Cache" }],
+      total: 1,
+      page: 1,
+      limit: 20,
+      took: 1,
+      engine: "opensearch",
+    } as any)
+
+    const req = new Request("http://localhost:3000/api/search/providers?q=pintor")
+    const res = await searchProvidersRoute(req)
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(json.items[0].id).toBe("cached-p1")
+    expect(json.engine).toBe("opensearch-cached")
+    expect(searchProviders).not.toHaveBeenCalled()
   })
 })

@@ -4,7 +4,7 @@ import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
+import { badRequest, forbidden, notFound } from "@/lib/api-server"
 import { parseBody } from "@/lib/api-middleware"
 import { bookingUpdateSchema } from "@/lib/validators"
 import { refundCharge, getCharge, lytexLogger } from "@/lib/lytex"
@@ -15,8 +15,11 @@ import {
   notifyLiveTrackingStarted,
 } from "@/lib/notifications"
 import { type BookingStatus, type PaymentStatus } from "@prisma/client"
+import { toMoneyNumber } from "@/lib/money"
+import { awardPoints } from "@/lib/loyalty"
+import { processReferralFirstBookingConversion } from "@/lib/referral"
 
-type Params = { params: Promise<{ id: string }> }
+import { withParams } from "@/lib/api-route"
 
 // Allowed status transitions for the MVP.
 // - PROVIDER: PENDING -> CONFIRMED, * -> IN_PROGRESS, * -> CANCELLED
@@ -34,8 +37,9 @@ const CLIENT_NEXT: Record<string, string[]> = {
 }
 
 // Participant: get a booking
-export async function GET(_request: Request, { params }: Params) {
-  try {
+export const GET = withParams<{ id: string }>(
+  "api.bookings.:id.GET",
+  async (_request, { params }) => {
     const session = await requireUser()
     const { id } = await params
 
@@ -58,14 +62,13 @@ export async function GET(_request: Request, { params }: Params) {
     if (!isParticipant) throw forbidden("Acesso negado a este agendamento")
 
     return NextResponse.json({ booking })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)
 
 // Participant: update status
-export async function PATCH(request: Request, { params }: Params) {
-  try {
+export const PATCH = withParams<{ id: string }>(
+  "api.bookings.:id.PATCH",
+  async (request, { params }) => {
     const session = await requireUser()
     const { id } = await params
 
@@ -185,7 +188,7 @@ export async function PATCH(request: Request, { params }: Params) {
       )
     } else if (next === "COMPLETED" && !isProvider) {
       // Liberou pagamento
-      notifyPaymentConfirmed(updated.providerId, id, updated.amount).catch((err) =>
+      notifyPaymentConfirmed(updated.providerId, id, toMoneyNumber(updated.amount)).catch((err) =>
         logger.warn({ err }, "notification failed (fire-and-forget)"),
       )
     } else if (next === "IN_PROGRESS") {
@@ -207,8 +210,19 @@ export async function PATCH(request: Request, { params }: Params) {
       )
     }
 
+    // Award loyalty points to both client and provider on service completion (+10 pts)
+    if (next === "COMPLETED") {
+      awardPoints(updated.clientId, "booking_completed").catch((err) =>
+        logger.warn({ err }, "loyalty points award for client failed (fire-and-forget)"),
+      )
+      awardPoints(updated.providerId, "booking_completed").catch((err) =>
+        logger.warn({ err }, "loyalty points award for provider failed (fire-and-forget)"),
+      )
+      processReferralFirstBookingConversion(updated.id, updated.clientId, updated.providerId).catch(
+        (err) => logger.warn({ err }, "referral conversion check failed (fire-and-forget)"),
+      )
+    }
+
     return NextResponse.json({ booking: updated })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

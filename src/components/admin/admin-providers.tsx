@@ -31,6 +31,8 @@ import * as React from "react"
 import {
   AlertTriangle,
   ArrowUpDown,
+  Briefcase,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Eye,
@@ -39,6 +41,7 @@ import {
   MoreHorizontal,
   Navigation,
   Power,
+  ShieldAlert,
   ShieldCheck,
   ShieldQuestion,
   ShieldX,
@@ -80,6 +83,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useUIStore } from "@/store/ui"
+import { useViewStore } from "@/store/view"
 
 import {
   ActiveBadge,
@@ -131,6 +135,15 @@ type AdminUsersResponse = {
   limit: number
 }
 
+type AdminBadgesResponse = {
+  activeBookings: number
+  pendingKyc: number
+  openDisputes: number
+  services: number
+  taxonomy: number
+  verifiedProviders: number
+}
+
 type VerifiedFilter = "ALL" | "true" | "false"
 type ActiveFilter = "ALL" | "true" | "false"
 
@@ -174,6 +187,13 @@ export function AdminProviders() {
     return () => clearTimeout(t)
   }, [q])
 
+  // Badges globais do admin para métricas em tempo real (H1 Visibilidade)
+  const { data: badges } = useQuery<AdminBadgesResponse>({
+    queryKey: ["admin", "badges"],
+    queryFn: () => apiGet<AdminBadgesResponse>("/api/admin/badges"),
+    staleTime: 30_000,
+  })
+
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin", "providers", { debouncedQ, verified, active, page, limit, geoFilter }],
     queryFn: () =>
@@ -191,7 +211,10 @@ export function AdminProviders() {
     staleTime: 15_000,
   })
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["admin", "providers"] })
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["admin", "providers"] })
+    queryClient.invalidateQueries({ queryKey: ["admin", "badges"] })
+  }
 
   const patchMutation = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: { verified?: boolean; active?: boolean } }) =>
@@ -223,6 +246,10 @@ export function AdminProviders() {
 
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / limit))
+
+  const verifiedCount = badges?.verifiedProviders ?? rawItems.filter((p) => p.verified).length
+  const pendingKycCount = badges?.pendingKyc ?? rawItems.filter((p) => !p.verified).length
+  const activeCount = rawItems.filter((p) => p.active).length
 
   const clientFilterActive = verified !== "ALL" || active !== "ALL"
 
@@ -311,6 +338,172 @@ export function AdminProviders() {
         description="Gerencie prestadores de serviços, verificação e status."
       />
 
+      {/* Cards de Métricas — H1 Visibilidade & Service Design */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Card
+          onClick={() => {
+            setVerified("ALL")
+            setActive("ALL")
+            setPage(1)
+          }}
+          className={cn(
+            "border-border/50 bg-card/60 hover:border-primary/40 cursor-pointer backdrop-blur-xs transition-all",
+            verified === "ALL" && active === "ALL" ? "ring-primary/30 ring-1" : "",
+          )}
+        >
+          <CardContent className="flex items-center gap-3 p-3.5">
+            <div className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
+              <HardHat className="size-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-muted-foreground text-xs">Total de Prestadores</p>
+              <p className="text-foreground text-lg font-bold tracking-tight tabular-nums">
+                {total}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card
+          onClick={() => {
+            setVerified("true")
+            setPage(1)
+          }}
+          className={cn(
+            "border-border/50 bg-card/60 cursor-pointer backdrop-blur-xs transition-all hover:border-emerald-500/40",
+            verified === "true" ? "ring-1 ring-emerald-500/30" : "",
+          )}
+        >
+          <CardContent className="flex items-center gap-3 p-3.5">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <ShieldCheck className="size-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-muted-foreground text-xs">Verificados (KYC)</p>
+              <p className="text-foreground text-lg font-bold tracking-tight text-emerald-600 tabular-nums dark:text-emerald-400">
+                {verifiedCount}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card
+          onClick={() => {
+            setVerified("false")
+            setPage(1)
+          }}
+          className={cn(
+            "border-border/50 bg-card/60 cursor-pointer backdrop-blur-xs transition-all hover:border-amber-500/40",
+            verified === "false" ? "ring-1 ring-amber-500/30" : "",
+          )}
+        >
+          <CardContent className="flex items-center gap-3 p-3.5">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              <ShieldAlert className="size-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-muted-foreground text-xs">Aguardando Verificação</p>
+              <p className="text-foreground text-lg font-bold tracking-tight text-amber-600 tabular-nums dark:text-amber-400">
+                {pendingKycCount}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card
+          onClick={() => {
+            setActive("true")
+            setPage(1)
+          }}
+          className={cn(
+            "border-border/50 bg-card/60 cursor-pointer backdrop-blur-xs transition-all hover:border-sky-500/40",
+            active === "true" ? "ring-1 ring-sky-500/30" : "",
+          )}
+        >
+          <CardContent className="flex items-center gap-3 p-3.5">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
+              <CheckCircle2 className="size-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-muted-foreground text-xs">Prestadores Ativos</p>
+              <p className="text-foreground text-lg font-bold tracking-tight text-sky-600 tabular-nums dark:text-sky-400">
+                {activeCount}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Pílulas de Triagem Rápida (Nielsen H7 / Hiperfoco Prestadores) */}
+      <div className="flex scrollbar-none items-center gap-2 overflow-x-auto pb-1">
+        <Button
+          variant={verified === "ALL" && active === "ALL" ? "default" : "outline"}
+          size="sm"
+          onClick={() => {
+            setVerified("ALL")
+            setActive("ALL")
+            setPage(1)
+          }}
+          className={cn(
+            "h-8 shrink-0 gap-1.5 rounded-full text-xs font-medium transition-all",
+            verified === "ALL" && active === "ALL"
+              ? "bg-foreground text-background shadow-xs"
+              : "border-border/60 hover:bg-muted/60",
+          )}
+        >
+          <HardHat className="size-3.5" />
+          Todos os Prestadores ({total})
+        </Button>
+        <Button
+          variant={verified === "true" ? "default" : "outline"}
+          size="sm"
+          onClick={() => {
+            setVerified(verified === "true" ? "ALL" : "true")
+            setPage(1)
+          }}
+          className={cn(
+            "h-8 shrink-0 gap-1.5 rounded-full text-xs font-medium transition-all",
+            verified === "true"
+              ? "bg-emerald-600 text-white shadow-xs hover:bg-emerald-700"
+              : "border-border/60 hover:bg-muted/60",
+          )}
+        >
+          <ShieldCheck className="size-3.5" />
+          Verificados KYC ({verifiedCount})
+        </Button>
+        <Button
+          variant={verified === "false" ? "default" : "outline"}
+          size="sm"
+          onClick={() => {
+            setVerified(verified === "false" ? "ALL" : "false")
+            setPage(1)
+          }}
+          className={cn(
+            "h-8 shrink-0 gap-1.5 rounded-full text-xs font-medium transition-all",
+            verified === "false"
+              ? "bg-amber-600 text-white shadow-xs hover:bg-amber-700"
+              : "border-border/60 hover:bg-muted/60",
+          )}
+        >
+          <ShieldAlert className="size-3.5" />
+          Aguardando KYC ({pendingKycCount})
+        </Button>
+        <Button
+          variant={active === "true" ? "default" : "outline"}
+          size="sm"
+          onClick={() => {
+            setActive(active === "true" ? "ALL" : "true")
+            setPage(1)
+          }}
+          className={cn(
+            "h-8 shrink-0 gap-1.5 rounded-full text-xs font-medium transition-all",
+            active === "true"
+              ? "bg-sky-600 text-white shadow-xs hover:bg-sky-700"
+              : "border-border/60 hover:bg-muted/60",
+          )}
+        >
+          <CheckCircle2 className="size-3.5" />
+          Ativos na Vitrine ({activeCount})
+        </Button>
+      </div>
+
       {/* Error banner (dismissible) — H9 */}
       {errorBanner ? (
         <Alert variant="destructive">
@@ -328,11 +521,13 @@ export function AdminProviders() {
         </Alert>
       ) : null}
 
-      {/* H8 — REMOVIDO o pill "N prestador(es) no total" no topo.
-          A ResultCount abaixo da tabela já mostra essa informação. */}
-
       {/* Filter bar */}
-      <FilterBar onClear={clearFilters} activeCount={activeFilterCount}>
+      <FilterBar
+        onClear={clearFilters}
+        activeCount={activeFilterCount}
+        resultCount={total}
+        resultLabel={total === 1 ? "prestador encontrado" : "prestadores encontrados"}
+      >
         <SearchInput
           value={q}
           onChange={setQ}
@@ -353,7 +548,7 @@ export function AdminProviders() {
             setPage(1)
           }}
         >
-          <SelectTrigger className="h-9 w-auto min-w-[150px]">
+          <SelectTrigger className="h-9 w-auto min-w-[150px]" aria-label="Filtrar por verificação">
             <SelectValue placeholder="Verificação" />
           </SelectTrigger>
           <SelectContent>
@@ -369,7 +564,7 @@ export function AdminProviders() {
             setPage(1)
           }}
         >
-          <SelectTrigger className="h-9 w-auto min-w-[140px]">
+          <SelectTrigger className="h-9 w-auto min-w-[140px]" aria-label="Filtrar por status">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -417,7 +612,7 @@ export function AdminProviders() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/30 hover:bg-muted/30 h-10">
+                  <TableRow className="bg-muted/30 hover:bg-muted/30 h-8">
                     <TableHead>{renderSortHeader("Prestador", "name")}</TableHead>
                     <TableHead className="text-muted-foreground hidden text-[11px] font-semibold tracking-wider uppercase md:table-cell">
                       Contato
@@ -451,23 +646,30 @@ export function AdminProviders() {
                     return (
                       <TableRow
                         key={p.id}
-                        className="border-border/50 hover:bg-muted/20 h-12 border-b transition-colors last:border-0"
+                        className="border-border/50 hover:bg-muted/20 h-9 border-b transition-colors last:border-0"
                       >
-                        <TableCell className="px-4 py-3">
-                          <div className="flex items-center gap-2.5">
-                            <Avatar className="size-8 shrink-0">
+                        <TableCell className="px-4 py-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openProvider(p.id)}
+                            className="group flex items-center gap-2.5 text-left transition-colors focus-visible:outline-hidden"
+                            aria-label={`Ver perfil de ${p.name}`}
+                          >
+                            <Avatar className="size-8 shrink-0 transition-transform group-hover:scale-105">
                               {p.avatarUrl ? <AvatarImage src={p.avatarUrl} alt={p.name} /> : null}
                               <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-semibold">
                                 {initials(p.name)}
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0">
-                              <p className="truncate text-sm font-medium">{p.name}</p>
+                              <p className="group-hover:text-primary truncate text-sm font-medium transition-colors">
+                                {p.name}
+                              </p>
                               <p className="text-muted-foreground truncate text-xs">{p.email}</p>
                             </div>
-                          </div>
+                          </button>
                         </TableCell>
-                        <TableCell className="hidden px-4 py-3 md:table-cell">
+                        <TableCell className="hidden px-4 py-1.5 md:table-cell">
                           <div className="flex flex-col text-xs">
                             {p.whatsapp ? (
                               <span className="text-foreground/80">{p.whatsapp}</span>
@@ -481,7 +683,7 @@ export function AdminProviders() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="hidden px-4 py-3 text-xs lg:table-cell">
+                        <TableCell className="hidden px-4 py-1.5 text-xs lg:table-cell">
                           {p.city ? (
                             <span className="text-foreground/80 inline-flex items-center gap-1">
                               <MapPin className="text-muted-foreground size-3" />
@@ -493,7 +695,7 @@ export function AdminProviders() {
                           )}
                         </TableCell>
                         {geoFilter.lat != null ? (
-                          <TableCell className="px-4 py-3 text-center">
+                          <TableCell className="px-4 py-1.5 text-center">
                             {p.distanceKm != null ? (
                               <span
                                 className={cn(
@@ -515,24 +717,24 @@ export function AdminProviders() {
                             )}
                           </TableCell>
                         ) : null}
-                        <TableCell className="px-4 py-3 text-center">
+                        <TableCell className="px-4 py-1.5 text-center">
                           {patchingField === "verified" ? (
                             <SavingPill saving label="Salvando…" />
                           ) : (
                             <VerifiedBadge verified={p.verified} />
                           )}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-center">
+                        <TableCell className="px-4 py-1.5 text-center">
                           {patchingField === "active" ? (
                             <SavingPill saving label="Salvando…" />
                           ) : (
                             <ActiveBadge active={p.active} />
                           )}
                         </TableCell>
-                        <TableCell className="text-muted-foreground hidden px-4 py-3 text-xs tabular-nums sm:table-cell">
+                        <TableCell className="text-muted-foreground hidden px-4 py-1.5 text-xs tabular-nums sm:table-cell">
                           {formatDate(p.createdAt)}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-right">
+                        <TableCell className="px-4 py-1.5 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             {/* H6 — primary action visible */}
                             <Tooltip>
@@ -570,6 +772,15 @@ export function AdminProviders() {
                               <DropdownMenuContent align="end">
                                 <DropdownMenuLabel>{p.name}</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    useViewStore.getState().navigate("admin.services")
+                                  }}
+                                  className="gap-2"
+                                >
+                                  <Briefcase className="size-3.5" />
+                                  Ver serviços no catálogo
+                                </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() =>
                                     setPendingToggle({

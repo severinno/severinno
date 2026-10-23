@@ -187,7 +187,7 @@ async function main() {
     booking.status === "PENDING",
     `Booking criado: #${booking.id.slice(0, 8)} — status: ${booking.status}`,
   )
-  assert(booking.amount === 120, `Valor correto: R$ ${booking.amount}`)
+  assert(Number(booking.amount) === 120, `Valor correto: R$ ${booking.amount}`)
   assert(!!booking.payment, `Pagamento PENDING criado`)
 
   // ──────────────────────────────────────────────────────────────────────────

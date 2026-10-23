@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button"
 
 const AWARENESS_RADIUS_KM = 50
 
-export default function GeoAwarenessBadge() {
+export default function GeoAwarenessBadge({ className }: { className?: string } = {}) {
   const { lat, lng, status, setFromGPS } = useGeoStore()
   const navigate = useViewStore((s) => s.navigate)
   const [dismissed, setDismissed] = React.useState(() => {
@@ -79,12 +79,13 @@ export default function GeoAwarenessBadge() {
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-xl border p-4 transition-all",
+        "relative overflow-hidden rounded-2xl border p-4 shadow-2xs transition-all sm:p-5",
         hasProviders
           ? "to-background border-emerald-200 bg-gradient-to-r from-emerald-50/80 dark:border-emerald-900/40 dark:from-emerald-950/20"
           : hasLocation
             ? "to-background border-amber-200 bg-gradient-to-r from-amber-50/80 dark:border-amber-900/40 dark:from-amber-950/20"
             : "to-background border-blue-200 bg-gradient-to-r from-blue-50/80 dark:border-blue-900/40 dark:from-blue-950/20",
+        className,
       )}
     >
       {/* Dismiss button */}

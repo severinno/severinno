@@ -83,6 +83,13 @@ vi.mock("@/lib/db", () => ({
       findUnique: vi.fn(),
       findUniqueOrThrow: vi.fn(),
     },
+    // pay route importa @/lib/idempotency (lib real) — model precisa existir;
+    // vi.fn() sem impl = fresh (undefined), igual ao comportamento acima.
+    idempotencyRecord: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
   },
 }))
 
@@ -93,6 +100,12 @@ import { GET as getBooking, PATCH as updateBooking } from "../bookings/[id]/rout
 import { POST as payBooking } from "../bookings/[id]/pay/route"
 import { db } from "@/lib/db"
 import { createPixCharge } from "@/lib/lytex"
+import DecimalJS from "decimal.js"
+import { Prisma } from "@prisma/client"
+
+// O namespace Prisma perde o Decimal sob o transform SSR do Vitest (ver
+// src/lib/money.ts) — instância direta de decimal.js é o padrão da casa
+const D = DecimalJS as unknown as typeof Prisma.Decimal
 
 // ── Mock data ──────────────────────────────────────────────────────────────
 
@@ -213,6 +226,116 @@ describe("POST /api/bookings", () => {
 
     expect(res.status).toBe(400)
   })
+
+  it("charges basePrice × quantity calculado no servidor", async () => {
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    ;(vi.mocked(db.service.findUnique) as any).mockResolvedValue(mockService)
+    ;(vi.mocked(db.booking.create) as any).mockResolvedValue(mockBooking)
+
+    const req = createMockRequest({ method: "POST", body: { ...validBody, quantity: 2 } })
+    const res = await createBooking(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(201)
+    expect(db.booking.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amount: 300 }) }),
+    )
+  })
+
+  it("ignora amount enviado pelo cliente (sempre recalcula)", async () => {
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    ;(vi.mocked(db.service.findUnique) as any).mockResolvedValue(mockService)
+    ;(vi.mocked(db.booking.create) as any).mockResolvedValue(mockBooking)
+
+    const req = createMockRequest({ method: "POST", body: { ...validBody, amount: 1 } })
+    const res = await createBooking(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(201)
+    expect(db.booking.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amount: 150 }) }),
+    )
+  })
+
+  it("returns 400 quando unit diverge do serviço", async () => {
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    ;(vi.mocked(db.service.findUnique) as any).mockResolvedValue(mockService)
+
+    const req = createMockRequest({ method: "POST", body: { ...validBody, unit: "HORA" } })
+    const res = await createBooking(req)
+
+    expect(res.status).toBe(400)
+  })
+
+  it("returns 400 para quantity fora de 1..1000", async () => {
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+
+    for (const quantity of [0, 1001]) {
+      const req = createMockRequest({ method: "POST", body: { ...validBody, quantity } })
+      const res = await createBooking(req)
+      expect(res.status).toBe(400)
+    }
+  })
+
+  it("replays response when valid Idempotency-Key was already completed", async () => {
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    ;(vi.mocked(db.service.findUnique) as any).mockResolvedValue(mockService)
+    ;(vi.mocked(db.idempotencyRecord.findUnique) as any).mockResolvedValueOnce({
+      key: "key-book-123456",
+      scope: "booking:create",
+      context: {
+        clientId: "client-1",
+        providerId: "prov-1",
+        serviceId: "svc-1",
+        scheduledAt: validBody.scheduledAt,
+        amount: 150,
+        quantity: 1,
+      },
+      status: "completed",
+      response: { booking: { id: "book-cached-1", amount: 150 } },
+      expiresAt: new Date(Date.now() + 100000),
+    })
+
+    const req = createMockRequest({
+      method: "POST",
+      body: validBody,
+      headers: { "idempotency-key": "key-book-123456" },
+    })
+    const res = await createBooking(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(201)
+    expect((parsed.body as any).booking.id).toBe("book-cached-1")
+    expect(db.booking.create).not.toHaveBeenCalled()
+  })
+
+  it("returns 409 when request with same Idempotency-Key is currently in flight", async () => {
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    ;(vi.mocked(db.service.findUnique) as any).mockResolvedValue(mockService)
+    ;(vi.mocked(db.idempotencyRecord.findUnique) as any).mockResolvedValueOnce({
+      key: "key-book-in-flight",
+      scope: "booking:create",
+      context: {
+        clientId: "client-1",
+        providerId: "prov-1",
+        serviceId: "svc-1",
+        scheduledAt: validBody.scheduledAt,
+        amount: 150,
+        quantity: 1,
+      },
+      status: "processing",
+      response: null,
+      expiresAt: new Date(Date.now() + 100000),
+    })
+
+    const req = createMockRequest({
+      method: "POST",
+      body: validBody,
+      headers: { "idempotency-key": "key-book-in-flight" },
+    })
+    const res = await createBooking(req)
+    expect(res.status).toBe(409)
+  })
 })
 
 describe("GET /api/bookings", () => {
@@ -227,7 +350,7 @@ describe("GET /api/bookings", () => {
     ;(vi.mocked(db.booking.count) as any).mockResolvedValue(1)
 
     const req = createMockRequest()
-    const res = await listBookings(req)
+    const res = await listBookings(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -241,11 +364,58 @@ describe("GET /api/bookings", () => {
     ;(vi.mocked(db.booking.count) as any).mockResolvedValue(0)
 
     const req = createMockRequest({ searchParams: { status: "CONFIRMED" } })
-    await listBookings(req)
+    await listBookings(req, { params: Promise.resolve({}) })
 
     expect(db.booking.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ status: "CONFIRMED" }),
+      }),
+    )
+  })
+
+  it("money_decimal: serializa booking.amount e payment.amount como number (não string Decimal cru)", async () => {
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    ;(vi.mocked(db.booking.findMany) as any).mockResolvedValue([
+      {
+        ...mockBooking,
+        // Decimal REAL do Prisma — a unidade que o banco devolve
+        amount: new D("621.00"),
+        payment: { status: "PENDING", amount: new D("621.00") },
+      },
+    ])
+    ;(vi.mocked(db.booking.count) as any).mockResolvedValue(1)
+
+    const req = createMockRequest()
+    const res = await listBookings(req, { params: Promise.resolve({}) })
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    const item = (parsed.body as any).items[0]
+    // number exato (não "621.00" string, não 621.0000000000001)
+    expect(item.amount).toBe(621)
+    expect(typeof item.amount).toBe("number")
+    expect(item.payment.amount).toBe(621)
+    expect(typeof item.payment.amount).toBe("number")
+  })
+
+  it("anti-idor: returns 403 when CLIENT tries to query with role=ADMIN", async () => {
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    const req = createMockRequest({ searchParams: { role: "ADMIN" } })
+    const res = await listBookings(req, { params: Promise.resolve({}) })
+    expect(res.status).toBe(403)
+  })
+
+  it("permits ADMIN to query with role=ADMIN", async () => {
+    _mockSession = { userId: "admin-1", role: "ADMIN" } as any
+    ;(vi.mocked(db.booking.findMany) as any).mockResolvedValue([])
+    ;(vi.mocked(db.booking.count) as any).mockResolvedValue(0)
+
+    const req = createMockRequest({ searchParams: { role: "ADMIN" } })
+    const res = await listBookings(req, { params: Promise.resolve({}) })
+    expect(res.status).toBe(200)
+    expect(db.booking.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {},
       }),
     )
   })

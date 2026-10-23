@@ -57,6 +57,11 @@ const mockDb = vi.hoisted(() => ({
   quoteItem: { findUnique: vi.fn(), update: vi.fn() },
   user: { findFirst: vi.fn() },
   service: { findMany: vi.fn() },
+  idempotencyRecord: {
+    findUnique: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  },
 }))
 
 vi.mock("@/lib/db", () => ({ default: mockDb, db: mockDb }))
@@ -85,7 +90,7 @@ describe("GET /api/quotes (list)", () => {
   })
 
   it("returns paginated quotes list", async () => {
-    const response = await GET(createMockRequest())
+    const response = await GET(createMockRequest(), { params: Promise.resolve({}) })
     const data = await response.json()
     expect(response.status).toBe(200)
     expect(data.items).toHaveLength(1)
@@ -95,7 +100,9 @@ describe("GET /api/quotes (list)", () => {
   })
 
   it("filters by status", async () => {
-    await GET(createMockRequest({ searchParams: { status: "PENDING" } }))
+    await GET(createMockRequest({ searchParams: { status: "PENDING" } }), {
+      params: Promise.resolve({}),
+    })
     expect(mockDb.quoteRequest.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ status: "PENDING" }) }),
     )
@@ -124,33 +131,98 @@ describe("POST /api/quotes (create)", () => {
   })
 
   it("creates a quote request as CLIENT", async () => {
-    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }))
+    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }), {
+      params: Promise.resolve({}),
+    })
     expect(response.status).toBe(201)
     expect(mockDb.quoteRequest.create).toHaveBeenCalled()
   })
 
   it("throws 403 when user is not CLIENT", async () => {
     vi.mocked(requireUser).mockResolvedValue({ userId: "prov-1", role: "PROVIDER" })
-    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }))
+    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }), {
+      params: Promise.resolve({}),
+    })
     expect(response.status).toBe(403)
   })
 
   it("throws 404 when provider not found/inactive", async () => {
     mockDb.user.findFirst.mockResolvedValue(null)
-    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }))
+    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }), {
+      params: Promise.resolve({}),
+    })
     expect(response.status).toBe(404)
   })
 
   it("throws 400 when provider is not verified", async () => {
     mockDb.user.findFirst.mockResolvedValue({ id: "prov-1", verified: false })
-    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }))
+    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }), {
+      params: Promise.resolve({}),
+    })
     expect(response.status).toBe(400)
   })
 
   it("throws 400 when service does not belong to provider", async () => {
     mockDb.service.findMany.mockResolvedValue([{ id: "svc-1", providerId: "prov-1" }])
-    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }))
+    const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }), {
+      params: Promise.resolve({}),
+    })
     expect(response.status).toBe(400)
+  })
+
+  it("replays response when valid Idempotency-Key was already completed", async () => {
+    mockDb.idempotencyRecord.findUnique.mockResolvedValueOnce({
+      key: "key-quote-123456",
+      scope: "quote:create",
+      context: {
+        clientId: "client-1",
+        providerId: "prov-1",
+        itemsCount: 2,
+        address: undefined,
+      },
+      status: "completed",
+      response: { quote: { id: "quote-cached-1" } },
+      expiresAt: new Date(Date.now() + 100000),
+    })
+
+    const response = await POST(
+      createMockRequest({
+        method: "POST",
+        body: validQuoteInput,
+        headers: { "idempotency-key": "key-quote-123456" },
+      }),
+      { params: Promise.resolve({}) },
+    )
+    expect(response.status).toBe(201)
+    const data = await response.json()
+    expect(data.quote.id).toBe("quote-cached-1")
+    expect(mockDb.quoteRequest.create).not.toHaveBeenCalled()
+  })
+
+  it("returns 409 when request with same Idempotency-Key is currently in flight", async () => {
+    mockDb.idempotencyRecord.findUnique.mockResolvedValueOnce({
+      key: "key-quote-in-flight",
+      scope: "quote:create",
+      context: {
+        clientId: "client-1",
+        providerId: "prov-1",
+        itemsCount: 2,
+        address: undefined,
+      },
+      status: "processing",
+      response: null,
+      expiresAt: new Date(Date.now() + 100000),
+    })
+
+    const response = await POST(
+      createMockRequest({
+        method: "POST",
+        body: validQuoteInput,
+        headers: { "idempotency-key": "key-quote-in-flight" },
+      }),
+      { params: Promise.resolve({}) },
+    )
+    expect(response.status).toBe(409)
   })
 })
 

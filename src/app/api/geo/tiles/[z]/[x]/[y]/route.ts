@@ -13,7 +13,7 @@ interface RouteParams {
 }
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
-  await assertRateLimit(req, RATE_LIMITS.general)
+  await assertRateLimit(req, RATE_LIMITS.vectorTiles)
   try {
     const { z: zStr, x: xStr, y: yStr } = await params
     const z = parseInt(zStr, 10)

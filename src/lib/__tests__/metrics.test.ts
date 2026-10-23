@@ -31,7 +31,14 @@ vi.mock("../db", () => ({ default: mockDb, db: mockDb }))
 
 vi.mock("server-only", () => ({}))
 
-import { getBusinessMetrics } from "../metrics"
+import {
+  getBusinessMetrics,
+  exportMetrics,
+  recordRequestDuration,
+  incrementActiveConnections,
+  decrementActiveConnections,
+  resetMetrics,
+} from "../metrics"
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -156,5 +163,53 @@ describe("getBusinessMetrics", () => {
     mockDb.user.groupBy.mockRejectedValue(new Error("connection failed"))
 
     await expect(getBusinessMetrics(30)).rejects.toThrow("connection failed")
+  })
+})
+
+describe("exportMetrics (Prometheus)", () => {
+  beforeEach(() => {
+    resetMetrics()
+  })
+
+  it("exports request duration histogram and active connections", () => {
+    recordRequestDuration("/api/providers", 200, 45)
+    incrementActiveConnections()
+    incrementActiveConnections()
+    decrementActiveConnections()
+
+    const output = exportMetrics()
+
+    expect(output).toContain("# TYPE http_request_duration_ms histogram")
+    expect(output).toContain('http_request_duration_ms_count{path="/api/providers",status="200"} 1')
+    expect(output).toContain("http_active_connections 1")
+    expect(output).toContain("# TYPE severinno_process_memory_rss_bytes gauge")
+    expect(output).toContain("# TYPE severinno_process_uptime_seconds counter")
+  })
+
+  it("resets metrics correctly", () => {
+    recordRequestDuration("/api/test", 200, 10)
+    incrementActiveConnections()
+    resetMetrics()
+
+    const output = exportMetrics()
+    expect(output).not.toContain('path="/api/test"')
+    expect(output).toContain("http_active_connections 0")
+  })
+
+  it("normaliza CUIDs e IDs numéricos sem corromper rotas como categories ou cities", () => {
+    recordRequestDuration("/api/categories", 200, 15)
+    recordRequestDuration("/api/cities", 503, 20)
+    recordRequestDuration("/api/bookings/12345", 200, 50)
+    recordRequestDuration("/api/users/clh728x00000008l0h728x000", 200, 30)
+
+    const output = exportMetrics()
+    expect(output).toContain(
+      'http_request_duration_ms_count{path="/api/categories",status="200"} 1',
+    )
+    expect(output).toContain('http_request_duration_ms_count{path="/api/cities",status="503"} 1')
+    expect(output).toContain(
+      'http_request_duration_ms_count{path="/api/bookings/:id",status="200"} 1',
+    )
+    expect(output).toContain('http_request_duration_ms_count{path="/api/users/:id",status="200"} 1')
   })
 })

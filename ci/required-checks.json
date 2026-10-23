@@ -81,7 +81,8 @@
         "pre-commit-in-runner-proof",
         "typecheck",
         "test",
-        "build"
+        "build",
+        "vitrine-baseline"
       ]
     }
   }

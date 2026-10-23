@@ -310,11 +310,11 @@ export function AdminPushRecurring() {
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6">
+    <div className="mx-auto flex max-w-7xl flex-col gap-3.5">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-foreground text-xl font-bold tracking-tight">
+          <h1 className="text-foreground text-base font-bold tracking-tight">
             Notificações Recorrentes
           </h1>
           <p className="text-muted-foreground mt-0.5 text-sm">
@@ -365,7 +365,7 @@ export function AdminPushRecurring() {
 
       {/* Loading */}
       {isLoading && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-32 w-full rounded-xl" />
           ))}
@@ -391,18 +391,18 @@ export function AdminPushRecurring() {
 
       {/* List */}
       {!isLoading && !isError && data && data.items.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           {data.items.map((item) => {
             const Icon = FREQUENCY_ICONS[item.frequency] ?? CalendarClock
             return (
               <Card key={item.id} className="relative">
-                <CardHeader className="pb-3">
+                <CardHeader className="p-3.5 pb-2">
                   <div className="flex items-start justify-between">
                     <div className="flex min-w-0 flex-1 items-center gap-2">
                       <Icon className="text-muted-foreground size-4 shrink-0" />
                       <div className="min-w-0">
                         <CardTitle className="truncate text-sm">{item.title}</CardTitle>
-                        <CardDescription className="truncate text-xs">
+                        <CardDescription className="truncate text-xs tabular-nums">
                           {describeSchedule(item)}
                         </CardDescription>
                       </div>
@@ -410,7 +410,7 @@ export function AdminPushRecurring() {
                     <StatusBadge status={item.status} />
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-2 pt-0">
+                <CardContent className="space-y-2 p-3.5 pt-0">
                   {item.body && (
                     <p className="text-muted-foreground line-clamp-2 text-xs">{item.body}</p>
                   )}
@@ -428,7 +428,7 @@ export function AdminPushRecurring() {
                     )}
                   </div>
 
-                  <div className="text-muted-foreground flex items-center justify-between border-t pt-1 text-[10px]">
+                  <div className="text-muted-foreground flex items-center justify-between border-t pt-1 text-[10px] tabular-nums">
                     <span>Total: {item.totalSent} envios</span>
                     {item.lastSentAt && (
                       <span>
@@ -500,7 +500,7 @@ export function AdminPushRecurring() {
       {/* Pagination */}
       {data && data.pagination.totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-xs tabular-nums">
             {data.pagination.total} registro(s) · página {data.pagination.page} de{" "}
             {data.pagination.totalPages}
           </p>
@@ -546,7 +546,7 @@ export function AdminPushRecurring() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-3.5">
             {/* Frequency */}
             <div className="space-y-2">
               <label className="text-foreground text-xs font-medium">Frequência</label>
@@ -626,7 +626,7 @@ export function AdminPushRecurring() {
                 onChange={(e) => updateField("title", e.target.value.slice(0, 200))}
                 maxLength={200}
               />
-              <p className="text-muted-foreground text-right text-[10px]">
+              <p className="text-muted-foreground text-right text-[10px] tabular-nums">
                 {form.title.length}/200
               </p>
             </div>
@@ -641,7 +641,9 @@ export function AdminPushRecurring() {
                 maxLength={500}
                 rows={2}
               />
-              <p className="text-muted-foreground text-right text-[10px]">{form.body.length}/500</p>
+              <p className="text-muted-foreground text-right text-[10px] tabular-nums">
+                {form.body.length}/500
+              </p>
             </div>
 
             {/* Push URL */}
@@ -683,7 +685,7 @@ export function AdminPushRecurring() {
                 Filtrar por cidade (opcional)
               </label>
               <Input
-                placeholder="Ex: São Paulo"
+                placeholder="Ex: Governador Valadares"
                 value={form.filterCity}
                 onChange={(e) => updateField("filterCity", e.target.value)}
               />

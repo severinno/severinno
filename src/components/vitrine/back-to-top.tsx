@@ -9,6 +9,7 @@ import * as React from "react"
 import { ArrowUp } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 
+import { triggerHaptic } from "@/lib/haptics"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
@@ -25,6 +26,7 @@ export default function BackToTop() {
   }, [])
 
   const handleClick = () => {
+    triggerHaptic("selection")
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
     window.scrollTo({
       top: 0,
@@ -40,7 +42,7 @@ export default function BackToTop() {
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.6 }}
           transition={{ duration: 0.15 }}
-          className="fixed right-4 bottom-20 z-30 sm:right-6 sm:bottom-24"
+          className="fixed right-4 bottom-34 z-30 sm:right-8 sm:bottom-36"
         >
           <Button
             type="button"

@@ -196,8 +196,8 @@ Pre-requisitos, NESTA ordem:
    (`deploy/env.gitea.example`, de onde este `.env.gitea` deriva), o `.actrc` e
    — **quando presente no checkout** — o `deploy/.env.gitea` do host. Num
    runner do GitHub esse ultimo nao existe (gitignored); no checkout da forja
-   ele existe, e era justamente ali que ele ficava invisivel: o guard conferia
-   so o template e dizia "em sincronia" enquanto a versao que o runner usa de
+   ele existe, e era justamente ali que ele ficava invisível: o guard conferia
+   so o template e dizia "em sincronia" enquanto a versão que o runner usa de
    verdade podia estar outra.
 
    O mesmo valor e conferido **a cada PR**, e nao so no cron: o job `guards`
@@ -213,6 +213,55 @@ Pre-requisitos, NESTA ordem:
 --gitea-env /opt/gitea/.env`. As tres tem o VALOR comparado; uma variavel sem
    `--expected-var` sai como NAO COMPARADA no log, nunca como conferida.
    Em runtime, quem prova a igualdade e o smoke (Prova 3, abaixo).
+
+### 3.1.1. Cache de bun persistente entre tasks (volume do runner)
+
+Medido em 02/10/2026 no host da forja: `bun install --frozen-lockfile` (1043
+pacotes) leva **70,7s frio → 10,0s quente** com o cache do bun persistido. Cada
+job da rodada paga o install (68s no guards, 37s no Tests), e o container do
+job é efêmero — o cache morre com ele. A cura é um volume NOMEADO, montado em
+TODA task via `container.options` da config do runner (NÃO via `valid_volumes`
+— esse mecanismo exige que o workflow declare o volume no step, e nenhum step
+declara; `options:` aplica a todo container de task):
+
+```yaml
+# /opt/gitea/runner-config.yaml (host-side), seção container:
+options: "-v runner-bun-cache:/root/.bun/install/cache"
+```
+
+Cuidados:
+
+- O cache é ENDEREÇÁVEL POR CONTEÚDO (hash do pacote + tarball): chaves
+  repetidas por versão exata não conflitam entre commits/branches, e um pacote
+  corrompido é curado com `docker volume rm runner-bun-cache` (o install
+  seguinte reconstrói frio; o bun valida o hash do tarball no restore).
+- A config é HOST-side (`/opt/gitea/runner-config.yaml` montado em
+  `/config.yaml`) — sem análogo comitado no repo. A spec EXATA do container do
+  runner em produção (imagem 0.6.1 pinada, env, mounts, network) está salva em
+  `/root/runner-spec-backup.json` na VPS; o compose canônico
+  (`deploy/docker-compose.gitea.yml`) NÃO leva a opção — replicar/ajustar a
+  config do runner é hand-off host-side declarado aqui.
+- Recriar o runner NÃO exige re-registro (o registro vive no volume
+  `runner-data:/data`, e labels/report vêm dele). **RECONCILIADO em
+  02/10/2026**: o serviço `runner` do compose de `/opt/gitea` (o MESMO que o
+  `gitea-up.sh` usa via `COMPOSE_FILE`) estava fóssil — `act_runner:latest`,
+  URL `http://gitea:3000`, labels `node:20-bullseye` (pré-tier-1), sem o mount
+  da config — e o runner real era `docker run` SEM labels de compose (por isso
+  o `compose up` conflitava de nome sem tocar no container). Realinhado à
+  spec real (0.6.1 pinada, `https://`, labels `ubuntu-bun:1.3.14`, mount do
+  `/config.yaml`) e o runner re-aterrissado como container GERIDO pelo compose
+  (proj `gitea`): um `docker compose up -d runner` hoje recria com a spec
+  certa. Backup da era fantasma: `/opt/gitea/docker-compose.yml.bak-reconcile`.
+  **PINADO em 02/10/2026**: as tags flutuantes do compose do host saíram —
+  `gitea/gitea:1.24.7` e `caddy:2.11.4-alpine` em `/opt/gitea/docker-compose.yml`
+  — com as versões REAIS confirmadas antes do pin (o binário do Gitea reporta
+  1.24.7 e o `caddy version` do container reporta v2.11.4): o pin é file-only,
+  não muda nada em runtime e o recreate pega no próximo bring-up. Backup:
+  `/opt/gitea/docker-compose.yml.bak-pin`. O compose do REPO
+  (`deploy/docker-compose.gitea.yml`) recebeu os MESMOS pins no mesmo dia —
+  `gitea/gitea:1.24.7` e `caddy:2.11.4-alpine`, com o racional comitado no
+  próprio compose — e é esse que o guard `check-runner-tag` lê: a política de
+  versão comitada se atualiza por lá, não pelo host.
 
 3. O `.env.gitea` DESTE host precisa estar em sincronia com o template comitado
    (`deploy/env.gitea.example`) — **em todas** as variaveis, nao so no
@@ -631,6 +680,101 @@ O pipeline de deploy esta em `.gitea/workflows/deploy.yml`:
 - Push para o registry configurado (`vars.IMAGE_REGISTRY`)
 - Migrate do banco de dados
 - Deploy via SSH
+
+### Skipped aparece como success (leitura de status)
+
+A API de commit-status da forja
+(`/api/v1/repos/<owner>/<repo>/commits/<sha>/status`) reporta job `skipped`
+como `success`: o `Build` tem `needs: [lint, typecheck, test]` e o `Deploy`
+tem `needs: [build]` com `if: main` — enquanto o `Tests` falha, os dois ficam
+`status=4` (Skipped) no banco (`action_run_job`) e `success` na API. Medido na
+rodada 25 (commit `37341e4e`): `Build` e `Deploy` verdes na API com o `Tests`
+vermelho. E o comportamento CORRETO da cadeia (fail-closed: nada sobe depois
+de um gate vermelho) — o falso-verde e so da LEITURA. Antes de julgar uma
+rodada pela API, confira cada job na UI da run (ou no banco): `success` com
+`task_id=0` e skipped, nao verde. O merge continua bloqueado porque o `Tests`
+tambem e contexto obrigatorio em `ci/required-checks.json` — a exigencia mordida
+e dele, nao do Build skipped.
+
+### Logs de job que somem (padrao deterministico, NAO curado pelo upgrade)
+
+Medido nas rodadas 21-25 (tasks 139-163, 1.22.6) e 26-28 (tasks 164+, 1.24.7):
+um SUBCONJUNTO de jobs perde o log fisico em `/data/gitea/actions_log/` — o
+banco guarda o veredito (status, `log_size` e `log_indexes` integros) com
+`log_in_storage=0`, mas nem o arquivo nem conteudo em banco existem (sem
+entrada em `action_task_output`). O padrao e DETERMINISTICO POR JOB e sobreviveu
+ao upgrade da forja 1.22.6 -> 1.24.7: em 3 rodadas seguidas, `Lint`,
+`Bring-up Gate Proof` e `Pre-commit Proof` perdem SEMPRE, `Stack Per-Commit` e
+`TypeCheck` ganham SEMPRE, `Repo Guards` e `Tests` oscilam. Nao e tamanho de
+log (Lint 25KB perde, TypeCheck 26KB ganha), nem status, nem horario; o runner
+nao registra erro de upload e ja e a versao mais recente (0.6.1 = `latest`).
+Familia do relato upstream `go-gitea/gitea#33822` (UploadLog aceito e nao
+persistido), agora com o upgrade DESCARTADO como causa/cura. O monitor
+`/opt/gitea/log-health.sh` (cron diario 11:40 UTC) classifica as tasks novas e
+abre issue em `severinno/alertas` se a taxa de perda piorar.
+
+Enquanto isso vale: o veredito dos jobs e CONFI AVEL (esta no banco, nao no
+log) — autopsias que precisem do LOG de um job especifico devem extrair o
+arquivo (`.zst` no 1.24, `zstd -dc`) CEDO, logo apos a rodada, e esperar perda
+nos tres jobs do padrao. Para ver o log de qualquer job na UI: os que ganham
+(Stack/TypeCheck) tem; os do padrao perdedor, nao.
+
+### Bucket do log vem de `action_task.log_filename` (o hex do id quebra no 256)
+
+O `<bucket>` do caminho
+`/data/gitea/actions_log/severinno/severinno/<bucket>/<task>.log.zst`
+NÃO é o hex do id da task: é `id % 256` em 2 dígitos hex — 255→`ff`,
+**256→`00`** (reinicia), 259→`03`, 264→`08`, 272→`10`. Quem busca pelo hex do id
+inteiro acha um bucket inexistente e declara "log perdido" em falso — a perda
+real é a da seção acima, e o veredito vive no banco (`status`/`log_in_storage`).
+Fonte de verdade: a coluna `action_task.log_filename` já traz o caminho pronto —
+copie, não calcule. Tasks antigas podem gravar `.log` puro sem `.zst` (task 14);
+o `log-health.sh` cobre os dois sufixos.
+
+### Networks órfãs esgotam o pool do Docker (janitor cobre containers, networks E volumes)
+
+Medido em 01/10/2026 14:34 UTC: 28 networks VAZIAS `GITEA-ACTIONS-TASK-*`
+(restos de runs canceladas desde a task 14) consumiram o pool default do
+Docker (172.17–172.31 + 192.168.x) e mataram 14 tasks seguidas em SEGUNDOS com
+`Error response from daemon: all predefined address pools have been fully
+subnetted` (runs 30 e 31 inteiras, tasks 189–202). O daemon NÃO limpa a
+network de uma task cancelada — acumula até esgotar o pool, e aí a fila inteira
+morre. Sintoma para reconhecer: task morre no arranque (sem log útil) com esse
+erro do daemon, várias seguidas.
+
+Cura operacional, em duas camadas:
+
+1. Limpeza pontual: remover SOMENTE as `GITEA-ACTIONS-*` vazias (`docker
+network ls --filter name=GITEA-ACTIONS` + `network inspect ... '{{len
+.Containers}}'` = 0) — nunca `docker network prune` global, que alcança
+   redes de outros serviços.2. Prevenção: o janitor (`deploy/runner-janitor.sh` + `/opt/gitea/
+runner-janitor.sh`, cron `17 * * * *`) cobre TRÊS classes de órfão com a
+   MESMA régua temporal (nenhum job legítimo roda >2h): CONTAINERS
+   `GITEA-ACTIONS-*` com idade > `--idade-horas` (default 2); NETWORKS
+   `GITEA-ACTIONS-*` VAZIAS E órfãs por UMA de DUAS réguas — a temporal (velha;
+   vazia descarta job vivo — a do job tem containers anexados; a janela
+   descarta a corrida de attach do arranque da task) e a CIRÚRGICA (02/10:
+   o nome carrega o task id e UM probe no banco diz o status — task ENCERRADA
+   (1..4) com network vazia sai NA HORA, porque o runner só não a removeu se a
+   task foi cancelada ou ele morreu no meio; task na fila/rodando (5/6) e id
+   AUSENTE no banco ficam para a temporal, e o probe FALHANDO degrada a
+   varredura inteira para a temporal — fail-closed); e VOLUMES
+   `GITEA-ACTIONS-TASK-*` velhos (medido em 01/10/2026: 47 acumulados desde a
+   task 14 — o runner remove os volumes no FIM do job, mas task cancelada ou
+   runner morto no meio deixa o volume, e o `-env`, para sempre; não esgotam
+   pool, mas ocupam disco sem teto). A varredura roda containers → networks →
+   volumes, então network que esvaziou na mesma passada já sai junto, e os
+   volumes da rodada EM CURSO nunca são tocados (jovens pela régua).
+
+Armadilha de parse (custou um ciclo de correção): o `.Created` de NETWORK vem
+com espaços e nanosegundos (`2026-10-01 17:30:07.610158752 +0000 UTC`) — o GNU
+`date -d` NÃO parseia a forma cheia, e cortar no 1º espaço dá só a data (idade
+= "desde a meia-noite"). Cortar em 19 caracteres (`${RAW:0:19}`) com `date -u`
+parseia certo — e os mesmos 19 caracteres funcionam se o formato voltar a ser
+ISO com `T`, que é o que CONTAINERS sempre usaram.
+
+Probe do pool depois de qualquer limpeza: `docker network create probe-tmp &&
+docker network rm probe-tmp` — se cria, o pool respira.
 
 ### Registry de imagens (fonte unica)
 

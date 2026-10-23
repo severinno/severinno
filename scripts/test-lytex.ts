@@ -272,6 +272,7 @@ async function testSplit() {
   console.log(`   split: ${feePercent * 100}% → R$${(splitValue / 100).toFixed(2)}`)
 
   const result = await createPixCharge({
+    // createPixCharge fala REAIS (o client converte para centavos no wire)
     amount,
     externalId: referenceId,
     payer: { name: "Test Split", cpfCnpj: TEST_CPF, email: "split@test.com" },
@@ -285,7 +286,9 @@ async function testSplit() {
   assert(!!result.qrCode, "QR code returned")
   console.log(`   charge id: ${result.id}`)
   console.log(`   status: ${result.status}`)
-  console.log(`   amount: R$${result.amount.toFixed(2)}`)
+  console.log(
+    `   amount: R$${(result.amount / 100).toFixed(2)} // CENTAVOS ecoado (unidade da API)`,
+  )
   console.log(`   txId: ${(result as any).txId}`)
   console.log(`   checkout: ${(result as any).checkoutUrl}`)
   console.log(

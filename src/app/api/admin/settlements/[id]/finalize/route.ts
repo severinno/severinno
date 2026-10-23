@@ -3,16 +3,19 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
+
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+
+import { withParams } from "@/lib/api-route"
 
 /**
  * POST /api/admin/settlements/[id]/finalize
  *
  * Mark a settlement period as finalized.
  */
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
+export const POST = withParams<{ id: string }>(
+  "api.admin.settlements.:id.finalize.POST",
+  async (request, { params }) => {
     const session = await requireRole("ADMIN")
     await assertRateLimit(request, RATE_LIMITS.settlements)
     const { id } = await params
@@ -47,7 +50,5 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     })
 
     return NextResponse.json({ period: updated })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

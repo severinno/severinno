@@ -23,102 +23,99 @@ import {
   getTopReverses,
   getQueryLogDiagnostics,
 } from "@/lib/geo-query-log"
-import { handleError } from "@/lib/api-server"
+
 import { getWarmConfig } from "@/lib/geo-cache-warm"
+
+import { withRoute } from "@/lib/api-route"
 
 // ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
 
-export async function GET() {
-  try {
-    await requireRole("ADMIN")
+export const GET = withRoute("api.admin.geo-cache-diagnostics.GET", async (_request) => {
+  await requireRole("ADMIN")
 
-    const cacheStats = getCacheStats()
-    const memoryDiag = getMemoryCacheDiagnostics()
-    const geoMetrics = getGeoMetrics()
-    const queryLogDiag = getQueryLogDiagnostics()
-    const warmConfig = getWarmConfig()
+  const cacheStats = getCacheStats()
+  const memoryDiag = getMemoryCacheDiagnostics()
+  const geoMetrics = getGeoMetrics()
+  const queryLogDiag = getQueryLogDiagnostics()
+  const warmConfig = getWarmConfig()
 
-    // Top queries from the persistent log
-    const topSearches = getTopSearches(10).map((s) => ({
-      query: s.query,
-      count: s.count,
-    }))
-    const topCEPs = getTopCEPs(10).map((c) => ({
-      cep: c.cep,
-      count: c.count,
-    }))
-    const topReverses = getTopReverses(5).map((r) => ({
-      coords: r.coords,
-      count: r.count,
-    }))
+  // Top queries from the persistent log
+  const topSearches = getTopSearches(10).map((s) => ({
+    query: s.query,
+    count: s.count,
+  }))
+  const topCEPs = getTopCEPs(10).map((c) => ({
+    cep: c.cep,
+    count: c.count,
+  }))
+  const topReverses = getTopReverses(5).map((r) => ({
+    coords: r.coords,
+    count: r.count,
+  }))
 
-    // Try to read TTL for common cache keys from Redis
-    let keyTTLs: Array<{ key: string; ttlSeconds: number | null }> = []
-    if (isRedisAvailable()) {
-      try {
-        const client = getClient()
-        if (client) {
-          const probeKeys = [
-            "geo:search:são paulo, sp:5",
-            "geo:search:rio de janeiro, rj:5",
-            "geo:cep:01310100",
-            "geo:cep:20040002",
-            "geo:reverse:-23.5505,-46.6333",
-          ]
-          const results = await Promise.allSettled(
-            probeKeys.map(async (key) => {
-              const ttl = await client.ttl(key)
-              return { key, ttlSeconds: ttl >= 0 ? ttl : null }
-            }),
+  // Try to read TTL for common cache keys from Redis
+  let keyTTLs: Array<{ key: string; ttlSeconds: number | null }> = []
+  if (isRedisAvailable()) {
+    try {
+      const client = getClient()
+      if (client) {
+        const probeKeys = [
+          "geo:search:são paulo, sp:5",
+          "geo:search:rio de janeiro, rj:5",
+          "geo:cep:01310100",
+          "geo:cep:20040002",
+          "geo:reverse:-23.5505,-46.6333",
+        ]
+        const results = await Promise.allSettled(
+          probeKeys.map(async (key) => {
+            const ttl = await client.ttl(key)
+            return { key, ttlSeconds: ttl >= 0 ? ttl : null }
+          }),
+        )
+        keyTTLs = results
+          .filter((r) => r.status === "fulfilled")
+          .map(
+            (r) => (r as PromiseFulfilledResult<{ key: string; ttlSeconds: number | null }>).value,
           )
-          keyTTLs = results
-            .filter((r) => r.status === "fulfilled")
-            .map(
-              (r) =>
-                (r as PromiseFulfilledResult<{ key: string; ttlSeconds: number | null }>).value,
-            )
-        }
-      } catch {
-        // Redis TTL read failed — skip
       }
+    } catch {
+      // Redis TTL read failed — skip
     }
-
-    // Heatmap data: per-service call counts over the last 15 min window
-    const heatmap = Object.entries(geoMetrics.services).map(([key, metrics]) => ({
-      service: key as GeoServiceName,
-      label: SERVICE_LABELS[key as GeoServiceName] ?? key,
-      calls: metrics.count,
-      errors: metrics.errorCount,
-      errorRate: metrics.errorRate,
-      p50: metrics.p50,
-      p95: metrics.p95,
-      p99: metrics.p99,
-      lastSampleAt: metrics.lastSampleAt,
-    }))
-
-    return NextResponse.json({
-      cacheStats,
-      memoryDiag,
-      queryLogDiag,
-      warmConfig,
-      topSearches,
-      topCEPs,
-      topReverses,
-      keyTTLs,
-      heatmap,
-      geoMetrics: {
-        services: geoMetrics.services,
-        timestamp: geoMetrics.timestamp,
-        windowSeconds: geoMetrics.windowSeconds,
-      },
-      timestamp: Date.now(),
-    })
-  } catch (_e) {
-    return handleError(_e)
   }
-}
+
+  // Heatmap data: per-service call counts over the last 15 min window
+  const heatmap = Object.entries(geoMetrics.services).map(([key, metrics]) => ({
+    service: key as GeoServiceName,
+    label: SERVICE_LABELS[key as GeoServiceName] ?? key,
+    calls: metrics.count,
+    errors: metrics.errorCount,
+    errorRate: metrics.errorRate,
+    p50: metrics.p50,
+    p95: metrics.p95,
+    p99: metrics.p99,
+    lastSampleAt: metrics.lastSampleAt,
+  }))
+
+  return NextResponse.json({
+    cacheStats,
+    memoryDiag,
+    queryLogDiag,
+    warmConfig,
+    topSearches,
+    topCEPs,
+    topReverses,
+    keyTTLs,
+    heatmap,
+    geoMetrics: {
+      services: geoMetrics.services,
+      timestamp: geoMetrics.timestamp,
+      windowSeconds: geoMetrics.windowSeconds,
+    },
+    timestamp: Date.now(),
+  })
+})
 
 // ---------------------------------------------------------------------------
 // Response type (exported for the client component)

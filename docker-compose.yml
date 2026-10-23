@@ -16,6 +16,9 @@ services:
     restart: unless-stopped
   redis:
     image: redis:7-alpine
+    # Long-running: sobe junto do app após reboot/crash do daemon — sem isto o
+    # cache/rate-limit do app perde o Redis do stack quando só o app sobe.
+    restart: unless-stopped
     ports: ["6379:6379"]
     volumes: [redisdata:/data]
 volumes:

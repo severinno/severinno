@@ -11,6 +11,7 @@ import { db } from "@/lib/db"
 import { getSession } from "@/lib/auth"
 import { getClient } from "@/lib/redis"
 import logger from "@/lib/logger"
+import { toMoneyNumber } from "@/lib/money"
 
 const log = logger.child({ module: "analytics-demand-api" })
 
@@ -68,11 +69,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // 1. Fetch quote requests with coordinates
+    // 1. Fetch quote requests with coordinates (bounded to prevent heap exhaustion)
     const quoteRequests = await db.quoteRequest.findMany({
       where: {
         createdAt: { gte: sinceDate },
       },
+      take: 2000,
       select: {
         id: true,
         lat: true,
@@ -92,11 +94,12 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // 2. Fetch bookings with coordinates
+    // 2. Fetch bookings with coordinates (bounded to prevent heap exhaustion)
     const bookings = await db.booking.findMany({
       where: {
         createdAt: { gte: sinceDate },
       },
+      take: 2000,
       select: {
         id: true,
         lat: true,
@@ -137,7 +140,7 @@ export async function GET(request: NextRequest) {
       totalItems++
       categoryCounts[cat] = (categoryCounts[cat] || 0) + 1
 
-      const price = q.items[0]?.price || 150
+      const price = toMoneyNumber(q.items[0]?.price, 150)
       const key = `${q.lat.toFixed(2)},${q.lng.toFixed(2)}`
       const existing = gridMap.get(key) || {
         latSum: 0,
@@ -178,7 +181,7 @@ export async function GET(request: NextRequest) {
       existing.latSum += b.lat
       existing.lngSum += b.lng
       existing.count += 1
-      existing.totalValue += b.amount || 200
+      existing.totalValue += toMoneyNumber(b.amount, 200)
       existing.categories[cat] = (existing.categories[cat] || 0) + 1
       gridMap.set(key, existing)
     }

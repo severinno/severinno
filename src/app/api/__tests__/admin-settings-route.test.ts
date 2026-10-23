@@ -65,7 +65,10 @@ vi.mock("@/lib/redis", () => ({
 }))
 
 vi.mock("@/lib/api-server", async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>
+  const actual =
+    typeof importOriginal === "function"
+      ? ((await importOriginal()) as Record<string, unknown>)
+      : ((await import("@/lib/api-server")) as Record<string, unknown>)
   return { ...actual, handleError: vi.fn((e: unknown) => (actual as any).handleError(e)) }
 })
 
@@ -76,7 +79,10 @@ vi.mock("@/lib/rate-limit", () => ({
 
 // health route: tudo real, mas resetHealthCache vira spy (o contrato testado).
 vi.mock("@/app/api/health/route", async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>
+  const actual =
+    typeof importOriginal === "function"
+      ? ((await importOriginal()) as Record<string, unknown>)
+      : ((await import("@/app/api/health/route")) as Record<string, unknown>)
   return { ...actual, resetHealthCache: vi.fn() }
 })
 

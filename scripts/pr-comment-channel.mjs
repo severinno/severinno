@@ -179,7 +179,20 @@ export async function reconcileComment({
   // seria pedir o que a outra não conhece (e um 400 aqui viraria "canal
   // quebrado" sem ser).
   const pagina = kind === "gitea" ? "?limit=100" : "?per_page=100"
-  const list = await request(config, "GET", `/issues/${pr}/comments${pagina}`)
+  // O ESCOPO DO PATH também é diferente: o `githubApi` injeta `/repos/{repo}`
+  // em TODO path (e o `issue-publish` do Gitea monta o base com o repo à mão,
+  // base = `/repos/${config.repo}` — medido no run 348, que comentou e fechou a
+  // #4). O canal de PR passa paths NUS — e no Gitea ninguém injeta: o GET
+  // `/api/v1/issues/N/comments` volta `404 page not found` (run 350, PR #6 — os
+  // 3 fixers QUEBRADOS com todos os guards verdes). O base é do kind: só o
+  // Gitea precisa dele aqui, e o config do Gitea sempre carrega `repo`.
+  if (kind === "gitea" && !config?.repo) {
+    throw new Error(
+      "canal gitea exige config.repo (GITEA_REPOSITORY) — o path da API é repo-escopo",
+    )
+  }
+  const base = kind === "gitea" ? `/repos/${config.repo}` : ""
+  const list = await request(config, "GET", `${base}/issues/${pr}/comments${pagina}`)
   guardStatus(list, 200, `listar comentários do PR #${pr}`)
   const todos = Array.isArray(list.data) ? list.data : []
   // O filtro é pelo marcador DO CANAL: dois assuntos podem viver no mesmo PR, e
@@ -189,7 +202,7 @@ export async function reconcileComment({
   // Duplicata é resíduo de dois runs concorrentes: o marcador é único por PR, e
   // deixar duas cópias faria a reconciliação seguinte escolher uma ao acaso.
   for (const extra of nossos.slice(1)) {
-    const del = await request(config, "DELETE", `/issues/comments/${extra.id}`)
+    const del = await request(config, "DELETE", `${base}/issues/comments/${extra.id}`)
     guardStatus(del, 204, `retirar comentário duplicado #${extra.id}`, 200)
     log(`🧹 comentário duplicado #${extra.id} retirado`)
   }
@@ -208,7 +221,7 @@ export async function reconcileComment({
     }
   }
   if (acao === "remove") {
-    const del = await request(config, "DELETE", `/issues/comments/${anterior.id}`)
+    const del = await request(config, "DELETE", `${base}/issues/comments/${anterior.id}`)
     guardStatus(del, 204, `retirar comentário #${anterior.id}`, 200)
     return {
       action: "removed",
@@ -217,7 +230,7 @@ export async function reconcileComment({
     }
   }
   if (acao === "create") {
-    const created = await request(config, "POST", `/issues/${pr}/comments`, { body })
+    const created = await request(config, "POST", `${base}/issues/${pr}/comments`, { body })
     guardStatus(created, 201, `comentar o PR #${pr}`)
     return {
       action: "created",
@@ -225,7 +238,7 @@ export async function reconcileComment({
       detail: `comentário publicado no PR #${pr}`,
     }
   }
-  const updated = await request(config, "PATCH", `/issues/comments/${anterior.id}`, { body })
+  const updated = await request(config, "PATCH", `${base}/issues/comments/${anterior.id}`, { body })
   guardStatus(updated, 200, `atualizar comentário #${anterior.id}`, 201)
   return { action: "updated", id: anterior.id, detail: `comentário #${anterior.id} atualizado` }
 }

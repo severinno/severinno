@@ -861,7 +861,14 @@ export function readGiteaQueue({
   // repo, o do dono (org/usuário) e o global (system, que serve a todos). Um
   // runner de outro repositório não pega estes jobs, e contá-lo faria uma fila
   // parada parecer drenada.
-  const runnersSql = `select name, version, last_online, last_active from action_runner where deleted = 0 and (repo_id = ${repoId.id} or owner_id = (select owner_id from repository where id = ${repoId.id}) or (repo_id = 0 and owner_id = 0));`
+  // O SQLITE3 CLI do container da forja devolve a coluna `deleted` (NOT NULL
+  // com default 0, e criada antes do NOT NULL existir) como texto/NULL em
+  // linhas antigas — o literal `deleted = 0` exclui o runner VIVO do mundo real
+  // (medido: vps-runner, deleted=NULL, sumia da contagem e o doctor dizia
+  // "0 runners online" com a fila de pé). O COALESCE normaliza o mundo real:
+  // ausente/NULL conta como vivo (fail-open na leitura, que é o lado seguro —
+  // o falso "sem runners" é o verde mentiroso desta pergunta).
+  const runnersSql = `select name, version, last_online, last_active from action_runner where coalesce(deleted, 0) = 0 and (repo_id = ${repoId.id} or owner_id = (select owner_id from repository where id = ${repoId.id}) or (repo_id = 0 and owner_id = 0));`
   const runnersRes = consulta(runnersSql)
   if (runnersRes?.error) {
     return {

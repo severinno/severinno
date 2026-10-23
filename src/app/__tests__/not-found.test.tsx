@@ -78,12 +78,13 @@ describe("NotFound (404 page)", () => {
     expect(blurDivs.length).toBe(2)
   })
 
-  it("injects style tag with keyframes", () => {
+  it("usa as classes .nf-anim-* (keyframes migrados para globals.css)", () => {
     const { container } = render(<NotFound />)
-    const style = container.querySelector("style")
-    expect(style).toBeInTheDocument()
-    expect(style?.textContent).toContain("@keyframes fadeSlideUp")
-    expect(style?.textContent).toContain("@keyframes fadeIn")
+    // Sem <style> inline — a CSP saiu do 'unsafe-inline' em style-src.
+    expect(container.querySelector("style")).not.toBeInTheDocument()
+    // Elementos animados referenciam as classes globais.
+    const animated = container.querySelectorAll(".nf-anim-slide-up, .nf-anim-fade-in")
+    expect(animated.length).toBeGreaterThanOrEqual(4)
   })
 
   it("has h1 with correct text", () => {

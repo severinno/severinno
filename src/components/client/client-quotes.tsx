@@ -1,65 +1,71 @@
 "use client"
 
 /**
- * ClientQuotes — list of all quote requests submitted by the client.
+ * ClientQuotes — Clean, minimalist in-panel quote request management.
  *
- * Polish (Nielsen + trust/transparency):
- *  - Page header with quick action (Pedir orçamento — emerald, prominent).
- *  - Status filter tabs with counts (Pendentes, Respondidos, Aprovados,
- *    Rejeitados, Expirados, Todos).
- *  - Quote cards with: provider avatar+name, items summary, created date,
- *    expiry, status badge. Expandable (Collapsible) to show items with the
- *    provider's quoted price + note. The QuoteTimeline is preserved in the
- *    expanded view.
- *  - Actions: Aprovar (emerald), Rejeitar, Ver prestador, Enviar mensagem.
- *  - Pagination (client-side, 8/page).
+ * Allows clients to request, compare, approve and schedule custom service
+ * quotes with transparent labor/materials breakdown and Escrow guarantee.
+ *
+ * Capabilities:
+ *  - Modern Hero Banner with platform guarantee and quick actions
+ *  - 3 Ultra-compact Bento StatCards (~68px) with status overview
+ *  - Segmented status tabs with live counts (Todos, Pendentes, Respondidos, Aprovados, Rejeitados, Expirados)
+ *  - View mode switcher (Lista / Grade) with haptic feedback
+ *  - Quick in-list search by provider or service title with instant clear "X"
+ *  - List View: Ultra-compact rows (~80px) with round avatars and quick actions
+ *  - Grid View: Balanced Bento cards with timeline, breakdown and reassurance banners
+ *  - Persuasive Service Design empty state with 3-step value guide
+ *  - Quote cards with:
+ *    - 100% round avatars (rounded-full)
+ *    - Contextual status reassurance banners (awaiting decision, ready to schedule, expired, etc.)
+ *    - Flow timeline (QuoteTimeline) in collapsible items view
+ *    - Transparent quote breakdown button (labor vs materials)
+ *    - Direct "Agendar Atendimento" CTA upon approval
+ *    - Strict platform messaging (client.messages) with zero WhatsApp leaks
  */
 
 import * as React from "react"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import {
   CalendarClock,
-  Check,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
   FileText,
+  LayoutGrid,
+  LayoutList,
   Loader2,
   MapPin,
-  MessageSquare,
   Plus,
+  Search,
+  ShieldCheck,
+  Sparkles,
   X,
+  XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
 import { apiGet, apiPatch } from "@/lib/api"
-import {
-  QUOTE_ITEM_STATUS_LABELS,
-  QUOTE_STATUS_LABELS,
-  SERVICE_UNIT_SHORT,
-  type QuoteItemStatus,
-  type QuoteStatus,
-  type ServiceUnit,
-} from "@/lib/constants"
-import { formatBRL, formatDate, formatDateTime } from "@/lib/format"
+import { TransparentQuoteModal } from "@/components/shared/transparent-quote-modal"
+import type { TransparentQuoteBreakdown } from "@/lib/materials-breakdown"
+import type { QuoteStatus, ServiceUnit } from "@/lib/constants"
+import { triggerHaptic } from "@/lib/haptics"
 import { useUIStore } from "@/store/ui"
 import { useViewStore } from "@/store/view"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { EmptyState } from "@/components/shared/dashboard-shell"
-import { QuoteTimeline } from "@/components/shared/flow-timeline"
-import { PageHeader, StatusBadge, quoteIcon, quoteTone } from "@/components/client/client-shared"
+import { Input } from "@/components/ui/input"
+import { StatCard } from "@/components/shared/shell"
+import { QuoteListCard, QuoteCard } from "./client-quote-cards"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type QuoteItem = {
+export type QuoteItem = {
   id: string
   serviceId: string
   description: string
@@ -72,7 +78,7 @@ type QuoteItem = {
   provider: { id: string; name: string; avatarUrl?: string | null }
 }
 
-type QuoteRequest = {
+export type QuoteRequest = {
   id: string
   status: QuoteStatus
   address: string
@@ -94,49 +100,16 @@ type QuotesResponse = {
 // Filter tabs
 // ---------------------------------------------------------------------------
 
-const TABS: Array<{ key: string; label: string }> = [
-  { key: "PENDING", label: "Pendentes" },
-  { key: "RESPONDED", label: "Respondidos" },
-  { key: "APPROVED", label: "Aprovados" },
-  { key: "REJECTED", label: "Rejeitados" },
-  { key: "EXPIRED", label: "Expirados" },
-  { key: "ALL", label: "Todos" },
+const TABS: Array<{ key: string; label: string; icon: React.ElementType }> = [
+  { key: "ALL", label: "Todos", icon: LayoutGrid },
+  { key: "PENDING", label: "Pendentes", icon: Clock },
+  { key: "RESPONDED", label: "Respondidos", icon: CheckCircle2 },
+  { key: "APPROVED", label: "Aprovados", icon: Sparkles },
+  { key: "REJECTED", label: "Rejeitados", icon: XCircle },
+  { key: "EXPIRED", label: "Expirados", icon: CalendarClock },
 ]
 
 const PAGE_SIZE = 8
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function providerInitials(name?: string | null): string {
-  if (!name) return "P"
-  return name
-    .split(" ")
-    .map((p) => p[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase()
-}
-
-/**
- * `useNow` — a re-rendering clock.
- *
- * Returns the current epoch ms and refreshes (re-rendering the consumer)
- * every `intervalMs`. Cards use it to compute "expired" state without calling
- * the impure `Date.now()` during render (react-hooks/purity).
- */
-function useNow(intervalMs = 60_000): number {
-  const [now, setNow] = React.useState(() => Date.now())
-
-  React.useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), intervalMs)
-    return () => window.clearInterval(id)
-  }, [intervalMs])
-
-  return now
-}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -147,14 +120,22 @@ export function ClientQuotes() {
   const navigate = useViewStore((s) => s.navigate)
   const openProvider = useUIStore((s) => s.openProvider)
   const openQuote = useUIStore((s) => s.openQuote)
+  const openBooking = useUIStore((s) => s.openBooking)
 
   const [tab, setTab] = React.useState("ALL")
+  const [viewMode, setViewMode] = React.useState<"list" | "grid">("list")
+  const [filterText, setFilterText] = React.useState("")
   const [page, setPage] = React.useState(1)
+  const [viewBreakdownItem, setViewBreakdownItem] = React.useState<{
+    title: string
+    category?: string
+    breakdown: TransparentQuoteBreakdown
+  } | null>(null)
 
-  React.useEffect(() => setPage(1), [tab])
+  React.useEffect(() => {
+    setPage(1)
+  }, [tab, filterText])
 
-  // Fetch up to 4 pages of 50 (= 200 max) so we can compute accurate counts
-  // per status and paginate client-side.
   const queries = useQueries({
     queries: [1, 2, 3, 4].map((p) => ({
       queryKey: ["quotes", "CLIENT", "all", p],
@@ -194,8 +175,18 @@ export function ClientQuotes() {
   }, [allQuotes])
 
   const visible = React.useMemo(() => {
-    const filtered = tab === "ALL" ? allQuotes : allQuotes.filter((q) => q.status === tab)
-    // Active first (asc by createdAt), terminal last (desc by createdAt).
+    let filtered = tab === "ALL" ? allQuotes : allQuotes.filter((q) => q.status === tab)
+
+    if (filterText.trim()) {
+      const q = filterText.toLowerCase().trim()
+      filtered = filtered.filter(
+        (item) =>
+          item.provider.name.toLowerCase().includes(q) ||
+          item.items.some((it) => it.service.title.toLowerCase().includes(q)) ||
+          item.address.toLowerCase().includes(q),
+      )
+    }
+
     const isActive = (s: QuoteStatus) => s === "PENDING" || s === "RESPONDED" || s === "APPROVED"
     return [...filtered].sort((a, b) => {
       const ta = new Date(a.createdAt).getTime()
@@ -206,7 +197,7 @@ export function ClientQuotes() {
       if (!aActive && !bActive) return tb - ta
       return aActive ? -1 : 1
     })
-  }, [allQuotes, tab])
+  }, [allQuotes, tab, filterText])
 
   const total = visible.length
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -214,96 +205,397 @@ export function ClientQuotes() {
 
   const approveMutation = useMutation({
     mutationFn: (id: string) => apiPatch(`/api/quotes/${id}`, { status: "APPROVED" }),
-    onSuccess: () => {
-      toast.success("Orçamento aprovado! Você já pode agendar o serviço.")
+    onSuccess: (_, id) => {
+      triggerHaptic("success")
+      toast.success("Orçamento aprovado! Você já pode agendar o atendimento.")
       qc.invalidateQueries({ queryKey: ["quotes"] })
       qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+
+      const q = allQuotes.find((it) => it.id === id)
+      if (q && q.items[0]?.serviceId) {
+        openBooking({ providerId: q.provider.id, serviceId: q.items[0].serviceId })
+      }
     },
-    onError: (e: { message?: string }) =>
-      toast.error(e?.message || "Não foi possível aprovar o orçamento."),
+    onError: (e: { message?: string }) => {
+      triggerHaptic("error")
+      toast.error(e?.message || "Não foi possível aprovar o orçamento.")
+    },
   })
 
   const rejectMutation = useMutation({
     mutationFn: (id: string) => apiPatch(`/api/quotes/${id}`, { status: "REJECTED" }),
     onSuccess: () => {
-      toast.success("Orçamento rejeitado.")
+      triggerHaptic("selection")
+      toast.info("Orçamento rejeitado.")
       qc.invalidateQueries({ queryKey: ["quotes"] })
       qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
     },
-    onError: (e: { message?: string }) =>
-      toast.error(e?.message || "Não foi possível rejeitar o orçamento."),
+    onError: (e: { message?: string }) => {
+      triggerHaptic("error")
+      toast.error(e?.message || "Não foi possível rejeitar o orçamento.")
+    },
   })
 
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title="Orçamentos"
-        subtitle="Acompanhe as cotações que você solicitou e aprove a melhor oferta."
-        action={
-          <Button onClick={() => openQuote()} className="h-10 gap-2">
-            <Plus className="size-4" />
-            Pedir orçamento
-          </Button>
-        }
-      />
+    <div className="space-y-4 sm:space-y-5">
+      {/* Signature Hero Banner */}
+      <div className="border-border/60 from-card via-card/95 to-primary/5 relative overflow-hidden rounded-2xl border bg-gradient-to-br p-4 shadow-2xs sm:p-5">
+        <div className="relative z-10 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <div className="border-primary/20 bg-primary/10 text-primary inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium">
+              <FileText className="size-3" />
+              <span>Cotações Inteligentes & Orçamento Transparente</span>
+            </div>
+            <h1 className="text-foreground text-xl font-bold tracking-tight sm:text-2xl">
+              Orçamentos
+            </h1>
+            <p className="text-muted-foreground max-w-2xl text-xs sm:text-sm">
+              Acompanhe as cotações que você solicitou e aprove a melhor oferta.
+            </p>
+          </div>
 
-      {/* Status tabs with counts */}
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1 sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <Button
+              onClick={() => {
+                triggerHaptic("selection")
+                openQuote()
+              }}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 h-8 gap-1.5 rounded-xl px-3 text-xs font-semibold shadow-2xs"
+            >
+              <Plus className="size-3.5" />
+              Pedir orçamento
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                triggerHaptic("selection")
+                navigate("client.providers")
+              }}
+              className="border-border/60 hover:bg-muted/60 h-8 gap-1.5 rounded-xl px-3 text-xs font-semibold shadow-2xs"
+            >
+              <MapPin className="text-primary size-3.5" />
+              Buscar prestadores
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* 3 Ultra-Compact Bento StatCards (~68px) */}
+      <div className="grid gap-2.5 sm:grid-cols-3">
+        <StatCard
+          compact={true}
+          icon={Clock}
+          label="Aguardando Decisão"
+          value={String(counts.RESPONDED ?? 0)}
+          tone={counts.RESPONDED > 0 ? "amber" : "zinc"}
+          hint="Propostas prontas para sua análise e aprovação"
+        />
+        <StatCard
+          compact={true}
+          icon={CalendarClock}
+          label="Em Análise"
+          value={String(counts.PENDING ?? 0)}
+          tone="primary"
+          hint="Aguardando envio de valores formalizados pelos prestadores"
+        />
+        <StatCard
+          compact={true}
+          icon={Sparkles}
+          label="Aprovados / Total"
+          value={`${counts.APPROVED ?? 0} de ${counts.ALL ?? 0}`}
+          tone="sky"
+          hint="Orçamentos confirmados para atendimento"
+        />
+      </div>
+
+      {/* Modern Filter, Tabs & View Mode Toolbar */}
+      <div className="bg-card border-border/60 flex flex-col gap-2.5 rounded-xl border p-2.5 shadow-2xs sm:p-3">
+        {/* Status Segmented Rail */}
+        <div className="-mx-1 flex scrollbar-none gap-1.5 overflow-x-auto px-1 pb-1">
           {TABS.map((t) => {
             const count = counts[t.key] ?? 0
             const active = tab === t.key
+            const Icon = t.icon
             return (
-              <TabsTrigger key={t.key} value={t.key} className="h-8 flex-shrink-0 gap-1.5">
-                {t.label}
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  setTab(t.key)
+                }}
+                className={cn(
+                  "flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-all active:scale-95",
+                  active
+                    ? "bg-primary text-primary-foreground font-semibold shadow-2xs"
+                    : "border-border/60 bg-muted/30 hover:bg-muted/70 text-muted-foreground hover:text-foreground border",
+                )}
+              >
+                <Icon
+                  className={cn(
+                    "size-3",
+                    active ? "text-primary-foreground" : "text-muted-foreground",
+                  )}
+                />
+                <span>{t.label}</span>
                 <span
                   className={cn(
-                    "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums",
-                    active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
+                    "inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-1 text-[9px] font-semibold tabular-nums",
+                    active
+                      ? "bg-primary-foreground/20 text-primary-foreground"
+                      : "bg-muted text-muted-foreground",
                   )}
                 >
                   {count}
                 </span>
-              </TabsTrigger>
+              </button>
             )
           })}
-        </TabsList>
-      </Tabs>
+        </div>
 
-      {/* Result count */}
-      <p className="text-muted-foreground text-xs">
-        {isLoading
-          ? "Carregando…"
-          : total === 0
-            ? "Nenhum orçamento nesta categoria."
-            : `Mostrando ${pageItems.length} de ${total} orçamento${total !== 1 ? "s" : ""}.`}
-      </p>
+        {/* Search Input + View Mode Toggle */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 border-t pt-2">
+          {/* Quick Search */}
+          <div className="relative min-w-[200px] flex-1">
+            <Search className="text-muted-foreground absolute top-1/2 left-3 size-3.5 -translate-y-1/2" />
+            <Input
+              type="text"
+              placeholder="Filtrar por prestador ou serviço..."
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              className="h-8.5 rounded-lg pr-8 pl-8.5 text-xs"
+            />
+            {filterText ? (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  setFilterText("")
+                }}
+                className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-0.5"
+                title="Limpar busca"
+                aria-label="Limpar busca"
+              >
+                <X className="size-3.5" />
+              </button>
+            ) : null}
+          </div>
 
+          {/* View mode switcher */}
+          <div className="bg-muted/40 flex items-center rounded-lg border p-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic("selection")
+                setViewMode("list")
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all ${
+                viewMode === "list"
+                  ? "bg-card text-foreground shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              aria-label="Visualização em Lista"
+              aria-pressed={viewMode === "list"}
+            >
+              <LayoutList className="size-3.5" />
+              <span className="hidden sm:inline">Lista</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic("selection")
+                setViewMode("grid")
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all ${
+                viewMode === "grid"
+                  ? "bg-card text-foreground shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              aria-label="Visualização em Grade"
+              aria-pressed={viewMode === "grid"}
+            >
+              <LayoutGrid className="size-3.5" />
+              <span className="hidden sm:inline">Grade</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Results Counter & Reassurance Badge */}
+      <div className="text-muted-foreground flex flex-col justify-between gap-1.5 px-1 text-xs sm:flex-row sm:items-center">
+        <div>
+          {isLoading ? (
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="text-primary size-3.5 animate-spin" />
+              Carregando orçamentos...
+            </span>
+          ) : total === 0 ? (
+            <span>Nenhum orçamento nesta categoria.</span>
+          ) : (
+            <span>
+              Mostrando{" "}
+              <strong className="text-foreground font-semibold">{pageItems.length}</strong> de{" "}
+              <strong className="text-foreground font-semibold">{total}</strong>{" "}
+              {total === 1 ? "orçamento" : "orçamentos"}.
+            </span>
+          )}
+        </div>
+
+        <div className="hidden items-center gap-1.5 font-medium text-emerald-700 sm:flex dark:text-emerald-400">
+          <ShieldCheck className="size-3.5 text-emerald-600" />
+          <span>🛡️ Orçamentos Protegidos · Sem Cobrança Antecipada</span>
+        </div>
+      </div>
+
+      {/* Content */}
       {isLoading ? (
-        <div className="text-muted-foreground flex items-center justify-center gap-2 p-10 text-sm">
-          <Loader2 className="size-5 animate-spin" />
-          Carregando orçamentos…
+        <div className="grid gap-2.5">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="border-border/60 rounded-xl p-4 shadow-2xs">
+              <div className="flex items-center gap-3">
+                <div className="bg-muted size-11 animate-pulse rounded-full" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="bg-muted h-3.5 w-40 rounded" />
+                  <div className="bg-muted h-3 w-28 rounded" />
+                </div>
+                <div className="bg-muted h-6 w-16 rounded" />
+              </div>
+            </Card>
+          ))}
         </div>
       ) : pageItems.length === 0 ? (
-        <EmptyState
-          icon={FileText}
-          title={
-            tab === "ALL" ? "Você ainda não tem orçamentos" : "Nenhum orçamento com este status"
-          }
-          description={
-            tab === "ALL"
-              ? "Que tal pedir o primeiro? Encontre um prestador e solicite uma cotação personalizada."
-              : "Não há orçamentos com este status no momento. Tente outra categoria."
-          }
-          action={
-            <Button onClick={() => openQuote()} className="mt-2 gap-2">
-              <Plus className="size-4" />
-              Pedir orçamento
-            </Button>
-          }
-        />
+        /* Empty State */
+        <Card className="border-border/70 rounded-2xl border-dashed p-6 text-center sm:p-8">
+          <CardContent className="flex flex-col items-center justify-center space-y-3.5 p-0">
+            <div className="bg-primary/10 text-primary flex size-12 items-center justify-center rounded-xl shadow-2xs">
+              <FileText className="size-6" />
+            </div>
+            <div className="space-y-1 text-center">
+              <h3 className="text-foreground text-sm font-bold sm:text-base">
+                {filterText
+                  ? "Nenhum orçamento encontrado"
+                  : tab === "ALL"
+                    ? "Você ainda não tem orçamentos"
+                    : "Nenhum orçamento nesta categoria"}
+              </h3>
+              <p className="text-muted-foreground max-w-lg text-xs leading-relaxed">
+                {filterText
+                  ? `Nenhum orçamento corresponde à busca "${filterText}".`
+                  : tab === "ALL"
+                    ? "Que tal pedir o primeiro? Encontre um prestador e solicite uma cotação personalizada."
+                    : "Não há orçamentos com este status no momento. Tente outra categoria ou solicite uma nova cotação."}
+              </p>
+            </div>
+
+            {filterText ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  triggerHaptic("selection")
+                  setFilterText("")
+                }}
+                className="mt-2 h-8 gap-1.5 text-xs"
+              >
+                Limpar filtro
+              </Button>
+            ) : tab === "ALL" ? (
+              <div className="grid w-full max-w-2xl gap-2.5 pt-2 text-left sm:grid-cols-3">
+                <div className="border-border/60 bg-muted/20 space-y-1 rounded-xl border p-3">
+                  <div className="text-foreground flex items-center gap-1.5 text-xs font-bold">
+                    <span className="bg-primary/15 text-primary flex size-4.5 items-center justify-center rounded-full text-[10px]">
+                      1
+                    </span>
+                    <span>Descreva o que precisa</span>
+                  </div>
+                  <p className="text-muted-foreground text-[10.5px] leading-relaxed">
+                    Indique o serviço, endereço e detalhes do trabalho a ser realizado.
+                  </p>
+                </div>
+
+                <div className="border-border/60 bg-muted/20 space-y-1 rounded-xl border p-3">
+                  <div className="text-foreground flex items-center gap-1.5 text-xs font-bold">
+                    <span className="bg-primary/15 text-primary flex size-4.5 items-center justify-center rounded-full text-[10px]">
+                      2
+                    </span>
+                    <span>Proposta Transparente</span>
+                  </div>
+                  <p className="text-muted-foreground text-[10.5px] leading-relaxed">
+                    O profissional avalia e envia prazo com divisão transparente dos custos.
+                  </p>
+                </div>
+
+                <div className="border-border/60 bg-muted/20 space-y-1 rounded-xl border p-3">
+                  <div className="text-foreground flex items-center gap-1.5 text-xs font-bold">
+                    <span className="bg-primary/15 text-primary flex size-4.5 items-center justify-center rounded-full text-[10px]">
+                      3
+                    </span>
+                    <span>Garantia & Escrow</span>
+                  </div>
+                  <p className="text-muted-foreground text-[10.5px] leading-relaxed">
+                    Você só libera o pagamento após o serviço concluído e aprovado por você.
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            {!filterText && (
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                <Button
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    openQuote()
+                  }}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 h-8 gap-1.5 rounded-xl px-3 text-xs font-semibold"
+                >
+                  <Plus className="size-3.5" />
+                  Pedir Orçamento Agora
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    navigate("client.providers")
+                  }}
+                  className="h-8 gap-1.5 rounded-xl text-xs font-medium"
+                >
+                  <MapPin className="text-primary size-3.5" />
+                  Explorar Prestadores
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : viewMode === "list" ? (
+        /* MODO LISTA: Ultra-compact rows (~80px) */
+        <div className="space-y-2.5">
+          {pageItems.map((q) => (
+            <QuoteListCard
+              key={q.id}
+              quote={q}
+              onApprove={() => approveMutation.mutate(q.id)}
+              onReject={() => rejectMutation.mutate(q.id)}
+              onViewProvider={() => openProvider(q.provider.id)}
+              onSchedule={() =>
+                openBooking({ providerId: q.provider.id, serviceId: q.items[0]?.serviceId })
+              }
+              onMessage={() =>
+                navigate("client.messages", {
+                  with: q.provider.id,
+                  peerId: q.provider.id,
+                  providerId: q.provider.id,
+                })
+              }
+              onViewBreakdown={(info) => setViewBreakdownItem(info)}
+              isApproving={approveMutation.isPending}
+              isRejecting={rejectMutation.isPending}
+            />
+          ))}
+        </div>
       ) : (
-        <div className="grid gap-3">
+        /* MODO GRADE: Bento cards (~160px) */
+        <div className="grid gap-3 sm:grid-cols-2">
           {pageItems.map((q) => (
             <QuoteCard
               key={q.id}
@@ -311,7 +603,17 @@ export function ClientQuotes() {
               onApprove={() => approveMutation.mutate(q.id)}
               onReject={() => rejectMutation.mutate(q.id)}
               onViewProvider={() => openProvider(q.provider.id)}
-              onMessage={() => navigate("client.messages", { with: q.provider.id })}
+              onSchedule={() =>
+                openBooking({ providerId: q.provider.id, serviceId: q.items[0]?.serviceId })
+              }
+              onMessage={() =>
+                navigate("client.messages", {
+                  with: q.provider.id,
+                  peerId: q.provider.id,
+                  providerId: q.provider.id,
+                })
+              }
+              onViewBreakdown={(info) => setViewBreakdownItem(info)}
               isApproving={approveMutation.isPending}
               isRejecting={rejectMutation.isPending}
             />
@@ -320,246 +622,56 @@ export function ClientQuotes() {
       )}
 
       {total > PAGE_SIZE ? (
-        <div className="flex flex-col items-center justify-between gap-2 border-t pt-3 sm:flex-row">
+        <div className="border-border/50 flex flex-col items-center justify-between gap-2 border-t pt-3 sm:flex-row">
           <p className="text-muted-foreground text-xs tabular-nums">
-            Página {page} de {totalPages} · {total} orçamentos
+            Página <strong className="text-foreground">{page}</strong> de{" "}
+            <strong className="text-foreground">{totalPages}</strong> · {total} orçamentos
           </p>
           <div className="flex items-center gap-1">
             <Button
               variant="outline"
               size="sm"
               disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="h-9 gap-1"
+              onClick={() => {
+                triggerHaptic("selection")
+                setPage((p) => Math.max(1, p - 1))
+              }}
+              className="h-8 gap-1 rounded-lg text-xs"
             >
-              <ChevronLeft className="size-4" />
+              <ChevronLeft className="size-3.5" />
               Anterior
             </Button>
-            <span className="text-muted-foreground px-2 text-xs tabular-nums">
+            <span className="text-muted-foreground px-2 text-xs font-semibold tabular-nums">
               {page} / {totalPages}
             </span>
             <Button
               variant="outline"
               size="sm"
               disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-              className="h-9 gap-1"
+              onClick={() => {
+                triggerHaptic("selection")
+                setPage((p) => p + 1)
+              }}
+              className="h-8 gap-1 rounded-lg text-xs"
             >
               Próxima
-              <ChevronRight className="size-4" />
+              <ChevronRight className="size-3.5" />
             </Button>
           </div>
         </div>
       ) : null}
+
+      {/* Transparent Quote Breakdown Modal */}
+      {viewBreakdownItem && (
+        <TransparentQuoteModal
+          open={!!viewBreakdownItem}
+          onOpenChange={(o) => !o && setViewBreakdownItem(null)}
+          mode="view"
+          serviceTitle={viewBreakdownItem.title}
+          serviceCategory={viewBreakdownItem.category}
+          initialBreakdown={viewBreakdownItem.breakdown}
+        />
+      )}
     </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// QuoteCard
-// ---------------------------------------------------------------------------
-
-function QuoteCard({
-  quote,
-  onApprove,
-  onReject,
-  onViewProvider,
-  onMessage,
-  isApproving,
-  isRejecting,
-}: {
-  quote: QuoteRequest
-  onApprove: () => void
-  onReject: () => void
-  onViewProvider: () => void
-  onMessage: () => void
-  isApproving: boolean
-  isRejecting: boolean
-}) {
-  const [open, setOpen] = React.useState(false)
-  const now = useNow()
-
-  const provider = quote.provider
-  const initials = providerInitials(provider.name)
-
-  const status = quote.status as QuoteStatus
-  const totalQuoted = quote.items.reduce((acc, i) => acc + (i.price ?? 0) * i.quantity, 0)
-  const allQuoted = quote.items.every((i) => i.status === "QUOTED" || i.status === "ACCEPTED")
-  const canApprove = status === "RESPONDED" || (status === "PENDING" && allQuoted)
-  const canReject = status === "RESPONDED" || status === "PENDING" || status === "APPROVED"
-  const isExpired =
-    status === "EXPIRED" || (status !== "APPROVED" && new Date(quote.expiresAt).getTime() < now)
-
-  const itemsCount = quote.items.length
-  const firstServiceTitle = quote.items[0]?.service?.title ?? "—"
-
-  return (
-    <Card className="rounded-xl shadow-sm transition-shadow hover:shadow-md">
-      <CardContent className="py-4">
-        {/* Header */}
-        <div className="flex items-start gap-3">
-          <button
-            type="button"
-            onClick={onViewProvider}
-            className="focus-visible:ring-ring shrink-0 rounded-full outline-none focus-visible:ring-2"
-            aria-label={`Ver perfil de ${provider.name}`}
-          >
-            <Avatar className="size-11 border">
-              {provider.avatarUrl ? (
-                <AvatarImage src={provider.avatarUrl} alt={provider.name} />
-              ) : null}
-              <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
-                {initials || "P"}
-              </AvatarFallback>
-            </Avatar>
-          </button>
-
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={onViewProvider}
-                className="hover:text-primary truncate text-sm font-semibold focus-visible:underline"
-              >
-                {provider.name}
-              </button>
-              <StatusBadge tone={quoteTone(status)} icon={quoteIcon(status)}>
-                {QUOTE_STATUS_LABELS[status]}
-              </StatusBadge>
-              {isExpired && status !== "EXPIRED" ? (
-                <StatusBadge tone="zinc" icon={Clock}>
-                  Expirado
-                </StatusBadge>
-              ) : null}
-            </div>
-            <p className="text-muted-foreground mt-0.5 truncate text-sm">
-              {itemsCount} {itemsCount === 1 ? "item" : "itens"} · {firstServiceTitle}
-              {itemsCount > 1 ? ` +${itemsCount - 1}` : ""}
-            </p>
-            <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-              <span className="inline-flex items-center gap-1 tabular-nums">
-                <Clock className="text-primary size-3.5" />
-                Solicitado em {formatDateTime(quote.createdAt)}
-              </span>
-              <span className="inline-flex items-center gap-1 tabular-nums">
-                <CalendarClock className="size-3.5" />
-                Expira em {formatDate(quote.expiresAt)}
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <MapPin className="size-3.5" />
-                <span className="max-w-[12rem] truncate">{quote.address}</span>
-              </span>
-            </div>
-          </div>
-
-          {allQuoted && totalQuoted > 0 ? (
-            <div className="shrink-0 text-right">
-              <p className="text-muted-foreground text-xs">Total orçado</p>
-              <p className="text-sm font-semibold tabular-nums">{formatBRL(totalQuoted)}</p>
-            </div>
-          ) : null}
-        </div>
-
-        {/* Expandable items */}
-        <Collapsible open={open} onOpenChange={setOpen} className="mt-3">
-          <CollapsibleTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-primary h-8 gap-1.5 text-xs font-medium"
-            >
-              <FileText className="size-3.5" />
-              {open ? "Ocultar itens" : `Ver ${itemsCount} ${itemsCount === 1 ? "item" : "itens"}`}
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-2">
-            {/* Flow transparency — "what happens now" timeline */}
-            <div className="mb-3 rounded-lg border border-emerald-100 bg-emerald-50/50 p-4 dark:border-emerald-900 dark:bg-emerald-950/20">
-              <QuoteTimeline status={status} />
-            </div>
-            <ul className="divide-y rounded-lg border">
-              {quote.items.map((it) => {
-                const subtotal = it.price != null ? it.price * it.quantity : null
-                const itemStatus = it.status as QuoteItemStatus
-                return (
-                  <li key={it.id} className="grid gap-1 p-3 text-sm sm:grid-cols-[1fr_auto]">
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium">{it.service.title}</p>
-                        <StatusBadge tone="zinc" className="text-[10px]">
-                          {QUOTE_ITEM_STATUS_LABELS[itemStatus] ?? it.status}
-                        </StatusBadge>
-                      </div>
-                      <p className="text-muted-foreground text-xs tabular-nums">
-                        {it.quantity} {SERVICE_UNIT_SHORT[it.unit]} ·{" "}
-                        {it.price != null
-                          ? `${formatBRL(it.price)} / ${SERVICE_UNIT_SHORT[it.unit]}`
-                          : "Aguardando preço"}
-                      </p>
-                      <p className="text-muted-foreground line-clamp-2 text-xs">{it.description}</p>
-                      {it.providerNote ? (
-                        <p className="bg-muted/50 rounded-md px-2 py-1 text-xs">
-                          <span className="font-medium">Nota do prestador:</span> {it.providerNote}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className="self-start text-right text-sm">
-                      {subtotal != null ? (
-                        <>
-                          <p className="text-muted-foreground text-xs">Subtotal</p>
-                          <p className="font-semibold tabular-nums">{formatBRL(subtotal)}</p>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground text-xs">—</span>
-                      )}
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-          </CollapsibleContent>
-        </Collapsible>
-
-        {/* Actions */}
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
-          <Button variant="ghost" size="sm" onClick={onViewProvider} className="h-9 gap-1.5">
-            <MapPin className="size-4" />
-            Ver prestador
-          </Button>
-          <Button variant="ghost" size="sm" onClick={onMessage} className="h-9 gap-1.5">
-            <MessageSquare className="size-4" />
-            Mensagem
-          </Button>
-          <div className="ml-auto flex items-center gap-2">
-            {canReject ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onReject}
-                disabled={isRejecting}
-                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive h-9 gap-1.5"
-              >
-                {isRejecting ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <X className="size-4" />
-                )}
-                Rejeitar
-              </Button>
-            ) : null}
-            {canApprove ? (
-              <Button size="sm" onClick={onApprove} disabled={isApproving} className="h-9 gap-1.5">
-                {isApproving ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Check className="size-4" />
-                )}
-                Aprovar orçamento
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
   )
 }

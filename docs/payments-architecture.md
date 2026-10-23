@@ -152,6 +152,40 @@ Cliente                          API                           Lytex
 
 `src/lib/lytex.ts` — Cliente HTTP completo para API Lytex.
 
+### 3.0. Unidade monetária — REAIS no domínio, CENTAVOS no wire
+
+A API da Lytex trabalha em **CENTAVOS** (inteiro): o `totalValue` das
+invoices v2 é em centavos (`scripts/test-lytex.ts` cria invoice com
+`value: 1990` e lê "R$ 19,90"; o dashboard admin formata
+`totalValue/100`). O domínio interno é em **REAIS** (`Booking.amount` é
+`Decimal(10,2)`).
+
+Consequência no contrato do client (`src/lib/lytex.ts`):
+
+- `PixChargeRequest.amount` / `CardChargeRequest.amount` = REAIS — o
+  client converte para centavos na fronteira (`toCents`); os call sites
+  continuam falando a unidade do domínio;
+- TODOS os campos de valor das RESPOSTAS (`amount`, `paidAmount`,
+  `installmentAmount`, `refundedAmount`, saldos de wallet) = CENTAVOS,
+  como a API ecoa.
+
+Consequência no dashboard do gateway (`GET /api/admin/gateway/stats`):
+
+- `averageTicket` = **REAIS** (convertido na fronteira da rota com
+  `toMoneyNumber`) — o componente multiplica por 100 uma única vez para
+  os helpers de formatação em centavos;
+- os demais agregados (`totalVolume`, `byStatus[].total`,
+  `monthly[].total`/`paid`, `methodDistribution[].total`, `trend[].volume`)
+  = **CENTAVOS** (unidade bruta das invoices Lytex, formatados com `/100`
+  no componente).
+
+⚠️ Os hosts v1 do desenho original (`api.lytex.com.br`/
+`sandbox-api.lytex.com.br`) não resolvem DNS publicamente (verificado por
+DoH em 2026-10-01); a API operada é `api-pay.lytex.com.br` (v2 de
+invoices). Antes de ligar cobrança real, confirmar com a Lytex o endpoint
+que substitui `/charges/*` — a unidade (centavos) vale para ambas as
+versões.
+
 ### 3.1. Funções Exportadas
 
 | Função                              | Endpoint                      | Descrição                   |

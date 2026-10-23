@@ -1,8 +1,8 @@
 /**
  * demo-accounts.ts
  *
- * Gate central para as contas de demonstração (admin@severinno.com/admin123,
- * cliente@severinno.com/cliente123, joao@severinno.com/provider123).
+ * Gate central para as contas de demonstração (e-mails em DEMO_ACCOUNT_EMAILS
+ * abaixo; senhas de dev vivem apenas no prisma/seed.ts, fora do bundle).
  *
  * Contas demo com senha conhecida são DEV/STAGING ONLY:
  *   - Expor uma credencial de ADMIN permanente em produção convida brute
@@ -11,7 +11,6 @@
  *   - O usuário demo NÃO deve existir no banco de produção (seed recusa).
  *
  * Consumidores:
- *   - src/components/modals/auth-modal.tsx  → esconde o bloco de credenciais
  *   - prisma/seed.ts                        → recusa semear usuários demo em prod
  *   - src/app/api/auth/login/route.ts       → bloqueia login de conta demo em prod
  *   - src/app/api/auth/register/route.ts    → bloqueia cadastro com email demo em prod
@@ -29,11 +28,11 @@ export function isDemoAccountsEnabled(env: string | undefined = process.env.NODE
 /**
  * Emails das contas demo — usados SERVER-SIDE para bloquear login/registro
  * em produção, mesmo que o usuário exista no banco (ex.: banco clonado de
- * dev/staging ou seed antigo). A UI esconder o bloco não basta: a credencial
- * admin@severinno.com/admin123 é pública, então a rota de auth precisa
- * recusar por conta própria.
+ * dev/staging ou seed antigo). A UI não expõe mais o bloco demo, e a
+ * credencial da conta demo é pública (docs/dev), então a rota de auth
+ * precisa recusar por conta própria.
  *
- * Mantenha sincronizado com o array DEMO_ACCOUNTS do auth-modal.tsx.
+ * Mantenha sincronizado com as credenciais de dev usadas no seed (prisma/seed.ts).
  */
 export const DEMO_ACCOUNT_EMAILS: ReadonlySet<string> = new Set([
   "admin@severinno.com",

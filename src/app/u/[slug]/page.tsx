@@ -3,8 +3,10 @@ import { notFound } from "next/navigation"
 import { db } from "@/lib/db"
 import { PublicProfilePage, type PublicProfileProvider } from "./public-profile-page"
 import { BreadcrumbJsonLd } from "@/components/shared/breadcrumb-json-ld"
-import { sanitizeForJsonLd } from "@/lib/sanitize"
+import { sanitizeForJsonLd, serializeJsonLd } from "@/lib/sanitize"
 import { exactShape } from "@/lib/api-server"
+import { toMoneyNumber } from "@/lib/money"
+import { isAmbassador } from "@/lib/referral"
 
 type Props = { params: Promise<{ slug: string }> }
 
@@ -41,6 +43,8 @@ export default async function Page({ params }: Props) {
       city: true,
       state: true,
       whatsapp: true,
+      verified: true,
+      identityStatus: true,
       services: {
         where: { active: true },
         select: { id: true, title: true, basePrice: true, duration: true, description: true },
@@ -50,8 +54,16 @@ export default async function Page({ params }: Props) {
           id: true,
           rating: true,
           comment: true,
+          photos: true,
           createdAt: true,
           client: { select: { name: true, avatarUrl: true } },
+          booking: {
+            select: {
+              status: true,
+              paymentStatus: true,
+              escrowReleasedAt: true,
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
         take: 20,
@@ -106,8 +118,29 @@ export default async function Page({ params }: Props) {
   // qualquer coluna sensível) no `select`, isto deixa de compilar em vez de
   // vazar no payload RSC desta página pública e indexável.
   const { _count, ...profileRow } = provider
+  const ambassador = await isAmbassador(provider.id)
   const profile = exactShape<PublicProfileProvider>()({
     ...profileRow,
+    isAmbassador: ambassador,
+    // Decimal → number na fronteira RSC: o contrato do componente é number
+    services: profileRow.services.map((s) => ({ ...s, basePrice: toMoneyNumber(s.basePrice) })),
+    reviewsReceived: profileRow.reviewsReceived.map((r) => {
+      const photosArray = Array.isArray(r.photos)
+        ? (r.photos as string[]).filter((p) => typeof p === "string")
+        : []
+      const isVerified =
+        r.booking?.status === "COMPLETED" &&
+        (r.booking?.paymentStatus === "PAID" || r.booking?.escrowReleasedAt != null)
+      return {
+        id: r.id,
+        rating: r.rating,
+        comment: r.comment,
+        photos: photosArray,
+        isVerified,
+        createdAt: r.createdAt,
+        client: r.client,
+      }
+    }),
     rating,
     reviewCount: _count.reviewsReceived,
     completedBookings: _count.bookingsAsProvider,
@@ -123,7 +156,7 @@ export default async function Page({ params }: Props) {
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
       <PublicProfilePage provider={profile} />
     </>

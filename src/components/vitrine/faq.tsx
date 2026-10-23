@@ -113,64 +113,90 @@ export default function FAQ() {
     activeCategory === "all" ? FAQS : FAQS.filter((f) => f.category === activeCategory)
 
   return (
-    <section className="border-border/40 bg-muted/20 border-t py-20 sm:py-24">
-      <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-10 text-center">
-          <p className="text-primary mb-3 text-xs font-semibold tracking-widest uppercase">FAQ</p>
-          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">Dúvidas frequentes</h2>
-        </div>
+    <section id="faq" className="border-border/40 bg-muted/20 border-t py-14 sm:py-16">
+      <div className="mx-auto w-full max-w-[95%] px-2 sm:px-4">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-start">
+          {/* Coluna Esquerda: Título + Filtros de Categoria + Card de Suporte */}
+          <div className="lg:sticky lg:top-24 lg:col-span-4">
+            <p className="text-primary mb-2 text-xs font-semibold tracking-widest uppercase">
+              FAQ • Central de Ajuda
+            </p>
+            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Dúvidas frequentes</h2>
+            <p className="text-muted-foreground mt-2 text-xs leading-relaxed sm:text-sm">
+              Respostas rápidas sobre custódia PIX, verificação de prestadores, garantia de 90 dias
+              e agendamentos em Governador Valadares.
+            </p>
 
-        {/* Category Filter Pills */}
-        <div className="no-scrollbar mb-8 flex items-center gap-2 overflow-x-auto pb-1">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.value}
-              type="button"
-              onClick={() => setActiveCategory(cat.value)}
-              className={cn(
-                "shrink-0 rounded-full border px-4 py-1.5 text-xs font-medium transition-all",
-                activeCategory === cat.value
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border/50 bg-card text-muted-foreground hover:border-border hover:text-foreground",
-              )}
+            {/* Category Filter Pills */}
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              {CATEGORIES.map((cat) => {
+                const count =
+                  cat.value === "all"
+                    ? FAQS.length
+                    : FAQS.filter((f) => f.category === cat.value).length
+                return (
+                  <button
+                    key={cat.value}
+                    type="button"
+                    onClick={() => setActiveCategory(cat.value)}
+                    className={cn(
+                      "inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all",
+                      activeCategory === cat.value
+                        ? "border-primary bg-primary/10 text-primary font-semibold"
+                        : "border-border/50 bg-card text-muted-foreground hover:border-border hover:text-foreground",
+                    )}
+                  >
+                    <span>{cat.label}</span>
+                    <span className="bg-muted/80 text-muted-foreground py-0.2 rounded-full px-1.5 text-[10px] font-bold">
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Support CTA Card */}
+            <div className="border-border/50 bg-card mt-6 rounded-2xl border p-5 shadow-xs">
+              <p className="text-foreground text-sm font-bold">Ainda tem dúvidas?</p>
+              <p className="text-muted-foreground mt-1 mb-4 text-xs leading-relaxed">
+                Nossa equipe de atendimento local está pronta para orientar sua contratação.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-primary/40 text-primary hover:bg-primary/5 w-full rounded-full font-semibold"
+                onClick={() => openAuth("register", "CLIENT")}
+              >
+                Falar com suporte
+              </Button>
+            </div>
+          </div>
+
+          {/* Coluna Direita: Acordeão em Grid Amplo */}
+          <div className="lg:col-span-8">
+            <Accordion
+              type="single"
+              collapsible
+              className="grid grid-cols-1 gap-2.5 xl:grid-cols-2"
             >
-              {cat.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Accordion */}
-        <Accordion type="single" collapsible className="space-y-2">
-          {filtered.map((faq) => (
-            <AccordionItem
-              key={faq.id}
-              value={faq.id}
-              className="border-border/50 bg-card data-[state=open]:border-primary/30 overflow-hidden rounded-xl border px-5"
-            >
-              <AccordionTrigger className="py-4 text-sm font-medium hover:no-underline">
-                {faq.question}
-              </AccordionTrigger>
-              <AccordionContent>
-                <p className="text-muted-foreground pb-4 text-sm leading-relaxed">{faq.answer}</p>
-              </AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
-
-        {/* Bottom CTA */}
-        <div className="border-border/40 bg-card mt-12 rounded-2xl border p-6 text-center">
-          <p className="text-muted-foreground mb-4 text-sm">
-            Ainda tem dúvidas? Nossa equipe está pronta para ajudar.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="border-primary/40 text-primary hover:bg-primary/5 rounded-full"
-            onClick={() => openAuth("register", "CLIENT")}
-          >
-            Falar com suporte
-          </Button>
+              {filtered.map((faq) => (
+                <AccordionItem
+                  key={faq.id}
+                  value={faq.id}
+                  className="border-border/50 bg-card data-[state=open]:border-primary/30 overflow-hidden rounded-xl border px-5 shadow-2xs"
+                >
+                  <AccordionTrigger className="py-4 text-left text-sm font-semibold hover:no-underline">
+                    {faq.question}
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <p className="text-muted-foreground pb-4 text-xs leading-relaxed sm:text-sm">
+                      {faq.answer}
+                    </p>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
         </div>
       </div>
     </section>

@@ -15,6 +15,7 @@ import {
 import { apiGet, fetchGeoSearchStructured } from "@/lib/api"
 import { useGeoStore } from "@/store/geo"
 import { cn } from "@/lib/utils"
+import { triggerHaptic } from "@/lib/haptics"
 
 export type AddressFormValue = {
   cep: string
@@ -164,7 +165,9 @@ export function AddressForm({
           lat,
           lng,
         })
+        triggerHaptic("success")
       } catch {
+        triggerHaptic("error")
         setCepError("CEP não encontrado. Preencha o endereço manualmente.")
       } finally {
         setCepLoading(false)
@@ -174,6 +177,7 @@ export function AddressForm({
   )
 
   const handleGps = React.useCallback(async () => {
+    triggerHaptic("selection")
     setGpsLoading(true)
     try {
       await setFromGPS()
@@ -182,6 +186,7 @@ export function AddressForm({
         setGpsLoading(false)
         return
       }
+      triggerHaptic("success")
       // Try reverse geocoding for a friendlier UX.
       try {
         const data = await apiGet<{
@@ -205,6 +210,8 @@ export function AddressForm({
         // Keep GPS coords only; user fills address manually.
         onChange({ ...value, lat: geo.lat, lng: geo.lng })
       }
+    } catch {
+      triggerHaptic("error")
     } finally {
       setGpsLoading(false)
     }
@@ -242,7 +249,7 @@ export function AddressForm({
               size="sm"
               onClick={handleGps}
               disabled={gpsLoading}
-              className="border-primary/30 text-primary hover:bg-primary/5 hover:text-primary h-10 w-full justify-start gap-2"
+              className="border-primary/30 text-primary hover:bg-primary/5 hover:text-primary h-10 w-full justify-start gap-2 transition-all active:scale-95"
             >
               {gpsLoading ? (
                 <Loader2 className="size-4 animate-spin" />

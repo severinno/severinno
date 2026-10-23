@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Bell, Check, CheckCheck, Loader2 } from "lucide-react"
+import { Bell, Check, CheckCheck, ChevronRight, Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { NOTIFICATION_TYPE_LABELS } from "@/lib/constants"
@@ -15,6 +15,9 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { type NotificationItem, NOTIFICATION_ROUTES } from "./types"
+
+import { triggerHaptic } from "@/lib/haptics"
+import { playCoinSound } from "@/lib/sounds"
 
 export function groupNotificationsByDate(
   items: NotificationItem[],
@@ -71,6 +74,7 @@ export function NotificationsBell({
   onMarkAllRead,
   markingAll,
   onNavigate,
+  onOpenDrawer,
 }: {
   items: NotificationItem[]
   unreadCount: number
@@ -79,8 +83,14 @@ export function NotificationsBell({
   onMarkAllRead: (ids: string[]) => void
   markingAll: boolean
   onNavigate: (view: string) => void
+  onOpenDrawer?: () => void
 }) {
+  const [filter, setFilter] = React.useState<"all" | "unread">("all")
   const unreadIds = React.useMemo(() => items.filter((n) => !n.read).map((n) => n.id), [items])
+  const filteredItems = React.useMemo(
+    () => (filter === "unread" ? items.filter((n) => !n.read) : items),
+    [items, filter],
+  )
 
   return (
     <DropdownMenu>
@@ -118,7 +128,13 @@ export function NotificationsBell({
           {unreadCount > 0 ? (
             <button
               type="button"
-              onClick={() => onMarkAllRead(unreadIds)}
+              onClick={() => {
+                triggerHaptic("success")
+                try {
+                  playCoinSound({ vibrate: true })
+                } catch {}
+                onMarkAllRead(unreadIds)
+              }}
               disabled={markingAll}
               className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-[11px] font-medium transition-colors disabled:opacity-50"
             >
@@ -132,22 +148,70 @@ export function NotificationsBell({
           ) : null}
         </div>
 
+        {/* Filter bar: Todas / Não lidas */}
+        <div className="bg-muted/30 flex items-center gap-1 border-b px-3 py-1.5 text-xs">
+          <button
+            type="button"
+            onClick={() => {
+              setFilter("all")
+              triggerHaptic("selection")
+            }}
+            className={cn(
+              "rounded-md px-2 py-0.5 text-xs font-medium transition-colors",
+              filter === "all"
+                ? "bg-background text-foreground font-semibold shadow-2xs"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Todas ({items.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setFilter("unread")
+              triggerHaptic("selection")
+            }}
+            className={cn(
+              "rounded-md px-2 py-0.5 text-xs font-medium transition-colors",
+              filter === "unread"
+                ? "bg-background text-foreground font-semibold shadow-2xs"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Não lidas ({unreadCount})
+          </button>
+        </div>
+
         <ScrollArea className="max-h-80">
           {isLoading ? (
             <div className="text-muted-foreground flex items-center justify-center gap-2 p-8 text-sm">
               <Loader2 className="size-4 animate-spin" />
               Carregando…
             </div>
-          ) : items.length === 0 ? (
+          ) : filteredItems.length === 0 ? (
             <div className="flex flex-col items-center gap-2 p-8 text-center">
-              <span className="bg-muted text-muted-foreground flex size-12 items-center justify-center rounded-full">
-                <Bell className="size-5" />
-              </span>
-              <p className="text-muted-foreground text-sm">Você não tem notificações.</p>
+              {filter === "unread" && items.length > 0 ? (
+                <>
+                  <span className="flex size-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+                    <CheckCheck className="size-5" />
+                  </span>
+                  <p className="text-foreground text-sm font-medium">Tudo em dia!</p>
+                  <p className="text-muted-foreground text-xs">
+                    Você não tem notificações não lidas.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <span className="bg-muted text-muted-foreground flex size-12 items-center justify-center rounded-full">
+                    <Bell className="size-5" />
+                  </span>
+                  <p className="text-muted-foreground text-sm">Você não tem notificações.</p>
+                </>
+              )}
             </div>
           ) : (
             <div className="max-h-80 overflow-y-auto">
-              {groupNotificationsByDate(items).map((group) => (
+              {groupNotificationsByDate(filteredItems).map((group) => (
                 <div key={group.label}>
                   <div className="bg-popover text-muted-foreground sticky top-0 z-10 px-3 py-1.5 text-[10px] font-medium tracking-wider uppercase">
                     {group.label}
@@ -165,6 +229,7 @@ export function NotificationsBell({
                             targetRoute && "hover:bg-accent/50 cursor-pointer",
                           )}
                           onClick={() => {
+                            triggerHaptic("selection")
                             if (targetRoute) {
                               onNavigate(targetRoute)
                             }
@@ -172,6 +237,7 @@ export function NotificationsBell({
                           onKeyDown={(e) => {
                             if ((e.key === "Enter" || e.key === " ") && targetRoute) {
                               e.preventDefault()
+                              triggerHaptic("selection")
                               onNavigate(targetRoute)
                             }
                           }}
@@ -212,6 +278,7 @@ export function NotificationsBell({
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation()
+                                    triggerHaptic("selection")
                                     onMarkRead(n.id)
                                   }}
                                   className="text-primary inline-flex items-center gap-1 text-[10px] font-medium hover:underline"
@@ -231,6 +298,22 @@ export function NotificationsBell({
             </div>
           )}
         </ScrollArea>
+
+        {onOpenDrawer && (
+          <div className="bg-muted/20 border-t p-2 text-center">
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic("selection")
+                onOpenDrawer()
+              }}
+              className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs font-semibold hover:underline"
+            >
+              <span>Abrir central de notificações completa</span>
+              <ChevronRight className="size-3" />
+            </button>
+          </div>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

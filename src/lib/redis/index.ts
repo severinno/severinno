@@ -58,6 +58,7 @@ export { setDegradationCount, incrementDegradationCount } from "./degradation"
 export {
   cacheGet,
   cacheSet,
+  cacheSetNX,
   cacheInvalidate,
   withCache,
   isRedisAvailable,

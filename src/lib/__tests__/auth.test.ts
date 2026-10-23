@@ -6,19 +6,34 @@ vi.mock("../logger", () => ({
 }))
 
 // Use vi.hoisted to avoid hoisting issues with vi.mock()
-const { mockDb, cookieStore } = vi.hoisted(() => ({
+const { mockDb, cookieStore, redisStore } = vi.hoisted(() => ({
   mockDb: {
     user: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
+      update: vi.fn(),
     },
   },
   cookieStore: new Map<string, { value: string }>(),
+  redisStore: new Map<string, string>(),
 }))
 
 vi.mock("../db", () => ({
   default: mockDb,
   db: mockDb,
+}))
+
+vi.mock("@/lib/redis", () => ({
+  cacheGet: vi.fn(async (key: string) => {
+    const val = redisStore.get(key)
+    return val !== undefined ? JSON.parse(val) : null
+  }),
+  cacheSet: vi.fn(async (key: string, value: unknown) => {
+    redisStore.set(key, JSON.stringify(value))
+  }),
+  cacheInvalidate: vi.fn(async (key: string) => {
+    redisStore.delete(key)
+  }),
 }))
 
 vi.mock("next/headers", () => ({
@@ -41,6 +56,9 @@ import {
   requireUser,
   requireRole,
   getOptionalSession,
+  revokeSessionSignature,
+  isSessionRevoked,
+  revokeAllUserSessions,
 } from "../auth"
 
 const VALID_USER = {
@@ -56,6 +74,7 @@ const VALID_USER = {
 beforeEach(() => {
   vi.clearAllMocks()
   cookieStore.clear()
+  redisStore.clear()
   // Default mock: return VALID_USER for any findUnique call (covers both
   // verifyUserActive and getUserSessionVersion)
   mockDb.user.findUnique.mockResolvedValue(VALID_USER)
@@ -141,6 +160,45 @@ describe("destroySession", () => {
     expect(await getSession()).not.toBeNull()
     await destroySession()
     expect(await getSession()).toBeNull()
+  })
+})
+
+describe("session revocation", () => {
+  it("blacklists session signature and invalidates getSession immediately", async () => {
+    await createSession("user-1", "CLIENT")
+    const valid = await getSession()
+    expect(valid).not.toBeNull()
+
+    const cookie = cookieStore.get("severinno_session")
+    const parts = cookie!.value.split(".")
+    const sig = parts[parts.length - 1]
+
+    expect(await isSessionRevoked(sig)).toBe(false)
+    await revokeSessionSignature(sig)
+    expect(await isSessionRevoked(sig)).toBe(true)
+
+    // getSession should now reject the revoked token
+    expect(await getSession()).toBeNull()
+  })
+
+  it("destroySession automatically blacklists the signature", async () => {
+    await createSession("user-1", "CLIENT")
+    const cookie = cookieStore.get("severinno_session")
+    const sig = cookie!.value.split(".").pop()!
+
+    await destroySession()
+    expect(await isSessionRevoked(sig)).toBe(true)
+    expect(await getSession()).toBeNull()
+  })
+
+  it("revokeAllUserSessions increments user sessionVersion in db and invalidates cache", async () => {
+    mockDb.user.update.mockResolvedValue({ id: "user-1", sessionVersion: 1 })
+    await revokeAllUserSessions("user-1")
+
+    expect(mockDb.user.update).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      data: { sessionVersion: { increment: 1 } },
+    })
   })
 })
 

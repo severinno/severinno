@@ -2,10 +2,12 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { handleError } from "@/lib/api-server"
+
 import { isPostGISAvailable } from "@/lib/postgis"
 import { withCache } from "@/lib/redis"
 import { latLngToH3, h3ToLatLng, h3ToGeoBoundary } from "@/lib/h3-grid"
+
+import { withRoute } from "@/lib/api-route"
 
 /**
  * GET /api/geo/cluster
@@ -46,59 +48,48 @@ function resolveH3Resolution(zoom: number): number {
   return 8
 }
 
-export async function GET(request: Request) {
+export const GET = withRoute("api.geo.cluster.GET", async (request) => {
+  const { searchParams } = new URL(request.url)
+  const { assertRateLimit, RATE_LIMITS } = await import("@/lib/rate-limit")
+  await assertRateLimit(request, RATE_LIMITS.geo)
+  const minLat = Number(searchParams.get("minLat"))
+  const minLng = Number(searchParams.get("minLng"))
+  const maxLat = Number(searchParams.get("maxLat"))
+  const maxLng = Number(searchParams.get("maxLng"))
+  const zoom = Number(searchParams.get("zoom") ?? "12")
+  const categoryId = searchParams.get("categoryId") || undefined
+  const rawLimit = Number(searchParams.get("limit") ?? "500")
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(1, rawLimit), 1000) : 500
+
+  // Validate bounding box
+  if (
+    !Number.isFinite(minLat) ||
+    !Number.isFinite(minLng) ||
+    !Number.isFinite(maxLat) ||
+    !Number.isFinite(maxLng)
+  ) {
+    return NextResponse.json(
+      { error: "Parâmetros minLat, minLng, maxLat, maxLng são obrigatórios" },
+      { status: 400 },
+    )
+  }
+
+  // Check PostGIS availability
+  let pgAvailable = false
   try {
-    const { searchParams } = new URL(request.url)
-    const { assertRateLimit, RATE_LIMITS } = await import("@/lib/rate-limit")
-    await assertRateLimit(request, RATE_LIMITS.geo)
-    const minLat = Number(searchParams.get("minLat"))
-    const minLng = Number(searchParams.get("minLng"))
-    const maxLat = Number(searchParams.get("maxLat"))
-    const maxLng = Number(searchParams.get("maxLng"))
-    const zoom = Number(searchParams.get("zoom") ?? "12")
-    const categoryId = searchParams.get("categoryId") || undefined
-    const rawLimit = Number(searchParams.get("limit") ?? "500")
-    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(1, rawLimit), 1000) : 500
+    pgAvailable = await isPostGISAvailable()
+  } catch {
+    pgAvailable = false
+  }
 
-    // Validate bounding box
-    if (
-      !Number.isFinite(minLat) ||
-      !Number.isFinite(minLng) ||
-      !Number.isFinite(maxLat) ||
-      !Number.isFinite(maxLng)
-    ) {
-      return NextResponse.json(
-        { error: "Parâmetros minLat, minLng, maxLat, maxLng são obrigatórios" },
-        { status: 400 },
-      )
-    }
+  const resolution = resolveH3Resolution(zoom)
+  const cacheKey = `cluster:${minLat.toFixed(3)}:${minLng.toFixed(3)}:${maxLat.toFixed(3)}:${maxLng.toFixed(3)}:${resolution}:${categoryId ?? "all"}`
 
-    // Check PostGIS availability
-    let pgAvailable = false
-    try {
-      pgAvailable = await isPostGISAvailable()
-    } catch {
-      pgAvailable = false
-    }
-
-    const resolution = resolveH3Resolution(zoom)
-    const cacheKey = `cluster:${minLat.toFixed(3)}:${minLng.toFixed(3)}:${maxLat.toFixed(3)}:${maxLng.toFixed(3)}:${resolution}:${categoryId ?? "all"}`
-
-    const cells = await withCache<ClusterCell[]>(
-      cacheKey,
-      async () => {
-        if (pgAvailable) {
-          return await clusterWithPostGIS(
-            minLat,
-            minLng,
-            maxLat,
-            maxLng,
-            resolution,
-            categoryId,
-            limit,
-          )
-        }
-        return await clusterWithPrisma(
+  const cells = await withCache<ClusterCell[]>(
+    cacheKey,
+    async () => {
+      if (pgAvailable) {
+        return await clusterWithPostGIS(
           minLat,
           minLng,
           maxLat,
@@ -107,22 +98,21 @@ export async function GET(request: Request) {
           categoryId,
           limit,
         )
-      },
-      30, // 30s cache
-    )
+      }
+      return await clusterWithPrisma(minLat, minLng, maxLat, maxLng, resolution, categoryId, limit)
+    },
+    30, // 30s cache
+  )
 
-    return NextResponse.json({
-      cells,
-      resolution,
-      zoom,
-      bbox: { minLat, minLng, maxLat, maxLng },
-      totalProviders: cells.reduce((sum, c) => sum + c.count, 0),
-      cellCount: cells.length,
-    })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  return NextResponse.json({
+    cells,
+    resolution,
+    zoom,
+    bbox: { minLat, minLng, maxLat, maxLng },
+    totalProviders: cells.reduce((sum, c) => sum + c.count, 0),
+    cellCount: cells.length,
+  })
+})
 
 /**
  * PostGIS path: uses ST_MakeEnvelope for fast spatial filtering,

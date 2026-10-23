@@ -25,11 +25,13 @@ wait_all() {
 # Pre-commit hook — Severinno Marketplace
 #
 # Structured in 3 phases for maximum parallelism:
-#   Phase A — Staged-only guards (parallel, ~2s)
-#   Phase B — Global guards (parallel, ~3s)
-#   Phase C — Sequential checks (state-dependent, ~5s)
+#   Phase A — Staged-only guards (parallel)
+#   Phase B — Global guards (parallel)
+#   Phase C — Sequential checks (state-dependent)
 #
-# Total estimated: ~8-12s (down from ~15-30s serial)
+# Total MEDIDO nesta árvore (índice comum, caches quentes): ~4.5-5.5s
+# parede — o typecheck (6,2s) saiu daqui (ver o comentário da fase C);
+# antes do recorte: ~10.2-12.1s medidos nas mesmas condições.
 # ============================================================================
 
 # ── Phase A: Staged guards (parallel) ─────────────────────────────────────
@@ -463,8 +465,12 @@ bun x lint-staged
 # em arquivos .test.* (devem usar @/__tests__/test-utils)
 bun run check:direct-rtl-import
 
-# Type check — rejeita commit se houver erros de tipo no projeto
-bun run typecheck
+# Type check — RECORTE DECLARADO (HOOK_NOT_RUN do check-hook-ci-parity):
+# o `bun run typecheck` (6,2s MEDIDOS nesta árvore — 56% do parede do hook)
+# não roda mais aqui; o MESMO comando continua no pre-push (que roda ANTES de
+# o remoto ver o commit) e no job `TypeCheck` das DUAS pipelines do PR.
+# Nenhum erro de tipo chega ao merge por um caminho que não passe por ele;
+# o que se abre é a janela "entre o commit e o push", declarada e revisável.
 
 # Snapshot guard — roda testes de snapshot quando .snap ou *snapshot*.test.tsx
 # forem alterados (staged), impedindo snapshots obsoletos de entrar no commit

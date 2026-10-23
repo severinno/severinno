@@ -18,6 +18,7 @@
  */
 
 import { PrismaClient } from "@prisma/client"
+import { backfillAvatars } from "./lib/backfill-avatars"
 
 const prisma = new PrismaClient()
 
@@ -237,6 +238,22 @@ function genCep(): string {
 async function seed() {
   console.log("🇧🇷 Seed realista — Governador Valadares, MG\n")
 
+  // 0. Limpeza idempotente de dados anteriores de Governador Valadares
+  console.log("🧹 Verificando dados anteriores de Governador Valadares...")
+  const existingGvUsers = await prisma.user.findMany({
+    where: {
+      city: "Governador Valadares",
+      role: { in: ["CLIENT", "PROVIDER"] },
+    },
+    select: { id: true },
+  })
+  if (existingGvUsers.length > 0) {
+    const userIds = existingGvUsers.map((u) => u.id)
+    console.log(`   Removendo ${userIds.length} usuários anteriores de GV (com cascata)...`)
+    await prisma.user.deleteMany({ where: { id: { in: userIds } } })
+    console.log(`   ✅ Limpeza concluída com sucesso.\n`)
+  }
+
   // 1. Clientes
   console.log("👤 Criando 2.000 clientes...")
   const clienteData = []
@@ -432,7 +449,7 @@ async function seed() {
       providerId: provider.id,
       serviceId: servico.id,
       status,
-      amount: servico.basePrice + randInt(-20, 50),
+      amount: Number(servico.basePrice) + randInt(-20, 50),
       scheduledAt: randomDate(createdAt, new Date(createdAt.getTime() + 30 * 24 * 60 * 60 * 1000)),
       address: `Rua ${pick(RUA_NOMES)}, ${randInt(1, 500)} - ${bairro.nome}, GV - MG`,
       cep: genCep(),
@@ -474,6 +491,11 @@ async function seed() {
     process.stdout.write(`\r  ⭐ ${totalReviews}/${reviewData.length}...`)
   }
   console.log(`\n  ✅ ${totalReviews} reviews\n`)
+
+  // Avatares: etapa automática final do seed — mesma convenção dos cards
+  // (pravatar determinístico por userId), idempotente (ignora quem já tem).
+  const avatarsBackfilled = await backfillAvatars(prisma)
+  console.log(`  🖼️  Avatares: ${avatarsBackfilled} preenchidos nesta execução\n`)
 
   // Summary
   console.log("📊 Resumo:")

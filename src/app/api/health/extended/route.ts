@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { RedisGeoCache } from "@/lib/redis-geo"
+import { AlertingService } from "@/lib/alerting-service"
 
 export const dynamic = "force-dynamic"
 
@@ -63,9 +64,9 @@ export async function GET() {
   // 3. OSRM Road Routing Check
   const osrmStart = performance.now()
   try {
-    const osrmUrl = process.env.OSRM_URL || "http://router.project-osrm.org"
+    const osrmUrl = process.env.OSRM_URL || process.env.OSRM_BASE_URL || "http://127.0.0.1:5000"
     const res = await fetch(
-      `${osrmUrl}/route/v1/driving/-46.6565,-23.5615;-46.6855,-23.5670?overview=false`,
+      `${osrmUrl}/route/v1/driving/-41.9484,-18.8414;-41.9443,-18.8546?overview=false`,
       {
         signal: AbortSignal.timeout(2500),
       },
@@ -96,7 +97,100 @@ export async function GET() {
     }
   }
 
-  // 4. Memory & Process Stats
+  // 4. WhatsApp Session Heartbeat Check (Evolution API)
+  try {
+    const { checkWhatsAppSessionHeartbeat } = await import("@/lib/evolution")
+    const waHeartbeat = await checkWhatsAppSessionHeartbeat()
+    checks.whatsappSession = {
+      status: waHeartbeat.connected
+        ? "UP"
+        : waHeartbeat.status === "unconfigured"
+          ? "DEGRADED"
+          : "DOWN",
+      latencyMs: waHeartbeat.latencyMs,
+      details: waHeartbeat.connected
+        ? `Conectado (Instância: ${waHeartbeat.instanceName})`
+        : `Desconectado (Status: ${waHeartbeat.status})${waHeartbeat.error ? ` - ${waHeartbeat.error}` : ""}`,
+    }
+  } catch (err) {
+    checks.whatsappSession = {
+      status: "DEGRADED",
+      latencyMs: 0,
+      details: err instanceof Error ? err.message : "Falha ao consultar Evolution API",
+    }
+  }
+
+  // 5. External Integrations Readiness Check
+  const hasLytex = !!(
+    process.env.LYTEX_CLIENT_ID &&
+    (process.env.LYTEX_SECRET || process.env.LYTEX_CLIENT_SECRET)
+  )
+  const hasEvolution = !!(process.env.EVOLUTION_API_KEY && process.env.EVOLUTION_INSTANCE)
+  const hasSmtp = !!(process.env.SMTP_HOST && process.env.SMTP_PASS)
+  checks.externalIntegrations = {
+    status: hasLytex && hasEvolution && hasSmtp ? "UP" : "DEGRADED",
+    latencyMs: 0,
+    details: [
+      hasLytex ? "Lytex: pronto" : "Lytex: pendente credenciais",
+      hasEvolution ? "WhatsApp: pronto" : "WhatsApp: pendente credenciais",
+      hasSmtp ? "SMTP: pronto" : "SMTP: pendente credenciais",
+    ].join(" | "),
+  }
+
+  // 6. Local AI Contingency Health Probe (Ollama / LocalAI)
+  try {
+    const { checkLocalAiHealth } = await import("@/lib/ai-client")
+    const aiProbe = await checkLocalAiHealth()
+    checks.localAi = {
+      status: aiProbe.status,
+      latencyMs: aiProbe.latencyMs,
+      details: aiProbe.details,
+    }
+  } catch (err) {
+    checks.localAi = {
+      status: "DEGRADED",
+      latencyMs: 0,
+      details: err instanceof Error ? err.message : "Falha ao consultar Ollama local",
+    }
+  }
+
+  // 7. Circuit Breakers Status
+  try {
+    const { getAllCircuitBreakersStats } = await import("@/lib/circuit-breaker")
+    const cbStats = getAllCircuitBreakersStats()
+    const openCircuits = cbStats.filter((c) => c.state === "open")
+    if (openCircuits.length > 0) {
+      hasDegradation = true
+      checks.circuitBreakers = {
+        status: "DEGRADED",
+        latencyMs: 0,
+        details: `${openCircuits.length} circuito(s) aberto(s): ${openCircuits.map((c) => c.name).join(", ")}`,
+      }
+    } else {
+      checks.circuitBreakers = {
+        status: "UP",
+        latencyMs: 0,
+        details: `${cbStats.length} circuitos saudáveis (CLOSED)`,
+      }
+    }
+  } catch {
+    // circuit breaker module load failed
+  }
+
+  // 8. Core Web Vitals SLA
+  try {
+    const { webVitalsRegistry } = await import("@/lib/web-vitals-registry")
+    const wv = webVitalsRegistry.getSummary()
+    checks.webVitals = {
+      status: wv.complianceScore >= 70 ? "UP" : "DEGRADED",
+      latencyMs: 0,
+      details: `Compliance SLA: ${wv.complianceScore}% (${wv.totalSamples} amostras)`,
+    }
+  } catch {
+    // web vitals module load failed
+  }
+
+  // 9. Memory & Process Stats
   const mem = process.memoryUsage()
   const memoryStats = {
     rssMb: Math.round(mem.rss / 1024 / 1024),
@@ -106,6 +200,13 @@ export async function GET() {
 
   const overallStatus = hasFailure ? "UNHEALTHY" : hasDegradation ? "DEGRADED" : "HEALTHY"
   const totalDurationMs = Math.round(performance.now() - startTime)
+
+  if (hasFailure) {
+    void AlertingService.reportOutage(
+      "Database/Core",
+      checks.database?.details ?? "Falha crítica na infraestrutura",
+    )
+  }
 
   return NextResponse.json(
     {

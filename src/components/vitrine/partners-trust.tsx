@@ -75,10 +75,10 @@ export default function PartnersTrust() {
 
   return (
     <section
-      className="border-border/30 bg-background relative border-t py-12 sm:py-16"
+      className="border-border/30 bg-background relative border-t py-10 sm:py-12"
       aria-label="Parceiros e imprensa"
     >
-      <div ref={ref} className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div ref={ref} className="mx-auto w-full max-w-[95%] px-2 sm:px-4">
         {/* Header (H8: minimal, just a muted label) */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}

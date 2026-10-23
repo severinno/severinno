@@ -361,13 +361,17 @@ export async function sendQuoteResponseNotification(
   providerName: string,
   total: number,
   quoteId: string,
+  breakdownText?: string,
 ): Promise<{ key: { id: string } } | null> {
+  const shortId = quoteId.slice(0, 8)
   const text =
     `💰 *Orçamento respondido!*\n\n` +
     `👤 Prestador: ${providerName}\n` +
     `💵 Total: R$ ${total.toFixed(2)}\n` +
-    `🆔 #${quoteId.slice(0, 8)}\n\n` +
-    `Acesse o app para aprovar ou recusar o orçamento.`
+    (breakdownText ? `${breakdownText}\n` : "") +
+    `🆔 Pedido: #${shortId}\n\n` +
+    `👉 Para aprovar e contratar com garantia de custódia (Escrow), responda:\n` +
+    `*CONTRATAR #${shortId}*`
 
   return sendText(to, text)
 }
@@ -463,6 +467,25 @@ export async function sendLiveTrackingNotification(
 }
 
 /**
+ * Enviar notificação de prestador chegou ao local.
+ */
+export async function sendProviderArrivedNotification(
+  to: string,
+  clientName: string,
+  providerName: string,
+  serviceName: string,
+  bookingId: string,
+): Promise<{ key: { id: string } } | null> {
+  const text =
+    `📍 *Prestador Chegou ao Local!*\n\n` +
+    `Olá, ${clientName}! O prestador *${providerName}* acabou de chegar para o seu atendimento de *${serviceName}*.\n\n` +
+    `🆔 Agendamento: #${bookingId.slice(0, 8)}\n\n` +
+    `A presença física foi confirmada via GPS de alta precisão. Bom atendimento! 🛠️`
+
+  return sendText(to, text)
+}
+
+/**
  * Enviar recibo de confirmação de pagamento PIX para o cliente.
  */
 export async function sendPixPaymentReceiptToClient(
@@ -523,11 +546,179 @@ export async function getConnectionStatus(
 }
 
 /**
- * Obter QR code para conectar WhatsApp.
+ * Obter QR code / iniciar conexão com WhatsApp (Evolution v2 /instance/connect).
  */
-export async function getQRCode(instanceName?: string): Promise<{ qrcode: string }> {
+export async function connectInstance(
+  instanceName?: string,
+): Promise<{ base64?: string; code?: string; count?: number; pairingCode?: string | null }> {
   const instance = instanceName ?? getConfig().instance
-  return evolutionRequest<{ qrcode: string }>("GET", `/instance/qrcode/${instance}`)
+  return evolutionRequest<{
+    base64?: string
+    code?: string
+    count?: number
+    pairingCode?: string | null
+  }>("GET", `/instance/connect/${instance}`)
+}
+
+/**
+ * Buscar dados completos da instância no Evolution API.
+ */
+export async function fetchInstance(instanceName?: string): Promise<{
+  id?: string
+  name?: string
+  connectionStatus?: string
+  number?: string | null
+  profileName?: string | null
+  profilePicUrl?: string | null
+  integration?: string
+  _count?: { Message?: number; Contact?: number; Chat?: number }
+} | null> {
+  const instance = instanceName ?? getConfig().instance
+  const instances = await evolutionRequest<
+    Array<{
+      id?: string
+      name?: string
+      connectionStatus?: string
+      number?: string | null
+      profileName?: string | null
+      profilePicUrl?: string | null
+      integration?: string
+      _count?: { Message?: number; Contact?: number; Chat?: number }
+    }>
+  >("GET", "/instance/fetchInstances")
+  return instances.find((i) => i.name === instance) ?? null
+}
+
+/**
+ * Reiniciar a instância WhatsApp.
+ */
+export async function restartInstance(
+  instanceName?: string,
+): Promise<{ error: boolean; message: string }> {
+  const instance = instanceName ?? getConfig().instance
+  return evolutionRequest<{ error: boolean; message: string }>(
+    "POST",
+    `/instance/restart/${instance}`,
+  )
+}
+
+/**
+ * Desconectar a sessão WhatsApp da instância (logout).
+ */
+export async function logoutInstance(
+  instanceName?: string,
+): Promise<{ status: string; error: boolean }> {
+  const instance = instanceName ?? getConfig().instance
+  return evolutionRequest<{ status: string; error: boolean }>(
+    "DELETE",
+    `/instance/logout/${instance}`,
+  )
+}
+
+export interface WhatsAppHeartbeatResult {
+  connected: boolean
+  status: "connected" | "connecting" | "disconnected" | "error" | "unconfigured"
+  instanceName: string
+  profileName?: string | null
+  number?: string | null
+  checkedAt: string
+  latencyMs: number
+  error?: string
+}
+
+/**
+ * Monitora a saúde e integridade da sessão do WhatsApp na Evolution API.
+ * Detecta se a sessão do WhatsApp Web foi desconectada pela Meta e emite alerta.
+ */
+export async function checkWhatsAppSessionHeartbeat(
+  instanceName?: string,
+): Promise<WhatsAppHeartbeatResult> {
+  const start = performance.now()
+  let instance = instanceName ?? "severinno"
+
+  try {
+    const config = getConfig()
+    instance = instanceName ?? config.instance
+  } catch {
+    return {
+      connected: false,
+      status: "unconfigured",
+      instanceName: instance || "unknown",
+      checkedAt: new Date().toISOString(),
+      latencyMs: 0,
+      error: "Credenciais da Evolution API incompletas (.env)",
+    }
+  }
+
+  try {
+    const rawStatus = await getConnectionStatus(instance)
+    const latencyMs = Math.round(performance.now() - start)
+    const rawInstance = rawStatus?.instance as { state?: string; status?: string } | undefined
+    const state =
+      rawInstance?.state?.toLowerCase() ?? rawInstance?.status?.toLowerCase() ?? "unknown"
+
+    const isConnected = state === "open" || state === "connected"
+
+    if (!isConnected) {
+      logger.warn(
+        { instance, state, latencyMs },
+        "[evolution-heartbeat] Sessão WhatsApp não conectada",
+      )
+      try {
+        const { AlertingService } = await import("./alerting-service")
+        void AlertingService.reportOutage(
+          "WhatsApp/Evolution",
+          `Instância WhatsApp '${instance}' desconectada (Estado: ${state}). Necessário reconectar QR Code.`,
+        )
+      } catch {}
+    }
+
+    return {
+      connected: isConnected,
+      status: isConnected ? "connected" : state === "connecting" ? "connecting" : "disconnected",
+      instanceName: instance,
+      checkedAt: new Date().toISOString(),
+      latencyMs,
+    }
+  } catch (err) {
+    const latencyMs = Math.round(performance.now() - start)
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    logger.error(
+      { err, instance, latencyMs },
+      "[evolution-heartbeat] Falha ao verificar status WhatsApp",
+    )
+
+    return {
+      connected: false,
+      status: "error",
+      instanceName: instance,
+      checkedAt: new Date().toISOString(),
+      latencyMs,
+      error: errorMessage,
+    }
+  }
+}
+
+/**
+ * Obter configuração de webhook ativa.
+ */
+export async function getWebhook(instanceName?: string): Promise<{
+  id?: string
+  url?: string
+  enabled?: boolean
+  events?: string[]
+} | null> {
+  const instance = instanceName ?? getConfig().instance
+  try {
+    return await evolutionRequest<{
+      id?: string
+      url?: string
+      enabled?: boolean
+      events?: string[]
+    }>("GET", `/webhook/find/${instance}`)
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -538,7 +729,7 @@ export async function setWebhook(
   instanceName?: string,
 ): Promise<void> {
   const instance = instanceName ?? getConfig().instance
-  await evolutionRequest("POST", `/webhook/set/${instance}`, config)
+  await evolutionRequest("POST", `/webhook/set/${instance}`, { webhook: config })
 }
 
 // ---------------------------------------------------------------------------

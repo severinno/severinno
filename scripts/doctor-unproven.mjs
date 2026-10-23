@@ -93,12 +93,33 @@ export const CLOSED_BY = {
    */
   "github-protection-suportada": (facts) =>
     ["in-sync", "drift"].includes(estadoDaForja(facts, "github")),
-  /** O env do HOST existe neste checkout (sem ele, imagem/tier-1/contrato não medem). */
+  /**
+   * O env do HOST existe neste checkout (sem ele, imagem/tier-1/contrato não medem).
+   *
+   * Fecha só o que uma MEDIÇÃO executada produz (o mesmo fail-closed dos
+   * irmãos): a imagem foi sondada no registry com o env resolvido — `exists`
+   * (HTTP 200), `missing` (HTTP 404 medido) e `exists-private` (medido por
+   * docker). `no-env`/`bad-env` são a NEGAÇÃO (o env não existe ou não
+   * resolve), e `skipped` é a seção PULADA — a classe do falso fechamento que
+   * a auditoria de 05/10/2026 mediu no `act-runner-lido`: uma medição que não
+   * aconteceu nunca fecha dívida.
+   */
   "host-env-presente": (facts) =>
-    Boolean(facts?.image) && facts.image.state !== undefined && facts.image.state !== "no-env",
-  /** O registro do act_runner foi LIDO (a stack da forja está de pé). */
+    Boolean(facts?.image) && ["exists", "missing", "exists-private"].includes(facts.image.state),
+  /**
+   * O registro do act_runner foi LIDO (a stack da forja está de pé).
+   *
+   * Fecha só o que uma LEITURA REAL produz: `proven` (lido e em sincronia com o
+   * compose) e `violated` (lido e divergente — a divergência vira bloqueio
+   * nomeado em outro lugar). `skipped` é a SEÇÃO PULADA (medido em 05/10/2026:
+   * o perfil `--ci` publicava o item como PROVADO com o fato pulado — uma
+   * medição que não aconteceu fechando dívida), `unread` é o exec que correu e
+   * não devolveu registro legível, e `unavailable` é docker fora/container
+   * ausente: os três são AUSÊNCIA DE PROVA — "não consegui medir" nunca fecha
+   * dívida, o mesmo fail-closed dos irmãos.
+   */
   "act-runner-lido": (facts) =>
-    Boolean(facts?.runnerLabels) && facts.runnerLabels.state !== "unavailable",
+    Boolean(facts?.runnerLabels) && ["proven", "violated"].includes(facts.runnerLabels.state),
   /** O runner auto-hospedado do GitHub está REGISTRADO como o setup declara. */
   "github-runner-registrado": (facts) => facts?.githubRunnerLabels?.state === "proven",
   /**
@@ -138,7 +159,7 @@ export const CLOSED_BY = {
    */
   "fila-gitea-medida": (facts) => {
     const metade = facts?.runnerQueue?.forges?.gitea
-    return Boolean(metade) && metade.state !== "unread"
+    return Boolean(metade) && FILA_MEDIDA.includes(metade.state)
   },
   /**
    * A FILA DO ESPELHO (GitHub) foi MEDIDA — o canal respondeu e o registro do
@@ -152,7 +173,7 @@ export const CLOSED_BY = {
    */
   "fila-github-medida": (facts) => {
     const metade = facts?.runnerQueue?.forges?.github
-    return Boolean(metade) && metade.state !== "unread"
+    return Boolean(metade) && FILA_MEDIDA.includes(metade.state)
   },
   /** O contrato da imagem publicada foi provado contra o registry. */
   "imagem-publicada-prova": (facts) => facts?.imageContract?.state === "proven",
@@ -227,13 +248,32 @@ function estadoDaForja(facts, forge) {
 }
 
 /**
- * A forja foi LIDA? O fato AUSENTE não é uma leitura — e `null !== "unavailable"`
- * responderia `true` para um relatório sem o fato, fechando a declaração por uma
- * medição que não aconteceu (o otimismo que este registro existe para não ter).
+ * Os estados que uma LEITURA REAL da protection produz, POR FORJA: `in-sync`/
+ * `drift` são a leitura do aplicador e `unsupported` é a RESPOSTA da forja (a
+ * API respondeu que o plano não suporta o recurso — a consulta aconteceu, e é
+ * afirmação sobre ela). A CLASSE DO FALSO FECHAMENTO (auditada em 05/10/2026
+ * no `act-runner-lido`): `skipped` é a seção PULADA (`--no-protection` →
+ * `{state:"skipped"}`), `unavailable` é a falta de canal e `unread` é a leitura
+ * ilegível — os três são AUSÊNCIA DE PROVA, e "não medi" nunca é "li".
+ */
+const FORJA_LIDA = ["in-sync", "drift", "unsupported"]
+
+/**
+ * Os estados que uma LEITURA REAL de UMA metade da fila produz (o vocabulário
+ * da derivação, `runner-queue.mjs`): a fila foi medida, em qualquer veredito
+ * dela. `unread` é "não pôde ser lida" e `skipped` é a seção pulada — a MESMA
+ * classe do falso fechamento da forja: "não consegui medir" nunca fecha dívida.
+ */
+const FILA_MEDIDA = ["ociosa", "drenando", "parada", "sem-puxador"]
+
+/**
+ * A forja foi LIDA? Fecha só o que uma leitura REAL produz (`FORJA_LIDA`) — e o
+ * fato AUSENTE não é uma leitura: `estado === null` não está na allowlist, então
+ * um relatório sem o fato não fecha declaração nenhuma (o otimismo que este
+ * registro existe para não ter).
  */
 function forjaLida(facts, forge) {
-  const estado = estadoDaForja(facts, forge)
-  return estado !== null && estado !== "unavailable"
+  return FORJA_LIDA.includes(estadoDaForja(facts, forge))
 }
 
 /**
@@ -748,6 +788,34 @@ export function separarDividaDeRegressao({ vermelhos = [], secao = null }) {
     naoClassificados: [],
     erro: null,
   }
+}
+
+/**
+ * A DECISÃO do RECORTE do push — a dívida declarada INTEGRAL segue.
+ *
+ * A derradeira leitura da separação dívida/regressão: o prover separa os
+ * vermelhos entre DÍVIDA DECLARADA (o registro conhece o assunto, com motivo
+ * medido e datado) e REGRESSÃO (nenhuma declaração alcança), mas o exit de
+ * ambos era o mesmo — e o pre-push bloqueava TODOS os pushes que carregam
+ * dívida, empurrando o repositório para o `--no-verify`, que desliga TAMBÉM os
+ * gates que não são dívida. A régua aqui é FAIL-CLOSED nos três lados: o push
+ * segue com exit 0 SOMENTE quando o registro pôde julgar (`estado "medido"`),
+ * há ao menos um vermelho declarado e NÃO existe regressão, re-ancoragem
+ * pendente nem vermelho não classificado. Quem fecha a dívida continua sendo o
+ * CI (job stack-per-commit, pilha inteira sem amostra).
+ *
+ * @param {{estado: string, divida: unknown[], reancorar: unknown[], regressao: unknown[], naoClassificados: unknown[]}|null} dp o retorno de `separarDividaDeRegressao`
+ * @returns {boolean} true = o recorte SEGUE (exit 0); false = bloqueia
+ */
+export function pushSeguePorDivida(dp) {
+  return Boolean(
+    dp &&
+    dp.estado === "medido" &&
+    dp.divida.length > 0 &&
+    dp.regressao.length === 0 &&
+    dp.reancorar.length === 0 &&
+    dp.naoClassificados.length === 0,
+  )
 }
 
 // ── CLI ────────────────────────────────────────────────────────────────────

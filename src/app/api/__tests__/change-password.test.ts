@@ -113,6 +113,7 @@ describe("POST /api/auth/change-password", () => {
         method: "POST",
         body: { currentPassword: CURRENT_PASSWORD, newPassword: NEW_PASSWORD },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -154,6 +155,7 @@ describe("POST /api/auth/change-password", () => {
         method: "POST",
         body: { currentPassword: "senhaErrada", newPassword: NEW_PASSWORD },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -171,6 +173,7 @@ describe("POST /api/auth/change-password", () => {
         method: "POST",
         body: { currentPassword: CURRENT_PASSWORD, newPassword: "123" },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -185,6 +188,7 @@ describe("POST /api/auth/change-password", () => {
         method: "POST",
         body: { newPassword: NEW_PASSWORD },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -199,6 +203,7 @@ describe("POST /api/auth/change-password", () => {
         method: "POST",
         body: { currentPassword: CURRENT_PASSWORD },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -213,6 +218,7 @@ describe("POST /api/auth/change-password", () => {
         method: "POST",
         body: { currentPassword: 123, newPassword: true },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -228,6 +234,7 @@ describe("POST /api/auth/change-password", () => {
         method: "POST",
         body: { currentPassword: CURRENT_PASSWORD, newPassword: NEW_PASSWORD },
       }),
+      { params: Promise.resolve({}) },
     )
     const parsed = await parseResponse(res)
 
@@ -246,6 +253,7 @@ describe("POST /api/auth/change-password", () => {
         method: "POST",
         body: { currentPassword: CURRENT_PASSWORD, newPassword: NEW_PASSWORD },
       }),
+      { params: Promise.resolve({}) },
     )
     expect(res.status).toBe(401)
     expect(mockDb.user.update).not.toHaveBeenCalled()
@@ -260,6 +268,7 @@ describe("POST /api/auth/change-password", () => {
         method: "POST",
         body: { currentPassword: CURRENT_PASSWORD, newPassword: NEW_PASSWORD },
       }),
+      { params: Promise.resolve({}) },
     )
 
     // Push notification

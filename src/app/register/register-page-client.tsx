@@ -8,10 +8,10 @@
  */
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useMutation } from "@tanstack/react-query"
-import { Eye, EyeOff, Loader2, UserPlus, ArrowLeft } from "lucide-react"
+import { Eye, EyeOff, Loader2, UserPlus, ArrowLeft, Gift } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiPost } from "@/lib/api"
@@ -30,6 +30,7 @@ import {
 
 export function RegisterPageClient() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const setUser = useAuthStore((s) => s.setUser)
 
   const [name, setName] = useState("")
@@ -38,10 +39,28 @@ export function RegisterPageClient() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [role, setRole] = useState<"CLIENT" | "PROVIDER">("CLIENT")
+  const [referralCode] = useState(() => {
+    const fromParam = searchParams.get("ref")
+    if (fromParam) return fromParam.toUpperCase()
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("severinno_referral_code")
+        if (stored) return stored.toUpperCase()
+      } catch {
+        // ignore
+      }
+    }
+    return ""
+  })
 
   const registerMutation = useMutation({
-    mutationFn: (data: { name: string; email: string; password: string; role: string }) =>
-      apiPost<{ user?: AuthUser | null }>("/api/auth/register", data),
+    mutationFn: (data: {
+      name: string
+      email: string
+      password: string
+      role: string
+      referralCode?: string
+    }) => apiPost<{ user?: AuthUser | null }>("/api/auth/register", data),
     onSuccess: (data: { user?: AuthUser | null }) => {
       if (data?.user) {
         setUser(data.user)
@@ -79,6 +98,7 @@ export function RegisterPageClient() {
       email: email.trim(),
       password,
       role,
+      referralCode: referralCode || undefined,
     })
   }
 
@@ -99,6 +119,14 @@ export function RegisterPageClient() {
 
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
+            {referralCode && (
+              <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs text-emerald-800 dark:text-emerald-300">
+                <Gift className="size-4 shrink-0 text-emerald-600" />
+                <span>
+                  Convite VIP aplicado: <strong>{referralCode}</strong> 🎉
+                </span>
+              </div>
+            )}
             {/* Role toggle */}
             <div className="bg-muted flex rounded-lg border p-1">
               <button

@@ -3,14 +3,15 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
+import { badRequest, forbidden, notFound } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
-type Params = { params: Promise<{ id: string }> }
+import { withParams } from "@/lib/api-route"
 
 // CLIENT only: toggle favorite
-export async function POST(request: Request, { params }: Params) {
-  try {
+export const POST = withParams<{ id: string }>(
+  "api.providers.:id.favorite.POST",
+  async (request, { params }) => {
     await assertRateLimit(request, RATE_LIMITS.general)
     const session = await requireUser()
     if (session.role !== "CLIENT") {
@@ -41,7 +42,5 @@ export async function POST(request: Request, { params }: Params) {
       data: { clientId: session.userId, providerId: id },
     })
     return NextResponse.json({ favorited: true }, { status: 201 })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

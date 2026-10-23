@@ -1,13 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { CalendarDays, CalendarOff, CheckCircle2, Clock, Loader2, Moon, Sun } from "lucide-react"
+import { CalendarDays, CalendarOff, CheckCircle2, Clock, Moon, Sun } from "lucide-react"
 import { ptBR } from "date-fns/locale"
 import { format } from "date-fns"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Calendar } from "@/components/ui/calendar"
+import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { formatBRL, formatHHmm } from "@/lib/format"
 import { SERVICE_UNIT_LABELS, WEEKDAYS_SHORT } from "@/lib/constants"
@@ -68,8 +69,80 @@ export function Step1Schedule({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-10">
-        <Loader2 className="size-5 animate-spin text-emerald-600" />
+      <div className="space-y-4" data-testid="schedule-loading-skeleton">
+        {/* Banner do serviço esqueleto */}
+        <div className="flex items-center gap-3 rounded-lg border border-emerald-200/50 bg-emerald-50/50 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+          <Skeleton className="size-9 rounded-md" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+        </div>
+
+        {isDesktop ? (
+          <div className="grid grid-cols-[auto_1fr] divide-x">
+            <div className="flex flex-col pr-4">
+              <div className="w-[252px] rounded-lg border p-3 shadow-xs">
+                <div className="mb-3 flex items-center justify-between">
+                  <Skeleton className="h-4 w-28" />
+                  <div className="flex gap-1">
+                    <Skeleton className="size-7 rounded-md" />
+                    <Skeleton className="size-7 rounded-md" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {Array.from({ length: 35 }).map((_, i) => (
+                    <Skeleton key={i} className="size-7 rounded-md" />
+                  ))}
+                </div>
+              </div>
+              <Skeleton className="mt-2 h-8 w-full rounded-lg" />
+            </div>
+            <div className="flex min-h-0 flex-col pl-4">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-20" />
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <Skeleton key={i} className="h-8 rounded-lg" />
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-20" />
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <Skeleton key={i} className="h-8 rounded-lg" />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-4">
+            <div className="rounded-lg border p-3 shadow-xs">
+              <div className="mb-3 flex items-center justify-between">
+                <Skeleton className="h-4 w-28" />
+                <div className="flex gap-1">
+                  <Skeleton className="size-7 rounded-md" />
+                  <Skeleton className="size-7 rounded-md" />
+                </div>
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {Array.from({ length: 35 }).map((_, i) => (
+                  <Skeleton key={i} className="size-7 rounded-md" />
+                ))}
+              </div>
+            </div>
+            <Skeleton className="h-8 w-full rounded-lg" />
+            <div className="grid grid-cols-3 gap-1.5">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-8 rounded-lg" />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     )
   }

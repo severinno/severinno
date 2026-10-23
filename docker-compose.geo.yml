@@ -1,0 +1,65 @@
+# =============================================================================
+# docker-compose.geo.yml — 100% OPEN SOURCE SOBERANIA GEO / ROTEAMENTO / GPS
+# =============================================================================
+# Serviços de Roteamento, Telemetria e Geoprocessamento Soberanos:
+#   - OSRM Backend: http://localhost:5000 (Roteamento sub-milissegundo em malha viária)
+#   - Valhalla:     http://localhost:8002 (Map Matching / Snap-to-Road e Isócronas)
+# =============================================================================
+
+networks:
+  geo:
+    name: severinno_geo
+    driver: bridge
+
+volumes:
+  osrm_data:
+    name: severinno_osrm_data
+  valhalla_data:
+    name: severinno_valhalla_data
+
+services:
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    container_name: severinno-osrm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - ./osrm-data:/data
+    command: osrm-routed --algorithm mld /data/governador-valadares.osrm
+    environment:
+      - OSRM_MAX_TABLE_SIZE=1000
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bash",
+          "-c",
+          "exec 3<>/dev/tcp/127.0.0.1/5000 && { printf 'GET /route/v1/driving/-41.9482,-18.8548;-41.9430,-18.8440?overview=false HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; cat <&3; } | grep -Eq 'code.*Ok'",
+        ]
+      interval: 15s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+    networks:
+      - geo
+
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    container_name: severinno-valhalla
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8002:8002"
+    environment:
+      - build_elevation=False
+      - build_admins=True
+      - serve_tiles=True
+    volumes:
+      - valhalla_data:/custom_files
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8002/status || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - geo

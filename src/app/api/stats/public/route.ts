@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
+import { withRoute } from "@/lib/api-route"
 import { db } from "@/lib/db"
 import { cacheControlPublic } from "@/lib/api-server"
 import { withCache } from "@/lib/redis"
@@ -12,7 +13,7 @@ import logger from "@/lib/logger"
  * No auth required. Returns aggregate counts.
  * Cached in Redis for 60s to avoid 7 DB queries on every page load.
  */
-export async function GET(request: Request) {
+export const GET = withRoute("api.stats.public.GET", async (request) => {
   try {
     await assertRateLimit(request, RATE_LIMITS.general)
     const data = await withCache(
@@ -69,4 +70,4 @@ export async function GET(request: Request) {
       { status: 200 },
     )
   }
-}
+})

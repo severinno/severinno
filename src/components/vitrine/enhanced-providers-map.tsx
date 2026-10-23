@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
+import { ensureMaplibreWorker } from "@/lib/maplibre-worker"
 import { createAnimatedPinElement } from "@/components/map/pins"
 import { HeatmapOverlay, RouteLine } from "@/components/map/overlays"
 import { Slider } from "@/components/ui/slider"
@@ -160,6 +161,11 @@ export default function EnhancedProvidersMap({
       const maplibregl = await import("maplibre-gl")
       if (cancelled || !containerRef.current) return
       maplibreglRef.current = maplibregl
+
+      // Worker por URL ANTES da criação do mapa — o bundler quebra o worker
+      // blob do MapLibre (mapa em branco, zero tiles .pbf).
+      await ensureMaplibreWorker()
+      if (cancelled || !containerRef.current) return
 
       const tiles = isDark ? OSM_TILES_DARK : OSM_TILES_LIGHT
 

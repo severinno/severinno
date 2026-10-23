@@ -111,18 +111,13 @@ jobs:
           echo "   registry desta forja: ${IMAGE_REGISTRY}"
 
       # ── PROVA 2: setup por `run:` + tier-1 da imagem do runner ──────────
-      # O par canonico do repo: cache (action REMOTO) + script (run:, que NAO
-      # passa pelo resolvedor de actions LOCAIS — o setup deixou de ser
-      # composite). Se o cache falhar, o script ainda instala pelo mirror
-      # OCI/release: o setup degrada, nao quebra. O que NAO se recupera sozinho
-      # e a imagem do runner nao embarcar o Bun — nesse caso o fast path de 0s
-      # (a razao de existir a imagem custom) nunca engaja, e o step FALHA
-      # apontando o remedio.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # O script (run:) NAO passa pelo resolvedor de actions LOCAIS — o setup
+      # deixou de ser composite. Sem `actions/cache` nesta forja (o artifactcache
+      # do runner respondeu timeout em todas as rodadas auditadas): o script
+      # instala pelo mirror OCI/release e o tier-1 da imagem cobre o restore.
+      # O que NAO se recupera sozinho e a imagem do runner nao embarcar o Bun —
+      # nesse caso o fast path de 0s (a razao de existir a imagem custom) nunca
+      # engaja, e o step FALHA apontando o remedio.
       - name: "Prova 2 — setup por run: + tier-1 da imagem do runner"
         shell: bash
         run: |

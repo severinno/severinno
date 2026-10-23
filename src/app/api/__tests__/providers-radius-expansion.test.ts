@@ -184,7 +184,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -233,7 +233,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -274,7 +274,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -299,7 +299,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -346,7 +346,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "0" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -399,7 +399,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -449,7 +449,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     // Error propagated to route handler's catch → handleError → NOT 200
     expect(res.status).not.toBe(200)
@@ -486,7 +486,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     // Error propagated — NOT silently caught
     expect(res.status).not.toBe(200)
@@ -544,7 +544,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -585,7 +585,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    await GET(req)
+    await GET(req, { params: Promise.resolve({}) })
 
     // Verify withCache was called with provider count cache keys
     const cacheKeys = mockWithCache.mock.calls.map((c: unknown[]) => c[0] as string)
@@ -622,7 +622,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -653,7 +653,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "-5" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toBeDefined()
@@ -676,7 +676,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "1000000" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -714,7 +714,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -759,7 +759,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -795,7 +795,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
         categoryId: "cat-1",
       },
     })
-    await GET(req)
+    await GET(req, { params: Promise.resolve({}) })
 
     const cacheKeys = mockWithCache.mock.calls.map((c: unknown[]) => c[0] as string)
     const countKey = cacheKeys.find((k: string) => k.startsWith("providers:count:"))

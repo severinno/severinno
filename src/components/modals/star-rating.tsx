@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Star } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { triggerHaptic } from "@/lib/haptics"
 
 type StarRatingProps = {
   /** 0–5 (supports half stars visually via clip) */
@@ -100,12 +101,15 @@ export function StarRatingInput({
     if (disabled) return
     if (e.key === "ArrowRight" || e.key === "ArrowUp") {
       e.preventDefault()
+      triggerHaptic("selection")
       onChange(Math.min(5, Math.max(1, value + 1)))
     } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
       e.preventDefault()
+      triggerHaptic("selection")
       onChange(Math.min(5, Math.max(1, value - 1)))
     } else if (/^[1-5]$/.test(e.key)) {
       e.preventDefault()
+      triggerHaptic("selection")
       onChange(Number(e.key))
     }
   }
@@ -129,12 +133,16 @@ export function StarRatingInput({
             disabled={disabled}
             tabIndex={value === v ? 0 : -1}
             className={cn(
-              "focus-visible:ring-ring rounded-md p-0.5 transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
-              disabled && "cursor-not-allowed opacity-60 hover:scale-100",
+              "focus-visible:ring-ring rounded-md p-0.5 transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-90",
+              disabled && "cursor-not-allowed opacity-60 hover:scale-100 active:scale-100",
             )}
             onMouseEnter={() => !disabled && setHover(v)}
             onMouseLeave={() => !disabled && setHover(null)}
-            onClick={() => !disabled && onChange(v)}
+            onClick={() => {
+              if (disabled) return
+              triggerHaptic("selection")
+              onChange(v)
+            }}
             onKeyDown={onKeyDown}
           >
             <Star

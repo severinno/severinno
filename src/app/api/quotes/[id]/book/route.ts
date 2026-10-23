@@ -4,16 +4,26 @@ import { captureErrorEnhanced } from "@/lib/sentry-enhanced"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
+import { badRequest, forbidden, notFound, conflict } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { saveAndQueueNotification } from "@/lib/notification-queue"
 import { captureError as _captureError } from "@/lib/sentry"
 import { emitRealtime } from "@/lib/realtime-client"
 import logger from "@/lib/logger"
+import { toMoneyNumber } from "@/lib/money"
 
-type Params = { params: Promise<{ id: string }> }
+import { z } from "zod"
+import { withParams } from "@/lib/api-route"
 
-export async function POST(request: Request, { params }: Params) {
-  try {
+const bookQuoteSchema = z.object({
+  scheduledAt: z.string().min(1, "Data e horário são obrigatórios"),
+  address: z.string().min(1).max(500).optional(),
+})
+
+export const POST = withParams<{ id: string }>(
+  "api.quotes.:id.book.POST",
+  async (request, { params }) => {
+    await assertRateLimit(request, RATE_LIMITS.general)
     const session = await requireUser()
     const { id } = await params
     if (session.role !== "CLIENT") {
@@ -41,20 +51,28 @@ export async function POST(request: Request, { params }: Params) {
     if (quote.clientId !== session.userId) throw forbidden("Este orçamento não é seu")
     if (quote.status !== "APPROVED") throw badRequest("Orçamento precisa estar aprovado")
 
-    const body = (await request.json()) as { scheduledAt?: string; address?: string }
-    if (!body.scheduledAt) throw badRequest("Data e horário são obrigatórios")
+    const existingBooking = await db.booking.findUnique({
+      where: { quoteId: id },
+      select: { id: true },
+    })
+    if (existingBooking) throw conflict("Este orçamento já possui um agendamento vinculado")
+
+    const raw = await request.json().catch(() => ({}))
+    const body = bookQuoteSchema.parse(raw)
 
     const scheduleDate = new Date(body.scheduledAt)
     if (isNaN(scheduleDate.getTime())) throw badRequest("Data inválida")
     if (scheduleDate <= new Date()) throw badRequest("A data deve ser futura")
 
-    const amount = quote.items.reduce((sum, item) => sum + (item.price ?? 0), 0)
+    const amount = quote.items.reduce((sum, item) => sum + toMoneyNumber(item.price), 0)
     if (amount <= 0) throw badRequest("Valor do orçamento inválido")
 
     const firstQuoted = quote.items.find((i) => i.status === "ACCEPTED" || i.price != null)
     if (!firstQuoted) throw badRequest("Nenhum item com preço no orçamento")
 
     // Atomic: create booking + accept quote items
+    // Nota: booking agregado de múltiplos itens — quantity/unit por item
+    // permanecem nos QuoteItems; aqui valem os defaults (1/UNIDADE).
     const [booking] = await db.$transaction([
       db.booking.create({
         data: {
@@ -110,7 +128,5 @@ export async function POST(request: Request, { params }: Params) {
     })
 
     return NextResponse.json({ booking }, { status: 201 })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

@@ -239,4 +239,8 @@ export const RATE_LIMITS = {
   webhookLytex: { prefix: "webhook-lytex", max: 20, windowMs: 60_000 },
   /** Webhook Sentry/GlitchTip: 10 per minute */
   webhookSentry: { prefix: "webhook-sentry", max: 10, windowMs: 60_000 },
+  /** Webhook Evolution (WhatsApp messages & status): 300 per minute */
+  webhookEvolution: { prefix: "webhook-evolution", max: 300, windowMs: 60_000 },
+  /** Vector Tiles (MapLibre vector maps rendering): 2500 per minute */
+  vectorTiles: { prefix: "vector-tiles", max: 2500, windowMs: 60_000 },
 } as const

@@ -64,7 +64,7 @@ describe("GET /api/admin/finance/export", () => {
     vi.mocked(db.payment.findMany).mockResolvedValue([] as any)
 
     const req = new Request("http://localhost/api/admin/finance/export?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const text = await res.text()
 
     expect(res.status).toBe(200)
@@ -88,7 +88,7 @@ describe("GET /api/admin/finance/export", () => {
     vi.mocked(db.payment.findMany).mockResolvedValue([] as any)
 
     const req = new Request("http://localhost/api/admin/finance/export?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const text = await res.text()
 
     const header = text.trim().split("\n")[0]
@@ -96,11 +96,14 @@ describe("GET /api/admin/finance/export", () => {
   })
 
   it("includes transaction data in CSV rows", async () => {
+    // amount é BRL reais (Decimal(10,2) no banco) — NÃO centavos. A exportação
+    // antiga dividia por 100 (bug latente: gerava "5,00" para R$ 500,00);
+    // corrigido na migração money → Decimal. Mock usa reais: 500 → "500,00".
     ;(vi.mocked(db.payment.findMany) as any).mockResolvedValue([
       {
         id: "pay-1",
         bookingId: "b-1",
-        amount: 50000,
+        amount: 500,
         method: "PIX",
         status: "PAID",
         lytexId: "lytex-123",
@@ -117,7 +120,7 @@ describe("GET /api/admin/finance/export", () => {
     ] as any)
 
     const req = new Request("http://localhost/api/admin/finance/export?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const text = await res.text()
 
     const lines = text.trim().split("\n")
@@ -127,7 +130,7 @@ describe("GET /api/admin/finance/export", () => {
     expect(row).toContain("Carlos")
     expect(row).toContain("Paulo Prestador")
     expect(row).toContain("Instalação")
-    expect(row).toContain("500,00") // 50000/100 = 500,00 (BRL format)
+    expect(row).toContain("500,00") // R$ 500,00 em reais (formato BRL)
     expect(row).toContain("PIX")
     expect(row).toContain("Pago")
     expect(row).toContain("lytex-123")
@@ -137,7 +140,7 @@ describe("GET /api/admin/finance/export", () => {
     vi.mocked(db.payment.findMany).mockResolvedValue([] as any)
 
     const req = new Request("http://localhost/api/admin/finance/export?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8")
     const disposition = res.headers.get("Content-Disposition") ?? ""
@@ -150,7 +153,7 @@ describe("GET /api/admin/finance/export", () => {
     vi.mocked(db.payment.findMany).mockResolvedValue([] as any)
 
     const req = new Request("http://localhost/api/admin/finance/export?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const text = await res.text()
 
     const lines = text.trim().split("\n")
@@ -178,7 +181,7 @@ describe("GET /api/admin/finance/export", () => {
     ] as any)
 
     const req = new Request("http://localhost/api/admin/finance/export?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const text = await res.text()
 
     // CSV should wrap fields with commas in quotes and escape internal quotes
@@ -192,7 +195,7 @@ describe("GET /api/admin/finance/export", () => {
     _mockRole = "PROVIDER"
 
     const req = new Request("http://localhost/api/admin/finance/export?period=30d")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(403)
   })
 })

@@ -21,14 +21,31 @@
 set -euo pipefail
 
 # ── Config ──────────────────────────────────────────────────────────────────
-APP_URL="${APP_URL:-http://localhost:3000}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+APP_URL="${APP_URL:-https://severinno.com}"
 HEALTH_URL="${APP_URL}/api/health"
 STATE_FILE="/tmp/severinno-health-state"
-LOG_FILE="/home/severinno/severinno/logs/health-alert.log"
+LOG_FILE="${PROJECT_DIR}/logs/health-alert.log"
+mkdir -p "$(dirname "$LOG_FILE")"
 
-# Telegram (set via environment or .env)
+# Carregar credenciais de alerta de .env.alertas, .env.production.local ou .env
+if [ -f "$PROJECT_DIR/.env.alertas" ]; then
+  # shellcheck disable=SC1090
+  source "$PROJECT_DIR/.env.alertas"
+elif [ -f "$PROJECT_DIR/.env.production.local" ]; then
+  # shellcheck disable=SC1090
+  source <(grep -E "^(TELEGRAM_|DISCORD_|APP_URL)" "$PROJECT_DIR/.env.production.local" 2>/dev/null || true)
+elif [ -f "$PROJECT_DIR/.env" ]; then
+  # shellcheck disable=SC1090
+  source <(grep -E "^(TELEGRAM_|DISCORD_|APP_URL)" "$PROJECT_DIR/.env" 2>/dev/null || true)
+fi
+
+# Telegram & Discord (set via environment or .env)
 TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
 TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
+DISCORD_WEBHOOK_URL="${DISCORD_WEBHOOK_URL:-}"
 
 # ── Functions ───────────────────────────────────────────────────────────────
 log() { echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"; }
@@ -44,6 +61,19 @@ send_telegram() {
         -d "text=${message}" \
         -d "parse_mode=HTML" \
         -o /dev/null 2>/dev/null || log "❌ Failed to send Telegram message"
+}
+
+send_discord() {
+    local title="$1"
+    local desc="$2"
+    local color="$3"
+    if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+        return 0
+    fi
+    curl -s -X POST "$DISCORD_WEBHOOK_URL" \
+        -H "Content-Type: application/json" \
+        -d "{\"username\":\"Severinno Watchdog\",\"embeds\":[{\"title\":\"$title\",\"description\":\"$desc\",\"color\":$color}]}" \
+        -o /dev/null 2>/dev/null || log "❌ Failed to send Discord alert"
 }
 
 # ── Main ────────────────────────────────────────────────────────────────────
@@ -75,6 +105,7 @@ if [ "$HTTP_CODE" = "200" ]; then
     if [ "$PREV_STATUS" != "ok" ]; then
         log "✅ RECOVERED — health check returned 200"
         send_telegram "✅ <b>Severinno RECUPERADO</b>%0AHealth check retornou HTTP 200.%0ATempo: $(date +'%d/%m/%Y %H:%M:%S')"
+        send_discord "✅ Severinno RECUPERADO" "Health check retornou HTTP 200.\nTempo: $(date +'%d/%m/%Y %H:%M:%S')" 3066993
     fi
 else
     CURRENT_STATUS="error"
@@ -82,8 +113,9 @@ else
     if [ "$PREV_STATUS" = "ok" ]; then
         log "🔴 DOWN — health check returned HTTP $HTTP_CODE"
         send_telegram "🔴 <b>Severinno DOWN!</b>%0AHealth check retornou HTTP $HTTP_CODE.%0AURL: ${HEALTH_URL}%0ATempo: $(date +'%d/%m/%Y %H:%M:%S')"
-        if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
-            # DOWN + Telegram mudo = o operador PRECISA saber que não foi avisado
+        send_discord "🔴 Severinno DOWN!" "Health check retornou HTTP $HTTP_CODE.\nURL: ${HEALTH_URL}\nTempo: $(date +'%d/%m/%Y %H:%M:%S')" 15158332
+        if [ -z "$TELEGRAM_BOT_TOKEN" ] && [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            # DOWN + Nenhum alerta configurado = o operador PRECISA saber que não foi avisado
             exit 1
         fi
     else

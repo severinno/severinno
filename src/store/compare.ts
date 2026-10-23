@@ -18,6 +18,7 @@ type CompareState = {
   modalOpen: boolean
 
   toggle: (id: string) => void
+  setIds: (ids: string[]) => void
   remove: (id: string) => void
   clear: () => void
   isAdded: (id: string) => boolean
@@ -42,6 +43,8 @@ export const useCompareStore = create<CompareState>()(
           }
           return { ids: [...s.ids, id] }
         }),
+
+      setIds: (ids) => set({ ids: ids.slice(0, MAX_COMPARE) }),
 
       remove: (id) => set((s) => ({ ids: s.ids.filter((x) => x !== id) })),
 

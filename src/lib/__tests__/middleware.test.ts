@@ -20,7 +20,7 @@ import { NextRequest } from "next/server"
 
 // NOTE: root proxy.ts (global rate limiting, formerly middleware.ts).
 // From src/lib/__tests__/, the root is ../../../.
-import { proxy } from "../../../proxy"
+import { proxy, __testing__CSRF_SENSITIVE_PREFIXES } from "../../../proxy"
 import { globalRateLimitHeaders, type GlobalRateLimitResult } from "@/lib/global-rate-limit"
 
 // ---------------------------------------------------------------------------
@@ -197,5 +197,13 @@ describe("middleware — global rate limit", () => {
       expect(response.headers.get(key)).toBe(value)
     }
     expect(Number(response.headers.get("Retry-After"))).toBeGreaterThan(0)
+  })
+
+  // -------------------------------------------------------------------------
+  // CSRF Protection
+  // -------------------------------------------------------------------------
+
+  it("inclui /api/admin na lista de rotas sensíveis a CSRF", () => {
+    expect(__testing__CSRF_SENSITIVE_PREFIXES).toContain("/api/admin")
   })
 })

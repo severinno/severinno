@@ -435,7 +435,7 @@ export function AdminErrorTrends() {
         <p className="font-medium">📊 Sobre os dados</p>
         <p className="mt-1">
           Os dados de erro são coletados do logger (pino) e do Sentry/GlitchTip.
-          {data.sentryConfig.configured
+          {data.sentryConfig?.configured
             ? ` Release: ${data.sentryConfig.release ?? "não definido"} · Ambiente: ${data.sentryConfig.environment}`
             : " Configure SENTRY_DSN no .env para habilitar o monitoramento de erros."}
         </p>

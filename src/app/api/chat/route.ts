@@ -1,27 +1,32 @@
 export const dynamic = "force-dynamic"
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import ZAI from "z-ai-web-dev-sdk"
-import { handleError } from "@/lib/api-server"
+
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { chatMessageSchema } from "@/lib/validators"
+
+import { withRoute } from "@/lib/api-route"
+import logger from "@/lib/logger"
+import { generateVirtualAssistantResponse } from "@/lib/virtual-assistant"
+
+const chatLogger = logger.child({ module: "api.chat" })
 
 /**
  * POST /api/chat
  *
  * AI assistant for the Severinno Marketplace.
- * Uses z-ai-web-dev-sdk LLM to help users find services, answer questions,
- * and guide them through the platform.
+ * Uses z-ai-web-dev-sdk LLM or intelligent domain fallback to help users
+ * find services, answer questions, and navigate the platform safely.
  *
  * Body: { message: string, history?: Array<{role: string, content: string}> }
  */
-export async function POST(req: NextRequest) {
-  try {
-    await assertRateLimit(req, RATE_LIMITS.general)
-    const body = await req.json()
-    const { message, history } = chatMessageSchema.parse(body)
+export const POST = withRoute("api.chat.POST", async (req) => {
+  await assertRateLimit(req, RATE_LIMITS.general)
+  const body = await req.json()
+  const { message, history } = chatMessageSchema.parse(body)
 
-    const systemPrompt = `Você é o assistente virtual do Severinno Marketplace, uma plataforma brasileira de serviços verificados com geolocalização.
+  const systemPrompt = `Você é o assistente virtual do Severinno Marketplace, uma plataforma brasileira de serviços verificados com geolocalização.
 
 Seu papel é:
 1. Ajudar usuários a encontrar prestadores de serviço adequados (encanador, eletricista, pintor, etc.)
@@ -41,6 +46,9 @@ Regras:
 Categorias disponíveis: Alvenaria, Elétrica, Hidráulica, Pintura, Pisos, Pós-Obra, Residencial
 Serviços populares: Encanador, Eletricista, Pintor, Diarista, Pedreiro, Jardineiro`
 
+  let response: string | null = null
+
+  try {
     const zai = await ZAI.create()
 
     const messages = [
@@ -57,14 +65,21 @@ Serviços populares: Encanador, Eletricista, Pintor, Diarista, Pedreiro, Jardine
       thinking: { type: "disabled" },
     })
 
-    const response = completion.choices[0]?.message?.content
-
-    if (!response) {
-      return NextResponse.json({ error: "Sem resposta do assistente." }, { status: 500 })
+    const raw = completion?.choices?.[0]?.message?.content
+    if (raw && raw.trim()) {
+      response = raw.trim()
     }
-
-    return NextResponse.json({ response })
-  } catch (e) {
-    return handleError(e)
+  } catch (err) {
+    chatLogger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "Chat AI provider unavailable or failed, utilizing local knowledge engine",
+    )
   }
-}
+
+  // Graceful fallback when provider is unconfigured, rate-limited, offline, or returns empty
+  if (!response) {
+    response = generateVirtualAssistantResponse(message, history)
+  }
+
+  return NextResponse.json({ response })
+})

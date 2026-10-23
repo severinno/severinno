@@ -117,7 +117,7 @@ async function main() {
     const providerIncome = new Map<string, { total: number; bookings: typeof completedBookings }>()
     for (const b of completedBookings) {
       const existing = providerIncome.get(b.providerId) ?? { total: 0, bookings: [] }
-      existing.total += b.amount
+      existing.total += Number(b.amount)
       existing.bookings.push(b)
       providerIncome.set(b.providerId, existing)
     }

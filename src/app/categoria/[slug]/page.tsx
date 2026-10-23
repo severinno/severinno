@@ -2,7 +2,7 @@ import { notFound } from "next/navigation"
 import type { Metadata } from "next"
 import { CategoryPage } from "./category-page"
 import { BreadcrumbJsonLd } from "@/components/shared/breadcrumb-json-ld"
-import { sanitizeForJsonLd } from "@/lib/sanitize"
+import { sanitizeForJsonLd, serializeJsonLd } from "@/lib/sanitize"
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -71,7 +71,7 @@ export default async function Page({ params }: Props) {
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(categoryJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(categoryJsonLd) }}
       />
       <CategoryPage category={category} />
     </>

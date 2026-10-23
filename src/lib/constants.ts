@@ -17,20 +17,25 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 // ---------------------------------------------------------------------------
 // SERVICE UNITS
 // ---------------------------------------------------------------------------
-export type ServiceUnit = "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO"
-
-export const SERVICE_UNITS: ServiceUnit[] = [
+// Fonte canônica das unidades de serviço — espelha o enum ServiceUnit do
+// Prisma (UNIDADE, METRO_LINEAR, METRO_QUADRADO, METRO_CUBICO, HORA).
+// Não duplicar: importe daqui (tipos em @/lib/api re-exportam este).
+export const SERVICE_UNITS = [
   "UNIDADE",
   "METRO_LINEAR",
   "METRO_QUADRADO",
   "METRO_CUBICO",
-]
+  "HORA",
+] as const
+
+export type ServiceUnit = (typeof SERVICE_UNITS)[number]
 
 export const SERVICE_UNIT_LABELS: Record<ServiceUnit, string> = {
   UNIDADE: "Unidade",
   METRO_LINEAR: "Metro linear",
   METRO_QUADRADO: "Metro quadrado (m²)",
   METRO_CUBICO: "Metro cúbico (m³)",
+  HORA: "Hora",
 }
 
 export const SERVICE_UNIT_SHORT: Record<ServiceUnit, string> = {
@@ -38,6 +43,7 @@ export const SERVICE_UNIT_SHORT: Record<ServiceUnit, string> = {
   METRO_LINEAR: "m",
   METRO_QUADRADO: "m²",
   METRO_CUBICO: "m³",
+  HORA: "h",
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +102,7 @@ export const BOOKING_STATUS_COLORS: Record<BookingStatus, string> = {
 // PAYMENT
 // ---------------------------------------------------------------------------
 export type PaymentMethod = "CARD" | "PIX"
-export type PaymentStatus = "PENDING" | "PAID" | "REFUNDED"
+export type PaymentStatus = "PENDING" | "AUTHORIZED" | "HELD" | "PAID" | "REFUNDED" | "FAILED"
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CARD: "Cartão",
@@ -105,14 +111,20 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 
 export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   PENDING: "Pagamento pendente",
+  AUTHORIZED: "Autorizado",
+  HELD: "Em custódia protegida",
   PAID: "Pago",
   REFUNDED: "Estornado",
+  FAILED: "Falhou",
 }
 
 export const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
   PENDING: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
+  AUTHORIZED: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200",
+  HELD: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200",
   PAID: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
   REFUNDED: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200",
+  FAILED: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200",
 }
 
 // ---------------------------------------------------------------------------
@@ -158,3 +170,24 @@ export const DEFAULT_SEARCH_RADIUS_KM = 15
 // ---------------------------------------------------------------------------
 // Platform commission rate (15% of each booking)
 export const FEE_RATE = 0.15
+
+// ---------------------------------------------------------------------------
+// WHATSAPP & SUPPORT
+// ---------------------------------------------------------------------------
+/**
+ * Número oficial de suporte e atendimento WhatsApp (com DDI e DDD).
+ * Configurável via variável de ambiente NEXT_PUBLIC_WHATSAPP_SUPPORT ou NEXT_PUBLIC_SUPPORT_WHATSAPP.
+ */
+export const SUPPORT_WHATSAPP =
+  process.env.NEXT_PUBLIC_WHATSAPP_SUPPORT ||
+  process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP ||
+  "5533999999999"
+
+/**
+ * Gera URL oficial de atendimento via WhatsApp (wa.me) com mensagem pré-preenchida.
+ */
+export function getWhatsAppUrl(message?: string, number: string = SUPPORT_WHATSAPP): string {
+  const cleanNumber = number.replace(/\D/g, "")
+  if (!message) return `https://wa.me/${cleanNumber}`
+  return `https://wa.me/${cleanNumber}?text=${encodeURIComponent(message)}`
+}

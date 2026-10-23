@@ -38,10 +38,12 @@ describe("GET /api/cities", () => {
       },
     ])
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
+    expect(res.headers.get("Cache-Control")).toContain("public")
+    expect(res.headers.get("Cache-Control")).toContain("s-maxage=3600")
     const cities = (parsed.body as any).cities
     expect(cities).toHaveLength(2)
     expect(cities[0].name).toBe("São Paulo")
@@ -52,7 +54,7 @@ describe("GET /api/cities", () => {
 
   it("returns empty array when no active cities", async () => {
     mockFindMany.mockResolvedValue([])
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(200)
     expect((parsed.body as any).cities).toEqual([])
@@ -60,7 +62,7 @@ describe("GET /api/cities", () => {
 
   it("returns 500 on db error", async () => {
     mockFindMany.mockRejectedValue(new Error("DB connection failed"))
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(500)
   })

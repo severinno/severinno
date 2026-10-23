@@ -76,14 +76,12 @@ vi.mock("@/lib/constants", () => ({
   PAYMENT_METHOD_LABELS: { PIX: "PIX", CARD: "Cartão" },
 }))
 
-vi.mock("lucide-react", () => ({
-  CheckCircle2: () => <svg />,
-  Clock: () => <svg />,
-  CreditCard: () => <svg />,
-  RotateCcw: () => <svg />,
-  Wallet: () => <svg />,
-  XCircle: () => <svg />,
-}))
+vi.mock("lucide-react", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, any>>()
+  return {
+    ...actual,
+  }
+})
 
 vi.mock("@/components/ui/card", () => ({
   Card: ({ children, className }: { children: React.ReactNode; className?: string }) => (
@@ -273,7 +271,7 @@ describe("ProviderFinance — data rendering", () => {
 
   it("renderiza a tabela de transações com bookings", () => {
     render(<ProviderFinance />)
-    expect(screen.getByText("Maria Cliente")).toBeDefined()
+    expect(screen.getAllByText("Maria Cliente").length).toBeGreaterThanOrEqual(1)
   })
 
   it("mostra contagem de transações", () => {

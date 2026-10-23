@@ -89,28 +89,57 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
-vi.mock("lucide-react", () => ({
-  ArrowRight: () => <svg />,
-  CalendarDays: () => <svg />,
-  Camera: () => <svg />,
-  CheckCircle2: () => <svg />,
-  ChevronRight: () => <svg />,
-  FileText: () => <svg />,
-  Loader2: () => <svg />,
-  MapPin: () => <svg />,
-  Navigation: () => <svg />,
-  Phone: () => <svg />,
-  Play: () => <svg />,
-  Plus: () => <svg />,
-  Search: () => <svg />,
-  Smartphone: () => <svg />,
-  Sparkles: () => <svg />,
-  TrendingUp: () => <svg />,
-  User: () => <svg />,
-  Volume2: () => <svg />,
-  Wallet: () => <svg />,
-  X: () => <svg />,
-}))
+vi.mock("lucide-react", () => {
+  const icons = [
+    "ArrowRight",
+    "CalendarDays",
+    "Camera",
+    "CheckCircle2",
+    "ChevronRight",
+    "Clock",
+    "FileText",
+    "Hammer",
+    "KeyRound",
+    "Loader2",
+    "MapPin",
+    "Navigation",
+    "Paintbrush",
+    "Phone",
+    "Play",
+    "Plus",
+    "Search",
+    "ShieldCheck",
+    "Smartphone",
+    "Sparkles",
+    "TrendingUp",
+    "User",
+    "Volume2",
+    "Wallet",
+    "Wind",
+    "Wrench",
+    "X",
+    "Zap",
+    "LayoutDashboard",
+    "Calendar",
+    "CalendarCheck",
+    "Copy",
+    "Check",
+    "Gift",
+    "MessageCircle",
+    "MessageSquare",
+    "Radio",
+    "Trophy",
+    "Crown",
+    "Medal",
+    "Award",
+    "Users",
+  ]
+  const mock: Record<string, unknown> = {}
+  for (const name of icons) {
+    mock[name] = () => <svg data-testid={`icon-${name}`} />
+  }
+  return mock
+})
 
 // ---- Recharts needs ResizeObserver -----------------------------------------
 vi.stubGlobal(

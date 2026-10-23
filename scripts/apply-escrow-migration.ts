@@ -12,7 +12,11 @@
 import { PrismaClient } from "@prisma/client"
 
 const prisma = new PrismaClient({
-  datasources: { db: { url: "postgresql://severinno:severinno@localhost:5432/severinno" } },
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL || "postgresql://severinno:severinno@localhost:5432/severinno",
+    },
+  },
 })
 
 async function main() {

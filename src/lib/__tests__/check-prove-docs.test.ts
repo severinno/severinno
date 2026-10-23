@@ -495,14 +495,18 @@ describe("audit — o repositório como ele está", () => {
     const provados = report.results.filter(
       (r: { ok: boolean; desfecho: string }) => r.ok && r.desfecho === "provado",
     )
-    // QUATRO provas rodam SEM docker e saem provadas neste host: as duas do
+    // CINCO provas rodam SEM docker e saem provadas neste host: as duas do
     // contrato da árvore (`runner-image:prove`, que confere os contratos da
     // imagem, e o `cut-stages:prove`), a do ciclo de TLA (`tla-cycle:prove`,
-    // medida nos dois loaders do runtime local) e a da PILHA por commit
-    // (`stack-per-commit:prove`, que mede worktrees de git, sem container).
-    // A ORDEM é a dos blocos na doc.
+    // medida nos dois loaders do runtime local), a da PILHA por commit
+    // (`stack-per-commit:prove`, que mede worktrees de git, sem container) e a
+    // do pre-commit DENTRO do runtime (`pre-commit-in-runner:prove`, que na
+    // máquina do operador — sem docker, sem imagem — RECUSA provar no lugar
+    // errado: exit 2 declarado na lista do `exit:`; na FORJA, o MESMO bloco é
+    // provado com exit 0, dentro da imagem). A ORDEM é a dos blocos na doc.
     expect(provados.map((r: { command: string }) => r.command)).toEqual([
       "runner-image:prove",
+      "pre-commit-in-runner:prove",
       "stack-per-commit:prove",
       "cut-stages:prove",
       "tla-cycle:prove",

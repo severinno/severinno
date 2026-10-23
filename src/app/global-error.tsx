@@ -11,6 +11,9 @@ import { useEffect } from "react"
  * this level, so all styling is done via a self-contained <style> tag.
  */
 
+// ATENÇÃO CSP: este bloco é PINADO por hash SHA-256 em src/lib/csp.ts
+// (style-src-elem). Se mudar o CSS abaixo, atualize o hash em csp.ts — o teste
+// (csp.test.ts) falha se os dois divergirem.
 const styles = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
 

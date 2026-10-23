@@ -3,9 +3,11 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
-import { handleError, badRequest, notFound } from "@/lib/api-server"
+import { badRequest, notFound } from "@/lib/api-server"
 import logger from "@/lib/logger"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+
+import { withParams } from "@/lib/api-route"
 
 const VALID_ROLES = ["CLIENT", "PROVIDER", "ADMIN"]
 
@@ -21,8 +23,9 @@ const VALID_ROLES = ["CLIENT", "PROVIDER", "ADMIN"]
  *   targetRoles — array de roles alvo
  *   active      — booleano
  */
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
+export const PATCH = withParams<{ id: string }>(
+  "api.admin.push.webhooks.:id.PATCH",
+  async (request, { params }) => {
     await requireRole("ADMIN")
     await assertRateLimit(request, RATE_LIMITS.admin)
     const { id } = await params
@@ -83,18 +86,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         updatedAt: updated.updatedAt.toISOString(),
       },
     })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)
 
 /**
  * DELETE /api/admin/push/webhooks/[id]
  *
  * Exclui uma regra de webhook de evento.
  */
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  try {
+export const DELETE = withParams<{ id: string }>(
+  "api.admin.push.webhooks.:id.DELETE",
+  async (_request, { params }) => {
     await requireRole("ADMIN")
     await assertRateLimit(_request, RATE_LIMITS.admin)
     const { id } = await params
@@ -107,7 +109,5 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     logger.info({ webhookId: id }, "event webhook deleted")
 
     return NextResponse.json({ ok: true, message: "Webhook excluido." })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

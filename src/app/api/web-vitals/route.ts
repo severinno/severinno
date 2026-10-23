@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server"
 import logger from "@/lib/logger"
+import { webVitalsRegistry } from "@/lib/web-vitals-registry"
 
 /**
  * POST /api/web-vitals
  *
- * Receives Core Web Vitals metrics from the client (LCP, INP, CLS).
- * Logs them for monitoring — in production, this feeds into Prometheus/Grafana.
+ * Receives Web Vitals metrics from the client (LCP, INP, CLS, FCP, TTFB).
+ * Records in webVitalsRegistry for the admin dashboard and logs for Loki/Promtail.
  *
  * Metrics are sent via navigator.sendBeacon (fire-and-forget).
  */
@@ -17,6 +18,17 @@ export async function POST(request: Request) {
     if (!name || typeof value !== "number") {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 })
     }
+
+    // Record in in-memory registry for real-time telemetry dashboard
+    webVitalsRegistry.record({
+      name,
+      value,
+      rating,
+      id,
+      navigationType,
+      delta,
+      timestamp,
+    })
 
     // Log metric — structured for Loki/Promtail ingestion
     logger.info(

@@ -59,7 +59,8 @@ import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { loadPersistedSnapshots } from "@/lib/geo-metrics-persist"
 import { SERVICE_LABELS, type GeoServiceName } from "@/lib/geo-metrics"
-import { handleError } from "@/lib/api-server"
+
+import { withRoute } from "@/lib/api-route"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -134,136 +135,132 @@ function bucketKey(timestamp: number, windowMs: number): number {
 
 export const dynamic = "force-dynamic"
 
-export async function GET(request: Request) {
-  try {
-    await requireRole("ADMIN")
+export const GET = withRoute("api.admin.geo-metrics.timeline.GET", async (request) => {
+  await requireRole("ADMIN")
 
-    const url = new URL(request.url)
-    const now = Date.now()
+  const url = new URL(request.url)
+  const now = Date.now()
 
-    // ── Parse query params ───────────────────────────────────────────
-    const fromRaw = url.searchParams.get("from")
-    const toRaw = url.searchParams.get("to")
-    const granularity = parseGranularity(url.searchParams.get("granularity"))
+  // ── Parse query params ───────────────────────────────────────────
+  const fromRaw = url.searchParams.get("from")
+  const toRaw = url.searchParams.get("to")
+  const granularity = parseGranularity(url.searchParams.get("granularity"))
 
-    const from = fromRaw ? Number(fromRaw) : now - 86_400_000 // default: 24h ago
-    const to = toRaw ? Number(toRaw) : now
-    const windowMs = GRANULARITY_MS[granularity]
+  const from = fromRaw ? Number(fromRaw) : now - 86_400_000 // default: 24h ago
+  const to = toRaw ? Number(toRaw) : now
+  const windowMs = GRANULARITY_MS[granularity]
 
-    // Validate
-    if (!Number.isFinite(from) || !Number.isFinite(to)) {
-      return NextResponse.json(
-        { error: "Parâmetros from/to inválidos — devem ser timestamps Unix em ms" },
-        { status: 400 },
-      )
+  // Validate
+  if (!Number.isFinite(from) || !Number.isFinite(to)) {
+    return NextResponse.json(
+      { error: "Parâmetros from/to inválidos — devem ser timestamps Unix em ms" },
+      { status: 400 },
+    )
+  }
+
+  // ── Load and filter snapshots ────────────────────────────────────
+  const allSnapshots = await loadPersistedSnapshots()
+
+  const filtered = allSnapshots.filter((s) => s.timestamp >= from && s.timestamp <= to)
+
+  // ── Aggregate ────────────────────────────────────────────────────
+  let points: TimelinePoint[]
+
+  if (granularity === "raw" || windowMs === 0) {
+    // Return individual snapshots (no aggregation)
+    points = filtered.map((snap) => {
+      const services = {} as Record<GeoServiceName, ServiceTimelineData>
+      for (const [key, val] of Object.entries(snap.services)) {
+        const svc = key as GeoServiceName
+        services[svc] = {
+          p50: { mean: val.p50, min: val.p50, max: val.p50 },
+          p95: { mean: val.p95, min: val.p95, max: val.p95 },
+          p99: { mean: val.p99, min: val.p99, max: val.p99 },
+          count: val.count,
+        }
+      }
+      return {
+        windowStart: snap.timestamp,
+        windowEnd: snap.timestamp,
+        count: 1,
+        services,
+      }
+    })
+  } else {
+    // Group by time bucket and aggregate
+    // Initialize per-service accumulators
+    const perServiceBuckets = new Map<
+      number,
+      Map<
+        GeoServiceName,
+        {
+          p50Values: number[]
+          p95Values: number[]
+          p99Values: number[]
+          count: number
+        }
+      >
+    >()
+
+    for (const snap of filtered) {
+      const bk = bucketKey(snap.timestamp, windowMs)
+
+      let svcMap = perServiceBuckets.get(bk)
+      if (!svcMap) {
+        svcMap = new Map()
+        perServiceBuckets.set(bk, svcMap)
+      }
+
+      for (const [key, val] of Object.entries(snap.services)) {
+        const svc = key as GeoServiceName
+        let acc = svcMap.get(svc)
+        if (!acc) {
+          acc = { p50Values: [], p95Values: [], p99Values: [], count: 0 }
+          svcMap.set(svc, acc)
+        }
+        acc.p50Values.push(val.p50)
+        acc.p95Values.push(val.p95)
+        acc.p99Values.push(val.p99)
+        acc.count += val.count
+      }
     }
 
-    // ── Load and filter snapshots ────────────────────────────────────
-    const allSnapshots = await loadPersistedSnapshots()
-
-    const filtered = allSnapshots.filter((s) => s.timestamp >= from && s.timestamp <= to)
-
-    // ── Aggregate ────────────────────────────────────────────────────
-    let points: TimelinePoint[]
-
-    if (granularity === "raw" || windowMs === 0) {
-      // Return individual snapshots (no aggregation)
-      points = filtered.map((snap) => {
+    // Build points from buckets
+    points = Array.from(perServiceBuckets.entries())
+      .map(([bk, svcMap]) => {
         const services = {} as Record<GeoServiceName, ServiceTimelineData>
-        for (const [key, val] of Object.entries(snap.services)) {
-          const svc = key as GeoServiceName
+        let totalCount = 0
+
+        for (const [svc, acc] of svcMap) {
           services[svc] = {
-            p50: { mean: val.p50, min: val.p50, max: val.p50 },
-            p95: { mean: val.p95, min: val.p95, max: val.p95 },
-            p99: { mean: val.p99, min: val.p99, max: val.p99 },
-            count: val.count,
+            p50: aggregate(acc.p50Values),
+            p95: aggregate(acc.p95Values),
+            p99: aggregate(acc.p99Values),
+            count: acc.count,
           }
+          totalCount += acc.count
         }
+
         return {
-          windowStart: snap.timestamp,
-          windowEnd: snap.timestamp,
-          count: 1,
+          windowStart: bk,
+          windowEnd: bk + windowMs,
+          count: totalCount,
           services,
         }
       })
-    } else {
-      // Group by time bucket and aggregate
-      // Initialize per-service accumulators
-      const perServiceBuckets = new Map<
-        number,
-        Map<
-          GeoServiceName,
-          {
-            p50Values: number[]
-            p95Values: number[]
-            p99Values: number[]
-            count: number
-          }
-        >
-      >()
-
-      for (const snap of filtered) {
-        const bk = bucketKey(snap.timestamp, windowMs)
-
-        let svcMap = perServiceBuckets.get(bk)
-        if (!svcMap) {
-          svcMap = new Map()
-          perServiceBuckets.set(bk, svcMap)
-        }
-
-        for (const [key, val] of Object.entries(snap.services)) {
-          const svc = key as GeoServiceName
-          let acc = svcMap.get(svc)
-          if (!acc) {
-            acc = { p50Values: [], p95Values: [], p99Values: [], count: 0 }
-            svcMap.set(svc, acc)
-          }
-          acc.p50Values.push(val.p50)
-          acc.p95Values.push(val.p95)
-          acc.p99Values.push(val.p99)
-          acc.count += val.count
-        }
-      }
-
-      // Build points from buckets
-      points = Array.from(perServiceBuckets.entries())
-        .map(([bk, svcMap]) => {
-          const services = {} as Record<GeoServiceName, ServiceTimelineData>
-          let totalCount = 0
-
-          for (const [svc, acc] of svcMap) {
-            services[svc] = {
-              p50: aggregate(acc.p50Values),
-              p95: aggregate(acc.p95Values),
-              p99: aggregate(acc.p99Values),
-              count: acc.count,
-            }
-            totalCount += acc.count
-          }
-
-          return {
-            windowStart: bk,
-            windowEnd: bk + windowMs,
-            count: totalCount,
-            services,
-          }
-        })
-        .sort((a, b) => a.windowStart - b.windowStart) // chronological
-    }
-
-    return NextResponse.json({
-      meta: {
-        from: Math.round(from),
-        to: Math.round(to),
-        granularity,
-        windowMs,
-        totalSnapshots: filtered.length,
-        aggregatedPoints: points.length,
-      },
-      points,
-      labels: SERVICE_LABELS,
-    })
-  } catch (e) {
-    return handleError(e)
+      .sort((a, b) => a.windowStart - b.windowStart) // chronological
   }
-}
+
+  return NextResponse.json({
+    meta: {
+      from: Math.round(from),
+      to: Math.round(to),
+      granularity,
+      windowMs,
+      totalSnapshots: filtered.length,
+      aggregatedPoints: points.length,
+    },
+    points,
+    labels: SERVICE_LABELS,
+  })
+})

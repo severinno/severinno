@@ -411,7 +411,10 @@ export function runSourcedHook(dir, hookSource, extraEnv = {}) {
   const res = spawnSync(resolveBash(), [join(dir, WRAPPER_FILE)], {
     cwd: dir,
     encoding: "utf8",
-    timeout: 60_000,
+    // Mesmo teto do `runGit` (180s): o hook REAL com a fase C inteira leva ~55s
+    // SÓ de typecheck na imagem do runner (medido em 30/09/2026) — o 60s
+    // anterior media o hook com menos orçamento do que o ambiente custa.
+    timeout: 180_000,
     env: {
       ...process.env,
       PATH: harnessPath(),
@@ -456,7 +459,15 @@ export function runGit(dir, args, extraEnv = {}) {
   const res = spawnSync("git", args, {
     cwd: dir,
     encoding: "utf8",
-    timeout: 60_000,
+    // 180s e não 60s: o CONTROLE da prova roda a fase C INTEIRA (lint-staged +
+    // o typecheck do repositório DE VERDADE) dentro do commit — e o typecheck
+    // sozinho leva 55s na imagem do runner (medido em 30/09/2026), encostando
+    // no teto anterior. Sob carga (a suíte da forja em paralelo, o re-bench do
+    // bench na mesma VPS), o 60s estourava e a prova saía INDETERMINADO acusando
+    // "o ambiente não sabe commitar" — medir o hook com um orçamento menor que
+    // o custo REAL do ambiente é o falso vermelho que este teto existe para não
+    // produzir. O "não terminou" continua INDETERMINADO (nunca verde).
+    timeout: 180_000,
     // stdin VAZIO (não herdado) E A PERGUNTA DESLIGADA: o hook não pode ler de um
     // terminal que o TESTE herdou do operador que rodou a suíte (o remédio abre o
     // `/dev/tty` quando o stdin não é um terminal). A prova mede o caminho SEM

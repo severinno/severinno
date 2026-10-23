@@ -101,16 +101,37 @@ function parseEnvFlags(): {
 
 const envFlags = parseEnvFlags()
 
+import { cacheGet, cacheSet } from "./redis"
+
 // ── Runtime overrides (for admin toggles) ──────────────────────────────────
 
+const REDIS_OVERRIDES_KEY = "feature_flags:runtime_overrides"
 const runtimeOverrides = new Map<string, boolean>()
 
 export function setFlag(flag: FeatureFlag, value: boolean): void {
   runtimeOverrides.set(flag, value)
+  cacheSet(REDIS_OVERRIDES_KEY, Object.fromEntries(runtimeOverrides), 86400 * 30).catch(() => {})
 }
 
 export function clearFlag(flag: FeatureFlag): void {
   runtimeOverrides.delete(flag)
+  cacheSet(REDIS_OVERRIDES_KEY, Object.fromEntries(runtimeOverrides), 86400 * 30).catch(() => {})
+}
+
+/**
+ * Syncs runtime overrides from Redis so admin toggles apply across all cluster replicas.
+ */
+export async function syncFlagsFromRedis(): Promise<void> {
+  try {
+    const overrides = await cacheGet<Record<string, boolean>>(REDIS_OVERRIDES_KEY)
+    if (overrides && typeof overrides === "object") {
+      for (const [k, v] of Object.entries(overrides)) {
+        runtimeOverrides.set(k, v)
+      }
+    }
+  } catch {
+    // Redis unavailable — in-memory fallback
+  }
 }
 
 // ── Core check ─────────────────────────────────────────────────────────────

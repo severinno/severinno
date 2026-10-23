@@ -735,3 +735,79 @@ test.describe("Health Check — Rotas da API de Booking e Pagamento", () => {
     expect(body).toHaveProperty("total")
   })
 })
+
+test.describe("Submit do Booking — quantity e validação inline", () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page, { authenticated: true })
+    await page.goto("/")
+    await waitForVitrine(page)
+  })
+
+  // Abre o modal, preenche passos 1–2 e avança até a confirmação (passo 4).
+  // O lookup de CEP mockado preenche rua/cidade/UF automaticamente.
+  async function goToConfirm(page: Page, opts: { quantity?: number; notes?: string } = {}) {
+    await openBookingModal(page)
+    await selectFirstDateTime(page)
+    await navigateToStep(page, 2)
+
+    if (opts.quantity !== undefined) {
+      const qtyInput = page.locator('input[type="number"]').first()
+      if (await qtyInput.isVisible().catch(() => false)) {
+        await qtyInput.fill(String(opts.quantity))
+        await page.waitForTimeout(300)
+      }
+    }
+
+    const cepInput = page.getByPlaceholder(/CEP/i).first()
+    if (await cepInput.isVisible().catch(() => false)) {
+      await cepInput.fill("01310100")
+      await page.waitForTimeout(1500)
+    }
+
+    if (opts.notes !== undefined) {
+      const notesInput = page.getByPlaceholder(/detalhes para o prestador/i).first()
+      if (await notesInput.isVisible().catch(() => false)) {
+        await notesInput.fill(opts.notes)
+        await page.waitForTimeout(300)
+      }
+    }
+
+    await navigateToStep(page, 4)
+    const confirmBtn = page.locator('button:has-text("Confirmar agendamento")').first()
+    await expect(confirmBtn).toBeVisible({ timeout: 5000 })
+    return confirmBtn
+  }
+
+  test("17. submit envia quantity/unit e amount = basePrice × quantity", async ({ page }) => {
+    // Serviço mockado: basePrice 120, unit UNIDADE (e2e/mocks.ts)
+    const confirmBtn = await goToConfirm(page, { quantity: 2 })
+
+    const postPromise = page.waitForRequest(
+      (r) => r.url().includes("/api/bookings") && r.method() === "POST",
+      { timeout: 10_000 },
+    )
+    await confirmBtn.click()
+    const req = await postPromise
+    const body = req.postDataJSON() as Record<string, unknown>
+
+    expect(body.quantity).toBe(2)
+    expect(body.unit).toBe("UNIDADE")
+    expect(body.amount).toBe(240)
+  })
+
+  test("18. notas > 1000 chars: banner inline e POST bloqueado", async ({ page }) => {
+    let posted = false
+    page.on("request", (r) => {
+      if (r.method() === "POST" && r.url().includes("/api/bookings")) posted = true
+    })
+
+    const confirmBtn = await goToConfirm(page, { notes: "a".repeat(1001) })
+    await confirmBtn.click()
+
+    await expect(page.getByRole("alert")).toContainText("Notas não podem exceder 1000 caracteres", {
+      timeout: 5000,
+    })
+    await page.waitForTimeout(1000)
+    expect(posted).toBe(false)
+  })
+})

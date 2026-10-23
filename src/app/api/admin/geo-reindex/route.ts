@@ -36,9 +36,11 @@ export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
+
 import { db } from "@/lib/db"
 import logger from "@/lib/logger"
+
+import { withRoute } from "@/lib/api-route"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,59 +73,55 @@ const SPATIAL_INDEXES = [
 // Route
 // ---------------------------------------------------------------------------
 
-export async function POST() {
-  try {
-    await requireRole("ADMIN")
+export const POST = withRoute("api.admin.geo-reindex.POST", async (_request) => {
+  await requireRole("ADMIN")
 
-    const completedIndexes: ReindexResult[] = []
-    let failedIndex: string | null = null
+  const completedIndexes: ReindexResult[] = []
+  let failedIndex: string | null = null
 
-    const startTotal = performance.now()
+  const startTotal = performance.now()
 
-    for (const indexName of SPATIAL_INDEXES) {
-      if (failedIndex) break // stop on first failure
+  for (const indexName of SPATIAL_INDEXES) {
+    if (failedIndex) break // stop on first failure
 
-      const idxStart = performance.now()
-      try {
-        // Use CONCURRENTLY to avoid locking the table during reindex.
-        // REINDEX INDEX CONCURRENTLY requires PostgreSQL 12+.
-        await db.$executeRawUnsafe(`REINDEX INDEX CONCURRENTLY IF EXISTS "${indexName}"`)
-        const durationMs = Math.round(performance.now() - idxStart)
-        completedIndexes.push({ name: indexName, durationMs, ok: true })
-        logger.info({ indexName, durationMs }, "REINDEX completed")
-      } catch (err) {
-        const durationMs = Math.round(performance.now() - idxStart)
-        const message = err instanceof Error ? err.message : String(err)
-        completedIndexes.push({ name: indexName, durationMs, ok: false })
-        failedIndex = indexName
+    const idxStart = performance.now()
+    try {
+      // Use CONCURRENTLY to avoid locking the table during reindex.
+      // REINDEX INDEX CONCURRENTLY requires PostgreSQL 12+.
+      await db.$executeRawUnsafe(`REINDEX INDEX CONCURRENTLY IF EXISTS "${indexName}"`)
+      const durationMs = Math.round(performance.now() - idxStart)
+      completedIndexes.push({ name: indexName, durationMs, ok: true })
+      logger.info({ indexName, durationMs }, "REINDEX completed")
+    } catch (err) {
+      const durationMs = Math.round(performance.now() - idxStart)
+      const message = err instanceof Error ? err.message : String(err)
+      completedIndexes.push({ name: indexName, durationMs, ok: false })
+      failedIndex = indexName
 
-        logger.error({ indexName, durationMs, err }, "REINDEX failed")
+      logger.error({ indexName, durationMs, err }, "REINDEX failed")
 
-        return NextResponse.json(
-          {
-            error: `Falha ao reindexar: ${indexName}: ${message}`,
-            completedIndexes,
-            failedIndex: indexName,
-          },
-          { status: 500 },
-        )
-      }
+      return NextResponse.json(
+        {
+          error: `Falha ao reindexar: ${indexName}: ${message}`,
+          completedIndexes,
+          failedIndex: indexName,
+        },
+        { status: 500 },
+      )
     }
-
-    const totalDurationMs = Math.round(performance.now() - startTotal)
-
-    const successCount = completedIndexes.filter((i) => i.ok).length
-    const totalCount = completedIndexes.length
-
-    const response: GeoReindexResponse = {
-      success: failedIndex == null,
-      indexes: completedIndexes,
-      totalDurationMs,
-      message: `${successCount}/${totalCount} índices reindexados com sucesso.`,
-    }
-
-    return NextResponse.json(response)
-  } catch (e) {
-    return handleError(e)
   }
-}
+
+  const totalDurationMs = Math.round(performance.now() - startTotal)
+
+  const successCount = completedIndexes.filter((i) => i.ok).length
+  const totalCount = completedIndexes.length
+
+  const response: GeoReindexResponse = {
+    success: failedIndex == null,
+    indexes: completedIndexes,
+    totalDurationMs,
+    message: `${successCount}/${totalCount} índices reindexados com sucesso.`,
+  }
+
+  return NextResponse.json(response)
+})

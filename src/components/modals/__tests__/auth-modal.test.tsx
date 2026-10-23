@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent } from "@/__tests__/test-utils"
 import { AuthModal } from "../auth-modal"
-import { isDemoAccountsEnabled } from "@/lib/demo-accounts"
 import {
   createMockAuthStore,
   createMockUIStore,
@@ -149,6 +148,8 @@ vi.mock("lucide-react", () => {
     Copy: Icon,
     Wrench: Icon,
     BadgeCheck: Icon,
+    ArrowLeft: Icon,
+    Sparkles: Icon,
   }
 })
 
@@ -158,11 +159,6 @@ vi.mock("@/lib/validators", () => ({
 }))
 vi.mock("@/lib/utils", () => ({ cn: (...c: any[]) => c.filter(Boolean).join(" ") }))
 vi.mock("@hookform/resolvers/zod", () => ({ zodResolver: () => ({}) }))
-
-// Gate das contas demo — controlável por teste (prod vs dev)
-vi.mock("@/lib/demo-accounts", () => ({
-  isDemoAccountsEnabled: vi.fn(() => true),
-}))
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -175,7 +171,6 @@ beforeEach(() => {
   })
   mockAuthStore.login.mockResolvedValue({ ok: true })
   mockAuthStore.register.mockResolvedValue({ ok: true })
-  vi.mocked(isDemoAccountsEnabled).mockReturnValue(true)
 })
 
 describe("AuthModal — rendering", () => {
@@ -231,46 +226,6 @@ describe("AuthModal — rendering", () => {
     )
     expect(screen.getByText("CPF / CNPJ")).toBeInTheDocument()
     expect(screen.getByText(/Como prestador/)).toBeInTheDocument()
-  })
-
-  it("renders demo credentials in login mode (dev/test)", () => {
-    mockUIStore.authModal = { open: true, mode: "login", role: "CLIENT" }
-    render(
-      <TestQueryProvider>
-        <AuthModal />
-      </TestQueryProvider>,
-    )
-    // Demo credentials link — may appear once or in collapse/expand
-    const elements = screen.getAllByText("Ver credenciais de demonstração")
-    expect(elements.length).toBeGreaterThan(0)
-  })
-})
-
-describe("AuthModal — gating de contas demo (prod vs dev)", () => {
-  it("oculta as credenciais demo em produção", () => {
-    vi.mocked(isDemoAccountsEnabled).mockReturnValue(false)
-    mockUIStore.authModal = { open: true, mode: "login", role: "CLIENT" }
-    render(
-      <TestQueryProvider>
-        <AuthModal />
-      </TestQueryProvider>,
-    )
-    // Nenhum vestígio do bloco demo em produção
-    expect(screen.queryByText("Ver credenciais de demonstração")).not.toBeInTheDocument()
-    expect(screen.queryByText(/admin@severinno\.com/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/cliente@severinno\.com/)).not.toBeInTheDocument()
-  })
-
-  it("exibe as credenciais demo fora de produção", () => {
-    vi.mocked(isDemoAccountsEnabled).mockReturnValue(true)
-    mockUIStore.authModal = { open: true, mode: "login", role: "CLIENT" }
-    render(
-      <TestQueryProvider>
-        <AuthModal />
-      </TestQueryProvider>,
-    )
-    expect(screen.getAllByText("Ver credenciais de demonstração").length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/@severinno\.com/).length).toBeGreaterThan(0)
   })
 })
 
@@ -362,5 +317,39 @@ describe("AuthModal — form submission", () => {
     await new Promise((r) => setTimeout(r, 0))
 
     expect(mockAuthStore.register).toHaveBeenCalled()
+  })
+
+  it("shows forgot password form when clicking Esqueci a senha and can return", async () => {
+    mockUIStore.authModal = { open: true, mode: "login", role: "CLIENT" }
+    render(
+      <TestQueryProvider>
+        <AuthModal />
+      </TestQueryProvider>,
+    )
+
+    const forgotBtn = screen.getByText("Esqueci a senha")
+    fireEvent.click(forgotBtn)
+
+    expect(screen.getByText("Recuperar sua senha")).toBeInTheDocument()
+    expect(screen.getByText("Voltar para o login")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText("Voltar para o login"))
+    expect(screen.getByText("Esqueci a senha")).toBeInTheDocument()
+  })
+
+  it("renders demo credentials chips and autofills fields on click", async () => {
+    mockUIStore.authModal = { open: true, mode: "login", role: "CLIENT" }
+    render(
+      <TestQueryProvider>
+        <AuthModal />
+      </TestQueryProvider>,
+    )
+
+    expect(screen.getByText(/Acesso Rápido \(Demo\)/)).toBeInTheDocument()
+    const clientDemoBtn = screen.getByText("👤 Cliente")
+    fireEvent.click(clientDemoBtn)
+
+    expect(formValues.email).toBe("cliente@severinno.com")
+    expect(formValues.password).toBe("cliente123")
   })
 })

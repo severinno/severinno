@@ -15,9 +15,12 @@ scrape_configs:
 
   # Severinno App (Next.js)
   - job_name: "severinno-app"
-    metrics_path: "/api/metrics/prometheus"
+    metrics_path: "/api/health/detailed"
+    params:
+      format: ["prometheus"]
+    follow_redirects: true
     static_configs:
-      - targets: ["host.docker.internal:3000"]
+      - targets: ["app:3000"]
     scrape_interval: 10s
     scrape_timeout: 5s
 

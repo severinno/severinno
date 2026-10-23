@@ -1,6 +1,8 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { render, screen } from "@/__tests__/test-utils"
 import { Input } from "../input"
+
+vi.unmock("@/components/ui/input")
 
 describe("Input", () => {
   it("renders an input element", () => {
@@ -37,5 +39,12 @@ describe("Input", () => {
   it("forwards value", () => {
     render(<Input value="test" readOnly data-testid="value-input" />)
     expect(screen.getByTestId("value-input")).toHaveValue("test")
+  })
+
+  it("includes soft minimalist focus ring classes", () => {
+    const { container } = render(<Input placeholder="test" />)
+    const el = container.querySelector("input")
+    expect(el?.className).toContain("focus-visible:ring-2")
+    expect(el?.className).toContain("focus-visible:border-ring/70")
   })
 })

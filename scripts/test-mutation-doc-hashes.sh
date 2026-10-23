@@ -366,10 +366,20 @@ recebe "CONTROLE M7 (preview)" "$(rodar "$F" --fix --dry-run)" 0 "o preview prev
 # `lint`). A mutação tira o `dry` dela: com o preview gravando, o `--dry-run`
 # que o comentário do PR publica mentiria.
 mutar_linha "$F" 'if (!dry) escreverFormatado(join(root, file), novoConteudo, { root })' '    escreverFormatado(join(root, file), novoConteudo, { root })'
-rodar "$F" --fix --dry-run >/dev/null
-checar_carga
-if [ "$(cksum <"$F/README.md")" = "$ANTES" ]; then
-  fail "M7 (cegada) — sem o `dry`, o preview tem de GRAVAR a árvore e não gravou"
+# O PREVIEW que a contraprova espera é uma ESCRITA no disco: um tiro único sob a
+# carga da forja pode terminar sem escrever — o flake 🌀 medido na rodada
+# 6274fe38: a 1ª tentativa reprovou com 'não gravou', a 2ª passou INTEIRA em 4s
+# na mesma árvore. A régua da casa é a REPETIÇÃO: até 3 tiros; reprova só se
+# NENHUM gravar (a escrita é idempotente — o remendo é o mesmo).
+gravou=0
+for tiro in 1 2 3; do
+  rodar "$F" --fix --dry-run >/dev/null
+  checar_carga
+  if [ "$(cksum <"$F/README.md")" != "$ANTES" ]; then gravou=1; break; fi
+  info "M7 (cegada): o tiro $tiro não gravou — repetindo (a régua é a repetição, nunca o 1º tiro)"
+done
+if [ "$gravou" != 1 ]; then
+  fail "M7 (cegada) — sem o campo 'dry', o preview tem de GRAVAR a árvore e não gravou (3 tiros)"
   exit 1
 fi
 pass "M7 (afrouxada) — sem o campo dry o preview GRAVA: o --dry-run que o PR publica mentia"
@@ -392,12 +402,22 @@ recebe "CONTROLE M8 (sem terminal)" "$(PRE_COMMIT_REMEDY_NO_PROMPT=1 rodar "$F" 
   exit 1
 }
 mutar_linha "$F" '  if (yes) return { autorizado: true, motivo: "--yes: a confirmação já foi dada por quem chama" }' '  if (true) return { autorizado: true, motivo: "a confirmação virou inócua" }'
-recebe "M8 (cegada)" "$(PRE_COMMIT_REMEDY_NO_PROMPT=1 rodar "$F" --fix)" 0 \
+# O REMÉDIO que a contraprova espera é exit 0 + ESCRITA no disco: o MESMO flake
+# de tiro único do M7 (a carga da forja) vale aqui — até 3 tiros, e reprova só
+# se NENHUM aplicar (a régua é a repetição, nunca o 1º tiro).
+m8_rc=""
+for tiro in 1 2 3; do
+  m8_rc="$(PRE_COMMIT_REMEDY_NO_PROMPT=1 rodar "$F" --fix)"
+  checar_carga
+  [ "$m8_rc" = 0 ] && [ "$(cksum <"$F/README.md")" != "$ANTES" ] && break
+  info "M8 (cegada): o tiro $tiro não aplicou (exit $m8_rc) — repetindo (a régua é a repetição)"
+done
+recebe "M8 (cegada)" "$m8_rc" 0 \
   "sem a confirmação, o remédio se aplica sozinho"
-[ "$(cksum <"$F/README.md")" != "$ANTES" ] || {
-  fail "M8 (cegada): o remédio disse que aplicou e a árvore não mudou"
+if [ "$(cksum <"$F/README.md")" = "$ANTES" ]; then
+  fail "M8 (cegada): o remédio disse que aplicou e a árvore não mudou (3 tiros)"
   exit 1
-}
+fi
 pass "M8 (cegada) — a árvore mudou sem --yes: a confirmação era o que barrava"
 
 # ── M9 — a prosa da MENSAGEM ───────────────────────────────────────────────

@@ -165,7 +165,7 @@ describe("GET /api/providers — handleError delegation", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     // handleError was called with the Phase 2 error
     expect(mockHandleError).toHaveBeenCalledTimes(1)
@@ -206,7 +206,7 @@ describe("GET /api/providers — handleError delegation", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     expect(mockHandleError).toHaveBeenCalledTimes(1)
     expect(mockHandleError).toHaveBeenCalledWith(phase2Error)
@@ -242,7 +242,7 @@ describe("GET /api/providers — handleError delegation", () => {
       // No lat/lng — goes through non-PostGIS path, no error
       searchParams: { radius: "10" },
     })
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
 
     expect(mockHandleError).not.toHaveBeenCalled()
     expect(res.status).toBe(200)
@@ -267,7 +267,7 @@ describe("GET /api/providers — handleError delegation", () => {
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
     })
-    await GET(req)
+    await GET(req, { params: Promise.resolve({}) })
 
     // Verify the exact error reference was passed (not a string copy)
     const callArg = mockHandleError.mock.calls[0][0]

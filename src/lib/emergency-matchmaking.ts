@@ -10,6 +10,10 @@
 
 import { latLngToH3, h3GetKRing } from "@/lib/h3-grid"
 import { calculate1xNDistanceMatrix, TargetDestination } from "@/lib/osrm-table"
+import { db } from "@/lib/db"
+import { getClient } from "@/lib/redis"
+import { sendText } from "@/lib/evolution"
+import logger from "@/lib/logger"
 
 export interface EmergencyRequest {
   id: string
@@ -126,4 +130,168 @@ export async function createEmergencyDispatch(
     surgeRate,
     estimatedBaseFee: Number((estimatedBaseFee * surgeRate).toFixed(2)),
   }
+}
+
+// Fallback em memória quando o Redis não estiver disponível
+const inMemoryClaims = new Map<string, { providerId: string; claimedAt: string }>()
+
+export interface ClaimDispatchParams {
+  requestId: string
+  providerId: string
+  providerName?: string
+}
+
+export interface ClaimDispatchResult {
+  success: boolean
+  requestId: string
+  providerId: string
+  claimedBy?: string
+  claimedAt?: string
+  reason?: "ALREADY_CLAIMED" | "NOT_FOUND" | "INTERNAL_ERROR"
+  message: string
+}
+
+/**
+ * Concorre de forma atômica para aceitar a chamada de emergência (First-To-Claim).
+ * Previne race conditions via Redis SET NX EX ou Lock em Memória.
+ */
+export async function claimEmergencyDispatch(
+  params: ClaimDispatchParams,
+): Promise<ClaimDispatchResult> {
+  const { requestId, providerId } = params
+  const lockKey = `emergency:claim:${requestId}`
+  const nowIso = new Date().toISOString()
+
+  let acquired = false
+  const redis = getClient()
+
+  if (redis) {
+    try {
+      const redisClient = redis as unknown as {
+        set: (
+          key: string,
+          val: string,
+          exMode: string,
+          ttl: number,
+          nxMode: string,
+        ) => Promise<string | null>
+      }
+      const res = await redisClient.set(lockKey, providerId, "EX", 3600, "NX")
+      acquired = res === "OK"
+    } catch (err) {
+      logger.warn(
+        { err, requestId },
+        "[emergency-dispatch] Redis lock falhou, usando fallback local",
+      )
+    }
+  }
+
+  if (!redis) {
+    if (inMemoryClaims.has(requestId)) {
+      const existing = inMemoryClaims.get(requestId)!
+      return {
+        success: false,
+        requestId,
+        providerId,
+        claimedBy: existing.providerId,
+        claimedAt: existing.claimedAt,
+        reason: "ALREADY_CLAIMED",
+        message: "Esta chamada de emergência já foi aceita por outro profissional.",
+      }
+    }
+    inMemoryClaims.set(requestId, { providerId, claimedAt: nowIso })
+    acquired = true
+  }
+
+  if (!acquired) {
+    let claimedBy: string | undefined
+    try {
+      if (redis) {
+        const redisClient = redis as unknown as { get: (key: string) => Promise<string | null> }
+        claimedBy = (await redisClient.get(lockKey)) || undefined
+      }
+    } catch {}
+
+    return {
+      success: false,
+      requestId,
+      providerId,
+      claimedBy,
+      reason: "ALREADY_CLAIMED",
+      message: "Esta chamada de emergência já foi aceita por outro profissional.",
+    }
+  }
+
+  logger.info(
+    { requestId, providerId },
+    "[emergency-dispatch] Chamada de emergência aceita com sucesso pelo prestador!",
+  )
+
+  return {
+    success: true,
+    requestId,
+    providerId,
+    claimedAt: nowIso,
+    message: "Atendimento de emergência confirmado! O cliente está aguardando seu deslocamento.",
+  }
+}
+
+/**
+ * Dispara notificação simultânea de alta prioridade via WhatsApp para os melhores candidatos.
+ */
+export async function broadcastEmergencyDispatchToWhatsApp(
+  dispatchResult: EmergencyDispatchResult,
+  request: EmergencyRequest,
+  options: { appUrl?: string } = {},
+): Promise<{ sentCount: number; errors: string[] }> {
+  const baseUrl = options.appUrl || process.env.NEXT_PUBLIC_APP_URL || "https://severinno.com"
+  const errors: string[] = []
+  let sentCount = 0
+
+  const candidateIds = dispatchResult.candidates.map((c) => c.providerId)
+  if (candidateIds.length === 0) {
+    return { sentCount: 0, errors: [] }
+  }
+
+  const providers = await db.user.findMany({
+    where: { id: { in: candidateIds } },
+    select: { id: true, whatsapp: true, phone: true },
+  })
+  const providerMap = new Map(providers.map((p) => [p.id, p]))
+
+  for (const candidate of dispatchResult.candidates) {
+    try {
+      const providerUser = providerMap.get(candidate.providerId)
+
+      const rawPhone = providerUser?.whatsapp || providerUser?.phone
+      if (!rawPhone) continue
+
+      const cleanPhone = rawPhone.replace(/\D/g, "")
+      const formattedPhone = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`
+
+      const claimUrl = `${baseUrl.replace(/\/$/, "")}/api/bookings/emergency-dispatch/claim?requestId=${encodeURIComponent(request.id)}&providerId=${encodeURIComponent(candidate.providerId)}`
+
+      const messageText =
+        `🚨 *NOVA CHAMADA DE EMERGÊNCIA — SEVERINNO* 🚨\n\n` +
+        `🛠️ Serviço: *${request.category}*\n` +
+        `📝 Detalhes: ${request.description}\n` +
+        `📍 Distância até você: *${candidate.distanceKm} km* (~${candidate.etaMinutes} min)\n` +
+        `💰 Estimativa: *R$ ${dispatchResult.estimatedBaseFee.toFixed(2)}* (Taxa de urgência aplicada)\n\n` +
+        `⚡ *O primeiro profissional a clicar garante o atendimento:*\n` +
+        `👉 ${claimUrl}\n\n` +
+        `_Responda rápido — a chamada expira em ${dispatchResult.acceptanceWindowSeconds} segundos._`
+
+      await sendText(formattedPhone, messageText)
+      sentCount++
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      errors.push(`Prestador ${candidate.providerId}: ${msg}`)
+      logger.error(
+        { err: msg, candidateId: candidate.providerId, requestId: request.id },
+        "[emergency-dispatch] Erro ao enviar WhatsApp broadcast",
+      )
+    }
+  }
+
+  return { sentCount, errors }
 }

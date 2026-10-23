@@ -4,7 +4,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getCacheStats, getClient } from "@/lib/redis"
 import { getGeoSettings } from "@/lib/geo-settings"
-import { getHealth as getRabbitHealth } from "@/lib/queue"
+import { getChannel, getHealth as getRabbitHealth } from "@/lib/queue"
 import logger from "@/lib/logger"
 import { getRequestId } from "@/lib/request-context"
 import pkg from "../../../../package.json"
@@ -82,6 +82,7 @@ type RabbitMQDetail = {
   totalReconnectAttempts: number
   heartbeat: number
   uptimeSeconds: number | null
+  probeError?: string
 }
 
 export async function GET(): Promise<NextResponse<HealthResponse>> {
@@ -240,30 +241,61 @@ async function checkRedis(): Promise<{ status: ServiceStatus; detail: string }> 
   }
 }
 
+/** Teto de tempo da sonda ativa do RabbitMQ (ms). */
+const RABBITMQ_PROBE_TIMEOUT_MS = 4_000
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label}: timeout após ${ms}ms`)), ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err: unknown) => {
+        clearTimeout(timer)
+        reject(err instanceof Error ? err : new Error(String(err)))
+      },
+    )
+  })
+}
+
 async function checkRabbitMQ(): Promise<{ status: ServiceStatus; detail: RabbitMQDetail }> {
   try {
-    const health = getRabbitHealth()
-    // "disconnected" significa que ninguém chamou publish() ainda (lazy init) — isso é OK
-    // "reconnecting" é degradado mas não crítico
-    // "error" é falha real
-    const status: ServiceStatus =
-      health.status === "ok"
-        ? "ok"
-        : !health.connected && health.reconnectAttempts === 0
-          ? "ok" // Nunca tentou conectar (lazy init) — RabbitMQ é opcional
-          : health.status === "reconnecting"
-            ? "error"
-            : "error"
+    let health = getRabbitHealth()
+    let probeError: string | null = null
+    let probeOk = false
+
+    // Nunca conectou (lazy init): sonda de verdade em vez de crer no "ok"
+    // às cegas. No boot o instrumentation já conecta eager — esta sonda é o
+    // plano B e cobre deploys com RABBITMQ ausente/errada. O dial é
+    // single-flight (getChannel) e não abre conexão nova por check.
+    if (!health.connected && health.reconnectAttempts === 0) {
+      try {
+        await withTimeout(getChannel(), RABBITMQ_PROBE_TIMEOUT_MS, "rabbitmq probe")
+        probeOk = true
+      } catch (err) {
+        probeError = (err as Error)?.message ?? "rabbitmq probe falhou"
+      }
+      health = getRabbitHealth()
+    }
+
+    // Conectado (ou probe provou alcançabilidade) → ok. Probe falhou,
+    // reconectando após queda ou erro real → error (mesma semântica do
+    // redis: dependência core, sem "ok" presumido).
+    const connected = probeOk || health.connected
+    const status: ServiceStatus = connected ? "ok" : "error"
     return {
       status,
       detail: {
-        status: health.status,
-        connected: health.connected,
+        status: connected ? "ok" : probeError ? "error" : health.status,
+        connected,
         lastConnectedAt: health.lastConnectedAt,
         reconnectAttempts: health.reconnectAttempts,
         totalReconnectAttempts: health.totalReconnectAttempts,
         heartbeat: health.heartbeat,
         uptimeSeconds: health.uptimeSeconds,
+        ...(probeError ? { probeError } : {}),
       },
     }
   } catch (_err) {

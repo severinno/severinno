@@ -1,6 +1,7 @@
 import { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { db } from "@/lib/db"
+import { toMoneyNumber } from "@/lib/money"
 import { TrackingPageClient } from "./tracking-page-client"
 
 type Props = { params: Promise<{ id: string }> }
@@ -50,6 +51,12 @@ export default async function Page({ params }: Props) {
     ...booking,
     scheduledAt: booking.scheduledAt.toISOString(),
     createdAt: booking.createdAt.toISOString(),
+    // Decimal → number na fronteira RSC (contrato do client é number)
+    amount: toMoneyNumber(booking.amount),
+    service: {
+      ...booking.service,
+      basePrice: toMoneyNumber(booking.service.basePrice),
+    },
   }
   return <TrackingPageClient booking={serialized} />
 }

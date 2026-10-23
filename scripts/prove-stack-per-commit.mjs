@@ -160,6 +160,7 @@ import { resolverLocal, specsDoModulo } from "./check-tla-closure.mjs"
 import {
   UNPROVEN_REGISTRY_PATH as UNPROVEN_CAMINHO,
   lerSecaoPilha,
+  pushSeguePorDivida,
   separarDividaDeRegressao,
 } from "./doctor-unproven.mjs"
 
@@ -453,6 +454,35 @@ export function testesAfetados({ arquivos, testes, root, lerArquivo }) {
   const porNome = porConvencaoDeNome({ arquivos, testes })
   const porGrafo = porGrafoDeImports({ arquivos, testes, root, lerArquivo })
   return { testes: [...new Set([...porNome, ...porGrafo])].sort(), porNome, porGrafo }
+}
+
+/**
+ * O EXIT DO RECORTE do push (o contrato que o pre-push lê) — a SOLUÇÃO
+ * DEFINITIVA do impasse `--no-verify`.
+ *
+ * O CI (job stack-per-commit) mede a pilha INTEIRA com o MESMO comando e
+ * reprova QUALQUER vermelho — inclusive dívida declarada: quem fecha a dívida é
+ * a forja. Mas o HOOK roda no caminho do push, onde a dívida JÁ DECLARADA no
+ * registro (`ci/unproven.json`, com o motivo medido e datado) bloquearia TODOS
+ * os pushes legítimos — e empurraria o repositório inteiro para o
+ * `--no-verify`, que desliga TAMBÉM os gates que não são dívida.
+ *
+ * A régua (fail-closed): o recorte segue com exit 0 SOMENTE quando o registro
+ * pôde ser julgado (`estado "medido"`) e TODOS os vermelhos medidos são dívida
+ * DECLARADA — sem regressão, sem re-ancoragem pendente, sem não classificado.
+ * Qualquer outro estado mantém o exit do agregado (bloqueio). O veredito NOMEIA
+ * a decisão: quem lê o relatório vê que o verde é CONDICIONADO e que a dívida
+ * continua aberta — o CI cobra a pilha inteira.
+ *
+ * @param {{exit: number} & Record<string, unknown>} ag o agregado da pilha
+ * @param {object|null} dp a separação dívida/regressão (a de `relatorio.dividaPilha`)
+ * @param {boolean} recorte é o modo `--pushed` (o recorte que o hook lê)?
+ * @returns {number}
+ */
+export function exitDoRecorte(ag, dp, recorte) {
+  if (!recorte) return ag.exit
+  if (ag.exit === EXIT.OK) return EXIT.OK
+  return pushSeguePorDivida(dp) ? EXIT.OK : ag.exit
 }
 
 /**
@@ -1114,8 +1144,10 @@ export function renderRelatorio(r) {
   // assunto e o motivo) NÃO é regressão — e a regressão é NOMEADA como tal. A
   // leitura honesta dos DOIS lados: registro ilegível não acusa ninguém (não
   // classificado), e declaração que a pilha não alcança é DITA (o registro de
-  // outra história envelhece calado). O exit NÃO muda: dívida é dívida, e quem
-  // barra o push é o vermelho — com o nome agora verdadeiro.
+  // outra história envelhece calado). O EXIT é a decisão do `exitDoRecorte`: no
+  // recorte do push, dívida TOTALMENTE declarada segue (exit 0, nomeado como
+  // veredito condicionado); regressão, re-ancoragem pendente ou registro não
+  // julgável bloqueiam — e o CI cobra a pilha inteira com o agregado bruto.
   const dp = r.dividaPilha
   if (dp) {
     if (dp.estado === "medido") {
@@ -1136,6 +1168,15 @@ export function renderRelatorio(r) {
       if (dp.alheios.length)
         L.push(
           `  · ${dp.alheios.length} declaração(ões) da seção 'pilha' não foram alcançadas por esta pilha (outra história ou já fechada): ${dp.alheios.map((s) => s.slice(0, 48) + (s.length > 48 ? "…" : "")).join(" | ")}`,
+        )
+      // A DECISÃO do recorte, NOMEADA: o verde do push com dívida declarada é
+      // CONDICIONADO — segue, mas a dívida é dita em aberto e o CI cobra a
+      // pilha inteira. A regra é a do `pushSeguePorDivida` (a MESMA do
+      // `exitDoRecorte`): com regressão, re-ancoragem ou não classificado,
+      // nada muda no veredito e a linha não existe.
+      if (rec && pushSeguePorDivida(dp))
+        L.push(
+          `  ⚪ push SEGUE por dívida declarada: ${dp.divida.length} vermelho(s) do recorte estão nomeados no ${UNPROVEN_CAMINHO} com motivo medido — o veredito CONDICIONADO não reprova este push, e o job stack-per-commit do CI cobra a pilha inteira`,
         )
     } else if (dp.naoClassificados.length) {
       L.push(
@@ -1574,7 +1615,10 @@ function main(argv) {
   else console.log(renderRelatorio(relatorio))
 
   if (opcoes.medir) process.exit(EXIT.OK)
-  process.exit(ag.exit)
+  // O EXIT do recorte é a DECISÃO do hook, não o bruto do agregado: só o modo
+  // `--pushed` (o recorte que o pre-push lê) segue com dívida declarada — o CI
+  // (pilha inteira, sem --pushed) mantém o exit do agregado e cobra tudo.
+  process.exit(exitDoRecorte(ag, relatorio.dividaPilha, Boolean(recorte)))
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url)))

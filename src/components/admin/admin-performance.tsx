@@ -23,8 +23,6 @@ import {
   ExternalLink,
   Server,
   Timer,
-  TrendingDown,
-  TrendingUp,
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import {
@@ -41,7 +39,7 @@ import {
 import { apiGet } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { ErrorState, MetricCard } from "./_shared"
+import { ErrorState, KpiCard, MetricCard } from "./_shared"
 import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 import type { PerformanceMetrics } from "@/app/api/admin/performance/route"
@@ -115,21 +113,21 @@ export function AdminPerformanceDashboard() {
   const slowestQueries = [...data.dbQueries].sort((a, b) => b.avgMs - a.avgMs).slice(0, 6)
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-foreground text-xl font-bold tracking-tight">
+          <h1 className="text-foreground text-base font-bold tracking-tight">
             Performance Monitoring
           </h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">
+          <p className="text-muted-foreground mt-0.5 text-xs">
             Métricas de tempo de resposta, banco de dados e serviços externos
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           {dataUpdatedAt ? (
-            <span className="text-muted-foreground text-xs">
+            <span className="text-muted-foreground text-xs tabular-nums">
               Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
             </span>
           ) : null}
@@ -160,33 +158,37 @@ export function AdminPerformanceDashboard() {
           icon={Timer}
           label="P95 Geral"
           value={`${Math.round(data.endpoints.reduce((a, e) => Math.max(a, e.p95Ms), 0))}ms`}
-          trend={data.endpoints.some((e) => e.p95Ms > 500) ? "down" : "up"}
+          trend={data.endpoints.some((e) => e.p95Ms > 500) ? "up" : "down"}
+          invertTrend
         />
         <KpiCard
           icon={AlertTriangle}
           label="Taxa de Erro"
           value={`${data.errorSummary.total5xx + data.errorSummary.total4xx}`}
           subtitle={`${data.errorSummary.total5xx} 5xx · ${data.errorSummary.total4xx} 4xx`}
-          trend={data.errorSummary.total5xx > 10 ? "down" : "up"}
+          trend={data.errorSummary.total5xx > 10 ? "up" : "down"}
+          invertTrend
         />
         <KpiCard
           icon={Database}
           label="DB Slow Queries"
           value={`${data.dbQueries.reduce((a, q) => a + q.slowCount, 0)}`}
           subtitle={`${data.dbQueries.reduce((a, q) => a + q.calls, 0).toLocaleString()} chamadas`}
-          trend={data.dbQueries.some((q) => q.slowCount > 5) ? "down" : "up"}
+          trend={data.dbQueries.some((q) => q.slowCount > 5) ? "up" : "down"}
+          invertTrend
         />
         <KpiCard
           icon={Server}
           label="Memória"
           value={`${data.systemHealth.memoryUsageMb}MB`}
           subtitle={`Uptime: ${Math.round(data.systemHealth.uptime / 60)}min`}
-          trend={data.systemHealth.memoryUsageMb > 300 ? "down" : "up"}
+          trend={data.systemHealth.memoryUsageMb > 300 ? "up" : "down"}
+          invertTrend
         />
       </section>
 
       {/* ── Charts row ──────────────────────────────────────────────── */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <section className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         {/* Bar: P50 / P95 / P99 por endpoint */}
         <MetricCard icon={BarChart3} title="Tempos de Resposta por Endpoint (ms)">
           <div className="h-[280px]">
@@ -228,49 +230,55 @@ export function AdminPerformanceDashboard() {
 
         {/* Bar: Top endpoints com erro */}
         <MetricCard icon={AlertTriangle} title="Taxa de Erro por Endpoint (%)">
-          <div className="h-[280px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={errorProneEndpoints}
-                layout="vertical"
-                margin={{ left: 100, right: 16, top: 8, bottom: 8 }}
-              >
-                <CartesianGrid
-                  horizontal={false}
-                  strokeDasharray="3 3"
-                  stroke="hsl(var(--border) / 0.5)"
-                />
-                <XAxis
-                  type="number"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="path"
-                  tickLine={false}
-                  axisLine={false}
-                  width={90}
-                  tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
-                />
-                <RTooltip
-                  contentStyle={TOOLTIP_STYLE}
-                  formatter={(v: number) => [`${v.toFixed(2)}%`, "Erro"]}
-                />
-                <Bar dataKey="errorRate" name="Erro" radius={[0, 3, 3, 0]} barSize={12}>
-                  {errorProneEndpoints.map((e) => (
-                    <Cell key={e.path} fill={barColor(e.errorRate, 1)} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {errorProneEndpoints.length === 0 ? (
+            <div className="text-muted-foreground flex h-[180px] items-center justify-center text-xs">
+              Nenhum endpoint com erros no período.
+            </div>
+          ) : (
+            <div className="h-[280px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={errorProneEndpoints}
+                  layout="vertical"
+                  margin={{ left: 100, right: 16, top: 8, bottom: 8 }}
+                >
+                  <CartesianGrid
+                    horizontal={false}
+                    strokeDasharray="3 3"
+                    stroke="hsl(var(--border) / 0.5)"
+                  />
+                  <XAxis
+                    type="number"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="path"
+                    tickLine={false}
+                    axisLine={false}
+                    width={90}
+                    tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                  />
+                  <RTooltip
+                    contentStyle={TOOLTIP_STYLE}
+                    formatter={(v: number) => [`${v.toFixed(2)}%`, "Erro"]}
+                  />
+                  <Bar dataKey="errorRate" name="Erro" radius={[0, 3, 3, 0]} barSize={12}>
+                    {errorProneEndpoints.map((e) => (
+                      <Cell key={e.path} fill={barColor(e.errorRate, 1)} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </MetricCard>
       </section>
 
       {/* ── Second row: DB + External + Cache ────────────────────────── */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <section className="grid grid-cols-1 gap-3.5 lg:grid-cols-3">
         {/* DB Queries */}
         <MetricCard icon={Database} title="Queries Lentas (avg ms)">
           <div className="space-y-2">
@@ -455,42 +463,6 @@ export function AdminPerformanceDashboard() {
 
 // ── Sub-components ────────────────────────────────────────────────────────
 
-function KpiCard({
-  icon: Icon,
-  label,
-  value,
-  subtitle,
-  trend,
-}: {
-  icon: React.ElementType
-  label: string
-  value: string
-  subtitle?: string
-  trend?: "up" | "down"
-}) {
-  return (
-    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
-      <div className="flex items-start justify-between">
-        <span className="bg-primary/8 text-primary flex size-10 items-center justify-center rounded-lg">
-          <Icon className="size-5" />
-        </span>
-        {trend ? (
-          trend === "up" ? (
-            <TrendingUp className="size-4 text-red-500" />
-          ) : (
-            <TrendingDown className="size-4 text-emerald-500" />
-          )
-        ) : null}
-      </div>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-      <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
-        {label}
-      </p>
-      {subtitle ? <p className="text-muted-foreground mt-0.5 text-[10px]">{subtitle}</p> : null}
-    </div>
-  )
-}
-
 function StatusRow({
   label,
   value,
@@ -521,7 +493,7 @@ function StatusRow({
 
 function PerformanceSkeleton() {
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       <div className="flex items-center justify-between">
         <div className="space-y-2">
           <Skeleton className="h-6 w-56" />
@@ -540,7 +512,7 @@ function PerformanceSkeleton() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         {Array.from({ length: 2 }).map((_, i) => (
           <div key={i} className="bg-card rounded-xl border">
             <div className="border-b px-5 py-4">

@@ -96,7 +96,7 @@ function expectedCacheControl(entry: RouteEntry): string {
   if (entry.type === "private") {
     return `private, max-age=${entry.maxAge}`
   }
-  return `public, max-age=${entry.maxAge}, s-maxage=${entry.sMaxage}`
+  return `public, max-age=${entry.maxAge}, s-maxage=${entry.sMaxage}, stale-while-revalidate=${entry.sMaxage}`
 }
 
 // -------------------------------------------------------------------------

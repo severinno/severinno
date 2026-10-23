@@ -73,8 +73,6 @@ export function TwoFactorSetup() {
   const statusQuery = useQuery<TwoFactorStatus>({
     queryKey: ["users", "me", "2fa-status"],
     queryFn: () => apiGet<TwoFactorStatus>("/api/auth/2fa/status"),
-    // If the endpoint doesn't exist yet, default to false
-    enabled: false,
   })
 
   const isEnabled = statusQuery.data?.twoFactorEnabled ?? false

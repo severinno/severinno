@@ -79,13 +79,32 @@ vi.mock("@/lib/auth", () => ({
   createSession: vi.fn(),
 }))
 
+const mockLoggerInst = {
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+  child: vi.fn(() => mockLoggerInst),
+}
+
 vi.mock("@/lib/logger", () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  default: mockLoggerInst,
+  logger: mockLoggerInst,
 }))
 
 vi.mock("@/lib/rate-limit", () => ({
   assertRateLimit: vi.fn().mockResolvedValue(undefined),
   RATE_LIMITS: new Proxy({}, { get: () => ({ prefix: "test", max: 10000, windowMs: 60_000 }) }),
+}))
+
+// Guard progressivo por fingerprint — no-op nos testes de rota.
+vi.mock("@/lib/auth-rate-limit", () => ({
+  authFingerprintGuard: vi.fn(async () => ({
+    fingerprint: "test:fp",
+    blocked: false,
+    response: null,
+    recordFailure: vi.fn().mockResolvedValue(undefined),
+  })),
 }))
 
 vi.mock("@/lib/notifications", () => ({
@@ -164,7 +183,7 @@ describe("User Flow E2E: Register → Search → Book → Confirm → Review", (
       }),
     })
 
-    const res = await POST(req)
+    const res = await POST(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(201)
@@ -269,7 +288,7 @@ describe("User Flow E2E: Register → Search → Book → Confirm → Review", (
       body: JSON.stringify({ action: "accept", bookingId: "booking-new" }),
     })
 
-    const res = await POST(req)
+    const res = await POST(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)

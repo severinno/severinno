@@ -13,6 +13,7 @@ const mockDb = vi.hoisted(() => {
       aggregate: vi.fn(),
       create: vi.fn(),
     },
+    $queryRaw: vi.fn(),
     $transaction: vi.fn() as ReturnType<typeof vi.fn>,
   }
   // $transaction: execute callback-style or array-style with the mock db as tx
@@ -51,6 +52,21 @@ import { POST } from "../provider/wallet/withdraw/route"
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+/** Linha única da agregação de saldo (computeProviderBalance). */
+function balanceRow(partial: Record<string, string | number> = {}) {
+  return {
+    earnedNet: "0",
+    grossReceived: "0",
+    grossCompleted: "0",
+    completedCount: 0,
+    pendingNet: "0",
+    totalWithdrawn: "0",
+    totalPending: "0",
+    pendingCount: 0,
+    ...partial,
+  }
+}
+
 function mockRequest(body?: unknown): Request {
   return new Request("http://localhost/api/provider/wallet/withdraw", {
     method: "POST",
@@ -67,9 +83,8 @@ describe("POST /api/provider/wallet/withdraw", () => {
   })
 
   it("creates a withdrawal and returns success", async () => {
-    // 2 COMPLETED bookings = balance 467.5
-    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 550 } })
-    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
+    // 2 COMPLETED bookings = balance 467.5 (agregação, sem teto de linhas)
+    mockDb.$queryRaw.mockResolvedValue([balanceRow({ earnedNet: "467.5", grossReceived: "550" })])
     mockDb.walletTransaction.create.mockResolvedValue({
       id: "wth-new-1",
       amount: 100,
@@ -77,7 +92,7 @@ describe("POST /api/provider/wallet/withdraw", () => {
       description: "Saque simulado de R$ 100.00",
     })
 
-    const res = await POST(mockRequest({ amount: 100 }))
+    const res = await POST(mockRequest({ amount: 100 }), { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)
@@ -87,10 +102,9 @@ describe("POST /api/provider/wallet/withdraw", () => {
   })
 
   it("rejects withdrawal exceeding available balance", async () => {
-    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 200 } })
-    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
+    mockDb.$queryRaw.mockResolvedValue([balanceRow({ earnedNet: "170" })])
 
-    const res = await POST(mockRequest({ amount: 999 }))
+    const res = await POST(mockRequest({ amount: 999 }), { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(400)
@@ -98,42 +112,40 @@ describe("POST /api/provider/wallet/withdraw", () => {
   })
 
   it("rejects negative amount", async () => {
-    const res = await POST(mockRequest({ amount: -50 }))
+    const res = await POST(mockRequest({ amount: -50 }), { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
   })
 
   it("rejects zero amount", async () => {
-    const res = await POST(mockRequest({ amount: 0 }))
+    const res = await POST(mockRequest({ amount: 0 }), { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
   })
 
   it("rejects amount below minimum (R$ 10)", async () => {
-    const res = await POST(mockRequest({ amount: 5 }))
+    const res = await POST(mockRequest({ amount: 5 }), { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
     expect(await res.json()).toHaveProperty("error")
   })
 
   it("rejects amount above maximum (R$ 50.000)", async () => {
-    const res = await POST(mockRequest({ amount: 60000 }))
+    const res = await POST(mockRequest({ amount: 60000 }), { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
     expect(await res.json()).toHaveProperty("error")
   })
 
   it("rejects non-numeric amount", async () => {
-    const res = await POST(mockRequest({ amount: "abc" }))
+    const res = await POST(mockRequest({ amount: "abc" }), { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
   })
 
   it("rejects missing amount", async () => {
-    const res = await POST(mockRequest({}))
+    const res = await POST(mockRequest({}), { params: Promise.resolve({}) })
     expect(res.status).toBe(400)
   })
 
   it("subtracts from balance considering previous withdrawals", async () => {
-    // Balance from bookings: 200 * 0.85 = 170
-    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 200 } })
-    // Already withdrew 50
-    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: 50 } })
+    // Balance from bookings: 200 * 0.85 = 170; já sacou 50 → disponível 120
+    mockDb.$queryRaw.mockResolvedValue([balanceRow({ earnedNet: "170", totalWithdrawn: "50" })])
     mockDb.walletTransaction.create.mockResolvedValue({
       id: "wth-new-2",
       amount: 30,
@@ -141,7 +153,7 @@ describe("POST /api/provider/wallet/withdraw", () => {
       description: "Saque simulado de R$ 30.00",
     })
 
-    const res = await POST(mockRequest({ amount: 30 }))
+    const res = await POST(mockRequest({ amount: 30 }), { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)
@@ -153,7 +165,7 @@ describe("POST /api/provider/wallet/withdraw", () => {
     const { requireUser } = await import("@/lib/auth")
     vi.mocked(requireUser).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await POST(mockRequest({ amount: 100 }))
+    const res = await POST(mockRequest({ amount: 100 }), { params: Promise.resolve({}) })
     expect(res.status).toBe(401)
   })
 })

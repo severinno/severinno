@@ -116,6 +116,11 @@ vi.mock("lucide-react", () => {
     Trophy: makeIcon("trophy"),
     Sparkles: makeIcon("sparkles"),
     Navigation: makeIcon("navigation"),
+    MessageCircle: makeIcon("message-circle"),
+    Columns3: makeIcon("columns-3"),
+    Rows: makeIcon("rows"),
+    Share2: makeIcon("share-2"),
+    Copy: makeIcon("copy"),
   }
 })
 
@@ -465,5 +470,80 @@ describe("CompareModal — loading state", () => {
 
     const skeletons = screen.getAllByTestId("skeleton")
     expect(skeletons.length).toBeGreaterThan(0)
+  })
+})
+
+describe("CompareModal — layout mode toggle (columns vs vertical)", () => {
+  it("switches to vertical mode and renders provider cards stacked", () => {
+    const p1 = providerDetail({
+      id: "p1",
+      name: "Maria Silva",
+      rating: 5.0,
+      reviewCount: 10,
+      distanceKm: 1.2,
+      completedBookings: 20,
+    })
+    const p2 = providerDetail({
+      id: "p2",
+      name: "Carlos Pedreiro",
+      rating: 4.5,
+      reviewCount: 5,
+      distanceKm: 4.8,
+      completedBookings: 8,
+    })
+    mockQueryResult([p1, p2])
+
+    render(<CompareModal />)
+
+    // Initially in columns mode (table)
+    expect(screen.getByText("Lado a Lado")).toBeTruthy()
+    expect(screen.getByText("Vertical")).toBeTruthy()
+    expect(screen.getByRole("table")).toBeTruthy()
+
+    // Click on Vertical toggle
+    const verticalBtn = screen.getByRole("button", { name: /visualização vertical/i })
+    act(() => {
+      verticalBtn.click()
+    })
+
+    // Now in vertical mode — table is gone, cards are rendered
+    expect(screen.queryByRole("table")).toBeNull()
+    expect(screen.getByText("Comparativo Vertical de Prestadores")).toBeTruthy()
+    expect(screen.getByText("Maria Silva")).toBeTruthy()
+    expect(screen.getByText("Carlos Pedreiro")).toBeTruthy()
+
+    // Check criteria labels in vertical mode
+    expect(screen.getAllByText("A partir de").length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText("Melhor nota").length).toBe(1)
+    expect(screen.getAllByText("Mais próximo").length).toBe(1)
+
+    // Switch back to columns mode
+    const columnsBtn = screen.getByRole("button", { name: /visualização em colunas lado a lado/i })
+    act(() => {
+      columnsBtn.click()
+    })
+
+    expect(screen.getByRole("table")).toBeTruthy()
+    expect(screen.getByText("Comparativo Lado a Lado de Prestadores")).toBeTruthy()
+  })
+
+  it("calls remove when clicking remove button on a card in vertical mode", () => {
+    const p1 = providerDetail({ id: "p1", name: "Maria Silva" })
+    mockQueryResult([p1])
+
+    render(<CompareModal />)
+
+    // Switch to vertical
+    const verticalBtn = screen.getByRole("button", { name: /visualização vertical/i })
+    act(() => {
+      verticalBtn.click()
+    })
+
+    const removeBtn = screen.getByRole("button", { name: "Remover Maria Silva da comparação" })
+    act(() => {
+      removeBtn.click()
+    })
+
+    expect(compareState.remove).toHaveBeenCalledWith("p1")
   })
 })

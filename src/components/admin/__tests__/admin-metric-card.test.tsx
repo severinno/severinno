@@ -13,8 +13,9 @@
 
 import { describe, it, expect, afterEach } from "vitest"
 import React from "react"
+import { BarChart3 } from "lucide-react"
 import { render, screen, cleanup } from "@/__tests__/test-utils"
-import { MetricCard } from "../admin-metric-card"
+import { MetricCard, KpiCard } from "../admin-metric-card"
 
 // ===========================================================================
 // Helper: mock icon component
@@ -24,6 +25,11 @@ const MockIcon = (props: { className?: string }) => (
   <svg data-testid="mock-icon" className={props.className} />
 )
 MockIcon.displayName = "MockIcon"
+
+const ForwardRefIcon = React.forwardRef<SVGSVGElement, { className?: string }>((props, ref) => (
+  <svg ref={ref} data-testid="forward-ref-icon" className={props.className} />
+))
+ForwardRefIcon.displayName = "ForwardRefIcon"
 
 // ===========================================================================
 // Tests
@@ -161,5 +167,68 @@ describe("MetricCard", () => {
     expect(rootDiv.className).toContain("rounded-xl")
     // No extra classes beyond defaults
     expect(rootDiv.className).not.toMatch(/\bextra-\w+/)
+  })
+
+  // ── Lucide & ForwardRef icons (object with $$typeof / render) ──────
+
+  it("renders React.forwardRef icon components without throwing Objects are not valid as React child", () => {
+    render(
+      <MetricCard icon={ForwardRefIcon} title="ForwardRef Test">
+        <p>conteúdo</p>
+      </MetricCard>,
+    )
+
+    const icon = screen.getByTestId("forward-ref-icon")
+    expect(icon).toBeInTheDocument()
+    expect(icon).toHaveClass("text-primary")
+    expect(icon).toHaveClass("size-4")
+  })
+
+  it("renders real Lucide icon components (BarChart3)", () => {
+    const { container } = render(
+      <MetricCard icon={BarChart3} title="Erros por Endpoint">
+        <p>conteúdo de métricas</p>
+      </MetricCard>,
+    )
+
+    expect(screen.getByText("Erros por Endpoint")).toBeInTheDocument()
+    const svg = container.querySelector("svg")
+    expect(svg).toBeInTheDocument()
+    expect(svg?.getAttribute("class")).toContain("text-primary")
+    expect(svg?.getAttribute("class")).toContain("size-4")
+  })
+})
+
+describe("KpiCard", () => {
+  afterEach(() => {
+    try {
+      cleanup()
+    } catch {
+      // Container already cleaned up
+    }
+  })
+
+  it("renders KPI label, value and Lucide icon", () => {
+    render(<KpiCard icon={BarChart3} label="Endpoints Afetados" value="12" subtitle="3 em alta" />)
+
+    expect(screen.getByText("Endpoints Afetados")).toBeInTheDocument()
+    expect(screen.getByText("12")).toBeInTheDocument()
+    expect(screen.getByText("3 em alta")).toBeInTheDocument()
+  })
+
+  it("renders trend and trendLabel", () => {
+    render(
+      <KpiCard
+        icon={ForwardRefIcon}
+        label="Total de Erros"
+        value="150"
+        trend="down"
+        trendLabel="-15% vs período anterior"
+      />,
+    )
+
+    expect(screen.getByText("Total de Erros")).toBeInTheDocument()
+    expect(screen.getByText("150")).toBeInTheDocument()
+    expect(screen.getByText("-15% vs período anterior")).toBeInTheDocument()
   })
 })

@@ -37,6 +37,7 @@ import { checkRouteRateLimit, routeRateLimitHeaders } from "@/lib/route-rate-lim
 import { handleApiVersioning } from "@/lib/api-versioning"
 import { Redis } from "@upstash/redis/cloudflare"
 import { generateCsrfToken, verifyCsrfToken, CSRF_COOKIE, CSRF_HEADER, MAX_AGE } from "@/lib/csrf"
+import { buildCsp, generateCspNonce, isCspReportOnly, CSP_NONCE_HEADER } from "@/lib/csp"
 
 // ── Request ID generation (Edge-compatible) ──────────────────────────────
 
@@ -266,6 +267,7 @@ function getRateLimitWhitelist(): string[] {
 // ---------------------------------------------------------------------------
 
 const CSRF_SENSITIVE_PREFIXES = [
+  "/api/admin",
   "/api/auth/change-password",
   "/api/auth/2fa/",
   "/api/auth/register",
@@ -286,6 +288,8 @@ function isCsrfSensitive(pathname: string, method: string): boolean {
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return false
   return CSRF_SENSITIVE_PREFIXES.some((p) => pathname.startsWith(p))
 }
+
+export const __testing__CSRF_SENSITIVE_PREFIXES = CSRF_SENSITIVE_PREFIXES
 
 // ---------------------------------------------------------------------------
 // Route protection rules
@@ -324,6 +328,7 @@ const PUBLIC_API = new Set([
   "/api/sentry",
   "/api/sentry/test",
   "/api/web-vitals",
+  "/api/csp-report",
   "/api/webhooks/lytex",
   "/api/webhooks/sentry-alert",
   "/api/webhooks/evolution",
@@ -352,7 +357,12 @@ export async function proxy(request: NextRequest) {
   const versionedResponse = handleApiVersioning(request)
   if (versionedResponse) return versionedResponse
 
-  const response = NextResponse.next()
+  // O nonce precisa existir ANTES do NextResponse.next() para que o header
+  // de request propagado ao app já o contenha.
+  const cspNonceEarly = generateCspNonce()
+  request.headers.set(CSP_NONCE_HEADER, cspNonceEarly)
+
+  const response = NextResponse.next({ request: { headers: request.headers } })
 
   // --- Request ID ---
   const requestId = request.headers.get("x-request-id") || generateRequestId()
@@ -369,30 +379,28 @@ export async function proxy(request: NextRequest) {
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
   response.headers.set(
     "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=(self), payment=(), interest-cohort=()",
+    "camera=(self), microphone=(self), geolocation=(self), payment=(self), interest-cohort=()",
   )
   response.headers.set("Vary", "Accept-Encoding")
 
-  // Content-Security-Policy (dynamic — uses request origin)
+  // Content-Security-Policy estrita com nonce por-request.
+  // O nonce é gerado aqui (Edge), injetado na CSP e repassado ao app via
+  // header `x-nonce` — o App Router do Next.js 16 propaga automaticamente
+  // para os <script> que renderiza (contrato oficial de CSP do framework).
+  // Strict em produção (sem unsafe-inline/unsafe-eval, sem unpkg).
   const requestOrigin = request.headers.get("origin") || "https://severinno.com"
   const isProduction = process.env.NODE_ENV === "production"
-  const cspDirectives = [
-    "default-src 'self'",
-    isProduction
-      ? "script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com https://vercel-insights.com"
-      : "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://va.vercel-scripts.com https://vercel-insights.com",
-    "worker-src 'self' blob:",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "img-src 'self' data: blob: https://*.s3.amazonaws.com https://maps.googleapis.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://*.gravatar.com https://ui-avatars.com https://i.pravatar.cc https://picsum.photos",
-    "font-src 'self' https://fonts.gstatic.com",
-    isProduction
-      ? `connect-src 'self' ${requestOrigin} https://severinno.com https://*.upstash.io https://sentry.io https://*.ingest.sentry.io https://tile.openstreetmap.org https://*.tile.openstreetmap.org`
-      : `connect-src 'self' ${requestOrigin} https://severinno.local https://severinno.com http://localhost:* https://*.upstash.io https://sentry.io https://*.ingest.sentry.io https://tile.openstreetmap.org https://*.tile.openstreetmap.org wss://localhost:* ws://localhost:*`,
-    "frame-ancestors 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-  ].join("; ")
-  response.headers.set("Content-Security-Policy", cspDirectives)
+  const { header: cspHeader, value: cspDirectives } = buildCsp({
+    nonce: cspNonceEarly,
+    origin: requestOrigin,
+    isProduction,
+    // CSP BLOQUEANTE POR PADRÃO — deploy novo nasce protegido.
+    // Observação é OPT-IN explícito (CSP_REPORT_ONLY=1); CSP_ENFORCE=1 vence
+    // qualquer env herdada. A decisão (pura) vive em isCspReportOnly, testada
+    // em src/lib/__tests__/csp.test.ts. Plano: docs/RUNBOOK.md § 6.
+    reportOnly: isCspReportOnly(),
+  })
+  response.headers.set(cspHeader, cspDirectives)
 
   // --- OPTIONS preflight ---
   if (request.method === "OPTIONS") {
@@ -404,6 +412,40 @@ export async function proxy(request: NextRequest) {
   // --- CORS headers (API routes) ---
   if (pathname.startsWith("/api/")) {
     addCorsHeaders(response, request)
+
+    // --- Edge Anti-CSRF Guard for API Mutations ---
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
+      const isExternalWebhook =
+        pathname.startsWith("/api/webhooks/") ||
+        pathname.startsWith("/api/cron/") ||
+        pathname === "/api/csp-report"
+
+      if (!isExternalWebhook) {
+        const secFetchSite = request.headers.get("sec-fetch-site")
+        if (secFetchSite === "cross-site") {
+          return NextResponse.json(
+            { error: "Requisição cross-site bloqueada por política de segurança (CSRF)" },
+            { status: 403 },
+          )
+        }
+
+        const origin = request.headers.get("origin")
+        if (origin) {
+          const allowedOrigins = getAllowedOrigins()
+          const requestOriginHost = request.nextUrl.origin
+          if (
+            origin !== requestOriginHost &&
+            !allowedOrigins.has(origin) &&
+            !allowedOrigins.has("*")
+          ) {
+            return NextResponse.json(
+              { error: "Origem não autorizada para mutações de dados (CSRF)" },
+              { status: 403 },
+            )
+          }
+        }
+      }
+    }
 
     // --- Request body size limits ---
     const contentLength = request.headers.get("content-length")
@@ -525,6 +567,7 @@ export async function proxy(request: NextRequest) {
       const isHotEndpoint =
         pathname.startsWith("/api/providers") ||
         pathname.startsWith("/api/categories") ||
+        pathname === "/api/cities" ||
         pathname === "/api/health" ||
         pathname === "/api/stats/public"
 

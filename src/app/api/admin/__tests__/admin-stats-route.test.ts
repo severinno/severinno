@@ -74,7 +74,7 @@ describe("GET /api/admin/stats", () => {
       } as any,
     ])
 
-    const res = await GET(mockRequest())
+    const res = await GET(mockRequest(), { params: Promise.resolve({}) })
     const json = await res.json()
 
     expect(res.status).toBe(200)
@@ -98,7 +98,7 @@ describe("GET /api/admin/stats", () => {
     vi.mocked(db.booking.findMany).mockResolvedValue([])
     vi.mocked(db.user.findMany).mockResolvedValue([])
 
-    const res = await GET(mockRequest())
+    const res = await GET(mockRequest(), { params: Promise.resolve({}) })
     const json = await res.json()
 
     expect(res.status).toBe(200)

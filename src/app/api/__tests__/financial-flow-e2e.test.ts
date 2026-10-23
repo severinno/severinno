@@ -13,8 +13,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import DecimalJS from "decimal.js"
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
+
+/** Snapshot de saldo (agregação) — o saque consome `available`. */
+const mockComputeProviderBalance = vi.hoisted(() => vi.fn())
 
 const mockDb = vi.hoisted(() => {
   const db = {
@@ -46,6 +50,13 @@ const mockDb = vi.hoisted(() => {
       updateMany: vi.fn(),
       create: vi.fn(),
     },
+    // webhook lytex importa @/lib/idempotency (lib real) — model precisa
+    // existir E resolver promise (a lib encadeia .catch no update)
+    idempotencyRecord: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({}),
+      update: vi.fn().mockResolvedValue({}),
+    },
     $transaction: vi.fn() as ReturnType<typeof vi.fn>,
     $queryRaw: vi.fn().mockResolvedValue([]),
   }
@@ -70,9 +81,16 @@ vi.mock("@/lib/auth", () => ({
   createSession: vi.fn(),
 }))
 
-vi.mock("@/lib/logger", () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}))
+vi.mock("@/lib/logger", () => {
+  const mockLogger = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    child: vi.fn(() => mockLogger),
+  }
+  return { default: mockLogger }
+})
 
 vi.mock("@/lib/rate-limit", () => ({
   assertRateLimit: vi.fn().mockResolvedValue(undefined),
@@ -131,6 +149,7 @@ vi.mock("@/lib/sentry", () => ({
 }))
 
 vi.mock("@/lib/wallet", () => ({
+  computeProviderBalance: mockComputeProviderBalance,
   computeAvailableBalance: vi.fn(),
   computeBaseBalance: vi.fn(),
   getWithdrawals: vi.fn(),
@@ -257,14 +276,19 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
       payment: mockBooking.payment,
     })
 
+    const nowIso = new Date().toISOString()
     const { POST } = await import("@/app/api/webhooks/lytex/route")
     const req = new Request("http://localhost/api/webhooks/lytex", {
       method: "POST",
+      headers: {
+        "x-lytex-signature": "valid-sig",
+        "x-lytex-timestamp": nowIso,
+      },
       body: JSON.stringify({
         id: "lytex-001",
         status: "paid",
         externalReference: `booking:${BOOKING_ID}`,
-        paidAt: new Date().toISOString(),
+        paidAt: nowIso,
         qrCode: "pix-qr-code",
       }),
     })
@@ -313,6 +337,7 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
       status: "IN_PROGRESS",
       paymentStatus: "PAID",
     })
+    mockDb.booking.updateMany.mockResolvedValue({ count: 1 })
     mockDb.booking.update.mockResolvedValue({
       ...mockBooking,
       status: "COMPLETED",
@@ -341,8 +366,7 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
     vi.mocked(requireUser).mockResolvedValue({ userId: PROVIDER_ID, role: "PROVIDER" } as any)
 
     // 1 completed booking at R$250 → earned R$212.50 (after 15% fee)
-    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 250 } })
-    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
+    mockComputeProviderBalance.mockResolvedValue({ available: new DecimalJS("212.5") })
     mockDb.walletTransaction.create.mockResolvedValue({
       id: "wth-001",
       providerId: PROVIDER_ID,
@@ -356,7 +380,7 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
       body: JSON.stringify({ amount: 100 }),
     })
 
-    const res = await POST(req)
+    const res = await POST(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)
@@ -374,8 +398,7 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
     const { requireUser } = await import("@/lib/auth")
     vi.mocked(requireUser).mockResolvedValue({ userId: PROVIDER_ID, role: "PROVIDER" } as any)
 
-    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 250 } })
-    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
+    mockComputeProviderBalance.mockResolvedValue({ available: new DecimalJS("212.5") })
 
     const { POST } = await import("@/app/api/provider/wallet/withdraw/route")
     const req = new Request("http://localhost", {
@@ -383,7 +406,7 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
       body: JSON.stringify({ amount: 500 }),
     })
 
-    const res = await POST(req)
+    const res = await POST(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(400)
@@ -395,8 +418,7 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
     vi.mocked(requireUser).mockResolvedValue({ userId: PROVIDER_ID, role: "PROVIDER" } as any)
 
     // Balance is R$212.50 — withdrawal of R$200 should succeed
-    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 250 } })
-    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
+    mockComputeProviderBalance.mockResolvedValue({ available: new DecimalJS("212.5") })
     mockDb.walletTransaction.create.mockResolvedValue({
       id: "wth-002",
       amount: 200,
@@ -409,7 +431,7 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
       body: JSON.stringify({ amount: 200 }),
     })
 
-    const res = await POST(req)
+    const res = await POST(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(200)
 
     // Verify Serializable isolation is used

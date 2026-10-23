@@ -49,6 +49,8 @@
 #
 # Environment:
 #   DATABASE_URL   Test DB URL (default: postgresql://severinno:severinno_test@localhost:5433/severinno_test)
+#   DIRECT_URL     Direct DB URL (default: = DATABASE_URL — schema.prisma exige
+#                  directUrl; sem ele o db push falha com P1012 em ambiente limpo)
 # =============================================================================
 
 set -euo pipefail
@@ -58,6 +60,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.test.yml}"
 DATABASE_URL="${DATABASE_URL:-postgresql://severinno:severinno_test@localhost:5433/severinno_test}"
+# schema.prisma exige directUrl (pgbouncer em prod); no E2E efêmero é conexão direta.
+DIRECT_URL="${DIRECT_URL:-$DATABASE_URL}"
 
 SKIP_DOCKER=false
 SKIP_CLEANUP=false
@@ -141,13 +145,13 @@ fi
 info "STEP 2: Syncing Prisma schema..."
 cd "$SCRIPT_DIR"
 if [ "${SKIP_PRISMA_GENERATE:-0}" != "1" ]; then
-  DATABASE_URL="$DATABASE_URL" bunx prisma generate 2>&1 | tail -3
+  DATABASE_URL="$DATABASE_URL" DIRECT_URL="$DIRECT_URL" bunx prisma generate 2>&1 | tail -3
 else
   info "STEP 2: Skipping prisma generate (SKIP_PRISMA_GENERATE=1)"
 fi
 
 if [ "${SKIP_DB_PUSH:-0}" != "1" ]; then
-  if DATABASE_URL="$DATABASE_URL" bunx prisma db push --accept-data-loss --skip-generate 2>&1 \
+  if DATABASE_URL="$DATABASE_URL" DIRECT_URL="$DIRECT_URL" bunx prisma db push --accept-data-loss --skip-generate 2>&1 \
     | tail -8; then
     pass "Schema synced"
   else
@@ -164,7 +168,7 @@ fi
 
 if [ "$SKIP_SEED" = false ]; then
   info "STEP 3: Seeding dev database..."
-  if DATABASE_URL="$DATABASE_URL" NODE_ENV=development bun prisma/seed.ts 2>&1 | tail -5; then
+  if DATABASE_URL="$DATABASE_URL" DIRECT_URL="$DIRECT_URL" NODE_ENV=development bun prisma/seed.ts 2>&1 | tail -5; then
     pass "Dev seed completed"
   else
     fail "Dev seed failed"
@@ -180,7 +184,7 @@ fi
 
 info "STEP 4: Running category rename E2E validator..."
 
-DATABASE_URL="$DATABASE_URL" PROD_SEED_ALLOW_DEV=1 NODE_ENV=development \
+DATABASE_URL="$DATABASE_URL" DIRECT_URL="$DIRECT_URL" PROD_SEED_ALLOW_DEV=1 NODE_ENV=development \
   bun scripts/test-migrate-category-rename-e2e.ts
 exit_code=$?
 

@@ -42,11 +42,15 @@ async function fetchProviders(request: import("@playwright/test").APIRequestCont
 }
 
 test.describe("GET /api/providers — cache headers", () => {
-  test("returns Cache-Control: public, max-age=60, s-maxage=60", async ({ request }) => {
+  test("returns Cache-Control: public, max-age=60, s-maxage=60, stale-while-revalidate=60", async ({
+    request,
+  }) => {
     const { response } = await fetchProviders(request)
 
     expect(response.ok()).toBeTruthy()
-    expect(response.headers()["cache-control"]).toBe("public, max-age=60, s-maxage=60")
+    expect(response.headers()["cache-control"]).toBe(
+      "public, max-age=60, s-maxage=60, stale-while-revalidate=60",
+    )
   })
 
   test("returns Vary including Accept-Encoding, Accept, Origin", async ({ request }) => {

@@ -7,47 +7,83 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { quoteSchema } from "@/lib/validators"
 import { parseBody } from "@/lib/api-middleware"
-import { badRequest, forbidden, handleError, notFound, parsePagination } from "@/lib/api-server"
+import { badRequest, forbidden, notFound, parsePagination } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { notifyNewQuote } from "@/lib/notifications"
 import { sanitizeText } from "@/lib/sanitize"
 
+import { withRoute } from "@/lib/api-route"
+import {
+  getIdempotencyKey,
+  acquireIdempotency,
+  completeIdempotency,
+  failIdempotency,
+  idempotencyErrorResponse,
+} from "@/lib/idempotency"
+
 // CLIENT: create a quote request with N items
-export async function POST(request: Request) {
+export const POST = withRoute("api.quotes.POST", async (request) => {
+  await assertRateLimit(request, RATE_LIMITS.quotes)
+  const session = await requireUser()
+  if (session.role !== "CLIENT") {
+    throw forbidden("Apenas clientes podem solicitar orçamentos")
+  }
+  const data = await parseBody(request, quoteSchema)
+
+  // Validate provider exists & is verified/active
+  const provider = await db.user.findFirst({
+    where: { id: data.providerId, role: "PROVIDER", active: true },
+    select: { id: true, verified: true },
+  })
+  if (!provider) throw notFound("Prestador não encontrado")
+  if (!provider.verified) {
+    throw badRequest("Prestador não está verificado")
+  }
+
+  // Validate every service belongs to the chosen provider
+  const services = await db.service.findMany({
+    where: { id: { in: data.items.map((i) => i.serviceId) } },
+    select: { id: true, providerId: true },
+  })
+  for (const item of data.items) {
+    const svc = services.find((s) => s.id === item.serviceId)
+    if (!svc) throw badRequest(`Serviço ${item.serviceId} não encontrado`)
+    if (svc.providerId !== data.providerId) {
+      throw badRequest(`Serviço ${item.serviceId} não pertence ao prestador informado`)
+    }
+  }
+
+  const expiresAt = data.expiresAt ?? new Date(Date.now() + 7 * 24 * 3600 * 1000)
+
+  // Idempotência opcional/suportada via header Idempotency-Key
+  const idempotencyKey = getIdempotencyKey(request)
+  if (idempotencyKey) {
+    const idemContext = {
+      clientId: session.userId,
+      providerId: data.providerId,
+      itemsCount: data.items.length,
+      address: data.address,
+    }
+    const acquired = await acquireIdempotency(idempotencyKey, idemContext, "quote:create")
+    if (acquired.kind === "replay") {
+      logger.info(
+        {
+          quoteId: (acquired.response as { quote?: { id?: string } })?.quote?.id,
+          idempotencyKey,
+        },
+        "Quotes: replay de resposta idempotente",
+      )
+      return NextResponse.json(acquired.response as Record<string, unknown>, { status: 201 })
+    }
+    const idemError = idempotencyErrorResponse(acquired, "Orçamento")
+    if (idemError) {
+      return NextResponse.json(idemError.body, { status: idemError.status })
+    }
+  }
+
+  let quote
   try {
-    await assertRateLimit(request, RATE_LIMITS.quotes)
-    const session = await requireUser()
-    if (session.role !== "CLIENT") {
-      throw forbidden("Apenas clientes podem solicitar orçamentos")
-    }
-    const data = await parseBody(request, quoteSchema)
-
-    // Validate provider exists & is verified/active
-    const provider = await db.user.findFirst({
-      where: { id: data.providerId, role: "PROVIDER", active: true },
-      select: { id: true, verified: true },
-    })
-    if (!provider) throw notFound("Prestador não encontrado")
-    if (!provider.verified) {
-      throw badRequest("Prestador não está verificado")
-    }
-
-    // Validate every service belongs to the chosen provider
-    const services = await db.service.findMany({
-      where: { id: { in: data.items.map((i) => i.serviceId) } },
-      select: { id: true, providerId: true },
-    })
-    for (const item of data.items) {
-      const svc = services.find((s) => s.id === item.serviceId)
-      if (!svc) throw badRequest(`Serviço ${item.serviceId} não encontrado`)
-      if (svc.providerId !== data.providerId) {
-        throw badRequest(`Serviço ${item.serviceId} não pertence ao prestador informado`)
-      }
-    }
-
-    const expiresAt = data.expiresAt ?? new Date(Date.now() + 7 * 24 * 3600 * 1000)
-
-    const quote = await db.quoteRequest.create({
+    quote = await db.quoteRequest.create({
       data: {
         clientId: session.userId,
         providerId: data.providerId,
@@ -81,76 +117,79 @@ export async function POST(request: Request) {
       },
     })
 
-    // Notificar provider sobre novo orçamento (best-effort)
-    notifyNewQuote(
-      session.userId,
-      data.providerId,
-      quote.id,
-      data.items.length,
-      quote.client?.name ?? "Cliente",
-    ).catch((err) => logger.warn({ err }, "quote notification failed (fire-and-forget)"))
-
-    return NextResponse.json({ quote }, { status: 201 })
-  } catch (e) {
-    return handleError(e)
+    if (idempotencyKey) {
+      await completeIdempotency(idempotencyKey, { quote })
+    }
+  } catch (err) {
+    if (idempotencyKey) {
+      await failIdempotency(idempotencyKey, (err as Error).message)
+    }
+    throw err
   }
-}
+
+  // Notificar provider sobre novo orçamento (best-effort)
+  notifyNewQuote(
+    session.userId,
+    data.providerId,
+    quote.id,
+    data.items.length,
+    quote.client?.name ?? "Cliente",
+  ).catch((err) => logger.warn({ err }, "quote notification failed (fire-and-forget)"))
+
+  return NextResponse.json({ quote }, { status: 201 })
+})
 
 // Any user: list quote requests relevant to them
-export async function GET(request: Request) {
-  try {
-    await assertRateLimit(request, RATE_LIMITS.quotes)
-    const session = await requireUser()
-    const { searchParams } = new URL(request.url)
-    const role = (searchParams.get("role") || session.role) as "CLIENT" | "PROVIDER" | "ADMIN"
-    const status = (searchParams.get("status") || undefined) as QuoteStatus | undefined
-    const { page, limit, skip, take } = parsePagination(searchParams)
+export const GET = withRoute("api.quotes.GET", async (request) => {
+  await assertRateLimit(request, RATE_LIMITS.quotes)
+  const session = await requireUser()
+  const { searchParams } = new URL(request.url)
+  const role = (searchParams.get("role") || session.role) as "CLIENT" | "PROVIDER" | "ADMIN"
+  const status = (searchParams.get("status") || undefined) as QuoteStatus | undefined
+  const { page, limit, skip, take } = parsePagination(searchParams)
 
-    const where =
-      role === "CLIENT"
-        ? { clientId: session.userId, ...(status ? { status } : {}) }
-        : role === "PROVIDER"
-          ? {
-              ...(status ? { status } : {}),
-              ...(await (async () => {
-                const secondaryIds = await db.quoteItem.findMany({
-                  where: { providerId: session.userId },
-                  select: { requestId: true },
-                  distinct: ["requestId"],
-                })
-                const ids = secondaryIds.map((i) => i.requestId)
-                return {
-                  OR: [{ providerId: session.userId }, { id: { in: ids } }],
-                }
-              })()),
-            }
-          : // ADMIN: see all
-            { ...(status ? { status } : {}) }
+  const where =
+    role === "CLIENT"
+      ? { clientId: session.userId, ...(status ? { status } : {}) }
+      : role === "PROVIDER"
+        ? {
+            ...(status ? { status } : {}),
+            ...(await (async () => {
+              const secondaryIds = await db.quoteItem.findMany({
+                where: { providerId: session.userId },
+                select: { requestId: true },
+                distinct: ["requestId"],
+              })
+              const ids = secondaryIds.map((i) => i.requestId)
+              return {
+                OR: [{ providerId: session.userId }, { id: { in: ids } }],
+              }
+            })()),
+          }
+        : // ADMIN: see all
+          { ...(status ? { status } : {}) }
 
-    const [items, total] = await Promise.all([
-      db.quoteRequest.findMany({
-        where,
-        include: {
-          items: {
-            include: {
-              service: true,
-              provider: {
-                select: { id: true, name: true, avatarUrl: true },
-              },
+  const [items, total] = await Promise.all([
+    db.quoteRequest.findMany({
+      where,
+      include: {
+        items: {
+          include: {
+            service: true,
+            provider: {
+              select: { id: true, name: true, avatarUrl: true },
             },
           },
-          provider: { select: { id: true, name: true, avatarUrl: true } },
-          client: { select: { id: true, name: true, avatarUrl: true } },
         },
-        orderBy: { createdAt: "desc" },
-        skip,
-        take,
-      }),
-      db.quoteRequest.count({ where }),
-    ])
+        provider: { select: { id: true, name: true, avatarUrl: true } },
+        client: { select: { id: true, name: true, avatarUrl: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+    }),
+    db.quoteRequest.count({ where }),
+  ])
 
-    return NextResponse.json({ items, total, page, limit })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  return NextResponse.json({ items, total, page, limit })
+})

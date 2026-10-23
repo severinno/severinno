@@ -5,6 +5,9 @@ import { findProvidersWithinBounds } from "@/lib/postgis"
 // Mock dependencies
 vi.mock("@/lib/redis", () => ({
   withCache: vi.fn((_key, fn) => fn()),
+  cacheGet: vi.fn().mockResolvedValue(null),
+  cacheSet: vi.fn().mockResolvedValue(undefined),
+  cacheInvalidate: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock("@/lib/db", () => ({

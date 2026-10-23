@@ -52,12 +52,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Mesmo contrato da ci.yml: script + cache, sem composite local.
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun
-          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      # Mesmo contrato da ci.yml: script por `run:` (sem composite local).
+      # Sem `actions/cache` nesta forja — ver ci.yml.
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
@@ -78,9 +74,9 @@ jobs:
       - name: Check drift (report only)
         id: drift
         env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-          GITEA_URL: ${{ secrets.GITEA_URL }}
-          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+          GITEA_TOKEN: ${{ secrets.FORJA_TOKEN || secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ github.server_url }}
+          GITEA_REPOSITORY: ${{ github.repository }}
         run: |
           set +e
           if [ -z "${GITEA_TOKEN:-}" ]; then
@@ -92,8 +88,11 @@ jobs:
           # Sem token não há nem medição nem canal (a issue precisa da ESCRITA
           # em issues) — por isso `publish` sai daqui e não do exit code.
           echo "publish=1" >> "$GITHUB_OUTPUT"
-          bun scripts/check-actrc-sync.mjs --expected "$BUN_VERSION" --expected-var "IMAGE_REGISTRY=$IMAGE_REGISTRY" --expected-var "IMAGE_NAMESPACE=$IMAGE_NAMESPACE" --json \
-            > /tmp/actrc-sync-drift.json
+          # `--json <caminho>` grava o JSON PURO no arquivo (o sumário humano
+          # vai para stderr): redirecionar o STDOUT amarrava JSON + sumário num
+          # arquivo só, e o publicador morria em "Unable to parse JSON"
+          # (posição 1037, medido no task 307).
+          bun scripts/check-actrc-sync.mjs --expected "$BUN_VERSION" --expected-var "IMAGE_REGISTRY=$IMAGE_REGISTRY" --expected-var "IMAGE_NAMESPACE=$IMAGE_NAMESPACE" --json /tmp/actrc-sync-drift.json
           CODE=$?
           set -e
           cat /tmp/actrc-sync-drift.json
@@ -110,9 +109,9 @@ jobs:
       - name: Publish drift issue (Gitea)
         if: always() && steps.drift.outputs.publish == '1'
         env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-          GITEA_URL: ${{ secrets.GITEA_URL }}
-          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+          GITEA_TOKEN: ${{ secrets.FORJA_TOKEN || secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ github.server_url }}
+          GITEA_REPOSITORY: ${{ github.repository }}
         run: |
           bun scripts/actrc-sync-issue.mjs \
             --report /tmp/actrc-sync-drift.json \

@@ -1,0 +1,11 @@
+CREATE TRIGGER trg_search_reindex_category AFTER INSERT OR DELETE OR UPDATE OF name, slug, active, "parentId" ON public."Category" FOR EACH ROW EXECUTE FUNCTION notify_search_reindex();
+CREATE TRIGGER trg_refresh_mv_on_review AFTER INSERT OR DELETE OR UPDATE ON public."Review" FOR EACH STATEMENT EXECUTE FUNCTION refresh_mv_provider_stats();
+CREATE TRIGGER trg_refresh_mv_on_favorite AFTER INSERT OR DELETE OR UPDATE ON public."Favorite" FOR EACH STATEMENT EXECUTE FUNCTION refresh_mv_provider_stats();
+CREATE TRIGGER trg_search_reindex_service AFTER INSERT OR DELETE OR UPDATE OF title, description, "basePrice", unit, "categoryId", active, "deletedAt" ON public."Service" FOR EACH ROW EXECUTE FUNCTION notify_search_reindex();
+CREATE TRIGGER trg_service_search_vector BEFORE INSERT OR UPDATE ON public."Service" FOR EACH ROW EXECUTE FUNCTION service_search_vector_update();
+CREATE TRIGGER trg_sync_user_location BEFORE INSERT OR UPDATE OF lat, lng ON public."User" FOR EACH ROW EXECUTE FUNCTION sync_user_location();
+CREATE TRIGGER trg_user_search_vector BEFORE INSERT OR UPDATE OF name, bio, city, district, street ON public."User" FOR EACH ROW EXECUTE FUNCTION user_search_vector_update();
+CREATE TRIGGER trg_search_reindex_user AFTER INSERT OR DELETE OR UPDATE OF name, bio, city, state, district, lat, lng, verified, active, "deletedAt" ON public."User" FOR EACH ROW EXECUTE FUNCTION notify_search_reindex();
+CREATE TRIGGER trg_sync_booking_location BEFORE INSERT OR UPDATE OF lat, lng ON public."Booking" FOR EACH ROW EXECUTE FUNCTION sync_booking_location();
+CREATE TRIGGER trg_refresh_mv_on_booking AFTER INSERT OR DELETE OR UPDATE ON public."Booking" FOR EACH STATEMENT EXECUTE FUNCTION refresh_mv_provider_stats();
+CREATE TRIGGER trg_sync_quoterequest_location BEFORE INSERT OR UPDATE OF lat, lng ON public."QuoteRequest" FOR EACH ROW EXECUTE FUNCTION sync_quoterequest_location();

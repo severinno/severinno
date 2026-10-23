@@ -14,6 +14,9 @@ networks:
   monitoring:
     name: severinno_monitoring
     driver: bridge
+  backend:
+    name: ${SEVERINNO_NETWORK:-severinno_backend}
+    external: true
 
 volumes:
   prometheus_data:
@@ -30,7 +33,7 @@ services:
     image: prom/prometheus:v2.53.0
     restart: unless-stopped
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/prometheus/alerts:/etc/prometheus/alerts:ro
@@ -43,6 +46,7 @@ services:
       - "--web.enable-admin-api"
     networks:
       - monitoring
+      - backend
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9090/-/healthy"]
       interval: 10s
@@ -53,8 +57,8 @@ services:
     image: grafana/tempo:2.5.0
     restart: unless-stopped
     ports:
-      - "3200:3200"
-      - "4318:4318"
+      - "127.0.0.1:3200:3200"
+      - "127.0.0.1:4318:4318"
     volumes:
       - ./monitoring/tempo/tempo.yml:/etc/tempo/config.yml:ro
       - tempo_data:/var/tempo
@@ -72,7 +76,7 @@ services:
     image: grafana/loki:3.2.0
     restart: unless-stopped
     ports:
-      - "3101:3100"
+      - "127.0.0.1:3101:3100"
     volumes:
       - ./monitoring/loki/loki.yml:/etc/loki/local-config.yaml:ro
       - loki_data:/loki
@@ -107,7 +111,7 @@ services:
     image: prom/alertmanager:v0.27.0
     restart: unless-stopped
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"
     volumes:
       - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     # Preenchidas pelo scripts/setup-telegram-alerts.sh (via sed). A config
@@ -130,7 +134,7 @@ services:
     image: grafana/grafana:11.1.0
     restart: unless-stopped
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
@@ -142,13 +146,16 @@ services:
       GF_SERVER_ROOT_URL: http://localhost:3001
     networks:
       - monitoring
+      - backend
     depends_on:
       prometheus:
         condition: service_healthy
       tempo:
-        condition: service_healthy
+        condition: service_started
+        required: false
       loki:
-        condition: service_healthy
+        condition: service_started
+        required: false
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/api/health"]
       interval: 10s

@@ -47,12 +47,21 @@ import {
   Bell,
   Sparkles,
   ShieldCheck,
+  History,
+  Briefcase,
+  MapPin,
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 
+import dynamic from "next/dynamic"
+
 import { cn } from "@/lib/utils"
 import { useAuthStore, useGeoStore, useUIStore, useViewStore, useCompareStore } from "@/store"
-import AddressAutocomplete from "@/components/vitrine/address-autocomplete"
+
+const AddressAutocomplete = dynamic(() => import("@/components/vitrine/address-autocomplete"), {
+  ssr: false,
+  loading: () => <div className="bg-muted h-10 w-full animate-pulse rounded-lg" />,
+})
 import { ROLE_LABELS, type UserRole } from "@/lib/constants"
 import type { Category } from "@/lib/api"
 import { apiGet } from "@/lib/api"
@@ -82,6 +91,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useFaviconBadge } from "@/hooks/use-favicon-badge"
 import { NOTIFICATION_TYPE_LABELS } from "@/lib/constants"
 import { formatRelative } from "@/lib/format"
+import { triggerHaptic } from "@/lib/haptics"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -295,6 +305,67 @@ export default function Topbar({
   const [locating, setLocating] = React.useState(false)
   const [scrolled, setScrolled] = React.useState(false)
   const [pastHero, setPastHero] = React.useState(false)
+  const searchInputRef = React.useRef<HTMLInputElement>(null)
+  const [recentSearches, setRecentSearches] = React.useState<string[]>([])
+
+  // Load recent searches on mount
+  React.useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const raw = localStorage.getItem("severinno_recent_searches")
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration of recent searches from localStorage on mount
+          setRecentSearches(parsed.slice(0, 5))
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const saveRecentSearch = React.useCallback((term: string) => {
+    const trimmed = term.trim()
+    if (!trimmed || trimmed.length < 2) return
+    setRecentSearches((prev) => {
+      const filtered = prev.filter((item) => item.toLowerCase() !== trimmed.toLowerCase())
+      const next = [trimmed, ...filtered].slice(0, 5)
+      try {
+        localStorage.setItem("severinno_recent_searches", JSON.stringify(next))
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }, [])
+
+  const clearRecentSearches = React.useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    triggerHaptic("selection")
+    setRecentSearches([])
+    try {
+      localStorage.removeItem("severinno_recent_searches")
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  // ── Global Ctrl+K / ⌘K keyboard shortcut ──────────────────────────────
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault()
+        setPastHero(false)
+        setSearchOpen(true)
+        window.setTimeout(() => {
+          searchInputRef.current?.focus()
+        }, 50)
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [])
 
   // ── Welcome toast state (H1: system status) ────────────────────────────
   const [showWelcome, setShowWelcome] = React.useState(false)
@@ -352,22 +423,35 @@ export default function Topbar({
     : "?"
 
   const handleLocate = React.useCallback(async () => {
+    triggerHaptic("selection")
     setLocating(true)
     try {
       await setFromGPS()
+      triggerHaptic("success")
+    } catch {
+      triggerHaptic("error")
     } finally {
       setLocating(false)
     }
   }, [setFromGPS])
 
-  const triggerSearch = React.useCallback(() => {
-    setSearchOpen(false)
-    setMobileOpen(false)
-    onSearchSubmit?.()
-  }, [onSearchSubmit])
+  const triggerSearch = React.useCallback(
+    (customQuery?: string) => {
+      triggerHaptic("selection")
+      const term = customQuery !== undefined ? customQuery : query
+      if (term) {
+        saveRecentSearch(term)
+      }
+      setSearchOpen(false)
+      setMobileOpen(false)
+      onSearchSubmit?.()
+    },
+    [onSearchSubmit, query, saveRecentSearch],
+  )
 
   const onSelectCategory = React.useCallback(
     (id: string | null) => {
+      triggerHaptic("selection")
       setMobileOpen(false)
       onCategorySelect?.(id)
     },
@@ -385,41 +469,47 @@ export default function Topbar({
         className={cn(
           "sticky top-0 z-40 w-full transition-all duration-300 ease-out",
           scrolled
-            ? "bg-background/95 supports-[backdrop-filter]:bg-background/90 border-b shadow-sm backdrop-blur-xl"
-            : "bg-background/70 supports-[backdrop-filter]:bg-background/55 border-b border-transparent backdrop-blur-md",
+            ? "bg-background/95 supports-[backdrop-filter]:bg-background/85 border-border/60 border-b shadow-xs backdrop-blur-xl"
+            : "bg-background/75 supports-[backdrop-filter]:bg-background/60 border-border/20 border-b backdrop-blur-md",
         )}
       >
         {/* ── Main bar ─────────────────────────────────────────────────────── */}
         <div
           className={cn(
-            "mx-auto flex max-w-7xl items-center gap-2 px-4 transition-all duration-300 ease-out sm:gap-3 sm:px-6 lg:px-8",
+            "mx-auto flex w-full max-w-[95%] items-center gap-2 px-4 transition-all duration-300 ease-out sm:gap-3 sm:px-6 lg:px-8",
             scrolled ? "h-14" : "h-16",
           )}
         >
-          {/* ── Logo ──── */}
-          <button
-            type="button"
-            onClick={() => onSelectCategory(null)}
-            className="focus-visible:ring-ring flex shrink-0 items-center rounded-lg px-1.5 py-1.5 transition-opacity outline-none hover:opacity-85 focus-visible:ring-2 focus-visible:ring-offset-2"
-            aria-label="Severinno — página inicial"
-          >
-            <Image
-              src="/logo.png"
-              alt="Severinno"
-              width={140}
-              height={28}
-              className="h-7 w-auto object-contain dark:hidden"
-              priority
-            />
-            <Image
-              src="/logo-dark.png"
-              alt="Severinno"
-              width={140}
-              height={28}
-              className="hidden h-7 w-auto object-contain dark:block"
-              priority
-            />
-          </button>
+          {/* ── Logo + Trust Pill ──── */}
+          <div className="flex shrink-0 items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => onSelectCategory(null)}
+              className="focus-visible:ring-ring flex shrink-0 items-center rounded-xl p-1 transition-transform outline-none hover:scale-[1.02] focus-visible:ring-2 focus-visible:ring-offset-2 active:scale-[0.98]"
+              aria-label="Severinno — página inicial"
+            >
+              <Image
+                src="/logo-severinno-black.png"
+                alt="Severinno"
+                width={1150}
+                height={204}
+                className="h-7 w-auto object-contain dark:hidden"
+                priority
+              />
+              <Image
+                src="/logo-severinno-white.png"
+                alt="Severinno"
+                width={1150}
+                height={204}
+                className="hidden h-7 w-auto object-contain dark:block"
+                priority
+              />
+            </button>
+            <div className="hidden items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 shadow-2xs xl:flex dark:border-emerald-600/30 dark:bg-emerald-950/40 dark:text-emerald-300">
+              <MapPin className="size-3 text-emerald-600 dark:text-emerald-400" />
+              <span>Valadares & Região</span>
+            </div>
+          </div>
 
           {/* ── Desktop search — full bar or mini bar (H7: efficiency) ──── */}
           <div className="hidden flex-1 items-center justify-center md:flex">
@@ -436,14 +526,16 @@ export default function Topbar({
                 >
                   <Popover open={searchOpen} onOpenChange={setSearchOpen}>
                     <PopoverAnchor asChild>
-                      <div className="relative mx-auto w-full max-w-xl">
-                        <Search className="text-muted-foreground group-focus-within:text-primary pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 transition-colors duration-200" />
+                      <div className="relative mx-auto w-full max-w-xl xl:max-w-2xl">
+                        <Search className="text-muted-foreground/70 group-focus-within:text-primary pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 transition-colors duration-200" />
                         <Input
+                          ref={searchInputRef}
                           value={query}
                           onChange={(e) => onQueryChange(e.target.value)}
                           onFocus={() => {
                             setSearchFocused(true)
-                            if (categories.length > 0) setSearchOpen(true)
+                            if (categories.length > 0 || recentSearches.length > 0)
+                              setSearchOpen(true)
                           }}
                           onBlur={() => setSearchFocused(false)}
                           onKeyDown={(e) => {
@@ -452,42 +544,45 @@ export default function Topbar({
                               triggerSearch()
                             }
                           }}
-                          placeholder="Buscar serviço ou prestador…"
+                          placeholder="Buscar serviço ou prestador em GV…"
                           className={cn(
-                            "bg-muted/50 h-11 w-full rounded-2xl border-0 pr-10 pl-11 text-sm shadow-none transition-all duration-300",
+                            "bg-muted/40 hover:bg-muted/60 focus-visible:bg-background border-border/70 hover:border-primary/40 focus-visible:border-primary/60 h-10 w-full rounded-full border pr-24 pl-10 text-sm shadow-2xs transition-all duration-200",
                             "placeholder:text-muted-foreground/60",
-                            "hover:bg-muted/70 hover:shadow-sm",
-                            "focus-visible:bg-background focus-visible:ring-primary/30 focus-visible:shadow-md focus-visible:ring-2",
-                            searchOpen && "bg-background ring-primary/20 shadow-md ring-2",
-                            searchFocused && "max-w-xl scale-[1.02]",
+                            "focus-visible:ring-primary/20 focus-visible:shadow-xs focus-visible:ring-2",
+                            searchOpen &&
+                              "bg-background ring-primary/20 border-primary/40 shadow-xs ring-2",
+                            searchFocused && "scale-[1.01]",
                           )}
                           aria-label="Buscar prestadores"
                         />
-                        <AnimatePresence>
-                          {query ? (
-                            <motion.button
-                              type="button"
-                              aria-label="Limpar busca"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                onQueryChange("")
-                              }}
-                              initial={{ scale: 0, opacity: 0 }}
-                              animate={{ scale: 1, opacity: 1 }}
-                              exit={{ scale: 0, opacity: 0 }}
-                              transition={{ duration: 0.15 }}
-                              className="bg-muted text-muted-foreground hover:bg-destructive/10 hover:text-destructive absolute top-1/2 right-3 flex size-6 -translate-y-1/2 items-center justify-center rounded-full transition-colors"
-                            >
-                              <X className="size-3.5" />
-                            </motion.button>
-                          ) : null}
-                        </AnimatePresence>
-                        {/* Search shortcut hint */}
-                        {!query && !searchOpen && (
-                          <kbd className="bg-muted text-muted-foreground pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 rounded-md border px-1.5 py-0.5 text-[10px] font-medium lg:inline-block">
-                            ⌘K
-                          </kbd>
-                        )}
+                        <div className="absolute top-1/2 right-2.5 flex -translate-y-1/2 items-center gap-1">
+                          <AnimatePresence>
+                            {query ? (
+                              <motion.button
+                                type="button"
+                                aria-label="Limpar busca"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  triggerHaptic("selection")
+                                  onQueryChange("")
+                                  searchInputRef.current?.focus()
+                                }}
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0, opacity: 0 }}
+                                transition={{ duration: 0.15 }}
+                                className="bg-muted text-muted-foreground hover:bg-destructive/10 hover:text-destructive flex size-6 items-center justify-center rounded-full transition-colors active:scale-95"
+                              >
+                                <X className="size-3.5" />
+                              </motion.button>
+                            ) : null}
+                          </AnimatePresence>
+                          {!query && !searchOpen && (
+                            <kbd className="bg-background text-muted-foreground border-border/80 pointer-events-none hidden rounded-md border px-1.5 py-0.5 text-[10px] font-semibold shadow-2xs lg:inline-block">
+                              ⌘K / Ctrl+K
+                            </kbd>
+                          )}
+                        </div>
                       </div>
                     </PopoverAnchor>
                     <PopoverContent
@@ -516,6 +611,39 @@ export default function Topbar({
                               </p>
                             </div>
                           </CommandEmpty>
+                          {recentSearches.length > 0 && (
+                            <CommandGroup
+                              heading={
+                                <div className="flex items-center justify-between">
+                                  <span>Pesquisas recentes</span>
+                                  <button
+                                    type="button"
+                                    onClick={clearRecentSearches}
+                                    className="text-muted-foreground hover:text-foreground text-[10px] font-normal transition-colors"
+                                  >
+                                    Limpar histórico
+                                  </button>
+                                </div>
+                              }
+                            >
+                              {recentSearches.map((term) => (
+                                <CommandItem
+                                  key={term}
+                                  value={`recent-${term}`}
+                                  onSelect={() => {
+                                    onQueryChange(term)
+                                    triggerSearch(term)
+                                  }}
+                                  className="gap-3 rounded-lg"
+                                >
+                                  <span className="bg-muted text-muted-foreground flex size-7 items-center justify-center rounded-lg">
+                                    <History className="size-3.5" />
+                                  </span>
+                                  <span className="flex-1 font-medium">{term}</span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          )}
                           <CommandGroup heading="Categorias populares">
                             {categories.slice(0, 6).map((c) => (
                               <CommandItem
@@ -556,20 +684,20 @@ export default function Topbar({
               ) : (
                 <motion.div
                   key="mini-search"
-                  initial={{ opacity: 0, scale: 0.9 }}
+                  initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ duration: 0.2 }}
                   className="w-full max-w-sm"
                 >
                   <div className="relative">
-                    <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2" />
+                    <Search className="text-muted-foreground/70 pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2" />
                     <Input
                       value={query}
                       onChange={(e) => onQueryChange(e.target.value)}
                       onFocus={() => {
-                        // Scroll back to top to reveal full search if needed
                         setSearchFocused(true)
+                        if (categories.length > 0 || recentSearches.length > 0) setSearchOpen(true)
                       }}
                       onBlur={() => setSearchFocused(false)}
                       onKeyDown={(e) => {
@@ -578,13 +706,12 @@ export default function Topbar({
                           triggerSearch()
                         }
                       }}
-                      placeholder="Buscar…"
+                      placeholder="Buscar serviço ou prestador…"
                       className={cn(
-                        "bg-muted/50 h-9 w-full rounded-xl border-0 pr-3 pl-9 text-xs shadow-none transition-all duration-300",
+                        "bg-muted/40 hover:bg-muted/60 focus-visible:bg-background border-border/70 h-9 w-full rounded-full border pr-3 pl-8 text-xs shadow-2xs transition-all duration-200",
                         "placeholder:text-muted-foreground/60",
-                        "hover:bg-muted/70",
-                        "focus-visible:bg-background focus-visible:ring-primary/30 focus-visible:shadow-sm focus-visible:ring-2",
-                        searchFocused && "scale-[1.03]",
+                        "focus-visible:border-primary/50 focus-visible:ring-primary/20 focus-visible:ring-2",
+                        searchFocused && "scale-[1.02]",
                       )}
                       aria-label="Buscar prestadores (compacto)"
                     />
@@ -595,13 +722,25 @@ export default function Topbar({
           </div>
 
           {/* ── Location / AddressAutocomplete (desktop) ────────────────────── */}
-          <div className="hidden md:flex">
-            <div className="relative w-52">
+          <div className="hidden items-center gap-2 md:flex">
+            <div className="relative w-56 lg:w-64">
               <AddressAutocomplete
-                placeholder={city || "CEP, cidade ou endereço…"}
+                placeholder={city || "CEP, bairro ou cidade…"}
                 onSelect={() => onSearchSubmit?.()}
               />
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                const el =
+                  document.getElementById("como-funciona") ||
+                  document.getElementById("how-it-works")
+                if (el) el.scrollIntoView({ behavior: "smooth" })
+              }}
+              className="text-muted-foreground hover:text-foreground hover:bg-muted/50 hidden cursor-pointer items-center rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors 2xl:inline-flex"
+            >
+              Como funciona
+            </button>
           </div>
 
           {/* ── Sort indicator (desktop) — mostra quando ordenação por distância está ativa ── */}
@@ -622,8 +761,11 @@ export default function Topbar({
             <Button
               variant="ghost"
               size="icon"
-              className="group text-muted-foreground hover:bg-accent hover:text-foreground size-9 rounded-xl transition-all duration-200"
-              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+              className="group text-muted-foreground hover:bg-accent hover:text-foreground size-9 rounded-xl transition-all duration-200 active:scale-95"
+              onClick={() => {
+                triggerHaptic("selection")
+                setTheme(resolvedTheme === "dark" ? "light" : "dark")
+              }}
               aria-label="Alternar tema"
               title="Alternar tema"
             >
@@ -657,8 +799,11 @@ export default function Topbar({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={openCompare}
-                    className="h-9 gap-2 rounded-xl border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-50/50 text-emerald-700 shadow-sm transition-all hover:from-emerald-100 hover:to-emerald-50 hover:text-emerald-800 hover:shadow-md dark:border-emerald-800/40 dark:from-emerald-950/40 dark:to-emerald-950/20 dark:text-emerald-300 dark:hover:from-emerald-900/40 dark:hover:text-emerald-200"
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      openCompare()
+                    }}
+                    className="h-9 gap-2 rounded-xl border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-50/50 text-emerald-700 shadow-sm transition-all hover:from-emerald-100 hover:to-emerald-50 hover:text-emerald-800 hover:shadow-md active:scale-95 dark:border-emerald-800/40 dark:from-emerald-950/40 dark:to-emerald-950/20 dark:text-emerald-300 dark:hover:from-emerald-900/40 dark:hover:text-emerald-200"
                     aria-label={`Comparar ${compareCount} prestador(es)`}
                     title={`Comparar ${compareCount} prestador(es)`}
                   >
@@ -828,7 +973,7 @@ export default function Topbar({
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className="group bg-background/80 hover:border-primary/30 hover:bg-accent/50 focus-visible:ring-ring flex items-center gap-2 rounded-xl border py-1.5 pr-3 pl-1.5 text-sm transition-all duration-200 outline-none hover:shadow-sm focus-visible:ring-2 focus-visible:ring-offset-2"
+                      className="group bg-background/80 hover:border-primary/40 hover:bg-accent/40 focus-visible:ring-ring border-border/70 flex items-center gap-2 rounded-full border py-1 pr-3 pl-1.5 text-sm transition-all duration-200 outline-none hover:shadow-xs focus-visible:ring-2 focus-visible:ring-offset-2"
                       aria-label="Menu da conta"
                     >
                       <div className="relative">
@@ -903,15 +1048,34 @@ export default function Topbar({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => openAuth("login")}
-                  className="hover:bg-primary/5 hover:text-primary h-9 rounded-xl px-4 font-medium transition-all duration-200"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    openAuth("register", "PROVIDER")
+                  }}
+                  className="hidden h-9 gap-1.5 rounded-xl px-3 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50/80 hover:text-emerald-800 active:scale-95 lg:inline-flex dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                  title="Cadastre-se como prestador de serviços"
+                >
+                  <Briefcase className="size-3.5" />
+                  <span>Seja um Prestador</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    openAuth("login")
+                  }}
+                  className="hover:bg-accent hover:text-foreground h-9 rounded-xl px-4 text-xs font-semibold transition-all duration-200 active:scale-95"
                 >
                   Entrar
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => openAuth("register", "CLIENT")}
-                  className="from-primary shadow-primary/20 hover:shadow-primary/30 h-9 rounded-xl bg-gradient-to-r to-emerald-600 px-5 font-medium shadow-md transition-all duration-200 hover:shadow-lg hover:brightness-110"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    openAuth("register", "CLIENT")
+                  }}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 h-9 rounded-xl px-4 text-xs font-semibold shadow-xs transition-all duration-200 hover:shadow-md hover:brightness-105 active:scale-95"
                 >
                   Cadastrar
                 </Button>
@@ -925,8 +1089,11 @@ export default function Topbar({
             <Button
               variant="ghost"
               size="icon"
-              className="text-muted-foreground hover:text-foreground size-9 rounded-xl"
-              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+              className="text-muted-foreground hover:text-foreground size-9 rounded-xl transition-all active:scale-95"
+              onClick={() => {
+                triggerHaptic("selection")
+                setTheme(resolvedTheme === "dark" ? "light" : "dark")
+              }}
               aria-label="Alternar tema"
               title="Alternar tema"
             >
@@ -960,8 +1127,11 @@ export default function Topbar({
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={openCompare}
-                    className="relative size-9 rounded-xl border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300"
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      openCompare()
+                    }}
+                    className="relative size-9 rounded-xl border-emerald-200 bg-emerald-50 text-emerald-700 transition-all hover:bg-emerald-100 hover:text-emerald-800 active:scale-95 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300"
                     aria-label={`Comparar ${compareCount} prestador(es)`}
                     title={`Comparar ${compareCount} prestador(es)`}
                   >
@@ -987,7 +1157,7 @@ export default function Topbar({
               size="icon"
               onClick={handleLocate}
               disabled={locating || geoStatus === "locating"}
-              className="size-9 rounded-xl border border-emerald-200/80 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300"
+              className="size-9 rounded-xl border border-emerald-200/80 bg-emerald-50 text-emerald-700 transition-all hover:bg-emerald-100 hover:text-emerald-800 active:scale-95 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300"
               title="Definir localização"
               aria-label="Definir localização"
             >
@@ -1017,17 +1187,17 @@ export default function Topbar({
                 <SheetHeader className="border-b px-6 py-4">
                   <SheetTitle className="flex items-center">
                     <Image
-                      src="/logo.png"
+                      src="/logo-severinno-black.png"
                       alt="Severinno"
-                      width={130}
-                      height={26}
+                      width={1150}
+                      height={204}
                       className="h-6 w-auto object-contain dark:hidden"
                     />
                     <Image
-                      src="/logo-dark.png"
+                      src="/logo-severinno-white.png"
                       alt="Severinno"
-                      width={130}
-                      height={26}
+                      width={1150}
+                      height={204}
                       className="hidden h-6 w-auto object-contain dark:block"
                     />
                   </SheetTitle>
@@ -1059,7 +1229,7 @@ export default function Topbar({
                       setMobileOpen(false)
                     }}
                     disabled={locating}
-                    className="h-11 justify-start gap-2.5 rounded-xl border-emerald-200/80 bg-gradient-to-r from-emerald-50 to-emerald-50/50 text-emerald-700 hover:from-emerald-100 hover:to-emerald-50 hover:text-emerald-800 dark:border-emerald-800/40 dark:from-emerald-950/40 dark:to-emerald-950/20 dark:text-emerald-300"
+                    className="h-11 justify-start gap-2.5 rounded-xl border-emerald-200/80 bg-gradient-to-r from-emerald-50 to-emerald-50/50 text-emerald-700 transition-all hover:from-emerald-100 hover:to-emerald-50 hover:text-emerald-800 active:scale-95 dark:border-emerald-800/40 dark:from-emerald-950/40 dark:to-emerald-950/20 dark:text-emerald-300"
                   >
                     {locating ? (
                       <Loader2 className="size-4 animate-spin" />
@@ -1093,10 +1263,11 @@ export default function Topbar({
                         <Button
                           variant="outline"
                           onClick={() => {
+                            triggerHaptic("selection")
                             setMobileOpen(false)
                             if (user) navigate(DASHBOARD_VIEW[user.role])
                           }}
-                          className="h-11 gap-2.5 rounded-xl"
+                          className="h-11 gap-2.5 rounded-xl transition-all active:scale-95"
                         >
                           <LayoutDashboard className="text-primary size-4" />
                           Meu painel
@@ -1104,10 +1275,11 @@ export default function Topbar({
                         <Button
                           variant="ghost"
                           onClick={() => {
+                            triggerHaptic("selection")
                             setMobileOpen(false)
                             logout()
                           }}
-                          className="text-destructive hover:bg-destructive/5 hover:text-destructive h-11 gap-2.5 rounded-xl"
+                          className="text-destructive hover:bg-destructive/5 hover:text-destructive h-11 gap-2.5 rounded-xl transition-all active:scale-95"
                         >
                           <LogOut className="size-4" />
                           Sair
@@ -1118,19 +1290,21 @@ export default function Topbar({
                         <Button
                           variant="outline"
                           onClick={() => {
+                            triggerHaptic("selection")
                             setMobileOpen(false)
                             openAuth("login")
                           }}
-                          className="h-11 rounded-xl font-medium"
+                          className="h-11 rounded-xl font-medium transition-all active:scale-95"
                         >
                           Entrar
                         </Button>
                         <Button
                           onClick={() => {
+                            triggerHaptic("selection")
                             setMobileOpen(false)
                             openAuth("register", "CLIENT")
                           }}
-                          className="from-primary shadow-primary/20 h-11 rounded-xl bg-gradient-to-r to-emerald-600 font-medium shadow-md"
+                          className="from-primary shadow-primary/20 h-11 rounded-xl bg-gradient-to-r to-emerald-600 font-medium shadow-md transition-all active:scale-95"
                         >
                           Cadastrar grátis
                         </Button>

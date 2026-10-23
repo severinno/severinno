@@ -1,24 +1,36 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { headers } from "next/headers"
 import "./globals.css"
 import { Providers } from "@/components/providers"
 import { SWRegister } from "@/components/sw-register"
 import { WebVitals } from "@/components/web-vitals"
+import { MaintenanceScreen } from "@/components/maintenance-screen"
+import { isMaintenanceMode } from "@/lib/maintenance-mode"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  display: "swap",
 })
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
 })
+
+export const viewport: Viewport = {
+  themeColor: "#059669",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
+}
 
 export const metadata: Metadata = {
   title: {
-    default: "severinno",
+    default: "Severinno — Encontre os Melhores Prestadores em Governador Valadares",
     template: "%s · Severinno",
   },
   description:
@@ -53,14 +65,20 @@ export const metadata: Metadata = {
     "apple-mobile-web-app-title": "Severinno",
   },
   openGraph: {
-    title: "severinno",
+    title: "Severinno — Marketplace de Serviços em Governador Valadares",
     description:
-      "Encontre prestadores de serviço verificados, com base na sua localização — Governador Valadares, MG.",
+      "Encontre prestadores de serviço verificados no seu bairro em Governador Valadares, MG. Pagamento protegido por Custódia PIX e Garantia de 90 Dias.",
     url: process.env.NEXT_PUBLIC_APP_URL ?? "https://severinno.com",
     siteName: "Severinno",
     locale: "pt_BR",
     type: "website",
     images: [
+      {
+        url: "/auth-couple-tools.jpg",
+        width: 1200,
+        height: 630,
+        alt: "Profissionais Verificados Severinno em Governador Valadares",
+      },
       {
         url: "/logo-severinno.png",
         width: 1200,
@@ -71,8 +89,10 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "severinno",
-    description: "Encontre prestadores de serviço verificados, com base na sua localização.",
+    title: "Severinno — Marketplace de Serviços em Governador Valadares",
+    description:
+      "Encontre prestadores de serviço verificados no seu bairro em Governador Valadares, MG. Pagamento protegido por Custódia PIX e Garantia de 90 Dias.",
+    images: ["/auth-couple-tools.jpg"],
   },
 }
 
@@ -81,16 +101,48 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const _nonce = (await headers()).get("x-nonce") ?? ""
+  const reqHeaders = await headers()
+  const _nonce = reqHeaders.get("x-nonce") ?? ""
+
+  // ── Chave de manutenção (um clique no painel admin) ────────────────────────
+  // Quando LIGADA, o público geral vê a tela de manutenção em qualquer
+  // página. Sessões ADMIN ou requisições originadas do IP LOCAL / Whitelist de IPs
+  // autorizados atravessam normalmente para permitir acesso, desenvolvimento e testes.
+  const maintenance = await isMaintenanceMode()
+  let showMaintenance = maintenance
+
+  if (maintenance) {
+    const { getSession } = await import("@/lib/auth")
+    const session = await getSession()
+    if (session?.role === "ADMIN") {
+      showMaintenance = false
+    } else {
+      const clientIp =
+        reqHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+        reqHeaders.get("x-real-ip") ||
+        reqHeaders.get("cf-connecting-ip") ||
+        "127.0.0.1"
+      const { isClientAllowedDuringMaintenance } = await import("@/lib/maintenance-mode")
+      if (await isClientAllowedDuringMaintenance(clientIp)) {
+        showMaintenance = false
+      }
+    }
+  }
 
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} bg-background text-foreground antialiased`}
       >
-        <Providers>{children}</Providers>
-        <WebVitals />
-        <SWRegister />
+        {showMaintenance ? (
+          <MaintenanceScreen />
+        ) : (
+          <>
+            <Providers>{children}</Providers>
+            <WebVitals />
+            <SWRegister />
+          </>
+        )}
       </body>
     </html>
   )

@@ -26,9 +26,13 @@ import {
   ArrowRight,
   Loader2,
   WifiOff,
+  ShieldCheck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ensureMaplibreWorker } from "@/lib/maplibre-worker"
 import { syncRadiusCircle, type MapLike } from "@/lib/geo-circle"
+import { snapToRoad } from "@/lib/map-matching"
+import { vibrateSuccess, vibrateWarning } from "@/lib/haptics"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -154,9 +158,10 @@ export function LiveTracking({
   const eventSourceRef = React.useRef<EventSource | null>(null)
   const reconnectAttemptRef = React.useRef(0)
   const reconnectTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const routePolylineRef = React.useRef<[number, number][] | null>(null)
   const maplibreglCacheRef = React.useRef<typeof import("maplibre-gl") | null>(null)
 
-  // ── Update provider marker on map ──
+  // ── Update provider marker on map with snap-to-road ──
   const updateMarker = React.useCallback(
     (pos: Position) => {
       if (!mapRef.current) return
@@ -168,9 +173,20 @@ export function LiveTracking({
         const map = mapRef.current as InstanceType<typeof maplibregl.Map>
         if (!map) return
 
+        const match = snapToRoad([pos.lng, pos.lat], routePolylineRef.current)
+        const targetLngLat: [number, number] = match.isMatched
+          ? match.snappedCoord
+          : [pos.lng, pos.lat]
+
         if (providerMarkerRef.current) {
           const marker = providerMarkerRef.current as InstanceType<typeof maplibregl.Marker>
-          marker.setLngLat([pos.lng, pos.lat])
+          marker.setLngLat(targetLngLat)
+          const el = marker.getElement()
+          const rotation = pos.heading ?? (match.isMatched ? match.bearing : 0)
+          if (el && rotation) {
+            el.style.transform = `rotate(${rotation}deg)`
+            el.style.transition = "transform 0.4s ease"
+          }
         } else {
           const providerEl = document.createElement("div")
           providerEl.style.display = "flex"
@@ -182,17 +198,18 @@ export function LiveTracking({
           providerEl.style.backgroundColor = "#3b82f6"
           providerEl.style.border = "3px solid white"
           providerEl.style.boxShadow = "0 2px 10px rgba(59,130,246,0.5)"
-          providerEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5" fill="white" stroke="#3b82f6" stroke-width="2"/></svg>`
+          providerEl.style.transition = "transform 0.4s ease"
+          providerEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2"><path d="M12 2L19 21L12 17L5 21L12 2Z"/></svg>`
 
           const marker = new maplibregl.Marker({ element: providerEl })
-            .setLngLat([pos.lng, pos.lat])
+            .setLngLat(targetLngLat)
             .addTo(map)
           providerMarkerRef.current = marker
         }
 
         // Fit bounds to show both markers
         const bounds = new maplibregl.LngLatBounds()
-          .extend([pos.lng, pos.lat])
+          .extend(targetLngLat)
           .extend([destinationLng, destinationLat])
         map.fitBounds(bounds, { padding: 50, maxZoom: 16 })
       }
@@ -236,6 +253,19 @@ export function LiveTracking({
           const eta = (dist / 1000 / speedKmh) * 60
           setEtaMin(eta)
 
+          // Fetch route geometry for map matching if not already cached
+          if (!routePolylineRef.current) {
+            fetch(`/api/tracking/${bookingId}?lat=${pos.lat}&lng=${pos.lng}`)
+              .then((r) => (r.ok ? r.json() : null))
+              .then((data) => {
+                if (data?.route?.polyline) {
+                  routePolylineRef.current = data.route.polyline
+                  updateMarker(pos)
+                }
+              })
+              .catch(() => {})
+          }
+
           // Update map marker
           updateMarker(pos)
         } catch {
@@ -249,6 +279,7 @@ export function LiveTracking({
           const data = JSON.parse(e.data)
           if (data.type === "enter") {
             setGeofenceEntered(true)
+            vibrateSuccess()
           }
         } catch {
           /* ignore */
@@ -259,7 +290,14 @@ export function LiveTracking({
         if (cancelled) return
         try {
           const data = JSON.parse(e.data)
-          if (data.status) setBookingStatus(data.status)
+          if (data.status) {
+            setBookingStatus(data.status)
+            if (data.status === "COMPLETED") {
+              vibrateSuccess()
+            } else if (data.status === "CANCELLED") {
+              vibrateWarning()
+            }
+          }
         } catch {
           /* ignore */
         }
@@ -301,9 +339,14 @@ export function LiveTracking({
     let isMounted = true
 
     Promise.all([import("maplibre-gl"), import("maplibre-gl/dist/maplibre-gl.css")])
-      .then(([maplibreglModule]) => {
+      .then(async ([maplibreglModule]) => {
         if (!isMounted || !mapContainerRef.current) return
         const maplibregl = maplibreglModule as typeof import("maplibre-gl")
+
+        // Worker por URL ANTES da criação do mapa — o bundler quebra o worker
+        // blob do MapLibre (mapa em branco, zero tiles .pbf).
+        await ensureMaplibreWorker()
+        if (!isMounted || !mapContainerRef.current) return
 
         const map = new maplibregl.Map({
           container: mapContainerRef.current,
@@ -461,6 +504,29 @@ export function LiveTracking({
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Escrow Geofencing Protection Banner ── */}
+      <div className="dark:border-emerald-850 rounded-xl border border-emerald-500/30 bg-emerald-50/70 p-3.5 dark:bg-emerald-950/40">
+        <div className="flex items-start gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300">
+            <ShieldCheck className="size-5" />
+          </div>
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-bold text-emerald-950 dark:text-emerald-100">
+                Custódia Protegida com Geofencing
+              </span>
+              <span className="rounded-full bg-emerald-600/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                Governador Valadares
+              </span>
+            </div>
+            <p className="text-[11px] leading-relaxed text-emerald-800/90 dark:text-emerald-300/80">
+              O pagamento só é repassado ao prestador após ele estar presente no local e você
+              confirmar a conclusão do serviço com satisfação.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* ── Journey Timeline ── */}

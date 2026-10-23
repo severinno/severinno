@@ -1750,14 +1750,21 @@ export function hookWhatItAdded({ deltas = null, detection = null } = {}) {
   const semMedida = (rotulo) => `${rotulo}: NÃO MEDIDO nesta rodada`
   if (deltas === null) return [semMedida("o custo da oferta no commit")]
 
-  const ruido = (ms) => Math.abs(ms) <= HOOK_RUIDO_MS
+  // A DIREÇÃO do texto é a do gate dono (`hookCostViolations` acusa só com
+  // ms > HOOK_RUIDO_MS). Com Math.abs, uma medição NEGATIVA além do ruído — o
+  // hook mais RÁPIDO que a referência versionada, nunca a oferta paga — era
+  // publicada como "ATENÇÃO: ela está sendo alcançada", enquanto o gate
+  // acusava nada: o instrumento acusava o que não existe. Medido na forja
+  // (tasks 264 vs 271, mesma árvore f2084fd1): −58ms na 40 → texto errado →
+  // o teste que exige o texto coerente flacou; na 41, dentro do ruído → passou.
+  const paga = (ms) => ms > HOOK_RUIDO_MS
   return [
     deltas.ofertaComumMs === null
       ? semMedida("o custo da oferta no caminho comum")
       : `caminho COMUM (as duas fases passam): ${signedMillis(deltas.ofertaComumMs)} por commit` +
-        (ruido(deltas.ofertaComumMs)
-          ? " — a oferta NÃO é alcançada quando nada reprova (o `if` não abre)"
-          : " — ATENÇÃO: ela está sendo alcançada sem falha nenhuma"),
+        (paga(deltas.ofertaComumMs)
+          ? " — ATENÇÃO: ela está sendo alcançada sem falha nenhuma"
+          : " — a oferta NÃO é alcançada quando nada reprova (o `if` não abre)"),
     deltas.esperaMs === null
       ? semMedida("a espera separada do gate de sintaxe")
       : `espera SEPARADA do gate de sintaxe vs agregada no \`wait_all\`: ${signedMillis(deltas.esperaMs)}` +

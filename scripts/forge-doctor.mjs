@@ -703,7 +703,17 @@ export function forgeGates(content) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** O PISO de tempo por gate — o teto de quem NÃO tem custo versionado. */
-export const DEFAULT_TIMEOUT_S = 120
+// POR QUE 300 e não 120: o piso é o teto de TODO gate sem custo versionado —
+// hoje 34 dos 35 gates do job `guards` (o só derivado é o master de mutação,
+// cujo teto o bench deriva sozinho). O gate MAIS CARO dessa maioria, medido na
+// baseline v7 (árvore 003c705d), é o `check:prove-docs`: 15.6s WARM — e warm é
+// a MELHOR hipótese: na forja o doctor roda com concorrência 4, então tsc e
+// vitest cold disputam CPU com 3 vizinhos. O piso velho (120s) nasceu do gate
+// mais caro de outra época; um "não terminou em 120s" que parece do ambiente e
+// é do piso é o mesmo defeito que o teto derivado já fechou para o master.
+// 300s dá ~3x sobre o warm medido e segue longe do derivado do master
+// (1662s), que não depende dele.
+export const DEFAULT_TIMEOUT_S = 300
 
 /**
  * A MARGEM do teto derivado. Ela é DECLARADA, não medida: o custo do bench é de
@@ -6579,7 +6589,7 @@ Opções:
                          Repetível; BUN_VERSION entra por --expected
   --gitea-env <path>     env do HOST (default: deploy/.env.gitea) — e ele que o
                          doctor compara com o template comitado
-  --timeout <segundos>   PISO de tempo por gate (default: 120). O TETO de um gate
+  --timeout <segundos>   PISO de tempo por gate (default: 300). O TETO de um gate
                          é max(piso, custo versionado do bench × 1.5) — sem o
                          derivado, um gate de 395s nunca caberia em 120s e o
                          veredito carregaria um não-provado estrutural.
@@ -6685,7 +6695,7 @@ export function parseArgs(argv) {
     envFile: DEFAULT_ENV_FILE,
     expected: null,
     expectedVars: {},
-    timeoutS: 120,
+    timeoutS: DEFAULT_TIMEOUT_S,
     json: false,
     help: false,
     error: null,
@@ -6864,7 +6874,7 @@ export async function diagnose({
   benchFreshness = true,
   preCommitProof = true,
   prePushProof = true,
-  timeoutS = 120,
+  timeoutS = DEFAULT_TIMEOUT_S,
   run,
   imageDeps = {},
   imageRefsDeps = {},
@@ -7340,6 +7350,21 @@ export async function diagnose({
  * inteiro no pipe ANTES do exit. É a mesma defesa do guard de recursão, num
  * canal diferente — o do transporte do relatório.
  *
+ * A promessa é CUMPRIDA, e a forma importa: este módulo tem top-level await na
+ * entrada CLI (`if (IS_DIRECT_RUN) await main()`), e a régua do fecho de TLA
+ * mantém a entrada no TOPO do runtime por desenho. Sob o node ≥ 22 (medido na
+ * imagem do runner, v24.19.0, em 30/09/2026), um top-level await pendente é uma
+ * razão de ENCERRAMENTO do runtime: quando o event loop drena, o node mata o
+ * processo com exit 13 e um aviso no stderr (`unsettled top-level await`) — e
+ * um `return` aqui deixaria o promise de `main()` NUNCA se estabelecendo, com o
+ * relatório intacto e o job do doctor MORRENDO de TLA (exit 13) em vez de sair
+ * com o veredito. `process.exit()` dentro da função resolvida NÃO basta por si
+ * (medido na rodada ad83e264, na forja: a função resolve DENTRO do microtask do
+ * TLA e o runtime ENFILEIRA a checagem do await pendente no MESMO tick — o
+ * processo saiu 13 com o relatório INTEIRO já no pipe); o `setImmediate` abaixo
+ * é o que separa o exit do ciclo de vida do TLA (provado in-image no node
+ * v24.19.0: rc do veredito, 42KB de relatório, 0 avisos).
+ *
  * @param {number} code
  * @returns {Promise<never>}
  */
@@ -7347,6 +7372,16 @@ async function exitAfterFlush(code) {
   while (process.stdout.writableLength > 0) {
     await new Promise((resolve) => process.stdout.once("drain", resolve))
   }
+  // A VOLTA de um await pendente na pilha (o `await main()` do TLA) resolve esta
+  // função DENTRO do microtask do TLA — e o node ≥ 22 ENFILEIRA a checagem de TLA
+  // pendente para o MESMO tick: mesmo com o `process.exit()` na próxima linha, o
+  // aviso 'unsettled top-level await' ganha e o processo sai 13 (medido na rodada
+  // ad83e264, na forja: o relatório saiu INTEIRO e o gate morreu 13 depois dele).
+  // O `setImmediate` move o exit para a fila de CHECK do event loop — o runtime
+  // conclui o ciclo de vida do TLA pendente primeiro, sem aviso — e o exit sai
+  // com o veredito (a régua da casa é medir, nunca presumir: este comentário
+  // carrega a medida).
+  await new Promise((resolve) => setImmediate(resolve))
   process.exit(code)
 }
 
@@ -7403,4 +7438,23 @@ async function main() {
 
 const IS_DIRECT_RUN =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
-if (IS_DIRECT_RUN) await main()
+// A ENTRADA NÃO É UM TLA (medido DUAS vezes na forja: 4512d309 matava com o
+// `return` que deixava a promessa pendente — e ad83e264→dbcaeee1 matou DE NOVO
+// com o `await main()` do topo: o `setImmediate` do exitAfterFlush cobriu o
+// caminho --ci isolado (provado in-image), mas o cenário do bring-up — doctor
+// com --gitea-env, relatório de ~30KB e stdout em PIPE — enunciou o TLA de novo
+// (exit 13 DEPOIS do relatório inteiro, rodada dbcaeee1). A classe inteira
+// desaparece por construção: sem `await` no nível do módulo NÃO EXISTE await
+// pendente para o node ≥ 22 enunciar. Quem segura a execução é a promessa de
+// `main()` — ela termina em `exitAfterFlush` (process.exit) ou, num bug que a
+// REJEITE, no segundo handler (diagnóstico no stderr + exit 3, nunca um
+// unhandled rejection silencioso).
+if (IS_DIRECT_RUN) {
+  main().then(
+    () => {},
+    (err) => {
+      console.error("forge-doctor:", err)
+      process.exit(3)
+    },
+  )
+}

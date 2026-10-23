@@ -103,7 +103,7 @@ describe("GET /api/admin/finance/provider-transactions", () => {
     const req = new Request(
       "http://localhost/api/admin/finance/provider-transactions?providerId=prov-1&period=all",
     )
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)
@@ -125,7 +125,7 @@ describe("GET /api/admin/finance/provider-transactions", () => {
     const req = new Request(
       "http://localhost/api/admin/finance/provider-transactions?providerId=prov-1&period=all",
     )
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     // total = 50000 + 30000 = 80000
@@ -139,7 +139,7 @@ describe("GET /api/admin/finance/provider-transactions", () => {
 
   it("returns 400 when providerId is missing", async () => {
     const req = new Request("http://localhost/api/admin/finance/provider-transactions")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(400)
@@ -151,7 +151,7 @@ describe("GET /api/admin/finance/provider-transactions", () => {
     const req = new Request(
       "http://localhost/api/admin/finance/provider-transactions?providerId=prov-99&period=all",
     )
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)
@@ -168,7 +168,7 @@ describe("GET /api/admin/finance/provider-transactions", () => {
     const req = new Request(
       "http://localhost/api/admin/finance/provider-transactions?providerId=prov-1",
     )
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(403)
   })
 
@@ -177,7 +177,7 @@ describe("GET /api/admin/finance/provider-transactions", () => {
     const req = new Request(
       "http://localhost/api/admin/finance/provider-transactions?providerId=prov-1&period=90d",
     )
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(res.status).toBe(200)

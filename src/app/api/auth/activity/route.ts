@@ -6,11 +6,10 @@
  */
 
 import { NextResponse } from "next/server"
+import { withRoute } from "@/lib/api-route"
 import { getSession } from "@/lib/auth"
+import { unauthorized } from "@/lib/api-server"
 import { getClient } from "@/lib/redis"
-import logger from "@/lib/logger"
-
-const log = logger.child({ module: "api-activity-log" })
 
 export type ActivityItem = {
   id: string
@@ -30,72 +29,40 @@ export type ActivityItem = {
   metadata?: Record<string, unknown>
 }
 
-/**
- * Helper to record activity to Redis
- */
-export async function recordUserActivity(
-  userId: string,
-  activity: Omit<ActivityItem, "id" | "timestamp">,
-) {
-  try {
-    const redis = getClient()
-    if (!redis) return
-
-    const item: ActivityItem = {
-      ...activity,
-      id: `act_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      timestamp: Date.now(),
-    }
-
-    const key = `activity:${userId}`
-    await redis.lpush(key, JSON.stringify(item))
-    await redis.ltrim(key, 0, 99) // keep last 100
-    await redis.expire(key, 90 * 24 * 3600) // 90 days TTL
-  } catch (err) {
-    log.warn({ err, userId }, "Failed to record user activity log")
-  }
-}
-
-export async function GET() {
+export const GET = withRoute("api.auth.activity.GET", async () => {
   const session = await getSession()
   if (!session?.userId) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
+    throw unauthorized("Não autorizado")
   }
 
-  try {
-    const redis = getClient()
-    if (!redis) {
-      return NextResponse.json({ activities: [] })
-    }
+  const redis = getClient()
+  if (!redis) {
+    return NextResponse.json({ activities: [] })
+  }
 
-    const key = `activity:${session.userId}`
-    const rawItems = await redis.lrange(key, 0, 49)
+  const key = `activity:${session.userId}`
+  const rawItems = await redis.lrange(key, 0, 49)
 
-    const activities: ActivityItem[] = rawItems
-      .map((str) => {
-        try {
-          const parsed = JSON.parse(str)
-          // Normalization in case raw payload was pushed earlier
-          return {
-            id: parsed.id || `act_${parsed.timestamp}`,
-            type: parsed.type || "general",
-            title: parsed.title || getTitleForType(parsed.type),
-            description: parsed.description,
-            timestamp: parsed.timestamp || Date.now(),
-            metadata: parsed.metadata || parsed,
-          }
-        } catch {
-          return null
+  const activities: ActivityItem[] = rawItems
+    .map((str) => {
+      try {
+        const parsed = JSON.parse(str)
+        return {
+          id: parsed.id || `act_${parsed.timestamp}`,
+          type: parsed.type || "general",
+          title: parsed.title || getTitleForType(parsed.type),
+          description: parsed.description,
+          timestamp: parsed.timestamp || Date.now(),
+          metadata: parsed.metadata || parsed,
         }
-      })
-      .filter(Boolean) as ActivityItem[]
+      } catch {
+        return null
+      }
+    })
+    .filter(Boolean) as ActivityItem[]
 
-    return NextResponse.json({ activities })
-  } catch (err) {
-    log.error({ err, userId: session.userId }, "Error fetching user activity")
-    return NextResponse.json({ error: "Erro ao buscar histórico" }, { status: 500 })
-  }
-}
+  return NextResponse.json({ activities })
+})
 
 function getTitleForType(type: string): string {
   switch (type) {

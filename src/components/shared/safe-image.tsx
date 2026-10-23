@@ -1,7 +1,9 @@
 import Image from "next/image"
+import { generateShimmerSvg } from "@/lib/image-optimization"
 
 /**
- * SafeImage — next/image com fallback para URLs não-otimizáveis.
+ * SafeImage — next/image com fallback para URLs não-otimizáveis
+ * e suporte nativo a LQIP Shimmer para eliminar CLS (Cumulative Layout Shift).
  *
  * blob:/data: URLs (preview local de upload) não podem passar pelo
  * otimizador /_next/image; URLs http(s) (S3/CDN/MinIO) são otimizadas
@@ -16,6 +18,8 @@ type SafeImageProps = {
   priority?: boolean
   loading?: "lazy" | "eager"
   unoptimized?: boolean
+  blur?: boolean
+  blurDataURL?: string
 }
 
 function isOptimizable(src: string): boolean {
@@ -38,11 +42,26 @@ function SafeImage({
   priority,
   loading,
   unoptimized,
+  blur,
+  blurDataURL,
 }: SafeImageProps) {
   if (!isOptimizable(src)) {
-    // eslint-disable-next-line @next/next/no-img-element -- non-optimizable (blob/data/relative without /) URL
-    return <img src={src} alt={alt} className={className} loading={loading} />
+    return (
+      // src não-otimizável (data/blob/externo sem loader): next/image não cobre
+      // este ramo por desenho (o componente existe para o fallback).
+      /* eslint-disable-next-line @next/next/no-img-element */
+      <img
+        src={src}
+        alt={alt}
+        className={`h-full w-full object-cover ${className ?? ""}`.trim()}
+        loading={loading}
+      />
+    )
   }
+
+  const hasBlur = blur || !!blurDataURL
+  const effectiveBlurUrl = blurDataURL ?? (blur ? generateShimmerSvg() : undefined)
+
   return (
     <Image
       src={src}
@@ -52,6 +71,8 @@ function SafeImage({
       className={className}
       priority={priority}
       loading={loading}
+      placeholder={hasBlur ? "blur" : "empty"}
+      blurDataURL={effectiveBlurUrl}
       unoptimized={unoptimized ?? process.env.NODE_ENV === "test"}
     />
   )

@@ -9,7 +9,21 @@
  */
 
 export type SyncActionType =
-  "CHECKIN" | "STATUS_UPDATE" | "SEND_MESSAGE" | "UPLOAD_PHOTO" | "COMPLETE_JOB" | "GENERATE_PIN"
+  | "CHECKIN"
+  | "STATUS_UPDATE"
+  | "SEND_MESSAGE"
+  | "UPLOAD_PHOTO"
+  | "COMPLETE_JOB"
+  | "GENERATE_PIN"
+  | "REQUEST_QUOTE"
+  | "ADD_REVIEW"
+  | "EMERGENCY_SOS"
+
+export interface CacheEntry<T> {
+  data: T
+  cachedAt: number
+  expiresAt: number
+}
 
 export interface QueuedMutation<T = Record<string, unknown>> {
   id: string
@@ -69,26 +83,49 @@ function saveOfflineQueue(): void {
  * Enqueues a new mutation to be processed when online
  */
 export function enqueueOfflineMutation<T extends Record<string, unknown>>(
-  action: SyncActionType,
-  entityId: string,
-  payload: T,
+  actionOrOpts:
+    SyncActionType | { action: SyncActionType; entityId: string; payload: T; maxAttempts?: number },
+  entityId?: string,
+  payload?: T,
   maxAttempts: number = 5,
 ): QueuedMutation<T> {
+  let action: SyncActionType
+  let entId: string
+  let pl: T
+  let maxAtt: number
+
+  if (typeof actionOrOpts === "object" && actionOrOpts !== null) {
+    action = actionOrOpts.action
+    entId = actionOrOpts.entityId
+    pl = actionOrOpts.payload
+    maxAtt = actionOrOpts.maxAttempts ?? 5
+  } else {
+    action = actionOrOpts
+    entId = entityId!
+    pl = payload!
+    maxAtt = maxAttempts
+  }
+
   const mutation: QueuedMutation<T> = {
     id: `sync-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     action,
-    entityId,
-    payload,
+    entityId: entId,
+    payload: pl,
     createdAt: Date.now(),
     attempts: 0,
-    maxAttempts,
+    maxAttempts: maxAtt,
     status: "PENDING",
   }
 
   memoryQueue.push(mutation as QueuedMutation)
   saveOfflineQueue()
+  if (typeof window !== "undefined") {
+    registerBackgroundSync("sync-offline-actions").catch(() => {})
+  }
   return mutation
 }
+
+export const queueMutation = enqueueOfflineMutation
 
 /**
  * Returns all pending mutations sorted by creation timestamp
@@ -154,5 +191,150 @@ export function clearOfflineQueue(): void {
   memoryQueue = []
   if (typeof window !== "undefined" && window.localStorage) {
     localStorage.removeItem(STORAGE_KEY)
+  }
+}
+
+/**
+ * Stores arbitrary item in local cache with TTL
+ */
+export function cacheItemLocally<T>(
+  key: string,
+  data: T,
+  ttlMs: number = 24 * 60 * 60 * 1000,
+): void {
+  if (typeof window === "undefined" || !window.localStorage) return
+  try {
+    const entry: CacheEntry<T> = {
+      data,
+      cachedAt: Date.now(),
+      expiresAt: Date.now() + ttlMs,
+    }
+    localStorage.setItem(`severinno_cache_${key}`, JSON.stringify(entry))
+  } catch {
+    // Ignore storage quota limits
+  }
+}
+
+/**
+ * Retrieves cached item if not expired
+ */
+export function getCachedItem<T>(key: string): T | null {
+  if (typeof window === "undefined" || !window.localStorage) return null
+  try {
+    const raw = localStorage.getItem(`severinno_cache_${key}`)
+    if (!raw) return null
+    const entry: CacheEntry<T> = JSON.parse(raw)
+    if (Date.now() > entry.expiresAt) {
+      localStorage.removeItem(`severinno_cache_${key}`)
+      return null
+    }
+    return entry.data
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Caches public provider profile for offline viewing (48h TTL)
+ */
+export function cacheProviderProfileLocally(slug: string, profile: unknown): void {
+  cacheItemLocally(`provider_profile_${slug}`, profile, 48 * 60 * 60 * 1000)
+}
+
+/**
+ * Gets cached public provider profile
+ */
+export function getCachedProviderProfile<T = unknown>(slug: string): T | null {
+  return getCachedItem<T>(`provider_profile_${slug}`)
+}
+
+/**
+ * Caches user bookings for offline consultation (12h TTL)
+ */
+export function cacheBookingsLocally(userId: string, bookings: unknown[]): void {
+  cacheItemLocally(`user_bookings_${userId}`, bookings, 12 * 60 * 60 * 1000)
+}
+
+/**
+ * Gets cached bookings
+ */
+export function getCachedBookings<T = unknown[]>(userId: string): T | null {
+  return getCachedItem<T>(`user_bookings_${userId}`)
+}
+
+/**
+ * Checks current browser online connectivity
+ */
+export function isOnline(): boolean {
+  if (typeof navigator === "undefined") return true
+  return navigator.onLine ?? true
+}
+
+/**
+ * Registers background sync with Service Worker (SyncManager) or sets an online event fallback
+ */
+export async function registerBackgroundSync(
+  tag: string = "sync-offline-actions",
+): Promise<boolean> {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
+    return false
+  }
+
+  try {
+    const reg = await navigator.serviceWorker.ready
+    const syncManager = (reg as unknown as { sync?: { register: (t: string) => Promise<void> } })
+      .sync
+    if (syncManager && typeof syncManager.register === "function") {
+      await syncManager.register(tag)
+      return true
+    }
+  } catch {
+    // Background Sync may be restricted by permissions or browser policy
+  }
+
+  // Fallback: listen to window "online" event to auto-flush
+  if (typeof window !== "undefined" && window.addEventListener) {
+    window.addEventListener(
+      "online",
+      () => {
+        window.dispatchEvent(new CustomEvent("severinno:trigger-offline-sync"))
+      },
+      { once: true },
+    )
+  }
+
+  return false
+}
+
+/**
+ * Enqueues an outgoing network request directly into the Service Worker sync cache (severinno-sync-v1)
+ */
+export async function queueBackgroundSyncRequest(
+  url: string,
+  body: Record<string, unknown>,
+  method: string = "POST",
+): Promise<boolean> {
+  if (typeof window === "undefined") return false
+
+  try {
+    if ("caches" in window) {
+      const cache = await window.caches.open("severinno-sync-v1")
+      const syncId = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+      const requestUrl = url.includes("?")
+        ? `${url}&_offline_sync_id=${syncId}`
+        : `${url}?_offline_sync_id=${syncId}`
+
+      const req = new Request(requestUrl, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      await cache.put(req, new Response(JSON.stringify({ status: "queued", syncId })))
+    }
+
+    await registerBackgroundSync("sync-offline-actions")
+    return true
+  } catch {
+    return false
   }
 }

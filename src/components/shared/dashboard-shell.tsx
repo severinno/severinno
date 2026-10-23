@@ -21,38 +21,46 @@
  */
 
 import * as React from "react"
+import Image from "next/image"
 import { useTheme } from "next-themes"
-import { motion } from "framer-motion"
 import {
-  Bell,
-  Check,
-  CheckCheck,
   ChevronRight,
   LayoutDashboard,
-  Loader2,
   LogOut,
   MapPin,
   Menu,
   Moon,
+  Search,
   Sun,
+  X,
   type LucideIcon,
 } from "lucide-react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
 import { APP_NAME, ROLE_LABELS, NOTIFICATION_TYPE_LABELS } from "@/lib/constants"
-import { formatRelative } from "@/lib/format"
+import { PwaInstallBanner } from "@/components/shared/pwa-install-banner"
+import { PushPromptBanner } from "@/components/shared/push-prompt-banner"
+import { MobileBottomNav } from "@/components/shared/mobile-bottom-nav"
 import { apiGet, apiPatch } from "@/lib/api"
-import { useTransactionNotificationSound, useWelcomeSound } from "@/lib/use-coin-sound"
+import { triggerHaptic } from "@/lib/haptics"
+import { useRealtime } from "@/hooks/use-realtime"
+import {
+  useCoinSound,
+  useTransactionNotificationSound,
+  useWelcomeSound,
+} from "@/lib/use-coin-sound"
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 import { MuteIndicator } from "@/components/shared/mute-indicator"
 import { VibrationIndicator } from "@/components/shared/vibration-indicator"
+import { WalletBalancePill } from "@/components/shared/wallet-balance-pill"
+import { useFaviconBadge } from "@/hooks/use-favicon-badge"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import {
   DropdownMenu,
@@ -81,6 +89,11 @@ import {
 } from "@/components/ui/sidebar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
+import { NotificationsBell, PushNotificationButton } from "./shell"
+import { GlobalCommandPalette, CommandPaletteTrigger } from "./global-command-palette"
+import { SpotlightOnboardingTour } from "./spotlight-onboarding-tour"
+import { NotificationsDrawer } from "./notifications-drawer"
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -90,6 +103,11 @@ export type NavItem = {
   icon: LucideIcon
   view: string
   badge?: number | string
+}
+
+export type NavGroup = {
+  label: string
+  items: NavItem[]
 }
 
 export type Breadcrumb = { label: string; onClick?: () => void }
@@ -103,7 +121,8 @@ type ShellUser = {
 }
 
 export type DashboardShellProps = {
-  navItems: NavItem[]
+  navItems?: NavItem[]
+  navGroups?: NavGroup[]
   currentView: string
   title: string
   subtitle?: string
@@ -112,6 +131,7 @@ export type DashboardShellProps = {
   panelIcon: LucideIcon
   user?: ShellUser | null
   onNavigate: (view: string) => void
+  headerActions?: React.ReactNode
   children: React.ReactNode
   className?: string
 }
@@ -158,54 +178,6 @@ const NOTIFICATION_ROUTES: Record<string, string> = {
   UPDATE: "client.dashboard",
 }
 
-/** Agrupa notificações por período: Hoje, Ontem, Esta semana, Este mês, Anterior */
-function groupNotificationsByDate(
-  items: NotificationItem[],
-): Array<{ label: string; items: NotificationItem[] }> {
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
-  const thisWeekStart = new Date(today)
-  thisWeekStart.setDate(thisWeekStart.getDate() - today.getDay()) // domingo
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-
-  const groups: Record<string, NotificationItem[]> = {
-    today: [],
-    yesterday: [],
-    week: [],
-    month: [],
-    older: [],
-  }
-
-  for (const item of items) {
-    const d = new Date(item.createdAt)
-    if (d >= today) {
-      groups.today.push(item)
-    } else if (d >= yesterday) {
-      groups.yesterday.push(item)
-    } else if (d >= thisWeekStart) {
-      groups.week.push(item)
-    } else if (d >= thisMonthStart) {
-      groups.month.push(item)
-    } else {
-      groups.older.push(item)
-    }
-  }
-
-  const labels: Record<string, string> = {
-    today: "Hoje",
-    yesterday: "Ontem",
-    week: "Esta semana",
-    month: "Este mês",
-    older: "Anterior",
-  }
-
-  return Object.entries(groups)
-    .filter(([, groupItems]) => groupItems.length > 0)
-    .map(([key, groupItems]) => ({ label: labels[key], items: groupItems }))
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -227,12 +199,6 @@ const DASHBOARD_VIEW: Record<string, string> = {
   ADMIN: "admin.dashboard",
 }
 
-// Reusable motion presets for staggered card mount.
-const cardMotion = {
-  initial: { opacity: 0, y: 8 },
-  animate: { opacity: 1, y: 0 },
-} as const
-
 // ---------------------------------------------------------------------------
 // Shared nav item styles — used by both desktop SidebarMenuButton and mobile Sheet
 // ---------------------------------------------------------------------------
@@ -250,15 +216,17 @@ const NAV_ICON_INACTIVE = "!text-muted-foreground"
 // ---------------------------------------------------------------------------
 
 export function DashboardShell({
-  navItems,
+  navItems = [],
+  navGroups,
   currentView,
   title,
   subtitle,
   breadcrumbs,
   panelLabel,
-  panelIcon: PanelIcon,
+  panelIcon: _PanelIcon,
   user,
   onNavigate,
+  headerActions,
   children,
   className,
 }: DashboardShellProps) {
@@ -267,6 +235,30 @@ export function DashboardShell({
   const navigate = useViewStore((s) => s.navigate)
   const { resolvedTheme, setTheme } = useTheme()
   const [mobileOpen, setMobileOpen] = React.useState(false)
+  const [navSearch, setNavSearch] = React.useState("")
+  const [collapsedGroups, setCollapsedGroups] = React.useState<Record<string, boolean>>({})
+  const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false)
+  const [notificationsDrawerOpen, setNotificationsDrawerOpen] = React.useState(false)
+  const [tourOpen, setTourOpen] = React.useState(false)
+
+  const toggleGroup = (label: string) => {
+    triggerHaptic("selection")
+    setCollapsedGroups((prev) => ({ ...prev, [label]: !prev[label] }))
+  }
+
+  const filteredNavGroups = React.useMemo(() => {
+    if (!navGroups) return undefined
+    const q = navSearch.trim().toLowerCase()
+    if (!q) return navGroups
+    return navGroups
+      .map((g) => ({
+        ...g,
+        items: g.items.filter(
+          (it) => it.label.toLowerCase().includes(q) || g.label.toLowerCase().includes(q),
+        ),
+      }))
+      .filter((g) => g.items.length > 0)
+  }, [navGroups, navSearch])
 
   // ---- Notifications query (auto-refresh 30s) -------------------------------
   const notificationsQuery = useQuery<NotificationsResponse>({
@@ -304,7 +296,174 @@ export function DashboardShell({
   // ---- Welcome sound on first panel entry (once per browser) ---------------
   useWelcomeSound()
 
+  // ---- Realtime notifications, bookings, quotes & messages -----------------
+  const { on: onRealtime } = useRealtime()
+  const { playCoin } = useCoinSound()
+
+  React.useEffect(() => {
+    // 1. In-app new notification received
+    const unbindNotif = onRealtime<{
+      id: string
+      type?: string
+      title?: string
+      content?: string
+      body?: string
+    }>("notification:new", (notif) => {
+      qc.invalidateQueries({ queryKey: ["notifications"] })
+      qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+      qc.invalidateQueries({ queryKey: ["provider", "dashboard"] })
+      triggerHaptic("medium")
+      try {
+        playCoin()
+      } catch {}
+
+      const routeKey = notif.type?.toUpperCase() ?? ""
+      const targetView = NOTIFICATION_ROUTES[routeKey] || "client.dashboard"
+      const label = notif.type ? NOTIFICATION_TYPE_LABELS[notif.type] : undefined
+
+      toast(notif.title || label || "Nova notificação", {
+        description: notif.content || notif.body || "Você tem uma nova notificação.",
+        action: {
+          label: "Ver",
+          onClick: () => navigate(targetView),
+        },
+      })
+    })
+
+    // 2. Booking status updated
+    const unbindBooking = onRealtime<{
+      bookingId: string
+      status: string
+      clientId: string
+      providerId: string
+    }>("booking:updated", (evt) => {
+      qc.invalidateQueries({ queryKey: ["bookings"] })
+      qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+      qc.invalidateQueries({ queryKey: ["provider", "agenda"] })
+      triggerHaptic("success")
+      const targetView = user?.role === "PROVIDER" ? "provider.agenda" : "client.bookings"
+
+      toast.info("Atualização no agendamento", {
+        description: `Status alterado para: ${evt.status}`,
+        action: {
+          label: "Ver Reserva",
+          onClick: () => navigate(targetView),
+        },
+      })
+    })
+
+    // 3. Quote updated
+    const unbindQuote = onRealtime<{
+      quoteId: string
+      status: string
+      clientId: string
+      providerId: string
+    }>("quote:updated", (evt) => {
+      qc.invalidateQueries({ queryKey: ["quotes"] })
+      qc.invalidateQueries({ queryKey: ["client", "quotes"] })
+      qc.invalidateQueries({ queryKey: ["provider", "quotes"] })
+      triggerHaptic("medium")
+      const targetView = user?.role === "PROVIDER" ? "provider.quotes" : "client.quotes"
+
+      toast.info("Atualização no orçamento", {
+        description: `Status atualizado para: ${evt.status}`,
+        action: {
+          label: "Ver Orçamento",
+          onClick: () => navigate(targetView),
+        },
+      })
+    })
+
+    // 4. Message received
+    const unbindMessage = onRealtime<{
+      id: string
+      fromId: string
+      toId: string
+      content: string
+      bookingId?: string | null
+    }>("message:new", (msg) => {
+      if (user?.id && msg.fromId === user.id) return
+      qc.invalidateQueries({ queryKey: ["messages"] })
+      qc.invalidateQueries({ queryKey: ["conversations"] })
+      triggerHaptic("selection")
+      const targetView = user?.role === "PROVIDER" ? "provider.messages" : "client.messages"
+
+      toast("Nova mensagem", {
+        description: msg.content.length > 50 ? `${msg.content.slice(0, 50)}...` : msg.content,
+        action: {
+          label: "Responder",
+          onClick: () => navigate(targetView),
+        },
+      })
+    })
+
+    // 5. Provider arrived at service location (client sees instant toast)
+    const unbindArrived = onRealtime<{
+      bookingId: string
+      clientId: string
+      providerId: string
+      providerName: string
+      serviceName: string
+    }>("provider:arrived", (evt) => {
+      qc.invalidateQueries({ queryKey: ["bookings"] })
+      qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+      triggerHaptic("success")
+      try {
+        playCoin()
+      } catch {}
+
+      toast.success("📍 Prestador chegou ao local!", {
+        description: `${evt.providerName} está no local do atendimento para "${evt.serviceName}".`,
+        action: {
+          label: "Ver Agendamento",
+          onClick: () => navigate("client.bookings"),
+        },
+      })
+    })
+
+    // 6. Payment confirmed in real-time (both client and provider)
+    const unbindPayment = onRealtime<{
+      bookingId: string
+      clientId: string
+      providerId?: string
+      amount?: number
+      paymentMethod?: string
+    }>("payment:confirmed", (evt) => {
+      qc.invalidateQueries({ queryKey: ["bookings"] })
+      qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+      qc.invalidateQueries({ queryKey: ["provider", "dashboard"] })
+      qc.invalidateQueries({ queryKey: ["provider", "finance"] })
+      triggerHaptic("success")
+      try {
+        playCoin()
+      } catch {}
+
+      const amountStr = evt.amount ? ` R$ ${evt.amount.toFixed(2)}` : ""
+      const isProvider = user?.role === "PROVIDER"
+
+      toast.success(isProvider ? "💰 Pagamento confirmado!" : "✅ Pagamento recebido!", {
+        description: isProvider
+          ? `Pagamento${amountStr} confirmado — valor disponível para saque.`
+          : `Seu pagamento${amountStr} foi confirmado com sucesso.`,
+        action: {
+          label: isProvider ? "Ver Financeiro" : "Ver Agendamento",
+          onClick: () => navigate(isProvider ? "provider.finance" : "client.bookings"),
+        },
+      })
+    })
+
+    return () => {
+      unbindNotif()
+      unbindBooking()
+      unbindQuote()
+      unbindMessage()
+      unbindArrived()
+      unbindPayment()
+    }
+  }, [onRealtime, qc, navigate, user?.id, user?.role, playCoin])
+
   const handleNav = (view: string) => {
+    triggerHaptic("selection")
     setMobileOpen(false)
     onNavigate(view)
   }
@@ -312,13 +471,40 @@ export function DashboardShell({
   // ---- Sidebar header -------------------------------------------------------
   const sidebarHeader = (
     <SidebarHeader className="pb-0">
-      <div className="flex items-center gap-3 px-3 pt-3 pb-4">
-        <span className="bg-primary text-primary-foreground flex size-9 shrink-0 items-center justify-center rounded-xl">
-          <PanelIcon className="size-[18px]" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-foreground truncate text-sm font-bold tracking-tight">{APP_NAME}</p>
-          <p className="text-muted-foreground/70 truncate text-[11px] font-medium">{panelLabel}</p>
+      <div className="flex items-center gap-2.5 px-3 pt-3 pb-4">
+        <div className="ring-border/50 relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-2xs ring-1">
+          <Image
+            src="/brand-icon.png"
+            alt="Severinno"
+            width={36}
+            height={36}
+            className="size-9 object-contain"
+            priority
+          />
+        </div>
+        <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+          <div className="flex items-center">
+            <Image
+              src="/brand-wordmark-black.png"
+              alt={APP_NAME}
+              width={88}
+              height={14}
+              className="h-3.5 w-auto object-contain dark:hidden"
+              priority
+            />
+            <Image
+              src="/brand-wordmark-white.png"
+              alt={APP_NAME}
+              width={88}
+              height={14}
+              className="hidden h-3.5 w-auto object-contain dark:block"
+              priority
+            />
+            <span className="sr-only">{APP_NAME}</span>
+          </div>
+          <p className="text-muted-foreground/75 mt-0.5 truncate text-[11px] font-medium tracking-tight">
+            {panelLabel}
+          </p>
         </div>
       </div>
       <SidebarSeparator className="mx-3 w-auto" />
@@ -326,7 +512,96 @@ export function DashboardShell({
   )
 
   // ---- Sidebar nav (desktop) -----------------------------------------------
-  const navList = (
+  const navList = filteredNavGroups ? (
+    <div className="flex flex-col gap-0.5 py-1">
+      {navGroups && navGroups.length > 2 ? (
+        <div className="px-2.5 pb-1.5">
+          <div className="relative">
+            <Search className="text-muted-foreground/60 pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
+            <input
+              type="text"
+              value={navSearch}
+              onChange={(e) => setNavSearch(e.target.value)}
+              placeholder="Filtrar menu…"
+              aria-label="Filtrar menu lateral"
+              className="border-border/60 bg-muted/30 placeholder:text-muted-foreground/60 focus:border-primary/50 focus:bg-background h-7 w-full rounded-lg border pr-6 pl-7 text-xs transition-colors outline-none"
+            />
+            {navSearch ? (
+              <button
+                type="button"
+                onClick={() => setNavSearch("")}
+                aria-label="Limpar busca do menu"
+                className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1.5 -translate-y-1/2 rounded p-0.5"
+              >
+                <X className="size-3" />
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+      {filteredNavGroups.map((group) => {
+        const hasActiveItem = group.items.some((it) => it.view === currentView)
+        const isCollapsed =
+          !navSearch.trim() && !hasActiveItem && Boolean(collapsedGroups[group.label])
+        return (
+          <SidebarGroup key={group.label} className="py-0.5">
+            <SidebarGroupLabel asChild>
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.label)}
+                className="text-muted-foreground/75 hover:text-foreground flex h-6 w-full items-center justify-between px-3 text-[10px] font-semibold tracking-wider uppercase transition-colors"
+              >
+                <span className="truncate">{group.label}</span>
+                <ChevronRight
+                  className={cn(
+                    "size-3 shrink-0 transition-transform duration-150",
+                    !isCollapsed && "rotate-90",
+                  )}
+                />
+              </button>
+            </SidebarGroupLabel>
+            {!isCollapsed ? (
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-0.5 px-2">
+                  {group.items.map((item) => {
+                    const Icon = item.icon
+                    const active = currentView === item.view
+                    return (
+                      <SidebarMenuItem key={item.view}>
+                        <SidebarMenuButton
+                          isActive={active}
+                          onClick={() => handleNav(item.view)}
+                          tooltip={item.label}
+                          size="default"
+                          className={cn(
+                            "relative h-8 rounded-lg text-sm font-normal transition-colors duration-150",
+                            active ? NAV_ITEM_ACTIVE : NAV_ITEM_INACTIVE,
+                          )}
+                        >
+                          <Icon
+                            className={cn(
+                              "!size-[15px] shrink-0 transition-colors duration-150",
+                              active ? NAV_ICON_ACTIVE : NAV_ICON_INACTIVE,
+                            )}
+                          />
+                          <span className="truncate text-[12.5px]">{item.label}</span>
+                          {item.badge != null && item.badge !== 0 ? (
+                            <span className="bg-primary text-primary-foreground ml-auto inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-semibold tabular-nums">
+                              {item.badge}
+                            </span>
+                          ) : null}
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    )
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            ) : null}
+          </SidebarGroup>
+        )
+      })}
+    </div>
+  ) : (
     <SidebarGroup>
       <SidebarGroupLabel className="text-muted-foreground/70 h-7 px-3 text-[11px] font-medium tracking-wider uppercase">
         Navegação
@@ -393,8 +668,11 @@ export function DashboardShell({
         <Button
           variant="ghost"
           size="icon"
-          className="text-muted-foreground size-8 shrink-0 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/30"
-          onClick={() => logout()}
+          className="text-muted-foreground size-8 shrink-0 transition-all hover:bg-rose-50 hover:text-rose-500 active:scale-95 dark:hover:bg-rose-950/30"
+          onClick={() => {
+            triggerHaptic("selection")
+            logout()
+          }}
           aria-label="Sair"
           title="Sair"
         >
@@ -404,8 +682,8 @@ export function DashboardShell({
     </SidebarFooter>
   )
 
-  // ---- Mobile nav items (shared styling) ------------------------------------
-  const mobileNavItems = navItems.map((item) => {
+  // ---- Mobile nav item renderer -------------------------------------------
+  const renderMobileItem = (item: NavItem) => {
     const Icon = item.icon
     const active = currentView === item.view
     return (
@@ -414,27 +692,27 @@ export function DashboardShell({
         type="button"
         onClick={() => handleNav(item.view)}
         className={cn(
-          "flex h-10 w-full min-w-0 items-center gap-3 rounded-lg px-3 text-sm font-normal transition-colors duration-150 outline-none",
+          "flex h-9 w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-sm font-normal transition-colors duration-150 outline-none",
           active
-            ? "bg-primary/5 text-foreground font-medium"
+            ? "bg-primary/10 text-foreground font-medium"
             : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
         )}
       >
         <Icon
           className={cn(
-            "!size-[18px] shrink-0 transition-colors duration-150",
+            "!size-[16px] shrink-0 transition-colors duration-150",
             active ? "text-primary" : "text-muted-foreground",
           )}
         />
-        <span className="truncate text-[14px]">{item.label}</span>
+        <span className="truncate text-[13px]">{item.label}</span>
         {item.badge != null && item.badge !== 0 ? (
-          <span className="bg-primary text-primary-foreground ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold">
+          <span className="bg-primary text-primary-foreground ml-auto inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-semibold">
             {item.badge}
           </span>
         ) : null}
       </button>
     )
-  })
+  }
 
   // ---- Mobile sidebar user footer -------------------------------------------
   const mobileFooter = (
@@ -459,8 +737,9 @@ export function DashboardShell({
         <Button
           variant="ghost"
           size="icon"
-          className="text-muted-foreground size-8 shrink-0 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/30"
+          className="text-muted-foreground size-8 shrink-0 transition-all hover:bg-rose-50 hover:text-rose-500 active:scale-95 dark:hover:bg-rose-950/30"
           onClick={() => {
+            triggerHaptic("selection")
             setMobileOpen(false)
             logout()
           }}
@@ -494,27 +773,63 @@ export function DashboardShell({
               </SheetHeader>
               <div className="flex h-full flex-col">
                 {/* Mobile header — same design as desktop */}
-                <div className="border-border/50 flex items-center gap-3 border-b px-4 py-4">
-                  <span className="bg-primary text-primary-foreground flex size-9 shrink-0 items-center justify-center rounded-xl">
-                    <PanelIcon className="size-[18px]" />
-                  </span>
+                <div className="border-border/50 flex items-center gap-2.5 border-b px-4 py-4">
+                  <div className="ring-border/50 relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-2xs ring-1">
+                    <Image
+                      src="/brand-icon.png"
+                      alt="Severinno"
+                      width={36}
+                      height={36}
+                      className="size-9 object-contain"
+                      priority
+                    />
+                  </div>
                   <div className="min-w-0">
-                    <p className="text-foreground truncate text-sm font-bold tracking-tight">
-                      {APP_NAME}
-                    </p>
-                    <p className="text-muted-foreground/70 truncate text-[11px] font-medium">
+                    <div className="flex items-center">
+                      <Image
+                        src="/brand-wordmark-black.png"
+                        alt={APP_NAME}
+                        width={88}
+                        height={14}
+                        className="h-3.5 w-auto object-contain dark:hidden"
+                        priority
+                      />
+                      <Image
+                        src="/brand-wordmark-white.png"
+                        alt={APP_NAME}
+                        width={88}
+                        height={14}
+                        className="hidden h-3.5 w-auto object-contain dark:block"
+                        priority
+                      />
+                      <span className="sr-only">{APP_NAME}</span>
+                    </div>
+                    <p className="text-muted-foreground/75 mt-0.5 truncate text-[11px] font-medium tracking-tight">
                       {panelLabel}
                     </p>
                   </div>
                 </div>
                 {/* Mobile nav */}
                 <ScrollArea className="flex-1">
-                  <div className="flex flex-col gap-px p-3">
-                    <p className="text-muted-foreground/70 mb-2 px-3 text-[11px] font-medium tracking-wider uppercase">
-                      Navegação
-                    </p>
-                    {mobileNavItems}
-                  </div>
+                  {navGroups ? (
+                    <div className="flex flex-col gap-3.5 p-3">
+                      {navGroups.map((group) => (
+                        <div key={group.label} className="flex flex-col gap-0.5">
+                          <p className="text-muted-foreground/70 mb-1 px-2.5 text-[11px] font-semibold tracking-wider uppercase">
+                            {group.label}
+                          </p>
+                          {group.items.map(renderMobileItem)}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-px p-3">
+                      <p className="text-muted-foreground/70 mb-2 px-3 text-[11px] font-medium tracking-wider uppercase">
+                        Navegação
+                      </p>
+                      {navItems.map(renderMobileItem)}
+                    </div>
+                  )}
                 </ScrollArea>
                 {/* Mobile wallet balance — provider only */}
                 {user?.role === "PROVIDER" ? (
@@ -538,8 +853,11 @@ export function DashboardShell({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-muted-foreground hover:text-foreground size-9 lg:hidden"
-                  onClick={() => setMobileOpen(true)}
+                  className="text-muted-foreground hover:text-foreground size-9 transition-all active:scale-95 lg:hidden"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    setMobileOpen(true)
+                  }}
                   aria-label="Abrir menu"
                 >
                   <Menu className="size-5" />
@@ -587,7 +905,12 @@ export function DashboardShell({
               </div>
 
               {/* Right section */}
-              <div className="flex items-center gap-0.5">
+              <div className="flex items-center gap-1.5">
+                {headerActions}
+
+                {/* Command palette search trigger */}
+                <CommandPaletteTrigger onClick={() => setCommandPaletteOpen(true)} />
+
                 {/* Wallet balance — provider only */}
                 {user?.role === "PROVIDER" ? <WalletBalancePill /> : null}
 
@@ -601,14 +924,20 @@ export function DashboardShell({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-muted-foreground hover:text-foreground size-9"
-                  onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+                  className="text-muted-foreground hover:text-foreground size-9 transition-all active:scale-95"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    setTheme(resolvedTheme === "dark" ? "light" : "dark")
+                  }}
                   aria-label="Alternar tema"
                   title="Alternar tema"
                 >
                   <Sun className="size-[18px] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
                   <Moon className="absolute size-[18px] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
                 </Button>
+
+                {/* Web Push notifications button */}
+                <PushNotificationButton />
 
                 {/* Notifications */}
                 <NotificationsBell
@@ -619,6 +948,7 @@ export function DashboardShell({
                   onMarkAllRead={(ids) => markAllReadMutation.mutate(ids)}
                   markingAll={markAllReadMutation.isPending}
                   onNavigate={navigate}
+                  onOpenDrawer={() => setNotificationsDrawerOpen(true)}
                 />
 
                 {/* Divider before user avatar */}
@@ -671,6 +1001,22 @@ export function DashboardShell({
                       <MapPin className="size-4" />
                       Voltar à vitrine
                     </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setCommandPaletteOpen(true)
+                      }}
+                    >
+                      <Search className="size-4" />
+                      Paleta de comandos (⌘K)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setTourOpen(true)
+                      }}
+                    >
+                      <LayoutDashboard className="size-4" />
+                      Tour guiado do sistema
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem variant="destructive" onSelect={() => logout()}>
                       <LogOut className="size-4" />
@@ -683,7 +1029,9 @@ export function DashboardShell({
 
             {/* Main scroll area */}
             <main className="flex-1 overflow-y-auto">
-              <div className="mx-auto w-full max-w-7xl p-6 lg:p-8">{children}</div>
+              <div className="mx-auto w-full max-w-7xl p-3.5 pb-24 sm:p-6 sm:pb-8 lg:p-8">
+                {children}
+              </div>
 
               {/* Thin copyright bar */}
               <footer className="border-border/50 mt-auto border-t">
@@ -700,308 +1048,52 @@ export function DashboardShell({
             </main>
           </SidebarInset>
         </div>
+        <MobileBottomNav
+          role={user?.role}
+          currentView={currentView}
+          onNavigate={navigate}
+          unreadCount={unreadCount}
+        />
+        <PushPromptBanner />
+        <PwaInstallBanner />
+
+        {/* Global Command Palette (⌘K / Ctrl+K) */}
+        <GlobalCommandPalette
+          open={commandPaletteOpen}
+          onOpenChange={setCommandPaletteOpen}
+          role={user?.role}
+          onNavigate={navigate}
+          onOpenTour={() => setTourOpen(true)}
+          onLogout={() => logout()}
+        />
+
+        {/* Spotlight Onboarding Tour */}
+        <SpotlightOnboardingTour
+          open={tourOpen}
+          onClose={() => setTourOpen(false)}
+          role={user?.role}
+        />
+
+        {/* Unified Notifications Drawer */}
+        <NotificationsDrawer
+          open={notificationsDrawerOpen}
+          onOpenChange={setNotificationsDrawerOpen}
+          items={notifItems}
+          unreadCount={unreadCount}
+          isLoading={notificationsQuery.isLoading}
+          onMarkRead={(id) => markReadMutation.mutate(id)}
+          onMarkAllRead={(ids) => markAllReadMutation.mutate(ids)}
+          markingAll={markAllReadMutation.isPending}
+          onNavigate={navigate}
+        />
       </div>
     </SidebarProvider>
   )
 }
 
-import { WalletBalancePill } from "@/components/shared/wallet-balance-pill"
-import { useFaviconBadge } from "@/hooks/use-favicon-badge"
 // ---------------------------------------------------------------------------
-// NotificationsBell — dropdown list of recent notifications
+// Re-exports for backwards compatibility
 // ---------------------------------------------------------------------------
 
-function NotificationsBell({
-  items,
-  unreadCount,
-  isLoading,
-  onMarkRead,
-  onMarkAllRead,
-  markingAll,
-  onNavigate,
-}: {
-  items: NotificationItem[]
-  unreadCount: number
-  isLoading: boolean
-  onMarkRead: (id: string) => void
-  onMarkAllRead: (ids: string[]) => void
-  markingAll: boolean
-  onNavigate: (view: string) => void
-}) {
-  const unreadIds = React.useMemo(() => items.filter((n) => !n.read).map((n) => n.id), [items])
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-muted-foreground hover:text-foreground relative size-9"
-          aria-label={`Notificações${unreadCount > 0 ? ` (${unreadCount} não lidas)` : ""}`}
-        >
-          <Bell className="size-[18px]" />
-          {unreadCount > 0 ? (
-            <span
-              className="bg-primary text-primary-foreground ring-background absolute -top-0.5 -right-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold ring-2"
-              aria-hidden
-            >
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </span>
-          ) : null}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80 gap-0 p-0">
-        <div className="flex items-center justify-between border-b px-3 py-2.5">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-semibold">Notificações</p>
-            {unreadCount > 0 ? (
-              <Badge
-                variant="secondary"
-                className="bg-primary/10 text-primary h-5 px-1.5 text-[10px] font-semibold"
-              >
-                {unreadCount} nova{unreadCount > 1 ? "s" : ""}
-              </Badge>
-            ) : null}
-          </div>
-          {unreadCount > 0 ? (
-            <button
-              type="button"
-              onClick={() => onMarkAllRead(unreadIds)}
-              disabled={markingAll}
-              className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-[11px] font-medium transition-colors disabled:opacity-50"
-            >
-              {markingAll ? (
-                <Loader2 className="size-3 animate-spin" />
-              ) : (
-                <CheckCheck className="size-3.5" />
-              )}
-              Marcar todas
-            </button>
-          ) : null}
-        </div>
-
-        <ScrollArea className="max-h-80">
-          {isLoading ? (
-            <div className="text-muted-foreground flex items-center justify-center gap-2 p-8 text-sm">
-              <Loader2 className="size-4 animate-spin" />
-              Carregando…
-            </div>
-          ) : items.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 p-8 text-center">
-              <span className="bg-muted text-muted-foreground flex size-12 items-center justify-center rounded-full">
-                <Bell className="size-5" />
-              </span>
-              <p className="text-muted-foreground text-sm">Você não tem notificações.</p>
-            </div>
-          ) : (
-            <div className="max-h-80 overflow-y-auto">
-              {groupNotificationsByDate(items).map((group) => (
-                <div key={group.label}>
-                  <div className="bg-popover text-muted-foreground sticky top-0 z-10 px-3 py-1.5 text-[10px] font-medium tracking-wider uppercase">
-                    {group.label}
-                  </div>
-                  <ul className="divide-y">
-                    {group.items.map((n) => {
-                      const typeLabel = NOTIFICATION_TYPE_LABELS[n.type]
-                      const targetRoute = NOTIFICATION_ROUTES[n.type]
-                      return (
-                        <li
-                          key={n.id}
-                          className={cn(
-                            "relative flex gap-3 px-3 py-2.5 transition-colors",
-                            !n.read && "bg-primary/5",
-                            targetRoute && "hover:bg-accent/50 cursor-pointer",
-                          )}
-                          onClick={() => {
-                            if (targetRoute) {
-                              onNavigate(targetRoute)
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            if ((e.key === "Enter" || e.key === " ") && targetRoute) {
-                              e.preventDefault()
-                              onNavigate(targetRoute)
-                            }
-                          }}
-                          role={targetRoute ? "button" : undefined}
-                          tabIndex={targetRoute ? 0 : undefined}
-                          title={targetRoute ? `Ir para ${typeLabel ?? targetRoute}` : undefined}
-                        >
-                          <span
-                            className={cn(
-                              "mt-1.5 size-2 shrink-0 rounded-full",
-                              n.read ? "ring-border bg-transparent ring-1" : "bg-primary",
-                            )}
-                            aria-hidden
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-baseline justify-between gap-2">
-                              <p className="text-sm leading-tight font-medium">{n.title}</p>
-                              <span className="text-muted-foreground shrink-0 text-[10px] tabular-nums">
-                                {formatRelative(n.createdAt)}
-                              </span>
-                            </div>
-                            {n.body ? (
-                              <p className="text-muted-foreground mt-0.5 line-clamp-2 text-xs">
-                                {n.body}
-                              </p>
-                            ) : null}
-                            <div className="mt-1 flex items-center gap-2">
-                              {typeLabel ? (
-                                <Badge
-                                  variant="outline"
-                                  className="text-muted-foreground h-4 px-1.5 text-[10px] font-medium"
-                                >
-                                  {typeLabel}
-                                </Badge>
-                              ) : null}
-                              {!n.read ? (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    onMarkRead(n.id)
-                                  }}
-                                  className="text-primary inline-flex items-center gap-1 text-[10px] font-medium hover:underline"
-                                >
-                                  <Check className="size-3" />
-                                  Marcar como lida
-                                </button>
-                              ) : null}
-                            </div>
-                          </div>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Shared small UI helpers used by the panel views
-// ---------------------------------------------------------------------------
-
-export function EmptyState({
-  icon: Icon,
-  title,
-  description,
-  action,
-  className,
-}: {
-  icon: LucideIcon
-  title: string
-  description?: string
-  action?: React.ReactNode
-  className?: string
-}) {
-  return (
-    <Card className={cn("bg-muted/30 border-dashed py-10 text-center", className)}>
-      <CardContent className="flex flex-col items-center gap-3">
-        <div className="bg-primary/10 text-primary flex size-14 items-center justify-center rounded-full">
-          <Icon className="size-7" />
-        </div>
-        <div className="space-y-1">
-          <p className="text-base font-semibold">{title}</p>
-          {description ? (
-            <p className="text-muted-foreground mx-auto max-w-md text-sm">{description}</p>
-          ) : null}
-        </div>
-        {action}
-      </CardContent>
-    </Card>
-  )
-}
-
-export function StatCard({
-  icon: Icon,
-  label,
-  value,
-  hint,
-  tone = "primary",
-  index = 0,
-  trend,
-}: {
-  icon: LucideIcon
-  label: string
-  value: React.ReactNode
-  hint?: string
-  tone?: "primary" | "amber" | "sky" | "rose" | "zinc"
-  /** Index for staggered mount animation (0-based). */
-  index?: number
-  /** Optional trend indicator shown next to the value. */
-  trend?: { direction: "up" | "down"; label: string }
-}) {
-  const toneClass = {
-    primary: "bg-primary/10 text-primary",
-    amber: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200",
-    sky: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200",
-    rose: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200",
-    zinc: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200",
-  }[tone]
-  return (
-    <motion.div
-      initial={cardMotion.initial}
-      animate={cardMotion.animate}
-      transition={{ delay: index * 0.05, duration: 0.25, ease: "easeOut" }}
-    >
-      <Card className="bg-card rounded-xl shadow-sm transition-shadow hover:shadow-md">
-        <CardContent className="p-5">
-          <div className="flex items-start justify-between gap-3">
-            <span className={cn("flex size-10 items-center justify-center rounded-lg", toneClass)}>
-              <Icon className="size-5" />
-            </span>
-            {trend ? (
-              <span
-                className={cn(
-                  "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-                  trend.direction === "up"
-                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200"
-                    : "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200",
-                )}
-              >
-                {trend.direction === "up" ? "↑" : "↓"} {trend.label}
-              </span>
-            ) : null}
-          </div>
-          <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-          <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wide uppercase">
-            {label}
-          </p>
-          {hint ? <p className="text-muted-foreground mt-1 text-xs">{hint}</p> : null}
-        </CardContent>
-      </Card>
-    </motion.div>
-  )
-}
-
-export function SectionTitle({
-  title,
-  description,
-  action,
-}: {
-  title: string
-  description?: string
-  action?: React.ReactNode
-}) {
-  return (
-    <div className="mb-3 flex items-end justify-between gap-3">
-      <div className="min-w-0">
-        <h2 className="text-foreground text-base font-semibold tracking-tight md:text-lg">
-          {title}
-        </h2>
-        {description ? (
-          <p className="text-muted-foreground truncate text-xs">{description}</p>
-        ) : null}
-      </div>
-      {action}
-    </div>
-  )
-}
-
+export { EmptyState, StatCard, SectionTitle } from "./shell/shell-cards"
 export { Separator }

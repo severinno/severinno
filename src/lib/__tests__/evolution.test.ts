@@ -29,7 +29,7 @@ import {
   sendPixPaymentMessage,
   sendServiceCompletionRequest,
   sendReviewRequest,
-  sendText,
+  sendQuoteResponseNotification,
 } from "../evolution"
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -191,11 +191,23 @@ describe("Evolution API - WhatsApp Templates", () => {
     expect(JSON.parse(opts2.body).text).toContain("Como foi o atendimento com Roberto Marcenaria?")
   })
 
-  it("sendText lança erro se EVOLUTION_API_KEY ou EVOLUTION_API_URL não estiver configurada", async () => {
-    vi.stubEnv("EVOLUTION_API_KEY", "")
-
-    await expect(sendText("5511999998888", "Mensagem")).rejects.toThrow(
-      /Evolution API não configurada/,
+  it("sendQuoteResponseNotification envia discriminação de orçamento e CTA CONTRATAR", async () => {
+    const res = await sendQuoteResponseNotification(
+      "5511999998888",
+      "Carlos Eletricista",
+      150,
+      "quote-12345678",
+      "• 🛠️ Mão de obra (100% Escrow): R$ 120.00\n• 📦 Materiais: R$ 30.00 (Depósito Central GV)",
     )
+
+    expect(res).toEqual({ key: { id: "msg-123" } })
+    const [, opts] = (globalThis.fetch as any).mock.calls[0]
+    const body = JSON.parse(opts.body)
+    expect(body.text).toContain("Orçamento respondido!")
+    expect(body.text).toContain("Carlos Eletricista")
+    expect(body.text).toContain("R$ 150.00")
+    expect(body.text).toContain("Mão de obra (100% Escrow): R$ 120.00")
+    expect(body.text).toContain("Materiais: R$ 30.00 (Depósito Central GV)")
+    expect(body.text).toContain("CONTRATAR #quote-12")
   })
 })

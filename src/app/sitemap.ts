@@ -84,10 +84,28 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.7,
     }))
 
-    return [...staticPages(), ...providerUrls, ...categoryUrls, ...subcategoryUrls]
+    const { getAllLandingPageSlugs } = await import("@/app/servicos/[servico]/page")
+    const serviceUrls: MetadataRoute.Sitemap = getAllLandingPageSlugs().map((slug) => ({
+      url: `${BASE_URL}/servicos/${slug}`,
+      lastModified: new Date(),
+      changeFrequency: "weekly" as const,
+      priority: 0.8,
+    }))
+
+    return [...staticPages(), ...providerUrls, ...categoryUrls, ...subcategoryUrls, ...serviceUrls]
   } catch {
     // DB indisponível (ex: durante Docker build sem banco)
-    // Retorna apenas URLs estáticas
-    return staticPages()
+    try {
+      const { getAllLandingPageSlugs } = await import("@/app/servicos/[servico]/page")
+      const serviceUrls: MetadataRoute.Sitemap = getAllLandingPageSlugs().map((slug) => ({
+        url: `${BASE_URL}/servicos/${slug}`,
+        lastModified: new Date(),
+        changeFrequency: "weekly" as const,
+        priority: 0.8,
+      }))
+      return [...staticPages(), ...serviceUrls]
+    } catch {
+      return staticPages()
+    }
   }
 }

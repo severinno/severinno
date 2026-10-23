@@ -42,6 +42,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useUIStore } from "@/store/ui"
+import { triggerHaptic } from "@/lib/haptics"
 
 // ---------------------------------------------------------------------------
 // Price data (hardcoded)
@@ -237,17 +238,20 @@ export default function QuickQuoteCalculator() {
   }, [selectedCategory, selectedScope])
 
   const handleCategorySelect = React.useCallback((key: string) => {
+    triggerHaptic("selection")
     setSelectedCategory(key)
     setStep(1)
   }, [])
 
   const handleScopeSelect = React.useCallback((scope: ScopeKey) => {
+    triggerHaptic("selection")
     setSelectedScope(scope)
     setPriceKey((k) => k + 1)
     setStep(2)
   }, [])
 
   const handleBack = React.useCallback(() => {
+    triggerHaptic("selection")
     if (step === 1) {
       setSelectedCategory(null)
       setStep(0)
@@ -258,6 +262,7 @@ export default function QuickQuoteCalculator() {
   }, [step])
 
   const handleReset = React.useCallback(() => {
+    triggerHaptic("selection")
     setSelectedCategory(null)
     setSelectedScope(null)
     setStep(0)
@@ -266,6 +271,7 @@ export default function QuickQuoteCalculator() {
   const selectedCategoryConfig = CATEGORIES.find((c) => c.key === selectedCategory)
 
   const handleRequestQuote = React.useCallback(() => {
+    triggerHaptic("success")
     const categoryLabel = selectedCategoryConfig?.label ?? ""
     const scopeObj = SCOPES.find((s) => s.key === selectedScope)
     const scopeLabel = scopeObj?.label ? `Porte ${scopeObj.label}` : ""
@@ -351,7 +357,7 @@ export default function QuickQuoteCalculator() {
                           type="button"
                           onClick={() => handleCategorySelect(cat.key)}
                           whileHover={{ scale: 1.03 }}
-                          whileTap={{ scale: 0.97 }}
+                          whileTap={{ scale: 0.95 }}
                           className={cn(
                             "group flex flex-col items-center gap-2.5 rounded-2xl border-2 p-4 text-center transition-all duration-200",
                             isActive
@@ -408,7 +414,7 @@ export default function QuickQuoteCalculator() {
                       variant="ghost"
                       size="sm"
                       onClick={handleBack}
-                      className="text-muted-foreground gap-1"
+                      className="text-muted-foreground gap-1 transition-all active:scale-95"
                       aria-label="Voltar ao passo anterior"
                     >
                       <ChevronLeft className="size-4" />
@@ -431,7 +437,7 @@ export default function QuickQuoteCalculator() {
                           type="button"
                           onClick={() => handleScopeSelect(scope.key)}
                           whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.97 }}
+                          whileTap={{ scale: 0.95 }}
                           className={cn(
                             "group relative flex flex-col items-center gap-3 rounded-2xl border-2 p-6 text-center transition-all duration-200",
                             isActive
@@ -480,7 +486,7 @@ export default function QuickQuoteCalculator() {
                       variant="ghost"
                       size="sm"
                       onClick={handleBack}
-                      className="text-muted-foreground gap-1"
+                      className="text-muted-foreground gap-1 transition-all active:scale-95"
                       aria-label="Voltar ao passo anterior"
                     >
                       <ChevronLeft className="size-4" />
@@ -529,7 +535,7 @@ export default function QuickQuoteCalculator() {
                     <Button
                       size="lg"
                       onClick={handleRequestQuote}
-                      className="from-primary shadow-primary/20 hover:shadow-primary/30 gap-2 rounded-xl bg-gradient-to-r to-emerald-600 px-8 font-bold shadow-lg transition-all hover:shadow-xl hover:brightness-110"
+                      className="from-primary shadow-primary/20 hover:shadow-primary/30 gap-2 rounded-xl bg-gradient-to-r to-emerald-600 px-8 font-bold shadow-lg transition-all hover:shadow-xl hover:brightness-110 active:scale-95"
                     >
                       Pedir orçamento real
                       <ArrowRight className="size-4" />
@@ -538,7 +544,7 @@ export default function QuickQuoteCalculator() {
                       variant="outline"
                       size="lg"
                       onClick={handleReset}
-                      className="gap-2 rounded-xl"
+                      className="gap-2 rounded-xl transition-all active:scale-95"
                     >
                       Simular outro serviço
                     </Button>

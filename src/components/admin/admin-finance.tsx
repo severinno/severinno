@@ -88,6 +88,8 @@ type MonthlyRevenue = {
   month: string
   label: string
   total: number
+  commission?: number
+  net?: number
   count: number
 }
 
@@ -130,6 +132,7 @@ type MrrData = {
   current: number
   previous: number
   growth: number
+  annualRunRate?: number
   history: MrrHistoryItem[]
 }
 
@@ -142,6 +145,29 @@ type ProviderStat = {
   count: number
   commission: number
   net: number
+}
+
+type ExecutiveMetrics = {
+  gmv: number
+  platformNetRevenue: number
+  providerNetPayout: number
+  takeRatePercent: number
+  averageTicket: number
+  conversionRate: number
+  annualRunRate: number
+  escrow: {
+    heldAmount: number
+    heldCount: number
+    disputedAmount: number
+    disputesCount: number
+  }
+  gateway: {
+    pixVolume: number
+    pixCount: number
+    cardVolume: number
+    cardCount: number
+    conversionRate: number
+  }
 }
 
 type FinanceResponse = {
@@ -157,6 +183,7 @@ type FinanceResponse = {
   commissionPercent: number
   providerStats: ProviderStat[]
   mrr: MrrData
+  executive?: ExecutiveMetrics
 }
 
 // ---------------------------------------------------------------------------
@@ -279,12 +306,35 @@ export function AdminFinanceDashboard() {
   const grandTotal = summary.PAID.total + summary.PENDING.total
   const _mrrUp = mrr.growth >= 0
 
+  const executive = data.executive ?? {
+    gmv: summary.PAID.total,
+    platformNetRevenue: Math.round(summary.PAID.total * (commissionPercent / 100)),
+    providerNetPayout: Math.round(summary.PAID.total * (1 - commissionPercent / 100)),
+    takeRatePercent: commissionPercent,
+    averageTicket: data.averageTicket,
+    conversionRate: 0,
+    annualRunRate: mrr.current * 12,
+    escrow: {
+      heldAmount: 0,
+      heldCount: 0,
+      disputedAmount: 0,
+      disputesCount: 0,
+    },
+    gateway: {
+      pixVolume: paymentMethods.find((m) => m.method === "PIX")?.total ?? 0,
+      pixCount: paymentMethods.find((m) => m.method === "PIX")?.count ?? 0,
+      cardVolume: paymentMethods.find((m) => m.method === "CARD")?.total ?? 0,
+      cardCount: paymentMethods.find((m) => m.method === "CARD")?.count ?? 0,
+      conversionRate: 0,
+    },
+  }
+
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Financeiro</h1>
+          <h1 className="text-base font-bold tracking-tight">Financeiro</h1>
           <p className="text-muted-foreground mt-0.5 text-sm">
             Resumo de transações e faturamento da plataforma
           </p>
@@ -319,8 +369,85 @@ export function AdminFinanceDashboard() {
         </div>
       </div>
 
+      {/* Executive Marketplace KPIs */}
+      <section
+        aria-label="Métricas executivas de performance"
+        className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-5"
+      >
+        <div className="border-border/50 bg-card rounded-xl border p-3 shadow-sm">
+          <div className="text-muted-foreground flex items-center justify-between text-xs">
+            <span>GMV (Volume Bruto)</span>
+            <DollarSign className="size-4 text-emerald-500" />
+          </div>
+          <p className="mt-1.5 text-xl font-bold tracking-tight tabular-nums">
+            {formatBRL(executive.gmv)}
+          </p>
+          <p className="text-muted-foreground mt-1 text-[11px] tabular-nums">
+            {summary.PAID.count} transações pagas
+          </p>
+        </div>
+
+        <div className="border-border/50 bg-card rounded-xl border p-3 shadow-sm">
+          <div className="text-muted-foreground flex items-center justify-between text-xs">
+            <span>Receita Plataforma</span>
+            <TrendingUp className="size-4 text-blue-500" />
+          </div>
+          <p className="mt-1.5 text-xl font-bold tracking-tight text-blue-600 tabular-nums dark:text-blue-400">
+            {formatBRL(executive.platformNetRevenue)}
+          </p>
+          <p className="text-muted-foreground mt-1 text-[11px] tabular-nums">
+            Take Rate: {executive.takeRatePercent}% líquido
+          </p>
+        </div>
+
+        <div className="border-border/50 bg-card rounded-xl border p-3 shadow-sm">
+          <div className="text-muted-foreground flex items-center justify-between text-xs">
+            <span>MRR & Run-Rate</span>
+            <Wallet className="size-4 text-purple-500" />
+          </div>
+          <p className="mt-1.5 text-xl font-bold tracking-tight text-purple-600 tabular-nums dark:text-purple-400">
+            {formatBRL(mrr.current)}
+          </p>
+          <div className="text-muted-foreground mt-1 flex items-center justify-between text-[11px] tabular-nums">
+            <span>ARR: {formatBRL(executive.annualRunRate)}</span>
+            <span
+              className={cn("font-medium", mrr.growth >= 0 ? "text-emerald-500" : "text-rose-500")}
+            >
+              {mrr.growth >= 0 ? "+" : ""}
+              {mrr.growth}%
+            </span>
+          </div>
+        </div>
+
+        <div className="border-border/50 bg-card rounded-xl border p-3 shadow-sm">
+          <div className="text-muted-foreground flex items-center justify-between text-xs">
+            <span>Custódia Escrow (48h)</span>
+            <Receipt className="size-4 text-amber-500" />
+          </div>
+          <p className="mt-1.5 text-xl font-bold tracking-tight text-amber-600 tabular-nums dark:text-amber-400">
+            {formatBRL(executive.escrow.heldAmount)}
+          </p>
+          <p className="text-muted-foreground mt-1 text-[11px] tabular-nums">
+            {executive.escrow.heldCount} retidos · {executive.escrow.disputesCount} disputas
+          </p>
+        </div>
+
+        <div className="border-border/50 bg-card col-span-2 rounded-xl border p-3 shadow-sm sm:col-span-3 lg:col-span-1">
+          <div className="text-muted-foreground flex items-center justify-between text-xs">
+            <span>Repasses a Prestadores</span>
+            <Handshake className="size-4 text-teal-500" />
+          </div>
+          <p className="mt-1.5 text-xl font-bold tracking-tight text-teal-600 tabular-nums dark:text-teal-400">
+            {formatBRL(executive.providerNetPayout)}
+          </p>
+          <p className="text-muted-foreground mt-1 text-[11px] tabular-nums">
+            {100 - executive.takeRatePercent}% repasse direto
+          </p>
+        </div>
+      </section>
+
       {/* Summary cards */}
-      <section aria-label="Resumo financeiro" className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <section aria-label="Resumo financeiro" className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
         {statCards.map((card) => (
           <StatCard
             key={card.status}
@@ -334,18 +461,73 @@ export function AdminFinanceDashboard() {
       </section>
 
       {/* Grand total bar */}
-      <div className="border-border/50 to-primary/5 rounded-xl border bg-gradient-to-r from-emerald-500/5 p-4">
+      <div className="border-border/50 to-primary/5 rounded-xl border bg-gradient-to-r from-emerald-500/5 px-3.5 py-2.5">
         <div className="flex items-center justify-between">
           <div className="text-muted-foreground flex items-center gap-2 text-sm">
             <DollarSign className="size-5 text-emerald-600" />
             <span>Faturamento total (recebido + pendente)</span>
           </div>
-          <p className="text-2xl font-bold tabular-nums">{formatBRL(grandTotal)}</p>
+          <p className="text-xl font-bold tabular-nums">{formatBRL(grandTotal)}</p>
+        </div>
+      </div>
+
+      {/* Gateway Lytex & Conversão */}
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+        <div className="border-border/50 bg-card/60 flex items-center justify-between rounded-xl border p-3">
+          <div className="flex items-center gap-3">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <QrCode className="size-4" />
+            </span>
+            <div>
+              <p className="text-muted-foreground text-xs">Volume Pix (Lytex)</p>
+              <p className="text-base font-semibold tabular-nums">
+                {formatBRL(executive.gateway.pixVolume)}
+              </p>
+            </div>
+          </div>
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {executive.gateway.pixCount} transações
+          </span>
+        </div>
+
+        <div className="border-border/50 bg-card/60 flex items-center justify-between rounded-xl border p-3">
+          <div className="flex items-center gap-3">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+              <CreditCard className="size-4" />
+            </span>
+            <div>
+              <p className="text-muted-foreground text-xs">Volume Cartão (Lytex)</p>
+              <p className="text-base font-semibold tabular-nums">
+                {formatBRL(executive.gateway.cardVolume)}
+              </p>
+            </div>
+          </div>
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {executive.gateway.cardCount} transações
+          </span>
+        </div>
+
+        <div className="border-border/50 bg-card/60 flex items-center justify-between rounded-xl border p-3">
+          <div className="flex items-center gap-3">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400">
+              <TrendingUp className="size-4" />
+            </span>
+            <div>
+              <p className="text-muted-foreground text-xs">Taxa de Conversão Gateway</p>
+              <p className="text-base font-semibold tabular-nums">
+                {executive.conversionRate > 0 ? `${executive.conversionRate}%` : "—"}
+              </p>
+            </div>
+          </div>
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {summary.PAID.count} de{" "}
+            {summary.PAID.count + summary.PENDING.count + summary.REFUNDED.count}
+          </span>
         </div>
       </div>
 
       {/* Charts */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <section className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         {/* Monthly revenue bar chart */}
         <div className="border-border/50 bg-card rounded-xl border">
           <div className="border-b px-5 py-4">
@@ -370,7 +552,7 @@ export function AdminFinanceDashboard() {
       </section>
 
       {/* Payment method + monthly ticket average */}
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <section className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         {/* Payment method pie chart */}
         <div className="border-border/50 bg-card rounded-xl border">
           <div className="border-b px-5 py-4">
@@ -422,7 +604,7 @@ export function AdminFinanceDashboard() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/50 hover:bg-muted/50 h-11">
+                  <TableRow className="bg-muted/50 hover:bg-muted/50 h-8">
                     <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                       Prestador
                     </TableHead>
@@ -446,7 +628,7 @@ export function AdminFinanceDashboard() {
                     return (
                       <React.Fragment key={ps.id}>
                         <TableRow
-                          className="hover:bg-muted/30 h-14 cursor-pointer transition-colors"
+                          className="hover:bg-muted/30 h-9 cursor-pointer transition-colors"
                           onClick={() =>
                             setExpandedProviders((prev) => {
                               const next = new Set(prev)
@@ -472,8 +654,8 @@ export function AdminFinanceDashboard() {
                                   <ChevronDown className="size-4" />
                                 )}
                               </button>
-                              <div className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-full">
-                                <UserCircle className="size-5" />
+                              <div className="bg-primary/10 text-primary flex size-7 shrink-0 items-center justify-center rounded-full">
+                                <UserCircle className="size-4" />
                               </div>
                               <div className="min-w-0">
                                 <p className="truncate text-sm font-medium">{ps.name}</p>
@@ -513,7 +695,7 @@ export function AdminFinanceDashboard() {
 
           {/* Summary row */}
           {providerStats.length > 1 && (
-            <div className="flex items-center justify-end gap-8 border-t px-5 py-3">
+            <div className="flex items-center justify-end gap-4 border-t px-5 py-3">
               <div className="flex items-center gap-2 text-xs">
                 <span className="text-muted-foreground">Total de repasses:</span>
                 <span className="font-semibold text-emerald-600 tabular-nums dark:text-emerald-400">
@@ -552,7 +734,7 @@ export function AdminFinanceDashboard() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/50 hover:bg-muted/50 h-11">
+                  <TableRow className="bg-muted/50 hover:bg-muted/50 h-8">
                     <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                       Data
                     </TableHead>
@@ -578,7 +760,7 @@ export function AdminFinanceDashboard() {
                 </TableHeader>
                 <TableBody>
                   {transactions.map((tx) => (
-                    <TableRow key={tx.id} className="hover:bg-muted/30 h-14 transition-colors">
+                    <TableRow key={tx.id} className="hover:bg-muted/30 h-9 transition-colors">
                       <TableCell className="text-muted-foreground text-xs whitespace-nowrap tabular-nums">
                         {formatDateShort(tx.createdAt)}
                       </TableCell>
@@ -667,21 +849,18 @@ function StatCard({
   }
 
   return (
-    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
+    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-3 transition-colors">
       <div className="flex items-center justify-between">
         <span
-          className={cn(
-            "flex size-10 items-center justify-center rounded-lg",
-            accentStyles[accent],
-          )}
+          className={cn("flex size-8 items-center justify-center rounded-lg", accentStyles[accent])}
         >
-          <Icon className="size-5" />
+          <Icon className="size-4" />
         </span>
         <span className="text-muted-foreground text-xs tabular-nums">
           {count} transação{count !== 1 ? "ões" : ""}
         </span>
       </div>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+      <p className="mt-1.5 text-xl font-bold tracking-tight tabular-nums">{value}</p>
       <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
         {label}
       </p>
@@ -697,6 +876,8 @@ function MonthlyRevenueChart({ data }: { data: MonthlyRevenue[] }) {
       </div>
     )
   }
+
+  const hasCommission = data.some((d) => (d.commission ?? 0) > 0)
 
   return (
     <ResponsiveContainer width="100%" height={220}>
@@ -718,11 +899,29 @@ function MonthlyRevenueChart({ data }: { data: MonthlyRevenue[] }) {
         />
         <RTooltip
           cursor={{ fill: "hsl(var(--accent) / 0.4)" }}
-          formatter={(v: number, _name: string) => [formatBRL(v), "Receita"]}
+          formatter={(v: number, name: string) => [
+            formatBRL(v),
+            name === "commission" ? "Comissão (15%)" : "Receita GMV",
+          ]}
           labelFormatter={(l: string) => `Mês: ${l}`}
           contentStyle={TOOLTIP_STYLE}
         />
-        <Bar dataKey="total" radius={[4, 4, 0, 0]} maxBarSize={36} fill="hsl(var(--primary))" />
+        <Bar
+          dataKey="total"
+          name="Receita GMV"
+          radius={[4, 4, 0, 0]}
+          maxBarSize={36}
+          fill="hsl(var(--primary))"
+        />
+        {hasCommission && (
+          <Bar
+            dataKey="commission"
+            name="Comissão (15%)"
+            radius={[4, 4, 0, 0]}
+            maxBarSize={36}
+            fill="hsl(160, 84%, 39%)"
+          />
+        )}
       </BarChart>
     </ResponsiveContainer>
   )
@@ -1010,7 +1209,7 @@ function ProviderDetail({ providerId, period }: { providerId: string; period: Pe
       <div className="border-border/30 overflow-x-auto rounded-lg border">
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/30 hover:bg-muted/30 h-9">
+            <TableRow className="bg-muted/30 hover:bg-muted/30 h-8">
               <TableHead className="text-muted-foreground px-3 text-[10px] font-semibold tracking-wide uppercase">
                 Data
               </TableHead>
@@ -1030,7 +1229,7 @@ function ProviderDetail({ providerId, period }: { providerId: string; period: Pe
           </TableHeader>
           <TableBody>
             {data.transactions.map((tx) => (
-              <TableRow key={tx.id} className="hover:bg-muted/20 h-10 transition-colors">
+              <TableRow key={tx.id} className="hover:bg-muted/20 h-9 transition-colors">
                 <TableCell className="text-muted-foreground px-3 text-[11px] whitespace-nowrap tabular-nums">
                   {formatDateShort(tx.createdAt)}
                 </TableCell>
@@ -1053,7 +1252,7 @@ function ProviderDetail({ providerId, period }: { providerId: string; period: Pe
       </div>
 
       {/* Mini summary */}
-      <div className="flex items-center justify-end gap-4 px-3 pt-2">
+      <div className="flex items-center justify-end gap-4 px-3 pt-2 tabular-nums">
         <span className="text-muted-foreground text-[10px]">
           {data.summary.transactions} transação{data.summary.transactions !== 1 ? "ões" : ""}
         </span>
@@ -1190,7 +1389,7 @@ function formatDateShort(iso: string): string {
 
 function FinanceSkeleton() {
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-2">
           <Skeleton className="h-6 w-40" />
@@ -1199,22 +1398,22 @@ function FinanceSkeleton() {
         <Skeleton className="h-8 w-72 rounded-lg" />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="border-border/50 bg-card rounded-xl border p-5">
+          <div key={i} className="border-border/50 bg-card rounded-xl border p-3">
             <div className="flex items-center justify-between">
-              <Skeleton className="size-10 rounded-lg" />
+              <Skeleton className="size-8 rounded-lg" />
               <Skeleton className="h-4 w-20" />
             </div>
-            <Skeleton className="mt-3 h-7 w-28" />
+            <Skeleton className="mt-1.5 h-7 w-28" />
             <Skeleton className="mt-1 h-3 w-16" />
           </div>
         ))}
       </div>
 
-      <Skeleton className="h-16 rounded-xl" />
+      <Skeleton className="h-14 rounded-xl" />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         {Array.from({ length: 2 }).map((_, i) => (
           <div key={i} className="border-border/50 bg-card rounded-xl border">
             <div className="border-b px-5 py-4">
@@ -1233,7 +1432,7 @@ function FinanceSkeleton() {
         </div>
         <div className="p-4">
           {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="mb-2 h-14 w-full rounded-md" />
+            <Skeleton key={i} className="mb-2 h-9 w-full rounded-md" />
           ))}
         </div>
       </div>

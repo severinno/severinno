@@ -30,23 +30,56 @@ export interface OptimizedRoutePlan {
   estimatedTimeSavedMinutes: number
   googleMapsUrl: string
   wazeUrl: string
+  transportMode?: TransportMode
 }
 
-const URBAN_ROAD_FACTOR = 1.38
-const AVG_CITY_SPEED_KMH = 28.0
+export type TransportMode = "MOTO" | "CAR" | "BICYCLE"
+
+export interface TransportProfile {
+  mode: TransportMode
+  urbanRoadFactor: number
+  avgSpeedKmh: number
+  label: string
+}
+
+export const TRANSPORT_PROFILES: Record<TransportMode, TransportProfile> = {
+  MOTO: {
+    mode: "MOTO",
+    urbanRoadFactor: 1.25,
+    avgSpeedKmh: 36.0,
+    label: "Motocicleta / Scooter",
+  },
+  CAR: {
+    mode: "CAR",
+    urbanRoadFactor: 1.38,
+    avgSpeedKmh: 28.0,
+    label: "Carro / Veículo",
+  },
+  BICYCLE: {
+    mode: "BICYCLE",
+    urbanRoadFactor: 1.15,
+    avgSpeedKmh: 16.0,
+    label: "Bicicleta / E-bike",
+  },
+}
+
+const DEFAULT_ROAD_FACTOR = 1.38
 
 /**
  * Computes total tour distance given a sequence of stops starting from base
  */
-function computeTourDistance(base: { lat: number; lng: number }, stops: RouteStop[]): number {
+function computeTourDistance(
+  base: { lat: number; lng: number },
+  stops: RouteStop[],
+  roadFactor: number = DEFAULT_ROAD_FACTOR,
+): number {
   if (stops.length === 0) return 0
 
-  let total = haversineKm(base.lat, base.lng, stops[0].lat, stops[0].lng) * URBAN_ROAD_FACTOR
+  let total = haversineKm(base.lat, base.lng, stops[0].lat, stops[0].lng) * roadFactor
 
   for (let i = 0; i < stops.length - 1; i++) {
     total +=
-      haversineKm(stops[i].lat, stops[i].lng, stops[i + 1].lat, stops[i + 1].lng) *
-      URBAN_ROAD_FACTOR
+      haversineKm(stops[i].lat, stops[i].lng, stops[i + 1].lat, stops[i + 1].lng) * roadFactor
   }
 
   return Number(total.toFixed(2))
@@ -68,9 +101,14 @@ function twoOptSwap(route: RouteStop[], i: number, k: number): RouteStop[] {
 export function optimizeDailyRoute2Opt(
   baseLocation: { lat: number; lng: number },
   stops: RouteStop[],
+  transportMode: TransportMode = "CAR",
 ): OptimizedRoutePlan {
+  const profile = TRANSPORT_PROFILES[transportMode] ?? TRANSPORT_PROFILES.CAR
+  const roadFactor = profile.urbanRoadFactor
+  const avgSpeed = profile.avgSpeedKmh
+
   if (stops.length <= 1) {
-    const dist = computeTourDistance(baseLocation, stops)
+    const dist = computeTourDistance(baseLocation, stops, roadFactor)
     return {
       originalOrder: stops.map((s) => s.id),
       optimizedOrder: stops.map((s) => s.id),
@@ -82,10 +120,11 @@ export function optimizeDailyRoute2Opt(
       estimatedTimeSavedMinutes: 0,
       googleMapsUrl: generateGoogleMapsMultiStopUrl(baseLocation, stops),
       wazeUrl: generateWazeUrl(stops[0] || baseLocation),
+      transportMode: profile.mode,
     }
   }
 
-  const initialDistanceKm = computeTourDistance(baseLocation, stops)
+  const initialDistanceKm = computeTourDistance(baseLocation, stops, roadFactor)
   const originalOrder = stops.map((s) => s.id)
 
   // 1. Initial Greedy Nearest Neighbor tour
@@ -111,7 +150,7 @@ export function optimizeDailyRoute2Opt(
   }
 
   // 2. Iterative 2-Opt Local Search Improvement
-  let bestDistance = computeTourDistance(baseLocation, bestRoute)
+  let bestDistance = computeTourDistance(baseLocation, bestRoute, roadFactor)
   let improved = true
   let iterations = 0
   const maxIterations = 100 // Prevent infinite loop in dense graphs
@@ -123,7 +162,7 @@ export function optimizeDailyRoute2Opt(
     for (let i = 0; i < bestRoute.length - 1; i++) {
       for (let k = i + 1; k < bestRoute.length; k++) {
         const candidateRoute = twoOptSwap(bestRoute, i, k)
-        const candidateDistance = computeTourDistance(baseLocation, candidateRoute)
+        const candidateDistance = computeTourDistance(baseLocation, candidateRoute, roadFactor)
 
         if (candidateDistance < bestDistance - 0.01) {
           bestRoute = candidateRoute
@@ -140,7 +179,7 @@ export function optimizeDailyRoute2Opt(
   const savedDistanceKm = Number(Math.max(0, initialDistanceKm - optimizedDistanceKm).toFixed(2))
   const savedPercent =
     initialDistanceKm > 0 ? Number(((savedDistanceKm / initialDistanceKm) * 100).toFixed(1)) : 0
-  const estimatedTimeSavedMinutes = Math.round((savedDistanceKm / AVG_CITY_SPEED_KMH) * 60)
+  const estimatedTimeSavedMinutes = Math.round((savedDistanceKm / avgSpeed) * 60)
 
   return {
     originalOrder,
@@ -153,6 +192,7 @@ export function optimizeDailyRoute2Opt(
     estimatedTimeSavedMinutes,
     googleMapsUrl: generateGoogleMapsMultiStopUrl(baseLocation, bestRoute),
     wazeUrl: generateWazeUrl(bestRoute[0] || baseLocation),
+    transportMode: profile.mode,
   }
 }
 

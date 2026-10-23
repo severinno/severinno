@@ -27,7 +27,7 @@
 //
 // Nota (self-scan): este guard varre scripts/ e, portanto, o PRÓPRIO arquivo.
 // O header NÃO usa literais reais de count com "checks" adjacente de
-// propósito — ex.: "N checks" em vez de "127 checks" — para que um bump
+// propósito — ex.: "N checks" em vez de um literal real de count — para que um bump
 // futuro da derivação não transforme a documentação do guard num tripwire.
 //
 // Fonte da verdade: REUSA runDerivation/parseDerivedJson do
@@ -74,8 +74,8 @@ const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", "tool-result
 /**
  * Padrões que extraem um literal de count em CONTEXTO. Cada padrão captura o
  * número no grupo 1. O contexto é o que separa um count de seed de mock data:
- *   - "127 checks" / "161 checks" (adjacência à palavra checks)
- *   - ternary da matrix do seed-guards.yml: 'prod' && '127' || '161' }} checks
+ *   - "<prod> checks" / "<dev> checks" (adjacência à palavra checks)
+ *   - ternary da matrix do seed-guards.yml: 'prod' && '<prod>' || '<dev>' }} checks
  * Prosa sem a palavra "checks" perto do número não casa (GUARDS.md histórica).
  */
 const COUNT_CONTEXT_PATTERNS = [
@@ -86,7 +86,7 @@ const COUNT_CONTEXT_PATTERNS = [
   // flag '1' (SKIP_PRISMA_GENERATE) não casam; e o teto fica aberto (4+
   // dígitos num bump futuro ainda são detectados, não viram ref órfão).
   { re: /(?:^|[^\w-])(\d{2,})\s+checks?\b/gi },
-  // ternary ESPECÍFICO da matrix: ${{ matrix.seed == 'prod' && '127' || '161' }} checks
+  // ternary ESPECÍFICO da matrix: ${{ matrix.seed == 'prod' && '<prod>' || '<dev>' }} checks
   // — ancorado em 'prod' E em 2+ dígitos: ternaries && '1' (SKIP_PRISMA_
   // GENERATE) são single-digit e NÃO casam.
   { re: /'prod'\s*&&\s*'(\d{2,})'/g },

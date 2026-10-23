@@ -3,19 +3,19 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
+
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+
+import { withParams } from "@/lib/api-route"
 
 /**
  * POST /api/admin/settlements/[id]/pay/[providerId]
  *
  * Mark a specific provider's settlement as paid.
  */
-export async function POST(
-  _request: Request,
-  { params }: { params: Promise<{ id: string; providerId: string }> },
-) {
-  try {
+export const POST = withParams<{ id: string; providerId: string }>(
+  "api.admin.settlements.:id.pay.:providerId.POST",
+  async (_request, { params }) => {
     const session = await requireRole("ADMIN")
     await assertRateLimit(_request, RATE_LIMITS.settlements)
     const { id, providerId } = await params
@@ -45,7 +45,5 @@ export async function POST(
     })
 
     return NextResponse.json({ settlement: updated })
-  } catch (e) {
-    return handleError(e)
-  }
-}
+  },
+)

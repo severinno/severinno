@@ -7,6 +7,11 @@ export type NavItem = {
   badge?: number | string
 }
 
+export type NavGroup = {
+  label: string
+  items: NavItem[]
+}
+
 export type Breadcrumb = { label: string; onClick?: () => void }
 
 export type ShellUser = {
@@ -18,7 +23,8 @@ export type ShellUser = {
 }
 
 export type DashboardShellProps = {
-  navItems: NavItem[]
+  navItems?: NavItem[]
+  navGroups?: NavGroup[]
   currentView: string
   title: string
   subtitle?: string
@@ -27,6 +33,7 @@ export type DashboardShellProps = {
   panelIcon: LucideIcon
   user?: ShellUser | null
   onNavigate: (view: string) => void
+  headerActions?: React.ReactNode
   children: React.ReactNode
   className?: string
 }

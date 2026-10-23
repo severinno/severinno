@@ -139,6 +139,13 @@ const eslintConfig = [
       // o escopo do lint contra a árvore versionada é o `check:lint-scope`).
       ".tmp/**",
       ".forge-doctor/**",
+      // VENDOR minificado do maplibre-gl (worker/shared), sincronizado por
+      // scripts/sync-maplibre-worker.mjs e JÁ declarado fora do lint no
+      // .prettierignore (o formato minificado é o ponto do artefato). Sem este
+      // ignore o `eslint . --max-warnings 0` do CI fica vermelho por bundle de
+      // vendor — e o `check-generated-format` mede a saída como `saidasCruas`
+      // (versionada + ignorada por declaração, com oráculo invertido).
+      "public/maplibre/**",
     ],
   },
 ]

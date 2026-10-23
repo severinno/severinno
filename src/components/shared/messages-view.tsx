@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { formatRelative } from "@/lib/format"
+import { formatBRL, formatRelative } from "@/lib/format"
 import { apiGet, apiPost } from "@/lib/api"
 import { useAuthStore } from "@/store/auth"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -11,12 +11,32 @@ import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import {
+  type ChatProposalData,
+  parseChatProposal,
+  serializeChatProposal,
+  CreateProposalDialog,
+  AcceptProposalPixModal,
+  ChatProposalCard,
+} from "./messages"
+
+export {
+  type ChatProposalData,
+  parseChatProposal,
+  serializeChatProposal,
+  CreateProposalDialog,
+  AcceptProposalPixModal,
+  ChatProposalCard,
+}
+import {
   Send,
   MessagesSquare,
   Loader2,
   Check,
   CheckCheck,
+  CheckCircle2,
+  ChevronLeft,
   Paperclip,
+  Camera,
   Mic,
   X,
   ShieldAlert,
@@ -24,8 +44,11 @@ import {
   Clock,
   WifiOff,
   Sparkles,
+  FileText,
+  Zap,
 } from "lucide-react"
 import { toast } from "sonner"
+import { triggerHaptic } from "@/lib/haptics"
 import { useRealtime } from "@/hooks/use-realtime"
 import { playCoinSound } from "@/lib/sounds"
 import { compressImageFile } from "@/lib/client-image-compression"
@@ -106,6 +129,24 @@ function isAudioUrl(url: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Field Quick Replies (Atalhos de Campo Rápidos)
+// ---------------------------------------------------------------------------
+
+export const FIELD_QUICK_REPLIES = [
+  { label: "🚚 A caminho", text: "Estou a caminho do endereço informado." },
+  { label: "📍 Cheguei", text: "Cheguei no local! Aguardo sua recepção." },
+  { label: "🔧 Iniciando", text: "Iniciando a execução técnica do serviço conforme combinado." },
+  {
+    label: "📸 Fotos registradas",
+    text: "Acabei de registrar as fotos de antes/depois no laudo de entrega.",
+  },
+  {
+    label: "✅ Concluído",
+    text: "Serviço finalizado com sucesso! Peço que confira para liberação da custódia.",
+  },
+]
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -123,6 +164,9 @@ export function MessagesView({
   const [uploading, setUploading] = React.useState(false)
   const [isPeerTyping, setIsPeerTyping] = React.useState(false)
   const [offlinePendingMessages, setOfflinePendingMessages] = React.useState<Message[]>([])
+  const [createProposalOpen, setCreateProposalOpen] = React.useState(false)
+  const [selectedProposalForPix, setSelectedProposalForPix] =
+    React.useState<ChatProposalData | null>(null)
   const [isOnline, setIsOnline] = React.useState<boolean>(() =>
     typeof navigator !== "undefined" ? navigator.onLine : true,
   )
@@ -177,6 +221,7 @@ export function MessagesView({
   const typingTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
   const lastTypingSentRef = React.useRef<number>(0)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const cameraInputRef = React.useRef<HTMLInputElement>(null)
   const scrollRef = React.useRef<HTMLDivElement>(null)
 
   const { on, emit, isConnected, join } = useRealtime()
@@ -337,6 +382,30 @@ export function MessagesView({
     }
   }
 
+  const handleConfirmProposalPix = async (proposal: ChatProposalData) => {
+    await send(
+      `✅ Pagamento da proposta "${proposal.title}" confirmado via PIX no valor de ${formatBRL(proposal.amount)}. Os fundos estão sob custódia segura Severinno (Garantia de 90 Dias).`,
+    )
+    playCoinSound({ vibrate: true })
+    triggerHaptic("success")
+    toast.success("Pagamento confirmado via PIX! Valor retido com segurança em custódia.")
+    setSelectedProposalForPix(null)
+  }
+
+  const handleCreateProposal = async (proposal: {
+    title: string
+    amount: number
+    description: string
+    estimatedTime: string
+  }) => {
+    const content = serializeChatProposal(proposal)
+    await send(content)
+    playCoinSound({ vibrate: true })
+    triggerHaptic("success")
+    toast.success("Proposta de serviço enviada com sucesso no chat!")
+    setCreateProposalOpen(false)
+  }
+
   // Handle image upload with client compression
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -368,6 +437,7 @@ export function MessagesView({
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ""
+      if (cameraInputRef.current) cameraInputRef.current.value = ""
     }
   }
 
@@ -386,6 +456,7 @@ export function MessagesView({
       }
 
       mediaRecorder.start()
+      triggerHaptic("light")
       setIsRecording(true)
       setRecordingSeconds(0)
       recordingTimerRef.current = setInterval(() => {
@@ -422,6 +493,7 @@ export function MessagesView({
         const data = await res.json()
         if (data.url) {
           await send(data.url)
+          triggerHaptic("success")
           toast.success("Mensagem de voz enviada!")
         }
       } catch {
@@ -441,6 +513,7 @@ export function MessagesView({
       mediaRecorderRef.current = null
       setIsRecording(false)
       setRecordingSeconds(0)
+      triggerHaptic("light")
     }
   }
 
@@ -481,7 +554,12 @@ export function MessagesView({
       )}
     >
       {/* Conversations list */}
-      <aside className="flex flex-col border-b md:border-r md:border-b-0">
+      <aside
+        className={cn(
+          "flex flex-col border-b md:border-r md:border-b-0",
+          selectedPeerId ? "hidden md:flex md:w-[320px]" : "flex w-full md:w-[320px]",
+        )}
+      >
         <div className="border-b p-3">
           <h2 className="text-sm font-semibold">Conversas</h2>
           <p className="text-muted-foreground text-xs">
@@ -505,17 +583,24 @@ export function MessagesView({
                   <li key={c.peerId}>
                     <button
                       type="button"
-                      onClick={() => setSelectedPeerId(c.peerId)}
+                      onClick={() => {
+                        triggerHaptic("selection")
+                        setSelectedPeerId(c.peerId)
+                      }}
                       className={cn(
                         "hover:bg-accent/50 flex w-full items-start gap-3 p-3 text-left transition-colors",
                         active && "bg-emerald-50/60 dark:bg-emerald-950/20",
                       )}
                     >
-                      <Avatar className="size-9 border">
+                      <Avatar className="ring-border/50 size-9 rounded-full border ring-1">
                         {c.peer?.avatarUrl && (
-                          <AvatarImage src={c.peer.avatarUrl} alt={c.peer.name} />
+                          <AvatarImage
+                            src={c.peer.avatarUrl}
+                            alt={c.peer.name}
+                            className="rounded-full object-cover"
+                          />
                         )}
-                        <AvatarFallback className="bg-emerald-600 text-xs text-white">
+                        <AvatarFallback className="rounded-full bg-emerald-600 text-xs text-white">
                           {initials(c.peer?.name)}
                         </AvatarFallback>
                       </Avatar>
@@ -551,7 +636,12 @@ export function MessagesView({
       </aside>
 
       {/* Thread */}
-      <section className="flex flex-col">
+      <section
+        className={cn(
+          "flex flex-col",
+          !selectedPeerId ? "hidden md:flex md:flex-1" : "flex w-full flex-1",
+        )}
+      >
         {!selectedPeerId || !peer ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
             <div className="flex size-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
@@ -565,10 +655,28 @@ export function MessagesView({
         ) : (
           <>
             <header className="flex items-center justify-between border-b p-3">
-              <div className="flex items-center gap-3">
-                <Avatar className="size-9 border">
-                  {peer.avatarUrl && <AvatarImage src={peer.avatarUrl} alt={peer.name} />}
-                  <AvatarFallback className="bg-emerald-600 text-xs text-white">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic("selection")
+                    setSelectedPeerId(undefined)
+                  }}
+                  aria-label="Voltar para conversas"
+                  title="Voltar"
+                  className="text-muted-foreground hover:bg-muted hover:text-foreground mr-1 flex size-8 items-center justify-center rounded-lg transition-colors active:scale-95 md:hidden"
+                >
+                  <ChevronLeft className="size-5" />
+                </button>
+                <Avatar className="ring-border/50 size-9 rounded-full border ring-1">
+                  {peer.avatarUrl && (
+                    <AvatarImage
+                      src={peer.avatarUrl}
+                      alt={peer.name}
+                      className="rounded-full object-cover"
+                    />
+                  )}
+                  <AvatarFallback className="rounded-full bg-emerald-600 text-xs text-white">
                     {initials(peer.name)}
                   </AvatarFallback>
                 </Avatar>
@@ -601,9 +709,12 @@ export function MessagesView({
                     <span>Modo Offline</span>
                   </div>
                 )}
-                <div className="hidden items-center gap-1 rounded-full border border-emerald-200/60 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 sm:flex dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+                <div
+                  title="Garantia de 90 Dias e Custódia PIX ativas para esta conversa"
+                  className="hidden items-center gap-1.5 rounded-full border border-emerald-200/80 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 shadow-2xs sm:flex dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                >
                   <ShieldCheck className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <span>Garantia Severinno</span>
+                  <span>Garantia Severinno (90 Dias)</span>
                 </div>
               </div>
             </header>
@@ -623,6 +734,73 @@ export function MessagesView({
                     const mine = m.fromId === user?.id
                     const isImage = isImageUrl(m.content)
                     const isAudio = isAudioUrl(m.content)
+                    const proposal = parseChatProposal(m.content)
+                    const isProposalConfirmation = m.content.startsWith("✅ Pagamento da proposta")
+
+                    if (proposal) {
+                      return (
+                        <li
+                          key={m.id}
+                          className={cn(
+                            "flex flex-col gap-0.5",
+                            mine ? "items-end" : "items-start",
+                          )}
+                        >
+                          <ChatProposalCard
+                            proposal={proposal}
+                            isMineOrProvider={user?.role === "PROVIDER" || mine}
+                            onAcceptPix={() => setSelectedProposalForPix(proposal)}
+                          />
+
+                          <div className="text-muted-foreground flex items-center gap-1 px-1.5 text-[10px]">
+                            <span>
+                              {new Date(m.createdAt).toLocaleTimeString("pt-BR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                            {mine &&
+                              (m.read ? (
+                                <span title="Lida">
+                                  <CheckCheck className="inline h-3.5 w-3.5 text-blue-500" />
+                                </span>
+                              ) : (
+                                <span title="Enviada">
+                                  <Check className="text-muted-foreground inline h-3 w-3" />
+                                </span>
+                              ))}
+                          </div>
+                        </li>
+                      )
+                    }
+
+                    if (isProposalConfirmation) {
+                      return (
+                        <li
+                          key={m.id}
+                          className={cn(
+                            "flex flex-col gap-0.5",
+                            mine ? "items-end" : "items-start",
+                          )}
+                        >
+                          <div className="max-w-[85%] space-y-1 rounded-2xl border border-emerald-500/40 bg-emerald-50/90 p-3 text-xs text-emerald-950 shadow-xs dark:bg-emerald-950/40 dark:text-emerald-200">
+                            <div className="flex items-center gap-1.5 font-bold text-emerald-800 dark:text-emerald-300">
+                              <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
+                              <span>Custódia PIX Confirmada</span>
+                            </div>
+                            <p className="leading-relaxed">{m.content}</p>
+                          </div>
+                          <div className="text-muted-foreground flex items-center gap-1 px-1.5 text-[10px]">
+                            <span>
+                              {new Date(m.createdAt).toLocaleTimeString("pt-BR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                        </li>
+                      )
+                    }
 
                     return (
                       <li
@@ -765,16 +943,46 @@ export function MessagesView({
                 </div>
               )}
               {fraudResult.hasRisk && (
-                <div className="mb-2.5 flex items-start gap-2.5 rounded-xl border border-amber-300/80 bg-amber-50/95 p-2.5 text-xs text-amber-950 shadow-xs dark:border-amber-700/50 dark:bg-amber-950/50 dark:text-amber-200">
+                <div className="mb-2.5 flex items-start gap-2.5 rounded-xl border border-amber-300/80 bg-amber-50/95 p-3 text-xs text-amber-950 shadow-xs dark:border-amber-700/50 dark:bg-amber-950/50 dark:text-amber-200">
                   <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                  <div className="flex-1">
-                    <p className="font-semibold">{fraudResult.warningTitle}</p>
-                    <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+                  <div className="flex-1 space-y-0.5">
+                    <p className="font-bold text-amber-900 dark:text-amber-100">
+                      {fraudResult.warningTitle}
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
                       {fraudResult.warningMessage}
+                    </p>
+                    <p className="pt-0.5 text-[10px] font-medium text-amber-700/90 dark:text-amber-400/90">
+                      💡 Dica de Segurança: Pagamentos e negociações fora da plataforma anulam o
+                      reembolso automático da Custódia PIX e a Garantia de 90 Dias.
                     </p>
                   </div>
                 </div>
               )}
+
+              {/* ── Field Quick Replies (Atalhos de Campo Rápidos) ── */}
+              <div
+                aria-label="Atalhos de Campo Rápidos"
+                className="no-scrollbar mb-2 flex scrollbar-none items-center gap-1.5 overflow-x-auto pb-1"
+              >
+                <span className="text-muted-foreground flex shrink-0 items-center gap-1 text-[10px] font-semibold tracking-wider uppercase">
+                  <Zap className="size-3 text-amber-500" /> Campo:
+                </span>
+                {FIELD_QUICK_REPLIES.map((reply, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      setDraft(reply.text)
+                    }}
+                    className="border-border/70 bg-muted/50 text-foreground hover:bg-muted shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors active:scale-95"
+                  >
+                    {reply.label}
+                  </button>
+                ))}
+              </div>
+
               {isRecording ? (
                 <div className="bg-destructive/10 border-destructive/20 flex w-full items-center justify-between rounded-xl border p-2 px-3">
                   <div className="text-destructive flex items-center gap-2 text-xs font-medium">
@@ -819,14 +1027,42 @@ export function MessagesView({
                     onChange={handleFileUpload}
                     className="hidden"
                   />
+                  <input
+                    type="file"
+                    ref={cameraInputRef}
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
 
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
                     disabled={uploading || sending}
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      cameraInputRef.current?.click()
+                    }}
+                    title="Tirar foto com câmera"
+                    aria-label="Tirar foto com câmera"
+                    className="text-muted-foreground hover:text-foreground shrink-0"
+                  >
+                    <Camera className="size-4" />
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    disabled={uploading || sending}
+                    onClick={() => {
+                      triggerHaptic("selection")
+                      fileInputRef.current?.click()
+                    }}
                     title="Anexar imagem"
+                    aria-label="Anexar imagem"
                     className="text-muted-foreground hover:text-foreground shrink-0"
                   >
                     {uploading ? (
@@ -843,9 +1079,23 @@ export function MessagesView({
                     disabled={uploading || sending}
                     onClick={startRecording}
                     title="Gravar mensagem de voz"
+                    aria-label="Gravar mensagem de voz"
                     className="text-muted-foreground hover:text-foreground shrink-0"
                   >
                     <Mic className="size-4" />
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    disabled={uploading || sending}
+                    onClick={() => setCreateProposalOpen(true)}
+                    title="Enviar Proposta de Orçamento"
+                    aria-label="Enviar proposta de orçamento"
+                    className="text-muted-foreground shrink-0 hover:text-emerald-600 dark:hover:text-emerald-400"
+                  >
+                    <FileText className="size-4" />
                   </Button>
 
                   <Input
@@ -855,12 +1105,14 @@ export function MessagesView({
                     disabled={sending}
                     className="flex-1"
                     maxLength={2000}
+                    aria-label="Mensagem"
                   />
 
                   <Button
                     type="submit"
                     size="icon"
                     disabled={sending || !draft.trim()}
+                    aria-label="Enviar mensagem"
                     className="shrink-0 bg-emerald-600 text-white hover:bg-emerald-700"
                   >
                     {sending ? (
@@ -875,6 +1127,21 @@ export function MessagesView({
           </>
         )}
       </section>
+
+      <CreateProposalDialog
+        open={createProposalOpen}
+        onOpenChange={setCreateProposalOpen}
+        onSubmit={handleCreateProposal}
+      />
+
+      <AcceptProposalPixModal
+        proposal={selectedProposalForPix}
+        open={Boolean(selectedProposalForPix)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedProposalForPix(null)
+        }}
+        onConfirmPayment={handleConfirmProposalPix}
+      />
     </div>
   )
 }

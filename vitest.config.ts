@@ -28,6 +28,12 @@ export default defineConfig({
 
   test: {
     environment: "jsdom",
+    // Vitest 5 liga `clearMocks: true` por padrão (limpa histórico de TODOS
+    // os mocks antes de cada teste). Suítes que asseveram chamadas feitas no
+    // import-time (ex.: consumers que rodam main() na importação,
+    // geo-circuit-breakers) dependem do comportamento v4 — desliga.
+    // (Guia de migração v5: "clearMocks now defaults to true".)
+    clearMocks: false,
     // Guardas de CI/CLI (check-crlf, check-blob-crlf, normalize-crlf,
     // check-secret-leaks-baseline, etc.) criam fixtures git reais e levam
     // 5–21s por teste no Windows — acima do default de 5s do Vitest.

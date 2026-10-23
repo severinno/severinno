@@ -71,7 +71,7 @@ export function StepWizard({
   const progressPct = (completedCount / steps.length) * 100
 
   return (
-    <div className={cn("flex min-h-0 flex-col", className)}>
+    <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", className)}>
       {/* ── Step Indicator Bar ── */}
       <div className="shrink-0 border-b px-4 py-3 sm:px-5">
         {/* Step circles + labels */}

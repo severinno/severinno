@@ -84,7 +84,7 @@ describe("GET /api/admin/commissions", () => {
 
   it("returns correct aggregated totals", async () => {
     const req = new Request("http://localhost/api/admin/commissions?year=2025")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.grossRevenue).toBe(3800)
@@ -95,7 +95,7 @@ describe("GET /api/admin/commissions", () => {
 
   it("counts total bookings and completed bookings", async () => {
     const req = new Request("http://localhost/api/admin/commissions?year=2025")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.bookingCount).toBe(4)
@@ -104,7 +104,7 @@ describe("GET /api/admin/commissions", () => {
 
   it("returns per-provider breakdown sorted by gross revenue", async () => {
     const req = new Request("http://localhost/api/admin/commissions?year=2025")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.providers).toHaveLength(2)
@@ -136,7 +136,7 @@ describe("GET /api/admin/commissions", () => {
     mockDb.user.findMany.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/commissions?year=2025")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     const data = await res.json()
 
     expect(data.grossRevenue).toBe(0)
@@ -152,7 +152,7 @@ describe("GET /api/admin/commissions", () => {
     _mockRole = "PROVIDER"
 
     const req = new Request("http://localhost/api/admin/commissions?year=2025")
-    const res = await GET(req)
+    const res = await GET(req, { params: Promise.resolve({}) })
     expect(res.status).toBe(403)
   })
 })

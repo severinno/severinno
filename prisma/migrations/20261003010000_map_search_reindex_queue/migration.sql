@@ -1,0 +1,13 @@
+-- Correção do drift do `prisma db push` na fila de reindexação de busca.
+--
+-- A tabela REAL é "search_reindex_queue" (lowercase), criada por
+-- 20260724140000_auto_reindex_triggers, alimentada por triggers + SQL cru
+-- (src/lib/api-server.ts) e consumida por src/queue/search-index-consumer.ts.
+-- O model SearchReindexQueue no schema não tinha @@map, então o Prisma
+-- enxergava uma tabela fantasma "SearchReindexQueue" (PascalCase) e o
+-- `db push` propunha DROP da tabela REAL — com dezenas de milhares de rows
+-- na fila. O schema agora declara @@map("search_reindex_queue") (e o campo
+-- User.search_vector como Unsupported("tsvector")?), alinhando o Prisma à
+-- realidade. Esta migration remove só a tabela fantasma VAZIA em bancos que
+-- a tiveram; a fila real e suas rows não são tocadas.
+DROP TABLE IF EXISTS "SearchReindexQueue";

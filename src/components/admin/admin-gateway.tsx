@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query"
 
 import { apiGet } from "@/lib/api"
 import { formatBRL, formatDateTime } from "@/lib/format"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -129,7 +130,7 @@ export function AdminGateway() {
   const paginate = data?.paginate
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-3.5">
       <PageSectionHeader
         title="Faturas Lytex"
         description="Transações no gateway de pagamento. Somente leitura."
@@ -249,7 +250,7 @@ export function AdminGateway() {
           <div className="rounded-lg border">
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="h-8">
                   <TableHead>ID</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Valor</TableHead>
@@ -261,10 +262,10 @@ export function AdminGateway() {
               </TableHeader>
               <TableBody>
                 {invoices.map((inv) => (
-                  <TableRow key={inv._id}>
+                  <TableRow key={inv._id} className="h-9">
                     <TableCell className="font-mono text-xs">{inv._id.slice(0, 12)}…</TableCell>
                     <TableCell className="text-xs">{inv.client?.name ?? "—"}</TableCell>
-                    <TableCell className="text-xs font-medium">
+                    <TableCell className="text-xs font-medium tabular-nums">
                       {formatBRL(inv.totalValue / 100)}
                     </TableCell>
                     <TableCell>
@@ -280,7 +281,7 @@ export function AdminGateway() {
                     <TableCell className="text-muted-foreground text-xs">
                       {inv.paymentMethods?.list?.join(", ") ?? "—"}
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
+                    <TableCell className="text-muted-foreground text-xs tabular-nums">
                       {formatDateTime(inv.createdAt)}
                     </TableCell>
                     <TableCell>
@@ -305,8 +306,4 @@ export function AdminGateway() {
       )}
     </div>
   )
-}
-
-function cn(...classes: (string | undefined | null | false)[]): string {
-  return classes.filter(Boolean).join(" ")
 }

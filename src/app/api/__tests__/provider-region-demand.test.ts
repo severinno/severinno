@@ -142,7 +142,7 @@ describe("GET /api/provider/region-demand — auth", () => {
   it("returns 403 when user is not a PROVIDER", async () => {
     setSession({ role: "CLIENT" })
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(403)
@@ -152,7 +152,7 @@ describe("GET /api/provider/region-demand — auth", () => {
   it("returns 401 when not authenticated", async () => {
     mockRequireUser.mockRejectedValue(new Error("UNAUTHORIZED"))
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(401)
@@ -166,7 +166,7 @@ describe("GET /api/provider/region-demand — no location configured", () => {
     mockProvider({ lat: null })
 
     const _req = createMockRequest()
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -185,7 +185,7 @@ describe("GET /api/provider/region-demand — no location configured", () => {
     setSession()
     mockProvider({ lng: null })
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -196,7 +196,7 @@ describe("GET /api/provider/region-demand — no location configured", () => {
     setSession()
     mockProvider({ radiusKm: null })
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -207,7 +207,7 @@ describe("GET /api/provider/region-demand — no location configured", () => {
     setSession()
     mockUserFindUnique.mockResolvedValue(null)
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -227,7 +227,7 @@ describe("GET /api/provider/region-demand — PostGIS path", () => {
       .mockResolvedValueOnce([{ count: BigInt(5) }]) // bookings
       .mockResolvedValueOnce([{ count: BigInt(3) }]) // quotes
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -247,7 +247,7 @@ describe("GET /api/provider/region-demand — PostGIS path", () => {
       .mockResolvedValueOnce([{ count: BigInt(0) }]) // bookings
       .mockResolvedValueOnce([{ count: BigInt(0) }]) // quotes
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -263,7 +263,7 @@ describe("GET /api/provider/region-demand — PostGIS path", () => {
       .mockResolvedValueOnce([]) // bookings (no rows)
       .mockResolvedValueOnce([]) // quotes
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -291,7 +291,7 @@ describe("GET /api/provider/region-demand — Haversine fallback", () => {
       .mockReturnValueOnce(0) // quote 1: 0km ✓
       .mockReturnValueOnce(360) // quote 2: 360km ✗
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -311,7 +311,7 @@ describe("GET /api/provider/region-demand — Haversine fallback", () => {
     mockQuoteFindMany.mockResolvedValue([])
     mockHaversineKm.mockReturnValue(0)
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     // Only 1 booking has valid coords
@@ -329,7 +329,7 @@ describe("GET /api/provider/region-demand — Haversine fallback", () => {
     ])
     mockHaversineKm.mockReturnValue(0)
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.body).toMatchObject({ total: 1, bookings: 0, quotes: 1 })
@@ -346,7 +346,7 @@ describe("GET /api/provider/region-demand — Haversine fallback", () => {
       .mockReturnValueOnce(360)
       .mockReturnValueOnce(360)
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/test"), { params: Promise.resolve({}) })
     const parsed = await parseResponse(res)
 
     expect(parsed.body).toMatchObject({ total: 0, bookings: 0, quotes: 0 })

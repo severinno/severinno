@@ -1,18 +1,15 @@
 "use client"
-import Image from "next/image"
 
 /**
- * ProviderProfileModal — compact, clean, minimalist redesign.
+ * ProviderProfileModal — Uniform, widescreen-ready, clean & minimalist desktop modal
+ * with seamless Previous/Next provider navigation (buttons + keyboard arrows).
  *
- * Design principles:
- *   - Minimal chrome, maximum content
- *   - Compact header with inline identity
- *   - Horizontal stat pills
- *   - Clean tabs with subtle underline
- *   - Tight service cards with minimal decoration
- *   - Simple review cards
- *   - Compact hours grid
- *   - Fixed bottom CTA
+ * Key guarantees:
+ *   - Fixed uniform desktop dimensions (sm:max-w-3xl lg:max-w-4xl, h-[680px] max-h-[88vh])
+ *     so switching tabs or navigating across providers NEVER causes height/width jumps.
+ *   - Overrides Radix ScrollArea's internal `display: table` wrapper with `!block !w-full !min-w-0`
+ *     so long text, map sliders, review dates, and badges NEVER overflow or clip on the right edge.
+ *   - Built-in Previous / Next provider navigation bar + ArrowLeft / ArrowRight keyboard shortcuts.
  */
 
 import * as React from "react"
@@ -20,20 +17,22 @@ import { useQuery } from "@tanstack/react-query"
 import {
   BadgeCheck,
   Calendar,
-  ChevronDown,
-  ChevronUp,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  GitCompare,
   Heart,
   MapPin,
   Navigation,
-  Phone,
   Quote,
   Share2,
+  ShieldCheck,
   Star,
   Wrench,
   X,
 } from "lucide-react"
 import { toast } from "sonner"
-import { motion, AnimatePresence } from "framer-motion"
 
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet"
@@ -41,26 +40,19 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 import { useUIStore } from "@/store/ui"
+import { useCompareStore, MAX_COMPARE } from "@/store/compare"
 import { useRecentlyViewedStore } from "@/store/recently-viewed"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { fetchProviderDetail, type ProviderDetail, type ProviderService } from "@/lib/api"
+import { fetchProviderDetail, type ProviderDetail } from "@/lib/api"
 import { formatBRL } from "@/lib/format"
-import { SERVICE_UNIT_SHORT, WEEKDAYS, WEEKDAYS_SHORT } from "@/lib/constants"
 import { StarRatingDisplay } from "./star-rating"
 import { cn } from "@/lib/utils"
 import { useGeoStore } from "@/store/geo"
-import dynamic from "next/dynamic"
-
-// Mini map — client-only, lazy loaded
-const ProviderMiniMap = dynamic(() => import("@/components/shared/provider-mini-map"), {
-  ssr: false,
-  loading: () => <Skeleton className="h-48 w-full rounded-xl" />,
-})
+import { decodeEntities, ServicesTab, AboutTab, ReviewsTab, HoursTab } from "./provider-profile"
 
 // ---------------------------------------------------------------------------
 // Main modal wrapper
@@ -69,6 +61,7 @@ const ProviderMiniMap = dynamic(() => import("@/components/shared/provider-mini-
 export function ProviderProfileModal() {
   const open = useUIStore((s) => s.providerModal.open)
   const providerId = useUIStore((s) => s.providerModal.providerId)
+  const openProvider = useUIStore((s) => s.openProvider)
   const close = useUIStore((s) => s.closeProvider)
   const openQuote = useUIStore((s) => s.openQuote)
   const openBooking = useUIStore((s) => s.openBooking)
@@ -76,6 +69,69 @@ export function ProviderProfileModal() {
   const isMobile = useIsMobile()
 
   const { lat, lng } = useGeoStore()
+
+  // Collect ordered provider IDs currently present on the Vitrine page for seamless Prev/Next navigation
+  const [navigableIds, setNavigableIds] = React.useState<string[]>([])
+
+  React.useEffect(() => {
+    if (!open || typeof document === "undefined") return
+    const raf = requestAnimationFrame(() => {
+      const nodes = document.querySelectorAll<HTMLElement>("[data-provider-id]")
+      const seen = new Set<string>()
+      const list: string[] = []
+      nodes.forEach((el) => {
+        const id = el.getAttribute("data-provider-id")
+        if (id && !seen.has(id)) {
+          seen.add(id)
+          list.push(id)
+        }
+      })
+      if (providerId && !seen.has(providerId)) {
+        list.unshift(providerId)
+      }
+      setNavigableIds(list)
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [open, providerId])
+
+  const currentIndex = React.useMemo(() => {
+    if (!providerId || navigableIds.length === 0) return -1
+    return navigableIds.indexOf(providerId)
+  }, [providerId, navigableIds])
+
+  const hasNavigation = navigableIds.length > 1 && currentIndex !== -1
+
+  const handlePrevProvider = React.useCallback(() => {
+    if (!hasNavigation) return
+    const prevIdx = (currentIndex - 1 + navigableIds.length) % navigableIds.length
+    const targetId = navigableIds[prevIdx]
+    if (targetId) openProvider(targetId)
+  }, [hasNavigation, currentIndex, navigableIds, openProvider])
+
+  const handleNextProvider = React.useCallback(() => {
+    if (!hasNavigation) return
+    const nextIdx = (currentIndex + 1) % navigableIds.length
+    const targetId = navigableIds[nextIdx]
+    if (targetId) openProvider(targetId)
+  }, [hasNavigation, currentIndex, navigableIds, openProvider])
+
+  // Keyboard navigation (ArrowLeft / ArrowRight)
+  React.useEffect(() => {
+    if (!open || !hasNavigation) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return
+      if (e.key === "ArrowLeft") {
+        e.preventDefault()
+        handlePrevProvider()
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault()
+        handleNextProvider()
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [open, hasNavigation, handlePrevProvider, handleNextProvider])
 
   const query = useQuery({
     queryKey: ["provider", providerId, lat, lng],
@@ -103,7 +159,6 @@ export function ProviderProfileModal() {
   }, [open, provider, addRecentlyViewed])
 
   // Preload the mini-map bundle as soon as the modal opens (parallel with data fetch)
-  // so the map appears instantly when the user navigates to the "About" tab.
   React.useEffect(() => {
     if (open) {
       import("@/components/shared/provider-mini-map")
@@ -159,6 +214,12 @@ export function ProviderProfileModal() {
       onClose={close}
       onQuote={startQuote}
       onBooking={startBooking}
+      hasNavigation={hasNavigation}
+      currentIndex={currentIndex}
+      totalNavigable={navigableIds.length}
+      onPrevProvider={handlePrevProvider}
+      onNextProvider={handleNextProvider}
+      isMobile={isMobile}
     />
   )
 
@@ -181,8 +242,13 @@ export function ProviderProfileModal() {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-2xl" showCloseButton={false}>
-        <DialogTitle className="sr-only">{provider?.name ?? "Perfil do prestador"}</DialogTitle>
+      <DialogContent
+        className="border-border/70 bg-background w-[95vw] max-w-[95vw] min-w-0 gap-0 overflow-hidden rounded-3xl border p-0 shadow-2xl sm:max-w-3xl lg:max-w-4xl"
+        showCloseButton={false}
+      >
+        <DialogTitle className="sr-only">
+          {decodeEntities(provider?.name) || "Perfil do prestador"}
+        </DialogTitle>
         <DialogDescription className="sr-only">
           Detalhes do prestador de serviços.
         </DialogDescription>
@@ -193,7 +259,7 @@ export function ProviderProfileModal() {
 }
 
 // ---------------------------------------------------------------------------
-// Profile Body — compact layout
+// Profile Body — Fixed uniform dimensions on desktop, zero layout shift
 // ---------------------------------------------------------------------------
 
 function ProfileBody({
@@ -205,6 +271,12 @@ function ProfileBody({
   onClose,
   onQuote,
   onBooking,
+  hasNavigation,
+  currentIndex,
+  totalNavigable,
+  onPrevProvider,
+  onNextProvider,
+  isMobile,
 }: {
   provider?: ProviderDetail
   loading: boolean
@@ -214,820 +286,442 @@ function ProfileBody({
   onClose: () => void
   onQuote: (serviceId?: string) => void
   onBooking: (serviceId?: string) => void
+  hasNavigation: boolean
+  currentIndex: number
+  totalNavigable: number
+  onPrevProvider: () => void
+  onNextProvider: () => void
+  isMobile: boolean
 }) {
+  const compareIds = useCompareStore((s) => s.ids) ?? []
+  const toggleCompare = useCompareStore((s) => s.toggle)
+  const inCompare = Boolean(provider?.id && compareIds.includes(provider.id))
+
+  const handleCompare = () => {
+    if (!provider) return
+    if (!inCompare && compareIds.length >= MAX_COMPARE) {
+      toast.info(`Você pode comparar até ${MAX_COMPARE} prestadores por vez.`)
+      return
+    }
+    toggleCompare(provider.id)
+    toast.success(
+      inCompare ? "Removido do comparador." : "Adicionado ao comparador de prestadores!",
+    )
+  }
+
+  // Resolve memberSince year from either `memberSince` or API's `createdAt`
+  const memberYear = React.useMemo(() => {
+    if (!provider) return "—"
+    const rawDate =
+      provider.memberSince ??
+      ((provider as unknown as { createdAt?: string }).createdAt || undefined)
+    if (!rawDate) return "Verificado"
+    const year = new Date(rawDate).getFullYear()
+    return Number.isFinite(year) ? String(year) : "Verificado"
+  }, [provider])
+
+  // Minimum service price for quick summary
+  const minServicePrice = React.useMemo(() => {
+    if (!provider?.services || provider.services.length === 0) return null
+    const prices = provider.services
+      .map((s) => Number(s.basePrice))
+      .filter((n) => Number.isFinite(n) && n > 0)
+    return prices.length > 0 ? Math.min(...prices) : null
+  }, [provider])
+
   return (
-    <div className="flex max-h-[90vh] flex-col">
-      {/* ── Compact Header ── */}
-      <div className="shrink-0 px-5 pt-4 pb-3 sm:px-6">
-        <div className="flex items-start gap-3">
-          {/* Avatar */}
+    <div
+      className={cn(
+        "bg-background flex w-full min-w-0 flex-col overflow-hidden",
+        isMobile ? "h-full" : "h-[700px] max-h-[90vh]",
+      )}
+    >
+      {/* ── Top Navigation & Window Controls Bar ── */}
+      <div className="bg-muted/20 border-border/40 flex shrink-0 items-center justify-between gap-2 border-b px-5 py-2.5 sm:px-7">
+        <div className="flex min-w-0 items-center gap-2">
+          {hasNavigation ? (
+            <div data-testid="provider-modal-nav" className="flex items-center gap-1.5">
+              <button
+                type="button"
+                data-testid="provider-nav-prev"
+                onClick={onPrevProvider}
+                aria-label="Prestador anterior"
+                title="Prestador anterior (Tecla ←)"
+                className="border-border/60 bg-background hover:bg-muted text-foreground inline-flex h-7.5 cursor-pointer items-center gap-1 rounded-full border px-3 text-xs font-semibold shadow-2xs transition-all hover:scale-[1.02] active:scale-98"
+              >
+                <ChevronLeft className="size-3.5" />
+                <span className="hidden sm:inline">Anterior</span>
+              </button>
+
+              <span className="text-muted-foreground px-2 text-xs font-semibold tabular-nums">
+                <span className="text-foreground">{currentIndex + 1}</span> de {totalNavigable}
+              </span>
+
+              <button
+                type="button"
+                data-testid="provider-nav-next"
+                onClick={onNextProvider}
+                aria-label="Próximo prestador"
+                title="Próximo prestador (Tecla →)"
+                className="border-border/60 bg-background hover:bg-muted text-foreground inline-flex h-7.5 cursor-pointer items-center gap-1 rounded-full border px-3 text-xs font-semibold shadow-2xs transition-all hover:scale-[1.02] active:scale-98"
+              >
+                <span className="hidden sm:inline">Próximo</span>
+                <ChevronRight className="size-3.5" />
+              </button>
+
+              <span className="text-muted-foreground/60 hidden items-center gap-1 pl-2 text-[11px] lg:inline-flex">
+                Use as setas{" "}
+                <kbd className="border-border/60 bg-muted/50 rounded border px-1 py-0.5 font-mono text-[10px]">
+                  ←
+                </kbd>{" "}
+                <kbd className="border-border/60 bg-muted/50 rounded border px-1 py-0.5 font-mono text-[10px]">
+                  →
+                </kbd>{" "}
+                para navegar
+              </span>
+            </div>
+          ) : (
+            <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs font-semibold">
+              <ShieldCheck className="size-4 text-emerald-600" />
+              Perfil Oficial Verificado · Severinno
+            </span>
+          )}
+        </div>
+
+        {/* Action buttons — rounded-full, clean, never clipped */}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {provider && (
+            <button
+              type="button"
+              onClick={handleCompare}
+              aria-label={inCompare ? "Remover da comparação" : "Comparar prestador"}
+              title="Comparar prestador"
+              className={cn(
+                "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3 text-xs font-semibold shadow-2xs transition-all",
+                inCompare
+                  ? "bg-emerald-600 text-white"
+                  : "border-border/50 bg-background text-muted-foreground hover:bg-muted hover:text-foreground border",
+              )}
+            >
+              <GitCompare className="size-3.5" />
+              <span className="hidden sm:inline">{inCompare ? "Comparando" : "Comparar"}</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onShare}
+            aria-label="Compartilhar"
+            title="Compartilhar perfil"
+            className="border-border/50 text-muted-foreground hover:bg-muted hover:text-foreground bg-background inline-flex size-8 cursor-pointer items-center justify-center rounded-full border shadow-2xs transition-colors"
+          >
+            <Share2 className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={onFavorite}
+            aria-label={favorited ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+            aria-pressed={favorited}
+            title="Favoritar"
+            className={cn(
+              "border-border/50 bg-background inline-flex size-8 cursor-pointer items-center justify-center rounded-full border shadow-2xs transition-colors",
+              favorited
+                ? "border-rose-200 bg-rose-50/50 text-rose-500 dark:border-rose-900/50 dark:bg-rose-950/30"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <Heart className={cn("size-3.5", favorited && "fill-current")} />
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            title="Fechar (Esc)"
+            className="border-border/50 text-muted-foreground hover:bg-muted hover:text-foreground bg-background inline-flex size-8 cursor-pointer items-center justify-center rounded-full border shadow-2xs transition-colors"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* ── Compact Identity Header ── */}
+      <div className="shrink-0 px-5 pt-5 pb-4 sm:px-7">
+        <div className="flex items-start gap-4 sm:gap-5">
+          {/* Avatar - 100% Redondo (Requisito Explícito do Usuário) */}
           <div className="relative shrink-0">
-            <Avatar className="border-border size-14 rounded-xl border shadow-sm">
+            <Avatar className="border-background size-16 overflow-hidden !rounded-full rounded-full border-2 shadow-md ring-4 ring-emerald-500/15 transition-all sm:size-20">
               {provider?.avatarUrl ? (
-                <AvatarImage src={provider.avatarUrl} alt={provider.name} />
+                <AvatarImage
+                  src={provider.avatarUrl}
+                  alt={provider.name}
+                  className="aspect-square !rounded-full rounded-full object-cover"
+                />
               ) : null}
-              <AvatarFallback className="rounded-xl bg-emerald-100 text-lg font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+              <AvatarFallback className="!rounded-full rounded-full bg-gradient-to-br from-emerald-100 to-teal-200 text-xl font-black text-emerald-800 dark:from-emerald-950 dark:to-teal-900 dark:text-emerald-200">
                 {provider?.name?.[0]?.toUpperCase() ?? "?"}
               </AvatarFallback>
             </Avatar>
             {provider?.verified && (
-              <span className="ring-background absolute -right-0.5 -bottom-0.5 flex size-5 items-center justify-center rounded-full bg-emerald-500 text-white ring-2">
-                <BadgeCheck className="size-3" />
+              <span
+                className="ring-background absolute -right-0.5 -bottom-0.5 flex size-6 items-center justify-center rounded-full bg-emerald-600 text-white shadow-xs ring-2"
+                title="Perfil Verificado"
+              >
+                <BadgeCheck className="size-3.5" />
               </span>
             )}
           </div>
 
-          {/* Name + meta */}
+          {/* Name + Unified Metadata */}
           <div className="min-w-0 flex-1">
             {loading ? (
               <div className="space-y-2">
-                <Skeleton className="h-5 w-40 rounded" />
-                <Skeleton className="h-3.5 w-28 rounded" />
+                <Skeleton className="h-6 w-48 rounded-lg" />
+                <Skeleton className="h-4 w-32 rounded-lg" />
               </div>
             ) : (
               <>
-                <div className="flex items-center gap-1.5">
-                  <h2 className="truncate text-base leading-tight font-semibold">
-                    {provider?.name}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h2 className="text-foreground text-lg leading-tight font-black tracking-tight sm:text-xl lg:text-2xl">
+                    {decodeEntities(provider?.name)}
                   </h2>
                   {provider?.verified && (
                     <Badge
                       data-testid="badge"
-                      className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0 text-[9px] font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-300"
                     >
-                      <BadgeCheck className="size-2.5" /> Verificado
+                      <BadgeCheck className="size-3" /> Verificado
                     </Badge>
                   )}
                 </div>
-                <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-2 text-xs">
+
+                <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 text-xs">
                   {provider && (
                     <StarRatingDisplay
                       value={provider.rating}
                       count={provider.reviewCount}
-                      size={11}
+                      size={13}
                     />
                   )}
-                  {provider?.city && (
-                    <span className="inline-flex items-center gap-0.5">
-                      <MapPin className="size-3" />
-                      {provider.city}
-                      {provider.state ? `/${provider.state}` : ""}
+                  <span className="text-muted-foreground/30 hidden sm:inline">•</span>
+                  {(provider?.district || provider?.city) && (
+                    <span className="text-foreground/80 inline-flex items-center gap-1 font-medium">
+                      <MapPin className="text-muted-foreground size-3.5 shrink-0" />
+                      <span className="truncate">
+                        {provider.district ? `${provider.district}, ` : ""}
+                        {provider.city}
+                        {provider.state ? `/${provider.state}` : ""}
+                      </span>
                     </span>
                   )}
                   {provider?.distanceKm != null && (
-                    <span className="inline-flex items-center gap-0.5 font-medium text-emerald-600 dark:text-emerald-400">
-                      <Navigation className="size-3" />
-                      {provider.distanceKm < 1
-                        ? `${Math.round(provider.distanceKm * 1000)} m`
-                        : `${provider.distanceKm.toFixed(1)} km`}
-                    </span>
+                    <>
+                      <span className="text-muted-foreground/30 hidden sm:inline">•</span>
+                      <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400">
+                        <Navigation className="size-3 shrink-0" />
+                        {provider.distanceKm < 1
+                          ? `${Math.round(provider.distanceKm * 1000)} m`
+                          : `${provider.distanceKm.toFixed(1)} km`}
+                      </span>
+                    </>
                   )}
                 </div>
               </>
             )}
           </div>
-
-          {/* Action buttons */}
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              onClick={onShare}
-              aria-label="Compartilhar"
-              className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-8 items-center justify-center rounded-lg transition-colors"
-            >
-              <Share2 className="size-4" />
-            </button>
-            <button
-              onClick={onFavorite}
-              aria-label={favorited ? "Remover dos favoritos" : "Adicionar aos favoritos"}
-              aria-pressed={favorited}
-              className={cn(
-                "inline-flex size-8 items-center justify-center rounded-lg transition-colors",
-                favorited
-                  ? "text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
-              <Heart className={cn("size-4", favorited && "fill-current")} />
-            </button>
-            <button
-              onClick={onClose}
-              aria-label="Fechar"
-              className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex size-8 items-center justify-center rounded-lg transition-colors"
-            >
-              <X className="size-4" />
-            </button>
-          </div>
         </div>
 
-        {/* ── Inline stat pills ── */}
+        {/* ── Modern Clean Highlight Strip ── */}
         {!loading && provider && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            <StatPill
-              icon={<Wrench className="size-3" />}
-              value={provider.services.length}
-              label="Serviços"
-            />
-            {provider.distanceKm != null && (
-              <StatPill
-                icon={<Navigation className="size-3" />}
-                value={
-                  provider.distanceKm < 1
-                    ? `${Math.round(provider.distanceKm * 1000)} m`
-                    : `${provider.distanceKm.toFixed(1)} km`
-                }
-                label="Distância"
-              />
-            )}
-            <StatPill
-              icon={<Calendar className="size-3" />}
-              value={
-                provider.memberSince ? new Date(provider.memberSince).getFullYear().toString() : "—"
-              }
-              label="Membro desde"
-            />
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="border-border/40 bg-muted/20 hover:bg-muted/30 flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                <Wrench className="size-3.5" />
+              </span>
+              <div className="min-w-0 leading-tight">
+                <p className="text-foreground text-xs font-extrabold tabular-nums sm:text-sm">
+                  {provider.services.length}
+                </p>
+                <p className="text-muted-foreground truncate text-[10px]">Serviços ativos</p>
+              </div>
+            </div>
+
+            <div className="border-border/40 bg-muted/20 hover:bg-muted/30 flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                <Navigation className="size-3.5" />
+              </span>
+              <div className="min-w-0 leading-tight">
+                <p className="text-foreground text-xs font-extrabold tabular-nums sm:text-sm">
+                  {provider.distanceKm != null
+                    ? provider.distanceKm < 1
+                      ? `${Math.round(provider.distanceKm * 1000)} m`
+                      : `${provider.distanceKm.toFixed(1)} km`
+                    : `${provider.radiusKm ?? 25} km`}
+                </p>
+                <p className="text-muted-foreground truncate text-[10px]">
+                  {provider.distanceKm != null ? "Distância" : "Cobertura GV"}
+                </p>
+              </div>
+            </div>
+
+            <div className="border-border/40 bg-muted/20 hover:bg-muted/30 flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                <Calendar className="size-3.5" />
+              </span>
+              <div className="min-w-0 leading-tight">
+                <p className="text-foreground text-xs font-extrabold tabular-nums sm:text-sm">
+                  {memberYear}
+                </p>
+                <p className="text-muted-foreground truncate text-[10px]">Membro desde</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 transition-colors hover:bg-emerald-500/10">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-2xs">
+                <ShieldCheck className="size-3.5" />
+              </span>
+              <div className="min-w-0 leading-tight">
+                <p className="text-xs font-extrabold text-emerald-700 sm:text-sm dark:text-emerald-400">
+                  Escrow PIX
+                </p>
+                <p className="text-muted-foreground truncate text-[10px]">Garantia 90 dias</p>
+              </div>
+            </div>
           </div>
         )}
       </div>
 
-      <Separator />
-
-      {/* ── Tabs ── */}
-      <div className="flex-1 overflow-hidden">
-        <Tabs defaultValue="services" className="flex h-full flex-col">
-          <div className="shrink-0 px-5 sm:px-6">
-            <TabsList className="border-border flex h-auto w-full justify-start gap-0 border-b bg-transparent p-0">
+      {/* ── Tabs with Fixed Scrollable Viewport ── */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <Tabs defaultValue="services" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="bg-background shrink-0 px-5 pt-1 pb-2.5 sm:px-7">
+            <TabsList className="bg-muted/40 border-border/50 flex h-auto w-full justify-between gap-1 rounded-2xl border p-1.5 sm:justify-start">
               {(["services", "about", "reviews", "hours"] as const).map((tab) => (
                 <TabsTrigger
                   key={tab}
                   value={tab}
-                  className="text-muted-foreground data-[state=active]:text-foreground hover:text-foreground relative rounded-none border-b-2 border-transparent px-3 pt-1.5 pb-2 text-xs font-medium transition-colors data-[state=active]:border-emerald-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                  data-testid="tab-trigger"
+                  className="text-muted-foreground hover:text-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:border-border/60 h-9 flex-1 cursor-pointer rounded-xl px-4 text-xs font-semibold transition-all data-[state=active]:border data-[state=active]:font-bold data-[state=active]:shadow-xs sm:flex-initial"
                 >
-                  {tab === "services"
-                    ? "Serviços"
-                    : tab === "about"
-                      ? "Sobre"
-                      : tab === "reviews"
-                        ? "Avaliações"
-                        : "Expediente"}
-                  {tab === "services" && provider && provider.services.length > 0 && (
-                    <span className="text-muted-foreground ml-1 text-[10px]">
-                      ({provider.services.length})
+                  <span className="flex items-center gap-1.5">
+                    {tab === "services" && <Wrench className="size-3.5 text-emerald-600" />}
+                    {tab === "about" && <ShieldCheck className="size-3.5 text-emerald-600" />}
+                    {tab === "reviews" && (
+                      <Star className="size-3.5 fill-amber-500/20 text-amber-500" />
+                    )}
+                    {tab === "hours" && <Clock className="size-3.5 text-blue-500" />}
+                    <span>
+                      {tab === "services"
+                        ? "Serviços"
+                        : tab === "about"
+                          ? "Sobre"
+                          : tab === "reviews"
+                            ? "Avaliações"
+                            : "Expediente"}
                     </span>
-                  )}
-                  {tab === "reviews" && provider && provider.reviewCount > 0 && (
-                    <span className="text-muted-foreground ml-1 text-[10px]">
-                      ({provider.reviewCount})
-                    </span>
-                  )}
+                    {tab === "services" && provider && provider.services.length > 0 && (
+                      <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-extrabold text-emerald-700 dark:text-emerald-300">
+                        ({provider.services.length})
+                      </span>
+                    )}
+                    {tab === "reviews" && provider && provider.reviewCount > 0 && (
+                      <span className="bg-muted text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px] font-bold">
+                        ({provider.reviewCount})
+                      </span>
+                    )}
+                  </span>
                 </TabsTrigger>
               ))}
             </TabsList>
           </div>
 
-          <ScrollArea className="flex-1">
+          <ScrollArea className="min-h-0 w-full flex-1 overflow-x-hidden [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:!w-full [&_[data-slot=scroll-area-viewport]>div]:!min-w-0">
             <TabsContent
               value="services"
-              className="m-0 px-5 py-4 focus-visible:outline-none sm:px-6"
+              className="m-0 w-full min-w-0 px-5 py-4 focus-visible:outline-none sm:px-7"
             >
               <ServicesTab
+                providerId={provider?.id}
                 services={provider?.services ?? []}
                 loading={loading}
                 onQuote={onQuote}
                 onBooking={onBooking}
               />
             </TabsContent>
-            <TabsContent value="about" className="m-0 px-5 py-4 focus-visible:outline-none sm:px-6">
+            <TabsContent
+              value="about"
+              className="m-0 w-full min-w-0 px-5 py-4 focus-visible:outline-none sm:px-7"
+            >
               <AboutTab provider={provider} loading={loading} />
             </TabsContent>
             <TabsContent
               value="reviews"
-              className="m-0 px-5 py-4 focus-visible:outline-none sm:px-6"
+              className="m-0 w-full min-w-0 px-5 py-4 focus-visible:outline-none sm:px-7"
             >
               <ReviewsTab
+                providerName={provider?.name}
                 reviews={provider?.reviews ?? []}
                 rating={provider?.rating}
                 reviewCount={provider?.reviewCount}
                 loading={loading}
               />
             </TabsContent>
-            <TabsContent value="hours" className="m-0 px-5 py-4 focus-visible:outline-none sm:px-6">
-              <HoursTab availability={provider?.availability ?? []} loading={loading} />
+            <TabsContent
+              value="hours"
+              className="m-0 w-full min-w-0 px-5 py-4 focus-visible:outline-none sm:px-7"
+            >
+              <HoursTab
+                providerId={provider?.id}
+                availability={provider?.availability ?? []}
+                loading={loading}
+                onBooking={() => onBooking(provider?.services?.[0]?.id)}
+                onQuote={() => onQuote(provider?.services?.[0]?.id)}
+              />
             </TabsContent>
           </ScrollArea>
         </Tabs>
       </div>
 
       {/* ── Sticky Footer CTA ── */}
-      <div className="bg-background shrink-0 border-t px-5 py-2.5 sm:px-6">
-        <div className="flex gap-2">
-          <Button
-            onClick={() => onQuote()}
-            variant="outline"
-            className="h-10 flex-1 rounded-lg text-xs font-semibold transition-colors"
-          >
-            <Quote className="size-3.5" />
-            Pedir orçamento
-          </Button>
-          <Button
-            onClick={() => onBooking()}
-            className="h-10 flex-1 rounded-lg bg-emerald-600 text-xs font-semibold transition-colors hover:bg-emerald-700"
-          >
-            <Calendar className="size-3.5" />
-            Agendar serviço
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Stat Pill — inline compact metric
-// ---------------------------------------------------------------------------
-
-function StatPill({
-  icon,
-  value,
-  label,
-}: {
-  icon: React.ReactNode
-  value: string | number
-  label: string
-}) {
-  return (
-    <span className="bg-muted/60 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] ring-1 ring-black/[0.04] dark:ring-white/[0.06]">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="text-foreground font-semibold tabular-nums">{value}</span>
-      <span className="text-muted-foreground">{label}</span>
-    </span>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Services tab — flat list, compact cards grouped by category
-// ---------------------------------------------------------------------------
-
-function ServicesTab({
-  services,
-  loading,
-  onQuote,
-  onBooking,
-}: {
-  services: ProviderService[]
-  loading: boolean
-  onQuote: (serviceId?: string) => void
-  onBooking: (serviceId?: string) => void
-}) {
-  // Group by category
-  const groups = React.useMemo(() => {
-    const g = new Map<string, ProviderService[]>()
-    for (const s of services) {
-      const key = s.category?.name ?? "Outros"
-      const arr = g.get(key) ?? []
-      arr.push(s)
-      g.set(key, arr)
-    }
-    return g
-  }, [services])
-
-  const [expandedCats, setExpandedCats] = React.useState<Set<string>>(() => new Set(groups.keys()))
-
-  // Sync when services change
-  React.useEffect(() => {
-    const id = requestAnimationFrame(() => setExpandedCats(new Set(groups.keys())))
-    return () => cancelAnimationFrame(id)
-  }, [groups])
-
-  if (loading) {
-    return (
-      <div className="space-y-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-20 w-full rounded-lg" />
-        ))}
-      </div>
-    )
-  }
-
-  if (services.length === 0) {
-    return (
-      <EmptyState
-        icon={Wrench}
-        title="Nenhum serviço"
-        description="Este prestador ainda não publicou serviços."
-      />
-    )
-  }
-
-  const toggleCat = (cat: string) => {
-    setExpandedCats((prev) => {
-      const next = new Set(prev)
-      if (next.has(cat)) next.delete(cat)
-      else next.add(cat)
-      return next
-    })
-  }
-
-  return (
-    <div className="space-y-3">
-      {Array.from(groups.entries()).map(([categoryName, items]) => {
-        const expanded = expandedCats.has(categoryName)
-        return (
-          <div key={categoryName}>
-            {/* Category header */}
-            <button
-              type="button"
-              onClick={() => toggleCat(categoryName)}
-              className="hover:bg-muted/50 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <span className="flex size-6 items-center justify-center rounded-md bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
-                  <Wrench className="size-3" />
-                </span>
-                <span className="text-xs font-semibold">{categoryName}</span>
-                <span className="text-muted-foreground text-[10px]">({items.length})</span>
-              </div>
-              {expanded ? (
-                <ChevronUp className="text-muted-foreground size-3.5" />
-              ) : (
-                <ChevronDown className="text-muted-foreground size-3.5" />
-              )}
-            </button>
-
-            {/* Service items */}
-            <AnimatePresence>
-              {expanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
-                >
-                  <div className="space-y-1.5 pb-1">
-                    {items.map((s) => (
-                      <ServiceCard
-                        key={s.id}
-                        service={s}
-                        onQuote={() => onQuote(s.id)}
-                        onBooking={() => onBooking(s.id)}
-                      />
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function ServiceCard({
-  service,
-  onQuote,
-  onBooking,
-}: {
-  service: ProviderService
-  onQuote: () => void
-  onBooking: () => void
-}) {
-  const photos = service.photos ?? []
-
-  return (
-    <div className="group bg-card overflow-hidden rounded-lg border transition-colors hover:border-emerald-200 dark:hover:border-emerald-800">
-      <div className="flex items-center gap-3 p-3">
-        {/* Photo thumbnail */}
-        {photos.length > 0 ? (
-          <div className="bg-muted relative size-12 shrink-0 overflow-hidden rounded-md">
-            <Image
-              src={photos[0]}
-              alt={service.title}
-              fill
-              sizes="48px"
-              className="object-cover"
-              loading="lazy"
-            />
-          </div>
-        ) : (
-          <div className="bg-muted text-muted-foreground flex size-12 shrink-0 items-center justify-center rounded-md">
-            <Wrench className="size-4" />
-          </div>
-        )}
-
-        {/* Info */}
-        <div className="min-w-0 flex-1">
-          <h4 className="truncate text-xs leading-tight font-semibold transition-colors group-hover:text-emerald-700 dark:group-hover:text-emerald-400">
-            {service.title}
-          </h4>
-          {service.description && (
-            <p className="text-muted-foreground mt-0.5 line-clamp-1 text-[11px] leading-relaxed">
-              {service.description}
-            </p>
-          )}
-          <div className="mt-1 inline-flex items-baseline gap-0.5">
-            <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
-              {formatBRL(service.basePrice)}
-            </span>
-            <span className="text-muted-foreground text-[10px]">
-              /{SERVICE_UNIT_SHORT[service.unit as keyof typeof SERVICE_UNIT_SHORT] ?? "un"}
-            </span>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex shrink-0 flex-col gap-1">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={onQuote}
-            className="h-7 rounded-md px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
-          >
-            <Quote className="size-3" /> Orçamento
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={onBooking}
-            className="h-7 rounded-md px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
-          >
-            <Calendar className="size-3" /> Agendar
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// About tab — clean info sections
-// ---------------------------------------------------------------------------
-
-function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: boolean }) {
-  const userLat = useGeoStore((s) => s.lat)
-  const userLng = useGeoStore((s) => s.lng)
-  const [previewRadius, setPreviewRadius] = React.useState<number | null>(null)
-
-  const handleRadiusChange = React.useCallback((km: number) => {
-    setPreviewRadius(km)
-  }, [])
-
-  if (loading) {
-    return (
-      <div className="space-y-2">
-        <Skeleton className="h-3 w-3/4 rounded" />
-        <Skeleton className="h-3 w-2/3 rounded" />
-      </div>
-    )
-  }
-
-  const radius = provider?.radiusKm
-  const hasProviderCoords =
-    typeof provider?.lat === "number" &&
-    typeof provider?.lng === "number" &&
-    Number.isFinite(provider.lat) &&
-    Number.isFinite(provider.lng)
-
-  return (
-    <div className="space-y-4 text-sm">
-      {/* Bio */}
-      {provider?.bio ? (
-        <p className="text-foreground/90 text-sm leading-relaxed whitespace-pre-line">
-          {provider.bio}
-        </p>
-      ) : (
-        <p className="text-muted-foreground text-xs italic">Sem descrição cadastrada.</p>
-      )}
-
-      {/* Mini map with radius circle */}
-      {hasProviderCoords ? (
-        <ProviderMiniMap
-          providerLat={provider!.lat!}
-          providerLng={provider!.lng!}
-          providerName={provider!.name}
-          userLat={userLat}
-          userLng={userLng}
-          radiusKm={previewRadius ?? radius}
-          onRadiusChange={handleRadiusChange}
-          height={200}
-          className="w-full"
-        />
-      ) : null}
-
-      <Separator />
-
-      {/* Info grid */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {/* Address */}
-        <div className="flex items-start gap-2.5">
-          <div className="bg-muted text-muted-foreground flex size-7 shrink-0 items-center justify-center rounded-md">
-            <MapPin className="size-3.5" />
-          </div>
-          <div>
-            <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
-              Endereço
-            </p>
-            <p className="mt-0.5 text-xs leading-relaxed">
-              {provider?.address ?? "—"}
-              {provider?.district ? `, ${provider.district}` : ""}
-              <br />
-              {provider?.city}
-              {provider?.state ? `/${provider.state}` : ""}
-              {provider?.cep ? ` · CEP ${provider.cep}` : ""}
-            </p>
-          </div>
-        </div>
-
-        {/* Coverage */}
-        <div className="flex items-start gap-2.5">
-          <div className="bg-muted text-muted-foreground flex size-7 shrink-0 items-center justify-center rounded-md">
-            <Navigation className="size-3.5" />
-          </div>
-          <div>
-            <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
-              Área de cobertura
-            </p>
-            <p className="mt-0.5 text-xs leading-relaxed">
-              Raio de{" "}
-              <strong className="text-emerald-700 dark:text-emerald-400">
-                {radius != null ? `${radius} km` : "—"}
-              </strong>
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Contact */}
-      {provider?.whatsapp && (
-        <>
-          <Separator />
-          <div className="flex items-center gap-2.5">
-            <div className="bg-muted text-muted-foreground flex size-7 shrink-0 items-center justify-center rounded-md">
-              <Phone className="size-3.5" />
-            </div>
-            <div>
-              <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
-                WhatsApp
-              </p>
-              <p className="mt-0.5 text-xs">{provider.whatsapp}</p>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Reviews tab — compact
-// ---------------------------------------------------------------------------
-
-function ReviewsTab({
-  reviews,
-  rating,
-  reviewCount,
-  loading,
-}: {
-  reviews: ProviderDetail["reviews"]
-  rating?: number
-  reviewCount?: number
-  loading: boolean
-}) {
-  if (loading) {
-    return (
-      <div className="space-y-3">
-        <Skeleton className="h-16 w-full rounded-lg" />
-        {Array.from({ length: 2 }).map((_, i) => (
-          <Skeleton key={i} className="h-14 w-full rounded-lg" />
-        ))}
-      </div>
-    )
-  }
-
-  if (!reviews || reviews.length === 0) {
-    return (
-      <EmptyState
-        icon={Star}
-        title="Sem avaliações"
-        description="As avaliações aparecerão aqui após a conclusão de serviços."
-      />
-    )
-  }
-
-  const distribution = [5, 4, 3, 2, 1].map((star) => {
-    const count = reviews.filter((r) => Math.round(r.rating) === star).length
-    const pct = reviews.length > 0 ? (count / reviews.length) * 100 : 0
-    return { star, count, pct }
-  })
-  const avg = rating ?? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
-
-  return (
-    <div className="space-y-4">
-      {/* Summary row */}
-      <div className="flex items-center gap-4">
-        <div className="shrink-0 text-center">
-          <p className="text-2xl font-bold tabular-nums">{avg.toFixed(1)}</p>
-          <StarRatingDisplay
-            value={avg}
-            showCount={false}
-            size={11}
-            className="mt-0.5 justify-center"
-          />
-          <p className="text-muted-foreground mt-0.5 text-[10px]">
-            {reviewCount ?? reviews.length}{" "}
-            {(reviewCount ?? reviews.length) === 1 ? "avaliação" : "avaliações"}
-          </p>
-        </div>
-        <div className="grid flex-1 gap-1.5">
-          {distribution.map((d) => (
-            <div key={d.star} className="flex items-center gap-1.5 text-[10px]">
-              <span className="text-muted-foreground w-2 tabular-nums">{d.star}</span>
-              <Star className="size-2.5 fill-amber-400 text-amber-400" strokeWidth={0} />
-              <div className="bg-muted relative h-1.5 flex-1 overflow-hidden rounded-full">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${d.pct}%` }}
-                  transition={{ duration: 0.4, ease: "easeOut" }}
-                  className="absolute inset-y-0 left-0 rounded-full bg-amber-400"
-                />
-              </div>
-              <span className="text-muted-foreground w-4 text-right tabular-nums">{d.count}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Review cards */}
-      <div className="space-y-2">
-        {reviews.map((r, idx) => (
-          <motion.div
-            key={r.id}
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.04, duration: 0.2 }}
-            className="bg-card rounded-lg border p-3"
-          >
+      <div className="bg-background/95 border-border/60 shrink-0 border-t px-5 py-3 backdrop-blur-md sm:px-7">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="hidden min-w-0 sm:block">
             <div className="flex items-center gap-2.5">
-              <Avatar className="size-8 rounded-lg">
-                {r.author?.avatarUrl ? (
-                  <AvatarImage src={r.author.avatarUrl} alt={r.author.name} />
-                ) : null}
-                <AvatarFallback className="bg-muted rounded-lg text-[10px] font-semibold">
-                  {r.author?.name?.[0]?.toUpperCase() ?? "?"}
-                </AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between">
-                  <p className="truncate text-xs font-medium">{r.author?.name ?? "Cliente"}</p>
-                  <span className="text-muted-foreground shrink-0 text-[10px]">
-                    {new Date(r.createdAt).toLocaleDateString("pt-BR")}
-                  </span>
-                </div>
-                <StarRatingDisplay
-                  value={r.rating}
-                  size={10}
-                  showCount={false}
-                  className="mt-0.5"
-                />
-              </div>
-            </div>
-            {r.comment && (
-              <p className="text-muted-foreground mt-2 pl-[42px] text-xs leading-relaxed">
-                {r.comment}
-              </p>
-            )}
-          </motion.div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Hours tab — compact grid
-// ---------------------------------------------------------------------------
-
-function HoursTab({
-  availability,
-  loading,
-}: {
-  availability: ProviderDetail["availability"]
-  loading: boolean
-}) {
-  if (loading) return <Skeleton className="h-40 w-full rounded-lg" />
-
-  const byDay = new Map<number, { start: string; end: string }[]>()
-  for (const a of availability ?? []) {
-    const arr = byDay.get(a.dayOfWeek) ?? []
-    arr.push({ start: a.startTime, end: a.endTime })
-    byDay.set(a.dayOfWeek, arr)
-  }
-
-  const today = new Date().getDay()
-
-  // Currently open?
-  const now = new Date()
-  const todaySlots = byDay.get(today) ?? []
-  const currentMinutes = now.getHours() * 60 + now.getMinutes()
-  const currentlyOpen = todaySlots.some((s) => {
-    const [sh, sm] = s.start.split(":").map(Number)
-    const [eh, em] = s.end.split(":").map(Number)
-    return currentMinutes >= sh * 60 + sm && currentMinutes <= eh * 60 + em
-  })
-
-  return (
-    <div className="space-y-3">
-      {/* Status pill */}
-      <div
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold",
-          currentlyOpen
-            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
-            : "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300",
-        )}
-      >
-        <span
-          className={cn("size-1.5 rounded-full", currentlyOpen ? "bg-emerald-500" : "bg-red-500")}
-        />
-        {currentlyOpen ? "Aberto agora" : "Fechado agora"}
-      </div>
-
-      {/* Compact day rows */}
-      <div className="divide-y overflow-hidden rounded-lg border">
-        {WEEKDAYS.map((day, i) => {
-          const slots = byDay.get(i) ?? []
-          const open = slots.length > 0
-          const isToday = i === today
-          return (
-            <div
-              key={day}
-              className={cn(
-                "flex items-center justify-between px-3 py-2 text-xs transition-colors",
-                isToday && "bg-emerald-50/50 dark:bg-emerald-950/20",
-              )}
-            >
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="truncate font-medium">
-                  <span className="hidden sm:inline">{day}</span>
-                  <span className="sm:hidden">{WEEKDAYS_SHORT[i]}</span>
+              {minServicePrice != null ? (
+                <span className="text-foreground text-sm font-black sm:text-base">
+                  A partir de {formatBRL(minServicePrice)}
                 </span>
-                {isToday && (
-                  <Badge className="rounded bg-emerald-100 px-1 py-0 text-[8px] font-bold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
-                    hoje
-                  </Badge>
-                )}
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {slots.length === 0 ? (
-                  <span className="text-muted-foreground text-[11px]">—</span>
-                ) : (
-                  <span className="text-muted-foreground font-mono text-[11px]">
-                    {slots.map((s) => `${s.start}–${s.end}`).join(", ")}
-                  </span>
-                )}
-                <Badge
-                  variant={open ? "default" : "outline"}
-                  className={cn(
-                    "rounded px-1.5 py-0 text-[9px]",
-                    open
-                      ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-300"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {open ? "Aberto" : "Fechado"}
-                </Badge>
-              </div>
+              ) : (
+                <span className="text-foreground text-sm font-bold">Orçamento sob medida</span>
+              )}
+              <span className="text-muted-foreground/40">•</span>
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="size-3.5 shrink-0" />
+                Pagamento só após aprovação
+              </span>
             </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
+            <p className="text-muted-foreground mt-0.5 text-[11px]">
+              Custódia PIX 100% protegida: seu valor fica retido com segurança até o término do
+              serviço.
+            </p>
+          </div>
 
-// ---------------------------------------------------------------------------
-// Empty state
-// ---------------------------------------------------------------------------
-
-function EmptyState({
-  icon: Icon,
-  title,
-  description,
-}: {
-  icon: React.ComponentType<{ className?: string }>
-  title: string
-  description: string
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-      <div className="bg-muted text-muted-foreground rounded-xl p-3">
-        <Icon className="size-5" />
-      </div>
-      <div>
-        <p className="text-xs font-semibold">{title}</p>
-        <p className="text-muted-foreground mt-0.5 max-w-xs text-[11px]">{description}</p>
+          <div className="flex flex-1 gap-2.5 sm:max-w-md">
+            <Button
+              onClick={() => onQuote()}
+              variant="outline"
+              className="border-border/80 hover:bg-muted/70 h-10.5 flex-1 cursor-pointer rounded-xl text-xs font-bold shadow-2xs transition-all"
+            >
+              <Quote className="mr-1.5 size-3.5" />
+              Pedir orçamento
+            </Button>
+            <Button
+              onClick={() => onBooking()}
+              className="h-10.5 flex-1 cursor-pointer rounded-xl bg-emerald-600 text-xs font-bold text-white shadow-sm shadow-emerald-600/15 transition-all hover:bg-emerald-700 active:scale-98"
+            >
+              <Calendar className="mr-1.5 size-3.5" />
+              Agendar serviço
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   )

@@ -47,16 +47,16 @@ import {
 } from "../../../prisma/seed-data"
 
 describe("seed-e2e-utils — patches (paridade com o seed-data)", () => {
-  it("UPDATE_PATCHES: Elétrica troca icon para bolt e Reparos ganha order 5", () => {
+  it("UPDATE_PATCHES: Elétrica troca icon para bolt e Reparos e Instalações ganha order 5", () => {
     const byName = new Map(UPDATE_PATCHES.map((p) => [p.name, p]))
     expect(byName.get("Elétrica")?.icon).toBe("bolt")
-    expect(byName.get("Reparos")?.order).toBe(5)
+    expect(byName.get("Reparos e Instalações")?.order).toBe(5)
   })
 
   it("UPDATE_PATCH serializa os patches (round-trip via buildPatchedSpec)", () => {
     const viaJson = buildPatchedSpec(UPDATE_PATCH, true)
     const elétrica = viaJson.find((c) => c.name === "Elétrica")
-    const reparos = viaJson.find((c) => c.name === "Reparos")
+    const reparos = viaJson.find((c) => c.name === "Reparos e Instalações")
     expect(elétrica?.icon).toBe("bolt")
     expect(reparos?.order).toBe(5)
     expect(viaJson.length).toBe(CATEGORY_SPEC.length)
@@ -74,7 +74,7 @@ describe("seed-e2e-utils — patches (paridade com o seed-data)", () => {
     const viaJson = buildPatchedSpec(RENAME_PATCH, true)
     const eletricidade = viaJson.find((c) => c.name === "Eletricidade")
     expect(eletricidade).toBeDefined()
-    expect(eletricidade?.parent).toBe("Reparos")
+    expect(eletricidade?.parent).toBe("Reparos e Instalações")
     // Filhos da antiga 'Elétrica' passam a referenciar 'Eletricidade'
     const filhos = viaJson.filter((c) => c.parent === "Eletricidade")
     expect(filhos.length).toBe(FILHOS_ELETRICA.length)
@@ -87,17 +87,19 @@ describe("seed-e2e-utils — patches (paridade com o seed-data)", () => {
 })
 
 describe("seed-e2e-utils — slugs canônicos", () => {
-  it("ELETRICA_SLUG é o slug canônico de 'Elétrica' sob 'Reparos'", () => {
-    expect(ELETRICA_SLUG).toBe(categorySlug({ name: "Elétrica", parent: "Reparos", level: 1 }))
+  it("ELETRICA_SLUG é o slug canônico de 'Elétrica' sob 'Reparos e Instalações'", () => {
+    expect(ELETRICA_SLUG).toBe(
+      categorySlug({ name: "Elétrica", parent: "Reparos e Instalações", level: 1 }),
+    )
   })
 
-  it("REPAROS_SLUG é o slug canônico de 'Reparos' (level 0)", () => {
-    expect(REPAROS_SLUG).toBe(categorySlug({ name: "Reparos", level: 0 }))
+  it("REPAROS_SLUG é o slug canônico de 'Reparos e Instalações' (level 0)", () => {
+    expect(REPAROS_SLUG).toBe(categorySlug({ name: "Reparos e Instalações", level: 0 }))
   })
 
-  it("ELETRICIDADE_SLUG é o slug canônico de 'Eletricidade' sob 'Reparos'", () => {
+  it("ELETRICIDADE_SLUG é o slug canônico de 'Eletricidade' sob 'Reparos e Instalações'", () => {
     expect(ELETRICIDADE_SLUG).toBe(
-      categorySlug({ name: "Eletricidade", parent: "Reparos", level: 1 }),
+      categorySlug({ name: "Eletricidade", parent: "Reparos e Instalações", level: 1 }),
     )
   })
 

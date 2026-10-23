@@ -57,6 +57,7 @@ const mockDb = vi.hoisted(() => ({
   walletTransaction: {
     findMany: vi.fn(),
   },
+  $queryRaw: vi.fn(),
 }))
 
 vi.mock("@/lib/db", () => ({ db: mockDb }))
@@ -72,20 +73,24 @@ vi.mock("@/lib/logger", () => ({
 // ── Imports ────────────────────────────────────────────────────────────────
 
 import { GET } from "../provider/wallet/route"
+import { callRoute } from "@/lib/__tests__/helpers/api-test-utils"
+import { queryRawFromFindMany } from "@/lib/__tests__/helpers/wallet-balance-mock"
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe("GET /api/provider/wallet", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Saldo vem de agregação SQL: deriva a linha das fixtures de findMany
+    // para os testes seguirem verificando o PAYLOAD (não o SQL).
+    mockDb.$queryRaw.mockImplementation(queryRawFromFindMany(mockDb))
   })
 
   it("returns simulated wallet with correct balance from COMPLETED bookings", async () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const res = await GET(new Request("http://localhost/api/provider/wallet"))
-    const data = await res.json()
+    const { res, data } = await callRoute(GET, { url: "/api/provider/wallet" })
 
     // booking-1 (200) + booking-2 (350) = 550 total COMPLETED
     // Fee: 15% → 550 * 0.85 = 467.5
@@ -98,8 +103,7 @@ describe("GET /api/provider/wallet", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const res = await GET(new Request("http://localhost/api/provider/wallet"))
-    const data = await res.json()
+    const { data } = await callRoute(GET, { url: "/api/provider/wallet" })
 
     // booking-3 (150) + booking-4 (100) = 250 * 0.85 = 212.5
     expect(data.pendingBalance).toBe(212.5)
@@ -109,8 +113,7 @@ describe("GET /api/provider/wallet", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const res = await GET(new Request("http://localhost/api/provider/wallet"))
-    const data = await res.json()
+    const { data } = await callRoute(GET, { url: "/api/provider/wallet" })
 
     // booking-1 (200) + booking-2 (350) + booking-3 (150) + booking-4 (100) = 800
     expect(data.totalReceived).toBe(800)
@@ -120,8 +123,7 @@ describe("GET /api/provider/wallet", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const res = await GET(new Request("http://localhost/api/provider/wallet"))
-    const data = await res.json()
+    const { data } = await callRoute(GET, { url: "/api/provider/wallet" })
 
     expect(data.totalBookings).toBe(2)
   })
@@ -130,8 +132,7 @@ describe("GET /api/provider/wallet", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const res = await GET(new Request("http://localhost/api/provider/wallet"))
-    const data = await res.json()
+    const { data } = await callRoute(GET, { url: "/api/provider/wallet" })
 
     // (200 + 350) / 2 = 275
     expect(data.avgTicket).toBe(275)
@@ -141,8 +142,7 @@ describe("GET /api/provider/wallet", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const res = await GET(new Request("http://localhost/api/provider/wallet"))
-    const data = await res.json()
+    const { data } = await callRoute(GET, { url: "/api/provider/wallet" })
 
     // 4 bookings with PAID paymentStatus (COMPLETED + CONFIRMED + IN_PROGRESS)
     expect(data.transactions).toHaveLength(4)
@@ -168,8 +168,7 @@ describe("GET /api/provider/wallet", () => {
     mockDb.booking.findMany.mockResolvedValue([])
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const res = await GET(new Request("http://localhost/api/provider/wallet"))
-    const data = await res.json()
+    const { data } = await callRoute(GET, { url: "/api/provider/wallet" })
 
     expect(data.balance).toBe(0)
     expect(data.pendingBalance).toBe(0)
@@ -184,8 +183,7 @@ describe("GET /api/provider/wallet", () => {
     mockDb.booking.findMany.mockResolvedValue([mockBookings[4]]) // booking-5 is PENDING payment
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const res = await GET(new Request("http://localhost/api/provider/wallet"))
-    const data = await res.json()
+    const { data } = await callRoute(GET, { url: "/api/provider/wallet" })
 
     expect(data.balance).toBe(0)
     expect(data.pendingBalance).toBe(0)
@@ -212,8 +210,7 @@ describe("GET /api/provider/wallet", () => {
       },
     ])
 
-    const res = await GET(new Request("http://localhost/api/provider/wallet"))
-    const data = await res.json()
+    const { data } = await callRoute(GET, { url: "/api/provider/wallet" })
 
     // balance was 467.5, minus 150 in withdrawals = 317.5
     expect(data.balance).toBe(317.5)
@@ -237,8 +234,7 @@ describe("GET /api/provider/wallet", () => {
       },
     ])
 
-    const res = await GET(new Request("http://localhost/api/provider/wallet"))
-    const data = await res.json()
+    const { data } = await callRoute(GET, { url: "/api/provider/wallet" })
 
     // balance capped at 0
     expect(data.balance).toBe(0)
@@ -251,7 +247,7 @@ describe("GET /api/provider/wallet", () => {
 
     mockDb.booking.findMany.mockResolvedValue([])
 
-    const res = await GET(new Request("http://localhost/api/provider/wallet"))
+    const { res } = await callRoute(GET, { url: "/api/provider/wallet" })
     expect(res.status).toBe(401)
   })
 })

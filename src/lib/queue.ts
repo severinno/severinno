@@ -28,6 +28,7 @@
 
 import "server-only"
 import amqp from "amqplib"
+import { propagation, context, trace, SpanKind, SpanStatusCode } from "@opentelemetry/api"
 import logger from "./logger"
 
 // ── Configuration ──────────────────────────────────────────────────────────
@@ -204,6 +205,10 @@ async function ensureConnection(): Promise<Connection> {
       return conn
     } catch (err) {
       connectionStatus = "disconnected"
+      // Sem este reset, a promessa rejeitada fica presa e TODO retry futuro
+      // (scheduleReconnect, probe do health) reutiliza a mesma rejeição
+      // sem nunca discar de novo.
+      connPromise = null
       logger.error(
         { err: (err as Error).message, attempt: reconnectAttempts + 1 },
         "rabbitmq connection failed",
@@ -235,28 +240,35 @@ async function ensureChannel(): Promise<Channel> {
   }
 
   chanPromise = (async () => {
-    const conn = await ensureConnection()
-    const ch = await conn.createChannel()
-    await ch.assertExchange(EXCHANGE, "direct", { durable: true })
-    await ch.assertExchange(DLX_EXCHANGE, "direct", { durable: true })
+    try {
+      const conn = await ensureConnection()
+      const ch = await conn.createChannel()
+      await ch.assertExchange(EXCHANGE, "direct", { durable: true })
+      await ch.assertExchange(DLX_EXCHANGE, "direct", { durable: true })
 
-    ch.on("error", (err: Error) => {
-      logger.error({ err: err.message }, "rabbitmq channel error")
-      channel = null
+      ch.on("error", (err: Error) => {
+        logger.error({ err: err.message }, "rabbitmq channel error")
+        channel = null
+        chanPromise = null
+      })
+
+      ch.on("close", () => {
+        logger.warn("rabbitmq channel closed")
+        channel = null
+        chanPromise = null
+      })
+
+      // Set prefetch for fair dispatch
+      await ch.prefetch(10)
+
+      channel = ch
+      return ch
+    } catch (err) {
+      // Mesmo motivo do connPromise: sem reset, a rejeição fica presa e
+      // nenhuma chamada futura consegue recriar o canal.
       chanPromise = null
-    })
-
-    ch.on("close", () => {
-      logger.warn("rabbitmq channel closed")
-      channel = null
-      chanPromise = null
-    })
-
-    // Set prefetch for fair dispatch
-    await ch.prefetch(10)
-
-    channel = ch
-    return ch
+      throw err
+    }
   })()
 
   return chanPromise
@@ -276,14 +288,25 @@ export type PublishOptions = {
   routingKey: string
   payload: Record<string, unknown>
   persistent?: boolean
+  headers?: Record<string, unknown>
 }
 
 export async function publish(opts: PublishOptions): Promise<void> {
   try {
     const ch = await ensureChannel()
+    const headers: Record<string, unknown> = { ...(opts.headers ?? {}) }
+
+    // Injetar contexto W3C Trace Context (traceparent / tracestate) nos cabeçalhos da mensagem AMQP
+    try {
+      propagation.inject(context.active(), headers)
+    } catch {
+      // Falhas no tracer OTel nunca devem quebrar a publicação
+    }
+
     ch.publish(EXCHANGE, opts.routingKey, Buffer.from(JSON.stringify(opts.payload)), {
       persistent: opts.persistent ?? true,
       contentType: "application/json",
+      headers,
     })
   } catch (err) {
     logger.error(
@@ -297,7 +320,7 @@ export async function publish(opts: PublishOptions): Promise<void> {
 // ── Consumer helpers ───────────────────────────────────────────────────────
 
 function getDeathCount(msg: ConsumeMessage): number {
-  const deaths = msg.properties.headers?.["x-death"] as Array<{ count: number }> | undefined
+  const deaths = msg.properties?.headers?.["x-death"] as Array<{ count: number }> | undefined
   if (!deaths?.length) return 0
   return deaths.reduce((sum, d) => sum + (d.count ?? 0), 0)
 }
@@ -337,7 +360,42 @@ export async function consume(opts: ConsumeOptions): Promise<void> {
     if (!raw) return
     try {
       const msg = JSON.parse(raw.content.toString()) as Record<string, unknown>
-      await opts.handler(msg)
+      const headers = (raw.properties?.headers ?? {}) as Record<string, string>
+
+      // Extrair contexto W3C traceparent propagado pelo produtor
+      let parentContext = context.active()
+      try {
+        parentContext = propagation.extract(context.active(), headers)
+      } catch {
+        // Fallback seguro se cabeçalhos forem inválidos
+      }
+
+      const tracer = trace.getTracer("rabbitmq-queue")
+      await context.with(parentContext, async () => {
+        const span = tracer.startSpan(`amqp.consume ${opts.queue}`, {
+          kind: SpanKind.CONSUMER,
+          attributes: {
+            "messaging.system": "rabbitmq",
+            "messaging.destination": opts.queue,
+            "messaging.routing_key": opts.routingKey,
+            "messaging.operation": "process",
+          },
+        })
+        try {
+          await opts.handler(msg)
+          span.setStatus({ code: SpanStatusCode.OK })
+        } catch (err) {
+          span.recordException(err as Error)
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: err instanceof Error ? err.message : String(err),
+          })
+          throw err
+        } finally {
+          span.end()
+        }
+      })
+
       ch.ack(raw)
     } catch (err) {
       const retries = getDeathCount(raw)
@@ -357,7 +415,7 @@ export async function consume(opts: ConsumeOptions): Promise<void> {
     }
   })
 
-  // DLQ consumer (logs dead-lettered messages)
+  // DLQ consumer (logs dead-lettered messages and dispatches proactive alert)
   await ch.consume(dlqName, (raw: ConsumeMessage | null) => {
     if (!raw) return
     try {
@@ -366,6 +424,22 @@ export async function consume(opts: ConsumeOptions): Promise<void> {
         { queue: dlqName, body: body.slice(0, 500) },
         "dead-lettered message received — requires manual review",
       )
+      // Disparo proativo de alerta para canais externos (Telegram / Discord / Slack)
+      import("./alert-webhook")
+        .then(({ sendAlertWebhook }) => {
+          sendAlertWebhook({
+            severity: "critical",
+            title: `DLQ Alert: Mensagem Morta em ${dlqName}`,
+            message: `Uma mensagem excedeu o teto de retentativas na fila ${opts.queue} e foi transferida para a Dead-Letter Queue. Payload: ${body.slice(0, 200)}`,
+            metric: "rabbitmq_dead_letter_message",
+            metadata: {
+              queue: dlqName,
+              sourceQueue: opts.queue,
+              routingKey: opts.routingKey,
+            },
+          }).catch(() => {})
+        })
+        .catch(() => {})
     } finally {
       ch.ack(raw)
     }

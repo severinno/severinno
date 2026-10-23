@@ -22,6 +22,14 @@
 #        · check:workflow-refs   (referências de scripts/actions/workflows)
 #        · check:secret-leaks-baseline (novos segredos vs baseline commitado)
 #
+#   4. money-decimal — scripts/check-money-decimal.sh --ephemeral, como
+#      último passo do job prisma-migrations: prova a conversão
+#      Float → Decimal (migration 20260930120000_money_decimal) a cada
+#      mudança de schema — 11 colunas numeric, MV/triggers canônicos que a
+#      migration derruba e recria, contagens por tabela, round-trip exato
+#      (0.1+0.2 = 0.30) e escrita real por DML no banco efêmero do job
+#      (psql de DENTRO do service container, padrão do job).
+#
 # Triggers:
 #   - push em main/develop       → TODOS os jobs (a cada push)
 #   - pull_request para main     → migrations + guards (security-headers é do
@@ -124,6 +132,32 @@ jobs:
 
       - name: Run Prisma migrations guard
         run: bash scripts/check-prisma-migrations.sh
+
+      # ── Money decimal guard (prova da conversão Float → Decimal) ────────
+      # O banco efêmero deste job já tem o schema completo (migrate deploy
+      # acima) e é descartável (severinno_test) — o intertravamento do
+      # --ephemeral aceita. O psql roda de DENTRO do service container
+      # (padrão do job: o runner self-hosted não tem psql no host).
+      - name: Money decimal guard
+        run: bash scripts/check-money-decimal.sh --ephemeral
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+          PGUSER: severinno
+          PGDATABASE: severinno_test
+
+      # ── Schema drift guard (migrations custom ↔ catálogo real) ──────────
+      # Mesmo banco efêmero já com `migrate deploy`: prova que TODOS os
+      # objetos (índices, triggers, MVs, tabelas) definidos pelas migrations
+      # customizadas da lista CUSTOM_MIGRATIONS (db-setup.sh) existem no
+      # banco. Apanha regressões do tipo "migration marcada como aplicada
+      # mas objeto omissa" (caso real: 20260722120000 fora da lista do
+      # db-setup → trigger de search_vector e 3 GIN/GiST nunca criados).
+      - name: Schema drift guard
+        run: bash scripts/check-schema-drift.sh
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+          PGUSER: severinno
+          PGDATABASE: severinno_test
 
   # ── Security headers (produção) ───────────────────────────────────────────
   security-headers:

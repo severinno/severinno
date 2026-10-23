@@ -44,11 +44,9 @@
 //   1 — o alerta não conseguiu cumprir (backend de issues falhou, uso errado)
 import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
-import { dirname, join, resolve } from "node:path"
+import { join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { issueHasAnyMarker, markerOf } from "./issue-publish.mjs"
-
-const HERE = dirname(fileURLToPath(import.meta.url))
 
 const ISSUES = {
   label: "forge-backup",

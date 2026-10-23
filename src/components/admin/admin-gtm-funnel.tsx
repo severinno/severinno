@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Target, Send, Plus, Search, ExternalLink, Sparkles } from "lucide-react"
+import { toast } from "sonner"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { GTMLead, LeadStatus, FunnelMetrics, generateWhatsAppOutreachLink } from "@/lib/gtm-engine"
+import { triggerHaptic } from "@/lib/haptics"
 
 export function AdminGTMFunnel() {
   const [leads, setLeads] = React.useState<GTMLead[]>([])
@@ -36,7 +38,7 @@ export function AdminGTMFunnel() {
   const [newName, setNewName] = React.useState("")
   const [newProfession, setNewProfession] = React.useState("Eletricista")
   const [newPhone, setNewPhone] = React.useState("")
-  const [newCity, setNewCity] = React.useState("São Paulo")
+  const [newCity, setNewCity] = React.useState("Governador Valadares")
   const [newDistrict, setNewDistrict] = React.useState("")
   const [newNotes, setNewNotes] = React.useState("")
 
@@ -71,10 +73,15 @@ export function AdminGTMFunnel() {
         body: JSON.stringify({ id: leadId, status: newStatus }),
       })
       if (res.ok) {
+        triggerHaptic("success")
+        toast.success("Status do lead atualizado!")
         loadData()
+      } else {
+        toast.error("Erro ao atualizar status do lead.")
       }
     } catch (e) {
       console.error("Failed to update status:", e)
+      toast.error("Erro ao atualizar status do lead.")
     }
   }
 
@@ -97,14 +104,19 @@ export function AdminGTMFunnel() {
       })
 
       if (res.ok) {
+        triggerHaptic("success")
+        toast.success("Prestador adicionado ao funil!")
         setIsNewLeadOpen(false)
         setNewName("")
         setNewPhone("")
         setNewNotes("")
         loadData()
+      } else {
+        toast.error("Erro ao adicionar prestador ao funil.")
       }
     } catch (e) {
       console.error("Failed to create lead:", e)
+      toast.error("Erro ao adicionar prestador ao funil.")
     }
   }
 
@@ -123,15 +135,15 @@ export function AdminGTMFunnel() {
   }, [leads, search, statusFilter])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3.5">
       {/* Top Header */}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-slate-900">
+          <h2 className="text-foreground flex items-center gap-2 text-2xl font-bold tracking-tight">
             <Target className="h-6 w-6 text-emerald-600" />
             Go-To-Market — Aquisição de Prestadores (Fase 1)
           </h2>
-          <p className="text-sm text-slate-600">
+          <p className="text-muted-foreground text-sm">
             Pipeline de captação e ativação dos primeiros 50 prestadores verificados
           </p>
         </div>
@@ -155,7 +167,9 @@ export function AdminGTMFunnel() {
 
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
-                  <label className="text-xs font-semibold text-slate-700">Nome / Empresa</label>
+                  <label className="text-muted-foreground text-xs font-semibold">
+                    Nome / Empresa
+                  </label>
                   <Input
                     placeholder="Ex: Carlos Eletricista Residencial"
                     value={newName}
@@ -166,7 +180,9 @@ export function AdminGTMFunnel() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
-                    <label className="text-xs font-semibold text-slate-700">Especialidade</label>
+                    <label className="text-muted-foreground text-xs font-semibold">
+                      Especialidade
+                    </label>
                     <Select value={newProfession} onValueChange={setNewProfession}>
                       <SelectTrigger>
                         <SelectValue />
@@ -184,11 +200,11 @@ export function AdminGTMFunnel() {
                   </div>
 
                   <div className="grid gap-2">
-                    <label className="text-xs font-semibold text-slate-700">
+                    <label className="text-muted-foreground text-xs font-semibold">
                       WhatsApp (com DDD)
                     </label>
                     <Input
-                      placeholder="(11) 98765-4321"
+                      placeholder="(33) 98765-4321"
                       value={newPhone}
                       onChange={(e) => setNewPhone(e.target.value)}
                       required
@@ -198,13 +214,15 @@ export function AdminGTMFunnel() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
-                    <label className="text-xs font-semibold text-slate-700">Cidade</label>
+                    <label className="text-muted-foreground text-xs font-semibold">Cidade</label>
                     <Input value={newCity} onChange={(e) => setNewCity(e.target.value)} />
                   </div>
                   <div className="grid gap-2">
-                    <label className="text-xs font-semibold text-slate-700">Bairro / Região</label>
+                    <label className="text-muted-foreground text-xs font-semibold">
+                      Bairro / Região
+                    </label>
                     <Input
-                      placeholder="Ex: Pinheiros"
+                      placeholder="Ex: Ilha dos Araújos"
                       value={newDistrict}
                       onChange={(e) => setNewDistrict(e.target.value)}
                     />
@@ -212,7 +230,7 @@ export function AdminGTMFunnel() {
                 </div>
 
                 <div className="grid gap-2">
-                  <label className="text-xs font-semibold text-slate-700">
+                  <label className="text-muted-foreground text-xs font-semibold">
                     Observações / Origem
                   </label>
                   <Input
@@ -237,36 +255,40 @@ export function AdminGTMFunnel() {
       </div>
 
       {/* Target Progress Card */}
-      <Card className="border-emerald-200 bg-gradient-to-r from-emerald-50 via-teal-50 to-white shadow-sm">
-        <CardContent className="p-6">
-          <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">
-            <div className="max-w-lg space-y-2">
-              <div className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
+      <Card className="to-card border-emerald-500/30 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 shadow-sm">
+        <CardContent className="p-3.5">
+          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+            <div className="max-w-lg space-y-1.5">
+              <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
                 <Sparkles className="h-4 w-4" /> Meta: 50 Prestadores em 14 Dias
               </div>
-              <h3 className="text-2xl font-black text-slate-900">
+              <h3 className="text-foreground text-2xl font-black tabular-nums">
                 {metrics?.onboardedCount || 0} / 50{" "}
-                <span className="text-sm font-normal text-slate-600">prestadores ativos</span>
+                <span className="text-muted-foreground text-sm font-normal">
+                  prestadores ativos
+                </span>
               </h3>
-              <p className="text-xs text-slate-600">
+              <p className="text-muted-foreground text-xs">
                 Taxa de conversão atual do funil:{" "}
-                <span className="font-bold text-emerald-700">{metrics?.conversionRate || 0}%</span>.
-                Foco em categorias de alta demanda (Elétrica e Hidráulica).
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                  {metrics?.conversionRate || 0}%
+                </span>
+                . Foco em categorias de alta demanda (Elétrica e Hidráulica).
               </p>
             </div>
 
-            <div className="max-w-md flex-1 space-y-2">
-              <div className="flex justify-between text-xs font-semibold text-slate-700">
+            <div className="max-w-md flex-1 space-y-1.5">
+              <div className="text-muted-foreground flex justify-between text-xs font-semibold">
                 <span>Progresso do Lançamento</span>
-                <span>{metrics?.progressPct || 0}%</span>
+                <span className="tabular-nums">{metrics?.progressPct || 0}%</span>
               </div>
-              <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200">
+              <div className="bg-muted h-3 w-full overflow-hidden rounded-full">
                 <div
                   className="h-full rounded-full bg-emerald-600 transition-all duration-500"
                   style={{ width: `${Math.max(5, metrics?.progressPct || 0)}%` }}
                 />
               </div>
-              <div className="flex justify-between text-[11px] text-slate-500">
+              <div className="text-muted-foreground flex justify-between text-[11px] tabular-nums">
                 <span>{metrics?.activeInFunnel || 0} em negociação</span>
                 <span>{metrics?.firstServiceCount || 0} com 1º serviço feito</span>
               </div>
@@ -283,7 +305,7 @@ export function AdminGTMFunnel() {
               status: "NEW",
               label: "Novos",
               count: metrics?.byStatus.NEW || 0,
-              color: "text-slate-700 border-slate-200",
+              color: "text-muted-foreground border-border/60",
             },
             {
               status: "CONTACTED",
@@ -320,13 +342,13 @@ export function AdminGTMFunnel() {
           <Card
             key={item.status}
             className={`cursor-pointer border transition-all hover:shadow-md ${
-              statusFilter === item.status ? "bg-emerald-50/40 ring-2 ring-emerald-500" : ""
+              statusFilter === item.status ? "bg-emerald-500/10 ring-2 ring-emerald-500" : ""
             }`}
             onClick={() => setStatusFilter(statusFilter === item.status ? "ALL" : item.status)}
           >
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-slate-900">{item.count}</div>
-              <div className="mt-1 text-xs font-medium text-slate-600">{item.label}</div>
+            <CardContent className="p-2.5 text-center">
+              <div className="text-foreground text-lg font-bold tabular-nums">{item.count}</div>
+              <div className="text-muted-foreground mt-1 text-xs font-medium">{item.label}</div>
             </CardContent>
           </Card>
         ))}
@@ -335,10 +357,10 @@ export function AdminGTMFunnel() {
       {/* Filter and Search Bar */}
       <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
         <div className="relative w-full sm:w-80">
-          <Search className="absolute top-2.5 left-3 h-4 w-4 text-slate-400" />
+          <Search className="text-muted-foreground absolute top-2.5 left-3 h-4 w-4" />
           <Input
             placeholder="Buscar por nome, telefone, especialidade..."
-            className="bg-white pl-9"
+            className="bg-card pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -346,7 +368,7 @@ export function AdminGTMFunnel() {
 
         <div className="flex w-full items-center gap-2 sm:w-auto">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full bg-white sm:w-48">
+            <SelectTrigger className="bg-card w-full sm:w-48">
               <SelectValue placeholder="Filtrar por Status" />
             </SelectTrigger>
             <SelectContent>
@@ -363,29 +385,29 @@ export function AdminGTMFunnel() {
       </div>
 
       {/* Leads Table */}
-      <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
+      <Card className="border-border/60 bg-card overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-700">
-            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500 uppercase">
+          <table className="text-muted-foreground w-full text-left text-sm">
+            <thead className="border-border/60 bg-muted/40 text-muted-foreground border-b text-xs font-semibold uppercase">
               <tr>
-                <th className="px-4 py-3">Prestador</th>
-                <th className="px-4 py-3">Especialidade</th>
-                <th className="px-4 py-3">Região</th>
-                <th className="px-4 py-3">Status do Funil</th>
-                <th className="px-4 py-3">Observações</th>
-                <th className="px-4 py-3 text-right">Ação WhatsApp</th>
+                <th className="px-4 py-2.5">Prestador</th>
+                <th className="px-4 py-2.5">Especialidade</th>
+                <th className="px-4 py-2.5">Região</th>
+                <th className="px-4 py-2.5">Status do Funil</th>
+                <th className="px-4 py-2.5">Observações</th>
+                <th className="px-4 py-2.5 text-right">Ação WhatsApp</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-border/60 divide-y">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={6} className="text-muted-foreground px-4 py-8 text-center">
                     Carregando leads do pipeline GTM...
                   </td>
                 </tr>
               ) : filteredLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={6} className="text-muted-foreground px-4 py-8 text-center">
                     Nenhum prestador encontrado com os filtros selecionados.
                   </td>
                 </tr>
@@ -394,28 +416,28 @@ export function AdminGTMFunnel() {
                   const waLink = generateWhatsAppOutreachLink(lead)
 
                   return (
-                    <tr key={lead.id} className="transition-colors hover:bg-slate-50/80">
-                      <td className="px-4 py-3">
-                        <div className="font-semibold text-slate-900">{lead.name}</div>
-                        <div className="text-xs text-slate-500">{lead.phone}</div>
+                    <tr key={lead.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-2.5">
+                        <div className="text-foreground font-semibold">{lead.name}</div>
+                        <div className="text-muted-foreground text-xs">{lead.phone}</div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5">
                         <Badge variant="outline" className="text-xs font-medium">
                           {lead.profession}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="text-xs font-medium text-slate-800">
+                      <td className="px-4 py-2.5">
+                        <div className="text-foreground text-xs font-medium">
                           {lead.district ? `${lead.district}, ` : ""}
                           {lead.city}/{lead.state}
                         </div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5">
                         <Select
                           value={lead.status}
                           onValueChange={(val) => handleStatusChange(lead.id, val as LeadStatus)}
                         >
-                          <SelectTrigger className="h-8 w-36 bg-white text-xs font-semibold">
+                          <SelectTrigger className="bg-card h-8 w-36 text-xs font-semibold">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -428,10 +450,10 @@ export function AdminGTMFunnel() {
                           </SelectContent>
                         </Select>
                       </td>
-                      <td className="max-w-xs truncate px-4 py-3 text-xs text-slate-600">
+                      <td className="text-muted-foreground max-w-xs truncate px-4 py-2.5 text-xs">
                         {lead.notes || "—"}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-2.5 text-right">
                         <Button
                           size="sm"
                           asChild

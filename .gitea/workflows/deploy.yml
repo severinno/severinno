@@ -95,13 +95,17 @@ jobs:
             -e REDIS_URL="redis://127.0.0.1:6379" \
             -e SESSION_SECRET="test-secret-at-least-32-chars-long" \
             -e NODE_ENV=production \
+            -e HOSTNAME=0.0.0.0 \
             severinno-test:latest
 
       - name: Wait for health check
         run: |
+          # Sonda DENTRO do container (docker exec): o job está na rede bridge
+          # da gitea e o app em --network host — localhost do job não alcança
+          # (mesmo defeito do task 327; padrão provado do job deploy).
           for i in $(seq 1 20); do
             sleep 3
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health 2>/dev/null || echo "000")
+            HTTP_CODE=$(docker exec severinno-test node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>{console.log(r.status)}).catch(()=>{console.log(0)})" 2>/dev/null || echo "000")
             if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "503" ]; then
               echo "Health check passed (HTTP $HTTP_CODE) after ${i}s"
               exit 0
@@ -120,6 +124,13 @@ jobs:
         run: docker rm -f severinno-test 2>/dev/null || true
 
   # ── Build & Push Docker Image ────────────────────────────────────────────
+  # RISCO CONHECIDO (tarpit do buildkit): `next build` dentro de buildkit
+  # tarpitou repetidamente (worker postcss do Turbopack: 6+ GB RSS, CPU 100%,
+  # sem término) — reproduzido em node:22-alpine E bookworm-slim, local e VPS.
+  # Se este job (ou o docker-test) pendurar no build, o fallback medido é o
+  # host-artifacts: `next build` no host (~2 min, RC=0) + montagem das camadas
+  # de runtime (COPY .next/standalone + .next/static + public + prisma) sem
+  # build dentro do docker.
   build:
     name: Build & Push
     needs: [docker-test]
@@ -127,55 +138,189 @@ jobs:
     permissions:
       contents: read
       packages: write
+    # O TARPIT É PENDURA, NÃO FALHA: o worker postcss do Turbopack morre em
+    # 6+ GB de RSS e CPU 100% SEM término (reproduzido 3× local, 2× VPS). Sem
+    # timeout, o job pendura até o timeout global da forja (horas) e o job
+    # `fallback` (que dispara em `needs.build.result != 'success'`) NUNCA é
+    # alcançado — o deploy ficava dependente de mão humana exatamente no
+    # cenário que o fallback existe para cobrir. Este timeout é o que
+    # TRANSFORMA a pendura em failure e deixa o pipeline seguir SOZINHO para
+    # o fallback → migrate → deploy. Budget: um build saudável (app + worker)
+    # via buildkit leva poucos minutos (medido); 25 min cortam o tarpit com
+    # folga 5× para o caminho bom.
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
+      # O runner executa na PRÓPRIA VPS com o /var/run/docker.sock do host
+      # montado: `load: true` entrega as imagens NO daemon que o
+      # `docker compose up` da VPS consome — sem push no registry (o Caddy
+      # bloqueia escrita em /v2/* por desenho) e sem credencial de registry
+      # no pipeline. As tags são as que o compose.hostinger consome
+      # (:latest e :worker-latest) + sha para rollback.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,prefix=,format=short
-            type=ref,event=branch
-
-      - name: Build and push app image
+      - name: Build app image (load no daemon da VPS)
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          push: false
+          load: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
           build-args: |
             BUN_VERSION=${{ env.BUN_VERSION }}
 
-      - name: Build and push worker image
+      - name: Build worker image (load no daemon da VPS)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.worker
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:worker-${{ steps.meta.outputs.version }}
+          push: false
+          load: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:worker-latest
           build-args: |
             BUN_VERSION=${{ env.BUN_VERSION }}
+
+  # ── Fallback host-artifacts ──────────────────────────────────────────────
+  # O tarpit do buildkit (`next build` dentro do buildkit: worker postcss do
+  # Turbopack, 6+ GB RSS, CPU 100% sem término — reproduzido 3× local, 2× VPS,
+  # documentado no Dockerfile) deixava o deploy completo dependente de MAO
+  # HUMANA. Este job é o fallback MEDIDO no deploy de 07/10/2026: build fora
+  # do buildkit, no próprio job (imagem ubuntu-bun: bun + node + openssl) —
+  # RC=0, `next build` em ~70s — e montagem COPY-only das camadas de runtime
+  # com as MESMAS 3 tags que o compose.hostinger consome (:latest,
+  # :sha-<sha>, :worker-latest). Roda sempre que docker-test OU build não
+  # chegam a success; migrate/deploy aceitam o caminho que vencer.
+  fallback:
+    name: Fallback host-artifacts
+    needs: [docker-test, build]
+    if: >-
+      always() &&
+      (needs.docker-test.result != 'success' || needs.build.result != 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Artefatos no host (bun install → generate → build)
+        run: |
+          set -e
+          # O job roda DENTRO da imagem ubuntu-bun (label ubuntu-latest da
+          # forja): bun, node, npm e openssl estão no PATH — o build acontece
+          # aqui, FORA do buildkit, que é onde o postcss do Turbopack tarpita.
+          # Nenhum `docker run -v $PWD` aqui: o -v do `-v` resolve o caminho no
+          # HOST daemon, e o workspace do runner é um volume — o 1º run deste
+          # fallback falhou com "Bun could not find a package.json" por isso
+          # (medido no task 312). OpenSSL 3.x daqui gera a mesma engine
+          # (debian-openssl-3.0.x) que o runtime node:22-bookworm-slim consome.
+          openssl version || { apt-get update -qq && apt-get install -y -qq --no-install-recommends openssl; }
+          openssl version
+          export DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
+          bun install --frozen-lockfile
+          npx prisma generate
+          BUILD_STANDALONE=true SKIP_TYPESCRIPT_CHECK=true DOCKER_BUILD=true npm run build
+          test -f .next/standalone/server.js
+
+      - name: Imagem do app (COPY-only; contexto sem .dockerignore)
+        run: |
+          set -e
+          # O .dockerignore exclui .next/ e node_modules/ (insumos da montagem)
+          # e *.png/*.svg (ícones do public/) — a montagem COPY-only exige o
+          # contexto SEM ele, restaurado ao fim para o build do worker.
+          mv .dockerignore /tmp/.dockerignore.bak
+          # ── A FECHAMENTO do migrate, não o node_modules inteiro ─────────────
+          # O COPY de node_modules COMPLETO por cima do standalone SOBRESCREVE
+          # o node_modules traçado (~141M, 45 pacotes) que já veio nele — a
+          # imagem pagava ~1,3GB de devDependencies (typescript, prettier,
+          # playwright-core, vite, webpack…). O que o `prisma migrate deploy`
+          # resolve em runtime ALEM do standalone é pequeno: dotenv +
+          # @prisma/config + transitivas (39 pacotes, ~48M) — a closure é
+          # calculada pelo script (caminhada sobre os dependencies declarados,
+          # resolução pela regra do node) e o COPY dela sobre o node_modules do
+          # standalone é MERGE (COPY sobrescreve só os paths que entrega).
+          # PROVADO em 08/10/2026: migrate deploy carrega prisma.config.ts,
+          # lê schema+migrations e CHEGA AO BANCO (P1000 auth com credencial
+          # placeholder = última etapa); boot responde 200/503 como antes.
+          node scripts/stage-migrate-closure.mjs node_modules migrate-closure
+          cat > /tmp/fallback-app.Dockerfile <<'DOCKERFILE'
+          FROM node:22-bookworm-slim
+          ENV NODE_ENV=production
+          RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 --gid 1001 nextjs
+          RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+          RUN mkdir -p /data && chown nextjs:nodejs /data
+          WORKDIR /app
+          COPY --chown=nextjs:nodejs public ./public
+          COPY --chown=nextjs:nodejs .next/standalone ./
+          COPY --chown=nextjs:nodejs .next/static ./.next/static
+          COPY --chown=nextjs:nodejs migrate-closure ./node_modules
+          COPY --chown=nextjs:nodejs prisma ./prisma
+          COPY --chown=nextjs:nodejs prisma.config.ts ./prisma.config.ts
+          RUN npm install -g prisma@6.19.3
+          USER nextjs
+          EXPOSE 3000
+          ENV PORT=3000
+          CMD ["node", "server.js"]
+          DOCKERFILE
+          docker build -f /tmp/fallback-app.Dockerfile -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" .
+          mv /tmp/.dockerignore.bak .dockerignore
+          rm -rf migrate-closure
+          docker tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
+
+      - name: Imagem do worker (Dockerfile.worker, base pinada por digest)
+        run: |
+          set -e
+          docker build -f Dockerfile.worker --build-arg BUN_VERSION=${{ env.BUN_VERSION }} -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:worker-latest" .
+
+      - name: Prova de boot (servidor sobe e responde 200/503)
+        run: |
+          set -e
+          # HOSTNAME=0.0.0.0 OBRIGATÓRIO com --network host: o container herda o
+          # hostname da MÁQUINA (ex. "severinno") e o standalone do Next lê
+          # process.env.HOSTNAME para escolher a interface — sem esta linha o
+          # servidor binda no IP do host (inalcançável por localhost) e a prova
+          # de boot falha em HTTP 000 nas 20 tentativas (medido no task 322).
+          docker run -d --name severinno-fallback-test --network host \
+            -e DATABASE_URL="postgresql://placeholder:placeholder@127.0.0.1:5432/placeholder" \
+            -e REDIS_URL="redis://127.0.0.1:6379" \
+            -e SESSION_SECRET="fallback-secret-at-least-32-characters" \
+            -e NODE_ENV=production \
+            -e HOSTNAME=0.0.0.0 \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          # A SONDA VAI DENTRO DO CONTAINER (`docker exec` + fetch do node): o
+          # job roda na rede bridge da gitea e o app em --network host — o
+          # `localhost` do job é OUTRO netns e nunca alcança o host (medido:
+          # HTTP 000 nas 40 tentativas dos tasks 322 e 327). Mesmo padrão já
+          # provado pelo job deploy abaixo.
+          HTTP_LAST="000"
+          for i in $(seq 1 20); do
+            sleep 3
+            HTTP_LAST=$(docker exec severinno-fallback-test node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>{console.log(r.status)}).catch(()=>{console.log(0)})" 2>/dev/null || echo "000")
+            case "$HTTP_LAST" in
+              200|503) echo "Boot OK (HTTP $HTTP_LAST em $i tentativas)"; break;;
+            esac
+            echo "attempt $i/20 - HTTP $HTTP_LAST"
+          done
+          docker logs severinno-fallback-test 2>&1 | tail -20 || true
+          docker rm -f severinno-fallback-test >/dev/null 2>&1 || true
+          case "$HTTP_LAST" in
+            200|503) exit 0;;
+            *) echo "Boot falhou após 20 tentativas (último HTTP $HTTP_LAST)"; exit 1;;
+          esac
 
   # ── Migrate Database ─────────────────────────────────────────────────────
   migrate:
     name: Migrate Database
-    needs: build
+    needs: [build, fallback]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    if: >-
+      always() &&
+      (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') &&
+      (needs.build.result == 'success' || needs.fallback.result == 'success')
 
     steps:
       - name: Run database migrations
@@ -186,9 +331,42 @@ jobs:
           key: ${{ secrets.DEPLOY_KEY }}
           script: |
             cd ${{ secrets.DEPLOY_PATH }}
+            echo "Subindo a camada de dados (postgres/redis/rabbitmq/minio/pgbouncer)..."
+            docker compose -f docker-compose.hostinger.yml --env-file .env.production.local \
+              up -d --wait postgres redis rabbitmq minio pgbouncer
             echo "Running database migrations..."
-            docker compose run --rm --no-deps app bunx prisma migrate deploy || \
-              docker compose run --rm --no-deps app bunx prisma db push --accept-data-loss
+            docker compose -f docker-compose.hostinger.yml --env-file .env.production.local \
+              run --rm --no-deps app prisma migrate deploy
+            # (a imagem roda node:22 sem bun/bunx; o CLI do prisma vem assado
+            # global na imagem, pino igual ao do package.json)
+
+      - name: Bootstrap do admin real (após o migrate)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }}
+            # O PRIMEIRO administrador REAL nasce no deploy, dos Docker secrets
+            # admin_email/admin_password (idempotente: admin existente não é
+            # tocado — rotação é operação manual). Sem os secrets, avisa e
+            # segue (mesma postura do deploy.sh: o deploy não falha por isso).
+            if [ ! -s secrets/admin_email.secret ] || [ ! -s secrets/admin_password.secret ]; then
+              echo "AVISO: secrets/admin_{email,password}.secret vazios/ausentes — bootstrap do admin pulado"
+              exit 0
+            fi
+            # --user root: o secret do host é 600 e a imagem roda como nextjs
+            # (o run é um container efêmero — as permissões do host não mudam).
+            docker compose -f docker-compose.hostinger.yml --env-file .env.production.local \
+              run --rm --no-deps --user root \
+              -v "$PWD/scripts/bootstrap-admin.mjs:/app/scripts/bootstrap-admin.mjs:ro" \
+              -v "$PWD/secrets/admin_email.secret:/run/secrets/admin_email:ro" \
+              -v "$PWD/secrets/admin_password.secret:/run/secrets/admin_password:ro" \
+              -e ADMIN_EMAIL_FILE=/run/secrets/admin_email \
+              -e ADMIN_PASSWORD_FILE=/run/secrets/admin_password \
+              app node /app/scripts/bootstrap-admin.mjs \
+              || echo "AVISO: bootstrap do admin falhou — deploy continua; corrija os secrets e rode o deploy novamente"
 
   # ── Deploy to VPS ────────────────────────────────────────────────────────
   deploy:
@@ -207,18 +385,21 @@ jobs:
           script: |
             set -e
             cd ${{ secrets.DEPLOY_PATH }}
-            echo "Pulling new images..."
-            docker compose pull app realtime email-worker notification-worker
-            echo "Restarting services..."
-            docker compose up -d --no-deps --remove-orphans app realtime
-            docker compose --profile workers up -d --no-deps email-worker notification-worker
-            echo "Waiting for health check..."
+            COMPOSE="docker compose -f docker-compose.hostinger.yml --env-file .env.production.local"
+            echo "Aplicando app/realtime/workers (imagens já no daemon da VPS via job build)..."
+            $COMPOSE up -d --no-deps --remove-orphans app realtime
+            $COMPOSE up -d --no-deps email-worker notification-worker
+            echo "Waiting for health check (dentro do container app)..."
             for i in $(seq 1 12); do
               sleep 5
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health)
+              HTTP_CODE=$($COMPOSE exec -T app node -e "fetch('http://localhost:3000/api/health').then(r=>{console.log(r.status);process.exit(r.ok?0:1)}).catch(()=>{console.log(0);process.exit(1)})" || echo 000)
               if [ "$HTTP_CODE" = "200" ]; then
                 echo "Health check passed (HTTP $HTTP_CODE)"
-                docker image prune -f
+                echo "Executando Auto-Purge pós-deploy..."
+                docker builder prune -a -f --filter "until=24h" >/dev/null 2>&1 || true
+                docker image prune -a -f --filter "until=24h" >/dev/null 2>&1 || true
+                docker volume ls -q -f dangling=true | grep -E '^[a-f0-9]{64}$' | xargs -r docker volume rm >/dev/null 2>&1 || true
+                fstrim -v / >/dev/null 2>&1 || true
                 exit 0
               fi
               echo "Attempt $i/12 — HTTP $HTTP_CODE, retrying..."

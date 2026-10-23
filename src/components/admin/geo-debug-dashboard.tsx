@@ -1,6 +1,10 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { apiGet } from "@/lib/api"
+import { triggerHaptic } from "@/lib/haptics"
+import { RotateCw } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -44,13 +48,13 @@ type DebugData = {
 function stateColor(state: string): string {
   switch (state) {
     case "closed":
-      return "text-green-600 bg-green-50"
+      return "border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-900/30 dark:bg-emerald-950/30 dark:text-emerald-400"
     case "open":
-      return "text-red-600 bg-red-50"
+      return "border-red-200 bg-red-50 text-red-600 dark:border-red-900/30 dark:bg-red-950/30 dark:text-red-400"
     case "half-open":
-      return "text-yellow-600 bg-yellow-50"
+      return "border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-900/30 dark:bg-amber-950/30 dark:text-amber-400"
     default:
-      return "text-gray-600 bg-gray-50"
+      return "border-border/50 bg-muted/40 text-muted-foreground"
   }
 }
 
@@ -82,84 +86,91 @@ function formatUptime(seconds: number): string {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export function GeoDebugDashboard() {
-  const [data, setData] = useState<DebugData | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
+  const { data, isLoading, isError, error, isFetching, refetch, dataUpdatedAt } =
+    useQuery<DebugData>({
+      queryKey: ["admin", "geo", "debug"],
+      queryFn: () => apiGet<DebugData>("/api/geo/debug"),
+      refetchInterval: 30_000,
+      staleTime: 10_000,
+    })
 
-  const fetchData = useCallback(async () => {
-    try {
-      const res = await fetch("/api/geo/debug")
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
-      setData(json)
-      setError(null)
-      setLastRefresh(new Date())
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to fetch")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  if (isLoading) {
+    return <div className="text-muted-foreground p-3.5 text-xs">Carregando métricas geo...</div>
+  }
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      void fetchData()
-    }, 30_000)
-    return () => clearInterval(interval)
-  }, [fetchData])
-
-  if (loading) return <div className="p-6 text-gray-500">Carregando métricas geo...</div>
-  if (error) return <div className="p-6 text-red-500">Erro: {error}</div>
-  if (!data) return null
+  if (isError || !data) {
+    return (
+      <div className="p-3.5 text-xs text-red-500">
+        Erro ao carregar métricas geo:{" "}
+        {error instanceof Error ? error.message : "Falha na requisição"}
+      </div>
+    )
+  }
 
   const { server, redis, circuitBreakers, geoMetrics } = data
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">🗺️ Geo Debug Dashboard</h2>
-        <div className="text-sm text-gray-500">
-          {lastRefresh && `Atualizado: ${lastRefresh.toLocaleTimeString("pt-BR")}`}
-          <button onClick={fetchData} className="ml-2 text-blue-600 hover:underline">
-            🔄
+    <div className="space-y-3.5 p-3.5">
+      <div className="flex items-center justify-between border-b pb-2">
+        <h2 className="text-foreground text-base font-bold">🗺️ Geo Debug Dashboard</h2>
+        <div className="text-muted-foreground flex items-center gap-2 text-xs tabular-nums">
+          {dataUpdatedAt ? (
+            <span>Atualizado: {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}</span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic("selection")
+              void refetch()
+            }}
+            disabled={isFetching}
+            className="text-primary hover:text-primary/80 transition-all active:scale-95 disabled:opacity-50"
+            title="Atualizar"
+            aria-label="Atualizar métricas"
+          >
+            <RotateCw className={cn("size-3.5", isFetching && "animate-spin")} />
           </button>
         </div>
       </div>
 
       {/* ── Server Info ── */}
-      <div className="rounded-lg border bg-white p-4 shadow-sm">
-        <h3 className="mb-2 font-semibold">Servidor</h3>
-        <div className="grid grid-cols-4 gap-4 text-sm">
+      <div className="border-border/50 bg-card rounded-lg border p-3.5 shadow-sm">
+        <h3 className="text-foreground mb-2 text-sm font-semibold">Servidor</h3>
+        <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
           <div>
-            <span className="text-gray-500">Uptime:</span> {formatUptime(server.uptime)}
+            <span className="text-muted-foreground">Uptime:</span>{" "}
+            <span className="text-foreground tabular-nums">{formatUptime(server.uptime)}</span>
           </div>
           <div>
-            <span className="text-gray-500">Plataforma:</span> {server.platform}
+            <span className="text-muted-foreground">Plataforma:</span>{" "}
+            <span className="text-foreground">{server.platform}</span>
           </div>
           <div>
-            <span className="text-gray-500">Node:</span> {server.nodeVersion}
+            <span className="text-muted-foreground">Node:</span>{" "}
+            <span className="text-foreground tabular-nums">{server.nodeVersion}</span>
           </div>
           <div>
-            <span className="text-gray-500">Redis:</span>{" "}
-            {redis.available ? "✅ Conectado" : "❌ Indisponível"}
+            <span className="text-muted-foreground">Redis:</span>{" "}
+            <span className="text-foreground">
+              {redis.available ? "✅ Conectado" : "❌ Indisponível"}
+            </span>
           </div>
         </div>
       </div>
 
       {/* ── Circuit Breakers ── */}
-      <div className="rounded-lg border bg-white p-4 shadow-sm">
-        <h3 className="mb-3 font-semibold">⚡ Circuit Breakers</h3>
-        <div className="grid grid-cols-2 gap-3">
+      <div className="border-border/50 bg-card rounded-lg border p-3.5 shadow-sm">
+        <h3 className="text-foreground mb-2.5 text-sm font-semibold">⚡ Circuit Breakers</h3>
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           {Object.values(circuitBreakers).map((cb) => (
-            <div key={cb.name} className={`rounded-md border p-3 ${stateColor(cb.state)}`}>
+            <div key={cb.name} className={`rounded-md border p-2.5 ${stateColor(cb.state)}`}>
               <div className="flex items-center justify-between">
-                <span className="font-medium">
+                <span className="text-xs font-medium">
                   {stateIcon(cb.state)} {cb.name}
                 </span>
-                <span className="text-xs uppercase">{cb.state}</span>
+                <span className="text-[10px] uppercase">{cb.state}</span>
               </div>
-              <div className="mt-1 text-xs opacity-75">
+              <div className="mt-1 text-xs tabular-nums opacity-75">
                 Falhas: {cb.failures} | Sucessos: {cb.successes}
                 {cb.lastFailureAt && (
                   <span>
@@ -174,11 +185,11 @@ export function GeoDebugDashboard() {
       </div>
 
       {/* ── Geo Call Stats ── */}
-      <div className="rounded-lg border bg-white p-4 shadow-sm">
-        <h3 className="mb-3 font-semibold">📊 Chamadas Geo</h3>
-        <table className="w-full text-sm">
+      <div className="border-border/50 bg-card rounded-lg border p-3.5 shadow-sm">
+        <h3 className="text-foreground mb-2.5 text-sm font-semibold">📊 Chamadas Geo</h3>
+        <table className="w-full text-xs">
           <thead>
-            <tr className="border-b text-left text-gray-500">
+            <tr className="border-border/50 text-muted-foreground border-b text-left">
               <th className="pb-2">Operação</th>
               <th className="pb-2 text-right">Chamadas</th>
               <th className="pb-2 text-right">Fallbacks</th>
@@ -187,19 +198,21 @@ export function GeoDebugDashboard() {
           </thead>
           <tbody>
             {Object.entries(geoMetrics.calls).map(([op, stats]) => (
-              <tr key={op} className="border-b last:border-0">
-                <td className="py-2 font-medium">{op}</td>
-                <td className="py-2 text-right">{stats.calls}</td>
-                <td className="py-2 text-right">{stats.fallbacks}</td>
-                <td className="py-2 text-right">
+              <tr key={op} className="border-border/50 border-b last:border-0">
+                <td className="text-foreground py-1.5 font-medium">{op}</td>
+                <td className="text-foreground py-1.5 text-right tabular-nums">{stats.calls}</td>
+                <td className="text-foreground py-1.5 text-right tabular-nums">
+                  {stats.fallbacks}
+                </td>
+                <td className="py-1.5 text-right tabular-nums">
                   {stats.fallbackRate !== null ? (
                     <span
                       className={
                         stats.fallbackRate > 10
-                          ? "text-red-600"
+                          ? "text-red-600 dark:text-red-400"
                           : stats.fallbackRate > 5
-                            ? "text-yellow-600"
-                            : "text-green-600"
+                            ? "text-amber-600 dark:text-amber-400"
+                            : "text-emerald-600 dark:text-emerald-400"
                       }
                     >
                       {stats.fallbackRate}%
@@ -215,13 +228,13 @@ export function GeoDebugDashboard() {
       </div>
 
       {/* ── Latency Metrics ── */}
-      <div className="rounded-lg border bg-white p-4 shadow-sm">
-        <h3 className="mb-3 font-semibold">
+      <div className="border-border/50 bg-card rounded-lg border p-3.5 shadow-sm">
+        <h3 className="text-foreground mb-2.5 text-sm font-semibold">
           ⏱️ Latência por Serviço (últimos {geoMetrics.latencyWindowSeconds}s)
         </h3>
-        <table className="w-full text-sm">
+        <table className="w-full text-xs">
           <thead>
-            <tr className="border-b text-left text-gray-500">
+            <tr className="border-border/50 text-muted-foreground border-b text-left">
               <th className="pb-2">Serviço</th>
               <th className="pb-2 text-right">P50</th>
               <th className="pb-2 text-right">P95</th>
@@ -232,19 +245,25 @@ export function GeoDebugDashboard() {
           </thead>
           <tbody>
             {Object.entries(geoMetrics.latency).map(([name, metrics]) => (
-              <tr key={name} className="border-b last:border-0">
-                <td className="py-2 font-medium">{name}</td>
-                <td className="py-2 text-right">{formatMs(metrics.p50)}</td>
-                <td className="py-2 text-right">{formatMs(metrics.p95)}</td>
-                <td className="py-2 text-right">{formatMs(metrics.p99)}</td>
-                <td className="py-2 text-right">{metrics.count}</td>
-                <td className="py-2 text-right">
+              <tr key={name} className="border-border/50 border-b last:border-0">
+                <td className="text-foreground py-1.5 font-medium">{name}</td>
+                <td className="text-foreground py-1.5 text-right tabular-nums">
+                  {formatMs(metrics.p50)}
+                </td>
+                <td className="text-foreground py-1.5 text-right tabular-nums">
+                  {formatMs(metrics.p95)}
+                </td>
+                <td className="text-foreground py-1.5 text-right tabular-nums">
+                  {formatMs(metrics.p99)}
+                </td>
+                <td className="text-foreground py-1.5 text-right tabular-nums">{metrics.count}</td>
+                <td className="py-1.5 text-right tabular-nums">
                   {metrics.errorCount > 0 ? (
-                    <span className="text-red-600">
+                    <span className="text-red-600 dark:text-red-400">
                       {metrics.errorCount} ({(metrics.errorRate * 100).toFixed(1)}%)
                     </span>
                   ) : (
-                    <span className="text-green-600">0</span>
+                    <span className="text-emerald-600 dark:text-emerald-400">0</span>
                   )}
                 </td>
               </tr>
@@ -254,20 +273,24 @@ export function GeoDebugDashboard() {
       </div>
 
       {/* ── Cache Stats ── */}
-      <div className="rounded-lg border bg-white p-4 shadow-sm">
-        <h3 className="mb-3 font-semibold">💾 Cache</h3>
-        <div className="grid grid-cols-3 gap-4 text-sm">
+      <div className="border-border/50 bg-card rounded-lg border p-3.5 shadow-sm">
+        <h3 className="text-foreground mb-2.5 text-sm font-semibold">💾 Cache</h3>
+        <div className="grid grid-cols-3 gap-3 text-xs">
           <div>
-            <span className="text-gray-500">Hits:</span>{" "}
-            <span className="font-medium text-green-600">{redis.hits}</span>
+            <span className="text-muted-foreground">Hits:</span>{" "}
+            <span className="font-medium text-emerald-600 tabular-nums dark:text-emerald-400">
+              {redis.hits}
+            </span>
           </div>
           <div>
-            <span className="text-gray-500">Misses:</span>{" "}
-            <span className="font-medium text-red-600">{redis.misses}</span>
+            <span className="text-muted-foreground">Misses:</span>{" "}
+            <span className="font-medium text-red-600 tabular-nums dark:text-red-400">
+              {redis.misses}
+            </span>
           </div>
           <div>
-            <span className="text-gray-500">Hit Ratio:</span>{" "}
-            <span className="font-medium">
+            <span className="text-muted-foreground">Hit Ratio:</span>{" "}
+            <span className="text-foreground font-medium tabular-nums">
               {redis.hitRatio !== null ? `${(redis.hitRatio * 100).toFixed(1)}%` : "—"}
             </span>
           </div>

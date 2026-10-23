@@ -3,7 +3,8 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { runHealthMonitor } from "@/lib/health-monitor"
 import logger from "@/lib/logger"
-import { handleError } from "@/lib/api-server"
+
+import { withRoute } from "@/lib/api-route"
 
 /**
  * GET /api/cron/health-monitor
@@ -32,67 +33,63 @@ import { handleError } from "@/lib/api-server"
 
 export const runtime = "nodejs"
 
-export async function GET(request: Request) {
-  try {
-    // ── Auth ─────────────────────────────────────────────────────────
-    const auth = request.headers.get("authorization")
-    const cronSecret = process.env.CRON_SECRET
+export const GET = withRoute("api.cron.health-monitor.GET", async (request) => {
+  // ── Auth ─────────────────────────────────────────────────────────
+  const auth = request.headers.get("authorization")
+  const cronSecret = process.env.CRON_SECRET
 
-    if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
-      return NextResponse.json(
-        { error: "Unauthorized — provide a valid Bearer token" },
-        { status: 401 },
-      )
-    }
-
-    // ── Run monitor ──────────────────────────────────────────────────
-    const startedAt = Date.now()
-    const result = await runHealthMonitor()
-    const elapsed = Date.now() - startedAt
-
-    logger.info(
-      {
-        overallStatus: result.overallStatus,
-        alertsSent: result.alertsSent,
-        healthy: result.healthyCount,
-        degraded: result.degradedCount,
-        unhealthy: result.unhealthyCount,
-        elapsed,
-      },
-      "cron health-monitor completed",
+  if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
+    return NextResponse.json(
+      { error: "Unauthorized — provide a valid Bearer token" },
+      { status: 401 },
     )
-
-    // ── Response ──────────────────────────────────────────────────────
-    return NextResponse.json({
-      ok: true,
-      healthy: result.healthy,
-      status: result.overallStatus,
-      summary: {
-        healthy: result.healthyCount,
-        degraded: result.degradedCount,
-        unhealthy: result.unhealthyCount,
-        total: result.totalServices,
-      },
-      alertsSent: result.alertsSent,
-      services: result.services.map((s) => ({
-        name: s.name,
-        status: s.status,
-        alerted: s.alerted,
-      })),
-      elapsed,
-      timestamp: result.timestamp,
-      // GlitchTip alert configuration guide (compact, for reference)
-      glitchtipAlerts: {
-        docs: "Configure alerts in GlitchTip UI → Alerts → New Alert Rule",
-        filterBy: {
-          level: { error: "Unhealthy services", warning: "Degraded services" },
-          tags: "service:<name>",
-          title: "[HealthMonitor]",
-        },
-        actions: ["Send email", "Send Telegram", "Send Discord", "Send Webhook"],
-      },
-    })
-  } catch (e) {
-    return handleError(e)
   }
-}
+
+  // ── Run monitor ──────────────────────────────────────────────────
+  const startedAt = Date.now()
+  const result = await runHealthMonitor()
+  const elapsed = Date.now() - startedAt
+
+  logger.info(
+    {
+      overallStatus: result.overallStatus,
+      alertsSent: result.alertsSent,
+      healthy: result.healthyCount,
+      degraded: result.degradedCount,
+      unhealthy: result.unhealthyCount,
+      elapsed,
+    },
+    "cron health-monitor completed",
+  )
+
+  // ── Response ──────────────────────────────────────────────────────
+  return NextResponse.json({
+    ok: true,
+    healthy: result.healthy,
+    status: result.overallStatus,
+    summary: {
+      healthy: result.healthyCount,
+      degraded: result.degradedCount,
+      unhealthy: result.unhealthyCount,
+      total: result.totalServices,
+    },
+    alertsSent: result.alertsSent,
+    services: result.services.map((s) => ({
+      name: s.name,
+      status: s.status,
+      alerted: s.alerted,
+    })),
+    elapsed,
+    timestamp: result.timestamp,
+    // GlitchTip alert configuration guide (compact, for reference)
+    glitchtipAlerts: {
+      docs: "Configure alerts in GlitchTip UI → Alerts → New Alert Rule",
+      filterBy: {
+        level: { error: "Unhealthy services", warning: "Degraded services" },
+        tags: "service:<name>",
+        title: "[HealthMonitor]",
+      },
+      actions: ["Send email", "Send Telegram", "Send Discord", "Send Webhook"],
+    },
+  })
+})

@@ -1,0 +1,149 @@
+import { describe, it, expect, vi, beforeEach } from "vitest"
+import {
+  getOrCreateReferralCode,
+  registerReferralInvite,
+  processReferralFirstBookingConversion,
+  getReferralStats,
+  getReferralLeaderboard,
+  isAmbassador,
+} from "@/lib/referral"
+
+const mockCache = new Map<string, any>()
+
+vi.mock("@/lib/db", () => ({
+  db: {
+    user: {
+      findMany: vi
+        .fn()
+        .mockResolvedValue([{ id: "referrer-1", name: "Carlos Eduardo Silva", avatarUrl: null }]),
+    },
+    booking: {
+      count: vi.fn().mockResolvedValue(0),
+    },
+  },
+}))
+
+vi.mock("@/lib/redis", () => ({
+  cacheGet: vi.fn(async (key: string) => mockCache.get(key) ?? null),
+  cacheSet: vi.fn(async (key: string, val: any) => {
+    mockCache.set(key, val)
+    return true
+  }),
+}))
+
+vi.mock("@/lib/loyalty", () => ({
+  awardPoints: vi.fn().mockResolvedValue({ points: 50, total: 150, newBadges: [] }),
+}))
+
+describe("Referral Engine (Indique e Ganhe)", () => {
+  beforeEach(() => {
+    mockCache.clear()
+    vi.clearAllMocks()
+  })
+
+  it("gera código de indicação determinístico e consistente", async () => {
+    const code1 = await getOrCreateReferralCode("user-123")
+    expect(code1).toMatch(/^SEV[A-Z0-9]{6}$/)
+
+    // Deve retornar o mesmo código armazenado
+    const code2 = await getOrCreateReferralCode("user-123")
+    expect(code2).toBe(code1)
+  })
+
+  it("registra convite de indicação vinculando novo usuário", async () => {
+    const code = await getOrCreateReferralCode("referrer-1")
+    const success = await registerReferralInvite("invited-user-2", code)
+
+    expect(success).toBe(true)
+
+    // Não deve permitir auto-indicação
+    const selfInvite = await registerReferralInvite("referrer-1", code)
+    expect(selfInvite).toBe(false)
+  })
+
+  it("recompensa o indicador com +50 pontos na primeira conversão de agendamento", async () => {
+    const code = await getOrCreateReferralCode("referrer-1")
+    await registerReferralInvite("client-new", code)
+
+    // Primeira conversão
+    const res1 = await processReferralFirstBookingConversion("booking-1", "client-new")
+    expect(res1.rewarded).toBe(true)
+    expect(res1.pointsAwarded).toBe(50)
+    expect(res1.referrerId).toBe("referrer-1")
+
+    // Segunda tentativa para o mesmo cliente não deve recompensar novamente (idempotência)
+    const res2 = await processReferralFirstBookingConversion("booking-2", "client-new")
+    expect(res2.rewarded).toBe(false)
+  })
+
+  it("retorna estatísticas completas e links de compartilhamento", async () => {
+    const code = await getOrCreateReferralCode("referrer-1")
+    await registerReferralInvite("friend-1", code)
+
+    const stats = await getReferralStats("referrer-1")
+    expect(stats.code).toBe(code)
+    expect(stats.totalInvites).toBe(1)
+    expect(stats.inviteLink).toContain(`/convite/${code}`)
+    expect(stats.whatsappShareUrl).toContain("api.whatsapp.com")
+  })
+
+  it("retorna o ranking do leaderboard e identifica embaixadores", async () => {
+    const code = await getOrCreateReferralCode("referrer-1")
+    await registerReferralInvite("client-a", code)
+    await processReferralFirstBookingConversion("b-1", "client-a")
+
+    const leaderboard = await getReferralLeaderboard(10)
+    expect(leaderboard.length).toBe(1)
+    expect(leaderboard[0].rank).toBe(1)
+    expect(leaderboard[0].userId).toMatch(/^ref_[a-f0-9]{10}$/)
+    // PII Guard check: "Carlos Eduardo Silva" -> "Carlos S."
+    expect(leaderboard[0].name).toBe("Carlos S.")
+    expect(leaderboard[0].convertedCount).toBe(1)
+
+    // Testa detecção de Embaixador (>= 3 amigos)
+    expect(await isAmbassador("referrer-1")).toBe(false)
+    mockCache.set("referral:converted_count:referrer-1", 4)
+    expect(await isAmbassador("referrer-1")).toBe(true)
+  })
+
+  it("bloqueia vinculação de indicação para usuário que já concluiu agendamentos no passado (anti-fraude)", async () => {
+    const { db } = await import("@/lib/db")
+    ;(db.booking.count as any).mockResolvedValueOnce(2) // Simula usuário com 2 serviços já concluídos
+
+    const code = await getOrCreateReferralCode("referrer-1")
+    const success = await registerReferralInvite("existing-client-99", code)
+
+    expect(success).toBe(false)
+  })
+
+  it("motor dual: premia indicação de prestador especialista com peso 4x (+200 pts) e pontos de boas-vindas (+50 pts)", async () => {
+    const { awardPoints } = await import("@/lib/loyalty")
+    const code = await getOrCreateReferralCode("pro-referrer")
+
+    // Vincula prestador especialista convidado
+    const registered = await registerReferralInvite("pro-electrician", code, "provider")
+    expect(registered).toBe(true)
+
+    // Prestador conclui seu 1º atendimento
+    const res = await processReferralFirstBookingConversion(
+      "b-service-1",
+      "any-client",
+      "pro-electrician",
+    )
+    expect(res.rewarded).toBe(true)
+    expect(res.pointsAwarded).toBe(200)
+    expect(res.convertedRole).toBe("provider")
+    expect(res.welcomePointsAwarded).toBe(50)
+    expect(res.welcomeUserId).toBe("pro-electrician")
+
+    expect(awardPoints).toHaveBeenCalledWith("pro-referrer", "referral_provider")
+    expect(awardPoints).toHaveBeenCalledWith("pro-electrician", "referral_welcome_provider")
+
+    // Métricas segregadas refletem a conversão do prestador
+    const stats = await getReferralStats("pro-referrer")
+    expect(stats.providerConversionsCount).toBe(1)
+    expect(stats.providerPointsEarned).toBe(200)
+    expect(stats.providerInviteLink).toContain("tipo=prestador")
+    expect(stats.clientInviteLink).toContain("tipo=cliente")
+  })
+})

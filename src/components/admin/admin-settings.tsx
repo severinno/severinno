@@ -125,7 +125,7 @@ const SETTING_HELP: Record<string, string> = {
   SITE_URL: "URL pública do site (usada em links de e-mail).",
   SITE_LOGO_URL: "URL do logotipo principal.",
   SUPPORT_EMAIL: "E-mail de suporte ao cliente.",
-  SUPPORT_WHATSAPP: "WhatsApp de suporte (com DDI, ex.: 5511999999999).",
+  SUPPORT_WHATSAPP: "WhatsApp de suporte (com DDI, ex.: 5533991113030).",
   WEATHER_API_KEY: "Chave de API do serviço de previsão do tempo.",
   WEATHER_API_URL: "URL base da API de clima.",
   SERVER_PORT: "Porta em que o servidor Next.js escuta.",
@@ -173,20 +173,20 @@ export function AdminSettings() {
 
   const items = React.useMemo(() => data?.items ?? [], [data?.items])
 
-  // Group by prefix (first segment before "_"); fallback to "Geral"
+  // Group by prefix (first segment before "_"); fallback to "geral"
   const groups = React.useMemo(() => {
     const map = new Map<string, Setting[]>()
     for (const s of items) {
       const idx = s.key.indexOf("_")
-      const group = idx > 0 ? s.key.slice(0, idx) : "Geral"
+      const group = idx > 0 ? s.key.slice(0, idx).toLowerCase() : "geral"
       const arr = map.get(group) ?? []
       arr.push(s)
       map.set(group, arr)
     }
-    // Sort groups alphabetically, but keep "Geral" last
+    // Sort groups alphabetically, but keep "geral" last
     return Array.from(map.entries()).sort((a, b) => {
-      if (a[0] === "Geral") return 1
-      if (b[0] === "Geral") return -1
+      if (a[0] === "geral") return 1
+      if (b[0] === "geral") return -1
       return a[0].localeCompare(b[0])
     })
   }, [items])
@@ -319,7 +319,7 @@ export function AdminSettings() {
         </AlertTitle>
         <AlertDescription className="text-xs">
           Alterações são salvas no banco e aplicadas instantaneamente. Erros podem afetar
-          pagamentos, e-mails e geolocalização.
+          pagamentos, e-mails e geolocalização. Para remover uma chave, limpe o valor e salve.
         </AlertDescription>
       </Alert>
 
@@ -344,11 +344,6 @@ export function AdminSettings() {
           />
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {lastFetched ? (
-            <span className="hidden sm:inline-flex">
-              <FreshnessLabel updatedAt={lastFetched} />
-            </span>
-          ) : null}
           <Button
             variant="outline"
             size="sm"
@@ -551,7 +546,7 @@ function SettingRow({
   return (
     <div
       className={cn(
-        "flex flex-col gap-1.5 rounded-lg border p-3 transition-colors",
+        "flex flex-col space-y-1.5 rounded-lg border p-2.5 transition-colors",
         isDirty ? "border-primary/40 bg-primary/5" : "border-border/50 bg-card",
       )}
     >
@@ -631,9 +626,6 @@ function SettingRow({
           </span>
         ) : null}
       </div>
-
-      {/* H4 — caption honesto sobre a ausência de endpoint DELETE */}
-      <p className="text-muted-foreground text-[10px]">Para remover, limpe o valor e salve.</p>
     </div>
   )
 }
@@ -832,7 +824,7 @@ const _GROUP_TONE: Record<string, StatusTone> = {
   support: "amber",
   weather: "amber",
   server: "zinc",
-  Geral: "zinc",
+  geral: "zinc",
 }
 
 function toneToClass(tone: StatusTone): string {
@@ -902,7 +894,7 @@ const GROUP_META: Record<string, GroupMeta> = {
     icon: Server,
     tone: toneToClass("zinc"),
   },
-  Geral: {
+  geral: {
     label: "Geral",
     description: "Configurações gerais sem prefixo específico",
     icon: SettingsIcon,
