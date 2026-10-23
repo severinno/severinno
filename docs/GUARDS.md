@@ -4480,13 +4480,21 @@ do PR (os 19 que faltavam ganharam MEDIDO, PISO ou TETO, e a concorrência dele 
 PRONTO **com 4 jobs por TETO**: a latência publicada do espelho é um LIMITE
 SUPERIOR, e a soma sem os tetos aparece ao lado. O dono do merge, não: se ele não
 cobrir todos os jobs do PR, o número publicado mede menos pipeline do que existe.
+Cobertura é o que o dono não pode DEVER — um TETO ele pode ter, e desde 22/10/2026
+tem: o `vitrine-baseline` das DUAS forjas exige PostGIS + Redis + seed + dev
+server e não se mede de fora do runner, então entra pelo `timeout-minutes: 10`
+que a pipeline passou a declarar (limite superior NOMEADO, com a soma sem os
+tetos ao lado) em vez da estimativa de 180s que nunca se reproduziu — o job,
+medido, nem chega ao guard (a seed cria 6 prestadores e o guard exige ≥ 7
+páginas).
 
 O primeiro job do repositório declarado por PASSOS é o `mutation-count-guard` do
-espelho: `setup-bun` (17.175s, 17/09), `install` (62ms), `check-mutation-count`
-(93ms) e o `Summary` (98ms, um bloco) são MEDIDOS, e o passo da suíte (3.897s) é
-LIDO da forma `mutation-count` da baseline — a mesma sub-test que o master mede,
-com o commit `2757e3a5` ao lado. O `Summary` estava FORA do total declarado antes
-(a conta antiga, 21198ms = setup + install + suíte + check, não o contava) e a
+espelho: `setup-bun` (0ms — a camada PRE-INSTALLED da imagem do runner, medida em
+22/10/2026), `install` (96ms), `check-mutation-count` (624ms) e o `Summary`
+(628ms, um bloco) são MEDIDOS, e o passo da suíte (12.481s) é LIDO da forma
+`mutation-count` da baseline — a mesma sub-test que o master mede, com a âncora
+do ato (`8defdfa0`) ao lado. O `Summary` estava FORA do total declarado antes (a
+conta antiga, 21198ms = setup + install + suíte + check, não o contava) e a
 cobertura exata o trouxe para dentro: é exatamente para isso que a regra existe.
 
 No dono, o job `guards` é o PISO declarado: o benchmark versionado não cobre

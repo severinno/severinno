@@ -2148,40 +2148,43 @@ catálogo de custos e convida a somar, mas o PR não paga a soma: ele paga o
 `bun run bench:merge-latency` mede as duas contas a partir da pipeline real
 (`.gitea/workflows/ci.yml`, `.github/workflows/pr-check.yml`) + o modelo
 `ci/merge-latency.json` (duração por job com fonte e data, confrontada contra o
-benchmark versionado). Medido em 17/09/2026:
+benchmark versionado). Medido em 22/10/2026:
 
-| Forja                                      | Soma dos gates |               Caminho crítico |                **Latência de merge** |        O que a concorrência economiza |
-| :----------------------------------------- | -------------: | ----------------------------: | -----------------------------------: | ------------------------------------: |
-| Gitea (dona do merge, **1** `act_runner`)  |         472.7s |       377.5s (`test → build`) |                           **472.7s** | 0s — com 1 runner a pipeline é SERIAL |
-| GitHub (espelho, **1** runner self-hosted) |     ≤ 11176.7s | 7200.0s (`seed-guards`, teto) | ≤ **11176.7s** (676.7s sem os TETOs) |             0s — SERIAL, como a forja |
+| Forja                                      | Soma dos gates |               Caminho crítico |                              **Latência de merge** |        O que a concorrência economiza |
+| :----------------------------------------- | -------------: | ----------------------------: | -------------------------------------------------: | ------------------------------------: |
+| Gitea (dona do merge, **1** `act_runner`)  |        2085.4s |             997.7s (`guards`) | **2085.4s** (1485.4s sem o TETO) — limite superior | 0s — com 1 runner a pipeline é SERIAL |
+| GitHub (espelho, **1** runner self-hosted) |     ≤ 12912.2s | 7200.0s (`seed-guards`, teto) |     ≤ **12912.2s** (1812.2s sem os TETOs) — limite |             0s — SERIAL, como a forja |
 
-Ou seja: o PR da forja espera **7m52s**, e o **teto** do ganho com runners
-de sobra é **95.2s** (472.7 − 377.5) — o `build` (246s) e o `test` (131.5s)
-dominam a cadeia, e todo o resto (lint, guards, typecheck, bring-up-proof) roda
-**em paralelo a eles** quando há runner livre. Com 1 runner nada disso importa: a
-latência É a soma. É essa diferença que a tabela de custos não dizia.
+Ou seja: o PR da forja espera **34m45s** — um LIMITE SUPERIOR, porque o
+`vitrine-baseline` entra pelo teto de 10 min e o job não se mede de fora do
+runner; sem os tetos, **24m45s**. O **teto** do ganho com runners de sobra é
+**1087.7s** (2085.4 − 997.7), e quem domina a cadeia agora é o `guards`
+(997.7s) — a matriz de mutação medida dentro do job —, não mais o `build`
+(51.5s) nem o `test`. Com 1 runner nada disso importa: a latência É a soma. É
+essa diferença que a tabela de custos não dizia.
 
-O espelho tem os 36 jobs do PR cobertos desde 17/09/2026 — 13 por **medição**
-neste repositório (com os comandos na fonte e a data), 2 por **PISO** (o passo
-de fora NOMEADO: `security-headers` faz requisições ao alvo do CI, que é produção;
-`benchmark-gist` depende do módulo de geo, que vive em outro branch) e 4 por
-**TETO** (`tier1-fastpath-guard`, `mutation-coord-timing-act-guard`,
-`seed-guards` e `mutation-coord-timing-guard`, cujo custo é dominado por `act`,
-PostGIS e matrix). O TETO é o `timeout-minutes` que a própria pipeline escreve no
-job: um LIMITE SUPERIOR, não uma medição — o relatório imprime os quatro
-nomeados, publica a **soma sem os tetos** ao lado e o veredito diz que a latência
-do espelho é um limite.
+O espelho cobre todos os jobs do PR no ato de 22/10/2026 — os **medidos** neste
+repositório (com os comandos na fonte e a data), os de **PISO** (o passo de fora
+NOMEADO: `security-headers` faz requisições ao alvo do CI, que é produção;
+`benchmark-gist` depende do módulo de geo; `stack-per-commit` cresce com a pilha;
+`pre-commit-in-runner-proof` soma o docker run) e os **5 TETO**
+(`tier1-fastpath-guard`, `mutation-coord-timing-act-guard`, `seed-guards`,
+`mutation-coord-timing-guard` e `vitrine-baseline`, cujo custo é dominado por
+`act`, PostGIS, seed e dev server). O TETO é o `timeout-minutes` que a própria
+pipeline escreve no job: um LIMITE SUPERIOR, não uma medição — o relatório
+imprime os cinco nomeados, publica a **soma sem os tetos** ao lado e o veredito
+diz que a latência do espelho é um limite.
 
 **E um passo deixou de ter número próprio.** O `mutation-count-guard` do espelho é
 o primeiro job do repositório declarado por **PASSOS** (`steps`): o `setup-bun`
-(17.175s), o `install` (62ms), o `check-mutation-count` (93ms) e o `Summary`
-(98ms, um bloco) são MEDIDOS ali, e o passo da suíte —
-`bash scripts/test-mutation-mutation-count.sh` — **LÊ** a forma `mutation-count`
-da baseline versionada (3.897s, com o commit `2757e3a5` ao lado) em vez de repetir
-o número. Antes, os dois números do MESMO passo viviam separados: 3870ms no modelo
-contra 3897ms na baseline (e, na versão anterior da suíte, 155ms contra 447ms —
-**3x**), e nenhum dos dois era derivado do outro, então a divergência era
-invisível por construção. Ligado, o custo da suíte muda nos dois lugares ao mesmo
+(0ms — a camada PRE-INSTALLED da imagem, medida em 22/10), o `install` (96ms), o
+`check-mutation-count` (624ms) e o `Summary` (628ms, um bloco) são MEDIDOS ali, e
+o passo da suíte — `bash scripts/test-mutation-mutation-count.sh` — **LÊ** a forma
+`mutation-count` da baseline versionada (12.481s, com a âncora do ato `8defdfa0`
+ao lado) em vez de repetir o número. Antes, os dois números do MESMO passo viviam
+separados: 3870ms no modelo contra 3897ms na baseline (e, na versão anterior da
+suíte, 155ms contra 447ms — **3x**), e nenhum dos dois era derivado do outro,
+então a divergência era invisível por construção. Ligado, o custo da suíte muda nos dois lugares ao mesmo
 tempo (é o mesmo número), a procedência do passo nomeia a forma e o commit dela, e
 o `Summary` — que estava FORA do total declarado (21198ms = setup + install + suíte
 
