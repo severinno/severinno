@@ -8590,10 +8590,14 @@ cláusulas, com a gramática declarada — `github.event_name ==/!= '<e>'`,
 diferença entre as duas formas de erro importa: um termo sobre `github.ref`
 numa cláusula **sem** filtro de branch não é falso, é **indecidível** (o ref
 pode ser qualquer um), e é por isso que a avaliação tem TRÊS valores. O
-`if: github.ref == 'refs/heads/main' && github.event_name == 'push'` do job
-`deploy` do `ci.yml` transforma `push@[main, develop] ∪ pull_request@[main]` em
-`push@[main]` — sem o estreitamento, um retrato que declara a condição LARGA
-passaria verde sobre um job que só roda em `main`.
+`if: github.event_name == 'pull_request'` do job `stack-per-commit` do `ci.yml`
+transforma `push@[main, develop] ∪ pull_request@[main]` em `pull_request@[main]`
+— sem o estreitamento, um retrato que declara a condição LARGA passaria verde
+sobre um job que só roda em PR. (O exemplo anterior era o `deploy` do `ci.yml`,
+removido em 23/10/2026: ele estreitava para `push@[main]`, mas rodava `docker
+compose` no arquivo default — que não tem o serviço `realtime` — e morria sem
+rodar migration nenhuma; a entrega é do `deploy.yml`, e um caminho só de deploy
+é um estado só para a mesma tag.)
 
 **O QUE SAI DA GRAMÁTICA É NOMEADO, NUNCA ADIVINHADO.** Função de STATUS
 (`failure()`, `success()`), `startsWith`, contexto que o guard não conhece: se

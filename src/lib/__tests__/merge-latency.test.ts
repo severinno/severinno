@@ -163,6 +163,15 @@ describe("classifyOnPr — roda no PR? (`null` quando não se sabe)", () => {
     )
   })
 
+  it("`github.event_name == 'pull_request'` RODA em PR (a condição do stack-per-commit)", () => {
+    // O `ci.yml` dispara em push E em PR; o job de pilha precisa da condição
+    // explícita, senão reprova todo push na main com "pilha vazia". A condição
+    // é reconhecida pelo que ela DIZ, sem lista de jobs.
+    const c = classifyOnPr({ ifLine: "if: ${{ github.event_name == 'pull_request' }}" })
+    expect(c.onPr).toBe(true)
+    expect(c.why).toContain("pull_request")
+  })
+
   it("um `if:` que não se entende é `null` — não se sabe, e não se presume", () => {
     const c = classifyOnPr({ ifLine: "if: ${{ inputs.algo }}" })
     expect(c.onPr).toBeNull()
@@ -390,10 +399,17 @@ describe("measureForge — a pipeline real, com o modelo real", () => {
     expect(r.jobs.length + r.skippedOnPr.length + r.unclassified.length).toBe(declarados)
   })
 
-  it("`deploy` (só push em main) sai da latência — e sai NOMEADO", () => {
+  it("nenhum job do `ci.yml` fica fora da latência do PR — o deploy NÃO mora mais aqui", () => {
+    // Até 23/10/2026 havia um `deploy` (só push em main) neste pipeline e ele
+    // saía da latência como PULADO. Ele foi removido: `deploy.yml` é o dono da
+    // entrega (build → fallback → migrate → deploy), e o job antigo rodava
+    // `docker compose` no arquivo default — morria em `no such service:
+    // realtime` em todo push para a main, sem rodar migration nenhuma. Se ele
+    // voltar, que volte com a latência medida: um job de deploy fora do
+    // relatório é um job que ninguém sabe quanto custa.
     const r = giteaReport()
-    expect(r.skippedOnPr.map((s) => s.name)).toEqual(["deploy"])
-    expect(r.jobs.map((j) => j.name)).not.toContain("deploy")
+    expect(r.skippedOnPr).toEqual([])
+    expect(content).not.toMatch(/^  deploy:/m)
   })
 
   it("a forja é PRONTA: todo job do PR tem duração declarada ou derivada", () => {
