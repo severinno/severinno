@@ -14,8 +14,8 @@
 #   build      → next build
 #
 # O DEPLOY NÃO MORA AQUI: `deploy.yml` é o dono da entrega (UTF-8 check →
-# Docker Build & Test → Build & Push → fallback host-artifacts → migrate →
-# deploy, com `-f docker-compose.hostinger.yml --env-file .env.production.local`).
+# Build & Test host-artifacts → migrate → deploy, com
+# `-f docker-compose.hostinger.yml --env-file .env.production.local`).
 # O job `deploy` que existia neste arquivo vinha de ANTES da separação do
 # compose: rodava `docker compose` no arquivo default (que só tem app e redis),
 # morria em `no such service: realtime` em TODO push para a main (medido em

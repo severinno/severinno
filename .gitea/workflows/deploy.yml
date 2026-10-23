@@ -1,7 +1,18 @@
 # =============================================================================
 # .gitea/workflows/deploy.yml — Deploy Pipeline para Severinno Marketplace
 # =============================================================================
-# Gitea Actions - build Docker image e deploy via SSH
+# Gitea Actions - build da imagem no host e deploy via SSH
+#
+# UM caminho de build só: host-artifacts. O `next build` roda NO HOST do
+# runner, FORA do buildkit, e a imagem é montada COPY-only a partir de
+# .next/standalone. O build dentro do buildkit foi REMOVIDO em 23/10/2026:
+# ele não completava nesta stack (Turbopack/postcss) e, com o teto de memória,
+# morria no cgroup em vez de entregar imagem — medido na VPS da forja: 8 GB de
+# cgroup (morto aos 161 s do `next build`) e 11 GB (pico colado no teto,
+# morto). O job `docker-test` saiu junto: a prova de boot que ele fazia (subir
+# o container e responder 200/503 no /api/health) vive agora DENTRO do job
+# `build`, sobre a MESMA imagem que o deploy entrega — antes ele provava uma
+# imagem que nunca chegava à VPS.
 # =============================================================================
 
 name: Deploy
@@ -37,186 +48,20 @@ jobs:
         run: |
           find . -name "*.ts" -o -name "*.tsx" | xargs file --mime-encoding | grep -v utf-8 || true
 
-  # ── Docker Build & Test ──────────────────────────────────────────────────
-  docker-test:
-    name: Docker Build & Test
-    needs: [utf8-check]
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    services:
-      postgis:
-        image: postgis/postgis:16-3.4
-        env:
-          POSTGRES_DB: severinno
-          POSTGRES_USER: severinno
-          POSTGRES_PASSWORD: severinno
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U severinno -d severinno"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-          --health-start-period 15s
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-      - uses: actions/checkout@v4
-
-      # O LIMITE VAI NO BUILDER, NÃO NO DOCKERFILE: `NODE_OPTIONS` só limita o
-      # heap V8, e o build do Next 16 (Turbopack) aloca fora dele. Medido em
-      # 23/10/2026: o `npm run build` dentro do buildkit chegou a 14,3 GB de
-      # anon-rss num host de 15,62 GiB e o kernel disparou OOM GLOBAL
-      # (`constraint=CONSTRAINT_NONE`) matando o `next-build` — poderia ter
-      # escolhido a stack de produção. Com o buildkitd num cgroup de 8 GB, um
-      # build acima do teto morre DENTRO do próprio cgroup (exit não-zero, job
-      # vermelho, host de pé) em vez de virar OOM global.
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            memory=8g
-            memory-swap=12g
-
-      - name: Build image (load locally, no push)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          load: true
-          push: false
-          tags: severinno-test:latest
-          build-args: |
-            BUN_VERSION=${{ env.BUN_VERSION }}
-
-      - name: Start container
-        run: |
-          docker run -d \
-            --name severinno-test \
-            --network host \
-            -e DATABASE_URL="postgresql://severinno:severinno@127.0.0.1:5432/severinno" \
-            -e REDIS_URL="redis://127.0.0.1:6379" \
-            -e SESSION_SECRET="test-secret-at-least-32-chars-long" \
-            -e NODE_ENV=production \
-            -e HOSTNAME=0.0.0.0 \
-            severinno-test:latest
-
-      - name: Wait for health check
-        run: |
-          # Sonda DENTRO do container (docker exec): o job está na rede bridge
-          # da gitea e o app em --network host — localhost do job não alcança
-          # (mesmo defeito do task 327; padrão provado do job deploy).
-          for i in $(seq 1 20); do
-            sleep 3
-            HTTP_CODE=$(docker exec severinno-test node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>{console.log(r.status)}).catch(()=>{console.log(0)})" 2>/dev/null || echo "000")
-            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "503" ]; then
-              echo "Health check passed (HTTP $HTTP_CODE) after ${i}s"
-              exit 0
-            fi
-            echo "Attempt $i/20 - HTTP $HTTP_CODE"
-          done
-          echo "Health check failed after 20 attempts"
-          exit 1
-
-      - name: Show container logs on failure
-        if: failure()
-        run: docker logs severinno-test 2>&1 | tail -50
-
-      - name: Clean up container
-        if: always()
-        run: docker rm -f severinno-test 2>/dev/null || true
-
-  # ── Build & Push Docker Image ────────────────────────────────────────────
-  # RISCO CONHECIDO (tarpit do buildkit): `next build` dentro de buildkit
-  # tarpitou repetidamente (worker postcss do Turbopack: 6+ GB RSS, CPU 100%,
-  # sem término) — reproduzido em node:22-alpine E bookworm-slim, local e VPS.
-  # Se este job (ou o docker-test) pendurar no build, o fallback medido é o
-  # host-artifacts: `next build` no host (~2 min, RC=0) + montagem das camadas
-  # de runtime (COPY .next/standalone + .next/static + public + prisma) sem
-  # build dentro do docker.
-  build:
-    name: Build & Push
-    needs: [docker-test]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    # O TARPIT É PENDURA, NÃO FALHA: o worker postcss do Turbopack morre em
-    # 6+ GB de RSS e CPU 100% SEM término (reproduzido 3× local, 2× VPS). Sem
-    # timeout, o job pendura até o timeout global da forja (horas) e o job
-    # `fallback` (que dispara em `needs.build.result != 'success'`) NUNCA é
-    # alcançado — o deploy ficava dependente de mão humana exatamente no
-    # cenário que o fallback existe para cobrir. Este timeout é o que
-    # TRANSFORMA a pendura em failure e deixa o pipeline seguir SOZINHO para
-    # o fallback → migrate → deploy. Budget: um build saudável (app + worker)
-    # via buildkit leva poucos minutos (medido); 25 min cortam o tarpit com
-    # folga 5× para o caminho bom.
-    timeout-minutes: 25
-
-    steps:
-      - uses: actions/checkout@v4
-
-      # O runner executa na PRÓPRIA VPS com o /var/run/docker.sock do host
-      # montado: `load: true` entrega as imagens NO daemon que o
-      # `docker compose up` da VPS consome — sem push no registry (o Caddy
-      # bloqueia escrita em /v2/* por desenho) e sem credencial de registry
-      # no pipeline. As tags são as que o compose.hostinger consome
-      # (:latest e :worker-latest) + sha para rollback.
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            memory=8g
-            memory-swap=12g
-
-      - name: Build app image (load no daemon da VPS)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: false
-          load: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
-          build-args: |
-            BUN_VERSION=${{ env.BUN_VERSION }}
-
-      - name: Build worker image (load no daemon da VPS)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.worker
-          push: false
-          load: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:worker-latest
-          build-args: |
-            BUN_VERSION=${{ env.BUN_VERSION }}
-
-  # ── Fallback host-artifacts ──────────────────────────────────────────────
+  # ── Build & Test (host-artifacts) ────────────────────────────────────────
   # O tarpit do buildkit (`next build` dentro do buildkit: worker postcss do
   # Turbopack, 6+ GB RSS, CPU 100% sem término — reproduzido 3× local, 2× VPS,
   # documentado no Dockerfile) deixava o deploy completo dependente de MAO
-  # HUMANA. Este job é o fallback MEDIDO no deploy de 07/10/2026: build fora
-  # do buildkit, no próprio job (imagem ubuntu-bun: bun + node + openssl) —
-  # RC=0, `next build` em ~70s — e montagem COPY-only das camadas de runtime
-  # com as MESMAS 3 tags que o compose.hostinger consome (:latest,
-  # :sha-<sha>, :worker-latest). Roda sempre que docker-test OU build não
-  # chegam a success; migrate/deploy aceitam o caminho que vencer.
-  fallback:
-    name: Fallback host-artifacts
-    needs: [docker-test, build]
-    if: >-
-      always() &&
-      (needs.docker-test.result != 'success' || needs.build.result != 'success')
+  # HUMANA. Este é o caminho MEDIDO no deploy de 07/10/2026 e o ÚNICO desde
+  # 23/10/2026: build fora do buildkit, no próprio job (imagem ubuntu-bun:
+  # bun + node + openssl) — RC=0, `next build` em ~70s — e montagem COPY-only
+  # das camadas de runtime com as MESMAS 3 tags que o compose.hostinger
+  # consome (:latest, :sha-<sha>, :worker-latest).
+  #
+  # O `timeout` continua: uma pendura aqui é do runner, não do docker, e o
+  # job precisa falhar ALTO em vez de ficar até o timeout global da forja.
+  build:
+    name: Build & Test (host-artifacts)
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -224,14 +69,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Artefatos no host (bun install → generate → build)
-        run: |
+        run: |-
           set -e
           # O job roda DENTRO da imagem ubuntu-bun (label ubuntu-latest da
           # forja): bun, node, npm e openssl estão no PATH — o build acontece
           # aqui, FORA do buildkit, que é onde o postcss do Turbopack tarpita.
           # Nenhum `docker run -v $PWD` aqui: o -v do `-v` resolve o caminho no
           # HOST daemon, e o workspace do runner é um volume — o 1º run deste
-          # fallback falhou com "Bun could not find a package.json" por isso
+          # caminho falhou com "Bun could not find a package.json" por isso
           # (medido no task 312). OpenSSL 3.x daqui gera a mesma engine
           # (debian-openssl-3.0.x) que o runtime node:22-bookworm-slim consome.
           openssl version || { apt-get update -qq && apt-get install -y -qq --no-install-recommends openssl; }
@@ -243,7 +88,7 @@ jobs:
           test -f .next/standalone/server.js
 
       - name: Imagem do app (COPY-only; contexto sem .dockerignore)
-        run: |
+        run: |-
           set -e
           # O .dockerignore exclui .next/ e node_modules/ (insumos da montagem)
           # e *.png/*.svg (ícones do public/) — a montagem COPY-only exige o
@@ -263,7 +108,7 @@ jobs:
           # lê schema+migrations e CHEGA AO BANCO (P1000 auth com credencial
           # placeholder = última etapa); boot responde 200/503 como antes.
           node scripts/stage-migrate-closure.mjs node_modules migrate-closure
-          cat > /tmp/fallback-app.Dockerfile <<'DOCKERFILE'
+          cat > /tmp/host-artifacts-app.Dockerfile <<'DOCKERFILE'
           FROM node:22-bookworm-slim
           ENV NODE_ENV=production
           RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 --gid 1001 nextjs
@@ -282,28 +127,28 @@ jobs:
           ENV PORT=3000
           CMD ["node", "server.js"]
           DOCKERFILE
-          docker build -f /tmp/fallback-app.Dockerfile -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" .
+          docker build -f /tmp/host-artifacts-app.Dockerfile -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" .
           mv /tmp/.dockerignore.bak .dockerignore
           rm -rf migrate-closure
           docker tag "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}"
 
       - name: Imagem do worker (Dockerfile.worker, base pinada por digest)
-        run: |
+        run: |-
           set -e
           docker build -f Dockerfile.worker --build-arg BUN_VERSION=${{ env.BUN_VERSION }} -t "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:worker-latest" .
 
       - name: Prova de boot (servidor sobe e responde 200/503)
-        run: |
+        run: |-
           set -e
           # HOSTNAME=0.0.0.0 OBRIGATÓRIO com --network host: o container herda o
           # hostname da MÁQUINA (ex. "severinno") e o standalone do Next lê
           # process.env.HOSTNAME para escolher a interface — sem esta linha o
           # servidor binda no IP do host (inalcançável por localhost) e a prova
           # de boot falha em HTTP 000 nas 20 tentativas (medido no task 322).
-          docker run -d --name severinno-fallback-test --network host \
+          docker run -d --name severinno-build-test --network host \
             -e DATABASE_URL="postgresql://placeholder:placeholder@127.0.0.1:5432/placeholder" \
             -e REDIS_URL="redis://127.0.0.1:6379" \
-            -e SESSION_SECRET="fallback-secret-at-least-32-characters" \
+            -e SESSION_SECRET="build-secret-at-least-32-characters" \
             -e NODE_ENV=production \
             -e HOSTNAME=0.0.0.0 \
             "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
@@ -315,14 +160,14 @@ jobs:
           HTTP_LAST="000"
           for i in $(seq 1 20); do
             sleep 3
-            HTTP_LAST=$(docker exec severinno-fallback-test node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>{console.log(r.status)}).catch(()=>{console.log(0)})" 2>/dev/null || echo "000")
+            HTTP_LAST=$(docker exec severinno-build-test node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>{console.log(r.status)}).catch(()=>{console.log(0)})" 2>/dev/null || echo "000")
             case "$HTTP_LAST" in
               200|503) echo "Boot OK (HTTP $HTTP_LAST em $i tentativas)"; break;;
             esac
             echo "attempt $i/20 - HTTP $HTTP_LAST"
           done
-          docker logs severinno-fallback-test 2>&1 | tail -20 || true
-          docker rm -f severinno-fallback-test >/dev/null 2>&1 || true
+          docker logs severinno-build-test 2>&1 | tail -20 || true
+          docker rm -f severinno-build-test >/dev/null 2>&1 || true
           case "$HTTP_LAST" in
             200|503) exit 0;;
             *) echo "Boot falhou após 20 tentativas (último HTTP $HTTP_LAST)"; exit 1;;
@@ -331,12 +176,12 @@ jobs:
   # ── Migrate Database ─────────────────────────────────────────────────────
   migrate:
     name: Migrate Database
-    needs: [build, fallback]
+    needs: [build]
     runs-on: ubuntu-latest
     if: >-
       always() &&
       (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') &&
-      (needs.build.result == 'success' || needs.fallback.result == 'success')
+      needs.build.result == 'success'
 
     steps:
       - name: Run database migrations

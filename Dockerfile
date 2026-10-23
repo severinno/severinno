@@ -73,9 +73,12 @@ RUN npx prisma generate
 # (total-vm 47GB) e sofrer OOM global de novo, com o cap de 8192 em vigor: o
 # `--max-old-space-size` limita o HEAP V8, não o Turbopack (Rust) nem os
 # buffers fora do heap, então o número alto só autorizava mais heap por worker.
-# O limite que de fato contém o build agora é o cgroup do buildkitd
-# (`memory=8g` no `deploy.yml`); este cap é a segunda barreira, para o caso de
-# um build rodar fora do builder instrumentado.
+# Em 23/10/2026 o build DENTRO do buildkit saiu do pipeline: nem 8 GB de
+# cgroup (morto aos 161 s do `next build`) nem 11 GB (pico colado no teto,
+# morto) entregavam imagem nesta stack — o `deploy.yml` ficou com UM caminho de
+# build, o host-artifacts (build no host, imagem COPY-only). Este Dockerfile
+# não é mais o construtor da entrega; o cap abaixo é a barreira para quem
+# rodar este build à mão (`docker build`), fora do builder instrumentado.
 ENV NODE_OPTIONS="--max-old-space-size=4096" \
     MALLOC_ARENA_MAX=2
 ENV BUILD_STANDALONE=true
