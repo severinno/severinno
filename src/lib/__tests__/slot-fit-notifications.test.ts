@@ -47,16 +47,15 @@ vi.mock("@/lib/realtime-client", () => ({
   emitRealtime: vi.fn().mockResolvedValue(true),
 }))
 
-vi.mock("@/lib/logger", () => ({
-  default: {
-    child: () => ({
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-    }),
-  },
-}))
+// O mock precisa cobrir os DOIS jeitos de usar o logger: por `child()` (o
+// padrão dos módulos de domínio) e DIRETO (`logger.warn(...)`, como o
+// geo-metrics faz ao hidratar snapshots do disco). Sem os métodos de topo, a
+// chamada estourava `default.warn is not a function` como erro NÃO TRATADO —
+// o vitest sai 1 mesmo com 732/732 arquivos verdes.
+vi.mock("@/lib/logger", () => {
+  const nivel = () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })
+  return { default: { ...nivel(), child: nivel } }
+})
 
 describe("slot-fit-notifications", () => {
   beforeEach(() => {
