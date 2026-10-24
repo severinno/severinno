@@ -21,11 +21,13 @@ import { describe, expect, it } from "vitest"
 import { documentedHeader } from "../../../scripts/check-script-headers.mjs"
 import {
   BASELINE_DOC,
+  CI_THRESHOLDS,
   DEFAULT_BASE_URL,
   DEFAULT_SAMPLES,
   MEASURES,
   MIN_SAMPLES,
   THRESHOLDS,
+  WALK_SAMPLES,
   evaluateBaseline,
   medianOf,
   parseArgs,
@@ -88,7 +90,9 @@ function rodadaVerde() {
     seek(283.2),
     seek(283.9),
     seek(300),
-    walkReverso(238.6, 2), // 1 página encadeada → limiar 800
+    walkReverso(238.6, 2), // 1 página encadeada → limiar 800 (mediana de 3)
+    walkReverso(262.4, 2),
+    walkReverso(283.0, 2),
     walkInterno(489), // 3 páginas → limiar 750
   ]
 }
@@ -166,16 +170,44 @@ describe("evaluateBaseline — pioras reprovam", () => {
     expect(v?.observadoMs).toBe(900)
   })
 
-  it("walk reverso: 900ms em 1 página (limiar 800) reprova", () => {
+  it("walk reverso: mediana de 900ms em 1 página (limiar 800) reprova", () => {
     const entries = rodadaVerde().map((e) => (e.name === MEASURES.walk ? walkReverso(900, 2) : e))
     const r = evaluateBaseline(entries, THRESHOLDS, { samples: 5 })
     const v = r.violations.find((x) => x.regime.includes(MEASURES.walk))
     expect(v?.limiarMs).toBe(800)
+    expect(v?.observadoMs).toBe(900)
   })
 
-  it("walk reverso ESCALA: 900ms em 3 páginas (limiar 2400) passa", () => {
+  it("walk reverso ESCALA: 900ms em 3 páginas (300ms/página, limiar 800) passa", () => {
     const entries = rodadaVerde().map((e) => (e.name === MEASURES.walk ? walkReverso(900, 4) : e))
     expect(evaluateBaseline(entries, THRESHOLDS, { samples: 5 }).ok).toBe(true)
+  })
+
+  it("um tiro isolado de 1189.6ms ao lado de 300/320ms não reprova o regime (mediana manda)", () => {
+    // O vermelho real da main (23/10/2026): walk ÚNICO de 1189.6ms contra o
+    // limiar de 1000ms do perfil `ci`, na mesma rodada em que warm dava 130ms.
+    const duracoes = [1189.6, 300, 320]
+    let n = 0
+    const entries = rodadaVerde().map((e) =>
+      e.name === MEASURES.walk ? walkReverso(duracoes[n++], 2) : e,
+    )
+    const r = evaluateBaseline(entries, CI_THRESHOLDS, { samples: 5 })
+    expect(r.ok).toBe(true)
+    expect(r.resumo.walk).toBe(3)
+    expect(r.resumo.medianaWalkPorPaginaMs).toBe(320)
+  })
+
+  it("mediana acima do limiar reprova mesmo com uma amostra boa no meio", () => {
+    const duracoes = [1500, 300, 1600]
+    let n = 0
+    const entries = rodadaVerde().map((e) =>
+      e.name === MEASURES.walk ? walkReverso(duracoes[n++], 2) : e,
+    )
+    const v = evaluateBaseline(entries, THRESHOLDS, { samples: 5 }).violations.find(
+      (x) => x.tipo === "limiar" && x.regime.includes(MEASURES.walk),
+    )
+    expect(v?.observadoMs).toBe(1500)
+    expect(v?.limiarMs).toBe(800)
   })
 
   it("deep-link seek: mediana acima de 800ms reprova", () => {
@@ -206,7 +238,22 @@ describe("evaluateBaseline — fail-closed de regime sem amostra", () => {
     const r = evaluateBaseline(entries, THRESHOLDS, { samples: 5 })
     const v = r.violations.find((x) => x.regime === MEASURES.walk)
     expect(v?.tipo).toBe("dados-insuficientes")
+    expect(v?.esperado).toBe(WALK_SAMPLES)
     expect(r.ok).toBe(false)
+  })
+
+  it("menos de 3 walks (2 amostras) reprova: a mediana exige o piso do doc", () => {
+    const entries = [
+      ...rodadaVerde().filter((e) => e.name !== MEASURES.walk),
+      walkReverso(238.6, 2),
+      walkReverso(262.4, 2),
+    ]
+    const r = evaluateBaseline(entries, THRESHOLDS, { samples: 5 })
+    const v = r.violations.find(
+      (x) => x.tipo === "dados-insuficientes" && x.regime === MEASURES.walk,
+    )
+    expect(v?.encontrado).toBe(2)
+    expect(v?.esperado).toBe(WALK_SAMPLES)
   })
 
   it("sem seek e sem walk interno reprova do mesmo jeito", () => {
@@ -227,6 +274,8 @@ describe("evaluateBaseline — fail-closed de regime sem amostra", () => {
       seek(284),
       seek(290),
       walkReverso(238, 2),
+      walkReverso(242, 2),
+      walkReverso(250, 2),
       walkInterno(489),
     ]
     const r = evaluateBaseline(entries, THRESHOLDS, { samples: 5 })
