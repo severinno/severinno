@@ -35,6 +35,12 @@
 //   1 (BLOQUEADA)                  → 1 — violação real (o valor diverge);
 //   3 (uso/erro interno) e outros  → 3 — sem veredito não há gate (falha).
 //
+// DE ONDE VEM O VEREDITO: do relatório JSON do doctor (`--json`), não do exit
+// code do processo filho. O código de saída é transporte — e transporte se
+// perde sob carga (medido na forja em 24/10/2026: relatório BLOQUEADO inteiro
+// e `status` 0 no `spawnSync`); o dado não. Sem JSON legível, o gate falha com
+// 3 em vez de parecer verde.
+//
 // O que este gate NÃO prova (e não finge provar): a imagem publicada, a branch
 // protection registrada, o registro do runner, o board e o próprio bloqueio da
 // subida. Quem cobre é `.gitea/workflows/forge-doctor.yml` (cron) e o
@@ -64,6 +70,7 @@ import process from "node:process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { MIRROR_VARIABLES } from "./check-actrc-sync.mjs"
+import { VERDICT, renderReport } from "./forge-doctor.mjs"
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DOCTOR = join(HERE, "forge-doctor.mjs")
@@ -111,6 +118,45 @@ export function gateExitCode(doctorExit) {
   return 3
 }
 
+/**
+ * Lê o veredito do RELATÓRIO JSON do doctor — a única entrada da decisão.
+ *
+ * O exit code do processo filho NÃO entra: ele é transporte, e transporte se
+ * perde (medido na forja em 24/10/2026, run 116: relatório BLOQUEADO inteiro no
+ * stdout e `status` 0 no `spawnSync`). O que decide o gate é o DADO que o
+ * doctor publica; sem JSON legível (ou com veredito fora do contrato) não há
+ * veredito — e ausência de veredito é 3, nunca 0.
+ *
+ * @param {string} stdout
+ * @returns {{ report: object|null, doctorExit: 0|1|2|null, error: string|null }}
+ */
+export function readDoctorReport(stdout) {
+  let report
+  try {
+    report = JSON.parse(stdout)
+  } catch (error) {
+    return { report: null, doctorExit: null, error: `JSON ilegível: ${error.message}` }
+  }
+
+  const verdict = report?.verdict?.verdict
+  const doctorExit =
+    verdict === VERDICT.READY
+      ? 0
+      : verdict === VERDICT.BLOCKED
+        ? 1
+        : verdict === VERDICT.UNKNOWN
+          ? 2
+          : null
+  if (doctorExit === null) {
+    return {
+      report: null,
+      doctorExit: null,
+      error: `veredito desconhecido (${String(verdict)})`,
+    }
+  }
+  return { report, doctorExit, error: null }
+}
+
 /** Aviso anotável para as variáveis que não chegaram — nomeadas, uma a uma. */
 export function missingValueWarning(missing) {
   return (
@@ -134,17 +180,50 @@ async function main() {
   const { flags, missing } = doctorFlags(process.env)
   if (missing.length > 0) console.log(missingValueWarning(missing))
 
-  const args = [DOCTOR, DOCTOR_PROFILE_FLAG, ...(json ? ["--json"] : []), ...flags]
+  // O VEREDITO VIAJA COMO DADO, NÃO COMO EXIT CODE DO FILHO.
+  //
+  // Medido na forja em 24/10/2026 (run 116, push da main): o doctor imprimiu o
+  // relatório inteiro com `VEREDITO: ❌ NÃO ESTÁ PRONTA`, e o gate — que lê o
+  // `status` do `spawnSync` — recebeu 0 e publicou "nenhuma violação". O
+  // processo filho TERMINOU (o relatório está completo): o que se perdeu foi o
+  // TRANSPORTE do código de saída, e um gate que depende dele fica verde sob
+  // carga exatamente quando deveria bloquear. O `--json` é o contrato de dados
+  // do doctor: o veredito é lido do relatório, e um JSON ausente/truncado é
+  // ausência de veredito (exit 3), nunca verde por omissão.
+  const args = [DOCTOR, DOCTOR_PROFILE_FLAG, "--json", ...flags]
   // `process.execPath` (e não `node` nem `bun` cravado): na forja o gate roda por
   // bun, no GitHub por node, e o doctor é o MESMO arquivo — quem interpreta é
   // quem já está interpretando este script.
-  const res = spawnSync(process.execPath, args, { stdio: "inherit" })
+  const res = spawnSync(process.execPath, args, {
+    encoding: "utf8",
+    // O relatório do doctor carrega o inventário do GitHub (~200 KB medidos);
+    // 32 MiB é teto de ERRO, não de operação: se ele for atingido o JSON chega
+    // truncado e o parse abaixo falha fechado.
+    maxBuffer: 32 * 1024 * 1024,
+  })
   if (res.error) {
     console.error(`check-doctor-ci: não foi possível executar o doctor: ${res.error.message}`)
     process.exit(3)
   }
+  if (res.stderr) process.stderr.write(res.stderr)
 
-  const code = gateExitCode(res.status)
+  const { report, doctorExit, error } = readDoctorReport(res.stdout)
+  if (!report || doctorExit === null) {
+    // Sem JSON legível não há veredito — e o stdio capturado é o único
+    // diagnóstico disponível. Imprime os dois canais e falha com 3 (nunca 0).
+    if (res.stdout) process.stdout.write(res.stdout)
+    console.error(
+      `::error::O doctor não entregou um veredito legível (${error}) — sem veredito não há gate.`,
+    )
+    process.exit(3)
+  }
+
+  if (json) console.log(JSON.stringify(report, null, 2))
+  else renderReport(report)
+
+  // O mesmo mapeamento de antes, agora a partir do veredito do RELATÓRIO:
+  // PRONTA (0) e INDETERMINADA (2) seguem; BLOQUEADA (1) barra.
+  const code = gateExitCode(doctorExit)
   if (code === 0) {
     console.log(
       "✅ doctor (perfil --ci): nenhuma violação no recorte local — o relatório acima NOMEIA o que ficou fora dele (rede, credencial de administração e estado do HOST são do cron semanal).",
@@ -155,7 +234,7 @@ async function main() {
     )
   } else {
     console.error(
-      `::error::O doctor não conseguiu medir (exit ${res.status}; 3 = uso/erro interno) — sem veredito não há gate.`,
+      "::error::O doctor não conseguiu medir (exit 3 = uso/erro interno) — sem veredito não há gate.",
     )
   }
   process.exit(code)

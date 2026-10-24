@@ -24,7 +24,7 @@
 // =============================================================================
 
 import { spawnSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -35,6 +35,7 @@ import {
   doctorFlags,
   gateExitCode,
   missingValueWarning,
+  readDoctorReport,
 } from "../../../scripts/check-doctor-ci.mjs"
 import { MIRROR_VARIABLES } from "../../../scripts/check-actrc-sync.mjs"
 import { MERGE_OWNER_PIPELINE, REQUIRED_CHECKS_MANIFEST } from "../../../scripts/forge-doctor.mjs"
@@ -182,6 +183,89 @@ describe("gateExitCode — o INDETERMINADA do perfil não bloqueia, a violação
     expect(gateExitCode(null)).toBe(3)
     expect(gateExitCode(137)).toBe(3)
   })
+})
+
+// ── readDoctorReport — o veredito vem do DADO, não do exit code ──────────
+
+// O vermelho da main em 24/10/2026 (run 116, push): o doctor imprimiu o
+// relatório BLOQUEADO inteiro e o `spawnSync` do gate reportou 0 — o gate
+// publicou "nenhuma violação" com o veredito impresso dizendo o contrário. A
+// decisão não pode depender do transporte do exit code do filho; o JSON do
+// doctor é o contrato. Estes testes passam SEM status de processo nenhum por
+// desenho: é a prova de que ele não entra na conta.
+describe("readDoctorReport — a decisão sai do relatório, não do exit code do filho", () => {
+  const bloqueado = JSON.stringify({
+    facts: {},
+    verdict: { verdict: "bloqueada", blockers: ["IMAGE_NAMESPACE diverge"], unknowns: [] },
+  })
+
+  it("relatório BLOQUEADO → doctorExit 1 (sem consultar status de processo)", () => {
+    const lido = readDoctorReport(bloqueado)
+    expect(lido.error).toBeNull()
+    expect(lido.doctorExit).toBe(1)
+    expect(lido.report).not.toBeNull()
+  })
+
+  it("PRONTA → 0 e INDETERMINADA → 2 (o perfil continua não bloqueando)", () => {
+    expect(readDoctorReport(JSON.stringify({ verdict: { verdict: "pronta" } })).doctorExit).toBe(0)
+    expect(
+      readDoctorReport(JSON.stringify({ verdict: { verdict: "indeterminada" } })).doctorExit,
+    ).toBe(2)
+  })
+
+  it("JSON truncado/veredito fora do contrato → sem veredito (o gate falha com 3)", () => {
+    expect(readDoctorReport('{"verdict":').doctorExit).toBeNull()
+    expect(
+      readDoctorReport(JSON.stringify({ verdict: { verdict: "outro" } })).doctorExit,
+    ).toBeNull()
+    expect(readDoctorReport("").doctorExit).toBeNull()
+  })
+})
+
+// O TRANSPORTE MENTE, O DADO NÃO: o cenário exato da run 116, reproduzido sem
+// depender de carga. O doctor dublê imprime o relatório BLOQUEADO e SAI 0 — se
+// o gate voltar a ler o `status` do filho, este teste fica vermelho e a suíte
+// denuncia a regressão antes da forja.
+it("veredito BLOQUEADO com o filho saindo 0 ainda BLOQUEIA (o exit code é transporte)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "check-doctor-ci-transporte-"))
+  tmpDirs.push(dir)
+  const scripts = join(dir, "scripts")
+  mkdirSync(scripts, { recursive: true })
+  copyFileSync(join(ROOT, "scripts", "check-doctor-ci.mjs"), join(scripts, "check-doctor-ci.mjs"))
+  writeFileSync(
+    join(scripts, "check-actrc-sync.mjs"),
+    'export const MIRROR_VARIABLES = ["BUN_VERSION", "IMAGE_REGISTRY", "IMAGE_NAMESPACE"]\n',
+  )
+  writeFileSync(
+    join(scripts, "forge-doctor.mjs"),
+    [
+      'import { pathToFileURL } from "node:url"',
+      'export const VERDICT = { READY: "pronta", BLOCKED: "bloqueada", UNKNOWN: "indeterminada" }',
+      "export function renderReport(report) { console.log(`RELATÓRIO: ${report.verdict.verdict}`) }",
+      "if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {",
+      '  console.log(JSON.stringify({ facts: {}, verdict: { verdict: "bloqueada", blockers: ["x"], unknowns: [] } }))',
+      "  // O transporte perde o 1 de propósito; o DADO continua BLOQUEADO.",
+      "  process.exit(0)",
+      "}",
+      "",
+    ].join("\n"),
+  )
+
+  const res = spawnSync(process.execPath, [join(scripts, "check-doctor-ci.mjs")], {
+    cwd: dir,
+    encoding: "utf8",
+    timeout: 60_000,
+    env: {
+      ...process.env,
+      BUN_VERSION: "1.3.14",
+      IMAGE_REGISTRY: "git.severinno.com",
+      IMAGE_NAMESPACE: "outro",
+    },
+  })
+
+  expect(res.status, `${res.stdout}\n${res.stderr}`).toBe(1)
+  expect(res.stdout).toContain("RELATÓRIO: bloqueada")
+  expect(res.stderr).toContain("BLOQUEOU")
 })
 
 // ── o ciclo completo: o gate contra um checkout de verdade ────────────────
