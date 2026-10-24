@@ -30,8 +30,10 @@
 //
 // O QUE ESTE DUBLÊ NÃO É: uma segunda implementação da prova. Ele não decide
 // nada da régua — só responde à API como um Gitea 1.22 (inclusive a REGRA de
-// merge: exige status `success` de TODOS os contextos registrados e bloqueia só
-// com `enable_status_check` ligado) e deixa o motor julgar.
+// merge: exige status `success` de TODOS os contextos registrados — casando o
+// contexto exigido por GLOB, como o Gitea, porque o exigido é
+// `CI/CD / Lint (*)` e o postado é `CI/CD / Lint (pull_request)` — e bloqueia
+// só com `enable_status_check` ligado) e deixa o motor julgar.
 //
 // LIMITE DECLARADO: o dublê cobre as rotas que a prova usa. Um caminho novo na
 // prova cai no 404 `nao mapeado` e o veredito sai diferente — o desvio é
@@ -59,13 +61,49 @@ Exit codes: 0 mediu · 1 fixture/motor · 2 uso inválido`
  * as duas COMBINAÇÕES que a prova cirúrgica precisa (uma metade mutada, a outra
  * ainda no relatório).
  *
+/**
+ * O nome do job dentro de um contexto exigido: `<workflow> / <job> (*)` no
+ * Gitea, ou o nome cru (GitHub, fixtures). Os knobs falam do JOB (`Tests`,
+ * `Lint`), não da forma do contexto.
+ *
+ * @param {string} context
+ * @returns {string}
+ */
+function jobDoContexto(context) {
+  const m = /^.*\/\s*(.+?)\s*\(\*\)$/.exec(String(context))
+  return m ? m[1] : String(context)
+}
+
+/**
+ * O glob do Gitea: `*` casa qualquer sequência (o evento muda entre
+ * `pull_request` e `push`).
+ *
+ * @param {string} pattern contexto exigido (com ou sem glob)
+ * @param {string} context contexto postado (`CI/CD / Lint (pull_request)`)
+ * @returns {boolean}
+ */
+export function matchesContext(pattern, context) {
+  const re = new RegExp(
+    `^${String(pattern)
+      .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+      .replace(/\*/g, "[\\s\\S]*")}$`,
+  )
+  return re.test(String(context))
+}
+
+/**
  * @param {string[]} esperados
  * @param {string} knob
  * @returns {string[]}
  */
 export function registroDoKnob(esperados, knob) {
-  const sem = (c) => c !== "Tests"
-  const comContagem = (c) => (c === "Lint" ? "Lint (3 checks)" : c)
+  const sem = (c) => jobDoContexto(c) !== "Tests"
+  const comContagem = (c) =>
+    jobDoContexto(c) !== "Lint"
+      ? c
+      : /\(\*\)\s*$/.test(String(c))
+        ? String(c).replace(/\s*\(\*\)\s*$/, " (3 checks) (*)")
+        : "Lint (3 checks)"
   switch (knob) {
     case "menos":
       return esperados.filter(sem)
@@ -124,7 +162,12 @@ export function fakeForge(registrado) {
     const merge = /^\/repos\/[^/]+\/[^/]+\/pulls\/(\d+)\/merge$/.exec(path)
     if (merge) {
       const postados = estado.statuses.get(`sha-${merge[1]}`) ?? new Map()
-      const incompletos = estado.contexts.filter((c) => postados.get(c) !== "success")
+      const incompletos = estado.contexts.filter(
+        (c) =>
+          ![...postados.entries()].some(
+            ([contexto, situacao]) => matchesContext(c, contexto) && situacao === "success",
+          ),
+      )
       if (estado.enforced && incompletos.length > 0)
         return json(405, {
           message: "not allowed to merge [reason: Not all required status checks successful]",
