@@ -54,6 +54,12 @@ afterAll(() => {
 
 const GITHUB_WF = ".github/workflows/pr.yml"
 const GITEA_WF = ".gitea/workflows/ci.yml"
+/**
+ * O contexto que a proteção do Gitea exige para o job `guards` do fixture:
+ * `<workflow> / <job> (*)` — o `name: Fixture` do topo do workflow entra como
+ * prefixo e o `(*)` cobre `pull_request`/`push` (é o que a forja grava).
+ */
+const CTX_GITEA = "Fixture / Repo Guards (*)"
 
 /** O que `resolveManifestContexts` devolve (o tipo mora no JSDoc do módulo .mjs). */
 type Resolvidos = Record<
@@ -160,7 +166,7 @@ function montar(opcoes: Opcoes = {}): string {
     }
   }
   if ((opcoes.forjasDeclaradas ?? ["github", "gitea"]).includes("gitea")) {
-    forges.gitea = { workflow: GITEA_WF, branches: ["main"], contexts: ["Repo Guards"] }
+    forges.gitea = { workflow: GITEA_WF, branches: ["main"], contexts: [CTX_GITEA] }
   }
   writeFileSync(
     join(dir, APPLIED_PATH),
@@ -378,7 +384,7 @@ describe("o applier escreve a declaração (a reaplicação declara-se sozinha)"
     const escritoJson = JSON.parse(readFileSync(join(dir, APPLIED_PATH), "utf8"))
     expect(escritoJson.appliedAt).toBe("2026-09-18")
     expect(escritoJson.forges.github.contexts).toEqual(["Lint guard", "tests"])
-    expect(escritoJson.forges.gitea.contexts).toEqual(["Repo Guards"])
+    expect(escritoJson.forges.gitea.contexts).toEqual([CTX_GITEA])
     expect(escritoJson.forges.github.branches).toEqual(["main"])
     expect(escritoJson.$comment.join(" ")).toContain("DECLARAÇÃO da proteção APLICADA")
 
@@ -418,12 +424,12 @@ describe("o applier escreve a declaração (a reaplicação declara-se sozinha)"
       version: 1,
       appliedAt: "2026-01-01",
       forges: {
-        gitea: { workflow: GITEA_WF, branches: ["main"], contexts: ["Repo Guards", "guards"] },
+        gitea: { workflow: GITEA_WF, branches: ["main"], contexts: [CTX_GITEA, "guards"] },
       },
     }
     const { record } = buildAppliedRecord(atual, resolved, ["github"], "2026-09-18")
     expect(record.forges.github.contexts).toEqual(resolved.github.contexts.map((c) => c.context))
-    expect(record.forges.gitea.contexts).toEqual(["Repo Guards", "guards"])
+    expect(record.forges.gitea.contexts).toEqual([CTX_GITEA, "guards"])
   })
 })
 

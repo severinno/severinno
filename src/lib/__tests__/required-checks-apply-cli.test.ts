@@ -51,8 +51,13 @@ const GITEA_WF = ".gitea/workflows/ci.yml"
 const DECLARACAO = "ci/required-checks-applied.json"
 /** O contexto do GitHub derivado do fixture (o `name:` do job `lint`). */
 const CTX_GITHUB = "Lint guard"
-/** O contexto do Gitea derivado do fixture (o `name:` do job `guards`). */
-const CTX_GITEA = "Repo Guards"
+/** O `name:` do job `guards` no workflow do fixture (o que a forja executa). */
+const JOB_GITEA = "Repo Guards"
+/**
+ * O contexto que a proteção do Gitea exige para ele: `<workflow> / <job> (*)`.
+ * É o que a forja grava (`Fixture` é o `name:` do topo do workflow).
+ */
+const CTX_GITEA = `Fixture / ${JOB_GITEA} (*)`
 /** O que a proteção da forja exigia ANTES (o rename não reaplicado). */
 const CTX_VELHO_GITHUB = "Lint guard (5)"
 const CTX_VELHO_GITEA = "Repo Guards (27)"
@@ -218,7 +223,7 @@ function montar() {
     "utf8",
   )
   writeFileSync(join(dir, GITHUB_WF), workflow([["lint", CTX_GITHUB]]), "utf8")
-  writeFileSync(join(dir, GITEA_WF), workflow([["guards", CTX_GITEA]]), "utf8")
+  writeFileSync(join(dir, GITEA_WF), workflow([["guards", JOB_GITEA]]), "utf8")
 
   // A DECLARAÇÃO ANTERIOR: os contextos VELHOS, com contagem, dos dois lados — o
   // estado exato de um rename que ninguém reaplicou. É o que torna a reescrita

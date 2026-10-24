@@ -390,6 +390,7 @@ restaurar_originais
 header "M6 (o CARIMBO): uma reaplicação sem mudança de contexto passa a sujar a árvore"
 mutar_arquivo "$GUARD" '  const mudou =
     JSON.stringify(record.forges) !== JSON.stringify(atual?.forges ?? null) ||
+    commentMudou ||
     atual?.version !== SUPPORTED_VERSION' \
   '  const mudou = true // MUTACAO M6' "$guard_sum"
 exigir_vermelho "M6" "$ANCORA_SEM_CHURN" "$ANCORA_RENAME"

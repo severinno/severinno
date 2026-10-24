@@ -375,7 +375,7 @@ header "CONTROLE B — o registro errado é VIOLADO, com a causa nomeada"
 exigir_forja menos "CONTROLE B (a MENOS)"
 exigir_veredito violated "CONTROLE B (a MENOS)"
 exigir_blocker "NAO registrou 1 contexto(s)" "CONTROLE B (a MENOS)"
-exigir_blocker "'Tests'" "CONTROLE B (a MENOS, nomeia o contexto)"
+exigir_blocker "Tests (*)" "CONTROLE B (a MENOS, nomeia o contexto)"
 exigir_forja mais "CONTROLE B (a MAIS)"
 exigir_veredito violated "CONTROLE B (a MAIS)"
 exigir_blocker "que o manifesto NAO declara" "CONTROLE B (a MAIS)"
@@ -422,7 +422,7 @@ exigir_sem_blocker "'Guard que sumiu'" "M2 (CEGO)"
 info "CEGO: o registro tem um contexto que o manifesto não declara e a prova deixa de NOMEÁ-LO (o veredito segue violado — pelo sintoma, não pela causa)"
 
 exigir_forja menos "M2 CIRÚRGICA"
-exigir_blocker "'Tests'" "M2 CIRÚRGICA (a régua da MENOS segue mordendo)"
+exigir_blocker "Tests (*)" "M2 CIRÚRGICA (a régua da MENOS segue mordendo)"
 
 exigir_suite_vermelha "M2" "$ANCORA_MAIS" "$ANCORA_MENOS"
 cp "$BACKUP" "$GUARD"
@@ -443,7 +443,7 @@ exigir_blocker "NAO registrou" "M3 (as outras duas metades seguem no relatório)
 info "CEGO: 'Lint (3 checks)' registrado e nenhuma palavra sobre a contagem"
 
 exigir_forja menos "M3 CIRÚRGICA"
-exigir_blocker "'Tests'" "M3 CIRÚRGICA (a régua da MENOS segue mordendo)"
+exigir_blocker "Tests (*)" "M3 CIRÚRGICA (a régua da MENOS segue mordendo)"
 
 exigir_suite_vermelha "M3" "$ANCORA_CONTAGEM" "$ANCORA_MENOS"
 cp "$BACKUP" "$GUARD"
@@ -489,7 +489,7 @@ exigir_blocker "carrega CONTAGEM" "M5 (a acusação falsa)"
 exigir_blocker "pré-requisito 0, por execução" "M5 (acusou o contexto editorial)"
 
 exigir_forja menos "M5 CIRÚRGICA"
-exigir_blocker "'Tests'" "M5 CIRÚRGICA (a régua da MENOS segue mordendo)"
+exigir_blocker "Tests (*)" "M5 CIRÚRGICA (a régua da MENOS segue mordendo)"
 
 exigir_suite_vermelha "M5" "$ANCORA_EDITORIAL|$ANCORA_PROVEN" "$ANCORA_MENOS"
 cp "$BACKUP" "$GUARD"
