@@ -4691,7 +4691,7 @@ tem o que decidir lá; e um cron não bloqueia merge (a decisão dele é a dívi
 declarada, noutro canal). Um job sem `runs-on` lido sai NOMEADO em
 `foraDoEscopo`.
 
-**O que a classe MEDIU nesta árvore** (o número sai do `--json`): **10 jobs**
+**O que a classe MEDIU nesta árvore** (o número sai do `--json`): **8 jobs**
 leem YAML no espelho, TODOS no caminho hospedado — **0** com exceção declarada
 desde a migração de 25/09/2026, que levou os dois últimos ao caminho que não
 depende do runner (o `check`, que EXECUTA a stack: o `check-mirror-coverage`
@@ -5753,8 +5753,10 @@ agnóstica de forja). Ele lê os valores do AMBIENTE (o workflow exporta `vars.*
 sem fallback — comparar contra um `|| 'ghcr.io'` do YAML é comparar contra
 intenção), **nomeia** a variável que não chegou (`::warning::`, porque um
 comparador com régua vazia diria "não perguntado") e traduz o veredito do doctor
-em decisão de pipeline: `0`/`2` → **segue** (2 é o INDETERMINADA por DESENHO do
-perfil — as seções do cron estão declaradas; tratá-lo como fracasso faria todo PR
+— lido do relatório `--json`, e não do exit code do processo filho, que é
+transporte e se perde sob carga — em decisão de pipeline: `0`/`2` → **segue**
+(2 é o INDETERMINADA por DESENHO do perfil — as seções do cron estão declaradas;
+tratá-lo como fracasso faria todo PR
 nascer vermelho), `1` (BLOQUEADA) → **bloqueia**, e `3`/outros → **bloqueia**
 (sem veredito não há gate). A lógica mora no script, e não no `run:` do YAML, por
 um motivo estrutural: o doctor executa a bateria do job `guards` por **lista de
@@ -8590,10 +8592,14 @@ cláusulas, com a gramática declarada — `github.event_name ==/!= '<e>'`,
 diferença entre as duas formas de erro importa: um termo sobre `github.ref`
 numa cláusula **sem** filtro de branch não é falso, é **indecidível** (o ref
 pode ser qualquer um), e é por isso que a avaliação tem TRÊS valores. O
-`if: github.ref == 'refs/heads/main' && github.event_name == 'push'` do job
-`deploy` do `ci.yml` transforma `push@[main, develop] ∪ pull_request@[main]` em
-`push@[main]` — sem o estreitamento, um retrato que declara a condição LARGA
-passaria verde sobre um job que só roda em `main`.
+`if: github.event_name == 'pull_request'` do job `stack-per-commit` do `ci.yml`
+transforma `push@[main, develop] ∪ pull_request@[main]` em `pull_request@[main]`
+— sem o estreitamento, um retrato que declara a condição LARGA passaria verde
+sobre um job que só roda em PR. (O exemplo anterior era o `deploy` do `ci.yml`,
+removido em 23/10/2026: ele estreitava para `push@[main]`, mas rodava `docker
+compose` no arquivo default — que não tem o serviço `realtime` — e morria sem
+rodar migration nenhuma; a entrega é do `deploy.yml`, e um caminho só de deploy
+é um estado só para a mesma tag.)
 
 **O QUE SAI DA GRAMÁTICA É NOMEADO, NUNCA ADIVINHADO.** Função de STATUS
 (`failure()`, `success()`), `startsWith`, contexto que o guard não conhece: se

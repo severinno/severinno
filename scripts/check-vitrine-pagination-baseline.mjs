@@ -28,8 +28,10 @@
 //   B. Deep-link seek — a URL de p3 capturada durante a caminhada reaberta
 //      em contexto JS frio (nova página): `vitrine:deeplink:render` com
 //      `walked: false` ≤ 800 ms. 3 amostras, mediana.
-//   C. Walk reverso — Anterior na p3 do seek (sem âncora de p2 em memória):
-//      `vitrine:walk:render` ≤ 800 ms × páginas de walk.
+//   C. Walk reverso — Anterior em CADA pouso de seek (sem âncora de p2 em
+//      memória): `vitrine:walk:render` ≤ 800 ms × páginas de walk, MEDIANA de
+//      3 amostras — uma por pouso, sem page load extra (a p2 nunca foi visitada
+//      naquele contexto, então cada pouso é o mesmo cenário do regime).
 //   D. Deep-link com walk interno — `?pagina=4` sem cursor (nova página):
 //      `vitrine:deeplink:render` com `walked: true` ≤ 250 ms × 3 páginas.
 //
@@ -91,7 +93,7 @@ export const THRESHOLDS = {
   paginaWarmMedianMs: 250,
   /** QUALQUER clique — tail de rede (inFlight) ou frio. */
   paginaSingleSampleMs: 800,
-  /** Walk reverso, por página encadeada (walk de k páginas ⇒ 800×k). */
+  /** Walk reverso, por página encadeada (walk de k páginas ⇒ 800×k), mediana. */
   walkMsPerPagina: 800,
   /** Deep-link seek direto (walked: false), mediana. */
   deeplinkSeekMs: 800,
@@ -130,6 +132,17 @@ export const LOAD_TIMEOUT_MS = 90_000
 export const MEASURE_TIMEOUT_MS = 30_000
 /** Amostras do deep-link seek: cada uma é 1 page load + 1 request — barato. */
 export const SEEK_SAMPLES = 3
+/**
+ * Amostras do walk reverso — UMA POR pouso de seek (o mesmo contexto JS frio
+ * já é o cenário do regime): 3 amostras custam zero page load extra.
+ *
+ * Por que mediana e não amostra única: no runner self-hosted o único walk
+ * medido saiu 1189.6 ms contra limiar de 1000 ms (perfil `ci`) na mesma rodada
+ * em que os regimes com mediana davam 130 ms (warm) e 548 ms (seek). Um tiro
+ * isolado de máquina virava veredito do regime — a mesma doutrina do clique
+ * quente e do seek (mediana de ≥ 3) agora vale para o walk.
+ */
+export const WALK_SAMPLES = SEEK_SAMPLES
 
 /** A p3 é o pouso capturado durante a caminhada (alvo do seek e do walk). */
 const SEEK_TARGET = 3
@@ -185,11 +198,12 @@ export function walkPaginasOf(detail) {
  *
  * @param {{ name: string, duration: number, detail: object | null }[]} entries
  * @param {typeof THRESHOLDS} [thresholds]
- * @param {{ samples?: number, seekSamples?: number }} [opts]
+ * @param {{ samples?: number, seekSamples?: number, walkSamples?: number }} [opts]
  */
 export function evaluateBaseline(entries, thresholds = THRESHOLDS, opts = {}) {
   const samples = opts.samples ?? DEFAULT_SAMPLES
   const seekSamples = opts.seekSamples ?? SEEK_SAMPLES
+  const walkSamples = opts.walkSamples ?? WALK_SAMPLES
   const violations = []
 
   const addLimiar = (regime, observadoMs, limiarMs, detail) =>
@@ -251,16 +265,21 @@ export function evaluateBaseline(entries, thresholds = THRESHOLDS, opts = {}) {
   }
 
   // ── Regime C: walk reverso (limiar ESCALA com as páginas encadeadas) ──
-  if (walk.length === 0) {
-    addInsuficiente(MEASURES.walk, 0, 1)
-  } else {
-    for (const e of walk) {
-      const paginas = walkPaginasOf(e.detail)
-      const limiar = thresholds.walkMsPerPagina * paginas
-      if (e.duration > limiar) {
-        addLimiar(`${MEASURES.walk} (${paginas} pág.)`, e.duration, limiar, e.detail)
-      }
-    }
+  // MEDIANA de `walkSamples` walks, como o clique quente e o seek: o gate julga
+  // o regime, não o pior tiro de uma máquina que também roda produção. Cada
+  // amostra é normalizada por página ANTES da mediana (a régua é ms/página,
+  // então uma mediana de durações brutas compararia grandezas diferentes; com
+  // k constante — o caso do guard — isto é a mediana das durações).
+  const medianaWalkPorPagina = medianOf(walk.map((e) => e.duration / walkPaginasOf(e.detail)))
+  if (walk.length < walkSamples) {
+    addInsuficiente(MEASURES.walk, walk.length, walkSamples)
+  } else if (medianaWalkPorPagina > thresholds.walkMsPerPagina) {
+    addLimiar(
+      `${MEASURES.walk} (mediana de ${walk.length} walks)`,
+      medianaWalkPorPagina,
+      thresholds.walkMsPerPagina,
+      walk[0].detail,
+    )
   }
 
   // ── Regime D: deep-link com walk interno (mesma escala) ──
@@ -291,6 +310,8 @@ export function evaluateBaseline(entries, thresholds = THRESHOLDS, opts = {}) {
       medianaSeekMs:
         seek.length === 0 ? null : Math.round(medianOf(seek.map((e) => e.duration)) * 10) / 10,
       walk: walk.length,
+      medianaWalkPorPaginaMs:
+        medianaWalkPorPagina === null ? null : Math.round(medianaWalkPorPagina * 10) / 10,
       deeplinkSeek: seek.length,
       deeplinkWalkInterno: walkInterno.length,
       popstate: porNome(MEASURES.popstate).length,
@@ -462,11 +483,15 @@ export async function runBaseline({ baseUrl, samples, log = () => {} }) {
     await page.close()
 
     // ── Fase B: deep-link seek em contexto JS frio (× SEEK_SAMPLES) ──
+    //    Cada pouso TAMBÉM rende uma amostra do walk reverso (fase C): a p2
+    //    nunca foi visitada naquele contexto, então "Anterior" na p3 é o mesmo
+    //    cenário (sem âncora de p2 ⇒ walk p1→p2). Uma amostra de cada regime
+    //    por página, sem page load extra.
     log(`→ fase B: deep-link seek (${SEEK_SAMPLES} contextos frios)`)
     const seekEntries = []
-    let seekPage = null
+    const walkEntries = []
     for (let s = 0; s < SEEK_SAMPLES; s++) {
-      seekPage = await context.newPage()
+      const seekPage = await context.newPage()
       await seekPage.goto(seekUrl, { waitUntil: "domcontentloaded", timeout: LOAD_TIMEOUT_MS })
       await waitForMeasure(seekPage, {
         name: MEASURES.deeplink,
@@ -480,27 +505,31 @@ export async function runBaseline({ baseUrl, samples, log = () => {} }) {
           `${MEASURES.deeplink} target=${SEEK_TARGET} walked=false`,
         )
       })
-      seekEntries.push(...(await collectMeasures(seekPage)))
-    }
+      // Só as medidas de deep-link desta página: a sample do seek não pode
+      // carregar junto o walk que será disparado logo abaixo.
+      seekEntries.push(...(await collectMeasures(seekPage, MEASURES.deeplink)))
 
-    // ── Fase C: walk reverso — Anterior no ÚLTIMO pouso de seek (a p2 nunca
-    //    foi visitada neste contexto ⇒ sem âncora de p2 ⇒ walk p1→p2) ──
-    log("→ fase C: walk reverso (Anterior sem âncora de N-1)")
-    const prev = seekPage.locator(PREV_BUTTON).first()
-    await waitForEnabled(prev, MEASURE_TIMEOUT_MS)
-    await prev.click()
-    await waitForMeasure(seekPage, {
-      name: MEASURES.walk,
-      target: SEEK_TARGET - 1,
-      timeoutMs: MEASURE_TIMEOUT_MS,
-    }).catch(() => {
-      throw new MeasureTimeoutError(
-        "C (walk reverso)",
-        `${MEASURES.walk} target=${SEEK_TARGET - 1}`,
-      )
-    })
-    const walkEntries = await collectMeasures(seekPage, MEASURES.walk)
-    await seekPage.close()
+      // ── Fase C: walk reverso no MESMO pouso ──
+      const prev = seekPage.locator(PREV_BUTTON).first()
+      await waitForEnabled(prev, MEASURE_TIMEOUT_MS)
+      await prev.click()
+      await waitForMeasure(seekPage, {
+        name: MEASURES.walk,
+        target: SEEK_TARGET - 1,
+        timeoutMs: MEASURE_TIMEOUT_MS,
+      }).catch(() => {
+        throw new MeasureTimeoutError(
+          `C (walk reverso ${s + 1}/${SEEK_SAMPLES})`,
+          `${MEASURES.walk} target=${SEEK_TARGET - 1}`,
+        )
+      })
+      walkEntries.push(...(await collectMeasures(seekPage, MEASURES.walk)))
+      await seekPage.close()
+    }
+    log(
+      `→ fase C: walk reverso em cada pouso (${walkEntries.length} amostras, ` +
+        `mediana de ≥ ${WALK_SAMPLES})`,
+    )
 
     // ── Fase D: deep-link com walk interno (?pagina=4, sem cursor) ──
     log(`→ fase D: deep-link com walk interno (?pagina=${WALK_INTERNO_TARGET})`)
@@ -531,6 +560,7 @@ export async function runBaseline({ baseUrl, samples, log = () => {} }) {
         baseUrl,
         samples,
         seekSamples: SEEK_SAMPLES,
+        walkSamples: walkEntries.length,
         seedUrlCapturada: seekUrl,
       },
     }
@@ -552,7 +582,8 @@ export function renderReport(result, { ambiente, resumo, thresholds = THRESHOLDS
     `   ambiente: ${ambiente.baseUrl} · perfil ${ambiente.perfil ?? "dev"} · ` +
       `cliques=${resumo.paginaCliques} (warm ${resumo.paginaWarm}) · ` +
       `mediana warm=${resumo.medianaWarmMs ?? "—"}ms · mediana seek=${resumo.medianaSeekMs ?? "—"}ms · ` +
-      `walk=${resumo.walk} · walk-interno=${resumo.deeplinkWalkInterno}`,
+      `walk=${resumo.walk} (mediana ${resumo.medianaWalkPorPaginaMs ?? "—"}ms/pág) · ` +
+      `walk-interno=${resumo.deeplinkWalkInterno}`,
   )
   for (const v of result.violations) {
     if (v.tipo === "limiar") {

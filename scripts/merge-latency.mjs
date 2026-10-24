@@ -288,6 +288,8 @@ export function parseJobs(content) {
  * As condições reconhecidas são as que o repositório realmente usa, e são
  * reconhecidas pelo que ELAS dizem, não por uma lista de jobs:
  *   · `always()`                          → roda (é o "sempre" explícito);
+ *   · `github.event_name == 'pull_request'` → roda SÓ em PR (é a condição que
+ *     separa o job de pilha do `ci.yml`, que dispara em push E em PR);
  *   · push para `main`/outra branch       → NÃO roda em PR (o evento não é PR);
  *   · `workflow_dispatch`                 → NÃO roda em PR (é disparo manual).
  * Qualquer outra coisa é `null`: preferimos não saber a saber errado.
@@ -305,6 +307,9 @@ export function classifyOnPr(job, override = null) {
     .replace(/#.*$/, "")
     .trim()
   if (/always\(\)/.test(cond)) return { onPr: true, why: "`always()` — roda sempre" }
+  if (/github\.event_name\s*==\s*['"]pull_request['"]/.test(cond)) {
+    return { onPr: true, why: "só em `pull_request` — o evento do job de pilha" }
+  }
   if (/github\.event_name\s*==\s*['"]workflow_dispatch['"]/.test(cond)) {
     return { onPr: false, why: "só em `workflow_dispatch` (disparo manual)" }
   }

@@ -173,6 +173,14 @@ montar() { # $1 = diretório
 commit_com_letra() {
   local dir="$1" arquivo="$2" assunto="$3" destino="$4" andar=0 h=""
   while :; do
+    # O PAI DO MARCADOR ANTES DA ESCRITA: quando o hash curto sai SÓ com
+    # algarismos (~3,7% dos casos: sem letra `a-f` ele não é citação), a volta
+    # anterior desfaz o commit com `git reset --hard HEAD~1` — e o git REMOVE o
+    # diretório que ficou vazio junto com o arquivo. A iteração seguinte então
+    # morria em `No such file or directory` e a suíte saía 1 sobre um fixture
+    # são: medido na run da main de 23/10/2026 (M7 reprovou os 3 tiros e a
+    # repetição passou na MESMA árvore — o flake 🌀 era este ENOENT).
+    mkdir -p "$dir/$(dirname "$arquivo")"
     printf 'v%s\n' "$andar" >"$dir/$arquivo"
     git -C "$dir" add -A
     git -C "$dir" commit -q -m "$assunto"
@@ -203,6 +211,9 @@ criar_commit_vivo() { # ecoa o hash curto de um commit COM letra, na história
 criar_orfao_fixavel() { # ecoa o hash curto do commit que ficou órfão
   local dir="$1" h=""
   h="$(commit_com_letra "$dir" docs/marca.md "feat(doc): o ato que a prosa cita" manter)"
+  # Mesma razão do `commit_com_letra`: o `reset --hard` de uma volta pode ter
+  # levado o diretório junto com o arquivo.
+  mkdir -p "$dir/docs"
   printf 'v2\n' >"$dir/docs/marca.md"
   git -C "$dir" add -A
   git -C "$dir" commit -q --amend -m "feat(doc): o ato que a prosa cita"

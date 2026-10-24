@@ -169,7 +169,7 @@ async function runTrifetaSimulation() {
   console.log("\n\n📲 [PILAR 3] NOTIFICAÇÕES WEB PUSH (VAPID) NO SMARTPHONE DO PRESTADOR")
   console.log("--------------------------------------------------------------------------------")
 
-  for (const [idx, ord] of ORDERS.entries()) {
+  for (const [, ord] of ORDERS.entries()) {
     const triage = classifyIntentHeuristic(ord.rawMessage)
     const neighborhood = extractGvNeighborhood(ord.rawMessage) || "Governador Valadares"
 

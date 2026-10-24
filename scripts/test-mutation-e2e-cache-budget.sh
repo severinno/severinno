@@ -101,6 +101,13 @@ pass() { echo -e "  ${GREEN}✅${NC} $1"; }
 fail() { echo -e "  ${RED}❌${NC} $1"; }
 info() { echo -e "  ${YELLOW}ℹ️${NC} $1"; }
 
+# A EVIDÊNCIA INDENTADA NÃO É COMANDO DO RUNNER: o guard medido emite
+# `::error::`/`::warning::` de propósito nos payloads sintéticos, e qualquer
+# linha que comece com `::` é lida como comando — a prova VERDE acendia o job
+# de vermelho. Mesma correção (e mesma medição, 23/10/2026) da suíte irmã
+# `test-mutation-timing-budget.sh`.
+evidenciar() { sed -e 's/^::/  ::/'; }
+
 # ── SKIP GATE — medidor ainda não criado? Ativa sozinho quando existir ────
 # O mutation test é o PROJETO do gate (interface documentada no header).
 # Enquanto scripts/measure-e2e-cache.mjs não existir, NÃO há guard para
@@ -210,7 +217,7 @@ build_fixture "$CONTROL_FIXTURE" "2026-08-02T20:16:40Z" "2026-08-02T20:21:40Z"
 
 info "Controle — payload de 300s (faixa OK, <= warn 480s) deve sair exit 0..."
 run_guard "$CONTROL_FIXTURE"
-echo "$GUARD_OUTPUT" | tail -6
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -6
 
 if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "CONTROLE FALHOU: payload de 300s saiu com exit $GUARD_EXIT (esperado 0)."
@@ -233,7 +240,7 @@ build_fixture "$WARN_FIXTURE" "2026-08-02T20:16:40Z" "2026-08-02T20:25:00Z"
 
 info "Faixa soft — payload de 500s (warn 480s < 500s <= max 600s) deve sair exit 0 com ::warning::..."
 run_guard "$WARN_FIXTURE"
-echo "$GUARD_OUTPUT" | head -2
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | head -2
 
 if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "FAIXA WARN FALHOU: 500s saiu com exit $GUARD_EXIT (esperado 0)."
@@ -256,7 +263,7 @@ build_fixture "$MUT_FIXTURE" "2026-08-02T20:16:40Z" "2026-08-02T20:31:40Z"
 
 info "Mutação — payload de 900s (ACIMA do budget duro 600s de 10 min) deve sair exit 1..."
 run_guard "$MUT_FIXTURE"
-echo "$GUARD_OUTPUT" | tail -6
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -6
 
 if [ "$GUARD_EXIT" -ne 1 ]; then
   if [ "$GUARD_EXIT" -eq 2 ]; then
@@ -290,7 +297,7 @@ build_drift_fixture "$DRIFT_FIXTURE" "2026-08-02T20:16:40Z" "2026-08-02T20:21:40
 
 info "Drift — fixture SEM os markers 'E2E Cache'/'Run Playwright cache tests' deve sair exit 2..."
 run_guard "$DRIFT_FIXTURE"
-echo "$GUARD_OUTPUT" | tail -5
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -5
 
 if [ "$GUARD_EXIT" -ne 2 ]; then
   fail "DRIFT CEGO: fixture renomeado saiu com exit $GUARD_EXIT (esperado 2)."

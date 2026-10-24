@@ -31,7 +31,7 @@ concurrency:
 jobs:
   test-guards:
     name: CLI Guard Tests
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 120
 
     steps:

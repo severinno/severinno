@@ -146,6 +146,18 @@ pass() { echo -e "  ${GREEN}✅${NC} $1"; }
 fail() { echo -e "  ${RED}❌${NC} $1"; }
 info() { echo -e "  ${YELLOW}ℹ️${NC} $1"; }
 
+# ── EVIDÊNCIA QUE NÃO É COMANDO DE WORKFLOW ─────────────────────────────
+# O guard ECOA `::error::`/`::warning::`/`::notice::` de propósito nos casos
+# sintéticos desta suíte (é a MENSAGEM que ela mede), e o runner lê QUALQUER
+# linha que comece com `::` como comando: a prova VERDE pintava o job de
+# vermelho. Medido na run da main de 23/10/2026 — o `::error::` de um payload
+# SINTÉTICO de 300s aparecia no log do Repo Guards como se o contrato
+# coordenado tivesse estourado o budget (ele não estourou: nessa run o step
+# real não rodou). Os greps continuam lendo a saída CRUA; só o que vai para o
+# log passa por aqui, indentado — e deixa de ser comando.
+#
+evidenciar() { sed -e 's/^::/  ::/'; }
+
 # ── Cleanup (trap EXIT — SEMPRE remove o temp, mesmo com falha) ──────────
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -254,7 +266,7 @@ build_fixture "$CONTROL_FIXTURE" "2026-08-02T20:16:40Z" "2026-08-02T20:17:15Z"
 
 info "Controle — payload de 35s (faixa OK, <= warn 180s) deve sair exit 0..."
 run_guard "$CONTROL_FIXTURE"
-echo "$GUARD_OUTPUT" | tail -6
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -6
 
 if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "CONTROLE FALHOU: payload de 35s saiu com exit $GUARD_EXIT (esperado 0)."
@@ -277,7 +289,7 @@ build_fixture "$WARN_FIXTURE" "2026-08-02T20:16:40Z" "2026-08-02T20:20:00Z"
 
 info "Faixa soft — payload de 200s (warn 180s < 200s <= max 240s) deve sair exit 0 com ::warning::..."
 run_guard "$WARN_FIXTURE"
-echo "$GUARD_OUTPUT" | head -2
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | head -2
 
 if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "FAIXA WARN FALHOU: 200s saiu com exit $GUARD_EXIT (esperado 0)."
@@ -300,7 +312,7 @@ build_fixture "$NOTICE_FIXTURE" "2026-08-02T20:16:40Z" "2026-08-02T20:18:40Z"
 
 info "Faixa suave — payload de 120s (alert 100s < 120s <= warn 180s) deve sair exit 0 com ::notice::..."
 run_guard "$NOTICE_FIXTURE"
-echo "$GUARD_OUTPUT" | head -2
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | head -2
 
 if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "FAIXA NOTICE FALHOU: 120s saiu com exit $GUARD_EXIT (esperado 0)."
@@ -330,7 +342,7 @@ set +e
 GUARD_OUTPUT="$(node "$GUARD" --jobs-file "$CONTROL_FIXTURE" --max "$BUDGET_MAX" --warn "$BUDGET_WARN" --alert "$BUDGET_WARN" 2>&1)"
 GUARD_EXIT=$?
 set -e
-echo "$GUARD_OUTPUT" | tail -2
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -2
 
 if [ "$GUARD_EXIT" -ne 2 ]; then
   fail "VALIDAÇÃO FALHOU: --alert >= --warn saiu com exit $GUARD_EXIT (esperado 2)."
@@ -349,7 +361,7 @@ build_fixture "$MUT_FIXTURE" "2026-08-02T20:16:40Z" "2026-08-02T20:21:40Z"
 
 info "Mutação — payload de 300s (ACIMA do budget duro 240s) deve sair exit 1..."
 run_guard "$MUT_FIXTURE"
-echo "$GUARD_OUTPUT" | tail -6
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -6
 
 if [ "$GUARD_EXIT" -ne 1 ]; then
   if [ "$GUARD_EXIT" -eq 2 ]; then
@@ -388,7 +400,7 @@ build_act_log_fixture "$ACTLOG_FIXTURE" "300"
 
 info "Act-log — log do act com step de 300s (ACIMA do duro 240s) deve sair exit 1..."
 run_act_log_guard "$ACTLOG_FIXTURE"
-echo "$GUARD_OUTPUT" | tail -6
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -6
 
 if [ "$GUARD_EXIT" -ne 1 ]; then
   fail "ACT-LOG CEGO: log de 300s saiu com exit $GUARD_EXIT (esperado 1)."
@@ -416,7 +428,7 @@ build_act_log_fixture "$ACTLOG_OK_FIXTURE" "35"
 
 info "Act-log controle — log com step de 35s (faixa OK) deve sair exit 0..."
 run_act_log_guard "$ACTLOG_OK_FIXTURE"
-echo "$GUARD_OUTPUT" | tail -4
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -4
 
 if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "ACT-LOG OVER-EAGER: log de 35s saiu com exit $GUARD_EXIT (esperado 0)."
@@ -437,7 +449,7 @@ printf '[job/step] ❌  Error - Main Run actions/checkout@v4\n' > "$ACTLOG_EMPTY
 
 info "Act-log infra — log sem o step + --act-exit 1 (act morreu cedo) deve sair exit 1..."
 run_act_log_guard "$ACTLOG_EMPTY" "1"
-echo "$GUARD_OUTPUT" | tail -4
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -4
 
 if [ "$GUARD_EXIT" -ne 1 ]; then
   fail "ACT-LOG INFRA: log vazio + --act-exit 1 saiu com exit $GUARD_EXIT (esperado 1)."
@@ -489,7 +501,7 @@ build_drift_fixture "$DRIFT_FIXTURE" "2026-08-02T20:16:40Z" "2026-08-02T20:17:15
 
 info "Drift — fixture SEM o job 'contrato coordenado' (job e step renomeados) deve sair exit 2..."
 run_guard "$DRIFT_FIXTURE"
-echo "$GUARD_OUTPUT" | tail -5
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -5
 
 if [ "$GUARD_EXIT" -ne 2 ]; then
   fail "DRIFT CEGO: fixture renomeado saiu com exit $GUARD_EXIT (esperado 2)."
@@ -526,7 +538,7 @@ run_publish_guard() {
 
 info "Publish — 35s (zone ok) com --publish-baseline deve publicar baseline 42 (dry-run)..."
 run_publish_guard "$CONTROL_FIXTURE"
-echo "$GUARD_OUTPUT" | grep -E 'gh variable set|baseline' | head -3
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | grep -E 'gh variable set|baseline' | head -3
 
 if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "PUBLISH FALHOU: 35s + --publish-baseline saiu com exit $GUARD_EXIT (esperado 0)."
@@ -544,7 +556,7 @@ pass "Publish ok — 35s → baseline 42 publicado (dry-run), exit 0 (budget pas
 
 info "Publish — 300s (zone fail) com --publish-baseline NÃO deve publicar (run lento não ratcheta o baseline)..."
 run_publish_guard "$MUT_FIXTURE"
-echo "$GUARD_OUTPUT" | grep -E 'EXCEDIDO|baseline' | head -3
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | grep -E 'EXCEDIDO|baseline' | head -3
 
 if [ "$GUARD_EXIT" -ne 1 ]; then
   fail "PUBLISH-FAIL FALHOU: 300s + --publish-baseline saiu com exit $GUARD_EXIT (esperado 1 — gate)."
@@ -559,7 +571,7 @@ pass "Publish-fail OK — 300s → exit 1 SEM publicar (fail não ratcheta o bas
 # ── 3. WARN-ONLY — a mesma mutação, modo não-bloqueante → exit 0 + warning ─
 info "Warn-only — 300s com --warn-only deve sair exit 0 com ::warning::..."
 run_guard "$MUT_FIXTURE" "--warn-only"
-echo "$GUARD_OUTPUT" | head -2
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | head -2
 
 if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "WARN-ONLY FALHOU: --warn-only saiu com exit $GUARD_EXIT (esperado 0)."
@@ -619,7 +631,7 @@ build_history_fixture "$HISTORY_FIXTURE"
 # ── 3b-i. MEDIAN CONTROLE — 35s (<= warn derivado 75s) → exit 0 + zone=ok ─
 info "Median controle — 35s com mediana 62.5s (warn derivado 75s) deve sair exit 0 + zone=ok..."
 run_median_guard "$CONTROL_FIXTURE" "$HISTORY_FIXTURE"
-echo "$GUARD_OUTPUT" | tail -5
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -5
 
 if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "MEDIAN CONTROLE FALHOU: 35s saiu com exit $GUARD_EXIT (esperado 0)."
@@ -646,7 +658,7 @@ build_fixture "$MEDIAN_WARN_FIXTURE" "2026-08-02T20:16:40Z" "2026-08-02T20:18:00
 
 info "Median warn — 80s (warn derivado 75s < 80s <= duro 240s) deve sair exit 0 com ::warning::..."
 run_median_guard "$MEDIAN_WARN_FIXTURE" "$HISTORY_FIXTURE"
-echo "$GUARD_OUTPUT" | head -2
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | head -2
 
 if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "MEDIAN WARN FALHOU: 80s saiu com exit $GUARD_EXIT (esperado 0)."
@@ -666,7 +678,7 @@ pass "Median warn OK — 80s → exit 0 + ::warning:: + zone=warn (o soft AUTO-A
 # ── 3b-iii. MEDIAN MUTAÇÃO — 300s → exit 1 (o DURO continua FIXO) ──────
 info "Median mutação — 300s com --warn-median deve sair exit 1 (gate duro imutável pela derivação)..."
 run_median_guard "$MUT_FIXTURE" "$HISTORY_FIXTURE"
-echo "$GUARD_OUTPUT" | tail -5
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -5
 
 if [ "$GUARD_EXIT" -ne 1 ]; then
   fail "MEDIAN MUTAÇÃO FALHOU: 300s saiu com exit $GUARD_EXIT (esperado 1)."
@@ -685,7 +697,7 @@ set +e
 GUARD_OUTPUT="$(node "$GUARD" --jobs-file "$CONTROL_FIXTURE" --history-file "$HISTORY_FIXTURE" --max "$BUDGET_MAX" --warn-median 4 --warn "$BUDGET_WARN" 2>&1)"
 GUARD_EXIT=$?
 set -e
-echo "$GUARD_OUTPUT" | tail -2
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -2
 
 if [ "$GUARD_EXIT" -ne 2 ]; then
   fail "MEDIAN VALIDAÇÃO FALHOU: --warn-median + --warn saiu com exit $GUARD_EXIT (esperado 2)."
@@ -732,7 +744,7 @@ run_drift_guard() {
 # ── 3c-i. DRIFT CONTROLE — 35s (-44% vs mediana 62.5s) → exit 0 + drifted=false
 info "Drift controle — 35s (-44% vs mediana 62.5s) deve sair exit 0 + drifted=false..."
 run_drift_guard "$CONTROL_FIXTURE" "$HISTORY_FIXTURE"
-echo "$GUARD_OUTPUT" | tail -5
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -5
 
 if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "DRIFT CONTROLE FALHOU: 35s saiu com exit $GUARD_EXIT (esperado 0)."
@@ -756,7 +768,7 @@ pass "Drift controle OK — 35s → exit 0, zone=ok, drifted=false (drift negati
 # ── 3c-ii. DRIFT OK — 80s (+28% < 50%) → exit 0 (variação normal de runner) ─
 info "Drift ok — 80s (+28% < threshold 50%) deve sair exit 0..."
 run_drift_guard "$MEDIAN_WARN_FIXTURE" "$HISTORY_FIXTURE"
-echo "$GUARD_OUTPUT" | tail -4
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -4
 
 if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "DRIFT OK FALHOU: 80s saiu com exit $GUARD_EXIT (esperado 0)."
@@ -775,7 +787,7 @@ build_fixture "$DRIFT_MUT_FIXTURE" "2026-08-02T20:16:40Z" "2026-08-02T20:18:20Z"
 
 info "Drift mutação — 100s (+60% > 50%, abaixo do teto 240s) deve sair exit 1 (DRIFT RELATIVO)..."
 run_drift_guard "$DRIFT_MUT_FIXTURE" "$HISTORY_FIXTURE"
-echo "$GUARD_OUTPUT" | tail -5
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -5
 
 if [ "$GUARD_EXIT" -ne 1 ]; then
   fail "DRIFT MUTAÇÃO FALHOU: 100s saiu com exit $GUARD_EXIT (esperado 1)."
@@ -815,7 +827,7 @@ EOF
 
 info "Drift teto — 300s com mediana 227.5s (+31.87% < 50%, acima do teto) deve sair exit 1 por EXCEEDED (drifted false)..."
 run_drift_guard "$MUT_FIXTURE" "$DRIFT_TETO_HISTORY"
-echo "$GUARD_OUTPUT" | tail -5
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -5
 
 if [ "$GUARD_EXIT" -ne 1 ]; then
   fail "DRIFT TETO FALHOU: 300s saiu com exit $GUARD_EXIT (esperado 1)."
@@ -842,7 +854,7 @@ set +e
 GUARD_OUTPUT="$(node "$GUARD" --jobs-file "$CONTROL_FIXTURE" --history-file "$HISTORY_FIXTURE" --max "$BUDGET_MAX" --fail-drift 50 --warn "$BUDGET_WARN" 2>&1)"
 GUARD_EXIT=$?
 set -e
-echo "$GUARD_OUTPUT" | tail -2
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -2
 
 if [ "$GUARD_EXIT" -ne 2 ]; then
   fail "DRIFT VALIDAÇÃO FALHOU: --fail-drift + --warn saiu com exit $GUARD_EXIT (esperado 2)."
@@ -870,7 +882,7 @@ build_act_log_fixture "$ACTLOG_DRIFT_FIXTURE" "100"
 
 info "Drift act-log — log do act com 100s (+60% vs mediana 62.5s, abaixo do teto 240s) deve sair exit 1 (drift relativo)..."
 run_act_log_drift_guard "$ACTLOG_DRIFT_FIXTURE" "$HISTORY_FIXTURE"
-echo "$GUARD_OUTPUT" | tail -6
+printf '%s\n' "$GUARD_OUTPUT" | evidenciar | tail -6
 
 if [ "$GUARD_EXIT" -ne 1 ]; then
   fail "DRIFT ACT-LOG FALHOU: 100s via act-log saiu com exit $GUARD_EXIT (esperado 1)."

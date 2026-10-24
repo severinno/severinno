@@ -32,7 +32,7 @@ jobs:
   # Runs in parallel with the main check job.
   utf8-check:
     name: UTF-8 Check
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -61,7 +61,7 @@ jobs:
   # alterações no script/args DEVEM ser replicadas nos dois lugares.
   blob-crlf-history-audit:
     name: Blob CRLF history (zero-CRLF)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
@@ -101,7 +101,7 @@ jobs:
   # contra um blob CRLF real. Bash + git + python3 (pré-instalados), <5s.
   all-text-alert-validation:
     name: All-text alert validation (fixture → gate)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -362,8 +362,9 @@ jobs:
       # Segunda passada, agora com a IMAGEM CUSTOM (plugins inclusos): builda
       # o Dockerfile.caddy (xcaddy, versões pinadas) e valida o arquivo
       # INTEIRO — as diretivas rate_limit/format transform deixam de ser
-      # confiança e passam a ser sanção. O layer cache do runner self-hosted
-      # torna os builds seguintes baratos; exit 1 = o Caddy reprova o
+      # confiança e passam a ser sanção. No caminho self-hosted o layer cache
+      # torna os builds seguintes baratos; no hospedado o build é frio (custo
+      # aceito por este gate). exit 1 = o Caddy reprova o
       # arquivo, 2 = pré-requisito ausente (falha explícita, nunca skip).
       - name: Caddyfile parse guard (caddy validate, modo full — imagem custom)
         run: |
@@ -553,7 +554,7 @@ jobs:
   # `jobIds` por forja declara em check-forge-parity.
   workflow-run-syntax:
     name: Workflow run syntax (bash -n)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     # O remendo chega ao PR como COMENTÁRIO (passo abaixo): comentar é escrita,
     # e permissão implícita faria o canal depender da configuração da instância.
     # Sem ela (ou num PR de fork) o publicador trata o 403 como AVISO nomeado e
@@ -650,7 +651,7 @@ jobs:
   # "o passo 0 recusa" de afirmação sobre texto em comportamento medido.
   bring-up-proof:
     name: Bring-up Gate Proof (pré-requisito 0, por execução)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -671,9 +672,9 @@ jobs:
   # classe já mordeu (git ausente, `bash` de outra implementação, o `node` de
   # outro caminho, hook sem bit de execução, que o git IGNORA em silêncio).
   #
-  # Aqui o MESMO módulo de prova roda dentro da imagem do runner: neste runner o
-  # job é executado numa MÁQUINA com docker (labels `self-hosted,linux,x64,docker`),
-  # então a prova é lançada com `docker run` na imagem (`Dockerfile.ubuntu-bun`),
+  # Aqui o MESMO módulo de prova roda dentro da imagem do runner: no PR o job
+  # roda no caminho hospedado (`ubuntu-latest`), uma MÁQUINA com docker, então
+  # a prova é lançada com `docker run` na imagem (`Dockerfile.ubuntu-bun`),
   # com o checkout montado NO MESMO CAMINHO — o `node_modules` do fixture é um
   # link ABSOLUTO, e montar em outro caminho faria o guard morrer de "module not
   # found" (o não-zero seria do fixture, não do defeito). Na forja, onde o job JÁ
@@ -693,9 +694,10 @@ jobs:
   pre-commit-in-runner-proof:
     name: Pre-commit Proof (dentro da imagem do runner)
     runs-on: ubuntu-latest
-    # packages: read — pull da imagem PRIVADA ghcr.io/<owner>/ubuntu-bun quando
-    # ela ainda não estiver local (auth automático do runner; mesmo contrato do
-    # tier1-fastpath-guard e do mutation-coord-timing-act-guard).
+    # packages: read — pull da imagem do runner quando o registry é o GHCR
+    # (auth do runner); no registry OCI próprio a imagem é pública e o pull
+    # anônimo basta. Mesmo contrato do tier1-fastpath-guard e do
+    # mutation-coord-timing-act-guard.
     permissions:
       contents: read
       packages: read
@@ -1162,7 +1164,7 @@ jobs:
   # worktrees, e é o `check-job-deps` quem cobra isso de todo job.
   stack-per-commit:
     name: Stack Per-Commit (cada commit sozinho)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1225,7 +1227,7 @@ jobs:
 
   mutation-guards:
     name: Mutation guards master
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       # O histórico completo é CONDIÇÃO do sub-test [bench-freshness] da matriz:
       # a régua da idade deriva a origem do commit que carrega cada declaração —
@@ -1280,7 +1282,7 @@ jobs:
   # merge (ci/required-checks.json). Custo: ~2s node-puro, sem docker.
   forge-parity-mutation:
     name: Forge Parity Mutation (regras de classificação)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -1427,7 +1429,7 @@ jobs:
   readme-reverse-strict-alert:
     name: "README Reverse-Strict Alert (::warning::, não-bloqueante)"
     if: github.event_name == 'workflow_dispatch'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -1501,16 +1503,14 @@ jobs:
   # (exit 0/1). Custo: ~15 min de act só quando os paths mudam — o preço
   # de travar o tier-1 antes do merge.
   #
-  # ⚠️ Imagem no GHCR: pacote PRIVADO (verificado 08/2026: pull anônimo
-  # local retorna 'denied'). No CI o pull do act usa o auth automático do
-  # runner — exige GITHUB_TOKEN com 'packages: read' (garantir no
-  # permissions dos workflows; o periódico tier1-fastpath-guard.yml já
-  # tem). Pública só é necessária para reprodução local/externa.
+  # ⚠️ Imagem: o registry padrão é o OCI próprio (público; pull anônimo
+  # funciona). Se IMAGE_REGISTRY apontar para o GHCR privado, o pull do act
+  # exige GITHUB_TOKEN com 'packages: read' (o permissions abaixo cobre).
   # ⚠️ Os 4 steps pesados espelham o tier1-fastpath-guard.yml (periódico) —
   # alterações no act/args do guard DEVEM ser replicadas nos dois lugares.
   tier1-fastpath-guard:
     name: Tier-1 Fastpath Guard (setup-bun changes)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -1707,7 +1707,7 @@ jobs:
   # ── Actionlint (workflow syntax) ───────────────────────────────────────
   actionlint:
     name: Actionlint (workflow syntax)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -1747,7 +1747,7 @@ jobs:
   # do forge-doctor (o job exigido tem de RODAR este comando).
   lint-guard:
     name: Lint Guard (prettier + eslint zero)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -1840,7 +1840,7 @@ jobs:
   # do run da suíte completa.
   jsdom-drift-guard:
     name: JSDOM component suite — drift baseline
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     # Folga para o pior caso: install + run real (~6 min) + 2ª run de
     # CONFIRMAÇÃO quando drift é detectado (anti-flake) ≈ 14-15 min.
     timeout-minutes: 25
@@ -1895,7 +1895,7 @@ jobs:
   # bun.lock direto (não precisa de node_modules).
   unused-deps-guard:
     name: Unused Deps Guard (package.json hygiene)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -1922,7 +1922,7 @@ jobs:
   # corrigido à mão; o guard impede a repetição). Node-puro, <1s, sem deps.
   mutation-count-guard:
     name: Mutation Count Guard (matrix ↔ job name/summary ↔ README)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -1967,7 +1967,7 @@ jobs:
 
   bun-audit-guard:
     name: Bun Audit Guard (deps — drift baseline)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -1992,7 +1992,7 @@ jobs:
   # Runs in parallel with other checks. No external dependencies needed.
   fuzz:
     name: Fuzz Tests
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -2032,7 +2032,7 @@ jobs:
   # flakiness from algorithmic changes.
   benchmark:
     name: Geo Benchmark
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -2142,7 +2142,7 @@ jobs:
   # nothing beyond the runner minutes.
   benchmark-gist:
     name: GiST Benchmark (PR)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     # ── Ephemeral PostGIS service container ───────────────────────────
     # Imagem via vars.POSTGIS_IMAGE (default alpine — menor: 154 MiB vs
@@ -2437,7 +2437,7 @@ jobs:
   # pequeno). Sem histórico (primeiro run) → ::notice:: + gate só no teto.
   mutation-coord-timing-guard:
     name: Mutation coord timing (drift 50%/teto 240)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: seed-guards
     if: always() # mede também quando o seed-guards falhou (timeout é o alvo)
     timeout-minutes: 5
@@ -2542,21 +2542,22 @@ jobs:
   # o guard decide (exit 0/1). Custo: ~act + pull da imagem (~15 min) só
   # quando os paths do contrato coordenado mudam.
   #
-  # ⚠️ Imagem no GHCR: pacote PRIVADO (verificado 08/2026) — o pull do act
-  # usa o auth automático do runner (GITHUB_TOKEN com 'packages: read').
+  # ⚠️ Imagem: o registry padrão é o OCI próprio (público); se IMAGE_REGISTRY
+  # apontar para o GHCR privado, o pull do act exige GITHUB_TOKEN com
+  # 'packages: read'.
   # ⚠️ Espelho do gate real acima: alterações nos args do guard (--max
   # --warn-median --warn-margin) DEVEM ser replicadas nos dois jobs +
   # benchmark-weekly.yml + os 2 testes de workflow (ver README, bloco de
   # overhead).
   mutation-coord-timing-act-guard:
     name: Mutation coord timing (act, budget 240/mediana 4)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 25
 
-    # packages: read — pull da imagem PRIVADA ghcr.io/<owner>/ubuntu-bun pelo
-    # act (auth automático do runner; mesmo contrato do periódico
-    # tier1-fastpath-guard.yml). Sem ele o pull falha → act exit != 0 sem
-    # evidência → o guard falha com diagnóstico (fail-closed, mas ruidoso).
+    # packages: read — pull da imagem do runner quando o registry é o GHCR
+    # (auth do runner; mesmo contrato do periódico tier1-fastpath-guard.yml).
+    # No registry OCI próprio a imagem é pública. Sem o pull, o act sai != 0
+    # sem evidência → o guard falha com diagnóstico (fail-closed, mas ruidoso).
     permissions:
       contents: read
       packages: read
@@ -2669,7 +2670,7 @@ jobs:
   # Falha se algum header obrigatório estiver ausente ou mal configurado.
   security-headers:
     name: Security Headers
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -2692,7 +2693,7 @@ jobs:
   # do job typecheck do ci.yml.
   typecheck:
     name: TypeCheck (tsc --noEmit)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -2822,6 +2823,15 @@ jobs:
       # zero-CRLF do histórico; o all-text-alert-validation (acima) o gate
       # via bash script. Este job revalida a MESMA semântica em vitest a cada
       # PR (e no pre-push via test:unit do smart-skip quando fonte mudou).
+      #
+      # Os testes de integração de Docker REAL (`*-gitea-real`, o teardown do
+      # efêmero) exigem a imagem do Gitea no daemon do job: sem ela eles
+      # reprovam com "imagem ausente". Onde o `docker` não é alcançável eles
+      # pulam sozinhos (`isDockerAvailable`), então o pull é premissa, não gate.
+      - name: Provisiona a imagem dos testes de Docker real
+        shell: bash
+        run: docker pull gitea/gitea:1.22 || echo "::warning::docker inacessível no job — as suítes de Docker real vão pular"
+
       - name: Unit tests
         run: bun run test:run
 
@@ -2853,7 +2863,7 @@ jobs:
   # workflow `e2e-cache.yml`, que provisiona PostGIS e sobe o app.
   pii-allowlist-guard:
     name: PII Allowlist Guard (user payload projection)
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -2922,9 +2932,10 @@ jobs:
           POSTGRES_DB: severinno_test
         ports:
           # Portas de host PRÓPRIAS (55436/56383 — a forja usa 55434/56381 e o
-          # job `test` daqui usa 55432/56379): este runner self-hosted compartilha
-          # o HOST com a forja — jobs em paralelo disputam as portas do host, e
-          # um container órfão segura a porta e mata a rodada seguinte.
+          # job `test` daqui usa 55432/56379). No caminho self-hosted o runner
+          # compartilha o HOST com a forja — jobs em paralelo disputam as portas
+          # e um container órfão segura a porta; no hospedado cada job tem VM
+          # própria, mas o contrato de portas únicas continua valendo.
           - 55436:5432
         options: >-
           --health-cmd pg_isready
@@ -2998,11 +3009,12 @@ jobs:
             exit 1
           fi
 
-      # O runner self-hosted (hostinger-runner) NÃO tem sudo sem senha: o
+      # No caminho self-hosted (hostinger-runner) NÃO há sudo sem senha: o
       # `--with-deps` morre em "sudo: a password is required" ANTES de baixar o
       # browser, e o job nunca chega ao guard. As libs do sistema são
       # responsabilidade da imagem do runner; aqui o binário (com cache em
-      # ~/.cache/ms-playwright). Onde o sudo funciona, mantém o caminho antigo.
+      # ~/.cache/ms-playwright). No hospedado o `sudo -n` funciona e mantém o
+      # caminho `--with-deps`.
       - name: Install Playwright Chromium
         run: |
           if sudo -n true 2>/dev/null; then

@@ -43,14 +43,6 @@ const { generateEscrowPIN, validateEscrowRelease } = await import("../src/lib/ge
 const { HAPTIC_PATTERNS } = await import("../src/lib/haptics")
 const { FEE_RATE } = await import("../src/lib/constants")
 
-function normalizeCommand(input: string): string {
-  return input
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-}
-
 async function runFieldSimulation() {
   console.log("================================================================================")
   console.log("🏙️  SIMULAÇÃO DE TESTE DE CAMPO E2E — GOVERNADOR VALADARES / MG (DDD 33)")

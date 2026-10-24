@@ -522,6 +522,31 @@ async function escolherPortaInterna(): Promise<number> {
 }
 
 /**
+ * O container está VIVO? Tri-estado — "morreu" e "não deu para perguntar" são
+ * fatos diferentes, e só o primeiro autoriza remover e re-subir.
+ *
+ * MEDIDO na forja em 23/10/2026: o `docker inspect` do liveness devolveu erro
+ * (daemon ocupado sob a carga da suíte inteira) e o helper tratou a FALHA da
+ * pergunta como morte: removeu um container que estava subindo e re-subiu por
+ * cima do mesmo orçamento de 240s — o vermelho saía como "Gitea not ready
+ * (re-subidas: 1)" com o container saudável já descartado. Um "não sei" que
+ * espera custa uma fatia de 30s; um "morto" falso custa o orçamento inteiro.
+ */
+function estadoDoContainer(container: string): "vivo" | "morto" | "indeterminado" {
+  const rodando = spawnSync("docker", ["inspect", "-f", "{{.State.Running}}", container], {
+    encoding: "utf8",
+  })
+  if (rodando.status === 0) return rodando.stdout.trim() === "true" ? "vivo" : "morto"
+  // A pergunta falhou: só é MORTE o que se SABE que não existe. "Existe mas o
+  // estado não foi lido" é vivo para efeito de decisão (não se remove o que
+  // pode estar bootando).
+  const existe = spawnSync("docker", ["inspect", container], { encoding: "utf8" })
+  if (existe.status === 0) return "vivo"
+  const motivo = `${rodando.stderr ?? ""}${existe.stderr ?? ""}`
+  return /No such (container|object)/i.test(motivo) ? "morto" : "indeterminado"
+}
+
+/**
  * Sobe um Gitea efêmero em Docker.
  *
  * O container é nomeado com um sufixo aleatório para evitar colisão entre
@@ -580,11 +605,20 @@ export async function makeEphemeralGitea(
       ...(emContainer ? [] : ["-p", "0:3000"]),
       image,
     ])
-  subirGitea()
-  // A partir daqui o container EXISTE: registrar o sweep antes do 1º passo que
-  // pode falhar garante que um erro no meio do setup também não vaze.
+  // O REGISTRO vem ANTES do `docker run`, não depois dele.
+  //
+  // `dockerRun` é SÍNCRONO, mas o container fica VISÍVEL no daemon antes de o
+  // `spawnSync` voltar — e nessa janela o processo já podia ser morto por um
+  // sinal SEM NENHUM handler instalado: o kernel aplicava o default e o
+  // container ficava órfão, que é exatamente o vazamento que o sweep existe
+  // para impedir (medido na forja em 23/10/2026, o teste `gitea-ephemeral-signal`
+  // mata nessa janela: `expected 'SIGINT' to be null`). Registrar antes custa
+  // nada: o sweep de um nome que ainda não existe é "já não existia", e o
+  // sinal entregue durante o `spawnSync` fica pendente e é tratado pelo handler
+  // assim que a thread principal volta ao event loop.
   liveContainers.add(container)
   registrarSweepDeTeardown()
+  subirGitea()
 
   const host = "127.0.0.1"
   let portaAlvo = String(portaInterna)
@@ -626,8 +660,16 @@ export async function makeEphemeralGitea(
     for (;;) {
       const restante = orcamentoProntidao - (Date.now() - inicioProntidao)
       if (restante <= 0) {
+        // O orçamento estourou: o relatório carrega o ESTADO e a CAUDA do log do
+        // container. Sem eles, "not ready" não distingue boot lento de crash
+        // loop, e o diagnóstico vira arqueologia do log da suíte inteira.
+        const cauda = spawnSync("docker", ["logs", "--tail", "15", container], {
+          encoding: "utf8",
+        })
         throw new Error(
-          `Gitea not ready at ${baseUrl} after ${orcamentoProntidao}ms (re-subidas: ${sobe})`,
+          `Gitea not ready at ${baseUrl} after ${orcamentoProntidao}ms (re-subidas: ${sobe})\n` +
+            `estado do container: ${estadoDoContainer(container)}\n` +
+            `últimas linhas:\n${`${cauda.stdout ?? ""}${cauda.stderr ?? ""}`.trim().slice(-1500)}`,
         )
       }
       const fatia = Math.min(restante, 30_000)
@@ -635,10 +677,13 @@ export async function makeEphemeralGitea(
         await waitForGitea(baseUrl, fatia)
         break
       } catch (erroDeFatia) {
-        const vivo = spawnSync("docker", ["inspect", "-f", "{{.State.Running}}", container], {
-          encoding: "utf8",
-        })
-        if (vivo.status !== 0 || vivo.stdout.trim() !== "true") {
+        // MORTE só com veredito. Um `docker inspect` que não RESPONDE (daemon
+        // ocupado sob a carga da suíte) não é um container morto: tratar a
+        // falha da pergunta como morte removeu containers SAUDÁVEIS no meio do
+        // boot e re-subiu por cima do mesmo orçamento — o vermelho saía como
+        // "Gitea lento" depois de o helper ter matado o que estava subindo.
+        const estado = estadoDoContainer(container)
+        if (estado === "morto") {
           if (sobe >= 2) throw erroDeFatia
           sobe += 1
           removerRegistrandoFalha(container)
@@ -649,6 +694,8 @@ export async function makeEphemeralGitea(
           subirGitea()
           continue
         }
+        // "vivo" e "indeterminado" seguem esperando: o laço reavalia o
+        // orçamento na próxima volta.
       }
     }
 

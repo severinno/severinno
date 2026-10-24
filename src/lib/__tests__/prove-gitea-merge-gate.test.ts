@@ -44,15 +44,20 @@ import {
   uniqueContainerName,
 } from "../../../scripts/prove-gitea-merge-gate.mjs"
 
+// Os contextos como o manifesto os resolve HOJE para o Gitea: o status de um job
+// do Actions é `<workflow> / <job> (<evento>)`, e a proteção exige o GLOB —
+// exigir o nome cru nunca casa (a regra fica pendente e só o override de admin
+// mergeia). A prova posta a forma CONCRETA (`... (pull_request)`) e a forja
+// dublê casa por glob, como o Gitea real.
 const CONTEXTS = [
-  "Lint",
-  "Repo Guards",
-  "Bring-up Gate Proof (pré-requisito 0, por execução)",
-  "Pre-commit Proof (dentro da imagem do runner)",
-  "TypeCheck",
-  "Tests",
-  "Build",
-  "Pagination baseline guard",
+  "CI/CD / Lint (*)",
+  "CI/CD / Repo Guards (*)",
+  "CI/CD / Bring-up Gate Proof (pré-requisito 0, por execução) (*)",
+  "CI/CD / Pre-commit Proof (dentro da imagem do runner) (*)",
+  "CI/CD / TypeCheck (*)",
+  "CI/CD / Tests (*)",
+  "CI/CD / Build (*)",
+  "CI/CD / Pagination baseline guard (*)",
 ]
 const REPO = `${OWNER}/${REPO_NAME}`
 
@@ -68,12 +73,12 @@ describe("casesPlan", () => {
       "exigencia-desligada",
     ])
     expect(cases[0]).toMatchObject({ statuses: "all-success", expect: "merged", prep: null })
-    expect(cases[1]).toMatchObject({ statuses: "failure:Lint", expect: "blocked" })
+    expect(cases[1]).toMatchObject({ statuses: `failure:${CONTEXTS[0]}`, expect: "blocked" })
     expect(cases[2]).toMatchObject({ statuses: "none", expect: "blocked" })
     // é a MESMA falha do caso 2, com a exigência desligada: se mergear, o que
     // bloqueava era o enable_status_check
     expect(cases[3]).toMatchObject({
-      statuses: "failure:Lint",
+      statuses: `failure:${CONTEXTS[0]}`,
       expect: "merged",
       prep: "disable-enforcement",
     })
@@ -404,7 +409,15 @@ function fakeGitea({ startEnforced = true } = {}) {
     const merge = /^\/repos\/[^/]+\/[^/]+\/pulls\/(\d+)\/merge$/.exec(path)
     if (merge) {
       const posted = state.statuses.get(`sha-${merge[1]}`) ?? new Map()
-      const incomplete = state.contexts.filter((c) => posted.get(c) !== "success")
+      // A REGRA do Gitea: o contexto exigido é GLOB e o status postado é
+      // concreto (`CI/CD / Lint (pull_request)`) — `*` casa qualquer evento.
+      const matches = (pattern: string, context: string) =>
+        new RegExp(
+          `^${pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[\\s\\S]*")}$`,
+        ).test(context)
+      const incomplete = state.contexts.filter(
+        (c) => ![...posted.entries()].some(([ctx, st]) => matches(c, ctx) && st === "success"),
+      )
       // A REGRA da forja: só bloqueia com a exigência LIGADA.
       if (state.enforced && incomplete.length > 0) {
         return {

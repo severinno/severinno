@@ -12,7 +12,15 @@
 #   typecheck  → tsc --noEmit
 #   test       → vitest run
 #   build      → next build
-#   deploy     → SSH deploy no VPS
+#
+# O DEPLOY NÃO MORA AQUI: `deploy.yml` é o dono da entrega (UTF-8 check →
+# Build & Test host-artifacts → migrate → deploy, com
+# `-f docker-compose.hostinger.yml --env-file .env.production.local`).
+# O job `deploy` que existia neste arquivo vinha de ANTES da separação do
+# compose: rodava `docker compose` no arquivo default (que só tem app e redis),
+# morria em `no such service: realtime` em TODO push para a main (medido em
+# 23/10/2026, run #94) e não rodava migration nenhuma. Dois caminhos de deploy
+# no mesmo host são dois estados possíveis para a mesma tag — ficou um só.
 # =============================================================================
 
 name: CI/CD
@@ -634,6 +642,16 @@ jobs:
   stack-per-commit:
     name: Stack Per-Commit (cada commit sozinho)
     runs-on: ubuntu-latest
+    # SÓ NO PR: o job mede a PILHA do PR (`origin/main..HEAD`). Num push direto
+    # para a main o `origin/main` do checkout JÁ é o HEAD, a pilha é vazia por
+    # construção e o script — fail-closed por desenho — sai INDETERMINADO
+    # (exit 2, "nada a medir"), reprovando todo push na main sem que exista
+    # defeito algum (medido na run #94). O espelho do GitHub não tem o problema
+    # porque `pr-check.yml` só dispara em `pull_request`/`merge_group`; aqui o
+    # `ci.yml` dispara nos dois eventos, então a condição precisa ser explícita.
+    # Continua fail-closed onde há pilha: um PR com pilha vazia e este `if`
+    # verdadeiro segue reprovando.
+    if: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -868,6 +886,14 @@ jobs:
         run: bun install --frozen-lockfile
         working-directory: mini-services/realtime
 
+      # Os testes de integração de Docker REAL (`*-gitea-real`, o teardown do
+      # efêmero) exigem a imagem do Gitea no daemon do job: sem ela eles
+      # reprovam com "imagem ausente". Onde o `docker` não é alcançável eles
+      # pulam sozinhos (`isDockerAvailable`), então o pull é premissa, não gate.
+      - name: Provisiona a imagem dos testes de Docker real
+        shell: bash
+        run: docker pull gitea/gitea:1.22 || echo "::warning::docker inacessível no job — as suítes de Docker real vão pular"
+
       - run: bun run test:run
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:55432/severinno_test
@@ -1051,38 +1077,3 @@ jobs:
         env:
           SKIP_TYPESCRIPT_CHECK: "true"
           BUILD_STANDALONE: "true"
-
-  # ── Deploy (apenas main) ─────────────────────────────────────────────────
-  deploy:
-    name: Deploy
-    runs-on: ubuntu-latest
-    needs: [build]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-
-    steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          script: |
-            set -e
-            cd ${{ secrets.DEPLOY_PATH }}
-            echo "Pulling new images..."
-            docker compose pull app realtime email-worker notification-worker
-            echo "Restarting services..."
-            docker compose up -d --no-deps --remove-orphans app realtime
-            docker compose --profile workers up -d --no-deps email-worker notification-worker
-            echo "Waiting for health check..."
-            for i in $(seq 1 12); do
-              sleep 5
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health)
-              if [ "$HTTP_CODE" = "200" ]; then
-                echo "Health check passed (HTTP $HTTP_CODE)"
-                docker image prune -f
-                exit 0
-              fi
-              echo "Attempt $i/12 — HTTP $HTTP_CODE, retrying..."
-            done
-            echo "Health check failed after 12 attempts" && exit 1

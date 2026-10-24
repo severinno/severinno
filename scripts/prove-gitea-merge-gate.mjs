@@ -310,6 +310,22 @@ export function countInContext(context) {
 }
 
 /**
+ * O contexto CONCRETO que o Actions posta para um padrão do manifesto.
+ *
+ * A proteção exige `"CI/CD / Lint (*)"` (glob: o evento muda entre
+ * `pull_request` e `push`), mas quem escreve o status é o Gitea com o evento da
+ * run. Postar o PADRÃO literal na prova mediria o glob contra si mesmo — a
+ * prova tem de postar a forma que o Actions produz.
+ *
+ * @param {string} context padrão exigido (ex.: `CI/CD / Lint (*)`)
+ * @param {string} [event] evento da run (default: pull_request)
+ * @returns {string}
+ */
+export function concreteContext(context, event = "pull_request") {
+  return String(context ?? "").replace(/\(\*\)\s*$/, `(${event})`)
+}
+
+/**
  * A régua do CONTEXTO REGISTRADO: a proteção da forja tem de exigir EXATAMENTE
  * os contextos que o manifesto declara.
  *
@@ -893,7 +909,7 @@ export async function proveGiteaMergeGate({
             `/repos/${repo}/statuses/${sha}`,
             {
               state: state === "failure" ? "failure" : "success",
-              context,
+              context: concreteContext(context),
               description: testCase.id,
             },
             token,

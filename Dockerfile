@@ -68,7 +68,18 @@ RUN npx prisma generate
 # O cap faz o build estourar DENTRO do node (erro de heap nomeado) antes de
 # derrubar o host — e o MALLOC_ARENA_MAX corta a fragmentação do glibc que
 # infla o RSS com muitas threads.
-ENV NODE_OPTIONS="--max-old-space-size=8192" \
+#
+# 8192 → 4096 em 23/10/2026, depois de o MESMO build atingir 14,3GB de anon-rss
+# (total-vm 47GB) e sofrer OOM global de novo, com o cap de 8192 em vigor: o
+# `--max-old-space-size` limita o HEAP V8, não o Turbopack (Rust) nem os
+# buffers fora do heap, então o número alto só autorizava mais heap por worker.
+# Em 23/10/2026 o build DENTRO do buildkit saiu do pipeline: nem 8 GB de
+# cgroup (morto aos 161 s do `next build`) nem 11 GB (pico colado no teto,
+# morto) entregavam imagem nesta stack — o `deploy.yml` ficou com UM caminho de
+# build, o host-artifacts (build no host, imagem COPY-only). Este Dockerfile
+# não é mais o construtor da entrega; o cap abaixo é a barreira para quem
+# rodar este build à mão (`docker build`), fora do builder instrumentado.
+ENV NODE_OPTIONS="--max-old-space-size=4096" \
     MALLOC_ARENA_MAX=2
 ENV BUILD_STANDALONE=true
 ENV SKIP_TYPESCRIPT_CHECK=true

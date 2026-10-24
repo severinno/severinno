@@ -137,7 +137,11 @@ const APPLIED_COMMENT = [
   "scripts/apply-required-checks.mjs --apply, nunca a mão.",
   "",
   "O que bloqueia o merge não é este repositório: é o branch protection da forja,",
-  "que exige o CONTEXTO de status (o `name:` do job, ou o id sem `name:`). Uma",
+  "que exige o CONTEXTO de status. No GitHub ele é o `name:` do job (ou o id, sem",
+  "`name:`); no Gitea o Actions grava `<workflow> / <job> (<evento>)` e é por isso",
+  "que o contexto exigido aqui é o GLOB `<workflow> / <job> (*)` — exigir o nome",
+  "cru do job nunca casa com o status real, a regra fica PENDENTE para sempre e",
+  "o único merge possível é por override de admin (medido em 24/10/2026). Uma",
   "mudança que renomeia o `name:` de um required check — ou que põe/tira um job",
   "da lista — muda o contexto exigido, e a forja segue exigindo o ANTIGO: o PR",
   "trava esperando um check que nunca vai rodar, sem nenhuma linha de gate",
@@ -244,6 +248,44 @@ export function contextFor(jobId, job) {
   return job.name && job.name.length > 0 ? job.name : jobId
 }
 
+/**
+ * O `name:` de TOPO do workflow — o prefixo do contexto de status no Gitea.
+ *
+ * Devolve `null` quando o workflow não declara `name:` (antes do `jobs:`).
+ *
+ * @param {string} content conteúdo do workflow
+ * @returns {string|null}
+ */
+export function parseWorkflowName(content) {
+  for (const line of String(content ?? "").split(/\r?\n/)) {
+    if (/^jobs:\s*$/.test(line)) return null
+    const m = /^name:\s*(.+)$/.exec(line)
+    if (m) return scalar(m[1]) || null
+  }
+  return null
+}
+
+/**
+ * Contexto de status de um job de workflow no GITEA.
+ *
+ * O Gitea grava o status de um job do Actions como
+ * `"<workflow> / <job> (<event>)"` (`services/actions/commit_status.go`),
+ * enquanto o branch protection guarda a lista exigida e a casa por GLOB. Exigir
+ * o nome cru do job (`"Lint"`) nunca casa com `"CI/CD / Lint (pull_request)"`:
+ * a regra fica PENDENTE para sempre e o único merge possível é por override de
+ * admin — medido na `main` em 24/10/2026 (HTTP 405 "Not all required status
+ * checks successful" com os 9 checks verdes). O `(*)` cobre os dois eventos
+ * (`pull_request` no PR, `push` na main).
+ *
+ * @param {string|null} workflowName `name:` de topo do workflow
+ * @param {string} context contexto do job (o `name:` dele, ou o id)
+ * @returns {string}
+ */
+export function giteaContextFor(workflowName, context) {
+  const prefix = String(workflowName ?? "").trim()
+  return prefix.length > 0 ? `${prefix} / ${context} (*)` : context
+}
+
 // ── CONTEXTO ESTÁVEL: nenhum required check carrega uma CONTAGEM no nome ────
 //
 // O contexto de um status check é o `name:` do job (ou o id), e é ele que o
@@ -319,6 +361,20 @@ export function validateManifest(manifest, io) {
 
     const workflowJobs = parseWorkflowJobs(content)
     const seenContexts = new Map()
+
+    // No Gitea o contexto exigido é `<workflow> / <job> (<evento>)`. Sem o
+    // `name:` de topo o padrão degenera para o nome cru do job — que NUNCA casa
+    // com o status do Actions: a proteção fica pendente para sempre e o merge
+    // só passa por override de admin. O erro aponta para o arquivo do workflow,
+    // não para um check que nunca vai rodar.
+    if (forge === "gitea" && parseWorkflowName(content) === null) {
+      fail(
+        forge,
+        `${config.workflow} não declara \`name:\` de workflow — no Gitea o contexto de status é ` +
+          `\`<workflow> / <job> (<evento>)\`, então sem esse nome a proteção não casa com o status ` +
+          `do Actions e o merge trava (só passa por override de admin)`,
+      )
+    }
 
     for (const jobId of config.jobs) {
       const job = workflowJobs.get(jobId)
@@ -409,6 +465,9 @@ export function resolveManifestContexts(manifest, io) {
     const content = io.readFile(config.workflow)
     if (content === null) continue
     const workflowJobs = parseWorkflowJobs(content)
+    const workflowName = forge === "gitea" ? parseWorkflowName(content) : null
+    const contextualize = (context) =>
+      forge === "gitea" ? giteaContextFor(workflowName, context) : context
     const contexts = []
 
     for (const jobId of config.jobs ?? []) {
@@ -428,17 +487,17 @@ export function resolveManifestContexts(manifest, io) {
             if (rJob.if) continue
             contexts.push({
               jobId: `${jobId}/${rJobId}`,
-              context: contextFor(rJobId, rJob),
+              context: contextualize(contextFor(rJobId, rJob)),
             })
           }
         } else {
           // Reusable workflow não encontrado — mantém o job pai como fallback
-          contexts.push({ jobId, context: contextFor(jobId, job) })
+          contexts.push({ jobId, context: contextualize(contextFor(jobId, job)) })
         }
         continue
       }
 
-      contexts.push({ jobId, context: contextFor(jobId, job) })
+      contexts.push({ jobId, context: contextualize(contextFor(jobId, job)) })
     }
 
     resolved[forge] = {
@@ -483,7 +542,7 @@ export function loadApplied(root, io) {
 /**
  * Compara a declaração da reaplicação com os contextos derivados AGORA.
  *
- * A comparação é pelo CONTEXTO (o que a forja exibe), não pelo id do job: é o
+ * A comparação é pelo CONTEXTO (o que a forja exige), não pelo id do job: é o
  * contexto que o branch protection exige, e é ele que muda quando alguém
  * renomeia o `name:` — no caso de um rename, id igual e contexto diferente.
  *
@@ -737,8 +796,16 @@ export function buildAppliedRecord(atual, resolved, forges, hoje, unsupported = 
   // (rodar `--apply` de novo, num repo já em sincronia) não deve sujar a árvore —
   // um diff de uma linha em cada apply ensina o operador a ignorar este arquivo,
   // e um arquivo ignorado não declara nada.
+  // O `$comment` também é DERIVADO: uma declaração antiga que ainda explica a
+  // regra velha (ex.: "o contexto é o `name:` do job") é drift de prosa — ela é
+  // lida no PR como se fosse a regra atual. Declaração sem `$comment` (fixture
+  // mínima, escrita à mão) não gera churn por isso.
+  const commentMudou =
+    atual?.$comment !== undefined &&
+    JSON.stringify(record.$comment) !== JSON.stringify(atual.$comment)
   const mudou =
     JSON.stringify(record.forges) !== JSON.stringify(atual?.forges ?? null) ||
+    commentMudou ||
     atual?.version !== SUPPORTED_VERSION
   return { record: mudou ? record : { ...atual }, mudou }
 }

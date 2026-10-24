@@ -4,7 +4,11 @@
     "scripts/apply-required-checks.mjs --apply, nunca a mão.",
     "",
     "O que bloqueia o merge não é este repositório: é o branch protection da forja,",
-    "que exige o CONTEXTO de status (o `name:` do job, ou o id sem `name:`). Uma",
+    "que exige o CONTEXTO de status. No GitHub ele é o `name:` do job (ou o id, sem",
+    "`name:`); no Gitea o Actions grava `<workflow> / <job> (<evento>)` e é por isso",
+    "que o contexto exigido aqui é o GLOB `<workflow> / <job> (*)` — exigir o nome",
+    "cru do job nunca casa com o status real, a regra fica PENDENTE para sempre e",
+    "o único merge possível é por override de admin (medido em 24/10/2026). Uma",
     "mudança que renomeia o `name:` de um required check — ou que põe/tira um job",
     "da lista — muda o contexto exigido, e a forja segue exigindo o ANTIGO: o PR",
     "trava esperando um check que nunca vai rodar, sem nenhuma linha de gate",
@@ -31,7 +35,7 @@
     "um histórico."
   ],
   "version": 1,
-  "appliedAt": "2026-10-06",
+  "appliedAt": "2026-10-24",
   "forges": {
     "github": {
       "workflow": ".github/workflows/pr-check.yml",
@@ -72,14 +76,14 @@
       "workflow": ".gitea/workflows/ci.yml",
       "branches": ["main"],
       "contexts": [
-        "Lint",
-        "Repo Guards",
-        "Bring-up Gate Proof (pré-requisito 0, por execução)",
-        "Pre-commit Proof (dentro da imagem do runner)",
-        "TypeCheck",
-        "Tests",
-        "Build",
-        "Pagination baseline guard"
+        "CI/CD / Lint (*)",
+        "CI/CD / Repo Guards (*)",
+        "CI/CD / Bring-up Gate Proof (pré-requisito 0, por execução) (*)",
+        "CI/CD / Pre-commit Proof (dentro da imagem do runner) (*)",
+        "CI/CD / TypeCheck (*)",
+        "CI/CD / Tests (*)",
+        "CI/CD / Build (*)",
+        "CI/CD / Pagination baseline guard (*)"
       ]
     }
   }

@@ -1,5 +1,5 @@
 import * as React from "react"
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, screen, fireEvent } from "@/__tests__/test-utils"
 import { NotificationsBell, groupNotificationsByDate } from "../shell-notifications"
 import type { NotificationItem } from "../types"
@@ -23,28 +23,42 @@ vi.mock("@/lib/sounds", () => ({
   playCoinSound: (...args: any[]) => mockPlayCoinSound(...args),
 }))
 
-const mockNotifications: NotificationItem[] = [
-  {
-    id: "notif-1",
-    title: "Pagamento Confirmado",
-    body: "Seu PIX foi confirmado com sucesso.",
-    type: "PAYMENT_CONFIRMED",
-    read: false,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "notif-2",
-    title: "Prestador Chegou",
-    body: "Carlos chegou ao local de atendimento.",
-    type: "PROVIDER_ARRIVED",
-    read: true,
-    createdAt: new Date(Date.now() - 3600000).toISOString(),
-  },
-]
+// Relógio congelado: `groupNotificationsByDate` agrupa por dia de calendário e
+// as fixtures são relativas a "agora". Com o relógio real, uma execução entre
+// 00:00 e 00:59 (ex.: job de CI às 00:41 UTC) joga `agora - 1h` para "Ontem" e
+// o grupo "Hoje" fica com 1 item. 12:00 BRT deixa ambos no mesmo dia em
+// qualquer fuso.
+const NOW = new Date("2026-01-05T15:00:00.000Z")
+
+let mockNotifications: NotificationItem[]
 
 describe("NotificationsBell & Shell Notifications", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(NOW)
+    mockNotifications = [
+      {
+        id: "notif-1",
+        title: "Pagamento Confirmado",
+        body: "Seu PIX foi confirmado com sucesso.",
+        type: "PAYMENT_CONFIRMED",
+        read: false,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: "notif-2",
+        title: "Prestador Chegou",
+        body: "Carlos chegou ao local de atendimento.",
+        type: "PROVIDER_ARRIVED",
+        read: true,
+        createdAt: new Date(NOW.getTime() - 3600000).toISOString(),
+      },
+    ]
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it("groups notifications by date correctly", () => {
