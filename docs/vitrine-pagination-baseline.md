@@ -65,7 +65,7 @@ clique único — a janela que o aquecimento deveria absorver).
 | ------------------------------------------------------------ | ------------------------- | --------------------------------------------------------- | --- |
 | Clique, cache quente, nada em voo (5 amostras; aquec. fora)  | `vitrine:pagina:render`   | **44.3 – 158.0 ms** (mediana ≈ 134.8 ms)                  | 5   |
 | Clique, cache quente + fetch em voo                          | `vitrine:pagina:render`   | 0 amostras no ato (tail da rede; janela rara por design)  | 0   |
-| Walk reverso (Anterior no pouso do seek, sem âncora de N-1)  | `vitrine:walk:render`     | **283.0 ms** (1 página de walk)                           | 1   |
+| Walk reverso (Anterior no pouso do seek, sem âncora de N-1)  | `vitrine:walk:render`     | **283.0 ms** (1 página de walk; hoje o guard amostra 3)   | 1   |
 | Pouso do deep-link por seek direto (`?pagina=N&cursor=X`)    | `vitrine:deeplink:render` | **326.9 – 354.2 ms** (contexto JS frio; mediana ≈ 328 ms) | 3   |
 | Pouso do deep-link com walk interno (`?pagina=4`, 3 páginas) | `vitrine:deeplink:render` | **529.8 ms** (≈ 176.6 ms/página de walk)                  | 1   |
 
@@ -90,9 +90,9 @@ REGRESSÃO relativa, não o absoluto do host.
   mais que absolutos)
 - `inFlight: true` ou cold **> 800 ms** → investigar (o fetch de uma página
   em dev responde em ~15–25 ms server-side; o tail é client)
-- `vitrine:walk:render` **> 800 ms** por página de walk (o observado é
-  283 ms para 1 página; escala linearmente com o número de páginas
-  encadeadas)
+- `vitrine:walk:render` **> 800 ms** por página de walk, na **mediana de 3
+  amostras** (o observado é 283 ms para 1 página; escala linearmente com o
+  número de páginas encadeadas)
 - `vitrine:deeplink:render` seek **> 800 ms**; com walk interno **>
   250 ms × páginas de walk** (o observado é ~176.6 ms/página: 529.8 ms
   para 3 páginas)
@@ -144,8 +144,9 @@ pelo mesmo caminho do DevTools (`performance.getEntriesByType("measure")`):
   qualquer clique amostrado ≤ 800 ms.
 - **Deep-link seek** — a URL de p3 capturada durante a caminhada, reaberta em
   3 contextos JS frios; mediana ≤ 800 ms.
-- **Walk reverso** — Anterior no pouso do seek (sem âncora de p2): ≤ 800 ms ×
-  páginas de walk.
+- **Walk reverso** — Anterior em CADA um dos 3 pousos de seek (sem âncora de
+  p2 no contexto): 3 amostras, uma por pouso, sem page load extra; mediana
+  ≤ 800 ms × páginas de walk.
 - **Deep-link com walk interno** — `?pagina=4` sem cursor: ≤ 250 ms × 3
   páginas.
 
@@ -170,8 +171,12 @@ baseline guard**, no manifesto `ci/required-checks.json`) sobe PostGIS + seed
   plano) roda o MESMO guard POR PATHS em `.github/workflows/vitrine-baseline.yml`
   (precedente `e2e-cache.yml`), com o report como artifact. A saída JSON (flag
   `--json`) traz as amostras cruas para triagem — um vermelho em regime de
-  amostra única (walk, walk-interno) primeiro pergunta "ruído de máquina?"
-  (rodar de novo) antes de investigar código.
+  amostra única (`walk-interno`) primeiro pergunta "ruído de máquina?" (rodar
+  de novo) antes de investigar código. O walk reverso deixou de ser amostra
+  única em 23/10/2026: um único walk de **1189.6 ms** (limiar 1000 do perfil
+  `ci`) na mesma rodada em que warm dava 130 ms e seek 548 ms reprovava o
+  regime por um tiro do runner — hoje ele é julgado pela mediana de 3, a mesma
+  doutrina que este doc declara para todos os regimes.
 
 ## RUM — o baseline visto pelos usuários reais
 
