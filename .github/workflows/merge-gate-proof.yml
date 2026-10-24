@@ -20,9 +20,10 @@
 # imagem `ubuntu-bun` e o socket do docker NÃO está montado nele (ver
 # `.gitea/workflows/ci.yml`, job `pre-commit-in-runner-proof`), então lá a prova
 # sairia `unavailable` para sempre: um cron permanentemente vermelho que nunca
-# mede nada. Aqui o runner é `self-hosted` e TEM docker (é o mesmo runner que
-# roda `docker pull` no `act-startup-bench` e no `runner-shells-drift`) — motivo
-# já declarado no `check-prove-docs`: a família docker exige o host com docker.
+# mede nada. No cron o runner é `self-hosted` e TEM docker (é o mesmo runner que
+# roda `docker pull` no `act-startup-bench` e no `runner-shells-drift`); no PR o
+# job roda no `ubuntu-latest`, que também tem docker — motivo já declarado no
+# `check-prove-docs`: a família docker exige o host com docker.
 #
 # A ASSIMETRIA É INTENCIONAL — e o que este job mede NÃO é a proteção do GitHub.
 # A prova é da PEÇA (o applier + o manifesto), contra uma forja descartável: ela
@@ -129,7 +130,7 @@ concurrency:
 jobs:
   merge-gate-proof:
     name: merge-gate:prove (o registro da proteção ↔ o manifesto)
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 20
 
     steps:

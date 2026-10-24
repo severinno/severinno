@@ -4691,7 +4691,7 @@ tem o que decidir lá; e um cron não bloqueia merge (a decisão dele é a dívi
 declarada, noutro canal). Um job sem `runs-on` lido sai NOMEADO em
 `foraDoEscopo`.
 
-**O que a classe MEDIU nesta árvore** (o número sai do `--json`): **10 jobs**
+**O que a classe MEDIU nesta árvore** (o número sai do `--json`): **8 jobs**
 leem YAML no espelho, TODOS no caminho hospedado — **0** com exceção declarada
 desde a migração de 25/09/2026, que levou os dois últimos ao caminho que não
 depende do runner (o `check`, que EXECUTA a stack: o `check-mirror-coverage`

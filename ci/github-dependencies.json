@@ -94,7 +94,7 @@
       "estagio": 1,
       "substituto": "o registry OCI embutido da Gitea/Forgejo (open source, parte da mesma instancia): as DUAS imagens (o mirror do Bun e a `ubuntu-bun` que roda os jobs) publicadas la, e o flip de `IMAGE_REGISTRY`/`IMAGE_NAMESPACE` (uma variavel cada — o desenho ja e parametrizado e tem guard proprio, o `check:registry-source`).",
       "porque": "Referencias a `ghcr.io/` em arquivo de codigo versionado. A etapa 1 (flip do registry) levou 12 delas: o VALOR declarado saiu de `ghcr.io` no `.actrc`, nos dois templates, nos defaults de compose/shell e nos fallbacks dos workflows — o que sobrou e majoritariamente PROSA em arquivo de codigo (o comentario que explica de onde viemos) e a imagem de terceiro consumida do GHCR de proposito. O numero medido vive no campo `declarado` desta classe (o `--update` e o ato que o congela, no mesmo commit); o escopo da contagem e o CODIGO QUE RODA: `docs/`, os testes e as provas por mutacao ficam fora (o texto do defeito e payload de teste). Uma QUARTA ALTA, declarada em 22/10/2026 no MESMO ato que a congelou (50 -> 56): a frente de geo-precisao passou a consumir as DUAS imagens de TERCEIROS do GHCR (`project-osrm/osrm-backend` e `gis-ops/docker-valhalla`), e o literal aparece onde cada uma e puxada (o compose do motor de geo, o setup do grafo e o setup do OSRM). O consumo e consciente e ja declarado um a um na THIRD_PARTY_ALLOWLIST do `check:registry-source`; o que falta para a queda e o espelho dessas duas no registry proprio (o mesmo caminho que os `sync-*-mirror` ja fazem para as outras).",
-      "declarado": 56
+      "declarado": 54
     },
     {
       "id": "gh-cli",

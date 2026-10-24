@@ -66,7 +66,7 @@ env:
 jobs:
   baseline:
     name: Pagination baseline guard
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 25
 
     services:
@@ -171,11 +171,12 @@ jobs:
             exit 1
           fi
 
-      # O runner self-hosted (hostinger-runner) NÃO tem sudo sem senha: o
+      # No caminho self-hosted (hostinger-runner) NÃO há sudo sem senha: o
       # `--with-deps` morre em "sudo: a password is required" ANTES de baixar o
       # browser, e o job nunca chega ao guard. As libs do sistema são
       # responsabilidade da imagem do runner; aqui o binário (com cache em
-      # ~/.cache/ms-playwright). Onde o sudo funciona, mantém o caminho antigo.
+      # ~/.cache/ms-playwright). No hospedado o `sudo -n` funciona e mantém o
+      # caminho `--with-deps`.
       - name: Install Playwright Chromium
         run: |
           if sudo -n true 2>/dev/null; then

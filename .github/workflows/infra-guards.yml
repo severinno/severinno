@@ -57,7 +57,7 @@ jobs:
   # ── Prisma migrations sync ────────────────────────────────────────────────
   prisma-migrations:
     name: Prisma Migrations Sync
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 15
 
     services:
@@ -137,7 +137,8 @@ jobs:
       # O banco efêmero deste job já tem o schema completo (migrate deploy
       # acima) e é descartável (severinno_test) — o intertravamento do
       # --ephemeral aceita. O psql roda de DENTRO do service container
-      # (padrão do job: o runner self-hosted não tem psql no host).
+      # (padrão do job: no caminho self-hosted não há psql no host; no
+      # hospedado o psql existe, mas o `docker exec` mantém a mesma régua).
       - name: Money decimal guard
         run: bash scripts/check-money-decimal.sh --ephemeral
         env:
@@ -162,7 +163,7 @@ jobs:
   # ── Security headers (produção) ───────────────────────────────────────────
   security-headers:
     name: Security Headers
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 10
     if: github.event_name != 'pull_request'
 
@@ -175,7 +176,7 @@ jobs:
   # ── Static guards (sem banco) ─────────────────────────────────────────────
   static-guards:
     name: Static Guards
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 10
 
     steps:

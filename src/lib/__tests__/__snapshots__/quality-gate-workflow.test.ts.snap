@@ -5,7 +5,7 @@ exports[`quality-gate.yml — sintaxe YAML + snapshot > parseia como YAML válid
   "jobs": {
     "barrel-lint": {
       "name": "Barrel Lint",
-      "runs-on": "self-hosted",
+      "runs-on": "\${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}",
       "steps": [
         {
           "uses": "actions/checkout@v4",
@@ -34,7 +34,7 @@ exports[`quality-gate.yml — sintaxe YAML + snapshot > parseia como YAML válid
     },
     "cache-manifest": {
       "name": "Cache Manifest",
-      "runs-on": "self-hosted",
+      "runs-on": "\${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}",
       "steps": [
         {
           "uses": "actions/checkout@v4",
@@ -63,7 +63,7 @@ exports[`quality-gate.yml — sintaxe YAML + snapshot > parseia como YAML válid
     },
     "coverage-badge": {
       "name": "Coverage Badge",
-      "runs-on": "self-hosted",
+      "runs-on": "\${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}",
       "steps": [
         {
           "uses": "actions/checkout@v4",
@@ -101,7 +101,7 @@ exports[`quality-gate.yml — sintaxe YAML + snapshot > parseia como YAML válid
     },
     "coverage-gaps": {
       "name": "Coverage Gaps",
-      "runs-on": "self-hosted",
+      "runs-on": "\${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}",
       "steps": [
         {
           "uses": "actions/checkout@v4",
@@ -130,7 +130,7 @@ exports[`quality-gate.yml — sintaxe YAML + snapshot > parseia como YAML válid
     },
     "security-audit": {
       "name": "Security Audit",
-      "runs-on": "self-hosted",
+      "runs-on": "\${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}",
       "steps": [
         {
           "uses": "actions/checkout@v4",

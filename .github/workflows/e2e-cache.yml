@@ -67,7 +67,7 @@ jobs:
   e2e-cache:
     name: E2E Cache
     needs: [utf8-check, quality-gate]
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 15
 
     services:

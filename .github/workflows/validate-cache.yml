@@ -22,7 +22,7 @@ on:
 jobs:
   validate-cache:
     name: Validate Cache Manifest
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
 
     steps:
       - uses: actions/checkout@v4

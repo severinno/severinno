@@ -22,7 +22,7 @@ exports[`ci.yml — sintaxe YAML + snapshot > parseia como YAML válido (js-yaml
         "quality-gate",
         "test",
       ],
-      "runs-on": "self-hosted",
+      "runs-on": "\${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}",
       "steps": [
         {
           "uses": "actions/checkout@v4",
@@ -73,7 +73,7 @@ exports[`ci.yml — sintaxe YAML + snapshot > parseia como YAML válido (js-yaml
       "needs": [
         "build",
       ],
-      "runs-on": "self-hosted",
+      "runs-on": "\${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}",
       "steps": [
         {
           "uses": "actions/checkout@v4",
@@ -123,7 +123,7 @@ sleep 10
     },
     "lint": {
       "name": "Lint",
-      "runs-on": "self-hosted",
+      "runs-on": "\${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}",
       "steps": [
         {
           "uses": "actions/checkout@v4",
@@ -154,7 +154,7 @@ sleep 10
     },
     "test": {
       "name": "Tests",
-      "runs-on": "self-hosted",
+      "runs-on": "\${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}",
       "services": {
         "postgres": {
           "env": {
@@ -227,7 +227,7 @@ fi
     },
     "typecheck": {
       "name": "TypeCheck",
-      "runs-on": "self-hosted",
+      "runs-on": "\${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}",
       "steps": [
         {
           "uses": "actions/checkout@v4",

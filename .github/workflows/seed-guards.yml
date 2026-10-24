@@ -65,7 +65,7 @@ on:
 jobs:
   seed-guards:
     name: Seed E2E ${{ matrix.seed }} · ${{ matrix.variant }}
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 30
 
     # ── MATRIX 2×2: seed (prod/dev) × imagem (alpine/full) ──────────
@@ -224,7 +224,7 @@ jobs:
   # seed via backup em trap, nunca git checkout).
   mutation-seed-dev-e2e:
     name: Mutation Test (seed dev E2E pega regressões?)
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 30
 
     services:
@@ -373,7 +373,7 @@ jobs:
   # diagnóstico, e o `check-required-checks` recusa um número que volte para cá.
   mutation-coord-update:
     name: Mutation Test (contrato coordenado — doc↔anchor↔código)
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 15
 
     steps:
@@ -447,7 +447,7 @@ jobs:
   # o teste é unitário (lê arquivos, não toca banco).
   mutation-doctor-mirrors:
     name: Mutation Test (espelhos do doctor — comparação de valor)
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 10
 
     steps:
@@ -530,7 +530,7 @@ jobs:
     # fios são CINCO desde a ORDEM da derivação da fila (E); o nome fica, e a
     # contagem viva está no controle do script.
     name: Mutation Test (os três fios do veredito do doctor)
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 10
 
     steps:
@@ -598,7 +598,7 @@ jobs:
   # node_modules) — por isso NÃO vai na matriz node-pura do master.
   mutation-gate-contracts:
     name: Mutation Test (as três regras do contrato de gates CORE)
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 10
 
     steps:
@@ -672,7 +672,7 @@ jobs:
   # mutation-guards.
   mutation-doctor-ci:
     name: Mutation Test (perfil --ci do doctor — as 3 metades da comparação)
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 10
 
     steps:
@@ -739,7 +739,7 @@ jobs:
   # arquivo que não roda inteiro é infra, não detecção.
   mutation-env-mirror:
     name: Mutation Test (defesas do check-env-mirror)
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 10
 
     steps:
@@ -807,7 +807,7 @@ jobs:
   # asserções do prod E2E.
   seed-prod-e2e-dev-env:
     name: Seed Prod E2E (dev-env override)
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 30
 
     services:
@@ -944,7 +944,7 @@ jobs:
   # dev + validator; --skip-docker usa o service container do job).
   migrate-category-rename-e2e:
     name: Migrate Category Rename E2E
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 30
 
     services:
