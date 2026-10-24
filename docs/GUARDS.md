@@ -5753,8 +5753,10 @@ agnóstica de forja). Ele lê os valores do AMBIENTE (o workflow exporta `vars.*
 sem fallback — comparar contra um `|| 'ghcr.io'` do YAML é comparar contra
 intenção), **nomeia** a variável que não chegou (`::warning::`, porque um
 comparador com régua vazia diria "não perguntado") e traduz o veredito do doctor
-em decisão de pipeline: `0`/`2` → **segue** (2 é o INDETERMINADA por DESENHO do
-perfil — as seções do cron estão declaradas; tratá-lo como fracasso faria todo PR
+— lido do relatório `--json`, e não do exit code do processo filho, que é
+transporte e se perde sob carga — em decisão de pipeline: `0`/`2` → **segue**
+(2 é o INDETERMINADA por DESENHO do perfil — as seções do cron estão declaradas;
+tratá-lo como fracasso faria todo PR
 nascer vermelho), `1` (BLOQUEADA) → **bloqueia**, e `3`/outros → **bloqueia**
 (sem veredito não há gate). A lógica mora no script, e não no `run:` do YAML, por
 um motivo estrutural: o doctor executa a bateria do job `guards` por **lista de

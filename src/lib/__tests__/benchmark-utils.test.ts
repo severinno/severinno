@@ -144,23 +144,34 @@ describe("measure — warmup isolation", () => {
 // ---------------------------------------------------------------------------
 
 describe("measure consistency: .ts vs .mjs", () => {
-  it("both return comparable results for same no-op fn", async () => {
+  it("both report the SAME stats for the same no-op fn (deterministic clock)", async () => {
     vi.resetModules()
     const mjsModule = await import("../benchmark-utils.mjs")
     const mjsMeasure = mjsModule.measure as (fn: () => void, iterations?: number) => BenchmarkSample
 
-    const fn = () => 1 + 1
-    const tsResult = measure(fn, 10)
-    const mjsResult = mjsMeasure(fn, 10)
+    // O RELÓGIO é a variável do teste, e ele é DADO, não medido: com
+    // `performance.now()` real a razão entre duas amostras de um no-op é ruído
+    // de agendamento — medido na forja em 24/10/2026, 8× contra um teto de 5×,
+    // sob a suíte inteira em paralelo (o mesmo no-op, nas duas implementações).
+    // Aqui cada leitura avança 1 µs: o que se compara é a CONTA das duas
+    // implementações (mesmos samples, mesmos arredondamentos), não a latência
+    // da máquina. Uma divergência de comportamento continua reprovando — o
+    // `toEqual` é mais estrito que o teto de razão que ele substitui.
+    let ticks = 0
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => {
+      const agora = ticks
+      ticks += 0.001
+      return agora
+    })
 
-    // Both should report similar order-of-magnitude (within 5×)
-    // The difference comes from esbuild transform vs native ESM,
-    // same as the cpu-calibrate test.
-    const meanRatio =
-      tsResult.mean > 0 && mjsResult.mean > 0
-        ? Math.max(tsResult.mean, mjsResult.mean) / Math.min(tsResult.mean, mjsResult.mean)
-        : 1
+    try {
+      const fn = () => 1 + 1
+      const tsResult = measure(fn, 10)
+      const mjsResult = mjsMeasure(fn, 10)
 
-    expect(meanRatio).toBeLessThanOrEqual(5)
+      expect(mjsResult).toEqual(tsResult)
+    } finally {
+      clock.mockRestore()
+    }
   })
 })
